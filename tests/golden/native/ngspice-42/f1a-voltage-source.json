@@ -1,0 +1,44 @@
+{
+ "fixture": "tests/fixtures/f1a-voltage-source.cir",
+ "netlist": "* F1a: a 6 V source across a 2 ohm resistor\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n",
+ "ngspice": {
+  "version": "42",
+  "banner": [
+   "ngspice-42 : Circuit level simulation program",
+   "Compiled with KLU Direct Linear Solver"
+  ],
+  "host": "Linux x86_64"
+ },
+ "commands": {
+  "printed": "ngspice -b circuit.cir",
+  "plots": "ngspice -b -r out.raw circuit.cir"
+ },
+ "printed": {
+  "exitCode": 0,
+  "stdout": "\nNote: No compatibility mode selected!\n\n\nCircuit: * f1a: a 6 v source across a 2 ohm resistor\n\nDoing analysis at TEMP = 27.000000 and TNOM = 27.000000\n\n\nNo. of Data Rows : 1\n\tNode                                  Voltage\n\t----                                  -------\n\t----\t-------\n\tn1                               6.000000e+00\n\n\tSource\tCurrent\n\t------\t-------\n\n\tv1#branch                        -3.00000e+00\n\n Resistor models (Simple linear resistor)\n      model                     R\n\n        rsh                     0\n     narrow                     0\n      short                     0\n        tc1                     0\n        tc2                     0\n        tce                     0\n       defw                 1e-05\n          l                 1e-05\n         kf                     0\n         af                     0\n          r                     0\n     bv_max                 1e+99\n         lf                     1\n         wf                     1\n         ef                     1\n\n Resistor: Simple linear resistor\n     device                    r1\n      model                     R\n resistance                     2\n         ac                     2\n      dtemp                     0\n     bv_max                 1e+99\n      noisy                     1\n          i                     3\n          p                    18\n\n Vsource: Independent voltage source\n     device                    v1\n         dc                     6\n      acmag                     0\n      pulse         -\n        sin         -\n        exp         -\n        pwl         -\n       sffm         -\n         am         -\n    trnoise         -\n   trrandom         -\n    portnum                     0\n         z0                     0\n        pwr                     0\n       freq                     0\n      phase                     0\n          i                    -3\n          p                   -18\n\n\n\n\n\n\n",
+  "stderr": "Using SPARSE 1.3 as Direct Linear Solver\n"
+ },
+ "plots": [
+  {
+   "plotname": "Operating Point",
+   "flags": "real",
+   "points": 1,
+   "vectors": [
+    {
+     "name": "v(n1)",
+     "type": "voltage",
+     "values": [
+      6
+     ]
+    },
+    {
+     "name": "i(v1)",
+     "type": "current",
+     "values": [
+      -3
+     ]
+    }
+   ]
+  }
+ ]
+}
