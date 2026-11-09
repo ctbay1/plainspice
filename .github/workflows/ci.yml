@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, unit + golden tests, build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Golden tests (WebAssembly ngspice vs recorded native ngspice 47 and 42)
+        run: npm run test:golden
+      - name: Cache the ngspice source tarball
+        uses: actions/cache@v6
+        with:
+          path: .engine-work/download
+          key: ngspice-source-${{ hashFiles('engine/build.sh') }}
+      - name: Fetch the engine's exact source (served next to ngspice.wasm, as the LGPL asks)
+        run: bash scripts/fetch-ngspice-source.sh
+      - run: npm run build
+      - name: Keep the built site for the deploy job
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/configure-pages@v6
+      - id: deployment
+        uses: actions/deploy-pages@v5
