@@ -1,0 +1,396 @@
+/*
+ * PlainSpice netlist editor (src/editor/editor.ts adds the class ps-editor to .cm-editor).
+ *
+ * Text colours, the active line, the selection and the gutter colours are NOT here: they come
+ * from src/editor/highlight.ts, where a unit test checks their contrast. This file uses the app's
+ * theme tokens (--surface, --ink, --pencil, --rule, --focus, --bad, --warn, --accent-current,
+ * --font-ui, --font-mono) with fallbacks, so the editor also works on its own.
+ * Selectors start with .cm-editor.ps-editor so they win over CodeMirror's own theme rules.
+ * Sizes are in em/rem, so html[data-text-size] (125 %, 150 %) scales everything.
+ */
+
+.cm-editor.ps-editor {
+  /* 16 px or more: iOS zooms the page when a smaller text field gets focus. */
+  font-size: max(1rem, 16px);
+  background-color: var(--surface, #fffdf6);
+  color: var(--ink, #1e2a45);
+  border: 1px solid var(--pencil, #545863);
+  border-radius: 0.375rem;
+}
+
+.cm-editor.ps-editor.cm-focused {
+  outline: 3px solid var(--focus, #1971c2);
+  outline-offset: 2px;
+}
+
+.cm-editor.ps-editor .cm-scroller {
+  font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace);
+  line-height: 1.7;
+  min-height: 10.2em; /* six lines */
+}
+
+.cm-editor.ps-editor .cm-content {
+  caret-color: var(--ink, #1e2a45);
+  padding-block: 0.25em;
+}
+
+.cm-editor.ps-editor .cm-line {
+  padding-inline: 0.375em 0.5em;
+}
+
+.cm-editor.ps-editor .cm-gutters {
+  border-inline-end: 1px solid var(--rule, #c9c2ae);
+  border-start-start-radius: 0.375rem;
+  border-end-start-radius: 0.375rem;
+}
+
+.cm-editor.ps-editor .cm-lineNumbers .cm-gutterElement {
+  padding-inline: 0.5em 0.375em;
+  min-width: 2.5ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-editor.ps-editor .cm-matchingBracket {
+  background: none;
+  outline: 1px solid var(--pencil, #545863);
+}
+
+.cm-editor.ps-editor .cm-nonmatchingBracket {
+  background: none;
+  outline: 1px dashed var(--bad, #b42318);
+}
+
+/* ---------------------------------------------------------------- node marks (node-colours.ts) */
+
+/* Every node name is underlined, so nodes stand out from numbers without colour. */
+.cm-editor.ps-editor .ps-node {
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-color: var(--pencil, #545863);
+  text-decoration-thickness: max(1px, 0.07em);
+  text-underline-offset: 0.16em;
+  text-decoration-skip-ink: none;
+}
+
+/* With node colours, the underline becomes a bar in the node's colour. */
+.cm-editor.ps-editor .ps-node-coloured {
+  text-decoration-color: var(--ps-node-colour, var(--pencil, #545863));
+  text-decoration-thickness: 0.2em;
+}
+
+/* ---------------------------------------------------------------- inline results (inline-notes.ts) */
+
+.cm-editor.ps-editor .ps-inline-note {
+  margin-inline-start: 1.25em;
+  color: var(--accent-current, #8a4b00);
+  font-family: var(--font-ui, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  font-size: 0.9375em;
+  font-weight: 600;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  /* Wraps with the line on a narrow screen instead of making it scroll sideways. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------- traps (diagnostics.ts) */
+
+/*
+ * Underlines differ in shape, not only colour: errors wavy, warnings dashed, notes dotted.
+ * The padding puts them below the node underline with a small gap; with line-height 1.7 they
+ * still end above the next line's text.
+ */
+.cm-editor.ps-editor .cm-lintRange {
+  background-position: left bottom;
+  background-repeat: repeat-x;
+  padding-bottom: 0.4em;
+}
+
+.cm-editor.ps-editor .cm-lintRange-error {
+  background-size: 0.375em 0.25em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='4' viewBox='0 0 6 4'%3E%3Cpath d='M0 3 2 1h1l2 2h1' fill='none' stroke='%23B42318' stroke-width='1.2'/%3E%3C/svg%3E");
+}
+
+.cm-editor.ps-editor .cm-lintRange-warning {
+  background-size: 0.375em 0.25em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='4' viewBox='0 0 6 4'%3E%3Cpath d='M0 2.5h4' stroke='%238A4B00' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+.cm-editor.ps-editor .cm-lintRange-info {
+  background-size: 0.25em 0.25em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Ccircle cx='1.5' cy='2.5' r='1' fill='%23545863'/%3E%3C/svg%3E");
+}
+
+/* The trap selected in the list: an outline, so the text keeps its contrast. */
+.cm-editor.ps-editor .cm-lintRange-active {
+  background-color: transparent;
+  outline: 2px solid var(--focus, #1971c2);
+  outline-offset: 1px;
+}
+
+/* Gutter markers: octagon (error), triangle (warning), circle with i (note). */
+.cm-editor.ps-editor .cm-gutter-lint {
+  width: 1.375em;
+}
+
+/* Next to the first row of a wrapped line, like the line number: (line height 1.7 - 1em) / 2. */
+.cm-editor.ps-editor .cm-gutter-lint .cm-gutterElement {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.35em 0 0;
+}
+
+.cm-editor.ps-editor .cm-lint-marker {
+  content: normal;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.cm-editor.ps-editor .cm-lint-marker-error {
+  color: var(--bad, #b42318);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M5 1h6l4 4v6l-4 4H5l-4-4V5zM7 3.5h2v5.5H7zm0 7h2v2H7z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M5 1h6l4 4v6l-4 4H5l-4-4V5zM7 3.5h2v5.5H7zm0 7h2v2H7z'/%3E%3C/svg%3E");
+}
+
+.cm-editor.ps-editor .cm-lint-marker-warning {
+  color: var(--warn, #8a4b00);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1l7.5 13.5H.5zM7 5.5h2v4.5H7zm0 5.5h2v2H7z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1l7.5 13.5H.5zM7 5.5h2v4.5H7zm0 5.5h2v2H7z'/%3E%3C/svg%3E");
+}
+
+.cm-editor.ps-editor .cm-lint-marker-info,
+.cm-editor.ps-editor .cm-lint-marker-hint {
+  color: var(--pencil, #545863);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 7h2v5.5H7zm0-3.5h2v2H7z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM7 7h2v5.5H7zm0-3.5h2v2H7z'/%3E%3C/svg%3E");
+}
+
+/* The trap text, in the pop-up and in the list. */
+.cm-editor.ps-editor .cm-diagnostic {
+  padding: 0.5em 0.75em;
+  font-family: var(--font-ui, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.cm-editor.ps-editor .cm-diagnostic-error {
+  border-inline-start: 0.375em solid var(--bad, #b42318);
+}
+
+.cm-editor.ps-editor .cm-diagnostic-warning {
+  border-inline-start: 0.375em dashed var(--warn, #8a4b00);
+}
+
+.cm-editor.ps-editor .cm-diagnostic-info {
+  border-inline-start: 0.375em dotted var(--pencil, #545863);
+}
+
+.cm-editor.ps-editor .ps-trap-severity-error {
+  color: var(--bad, #b42318);
+}
+
+.cm-editor.ps-editor .ps-trap-severity-warning {
+  color: var(--warn, #8a4b00);
+}
+
+.cm-editor.ps-editor .ps-trap-severity-info {
+  color: var(--pencil, #545863);
+}
+
+.cm-editor.ps-editor .ps-trap-title {
+  font-weight: 600;
+}
+
+/* Fix buttons: 44 px high for fingers (WCAG 2.5.8 asks for at least 24 px). */
+.cm-editor.ps-editor .cm-diagnosticAction {
+  font: inherit;
+  font-weight: 600;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  margin: 0.5em 0.5em 0 0;
+  padding: 0.25em 0.875em;
+  color: var(--surface, #fffdf6);
+  background-color: var(--ink, #1e2a45);
+  border: 2px solid var(--ink, #1e2a45);
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.cm-editor.ps-editor .cm-diagnosticAction:hover {
+  text-decoration: underline;
+}
+
+.cm-editor.ps-editor .cm-diagnosticAction:focus-visible {
+  outline: 3px solid var(--focus, #1971c2);
+  outline-offset: 2px;
+}
+
+/*
+ * In CodeMirror's trap list each trap is a list option, and a button inside an option breaks
+ * ARIA's rules (axe: nested-interactive). There the fixes are applied with the letter written
+ * under each trap ("Press C: ..."); the buttons stay in the pop-up (hover or F8) and in the app's
+ * own trap panel.
+ */
+.cm-editor.ps-editor .cm-panel-lint .cm-diagnosticAction,
+.cm-editor.ps-editor .ps-trap-keys {
+  display: none;
+}
+
+.cm-editor.ps-editor .cm-panel-lint .ps-trap-keys {
+  display: block;
+  margin-top: 0.25em;
+  font-weight: 600;
+}
+
+/* The pop-up shown on hover and by F8. */
+.cm-editor.ps-editor .cm-tooltip {
+  color: var(--ink, #1e2a45);
+  background-color: var(--surface, #fffdf6);
+  border: 1px solid var(--pencil, #545863);
+  border-radius: 0.375rem;
+  max-width: min(32rem, calc(100vw - 2rem));
+  box-shadow: 0 0.125rem 0.5rem rgb(30 42 69 / 0.2);
+}
+
+.cm-editor.ps-editor .cm-tooltip-lint .cm-diagnostic {
+  border-inline-start-width: 0.375em;
+}
+
+/* The trap list (Ctrl+Shift+M). */
+.cm-editor.ps-editor .cm-panels {
+  color: var(--ink, #1e2a45);
+  background-color: var(--surface, #fffdf6);
+  border-color: var(--pencil, #545863);
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint ul {
+  max-height: min(40vh, 18rem);
+  padding-inline-end: 3.25rem; /* room for the close button */
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint ul [aria-selected] {
+  background-color: var(--surface, #fffdf6);
+  outline: 2px solid var(--ink, #1e2a45);
+  outline-offset: -2px;
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint ul:focus-visible {
+  outline: 3px solid var(--focus, #1971c2);
+  outline-offset: -3px;
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint ul:focus [aria-selected] {
+  color: var(--surface, #fffdf6);
+  background-color: var(--ink, #1e2a45);
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint ul:focus [aria-selected] .ps-trap-severity {
+  color: inherit;
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint [name='close'] {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  font-size: 1.25em;
+  line-height: 1;
+  color: var(--ink, #1e2a45);
+  background-color: var(--surface, #fffdf6);
+  border: 1px solid var(--pencil, #545863);
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.cm-editor.ps-editor .cm-panel.cm-panel-lint [name='close']:focus-visible {
+  outline: 3px solid var(--focus, #1971c2);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- high contrast */
+
+html[data-contrast='more'] .cm-editor.ps-editor {
+  border: 2px solid var(--ink, #000);
+}
+
+@media (prefers-contrast: more) {
+  .cm-editor.ps-editor {
+    border: 2px solid var(--ink, #000);
+  }
+}
+
+/* ---------------------------------------------------------------- forced colours (Windows High Contrast) */
+
+@media (forced-colors: active) {
+  .cm-editor.ps-editor {
+    border: 2px solid CanvasText;
+  }
+
+  .cm-editor.ps-editor.cm-focused {
+    outline-color: Highlight;
+  }
+
+  /* Background images are not reliable here: draw trap underlines as text decorations. */
+  .cm-editor.ps-editor .cm-lintRange {
+    background-image: none;
+    text-decoration-line: underline;
+    text-decoration-color: CanvasText;
+    text-decoration-thickness: max(1px, 0.08em);
+    text-underline-offset: 0.42em;
+  }
+
+  .cm-editor.ps-editor .cm-lintRange-error {
+    text-decoration-style: wavy;
+  }
+
+  .cm-editor.ps-editor .cm-lintRange-warning {
+    text-decoration-style: dashed;
+  }
+
+  .cm-editor.ps-editor .cm-lintRange-info {
+    text-decoration-style: dotted;
+  }
+
+  /* The marker shapes stay: paint them in the text colour. */
+  .cm-editor.ps-editor .cm-lint-marker {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+
+  .cm-editor.ps-editor .cm-diagnosticAction,
+  .cm-editor.ps-editor .cm-panel.cm-panel-lint [name='close'] {
+    border: 2px solid ButtonText;
+  }
+
+  .cm-editor.ps-editor .cm-panel.cm-panel-lint ul [aria-selected] {
+    forced-color-adjust: none;
+    color: HighlightText;
+    background-color: Highlight;
+    outline-color: HighlightText;
+  }
+}
+
+/* ---------------------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-editor.ps-editor,
+  .cm-editor.ps-editor * {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+html[data-motion='reduce'] .cm-editor.ps-editor,
+html[data-motion='reduce'] .cm-editor.ps-editor * {
+  scroll-behavior: auto !important;
+  animation: none !important;
+  transition: none !important;
+}
