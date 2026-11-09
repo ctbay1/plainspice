@@ -1,5 +1,5 @@
 {
-  "name": "circuit-sim",
+  "name": "plainspice",
   "version": "0.1.0",
   "private": true,
   "description": "A beginner-first, accessible circuit simulator in the browser: real ngspice in WebAssembly, every netlist line explained in plain words.",

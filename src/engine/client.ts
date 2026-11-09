@@ -38,7 +38,7 @@ export class EngineClient {
       options.createWorker ?? (() => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }));
   }
 
-  /** Load ngspice now (it is about 1.5 MB), so the first Run is quick. Resolves with the load time. */
+  /** Load ngspice now (about 0.6 MB compressed), so the first Run is quick. Resolves with the load time. */
   async warmUp(): Promise<number> {
     const response = await this.send({ type: 'init', id: this.nextId++ }, 60_000);
     if (response.type === 'ready') return response.loadMs;
