@@ -1,0 +1,5 @@
+* F2a: a 3 A current source into a 4 ohm resistor
+I1 0 n1 3
+R1 n1 0 4
+.op
+.end

@@ -1,0 +1,58 @@
+{
+  "$comment": "Expected values from Tarık's brief (9 Nov 2026), checked by hand. F* fixtures come from the Solved Circuits channel; D1 and T1 are ours. 'quantity' uses ngspice's vector names.",
+  "fixtures": {
+    "f1a-voltage-source": {
+      "source": "channel",
+      "checks": [{ "quantity": "v(n1)", "expected": 6, "unit": "V" }]
+    },
+    "f1b-voltage-source-swapped": {
+      "source": "channel",
+      "checks": [{ "quantity": "v(n1)", "expected": -6, "unit": "V" }]
+    },
+    "f2a-current-source": {
+      "source": "channel",
+      "checks": [{ "quantity": "v(n1)", "expected": 12, "unit": "V" }]
+    },
+    "f2b-current-source-swapped": {
+      "source": "channel",
+      "checks": [{ "quantity": "v(n1)", "expected": -12, "unit": "V" }]
+    },
+    "f3a-1M-trap": {
+      "source": "channel",
+      "note": "1M is 1 milliohm, so almost all of the 6 V appears across R2: 6 * 1e6 / (1e6 + 1e-3) = 5.999999994 V",
+      "checks": [{ "quantity": "v(n2)", "expected": 5.999999994, "unit": "V", "approx": true }]
+    },
+    "f3b-1meg": {
+      "source": "channel",
+      "checks": [{ "quantity": "v(n2)", "expected": 3, "unit": "V" }]
+    },
+    "f4-tf-output-impedance": {
+      "source": "channel",
+      "note": "R3 carries no current, so v(a) = v(n1) = 24 * 3/9 = 8 V; output impedance = R3 + R1||R2 = 2 + 2 = 4 ohms; input impedance = R1 + R2 = 9 ohms",
+      "checks": [
+        { "quantity": "output_impedance_at_v(a)", "expected": 4, "unit": "ohm" },
+        { "quantity": "transfer_function", "expected": 0.3333333333333333, "unit": "" },
+        { "quantity": "v1#input_impedance", "expected": 9, "unit": "ohm" }
+      ]
+    },
+    "f5-thevenin-cccs": {
+      "source": "channel",
+      "note": "1 A test current into a; F1 pushes 2 x 1 A into n1, so 3 A flow down R1: v(n1) = 12 V, v(x) = 12 + 2 = 14 V, v(a) = v(x) because Vx is 0 V. Thevenin resistance 14 V / 1 A = 14 ohms",
+      "checks": [
+        { "quantity": "v(a)", "expected": 14, "unit": "V" },
+        { "quantity": "v(n1)", "expected": 12, "unit": "V" },
+        { "quantity": "vx#branch", "expected": 1, "unit": "A" }
+      ]
+    },
+    "d1-dc-divider-sweep": {
+      "source": "ours",
+      "note": "v(out) = V1 * 2k / (1k + 2k) at each of the 13 sweep points",
+      "checks": [{ "quantity": "v(out)", "expected": "2/3 * v-sweep", "unit": "V", "points": 13 }]
+    },
+    "t1-tran-rc-charge": {
+      "source": "ours",
+      "note": "tau = 1k * 1u = 1 ms; v(out) close to 5 * (1 - exp(-t / 1 ms)); at t = 5 ms about 4.966 V",
+      "checks": [{ "quantity": "v(out)", "expected": "5*(1-exp(-t/1e-3))", "unit": "V", "approx": true }]
+    }
+  }
+}

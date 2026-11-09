@@ -1,0 +1,7 @@
+* F4: output impedance at v(a) with .tf
+V1 s 0 24
+R1 s n1 6
+R2 n1 0 3
+R3 n1 a 2
+.tf v(a) V1
+.end

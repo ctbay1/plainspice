@@ -1,0 +1,5 @@
+* F1b: the same source written with its nodes swapped
+V1 0 n1 6
+R1 n1 0 2
+.op
+.end

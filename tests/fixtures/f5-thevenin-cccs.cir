@@ -1,0 +1,8 @@
+* F5: Thevenin resistance with a dependent source (test source method)
+Itest 0 a 1
+Vx a x 0
+R2 x n1 2
+R1 n1 0 4
+F1 0 n1 Vx 2
+.op
+.end

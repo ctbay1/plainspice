@@ -1,0 +1,6 @@
+* F3b: R1 written as 1meg (one megaohm)
+V1 n1 0 6
+R1 n1 n2 1meg
+R2 n2 0 1meg
+.op
+.end

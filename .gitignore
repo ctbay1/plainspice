@@ -1,0 +1,12 @@
+node_modules/
+dist/
+!engine/dist/
+.engine-work/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.log
+.DS_Store
+Thumbs.db
+.vite/

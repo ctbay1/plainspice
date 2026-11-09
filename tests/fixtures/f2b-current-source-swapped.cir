@@ -1,0 +1,5 @@
+* F2b: the same current source written with its nodes swapped
+I1 n1 0 3
+R1 n1 0 4
+.op
+.end

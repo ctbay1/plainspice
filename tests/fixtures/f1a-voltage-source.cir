@@ -1,0 +1,5 @@
+* F1a: a 6 V source across a 2 ohm resistor
+V1 n1 0 6
+R1 n1 0 2
+.op
+.end

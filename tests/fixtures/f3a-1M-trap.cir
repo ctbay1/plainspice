@@ -1,0 +1,6 @@
+* F3a: the 1M trap (M is milli, so R1 is 1 milliohm)
+V1 n1 0 6
+R1 n1 n2 1M
+R2 n2 0 1meg
+.op
+.end
