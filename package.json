@@ -1,0 +1,30 @@
+{
+  "name": "circuit-sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A beginner-first, accessible circuit simulator in the browser: real ngspice in WebAssembly, every netlist line explained in plain words.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:golden": "vitest run --project golden",
+    "test:e2e": "playwright test",
+    "record:native": "node scripts/record-native.mjs",
+    "engine:build": "bash engine/build.sh"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  }
+}
