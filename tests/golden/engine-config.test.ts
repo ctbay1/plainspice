@@ -24,7 +24,7 @@ const record = (label: string, id: string): NativeRecord =>
   JSON.parse(readFileSync(join(root, `tests/golden/native/${label}/${id}.json`), 'utf8')) as NativeRecord;
 const netlists = [
   ...readdirSync(join(root, 'tests/fixtures')).filter((f) => f.endsWith('.cir')).map((f) => join(root, 'tests/fixtures', f)),
-  join(root, 'tests/golden/engine-config/rl-fast-edge.cir'),
+  ...readdirSync(join(root, 'tests/golden/engine-config')).filter((f) => f.endsWith('.cir')).map((f) => join(root, 'tests/golden/engine-config', f)),
 ];
 
 let engine: NgspiceEngine;

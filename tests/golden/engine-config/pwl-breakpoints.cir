@@ -1,0 +1,5 @@
+* PWL source: straight lines between (time, value) points, then the last value
+V1 a 0 PWL(0 0 1m 5 2m 5 3m 0)
+R1 a 0 1
+.tran 0.1m 4m
+.end
