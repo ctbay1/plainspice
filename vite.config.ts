@@ -58,10 +58,61 @@ function shipEngineSourceAndNotices(): Plugin {
   };
 }
 
+/**
+ * licenses/THIRD_PARTY_LICENSES.txt: the licence of every npm package that ends up in the
+ * built JavaScript (minifying drops their comments, but MIT, ISC, BSD and Apache-2.0 all ask
+ * that their notices travel with the code). Built from the chunks' module lists, so it names
+ * exactly what ships, nothing that is only used to build or test.
+ */
+function shipDependencyLicences(): Plugin {
+  const packages = new Map<string, string>(); // package dir -> name@version, across all builds
+  return {
+    name: 'ship-dependency-licences',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue;
+        for (const id of output.moduleIds) {
+          const m = /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/.exec(id.replace(/^\0/, ''));
+          if (!m?.[1] || packages.has(m[1])) continue;
+          try {
+            const pkg = JSON.parse(readFileSync(resolve(m[1], 'package.json'), 'utf8')) as { name?: string; version?: string };
+            if (pkg.name) packages.set(m[1], `${pkg.name}@${pkg.version ?? '?'}`);
+          } catch {
+            // not a package root (e.g. a nested folder without package.json): skip
+          }
+        }
+      }
+      const sections = [...packages.entries()]
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([dir, nameVersion]) => {
+          const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')) as { license?: unknown; author?: unknown };
+          const texts = readdirSync(dir)
+            .filter((f) => /^(licen[cs]e|copying|notice)(\..*)?$/i.test(f))
+            .sort()
+            .map((f) => `--- ${f} ---\n${readFileSync(resolve(dir, f), 'utf8').trim()}`);
+          const licence = typeof pkg.license === 'string' ? pkg.license : JSON.stringify(pkg.license ?? 'see the files below');
+          return [`=== ${nameVersion} (${licence}) ===`, ...texts].join('\n\n');
+        });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'licenses/THIRD_PARTY_LICENSES.txt',
+        source: [
+          'Licences of the open-source JavaScript packages bundled into PlainSpice.',
+          'PlainSpice itself: MIT (LICENSE.txt). The simulation engine, ngspice: THIRD_PARTY_NOTICES.md.',
+          '',
+          ...sections,
+          '',
+        ].join('\n\n'),
+      });
+    },
+  };
+}
+
 export default defineConfig({
   // Relative asset URLs, so the build works at any path (GitHub Pages serves it under /<repo>/).
   base: './',
-  plugins: [shipEngineSourceAndNotices()],
+  plugins: [shipEngineSourceAndNotices(), shipDependencyLicences()],
   build: {
     target: 'es2022',
     rollupOptions: {

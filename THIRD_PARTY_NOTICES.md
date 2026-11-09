@@ -152,8 +152,12 @@ ENHANCEMENTS, OR MODIFICATIONS.
   Copyright (c) 2010-2014 Emscripten authors. musl libc: MIT, Copyright (c) 2005-2020 Rich
   Felker, et al. dlmalloc: public domain (CC0). compiler-rt: Apache-2.0 WITH LLVM-exception.
 
-## 6. JavaScript dependencies
+## 6. JavaScript packages in the app
 
-The page's own JavaScript bundles npm packages under their own licences (MIT, ISC, BSD,
-Apache-2.0); see `package.json` and `package-lock.json`. axe-core (MPL-2.0) and Playwright
-(Apache-2.0) are used in tests only and are not shipped.
+The page's JavaScript bundles open-source npm packages under their own licences: React and
+React DOM (MIT), React Aria Components and its @react-aria, @react-stately and
+@internationalized packages (Apache-2.0), CodeMirror 6 and Lezer (MIT), uPlot (MIT, © Leon
+Sorokin), and their dependencies. Every build writes the full list, with each package's
+licence and notice files, to `licenses/THIRD_PARTY_LICENSES.txt` on the site (generated from
+exactly what is bundled; see `vite.config.ts`). axe-core (MPL-2.0), Playwright (Apache-2.0)
+and the other development tools are used to build and test only and are not shipped.
