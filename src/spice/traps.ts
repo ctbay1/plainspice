@@ -1,0 +1,1620 @@
+/**
+ * Beginner trap checks: mistakes ngspice reads differently from what the student meant, or stops
+ * on, found before running. Each trap says what ngspice really does, why in plain words, and offers
+ * one-click fixes (text changes in netlist offsets). Plain TypeScript: no UI framework, no DOM.
+ *
+ * Every claim in a trap's `ngspice` text was checked by running native ngspice 47, native ngspice
+ * 42 and our WebAssembly engine on a small netlist: docs/spice-facts/traps.md (the claim IDs in
+ * brackets below, e.g. [mega-as-milli-1], name its sections), asserted on every golden run by
+ * tests/golden/facts-traps.test.ts. Where our engine differs from native ngspice 47 (it is built
+ * without XSPICE, OSDI and some device models), the text says both.
+ *
+ * Choices that keep the checks quiet on correct circuits (the channel's episode netlists are a
+ * test): a lower-case m on a resistor is not flagged (the channel teaches m = milli); a node with
+ * one connection is only an info note unless another node name looks like a typo of it, and not
+ * even that when a directive names the node (an open terminal you measure); voltage loops through
+ * an inductor and capacitor-only nodes are fine when every analysis is `.tran ... uic` (ngspice then
+ * skips the DC operating point).
+ */
+import { formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { buildGraph, behaviouralKind, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
+import { formatSpiceNumber, readNumber } from './numbers.ts';
+import { lowerAscii, parseNetlist } from './parse.ts';
+import type {
+  Element,
+  ElementLetter,
+  Field,
+  FieldRole,
+  Fix,
+  Netlist,
+  NetlistLine,
+  NodeInfo,
+  NumberReading,
+  Span,
+  TextChange,
+  Token,
+  Trap,
+  TrapSeverity,
+} from './types.ts';
+
+/** Every trap id, in the order docs/spice-facts/traps.md describes them. */
+export const TRAP_IDS = [
+  'mega-as-milli',
+  'unit-letter',
+  'greek-mu',
+  'rkm-notation',
+  'decimal-comma',
+  'space-before-suffix',
+  'midline-comment',
+  'nbsp',
+  'missing-value',
+  'missing-fields',
+  'control-source',
+  'missing-title',
+  'no-ground',
+  'ground-misnamed',
+  'dangling-node',
+  'floating-dc',
+  'current-source-no-path',
+  'voltage-loop',
+  'duplicate-name',
+  'unknown-letter',
+  'missing-model',
+  'missing-subcircuit',
+  'model-not-in-engine',
+  'dc-sweep-problems',
+  'tran-problems',
+  'tf-problems',
+  'no-analysis',
+  'missing-end',
+  'after-end',
+  'zero-ohm',
+  'fatal-syntax',
+  'include-not-available',
+  'lost-continuation',
+] as const;
+
+export type TrapId = (typeof TRAP_IDS)[number];
+
+/** Applies a fix's changes to the text they were computed on (positions refer to that text). */
+export function applyFix(text: string, fix: Fix): string {
+  let out = text;
+  for (const c of [...fix.changes].sort((a, b) => b.from - a.from || b.to - a.to)) {
+    out = out.slice(0, c.from) + c.insert + out.slice(c.to);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ context
+
+interface ModelCard {
+  name: string;
+  /** Model type, lower-case: "d", "npn", "nmos", "ltra", ... */
+  type: string;
+  /** The level, found the way ngspice's INPfindLev finds it (1 when none). */
+  level: number;
+  line: number;
+  token: Token;
+}
+
+interface Ctx {
+  n: Netlist;
+  text: string;
+  graph: CircuitGraph;
+  traps: Trap[];
+  /** Element lines outside subcircuits, whether or not ngspice builds them. */
+  top: number[];
+  models: Map<string, ModelCard>;
+  subckts: Set<string>;
+  params: Set<string>;
+  /** Lower-case name of each element outside subcircuits, to its first line. */
+  byKey: Map<string, number>;
+  /** Every element name in use (subcircuits included), lower-case: new names must avoid them. */
+  names: Set<string>;
+  /** Some analysis needs the DC operating point (anything but `.tran ... uic`), or there is none. */
+  opNeeded: boolean;
+  hasControl: boolean;
+  /** A line starting with '@' (ngspice stops reading there). */
+  atLine?: number;
+  /**
+   * Parts ngspice can't read as written (a missing node, an unknown letter, a missing model...).
+   * Their nodes are often misread (a value taken for a node), so the circuit checks leave them out.
+   */
+  broken: Set<number>;
+  /** Lines of the parts ngspice builds outside subcircuits (CircuitGraph.elements). */
+  built: Set<number>;
+  /** For a line with continuation lines, the index of its last continuation line. */
+  lastContinuation: Map<number, number>;
+}
+
+const GROUND = '0';
+const MAIN_ROLES: ReadonlySet<FieldRole> = new Set(['value', 'gain', 'transconductance', 'transresistance']);
+const NODE_ROLES: ReadonlySet<FieldRole> = new Set(['node', 'plus', 'minus', 'from', 'to', 'control-plus', 'control-minus']);
+const VALUE_LETTERS: ReadonlySet<string> = new Set(['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H']);
+const UNIT: Partial<Record<ElementLetter, string>> = { R: 'Ω', C: 'F', L: 'H', V: 'V', I: 'A' };
+
+function lineAt(n: Netlist, offset: number): NetlistLine {
+  let lo = 0;
+  let hi = n.lines.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (n.lines[mid]!.span.from <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return n.lines[lo]!;
+}
+
+function add(
+  c: Ctx,
+  id: TrapId,
+  severity: TrapSeverity,
+  span: Span,
+  title: string,
+  why: string,
+  ngspice: string,
+  fixes: Fix[] = [],
+): void {
+  const line = lineAt(c.n, span.from).number;
+  if (c.traps.some((t) => t.id === id && t.span.from === span.from && t.span.to === span.to)) return;
+  c.traps.push({ id, severity, line, span: { from: span.from, to: span.to }, title, why, ngspice, fixes });
+}
+
+const change = (from: number, to: number, insert: string): TextChange => ({ from, to, insert });
+const replace = (t: Span, insert: string): TextChange => change(t.from, t.to, insert);
+const fix = (label: string, ...changes: TextChange[]): Fix => ({ label, changes: changes.sort((a, b) => a.from - b.from) });
+
+/** "a", "a and b", "a, b and c". */
+function list(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+const el = (c: Ctx, i: number): Element => c.n.lines[i]!.element!;
+const nameOf = (e: Element): string => e.name.text;
+const fieldAfter = (e: Element, f: Field): Field | undefined => e.fields[e.fields.indexOf(f) + 1];
+
+/** Where a new line goes after line i and its continuation lines: the start of the next line. */
+function insertLineAfter(c: Ctx, i: number, line: string): TextChange {
+  const last = c.lastContinuation.get(i) ?? i;
+  const next = c.n.lines[last + 1];
+  if (next) return change(next.span.from, next.span.from, `${line}\n`);
+  return change(c.text.length, c.text.length, `${c.text.endsWith('\n') || c.text.length === 0 ? '' : '\n'}${line}\n`);
+}
+
+/** A part name not used yet: base itself, or base with the next free number. */
+function freshName(c: Ctx, base: string): string {
+  if (!c.names.has(lowerAscii(base))) return base;
+  const m = /^(.*?)(\d+)$/.exec(base);
+  const stem = m ? m[1]! : base;
+  let k = m ? Number(m[2]) + 1 : 2;
+  while (c.names.has(lowerAscii(`${stem}${k}`))) k += 1;
+  return `${stem}${k}`;
+}
+
+/** Changes that rename a node everywhere it is named (parts and directives). */
+const renameNode = (info: NodeInfo, to: string): TextChange[] => info.refs.map((t) => replace(t, to));
+
+/**
+ * Two node names that look like a typo of each other: one character more or less (n12 and n2), or
+ * two neighbouring letters swapped (otu and out). Names differing in one digit (n1, n2) are a
+ * numbering, not a typo, and one-character names are too short to tell.
+ */
+export function looksLikeTypo(a: string, b: string): boolean {
+  if (a === b) return false;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  if (s.length < 2) return false;
+  if (l.length === s.length + 1) {
+    for (let k = 0; k < l.length; k++) if (l.slice(0, k) + l.slice(k + 1) === s) return true;
+    return false;
+  }
+  if (l.length !== s.length || s.length < 3) return false;
+  for (let k = 0; k + 1 < s.length; k++) {
+    if (s[k] === l[k + 1] && s[k + 1] === l[k] && s.slice(0, k) === l.slice(0, k) && s.slice(k + 2) === l.slice(k + 2)) {
+      return !(/\d/.test(s[k]!) && /\d/.test(s[k + 1]!)) && s[k] !== s[k + 1];
+    }
+  }
+  return false;
+}
+
+/** The value in plain units for a part's main value: "1 mΩ", "a gain of 0.001". */
+function amount(value: number, letter: ElementLetter | undefined): string {
+  const ratio = Number.isInteger(value) && Math.abs(value) < 1e15 ? String(value) : formatNumber(value);
+  if (letter === 'E' || letter === 'F') return `a gain of ${ratio}`;
+  if (letter === 'G') return `${ratio} A/V`;
+  if (letter === 'H') return `${ratio} V/A`;
+  return formatSI(value, letter ? (UNIT[letter] ?? '') : '');
+}
+
+/** The number as written, without its scale letters and the letters after them ("4.7" of "4.7MOhm"). */
+function numberPart(r: NumberReading): string {
+  const tail = (r.scale?.letters ?? '') + (r.ignored ?? '') + (r.rest ?? '');
+  return r.text.slice(0, r.text.length - tail.length);
+}
+
+/** The ngspice level of a .model line: the number after the first "level" (inpfindl.c). */
+function modelLevel(rest: string): number {
+  const at = rest.indexOf('level');
+  if (at < 0) return 1;
+  let p = at + 5;
+  while (p < rest.length && ' \t=,()+'.includes(rest[p]!)) p += 1;
+  const r = readNumber(rest.slice(p));
+  if (!r) return 0;
+  const level = Math.trunc(r.value + 0.5);
+  return level < 0 || level > 99 ? 1 : level;
+}
+
+function context(n: Netlist): Ctx {
+  const graph = buildGraph(n);
+  const c: Ctx = {
+    n,
+    text: n.text,
+    graph,
+    traps: [],
+    top: n.elements.filter((i) => !graph.inSubcircuit.has(i)),
+    models: new Map(),
+    subckts: new Set(),
+    params: new Set(),
+    byKey: new Map(),
+    names: new Set(n.elements.map((i) => n.lines[i]!.element!.key)),
+    opNeeded: true,
+    broken: new Set(),
+    built: new Set(graph.elements),
+    lastContinuation: new Map(),
+    hasControl: n.lines.some((l) => l.kind === 'control' && /^\s*\.control/i.test(l.text)),
+  };
+  for (const i of c.top) if (!c.byKey.has(el(c, i).key)) c.byKey.set(el(c, i).key, i);
+  for (const l of n.lines) {
+    if (l.continues !== undefined) c.lastContinuation.set(l.continues, Math.max(l.index, c.lastContinuation.get(l.continues) ?? 0));
+  }
+  for (const l of n.lines) {
+    if (l.kind === 'invalid' && /^[\s\ufeff]*@/.test(l.text) && c.atLine === undefined) c.atLine = l.index;
+    const d = l.directive;
+    if (!d) continue;
+    const first = d.args[0];
+    if (d.name === '.model' && first) {
+      const second = d.args[1];
+      const restFrom = second ? second.to : first.to;
+      const card = lowerAscii(n.text.slice(restFrom, cardEnd(c, l.index)));
+      const type = second ? lowerAscii(second.text) : '';
+      c.models.set(lowerAscii(first.text), { name: first.text, type, level: modelLevel(card), line: l.index, token: first });
+    } else if ((d.name === '.subckt' || d.name === '.macro') && first) {
+      c.subckts.add(lowerAscii(first.text));
+      paramNames(c, d.args, l.index);
+    } else if (d.name === '.param') {
+      paramNames(c, d.args, l.index);
+    } else if (d.name === '.func' && first) {
+      c.params.add(lowerAscii(first.text));
+    }
+  }
+  const analyses = n.analyses.map((i) => n.lines[i]!.directive!);
+  c.opNeeded = analyses.length === 0 || analyses.some((d) => !(d.name === '.tran' && d.args.some((t) => lowerAscii(t.text) === 'uic')));
+  return c;
+}
+
+/** Where line i's card (with its continuation lines) ends in the netlist. */
+function cardEnd(c: Ctx, i: number): number {
+  return c.n.lines[c.lastContinuation.get(i) ?? i]!.span.to;
+}
+
+/** Names defined as name=value among a directive's words (.param, .subckt ... params:). */
+function paramNames(c: Ctx, args: Token[], line: number): void {
+  const end = cardEnd(c, line);
+  for (const t of args) {
+    let p = t.to;
+    while (p < end && (c.text[p] === ' ' || c.text[p] === '\t')) p += 1;
+    if (c.text[p] === '=') c.params.add(lowerAscii(t.text));
+  }
+}
+
+// ------------------------------------------------------------------ how values are written
+
+/** RKM code such as 2k2, 4k7, 1M5, 4R7: digits, one letter standing for the decimal point, digits. */
+const RKM = /^([+-]?\d+)([rRkKmMuUnNpPgGtT\u00b5])(\d+)([A-Za-z\u03a9\u2126]*)$/;
+const RKM_SCALE: Record<string, [factor: number, spelling: string]> = {
+  r: [1, ''],
+  k: [1e3, 'k'],
+  M: [1e6, 'meg'],
+  m: [1e-3, 'm'],
+  u: [1e-6, 'u'],
+  '\u00b5': [1e-6, 'u'],
+  n: [1e-9, 'n'],
+  p: [1e-12, 'p'],
+  g: [1e9, 'g'],
+  t: [1e12, 't'],
+};
+
+function checkValueSpelling(c: Ctx, i: number): void {
+  const e = el(c, i);
+  const v = e.value;
+  const r = v?.number;
+  if (!v || !r || !e.letter || !VALUE_LETTERS.has(e.letter) || v.token.text !== r.text) return;
+  const text = v.token.text;
+  const letter = e.letter;
+  const unit = UNIT[letter] ?? '';
+  const name = nameOf(e);
+
+  const rkm = RKM.exec(text);
+  if (rkm && !/^0+$/.test(rkm[3]!)) {
+    const key = rkm[2] === 'M' ? 'M' : rkm[2] === '\u00b5' ? '\u00b5' : rkm[2]!.toLowerCase();
+    const [factor, spelling] = RKM_SCALE[key]!;
+    const meant = `${rkm[1]}.${rkm[3]}${spelling}`;
+    const asRead = rkm[2]!.toLowerCase() === 'r' ? rkm[1]! : `${rkm[1]}${rkm[2]}`;
+    add(
+      c,
+      'rkm-notation',
+      'warning',
+      v.token,
+      `${text} is read as ${asRead}, not ${meant}`,
+      `On resistor codes and schematics ${text} means ${meant}: the letter stands for the decimal point. SPICE stops reading the number at the letter and ignores the ${rkm[3]} after it. Write ${meant}.`,
+      `ngspice reads ${text} as ${amount(r.value, letter)} (${name}) and says nothing. [rkm-notation-1]`,
+      [fix(`Write ${meant} (${amount(Number(`${rkm[1]}.${rkm[3]}`) * factor, letter)})`, replace(v.token, meant))],
+    );
+    return;
+  }
+
+  const digits = numberPart(r);
+  const base = readNumber(digits)?.value;
+  if (base === undefined) return;
+
+  if (r.scale?.name === 'milli' && r.scale.letters === 'M') {
+    const mega = fix(`Make it ${digits}meg (${amount(base * 1e6, letter)})`, replace(v.token, `${digits}meg`));
+    const milli = fix(`Keep milli: write ${digits}m`, replace(v.token, `${digits}m`));
+    const gain = letter === 'E' || letter === 'F' || letter === 'G' || letter === 'H';
+    const ohms = letter === 'R';
+    add(
+      c,
+      'mega-as-milli',
+      'warning',
+      v.token,
+      ohms || gain ? `${text} means ${amount(r.value, letter)}, not ${amount(base * 1e6, letter)}` : `${text} means ${amount(r.value, letter)}`,
+      `SPICE ignores capital letters, so M is the same as m: milli. For mega, write meg: ${digits}meg.`,
+      `ngspice reads ${text} as ${amount(r.value, letter)}${r.ignored ? ` (it ignores the ${r.ignored})` : ''} and says nothing. [mega-as-milli-1, mega-as-milli-2, mega-as-milli-3]`,
+      ohms || gain ? [mega, milli] : [milli, mega],
+    );
+    return;
+  }
+
+  if (r.scale?.name === 'atto' || (letter === 'C' && r.scale?.name === 'femto')) {
+    const atto = r.scale.name === 'atto';
+    const shown = atto ? 'A' : 'F';
+    const meant = speakSI(base, unit);
+    add(
+      c,
+      'unit-letter',
+      atto || r.scale.letters === 'F' ? 'warning' : 'info',
+      v.token,
+      `${text} means ${speakSI(r.value, unit)}`,
+      atto
+        ? `${shown} is not amps here: SPICE reads it as the scale letter a, atto (10^-18), and it does not use units. Write the number alone: ${digits} means ${meant}.`
+        : `F is not farads here: SPICE reads it as the scale letter f, femto (10^-15), and it does not use units. Write the number alone: ${digits} means ${meant}.`,
+      `ngspice reads ${text} as ${speakSI(r.value, unit)} and says nothing. [unit-letter-1, unit-letter-2]`,
+      [fix(`Write ${digits} (${meant})`, replace(v.token, digits))],
+    );
+  }
+}
+
+/** Number-like words with the Greek letter mu, which ngspice ignores (the micro sign works). */
+function checkGreekMu(c: Ctx): void {
+  const looksLikeNumber = /^[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?\u03bc/;
+  const visit = (t: Token, unit: string | undefined): void => {
+    if (!looksLikeNumber.test(t.text)) return;
+    const r = readNumber(t.text);
+    if (!r) return;
+    const shown = unit === undefined ? formatNumber(r.value) : formatSI(r.value, unit);
+    const meant = t.text.replaceAll('\u03bc', 'u');
+    add(
+      c,
+      'greek-mu',
+      'warning',
+      t,
+      `${t.text} is read as ${shown}: SPICE ignores this \u03bc`,
+      `This \u03bc is the Greek letter mu, not the micro sign \u00b5 that SPICE knows (phone keyboards often type the Greek one). SPICE ignores it like a unit. Write u for micro: ${meant}.`,
+      `ngspice reads ${t.text} as ${shown} and says nothing. [greek-mu-1]`,
+      [fix(`Write u for micro: ${meant}`, replace(t, meant))],
+    );
+  };
+  for (const i of c.n.elements) {
+    const e = el(c, i);
+    for (const f of e.fields) {
+      if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role)) continue;
+      visit(f.token, e.value?.token === f.token && e.letter ? (UNIT[e.letter] ?? '') : undefined);
+    }
+  }
+  for (const i of c.n.analyses) for (const t of c.n.lines[i]!.directive!.args) visit(t, undefined);
+}
+
+/** Main value fields of a part, in order. */
+const mainFields = (e: Element): Field[] => e.fields.filter((f) => MAIN_ROLES.has(f.role));
+
+function checkDecimalComma(c: Ctx, i: number): void {
+  const e = el(c, i);
+  if (!e.letter || !VALUE_LETTERS.has(e.letter)) return;
+  for (const f1 of mainFields(e)) {
+    const f2 = fieldAfter(e, f1);
+    if (!f2 || !/^[+-]?\d+$/.test(f1.token.text) || c.text[f1.token.to] !== ',' || f2.token.from !== f1.token.to + 1) continue;
+    if (!/^\d/.test(f2.token.text)) continue;
+    const meant = `${f1.token.text}.${f2.token.text}`;
+    const span = { from: f1.token.from, to: f2.token.to };
+    const written = c.text.slice(span.from, span.to);
+    const second = readNumber(f2.token.text);
+    const passive = e.letter === 'R' || e.letter === 'C' || e.letter === 'L';
+    const source = e.letter === 'V' || e.letter === 'I';
+    const ngspice = passive
+      ? `ngspice reads two numbers, ${f1.token.text} and ${f2.token.text}, keeps the second one and says nothing${e.letter === 'C' ? ` except a warning that it can't find a model called '${lowerAscii(written)}'` : ''}: ${nameOf(e)} gets ${second ? amount(second.value, e.letter) : f2.token.text}. [decimal-comma-1, decimal-comma-2, decimal-comma-3]`
+      : source
+        ? `ngspice stops: 'unknown parameter (${lowerAscii(f2.token.text)})'. [decimal-comma-4, decimal-comma-5]`
+        : `PlainSpice's engine stops: 'unknown parameter (${lowerAscii(f2.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the two numbers as the coefficients of a polynomial instead. [decimal-comma-6, decimal-comma-7, decimal-comma-8, decimal-comma-9]`;
+    add(
+      c,
+      'decimal-comma',
+      passive ? 'warning' : 'error',
+      span,
+      `${written}: SPICE reads the comma as a space`,
+      `SPICE writes decimals with a point. A comma separates words, so ${written} is two numbers, ${f1.token.text} and ${f2.token.text}.`,
+      ngspice,
+      [fix(`Write ${meant}`, replace(span, meant))],
+    );
+    return;
+  }
+}
+
+/** A scale letter, a unit, or both, written as a separate word after a number: "k", "V", "kOhm". */
+const SUFFIX = /^(meg|mil|[tgkmunpfa\u00b5])?(ohms?|\u03a9|volts?|v|amps?|a|f|h|hz|s)?$/i;
+
+/**
+ * What ngspice does with "1 k" and the like, by part and word. Some words are names of the part's
+ * own settings: m is the multiplier of R, C, L, I, G and F, so "1 m" runs with a multiplier of 0;
+ * p (and v on an inductor) can only be read back, not set [space-before-suffix-1 ... -14].
+ */
+function suffixVerdict(letter: ElementLetter, word: string, name: string): string {
+  const w = lowerAscii(word);
+  if (w === 'm') {
+    const silent: Partial<Record<ElementLetter, string>> = {
+      R: `${name} then carries no current at all`,
+      C: `${name} then has no capacitance at all`,
+      I: `${name} then pushes no current at all`,
+    };
+    const text = silent[letter];
+    if (text) return `ngspice takes m as ${name}'s multiplier, given no value, and says nothing: ${text}.${letter === 'R' ? " (It only warns that it can't find a model called m.)" : ''} [space-before-suffix-7, space-before-suffix-8, space-before-suffix-10]`;
+    if (letter === 'L') return `ngspice takes m as ${name}'s multiplier, given no value, and says nothing; a .tran then stops: 'Timestep too small'. [space-before-suffix-9]`;
+    if (letter === 'G' || letter === 'F') return `PlainSpice's engine takes m as ${name}'s multiplier, given no value, and says nothing: ${name} then gives no current. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops: 'MIF-ERROR ... Bad real value'. [space-before-suffix-11]`;
+  }
+  if ((w === 'p' && 'RCL'.includes(letter)) || (w === 'v' && letter === 'L')) {
+    return `ngspice stops: 'no such parameter on this device or parameter is missing' (${w} is a value ngspice can report for the part, not one you can set). [space-before-suffix-12]`;
+  }
+  if ('EFGH'.includes(letter)) {
+    return `PlainSpice's engine stops: 'unknown parameter (${w})'. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [space-before-suffix-6, space-before-suffix-13, space-before-suffix-14]`;
+  }
+  if (letter === 'R') return `ngspice looks for a model called ${w}, warns 'can't find model', and stops: 'unknown parameter (${w})'. [space-before-suffix-1]`;
+  return `ngspice stops: 'unknown parameter (${w})'. [space-before-suffix-2, space-before-suffix-3, space-before-suffix-4, space-before-suffix-5]`;
+}
+
+function checkSpaceBeforeSuffix(c: Ctx, i: number): void {
+  const e = el(c, i);
+  if (!e.letter || !VALUE_LETTERS.has(e.letter)) return;
+  const f1 = mainFields(e).find((f) => readNumber(f.token.text));
+  const r = f1 ? readNumber(f1.token.text) : undefined;
+  if (!f1 || !r || r.scale || r.ignored || r.rest) return;
+  const f2 = fieldAfter(e, f1);
+  if (!f2 || f2.role === 'model' || NODE_ROLES.has(f2.role)) return;
+  if (!/^[ \t]+$/.test(c.text.slice(f1.token.to, f2.token.from))) return;
+  const m = SUFFIX.exec(f2.token.text);
+  if (!m || (!m[1] && !m[2]) || /^\s*=/.test(c.text.slice(f2.token.to, f2.token.to + 8))) return;
+  let scale = m[1] ?? '';
+  // A lone a/A or f/F after a number is a unit (amps, farads), not atto or femto.
+  if (!m[2] && /^[af]$/i.test(scale)) scale = '';
+  const n = f1.token.text;
+  const span = { from: f1.token.from, to: f2.token.to };
+  const written = c.text.slice(span.from, span.to);
+  const fixes: Fix[] = [];
+  if (scale === 'M') {
+    fixes.push(fix(`Make it ${n}meg`, replace(span, `${n}meg`)), fix(`Keep milli: write ${n}m`, replace(span, `${n}m`)));
+  } else {
+    const joined = `${n}${scale === '\u00b5' ? 'u' : scale.toLowerCase()}`;
+    fixes.push(fix(`Write ${joined}`, replace(span, joined)));
+  }
+  add(
+    c,
+    'space-before-suffix',
+    'error',
+    span,
+    `${written}: the space splits the value in two`,
+    scale
+      ? `SPICE reads ${written} as two words: the number ${n}, then ${f2.token.text} as a separate word. Write the letter right after the number.`
+      : `SPICE reads ${written} as two words: the number ${n}, then ${f2.token.text} as a separate word. SPICE needs no units: write the number alone.`,
+    suffixVerdict(e.letter, f2.token.text, nameOf(e)),
+    fixes,
+  );
+}
+
+function checkMidlineComment(c: Ctx, i: number): void {
+  const e = el(c, i);
+  if (!e.letter || !VALUE_LETTERS.has(e.letter)) return;
+  const f = e.fields.find((x) => x.role === 'other' && /^[*#/]/.test(x.token.text));
+  if (!f) return;
+  const ch = f.token.text[0]!;
+  add(
+    c,
+    'midline-comment',
+    'error',
+    f.token,
+    `${ch} in the middle of a line is not a comment`,
+    `A ${ch} starts a comment only at the beginning of a line. For a comment after a part, use a semicolon: ; like this.`,
+    'EFGH'.includes(e.letter)
+      ? `PlainSpice's engine stops: 'unknown parameter (${lowerAscii(f.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the rest as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [midline-comment-7, midline-comment-10, midline-comment-11, midline-comment-12]`
+      : `ngspice stops: 'unknown parameter (${lowerAscii(f.token.text)})'. [midline-comment-1 ... midline-comment-6, midline-comment-9]`,
+    [fix('Use ; for the comment', change(f.token.from, f.token.from + 1, ';'))],
+  );
+}
+
+function checkNbsp(c: Ctx): void {
+  for (const l of c.n.lines) {
+    if (l.kind !== 'element' && l.kind !== 'directive' && l.kind !== 'continuation') continue;
+    const t = l.tokens.find((x) => x.text.includes('\u00a0'));
+    if (!t) continue;
+    const changes: TextChange[] = [];
+    for (const x of l.tokens) {
+      for (let k = x.text.indexOf('\u00a0'); k >= 0; k = x.text.indexOf('\u00a0', k + 1)) changes.push(change(x.from + k, x.from + k + 1, ' '));
+    }
+    const shown = t.text.replaceAll('\u00a0', ' ');
+    add(
+      c,
+      'nbsp',
+      'warning',
+      t,
+      `A no-break space glues "${shown}" into one word`,
+      'This line has a no-break space (it often comes with text copied from a web page or a PDF). It looks like a space, but SPICE does not treat it as one, so the words on either side become one word.',
+      'ngspice reads the no-break space as part of the word and says nothing about it; in one test R1 n1 0<no-break space>2 became a resistor with the node "0 2" and no value, which ngspice then left out. [nbsp-1]',
+      [fix('Replace it with a normal space', ...changes)],
+    );
+  }
+}
+
+// ------------------------------------------------------------------ incomplete part lines
+
+function checkIncomplete(c: Ctx, i: number): void {
+  const e = el(c, i);
+  const L = e.letter;
+  if (!L || !VALUE_LETTERS.has(L)) return;
+  const name = nameOf(e);
+  const span = e.name;
+  const kind = { R: 'resistor', C: 'capacitor', L: 'inductor', V: 'voltage source', I: 'current source' }[L as 'R'];
+  const A = L === 'L' ? 'An' : 'A';
+  const nodes = e.nodes.length;
+  if (L === 'R' || L === 'C' || L === 'L') {
+    if (nodes < 2) {
+      c.broken.add(i);
+      add(c, 'missing-fields', 'warning', span, `${name} needs two nodes`,
+        `${A} ${kind} line is: name, node, node, value. ${name} has ${nodes === 0 ? 'no nodes' : 'only one node'}.`,
+        `ngspice leaves ${name} out of the circuit and warns: 'not a valid ${kind} instance line, ignored!'. [missing-fields-1]`);
+    } else if (!e.value && !e.fields.some((f) => f.role === 'model')) {
+      add(c, 'missing-value', 'warning', span, `${name} has no value`,
+        `${A} ${kind} line is: name, node, node, value. Without a value SPICE can't use the ${kind}.`,
+        `ngspice leaves ${name} out of the circuit and warns: 'not a valid ${kind} instance line, ignored!'. [missing-value-1, missing-value-2]`);
+    }
+    return;
+  }
+  if (L === 'V' || L === 'I') {
+    const unit = L === 'V' ? '0 V' : '0 A';
+    if (nodes < 2) {
+      c.broken.add(i);
+      add(c, 'missing-fields', 'error', span, `${name} needs two nodes`,
+        L === 'V' ? `A voltage source line is: name, + node, - node, value. ${name} has ${nodes === 0 ? 'no nodes' : 'only one node'}.`
+          : `A current source line is: name, from node, to node, current. ${name} has ${nodes === 0 ? 'no nodes' : 'only one node'}.`,
+        `ngspice stops with a fatal error: 'Not enough parameters'. [missing-fields-2, missing-fields-3]`);
+    } else if (e.fields.length === 3) {
+      const last = e.nodes[1]!.token;
+      add(c, 'missing-value', 'warning', span, `${name} has no value`,
+        L === 'V' ? `A voltage source line is: name, + node, - node, value. Without a value SPICE uses ${unit}, which is only right for an ammeter (a 0 V source that measures a current).`
+          : `A current source line is: name, from node, to node, current. Without a value SPICE uses ${unit}, which is the same as no source at all.`,
+        `ngspice uses ${unit} and only notes: '${lowerAscii(name)}: has no value, DC 0 assumed'. [missing-value-3]`,
+        L === 'V' ? [fix('Write 0 (a 0 V source: an ammeter)', change(last.to, last.to, ' 0'))] : []);
+    }
+    return;
+  }
+  const notEnough = "Native ngspice 47 stops: 'not enough parameters in line'.";
+  if (L === 'E' || L === 'G') {
+    if (nodes < 4) {
+      c.broken.add(i);
+      add(c, 'missing-fields', 'error', span, `${name} needs four nodes and a ${L === 'E' ? 'gain' : 'value in amps per volt'}`,
+        L === 'E' ? `An E line is: name, + node, - node, control + node, control - node, gain: the voltage at the + node is the gain times the control voltage.`
+          : `A G line is: name, from node, to node, control + node, control - node, amps per volt.`,
+        `${notEnough} PlainSpice's engine (built without XSPICE) misreads the line instead, for example taking a number for a node, and its results can't be used. [missing-fields-4, missing-fields-5]`);
+    } else if (!e.value) {
+      add(c, 'missing-value', 'error', span, `${name} has no ${L === 'E' ? 'gain' : 'value'}`,
+        L === 'E' ? 'An E line ends with its gain: E1 out 0 c 0 2 makes the voltage at out 2 x the voltage at c.'
+          : 'A G line ends with its value in amps per volt: G1 0 out c 0 0.5 pushes 0.5 amps for every volt at c.',
+        `${notEnough} PlainSpice's engine (built without XSPICE) reads the missing value as 0 and says nothing. [missing-value-4, missing-value-5, missing-value-6, missing-value-7]`);
+    }
+    return;
+  }
+  // F, H. A number where the control source goes means the control source was left out.
+  if (nodes < 2 || !e.controlSource || (!e.value && readNumber(e.controlSource.text))) {
+    c.broken.add(i);
+    add(c, 'missing-fields', 'error', span, `${name} needs two nodes and a control source`,
+      `${L === 'F' ? 'An F line is: name, from node, to node, control source, gain' : 'An H line is: name, + node, - node, control source, volts per amp'}. F and H read a current, and SPICE can only read the current through a voltage source, so the control source is the name of a voltage source.`,
+      `${notEnough} PlainSpice's engine stops: '${lowerAscii(name)}: unknown controlling source'. [missing-fields-6, missing-fields-7, missing-fields-8]`);
+  } else if (!e.value) {
+    add(c, 'missing-value', 'error', span, `${name} has no ${L === 'F' ? 'gain' : 'value'}`,
+      L === 'F' ? 'An F line ends with its gain: F1 0 out Vs 3 pushes 3 x the current in Vs.' : 'An H line ends with its value in volts per amp: H1 out 0 Vs 4 makes 4 volts for every amp in Vs.',
+      `${notEnough} PlainSpice's engine (built without XSPICE) reads the missing value as 0 and says nothing. [missing-value-4, missing-value-5, missing-value-6, missing-value-7]`);
+  }
+}
+
+function checkControlSource(c: Ctx, i: number): void {
+  const e = el(c, i);
+  if ((e.letter !== 'F' && e.letter !== 'H') || !e.controlSource) return;
+  const t = e.controlSource;
+  if (c.broken.has(i)) return;
+  const key = lowerAscii(t.text);
+  const target = c.byKey.get(key);
+  const targetEl = target === undefined ? undefined : el(c, target);
+  if (targetEl?.letter === 'V') return;
+  const candidates = c.top.map((k) => el(c, k)).filter((x) => x.letter === 'V' && looksLikeTypo(x.key, key));
+  c.broken.add(i);
+  add(
+    c,
+    'control-source',
+    'error',
+    t,
+    targetEl ? `${t.text} is not a voltage source` : `There is no voltage source called ${t.text}`,
+    'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a zero-volt source in the branch you want to measure: the ammeter trick.',
+    `ngspice stops: '${lowerAscii(nameOf(e))}: unknown controlling source ${key}'. [control-source-1, control-source-2]`,
+    candidates.slice(0, 2).map((x) => fix(`Use ${nameOf(x)}`, replace(t, nameOf(x)))),
+  );
+}
+
+// ------------------------------------------------------------------ the title line
+
+const DOT_COMMANDS = new Set([
+  '.op', '.tf', '.dc', '.tran', '.ac', '.noise', '.disto', '.pz', '.sens', '.sp', '.four', '.fourier', '.model', '.param',
+  '.include', '.inc', '.lib', '.end', '.subckt', '.ends', '.options', '.option', '.opt', '.print', '.plot', '.save', '.control',
+  '.ic', '.nodeset', '.meas', '.measure', '.temp', '.global', '.func', '.csparam',
+]);
+
+function checkTitle(c: Ctx): void {
+  const title = c.n.lines[0];
+  if (!title || title.kind !== 'title') return;
+  const parsed = parseNetlist(`*\n${title.text}`);
+  const l = parsed.lines[1];
+  if (!l) return;
+  const bom = c.text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const addTitle = fix('Add a title line above it', change(bom, bom, '* my circuit\n'));
+  const at = title.span.from + (title.text.length - title.text.trimStart().length);
+  if (l.kind === 'directive' && l.directive && DOT_COMMANDS.has(l.directive.name)) {
+    const word = l.directive.token.text;
+    add(c, 'missing-title', 'warning', { from: at, to: at + word.length }, `Line 1 is the title, so ${word} is ignored`,
+      'SPICE always skips the first line, so make it a title. A command written there is never run.',
+      `ngspice reads line 1 as the title and never runs ${word}; it says nothing about it. [missing-title-2]`, [addTitle]);
+    return;
+  }
+  const e = l.element;
+  if (l.kind !== 'element' || !e?.letter || !'RCLVIEFGHDQJM'.includes(e.letter) || e.nodes.length < 2) return;
+  if (VALUE_LETTERS.has(e.letter) && !e.value?.number && !e.sourceFunction && !e.controlSource) return;
+  const used = e.nodes.some((r) => !r.ground && (c.n.nodes.get(r.name)?.connections.length ?? 0) > 0);
+  if (!used) return;
+  const word = e.name.text;
+  add(c, 'missing-title', 'warning', { from: at, to: at + word.length }, `Line 1 is the title, so ${word} is left out`,
+    'SPICE always skips the first line, so make it a title. A part written there would silently disappear.',
+    `ngspice reads line 1 as the title and builds the circuit without ${word}; it says nothing. [missing-title-1]`, [addTitle]);
+}
+
+// ------------------------------------------------------------------ ground and nodes
+
+/** Node names a student may mean as ground. ngspice's ground is only 0, and gnd (not as a line's last word). */
+const GROUND_LIKE = /^(ground|gnd|earth|agnd|dgnd|gnd0|0{2,})$/;
+
+function firstRef(info: NodeInfo): Token | undefined {
+  return info.refs[0];
+}
+
+function checkGround(c: Ctx): void {
+  if (c.graph.elements.length === 0) return;
+  const named = [...c.n.nodes.values()].filter((x) => !x.ground && x.connections.length > 0);
+  if (!c.graph.hasGround) {
+    let cand = named.find((x) => GROUND_LIKE.test(x.name));
+    if (!cand) {
+      const firstV = c.graph.elements.map((i) => el(c, i)).find((e) => e.letter === 'V' && e.nodes.length >= 2);
+      const firstI = c.graph.elements.map((i) => el(c, i)).find((e) => e.letter === 'I' && e.nodes.length >= 2);
+      const pick = firstV?.nodes[1] ?? firstI?.nodes[1] ?? c.graph.elements.map((i) => el(c, i)).find((e) => e.nodes.length >= 2)?.nodes[1];
+      cand = pick ? c.n.nodes.get(pick.name) : undefined;
+    }
+    const anchor = cand ? firstRef(cand) : el(c, c.graph.elements[0]!).name;
+    if (!anchor) return;
+    add(
+      c,
+      'no-ground',
+      'error',
+      anchor,
+      'No ground: no node is called 0',
+      "Without ground, SPICE can't pin the voltages down. It warns about a singular matrix, which means its equations have no single answer, and any numbers it still prints can't be trusted. Every circuit needs one node called 0 (gnd works too).",
+      "ngspice warns 'singular matrix', falls back to a 'transient op' and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]",
+      cand ? [fix(`Make ${cand.name} the ground (rename it to 0)`, ...renameNode(cand, GROUND))] : [],
+    );
+    return;
+  }
+  for (const x of named) {
+    if (!GROUND_LIKE.test(x.name)) continue;
+    const t = firstRef(x);
+    if (!t) continue;
+    const gnd = x.name === 'gnd';
+    add(
+      c,
+      'ground-misnamed',
+      'warning',
+      t,
+      gnd ? 'gnd at the end of a line is not ground' : `${t.text} is not ground: ground is node 0`,
+      gnd
+        ? 'ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, gnd is an ordinary node, so this part is not connected to ground.'
+        : `In SPICE, ground is the node called 0 (gnd works too). ${t.text} is just another node name, so the parts on it are not connected to ground.`,
+      gnd
+        ? 'ngspice says nothing. In one test a 0 V ammeter written Vx b gnd read 0 A, because its gnd was a separate node. [ground-misnamed-2]'
+        : `ngspice says nothing and treats ${x.name} as an ordinary node. In one test, V1 n1 ${x.name === '00' ? '00' : 'ground'} 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]`,
+      [fix(`Rename ${t.text} to 0`, ...renameNode(x, GROUND))],
+    );
+  }
+}
+
+function inFloatingGroup(c: Ctx, node: string): boolean {
+  return c.graph.floating.some((g) => g.nodes.includes(node));
+}
+
+function checkDangling(c: Ctx): void {
+  if (!c.graph.hasGround) return;
+  const nodes = [...c.n.nodes.values()];
+  for (const x of nodes) {
+    if (x.ground || x.connections.length !== 1 || x.refs.length !== 1) continue;
+    const conn = x.connections[0]!;
+    const e = el(c, conn.line);
+    if ((e.letter !== 'R' && e.letter !== 'L') || e.nodes.length !== 2 || !c.built.has(conn.line)) continue;
+    if (c.broken.has(conn.line)) continue;
+    if (inFloatingGroup(c, x.name)) continue;
+    const t = x.refs[0]!;
+    const other = e.nodes.find((r) => r.token !== t)?.name ?? '';
+    const voltageAcross = (a: string, b: string): boolean =>
+      c.graph.elements.some((k) => {
+        const s = el(c, k);
+        const ends = s.nodes.slice(0, 2).map((r) => r.name);
+        return (s.letter === 'V' || s.letter === 'E' || s.letter === 'H') && ends.includes(a) && ends.includes(b);
+      });
+    const candidates = nodes
+      .filter((y) => y !== x && y.connections.length > 0 && looksLikeTypo(x.name, y.name) && y.name !== other)
+      .map((y, order) => ({ y, order, across: voltageAcross(y.name, other) }))
+      .sort((a, b) => Number(a.across) - Number(b.across) || b.y.connections.length - a.y.connections.length || a.order - b.order)
+      .map((k) => k.y);
+    const name = nameOf(e);
+    if (candidates.length > 0) {
+      add(
+        c,
+        'dangling-node',
+        'warning',
+        t,
+        `Only ${name} touches ${t.text}`,
+        `A node needs at least two connections for current to flow through it. ${t.text} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => y.name)).replace(' and ', ' or ')}?`,
+        `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1, dangling-node-2]`,
+        candidates.slice(0, 2).map((y) => fix(`Rename ${t.text} to ${y.name}`, replace(t, y.name))),
+      );
+    } else {
+      add(
+        c,
+        'dangling-node',
+        'info',
+        t,
+        `Only ${name} touches ${t.text}`,
+        `No current flows in ${name}, so ${t.text} sits at the same voltage as ${other}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
+        `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1]`,
+      );
+    }
+  }
+}
+
+/** A floating group's first node reference, in netlist order. */
+function groupAnchor(c: Ctx, g: DcGroup): Token | undefined {
+  let best: Token | undefined;
+  for (const name of g.nodes) {
+    const t = c.n.nodes.get(name)?.refs.find((r) => lineAt(c.n, r.from).element);
+    if (t && (!best || t.from < best.from)) best = t;
+  }
+  return best;
+}
+
+function checkFloating(c: Ctx): void {
+  for (const whole of c.graph.floating) {
+    const g: DcGroup = {
+      nodes: whole.nodes,
+      attachments: whole.attachments.filter((a) => !c.broken.has(a.line)),
+      conductors: whole.conductors.filter((k) => !c.broken.has(k)),
+    };
+    if (g.attachments.length === 0 && g.conductors.length === 0) continue;
+    const kinds = new Set(g.attachments.map((a) => a.kind));
+    const current = g.attachments.filter((a) => a.kind === 'current');
+    const nodes = list(g.nodes);
+    const plural = g.nodes.length > 1;
+    if (current.length > 0) {
+      currentSourceNoPath(c, g, kinds);
+      continue;
+    }
+    if (!c.opNeeded && [...kinds].every((k) => k === 'capacitor')) continue;
+    const anchor = groupAnchor(c, g);
+    if (!anchor) continue;
+    const caps = g.attachments.filter((a) => a.kind === 'capacitor');
+    const controls = g.attachments.filter((a) => a.kind === 'control');
+    const gates = g.attachments.filter((a) => a.kind === 'gate');
+    const names = (xs: { line: number }[]): string => list([...new Set(xs.map((a) => nameOf(el(c, a.line))))]);
+    let why: string;
+    if (kinds.size === 0) {
+      why = `${names(g.conductors.map((line) => ({ line })))} connect${g.conductors.length === 1 ? 's' : ''} ${nodes}, but nothing connects ${plural ? 'them' : 'it'} to the rest of the circuit, so SPICE can't pin ${plural ? 'their voltages' : 'its voltage'} down.`;
+    } else if (controls.length > 0 && caps.length === 0 && gates.length === 0) {
+      why = `${nodes} ${plural ? 'are' : 'is'} used only as the control input of ${names(controls)}, which senses a voltage but draws no current. Nothing sets ${plural ? 'their voltages' : 'its voltage'}, so SPICE's equations have no single answer.`;
+    } else if (gates.length > 0 && caps.length === 0 && controls.length === 0) {
+      why = `A MOSFET's gate draws no current, so nothing sets the voltage at ${nodes}. SPICE's equations then have no single answer.`;
+    } else if (caps.length > 0 && controls.length === 0 && gates.length === 0) {
+      why = `At DC a capacitor is an open circuit, so nothing connects ${nodes} to ground. SPICE can't pin ${plural ? 'their voltages' : 'its voltage'} down: its equations have no single answer.`;
+    } else {
+      why = `Only parts that draw no DC current (capacitors, control inputs, MOSFET gates) reach ${nodes}, so SPICE can't pin ${plural ? 'their voltages' : 'its voltage'} down.`;
+    }
+    const failing = controls.length > 0 && caps.length === 0 && gates.length === 0;
+    const mixed = controls.length > 0 && !failing;
+    const ngspice = failing
+      ? `ngspice warns 'singular matrix: check node ${g.nodes[0]}' and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4]`
+      : mixed
+        ? `ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4]`
+        : `ngspice warns 'singular matrix: check node ${g.nodes[0]}', falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]`;
+    const fixes: Fix[] = [];
+    if (!failing && !mixed && kinds.size > 0) {
+      const target = g.nodes[0]!;
+      const name = freshName(c, 'Rdc1');
+      const lastTop = c.graph.elements[c.graph.elements.length - 1]!;
+      fixes.push(fix(`Add a 1 GΩ resistor from ${target} to ground`, insertLineAfter(c, lastTop, `${name} ${target} 0 1g`)));
+    }
+    add(
+      c,
+      'floating-dc',
+      'error',
+      anchor,
+      `${nodes} ${plural ? 'have' : 'has'} no DC path to ground`,
+      fixes.length > 0 ? `${why} Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.` : why,
+      ngspice,
+      fixes,
+    );
+  }
+}
+
+function currentSourceNoPath(c: Ctx, g: DcGroup, kinds: Set<string>): void {
+  const current = g.attachments.filter((a) => a.kind === 'current');
+  const src = el(c, current[0]!.line);
+  const sources = [...new Set(current.map((a) => a.line))].map((k) => el(c, k));
+  const onlyI = sources.every((s) => s.letter === 'I');
+  const other = [...kinds].filter((k) => k !== 'current');
+  const nodes = list(g.nodes);
+  let ngspice: string;
+  if (other.length === 0 && g.conductors.length === 0 && onlyI) {
+    ngspice = 'ngspice says nothing and acts as if there were 1 Ω from the node to ground: in one test, 1 A into such a node gave 1 V. [current-source-no-path-2, current-source-no-path-3]';
+  } else if (other.every((k) => k === 'capacitor') && onlyI) {
+    ngspice = "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [current-source-no-path-1]";
+  } else if (other.length === 0 && g.conductors.length === 0) {
+    ngspice = "ngspice warns 'singular matrix' and then stops: 'The operating point could not be simulated successfully'. No results. [current-source-no-path-4, current-source-no-path-5]";
+  } else {
+    ngspice = "ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [current-source-no-path-1, current-source-no-path-4]";
+  }
+  const series = sources.length > 1 && other.length === 0;
+  const why = series
+    ? `${list(sources.map(nameOf))} are in series with nothing else at ${nodes}, and two current sources in series each insist on their own current. The current has nowhere else to go, so the voltage at ${nodes} is not defined.`
+    : `A current source pushes its current through whatever it is connected to. Here ${nodes} ${g.nodes.length > 1 ? 'have' : 'has'} no DC path back to ground${other.includes('capacitor') ? ' (a capacitor is an open circuit at DC)' : ''}, so the current has nowhere to go and the voltage there is not defined.`;
+  add(c, 'current-source-no-path', 'error', src.name, `${nameOf(src)}'s current has nowhere to go`, why, ngspice);
+}
+
+function checkLoops(c: Ctx): void {
+  for (const loop of c.graph.loops) loopTrap(c, loop);
+}
+
+function loopTrap(c: Ctx, loop: VoltageLoop): void {
+  if (loop.inductor && !c.opNeeded) return;
+  if (c.broken.has(loop.line) || loop.others.some((k) => c.broken.has(k))) return;
+  const e = el(c, loop.line);
+  const name = nameOf(e);
+  const others = loop.others.map((k) => el(c, k));
+  const members = [...others, e];
+  const node = e.nodes[0]?.name ?? '';
+  if (loop.self) {
+    const what = e.letter === 'V' ? 'VSRC' : e.letter === 'E' ? 'VCVS' : e.letter === 'H' ? 'CCVS' : '';
+    add(
+      c,
+      'voltage-loop',
+      'error',
+      e.name,
+      `${name} has both ends on node ${node}`,
+      e.letter === 'L'
+        ? `${name} connects node ${node} to itself, so it does nothing, and its current is not defined: SPICE's equations have no single answer.`
+        : `A source with both ends on the same node is shorted by itself: it can't make any voltage, and SPICE's equations have no single answer.`,
+      e.letter === 'L'
+        ? "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers it can't trust. [voltage-loop-11]"
+        : `ngspice stops: 'instance ${lowerAscii(name)} is a shorted ${what}'. [voltage-loop-8, voltage-loop-9, voltage-loop-10]`,
+    );
+    return;
+  }
+  const inductors = members.filter((m) => m.letter === 'L');
+  const sources = members.filter((m) => m.letter !== 'L');
+  const sameEnds = others.length === 1;
+  let title: string;
+  let why: string;
+  if (loop.inductor) {
+    title = inductors.length === 1 && sources.length === 1 ? `${nameOf(inductors[0]!)} shorts ${nameOf(sources[0]!)} at DC` : `${list(members.map(nameOf))} form a loop at DC`;
+    why = `At DC an inductor is a plain wire, so ${list(inductors.map(nameOf))} ${sources.length > 0 ? `short${inductors.length === 1 ? 's' : ''} ${list(sources.map(nameOf))}` : `form${inductors.length === 1 ? 's' : ''} a loop of wires`}. SPICE's equations then have no single answer.`;
+  } else {
+    title = sameEnds ? `${nameOf(others[0]!)} and ${name} are in parallel` : `${list(members.map(nameOf))} form a loop of voltage sources`;
+    why = sameEnds
+      ? `Two voltage sources in parallel each insist on their own voltage, and even equal ones leave SPICE unable to split the current between them: its equations have no single answer.`
+      : `Voltage sources in a loop each insist on their own voltage, and SPICE can't split the current around the loop: its equations have no single answer.`;
+  }
+  add(
+    c,
+    'voltage-loop',
+    'error',
+    e.name,
+    title,
+    why,
+    loop.inductor
+      ? "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [voltage-loop-5]"
+      : "ngspice warns 'singular matrix' and then stops: 'The operating point could not be simulated successfully'. No results. [voltage-loop-1, voltage-loop-2, voltage-loop-3, voltage-loop-4, voltage-loop-7]",
+  );
+}
+
+// ------------------------------------------------------------------ names, letters and models
+
+function checkDuplicates(c: Ctx): void {
+  const scopes: Map<string, Element>[] = [new Map()];
+  for (const l of c.n.lines) {
+    const d = l.directive?.name;
+    if (d === '.subckt' || d === '.macro') scopes.push(new Map());
+    else if ((d === '.ends' || d === '.eom') && scopes.length > 1) scopes.pop();
+    const e = l.element;
+    if (!e) continue;
+    const scope = scopes[scopes.length - 1]!;
+    const first = scope.get(e.key);
+    if (!first) {
+      scope.set(e.key, e);
+      continue;
+    }
+    const renamed = freshName(c, e.name.text);
+    c.names.add(lowerAscii(renamed));
+    add(
+      c,
+      'duplicate-name',
+      'error',
+      e.name,
+      first.name.text === e.name.text ? `Two parts are called ${e.name.text}` : `${first.name.text} and ${e.name.text} are the same name`,
+      'Every part needs its own name, and SPICE ignores capital letters, so R1 and r1 count as the same name.',
+      "ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-1, duplicate-name-2]",
+      [fix(`Rename it ${renamed}`, replace(e.name, renamed))],
+    );
+  }
+}
+
+/** The model a part names: its 'model' field, or for Y (whose model is a word after the nodes) the first such word. */
+function modelField(e: Element): Field | undefined {
+  const f = e.fields.find((x) => x.role === 'model');
+  if (f || e.letter !== 'Y') return f;
+  return e.fields.find((x) => x.role === 'parameter');
+}
+
+const hasModel = (c: Ctx, e: Element): boolean => {
+  const f = modelField(e);
+  return f !== undefined && c.models.has(lowerAscii(f.token.text));
+};
+
+const commentFix = (c: Ctx, l: NetlistLine): Fix => {
+  const at = l.span.from + (l.text.length - l.text.replace(/^[\s\ufeff]+/, '').length);
+  return fix('Make the line a comment', change(at, at, '* '));
+};
+
+interface Confusable {
+  title: string;
+  why: string;
+  ngspice: string;
+  /** The line is fine: what the letter needs is there. */
+  ok: (c: Ctx, e: Element) => boolean;
+}
+
+const needsModel = (what: string, message: string, claim: string): Omit<Confusable, 'title'> => ({
+  why: `In SPICE, a line starting with this letter is a ${what}, and it needs a .model line that describes it.`,
+  ngspice: `ngspice stops: '${message}'. [${claim}]`,
+  ok: hasModel,
+});
+
+const CONFUSABLE: Partial<Record<ElementLetter, Confusable>> = {
+  W: {
+    title: 'W is a current-controlled switch, not a wire',
+    why: 'In SPICE, a line starting with W is a switch controlled by the current in a voltage source, and it needs a .model line. For a wire, give both ends the same node name, or use a 0 V source, a wire that also measures its current.',
+    ngspice: "ngspice stops: 'Unable to find definition of model'. [unknown-letter-8, unknown-letter-9]",
+    ok: hasModel,
+  },
+  S: { title: 'S is a voltage-controlled switch: it needs a .model line', ...needsModel('voltage-controlled switch', 'Unable to find definition of model', 'unknown-letter-10') },
+  T: {
+    title: 'T is a transmission line, not a transformer',
+    why: 'In SPICE, a line starting with T is a transmission line, which needs z0= and td=. A transformer is two inductors (L lines) coupled by a K line.',
+    ngspice: "ngspice stops: 'transmission line z0 must be given'. [unknown-letter-11]",
+    ok: (_c, e) => e.fields.some((f) => /^z[0o]$/i.test(f.token.text)),
+  },
+  U: { title: 'U is a uniform RC line: it needs a .model line', ...needsModel('uniform RC line', 'Unable to find definition of model', 'unknown-letter-13') },
+  Y: { title: 'Y is a lossy transmission line: it needs a .model line', ...needsModel('lossy transmission line', 'model name is not found', 'unknown-letter-14') },
+  Z: { title: 'Z is a MESFET: it needs a .model line', ...needsModel('MESFET (a kind of transistor)', 'Unable to find definition of model', 'unknown-letter-15') },
+  P: { title: 'P is a set of coupled lines: it needs a .model line', ...needsModel('set of coupled transmission lines', 'model name is not found', 'unknown-letter-16') },
+  K: {
+    title: 'K couples two inductors',
+    why: 'In SPICE, a line starting with K couples two inductors (L lines) into a transformer, for example K1 L1 L2 0.99. Its first two words after the name must be inductor names.',
+    ngspice: "ngspice stops: 'coupling to non-existent inductor'. [unknown-letter-12]",
+    ok: (c, e) => {
+      const named = e.fields.filter((f) => f.role === 'other').slice(0, 2);
+      return named.length === 2 && named.every((f) => {
+        const k = c.byKey.get(lowerAscii(f.token.text));
+        return k !== undefined && el(c, k).letter === 'L';
+      });
+    },
+  },
+};
+
+function checkLetters(c: Ctx): void {
+  for (const l of c.n.lines) {
+    if (l.kind === 'invalid') {
+      const body = l.text.replace(/^[\s\ufeff]+/, '');
+      const ch = [...body][0] ?? '';
+      if (ch === '@') {
+        add(
+          c,
+          'unknown-letter',
+          'error',
+          { from: l.span.to - body.length, to: l.span.to - body.length + 1 },
+          'SPICE stops reading at a line starting with @',
+          'Everything after this line is lost, including the analysis and .end. To write a note, start the line with * instead.',
+          l.index === 0
+            ? "ngspice reads nothing at all: 'there aren't any circuits loaded'. [unknown-letter-5]"
+            : 'ngspice silently stops reading the netlist at this line. [unknown-letter-4]',
+          [commentFix(c, l)],
+        );
+        continue;
+      }
+      const brace = ch === '{' || ch === "'";
+      add(
+        c,
+        'unknown-letter',
+        'error',
+        { from: l.span.to - body.length, to: l.span.to - body.length + ch.length },
+        `SPICE can't read a line starting with ${ch}`,
+        `Every part line starts with a letter that says what the part is: R for a resistor, V for a voltage source, and so on. A line starting with ${ch} is not a part. To keep it as a note, start it with * to make it a comment.`,
+        brace
+          ? "ngspice stops with a fatal error: 'Closing \"}\" not found in line fragment'. [unknown-letter-3]"
+          : "ngspice stops: 'unknown device type - error'. [unknown-letter-1, unknown-letter-2]",
+        [commentFix(c, l)],
+      );
+      continue;
+    }
+    const e = l.element;
+    if (!e?.letter) continue;
+    if (e.letter === 'A' || e.letter === 'N') {
+      const a = e.letter === 'A';
+      c.broken.add(l.index);
+      add(
+        c,
+        'unknown-letter',
+        'error',
+        e.name,
+        a ? 'A lines (XSPICE) are not in PlainSpice' : 'N lines (Verilog-A) are not in PlainSpice',
+        a
+          ? "In ngspice, a line starting with A is an XSPICE code model (a digital gate or a building block such as a gain block). PlainSpice's engine leaves XSPICE out; first- and second-year circuits don't need it."
+          : "In ngspice, a line starting with N is a device from a compiled Verilog-A model (OSDI). PlainSpice's engine leaves OSDI out; first- and second-year circuits don't need it.",
+        `PlainSpice's engine stops: 'unknown device type - error'. Native ngspice 47 ${a ? 'runs A lines' : 'reads N lines with an OSDI model'}. [unknown-letter-6, unknown-letter-7]`,
+      );
+      continue;
+    }
+    const conf = CONFUSABLE[e.letter];
+    if (!conf || conf.ok(c, e)) continue;
+    c.broken.add(l.index);
+    const fixes: Fix[] = [];
+    if (e.letter === 'W' && e.fields.length === 3 && e.nodes.length === 2) {
+      const name = freshName(c, `V${e.name.text}`);
+      fixes.push(fix(`Use a 0 V source as the wire (${name})`, replace(e.name, name), change(e.nodes[1]!.token.to, e.nodes[1]!.token.to, ' 0')));
+    }
+    add(c, 'unknown-letter', 'error', e.name, conf.title, conf.why, conf.ngspice, fixes);
+  }
+}
+
+function checkModels(c: Ctx): void {
+  const reported = new Set<string>();
+  for (const i of c.n.elements) {
+    const e = el(c, i);
+    if (!e.letter) continue;
+    const f = modelField(e);
+    const key = f ? lowerAscii(f.token.text) : undefined;
+    if (e.letter === 'X') {
+      if (key && c.subckts.has(key)) continue;
+      c.broken.add(i);
+      add(c, 'missing-subcircuit', 'error', f?.token ?? e.name, `${nameOf(e)} needs a .subckt definition`,
+        `A line starting with X uses a subcircuit, defined between .subckt ${f?.token.text ?? 'name'} ... and .ends. This netlist has no such definition.`,
+        `ngspice stops: 'unknown subckt'. [missing-subcircuit-1]`);
+      continue;
+    }
+    if ('DQJM'.includes(e.letter)) {
+      if (key && c.models.has(key)) {
+        modelNotInEngine(c, i, f!, c.models.get(key)!, reported);
+        continue;
+      }
+      c.broken.add(i);
+      const what = { D: 'diode', Q: 'bipolar transistor (BJT)', J: 'JFET', M: 'MOSFET' }[e.letter as 'D'];
+      const message = e.letter === 'J' ? 'Unable to find definition of model' : 'could not find a valid modelname';
+      const fixes: Fix[] = [];
+      if (e.letter === 'D' && e.nodes.length >= 2) {
+        const model = f?.token.text ?? (c.models.has('dmod') ? undefined : 'dmod');
+        if (model) {
+          const changes = [insertLineAfter(c, i, `.model ${model} D`)];
+          if (!f) changes.push(change(e.nodes[1]!.token.to, e.nodes[1]!.token.to, ` ${model}`));
+          fixes.push(fix(`Add .model ${model} D (a standard diode)`, ...changes));
+        }
+      }
+      add(c, 'missing-model', 'error', f?.token ?? e.name, `${nameOf(e)} needs a .model line`,
+        f
+          ? `The behaviour of a ${what} comes from a .model line, which the part line names (here ${f.token.text}). This netlist has no .model ${f.token.text}.`
+          : `The behaviour of a ${what} comes from a .model line, and the part line names it after the nodes, for example D1 anode cathode dmod with .model dmod D.`,
+        `ngspice stops: '${message}'. [missing-model-1, missing-model-2, missing-model-4, missing-model-5, missing-model-6]`, fixes);
+      continue;
+    }
+    if (f && key && c.models.has(key)) modelNotInEngine(c, i, f, c.models.get(key)!, reported);
+    if (e.letter === 'O') {
+      c.broken.add(i);
+      add(c, 'model-not-in-engine', 'error', e.name, 'O lines (lossy lines, LTRA) are not in PlainSpice',
+        "A line starting with O is a lossy transmission line (LTRA). PlainSpice's engine leaves LTRA out (its code has no licence that allows it); first- and second-year circuits don't need it.",
+        "PlainSpice's engine stops: 'Device type LossyXmissionLine not supported by this binary'. Native ngspice 47 runs it. [model-not-in-engine-5]");
+    }
+  }
+}
+
+/** Models PlainSpice's engine leaves out (engine/build.sh, REMOVED_MODELS), by .model type and level (inpdomod.c). */
+function leftOut(card: ModelCard): string | undefined {
+  const mos: Record<number, string> = {
+    4: 'BSIM1', 5: 'BSIM2', 8: 'BSIM3', 49: 'BSIM3', 14: 'BSIM4', 54: 'BSIM4', 10: 'BSIM-SOI', 58: 'BSIM-SOI',
+    55: 'BSIM3-SOI', 56: 'BSIM3-SOI', 57: 'BSIM3-SOI', 60: 'SOI3', 68: 'HiSIM2', 73: 'HiSIM_HV',
+  };
+  if (['nmos', 'pmos', 'nsoi', 'psoi'].includes(card.type)) return mos[card.level];
+  if ((card.type === 'npn' || card.type === 'pnp') && card.level === 8) return 'HICUM2';
+  if ((card.type === 'njf' || card.type === 'pjf') && card.level === 2) return 'JFET2';
+  if (card.type === 'ltra') return 'LTRA';
+  return undefined;
+}
+
+function modelNotInEngine(c: Ctx, i: number, f: Field, card: ModelCard, reported: Set<string>): void {
+  const model = leftOut(card);
+  if (!model || el(c, i).letter === 'O') return;
+  c.broken.add(i);
+  if (reported.has(lowerAscii(card.name))) return;
+  reported.add(lowerAscii(card.name));
+  const message =
+    card.type === 'npn' || card.type === 'pnp'
+      ? "'Unable to find definition of given model'"
+      : card.type === 'njf' || card.type === 'pjf'
+        ? `'Unknown device type for model ${lowerAscii(card.name)}'`
+        : "'could not find a valid modelname'";
+  const level = card.type === 'ltra' ? 'The LTRA type' : `level=${card.level}`;
+  add(
+    c,
+    'model-not-in-engine',
+    'error',
+    f.token,
+    `PlainSpice's engine has no ${model} model`,
+    `${level} in .model ${card.name} selects ${model}, a ${model === 'JFET2' ? 'detailed JFET model' : 'model for chip design'}. PlainSpice's engine leaves it out (${model === 'JFET2' ? 'its code comes without a licence that allows it' : "its licence terms differ from ngspice's"}), and first- and second-year circuits don't need it${['nmos', 'pmos'].includes(card.type) ? ': level=1 is the classic MOSFET model' : ''}.`,
+    `Native ngspice 47 runs it; PlainSpice's engine stops: ${message}. [model-not-in-engine-1, model-not-in-engine-2, model-not-in-engine-3, model-not-in-engine-4]`,
+  );
+}
+
+// ------------------------------------------------------------------ analysis lines
+
+const num = (t: Token | undefined): number | undefined => (t ? readNumber(t.text)?.value : undefined);
+const sweepable = (e: Element | undefined): boolean => e?.letter === 'V' || e?.letter === 'I' || e?.letter === 'R';
+
+function independentSources(c: Ctx): Element[] {
+  return c.top.map((k) => el(c, k)).filter((e) => e.letter === 'V' || e.letter === 'I');
+}
+
+function checkDc(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
+  const args = d.args;
+  let k = 0;
+  while (k < args.length) {
+    const src = args[k]!;
+    const nums: Token[] = [];
+    for (let j = k + 1; j < args.length && nums.length < 3 && readNumber(args[j]!.text); j++) nums.push(args[j]!);
+    k += 1 + nums.length;
+    const name = lowerAscii(src.text);
+    if (name !== 'temp') {
+      const target = c.byKey.get(name);
+      const targetEl = target === undefined ? undefined : el(c, target);
+      if (!sweepable(targetEl)) {
+        const sources = independentSources(c);
+        add(c, 'dc-sweep-problems', 'error', src, targetEl ? `.dc can't sweep ${src.text}` : `.dc sweeps ${src.text}, which is not in the circuit`,
+          `.dc sweeps a voltage source, a current source, a resistor, or the temperature (temp), named first on its line. ${targetEl ? `${nameOf(targetEl)} is none of these.` : `There is no part called ${src.text}.`}`,
+          `ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named "${name}" is not in the circuit'. [dc-sweep-problems-6, dc-sweep-problems-7]`,
+          sources.length === 1 ? [fix(`Sweep ${nameOf(sources[0]!)} instead`, replace(src, nameOf(sources[0]!)))] : []);
+      }
+    }
+    const [t0, t1, t2] = nums;
+    const start = num(t0);
+    const stop = num(t1);
+    if (start === undefined || stop === undefined || !t1) continue;
+    const intro = `.dc ${src.text} ${t0!.text} ${t1.text} ${t2?.text ?? '<step>'} means: sweep ${src.text} from ${t0!.text} to ${t1.text} in steps of ${t2?.text ?? '<step>'}.`;
+    const tenth = (stop - start) / 10;
+    const tenthText = formatSpiceNumber(tenth);
+    const hangs = "ngspice 47 stops: 'Bad syntax!'. ngspice 42 never finishes: it keeps sweeping the first point. [dc-sweep-problems-1, dc-sweep-problems-2]";
+    if (!t2) {
+      add(c, 'dc-sweep-problems', 'error', { from: src.from, to: t1.to }, '.dc needs a step',
+        `.dc needs four things: the source to sweep, the start, the stop and the step. For example .dc ${src.text} ${t0!.text} ${t1.text} ${tenth !== 0 ? tenthText : '1'}.`,
+        hangs, tenth !== 0 ? [fix(`Add a step of ${tenthText} (10 steps)`, change(t1.to, t1.to, ` ${tenthText}`))] : []);
+      continue;
+    }
+    const step = num(t2);
+    if (step === undefined) continue;
+    if (step === 0) {
+      add(c, 'dc-sweep-problems', 'error', t2, 'A step of 0 never reaches the stop',
+        `${intro} A step of 0 never moves away from the start.`, hangs,
+        tenth !== 0 ? [fix(`Use a step of ${tenthText} (10 steps)`, replace(t2, tenthText))] : []);
+    } else if (step > 0 && start > stop) {
+      add(c, 'dc-sweep-problems', 'error', { from: t0!.from, to: t2.to }, 'This sweep has no points: start is above stop',
+        `${intro} Going up in steps of ${t2.text} from ${t0!.text} never gets down to ${t1.text}. Swap the two ends, or use a negative step to sweep downwards.`,
+        'ngspice runs no sweep points and says nothing: the results are empty. [dc-sweep-problems-4]',
+        [fix(`Swap them: from ${t1.text} to ${t0!.text}`, replace(t0!, t1.text), replace(t1, t0!.text)),
+          fix(`Go down: make the step ${formatSpiceNumber(-step)}`, replace(t2, formatSpiceNumber(-step)))]);
+    } else if (step < 0 && start < stop) {
+      add(c, 'dc-sweep-problems', 'error', t2, 'This sweep has no points: the step goes the wrong way',
+        `${intro} Going down in steps of ${t2.text} from ${t0!.text} never gets up to ${t1.text}.`,
+        'ngspice runs no sweep points and says nothing: the results are empty. [dc-sweep-problems-3]',
+        [fix(`Make the step ${formatSpiceNumber(-step)}`, replace(t2, formatSpiceNumber(-step)))]);
+    } else if (start !== stop && Math.abs(step) > Math.abs(stop - start)) {
+      add(c, 'dc-sweep-problems', 'warning', t2, 'The step is bigger than the whole sweep',
+        `${intro} One step jumps past ${t1.text}, so the sweep has only its first point.`,
+        `ngspice computes only the first point (${src.text} = ${t0!.text}) and says nothing. [dc-sweep-problems-5]`,
+        [fix(`Use a step of ${tenthText} (10 steps)`, replace(t2, tenthText))]);
+    }
+  }
+}
+
+function checkTran(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
+  const args = d.args.filter((t) => lowerAscii(t.text) !== 'uic');
+  const [a0, a1, a2] = args;
+  if (!a0) {
+    add(c, 'tran-problems', 'error', d.token, '.tran needs a step and a stop time',
+      '.tran needs at least two numbers: the step and the stop time, for example .tran 10u 5m (steps of 10 \u00b5s up to 5 ms).',
+      "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [tran-problems-6]");
+    return;
+  }
+  const tstep = num(a0);
+  if (tstep === undefined) return;
+  if (!a1) {
+    const step = formatSpiceNumber(tstep / 100);
+    add(c, 'tran-problems', 'error', a0, '.tran needs a stop time',
+      `.tran needs at least two numbers: the step and the stop time, for example .tran ${step} ${a0.text}. With one number, SPICE takes it as the step and finds no stop time.`,
+      "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [tran-problems-1]",
+      tstep > 0 ? [fix(`Use ${a0.text} as the stop time: .tran ${step} ${a0.text}`, change(a0.from, a0.from, `${step} `))] : []);
+    return;
+  }
+  const tstop = num(a1);
+  if (tstop === undefined) return;
+  if (tstep <= 0) {
+    const step = formatSpiceNumber(tstop / 100);
+    add(c, 'tran-problems', 'error', a0, `The step of .tran must be more than 0`,
+      `.tran ${a0.text} ${a1.text} means: steps of ${a0.text} up to ${a1.text}. The step has to be a positive time.`,
+      "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [tran-problems-2, tran-problems-7]",
+      tstop > 0 ? [fix(`Use a step of ${step}`, replace(a0, step))] : []);
+    return;
+  }
+  const tstart = num(a2);
+  if (a2 && tstart !== undefined && tstart >= tstop) {
+    add(c, 'tran-problems', 'error', a2, 'The start time is not before the stop time',
+      `The third number of .tran is the time to start saving results (${a2.text}); it must be less than the stop time (${a1.text}).`,
+      "ngspice stops: 'TSTART is invalid, must be less than TSTOP.' [tran-problems-4, tran-problems-5]",
+      [fix(`Remove the start time ${a2.text}`, change(a1.to, a2.to, ''))]);
+    return;
+  }
+  if (tstep > tstop) {
+    const step = formatSpiceNumber(tstop / 100);
+    add(c, 'tran-problems', 'info', a0, 'The step is longer than the whole run',
+      `.tran ${a0.text} ${a1.text} means: steps of ${a0.text} up to ${a1.text}. A step longer than the whole run is probably a slip.`,
+      'ngspice runs and says nothing; it chooses its own time steps (in one test, 59 points for .tran 1 5m), so the curve still looks fine. [tran-problems-3]',
+      [fix(`Use a step of ${step} (a hundredth of ${a1.text})`, replace(a0, step))]);
+  }
+}
+
+function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: NetlistLine): void {
+  const args = d.args;
+  const kind = args[0] ? lowerAscii(args[0].text) : '';
+  if (kind !== 'v' && kind !== 'i') return;
+  const outputs: Token[] = [];
+  let k = 1;
+  if (args[1]) outputs.push(args[1]);
+  if (kind === 'v' && args[1] && args[2] && c.text.slice(args[1].to, args[2].from).includes(',')) {
+    outputs.push(args[2]);
+    k = 3;
+  } else k = 2;
+  const src = args[k];
+  const nodeCandidates = (t: Token): Fix[] =>
+    [...c.n.nodes.values()]
+      .filter((y) => y.connections.length > 0 && looksLikeTypo(lowerAscii(t.text), y.name))
+      .slice(0, 2)
+      .map((y) => fix(`Use ${y.name}`, replace(t, y.name)));
+  if (kind === 'v') {
+    outputs.forEach((t, idx) => {
+      const name = lowerAscii(t.text);
+      if (name === GROUND || name === 'gnd' || (c.n.nodes.get(name)?.connections.length ?? 0) > 0) return;
+      add(c, 'tf-problems', 'error', t, `.tf asks about node ${t.text}, which is not in the circuit`,
+        `There is no node called ${t.text}: no part connects to it. .tf v(${t.text}) needs a node of the circuit.`,
+        idx === 0
+          ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1]'
+          : 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2]',
+        nodeCandidates(t));
+    });
+  } else if (outputs[0]) {
+    const t = outputs[0];
+    const target = c.byKey.get(lowerAscii(t.text));
+    if (target === undefined || el(c, target).letter !== 'V') {
+      add(c, 'tf-problems', 'error', t, `i(${t.text}) needs a voltage source`,
+        `i( ) in .tf reads the current through a voltage source${target === undefined ? `, and there is no part called ${t.text}` : `; ${t.text} is not one`}. To measure a current, put a 0 V source in that branch (the ammeter trick) and write i( ) with its name.`,
+        'ngspice says nothing and gives a transfer function of 0 and an output impedance of 1e20 Ω. [tf-problems-5, tf-problems-7]');
+    }
+  }
+  const sources = independentSources(c);
+  const useOnly = (t: Token): Fix[] => (sources.length === 1 ? [fix(`Use ${nameOf(sources[0]!)}`, replace(t, nameOf(sources[0]!)))] : []);
+  if (!src) {
+    const last = args[args.length - 1] ?? d.token;
+    add(c, 'tf-problems', 'error', { from: d.token.from, to: line.span.to > last.to ? last.to + (c.text[last.to] === ')' ? 1 : 0) : last.to }, '.tf needs an input source',
+      '.tf needs the output and the input source, for example .tf v(out) V1: how v(out) changes per volt of V1.',
+      "ngspice stops: 'Transfer function source  not in circuit'. [tf-problems-6]",
+      sources.length === 1 ? [fix(`Use ${nameOf(sources[0]!)} as the input`, change(last.to + (c.text[last.to] === ')' ? 1 : 0), last.to + (c.text[last.to] === ')' ? 1 : 0), ` ${nameOf(sources[0]!)}`))] : []);
+    return;
+  }
+  const target = c.byKey.get(lowerAscii(src.text));
+  const targetEl = target === undefined ? undefined : el(c, target);
+  if (!targetEl) {
+    add(c, 'tf-problems', 'error', src, `.tf's input ${src.text} is not in the circuit`,
+      `The last word of .tf names the input source. There is no part called ${src.text}.`,
+      `ngspice stops: 'Transfer function source ${lowerAscii(src.text)} not in circuit'. [tf-problems-3]`, useOnly(src));
+  } else if (targetEl.letter !== 'V' && targetEl.letter !== 'I') {
+    add(c, 'tf-problems', 'error', src, `.tf's input must be a source, not ${src.text}`,
+      `The input of .tf must be an independent source: a voltage source (V) or a current source (I). ${nameOf(targetEl)} is not.`,
+      `ngspice stops: 'Transfer function source ${lowerAscii(src.text)} not of proper type'. [tf-problems-4]`, useOnly(src));
+  }
+}
+
+function checkAnalyses(c: Ctx): void {
+  for (const l of c.n.lines) {
+    const d = l.directive;
+    if (!d || l.kind !== 'directive' || c.graph.inSubcircuit.has(l.index)) continue;
+    if (d.name === '.dc') checkDc(c, d);
+    else if (d.name === '.tran') checkTran(c, d);
+    else if (d.name === '.tf') checkTf(c, d, l);
+  }
+}
+
+function checkEnd(c: Ctx): void {
+  if (c.top.length === 0 || c.atLine !== undefined) return;
+  const titleIsAnalysis = (() => {
+    const t = c.n.lines[0]?.text.trim().toLowerCase() ?? '';
+    return /^\.(op|tf|dc|tran|ac|noise|disto|pz|sens|sp|four|fourier)\b/.test(t);
+  })();
+  if (c.n.analyses.length === 0 && !c.hasControl && !titleIsAnalysis) {
+    const endLine = c.n.end === undefined ? undefined : c.n.lines[c.n.end];
+    const lastEl = c.n.lines[c.top[c.top.length - 1]!]!;
+    const anchor = endLine?.directive?.token ?? lastEl.element!.name;
+    const insert = endLine
+      ? change(endLine.span.from, endLine.span.from, '.op\n')
+      : change(c.text.length, c.text.length, `${c.text.endsWith('\n') ? '' : '\n'}.op\n`);
+    add(c, 'no-analysis', 'error', anchor, 'No analysis: nothing will run',
+      'A netlist describes a circuit; an analysis line tells SPICE what to work out. .op finds the DC voltages and currents, .dc sweeps a source, .tran shows how the circuit changes in time.',
+      "ngspice reads the circuit and runs nothing. In batch mode it ends with 'no simulations run!'; PlainSpice's engine gives no results and no message. [no-analysis-1]",
+      [fix(endLine ? 'Add .op before .end' : 'Add .op at the end', insert)]);
+  }
+  if (c.n.end === undefined) {
+    const last = [...c.n.lines].reverse().find((l) => l.kind !== 'blank');
+    if (!last) return;
+    const tail = c.text.endsWith('\n') ? '' : '\n';
+    add(c, 'missing-end', 'info', last.span.to > last.span.from ? last.span : { from: last.span.from, to: last.span.from }, 'No .end line',
+      'A netlist ends with .end. ngspice manages without it when it reads a file, but .end marks clearly where the circuit stops, and other SPICE programs need it.',
+      'ngspice reads the file to its last line and runs it normally, without a message. [missing-end-1]',
+      [fix('Add .end at the bottom', change(c.text.length, c.text.length, `${tail}.end\n`))]);
+    return;
+  }
+  const endLine = c.n.lines[c.n.end]!;
+  const after = c.n.lines.filter((l) => l.index > c.n.end! && l.kind === 'after-end');
+  const first = after[0];
+  if (!first) return;
+  const glued = c.text[endLine.directive!.token.to] === ';';
+  const next = c.n.lines[c.n.end + 1]!;
+  const tail = c.text.endsWith('\n') ? '' : '\n';
+  const endText = endLine.text.trim();
+  add(c, 'after-end', 'warning', first.span, 'Lines after .end',
+    glued
+      ? 'ngspice stops reading at this .end, so the lines after it are ignored. Keep .end as the last line.'
+      : 'Everything after .end looks ignored, but ngspice still reads these lines when it runs a file, so they are part of the circuit. Keep .end as the last line.',
+    glued
+      ? 'ngspice stops reading at a .end with a comment glued to it (.end;...) and ignores everything after it, without a message. [after-end-2]'
+      : 'ngspice still reads the lines after .end from a file and builds them into the circuit, without a message: in one test a resistor after .end changed the source current from -2 A to -5 A. [after-end-1]',
+    [fix('Move .end to the bottom', change(endLine.span.from, next.span.from, ''), change(c.text.length, c.text.length, `${tail}${endText}\n`))]);
+}
+
+function checkZeroOhm(c: Ctx, i: number): void {
+  const e = el(c, i);
+  const v = e.value?.number?.value;
+  if (e.letter !== 'R' || v === undefined || Math.abs(v) >= 1e-12 || e.nodes.length < 2) return;
+  const [a, b] = [e.nodes[0]!.name, e.nodes[1]!.name];
+  const fixes: Fix[] = [];
+  if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
+    const name = freshName(c, `V${e.name.text}`);
+    fixes.push(fix(`Use a 0 V source instead (${name})`, replace(e.name, name), replace(e.value!.token, '0')));
+  }
+  add(c, 'zero-ohm', 'warning', e.value!.token, `${nameOf(e)} has a resistance of ${formatSI(v, 'Ω')}`,
+    "SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).",
+    `ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to 1.000000e-12'. ngspice 42 used 0.001 Ω without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]`,
+    fixes);
+}
+
+// ------------------------------------------------------------------ syntax ngspice can't read at all
+
+/** Names numparam knows without a .param inside { }: checked, `pi`, `e` and `true` are not among them. */
+const BUILT_IN = new Set(['temper', 'hertz', 'time']);
+
+function checkSyntax(c: Ctx): void {
+  for (const l of c.n.lines) {
+    if (l.kind !== 'element' && l.kind !== 'directive') continue;
+    const e = l.element;
+    // Expressions: braces and single quotes must close; names in them need a .param.
+    for (const t of l.tokens) {
+      const open = t.text[0];
+      if (open !== '{' && open !== "'") continue;
+      const closed = open === '{' ? balancedBraces(t.text) : t.text.length > 1 && t.text.endsWith("'");
+      if (!closed) {
+        const closer = open === '{' ? '}' : "'";
+        add(c, 'fatal-syntax', 'error', t, `A ${open} is never closed`,
+          `Braces { } (or single quotes ' ') hold an expression that SPICE works out, like {2*R}. Each opening one needs its closing partner on the same line.`,
+          "ngspice stops with a fatal error: 'Closing \"}\" not found in line fragment'. [fatal-syntax-1, fatal-syntax-2]",
+          [fix(`Close it: ${t.text}${closer}`, change(t.to, t.to, closer))]);
+        continue;
+      }
+      if (l.directive?.name === '.model' || l.directive?.name === '.subckt') continue;
+      for (const name of expressionNames(t.text)) {
+        if (c.params.has(name) || BUILT_IN.has(name)) continue;
+        const constant = name === 'pi' ? '3.141592653589793' : name === 'e' ? '2.718281828459045' : undefined;
+        const at = c.n.lines[1] ? c.n.lines[1].span.from : c.text.length;
+        add(c, 'fatal-syntax', 'error', t, `${name} is not defined: add a .param line`,
+          constant
+            ? `An expression in braces can use only names defined on a .param line, and SPICE does not define ${name} for you there.`
+            : `An expression in braces can use only names defined on a .param line, for example .param ${name}=2k. This netlist has no .param for ${name}.`,
+          `ngspice stops with a fatal error: 'Undefined parameter [${name}]'. [fatal-syntax-3, fatal-syntax-4]`,
+          constant ? [fix(`Add .param ${name}=${constant}`, change(at, at, `.param ${name}=${constant}\n`))] : []);
+        break;
+      }
+    }
+    if (e?.letter === 'B') {
+      const kind = behaviouralKind(e);
+      const params = e.fields.filter((f) => f.role === 'parameter');
+      if (!kind || params.length < 2) c.broken.add(l.index);
+      if (!kind) {
+        add(c, 'fatal-syntax', 'error', e.name, `${nameOf(e)} needs V= or I=`,
+          'A line starting with B is a behavioural source: its voltage or current is a formula, written V=... or I=..., for example B1 out 0 V=2*v(in).',
+          "ngspice stops with a fatal error: 'mal formed B source instance'. [fatal-syntax-7]");
+      } else if (params.length < 2) {
+        add(c, 'fatal-syntax', 'error', params[0]?.token ?? e.name, `${nameOf(e)} has an empty formula`,
+          `After ${kind.toUpperCase()}= comes the formula, for example B1 out 0 V=2*v(in).`,
+          "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression'. [fatal-syntax-8]");
+      }
+    }
+  }
+}
+
+function balancedBraces(s: string): boolean {
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === '{') depth += 1;
+    else if (ch === '}') depth -= 1;
+  }
+  return depth === 0;
+}
+
+/** Lower-case names used as values in an expression (a name followed by '(' is a function). */
+function expressionNames(expr: string): string[] {
+  const out: string[] = [];
+  const s = expr.replace(/^[{']|[}']$/g, '');
+  let k = 0;
+  while (k < s.length) {
+    const ch = s[k]!;
+    if (/[0-9.]/.test(ch)) {
+      while (k < s.length && /[0-9.]/.test(s[k]!)) k += 1;
+      if (/[eE]/.test(s[k] ?? '') && /[+\-0-9]/.test(s[k + 1] ?? '')) {
+        k += 2;
+        while (k < s.length && /[0-9]/.test(s[k]!)) k += 1;
+      }
+      while (k < s.length && /[A-Za-z]/.test(s[k]!)) k += 1;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      const from = k;
+      while (k < s.length && /[A-Za-z0-9_]/.test(s[k]!)) k += 1;
+      let p = k;
+      while (p < s.length && s[p] === ' ') p += 1;
+      if (s[p] !== '(') out.push(lowerAscii(s.slice(from, k)));
+      continue;
+    }
+    k += 1;
+  }
+  return out;
+}
+
+function checkIncludes(c: Ctx): void {
+  for (const l of c.n.lines) {
+    const d = l.directive;
+    if (!d) continue;
+    const include = d.name === '.include' || d.name === '.inc';
+    if (!include && !(d.name === '.lib' && d.args.length >= 2)) continue;
+    const file = d.args[0]?.text ?? '';
+    add(c, 'include-not-available', 'error', d.token, "PlainSpice can't read other files",
+      `This line asks SPICE to read ${file || 'a file'} from your computer. PlainSpice runs ngspice inside this page with only the netlist you see, so it can't open other files. Copy what you need from that file into the netlist instead.`,
+      include
+        ? `ngspice stops with a fatal error: 'Could not find include file ${file}'. [include-not-available-1]`
+        : `ngspice stops with a fatal error: 'Could not find library file ${file}'. [include-not-available-2]`);
+  }
+}
+
+function checkContinuations(c: Ctx): void {
+  for (const l of c.n.lines) {
+    // A line continued by two backslashes at the end of the line before has no '+' of its own.
+    const lead = /^[\s\ufeff]*\+/.exec(l.text);
+    if (l.kind !== 'continuation' || !lead) continue;
+    const plus = l.span.from + lead[0].length - 1;
+    if (l.continues === undefined) {
+      add(c, 'lost-continuation', 'warning', { from: plus, to: plus + 1 }, 'This + line has nothing to continue',
+        'A line starting with + continues the line above it. Right after the title there is nothing to continue, so this line is lost. If it is a part, remove the +.',
+        'ngspice has no line to join it to and ignores it silently. [lost-continuation-3]',
+        [fix('Remove the +', change(plus, plus + 1, ''))]);
+      continue;
+    }
+    const target = c.n.lines[l.continues]!;
+    if (target.kind !== 'comment') continue;
+    const at = target.span.from + (target.text.length - target.text.replace(/^[\s\ufeff]+/, '').length);
+    const meant = c.n.lines.slice(0, target.index).reverse().find((x) => x.kind === 'element' || x.kind === 'directive');
+    const what = meant?.element ? nameOf(meant.element) : 'the line above';
+    add(c, 'lost-continuation', 'warning', { from: plus, to: plus + 1 }, `This + line is lost in the comment above it`,
+      `A + line continues the last line before it, and ngspice counts a comment starting with ${target.text.trim()[0]} as such a line. So the words on this line go into the comment, not into ${what}. Comments starting with * may sit in between.`,
+      `ngspice joins the + line to the comment line, so its words are lost and ${what} is read without them (in one test ngspice then left the part out: 'not a valid resistor instance line'). [lost-continuation-1, lost-continuation-2]`,
+      [fix('Make the comment start with *', change(at, at + 1, '*'))]);
+  }
+}
+
+// ------------------------------------------------------------------ all checks
+
+/**
+ * Finds the beginner traps in a netlist, sorted by line, then column. Never throws.
+ */
+export function checkTraps(netlist: Netlist): Trap[] {
+  const c = context(netlist);
+  // Line by line first: these also mark the parts ngspice can't read (Ctx.broken).
+  for (const i of netlist.elements) {
+    checkValueSpelling(c, i);
+    checkDecimalComma(c, i);
+    checkSpaceBeforeSuffix(c, i);
+    checkMidlineComment(c, i);
+    checkIncomplete(c, i);
+    checkZeroOhm(c, i);
+  }
+  for (const i of c.top) checkControlSource(c, i);
+  checkLetters(c);
+  checkModels(c);
+  checkSyntax(c);
+  checkGreekMu(c);
+  checkNbsp(c);
+  checkTitle(c);
+  checkDuplicates(c);
+  checkIncludes(c);
+  checkContinuations(c);
+  // Then the circuit as a whole.
+  checkGround(c);
+  checkDangling(c);
+  checkFloating(c);
+  checkLoops(c);
+  checkAnalyses(c);
+  checkEnd(c);
+  return c.traps.sort((a, b) => a.line - b.line || a.span.from - b.span.from || a.span.to - b.span.to || a.id.localeCompare(b.id));
+}
