@@ -1,0 +1,33 @@
+# 0008. Share links: the whole circuit in the URL
+
+- Status: accepted
+- Date: 2026-11-09
+- Format details and examples: [`../share-links.md`](../share-links.md)
+
+## Context
+
+"The whole circuit and its analysis live in the URL (no server)", and every Solved Circuits
+video will link "Open this circuit" to the exact netlist from the video. Those links sit in
+video descriptions for years, so the format must never break.
+
+## Decision
+
+- The netlist (which includes its analysis lines) goes in the URL's **fragment**:
+  `https://ctbay1.github.io/plainspice/#c=<payload>[&run=1]`. A fragment never reaches the
+  server, so nothing is logged, and GitHub Pages serves the same page for every link.
+- `payload` starts with a **format letter**: `z` = base64url of the deflate-raw-compressed UTF-8
+  netlist (`CompressionStream`), `t` = base64url of the plain UTF-8 netlist (for very short
+  netlists or browsers without compression). New formats get new letters; **every released
+  format is decoded forever**.
+- `run=1` asks the app to simulate as soon as the circuit opens (the channel's links use it).
+- Decoding is defensive: size limits before and after inflating (no "zip bombs"), invalid
+  input gives a plain-words message instead of an error, and the netlist is only ever put in
+  the editor and the engine, never into the page as HTML.
+- `scripts/make-link.ts` turns `.cir` files into "Open this circuit" links for video
+  descriptions (YouTube allows 5000 characters; typical links are a few hundred).
+
+## Consequences
+
+- Links are long but self-contained: they work offline (PWA) and without any server.
+- If the site ever moves, the links break (GitHub does not redirect Pages URLs after a rename):
+  any move should keep a redirect page that forwards the fragment.
