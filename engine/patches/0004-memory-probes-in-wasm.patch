@@ -1,0 +1,43 @@
+--- a/src/frontend/get_phys_mem_size.c	2026-11-09 20:35:11.003052533 +0000
++++ b/src/frontend/get_phys_mem_size.c	2026-11-09 20:35:11.021635181 +0000
+@@ -31,7 +31,11 @@
+  */
+ unsigned long long getMemorySize(void)
+ {
+-#if defined(HAVE__PROC_MEMINFO)
++#if defined(__EMSCRIPTEN__)
++    /* WebAssembly build: this file's code (CC BY 3.0, David Robert Nadeau) is left out;
++       the value only feeds ngspice's end-of-run resource report. */
++    return 0ULL;
++#elif defined(HAVE__PROC_MEMINFO)
+     /* Cygwin , Linux--------------------------------- */
+     FILE *fp;
+     char buffer[2048];
+--- a/src/frontend/get_resident_set_size.c	2026-11-09 20:35:11.006175910 +0000
++++ b/src/frontend/get_resident_set_size.c	2026-11-09 20:35:11.021736430 +0000
+@@ -40,7 +40,11 @@
+  */
+ unsigned long long getPeakRSS(void)
+ {
+-#if defined(HAVE__PROC_MEMINFO)
++#if defined(__EMSCRIPTEN__)
++    /* WebAssembly build: this file's code (CC BY 3.0, David Robert Nadeau) is left out;
++       the value only feeds ngspice's end-of-run resource report. */
++    return 0ULL;
++#elif defined(HAVE__PROC_MEMINFO)
+     /* Linux ---------------------------------------------------- */
+     unsigned long long rss = 0L;
+     FILE* fp = NULL;
+@@ -104,7 +108,11 @@
+  */
+ unsigned long long getCurrentRSS(void)
+ {
+-#if defined(_WIN32)
++#if defined(__EMSCRIPTEN__)
++    /* WebAssembly build: this file's code (CC BY 3.0, David Robert Nadeau) is left out;
++       the value only feeds ngspice's end-of-run resource report. */
++    return 0ULL;
++#elif defined(_WIN32)
+     /* Windows -------------------------------------------------- */
+     PROCESS_MEMORY_COUNTERS info;
+     GetProcessMemoryInfo( GetCurrentProcess( ), &info, sizeof(info) );

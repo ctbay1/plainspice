@@ -57,22 +57,41 @@ tar xzf "$TARBALL" -C "$SRC" --strip-components=1 --no-same-owner
 
 # ---- 3. patches ----------------------------------------------------------------------------
 log "3. patches"
-# Three small source patches (each file explains itself): compile without XSPICE,
-# musl's strtod errno, and the available-memory probe in WebAssembly.
+# Four small source patches (each file explains itself): compile without XSPICE, musl's
+# strtod errno, the available-memory probe, and the CC BY memory probes left out of wasm.
 for p in "$ENGINE"/patches/*.patch; do
   echo "applying $(basename "$p")"
   patch -p1 -d "$SRC" --forward --no-backup-if-mismatch < "$p" > /dev/null
 done
-# Remove the C++ HICUM2 transistor model (it needs libstdc++ and the MPL-2.0 cppduals
-# header; beginners never need it). Same edits as EEcircuit-engine's Docker/hicum2_patch.sh.
-sed -i '/AC_CHECK_LIB(stdc++/d; /AC_SUBST(XTRALIBS/d; /src\/spicelib\/devices\/hicum2\/Makefile/d; /tests\/hicum2\/Makefile/d' "$SRC/configure.ac"
-sed -i '/spicelib\/devices\/hicum2\/libhicum2.la/d' "$SRC/src/Makefile.am"
-sed -i '/^[[:space:]]*hicum2[[:space:]]*\\\?/d' "$SRC/src/spicelib/devices/Makefile.am"
-sed -i '/get_hicum_info/d' "$SRC/src/spicelib/devices/dev.c"
+# Leave out device models whose source carries terms other than ngspice's Modified BSD, or
+# third-party code without a licence grant. All are chip-design transistor models (BSIM, HiSIM,
+# SOI, HICUM) or models no first- or second-year circuit needs:
+#   BSIM4: Educational Community License 2.0; BSIM3/BSIM4v5-7/BSIM-SOI/BSIM3-SOI: UC Berkeley
+#   "BSIM terms of use"; HiSIM2/HiSIM_HV: Hiroshima University and STARC terms; SOI3: UK DERA
+#   licence; HICUM2: C++ with an MPL-2.0 header; LTRA: contains Numerical Recipes code;
+#   JFET2: third-party copyright without a licence grant; BSIM1/BSIM2: obsolete, same family.
+# Kept: R C L K V I E F G H B, diode, BJT (+VBIC), JFET, MOS levels 1-3/6/9, VDMOS, MESFETs,
+# HFETs, switches, lossless and RC lines, coupled lines. Format: <source dir>:<get_*_info name>.
+REMOVED_MODELS=(
+  bsim1:bsim1 bsim2:bsim2 bsim3:bsim3 bsim3v0:bsim3v0 bsim3v1:bsim3v1 bsim3v32:bsim3v32
+  bsim4:bsim4 bsim4v5:bsim4v5 bsim4v6:bsim4v6 bsim4v7:bsim4v7
+  bsim3soi_pd:b3soipd bsim3soi_fd:b3soifd bsim3soi_dd:b3soidd bsimsoi:b4soi
+  hisim2:hsm2 hisimhv1:hsmhv hisimhv2:hsmhv2 soi3:soi3 hicum2:hicum ltra:ltra jfet2:jfet2
+)
+for entry in "${REMOVED_MODELS[@]}"; do
+  dir="${entry%%:*}"; info="${entry##*:}"
+  sed -i "\|src/spicelib/devices/$dir/Makefile|d" "$SRC/configure.ac"
+  sed -i "\|spicelib/devices/$dir/lib[^/]*\.la|d" "$SRC/src/Makefile.am"
+  sed -i "/^[[:space:]]*$dir[[:space:]]*\\\\\?[[:space:]]*\$/d" "$SRC/src/spicelib/devices/Makefile.am"
+  sed -i "/get_${info}_info,/d" "$SRC/src/spicelib/devices/dev.c"
+  if grep -q "get_${info}_info," "$SRC/src/spicelib/devices/dev.c" || grep -q "devices/$dir/lib" "$SRC/src/Makefile.am" \
+     || grep -Eq "^[[:space:]]*$dir[[:space:]]*\\\\?[[:space:]]*\$" "$SRC/src/spicelib/devices/Makefile.am"; then
+    echo "could not remove the $dir model" >&2; exit 1
+  fi
+done
+# HICUM2 also needs libstdc++; drop that check, and HICUM2's test directory.
+sed -i '/AC_CHECK_LIB(stdc++/d; /AC_SUBST(XTRALIBS/d; /tests\/hicum2\/Makefile/d' "$SRC/configure.ac"
 sed -i '/^[[:space:]]*hicum2[[:space:]]*\\\?[[:space:]]*$/d' "$SRC/tests/Makefile.am"
-if grep -q 'get_hicum_info' "$SRC/src/spicelib/devices/dev.c" || grep -q 'libhicum2.la' "$SRC/src/Makefile.am"; then
-  echo "HICUM2 removal did not apply" >&2; exit 1
-fi
 ( cd "$SRC" && autoreconf --force --install -I m4 ) > "$LOGS/autoreconf.log" 2>&1
 
 # ---- 4. configure --------------------------------------------------------------------------
@@ -114,7 +133,8 @@ cp "$BUILD/src/ngspice.mjs" "$BUILD/src/ngspice.wasm" "$ENGINE/dist/"
   echo "ngspice $NGSPICE_VERSION built to WebAssembly by engine/build.sh"
   echo "source:    $NGSPICE_URL"
   echo "sha256:    $NGSPICE_SHA256"
-  echo "patches:   $(cd "$ENGINE/patches" && ls *.patch | tr '\n' ' ')+ HICUM2 removed"
+  echo "patches:   $(cd "$ENGINE/patches" && ls *.patch | tr '\n' ' ')"
+  echo "models left out: ${REMOVED_MODELS[*]%%:*}"
   echo "emcc:      $(emcc --version | head -1)"
   echo "configure: ${CONFIGURE_FLAGS[*]} CFLAGS=$OPT (+ -ffile-prefix-map, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH)"
   echo "link:      $(echo $LINK_FLAGS)"

@@ -9,12 +9,23 @@ numparam, LGPL v2 or later).
 | File | What it is |
 |---|---|
 | `build.sh` | the whole build: pinned emsdk and ngspice tarball, patches, configure, link |
-| `patches/*.patch` | our three source changes, each explained in the file |
+| `patches/*.patch` | our four source changes, each explained in the file |
 | `BUILDINFO.txt` | versions, flags, features compiled in, SHA-256 of the outputs |
 | `COPYING.ngspice` | ngspice's licence statement, verbatim |
 | `dist/ngspice.mjs` | Emscripten's ES-module glue (default export: `createNgspice`) |
 | `dist/ngspice.wasm` | ngspice itself |
 | `dist/ngspice.d.mts` | TypeScript types for the glue (hand-written) |
+
+## What is in it
+
+The ngspice core with its classic device models: R, C, L and coupling (K), V, I, E, F, G, H,
+B sources, diodes, BJTs (Gummel-Poon and VBIC), JFETs, MOSFETs levels 1, 2, 3, 6 and 9,
+VDMOS, MESFETs, HFETs, switches, and lossless, RC and coupled lines. Left out (see the
+`REMOVED_MODELS` list in `build.sh`): the chip-design transistor models (BSIM, HiSIM, SOI,
+HICUM) and LTRA/JFET2, because their source carries terms other than ngspice's Modified BSD
+or code without a licence grant, and first- and second-year circuits never need them. A
+netlist that uses one gets ngspice's own error ("Device type ... not supported by this
+binary", or "could not find a valid modelname" for a `level=` that maps to one).
 
 ## How the app uses it
 

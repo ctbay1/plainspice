@@ -42,6 +42,8 @@ const RULES: Rule[] = [
   { re: /Bad syntax!/i, severity: 'error', code: 'bad-syntax' },
   { re: /(TSTOP|TSTEP|TSTART) is invalid/i, severity: 'error', code: 'bad-tran-arguments', subjectGroup: 1 },
   { re: /coupling to non-existent inductor/i, severity: 'error', code: 'missing-inductor' },
+  // Chip-design models left out of PlainSpice's engine (engine/build.sh, REMOVED_MODELS).
+  { re: /Device type (\S+)(?: version \S+)? not (?:supported by|available in) this binary/i, severity: 'error', code: 'model-not-in-build', subjectGroup: 1 },
   { re: /Undefined parameter \[([^\]]+)\]/i, severity: 'error', code: 'undefined-parameter', subjectGroup: 1 },
   { re: /Closing "}" not found|mal formed B/i, severity: 'error', code: 'fatal-syntax' },
   { re: /fatal error in ngspice/i, severity: 'error', code: 'fatal' },
@@ -63,6 +65,8 @@ const IGNORE: RegExp[] = [
   /^Simulation interrupted due to error!/i,
   /^doAnalyses:/i,
   /^Cannot compute substitute/i, // follows "Undefined parameter"
+  /^Note: no resource usage information/i,
+  /^\s*or no active circuit available/i,
 ];
 
 /** Classify ngspice's stdout + stderr. Unmatched "Warning"/"Error" lines are kept generically. */

@@ -135,6 +135,11 @@ describe('classifyOutput', () => {
     expect(d[0]).toMatchObject({ code: 'undefined-parameter', subject: 'rx', line: 3 });
     expect(d.map((x) => x.code)).toContain('fatal');
   });
+  it('recognises a device model that is not in this engine build', () => {
+    const d = classifyOutput('', 'Error on line 3 or its substitute:\n  o1 a 0 b 0 lmod\nDevice type LossyXmissionLine not supported by this binary\n    Simulation interrupted due to error!\n\nError: circuit not parsed.\nNote: no resource usage information for \'time\',\n\tor no active circuit available');
+    expect(d.map((x) => x.code)).toEqual(['model-not-in-build', 'circuit-not-parsed']);
+    expect(d[0]).toMatchObject({ line: 3, subject: 'LossyXmissionLine' });
+  });
   it('ignores the lines ngspice prints on every run', () => {
     expect(classifyOutput('Note: No compatibility mode selected!\nUsing SPARSE 1.3 as Direct Linear Solver\n', '')).toEqual([]);
   });

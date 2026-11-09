@@ -18,11 +18,17 @@ licence: it is ngspice's Modified BSD licence with LGPL parts, as listed below.
 - How to rebuild the engine or replace it with your own build: [`engine/README.md`](engine/README.md).
 - ngspice's own licence statement, verbatim: [`engine/COPYING.ngspice`](engine/COPYING.ngspice).
 
-What is compiled in (configure: `--disable-xspice --disable-osdi --disable-klu`, see
-`engine/BUILDINFO.txt`): the ngspice core (Modified BSD), numparam (LGPL v2 or later, always part
-of ngspice), the Sparse 1.3 solver, and the Emscripten runtime. Not compiled in: XSPICE and its
-code models (including the GPL `table` model), OSDI (MPL-2.0), KLU (LGPL), HICUM2/cppduals
-(MPL-2.0), CIDER.
+What is compiled in (configure `--disable-xspice --disable-osdi --disable-klu`, plus the model
+list in `engine/build.sh`; see `engine/BUILDINFO.txt`): the ngspice core and its classic device
+models (Modified BSD), numparam (LGPL v2 or later, always part of ngspice), the Sparse 1.3
+solver, the FFT and transient-noise helpers, and the Emscripten runtime.
+
+Left out, so none of their code is in the engine: XSPICE and its code models (including the GPL
+`table` model), OSDI (MPL-2.0), KLU (LGPL), CIDER, and every device model whose source carries
+other terms: BSIM3/BSIM4/BSIM-SOI (UC Berkeley BSIM terms; BSIM4 4.8 is ECL-2.0), HiSIM2 and
+HiSIM_HV (Hiroshima University/STARC), SOI3 (UK DERA), HICUM2 (C++, MPL-2.0 header), LTRA
+(Numerical Recipes code) and JFET2. The CC BY 3.0 memory-probe functions are replaced by a
+one-line stub in WebAssembly (`engine/patches/0004-memory-probes-in-wasm.patch`).
 
 ---
 
@@ -138,6 +144,8 @@ ENHANCEMENTS, OR MODIFICATIONS.
 ## 5. Other parts of the engine
 
 - FFT library (src/maths/fft): public domain (John Green).
+- FastNorm3 (src/frontend/trannoise, Gaussian random numbers for transient noise sources):
+  Copyright Christopher Stewart Wallace.
 - Bison-generated parsers: GPL-3.0-or-later WITH Bison-exception-2.2 (the exception applies to
   the generated parsers in ngspice).
 - Emscripten runtime (in `ngspice.mjs` and `ngspice.wasm`): MIT or University of Illinois/NCSA,
