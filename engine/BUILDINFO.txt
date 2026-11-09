@@ -1,0 +1,12 @@
+ngspice 47 built to WebAssembly by engine/build.sh
+source:    https://sourceforge.net/projects/ngspice/files/ng-spice-rework/47/ngspice-47.tar.gz/download
+sha256:    894e649651f1838a14095e5a5439e7d3aa63e87ede14d283173fda4fcdef675f
+patches:   0001-cktsopt-compile-without-xspice.patch 0002-inpgmod-strtod-errno-musl.patch 0003-available-memory-in-wasm.patch + HICUM2 removed
+emcc:      emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 7.0.0 (777e6e5db7b4990bcaeb1b9998ed642cc84e6629)
+configure: --disable-debug --with-x=no --with-readline=no --with-editline=no --disable-openmp --disable-xspice --disable-osdi --disable-klu --with-fftw3=no --disable-dependency-tracking CFLAGS=-O2 (+ -ffile-prefix-map, SOURCE_DATE_EPOCH=1786368452)
+link:      -O2 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME=createNgspice -s ENVIRONMENT=web,worker,node -s INVOKE_RUN=0 -s ALLOW_MEMORY_GROWTH=1 -s FORCE_FILESYSTEM=1 -s EXPORTED_RUNTIME_METHODS=callMain,FS,ENV -s STACK_SIZE=4MB
+features (config.h):
+  #define RFSPICE 1
+outputs:
+  0d028a981580dcf49827d5d354d85c6666c2ba02af6d2cf8e22611b034101208  ngspice.mjs
+  32ed993ef89502134e5f57f31ef6fa393e3beca5257f5c5e0019056deb257cac  ngspice.wasm

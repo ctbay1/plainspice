@@ -1,0 +1,17 @@
+--- a/src/spicelib/analysis/cktsopt.c	2026-11-09 19:51:28.487281359 +0000
++++ b/src/spicelib/analysis/cktsopt.c	2026-11-09 19:51:28.523610425 +0000
+@@ -250,11 +250,10 @@
+           fprintf(stderr, "WARNING - Rshunt option too small.  Ignored.\n");
+         }
+         break;
+-#else
+-    case OPT_ENH_RSHUNT:
+-        fprintf(stderr, "WARNING - Option Rshunt available only with XSPICE enabled.\n");
+-        break;
+ #endif
++/* (ngspice-47 used OPT_ENH_RSHUNT here without XSPICE, but that enum value only
++   exists with XSPICE, so --disable-xspice did not compile; "rshunt" is not in
++   OPTtbl without XSPICE, so this case was unreachable anyway.) */
+ /* gtri - end - wbk - add new options */
+     default:
+         return(-1);

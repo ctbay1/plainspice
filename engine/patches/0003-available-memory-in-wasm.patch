@@ -1,0 +1,16 @@
+--- a/src/frontend/get_avail_mem_size.c	2026-11-09 19:51:28.503676635 +0000
++++ b/src/frontend/get_avail_mem_size.c	2026-11-09 19:51:28.523787085 +0000
+@@ -31,7 +31,12 @@
+  */
+ unsigned long long getAvailableMemorySize(void)
+ {
+-#if defined(HAVE__PROC_MEMINFO)
++#if defined(__EMSCRIPTEN__)
++    /* WebAssembly: configure found /proc/meminfo on the build machine, but it
++       does not exist at run time, so every .tran warned "0 B available".
++       Report 1 GiB, a safe share of a browser tab's 2 GiB wasm heap limit. */
++    return 1073741824ULL;
++#elif defined(HAVE__PROC_MEMINFO)
+     /* Cygwin , Linux--------------------------------- */
+     /* Search for string "MemFree" */
+     FILE *fp;
