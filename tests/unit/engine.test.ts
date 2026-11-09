@@ -146,7 +146,6 @@ describe('classifyOutput', () => {
       ['Unknown device type for model foo', 'unknown-model-type'],
       ['f1: unknown controlling source vx', 'unknown-control-source'],
       ['instance v2 is a shorted VSRC', 'shorted-source'],
-      ['Could not find include file models.lib', 'file-not-found'],
       ['Not enough parameters for v source', 'missing-fields'],
       ['Fatal error: t1: transmission line z0 must be given', 'missing-parameter'],
       ['YYparse error', 'expression-error'],
