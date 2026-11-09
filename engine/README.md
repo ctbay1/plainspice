@@ -71,4 +71,4 @@ npm run test:golden
 
 Change `NGSPICE_VERSION`, `NGSPICE_URL` and `NGSPICE_SHA256` in `build.sh`, rebuild, re-record
 native results with the same ngspice version (`npm run record:native -- --ngspice /path/to/ngspice`),
-run the golden tests, and update `docs/spice-facts.md` where ngspice's behaviour changed.
+run the golden tests, and update `docs/spice-facts/` where ngspice's behaviour changed.

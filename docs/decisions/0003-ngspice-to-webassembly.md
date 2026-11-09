@@ -101,7 +101,7 @@ Build ngspice 47 ourselves with `engine/build.sh` and commit the outputs to `eng
 
 - We maintain a build script. Moving to a new ngspice: change the pins, `npm run
   engine:build`, `npm run record:native` with the matching native ngspice, `npm run
-  test:golden`, and update `docs/spice-facts.md` where behaviour changed.
+  test:golden`, and update `docs/spice-facts/` where behaviour changed.
 - Not available in this build: XSPICE (`A` devices, digital, `POLY()` sources), OSDI
   (Verilog-A), `.options klu`, CIDER, and the left-out device models above. None is needed
   for first- and second-year circuits; each would change the licence mix (0005). The trap
