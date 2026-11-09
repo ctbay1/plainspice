@@ -26,6 +26,12 @@ video descriptions for years, so the format must never break.
 - `scripts/make-link.ts` turns `.cir` files into "Open this circuit" links for video
   descriptions (YouTube allows 5000 characters; typical links are a few hundred).
 
+- **No checksum in format v1.** Copying and clicking a link never changes its characters, so v1
+  carries no checksum. A link changed by hand (typed from a screenshot, say) can therefore open
+  a slightly different circuit: in a test, about half of all one-character changes to compressed
+  fixture links still decoded. If links ever need to be typed, a checksummed format gets new
+  format letters (about 6 more characters); v1 links keep opening.
+
 ## Consequences
 
 - Links are long but self-contained: they work offline (PWA) and without any server.

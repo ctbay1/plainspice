@@ -56,7 +56,9 @@ export class NgspiceEngine {
     let compiled: WebAssembly.Module;
     if (wasm instanceof WebAssembly.Module) {
       compiled = wasm;
-    } else if (wasm instanceof ArrayBuffer || wasm instanceof Uint8Array) {
+    } else if (wasm instanceof ArrayBuffer || ArrayBuffer.isView(wasm)) {
+      // ArrayBuffer.isView, not instanceof Uint8Array: a Node Buffer created in another realm
+      // (e.g. under Vitest's jsdom environment) fails instanceof but is still bytes.
       compiled = await WebAssembly.compile(wasm as BufferSource);
     } else {
       const response = await wasm;

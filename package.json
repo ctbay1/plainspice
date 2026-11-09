@@ -16,8 +16,10 @@
     "test:unit": "vitest run --project unit",
     "test:golden": "vitest run --project golden",
     "test:e2e": "playwright test",
-    "record:native": "node scripts/record-native.mjs",
-    "engine:build": "bash engine/build.sh"
+    "record:native": "node --experimental-strip-types scripts/record-native.ts",
+    "engine:build": "bash engine/build.sh",
+    "fixture-report": "node --experimental-strip-types scripts/fixture-report.ts",
+    "make-link": "node --experimental-strip-types scripts/make-link.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
