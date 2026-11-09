@@ -1,0 +1,7 @@
+T05c: two different current sources in series
+I1 0 n1 1m
+I2 n1 0 2m
+R1 n2 0 1k
+V1 n2 0 1
+.op
+.end

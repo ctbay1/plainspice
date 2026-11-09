@@ -1,0 +1,6 @@
+T07d: two resistors named R1 on different nodes
+V1 n1 0 6
+R1 n1 n2 2
+R1 n2 0 4
+.op
+.end

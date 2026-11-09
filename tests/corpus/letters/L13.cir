@@ -1,0 +1,5 @@
+first-letter test [N]
+Rref a 0 1
+N1 a 0 5
+.op
+.end

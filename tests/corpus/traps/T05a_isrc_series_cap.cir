@@ -1,0 +1,7 @@
+T05a: a current source in series with a capacitor (node b has only I1 and C1)
+V1 a 0 5
+R1 a c 1k
+I1 c b 1m
+C1 b 0 1u
+.op
+.end

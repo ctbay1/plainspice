@@ -1,0 +1,6 @@
+T05e: a current source into a node that has nothing else
+I1 0 n1 1
+V1 n2 0 1
+R1 n2 0 1
+.op
+.end

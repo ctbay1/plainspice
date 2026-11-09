@@ -1,0 +1,6 @@
+T01b: 1MOhm meant as a megaohm (still a milliohm)
+V1 n1 0 6
+R1 n1 n2 1MOhm
+R2 n2 0 1MEGohm
+.op
+.end

@@ -1,0 +1,5 @@
+T03c: ground written as GND
+V1 n1 GND 6
+R1 n1 GND 2
+.op
+.end

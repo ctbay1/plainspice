@@ -1,0 +1,5 @@
+T03e: ground written as Gnd, mixed with 0
+V1 n1 Gnd 6
+R1 n1 0 2
+.op
+.end

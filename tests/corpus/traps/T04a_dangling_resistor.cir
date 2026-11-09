@@ -1,0 +1,6 @@
+T04a: a node with only one connection (dangling end of R2)
+V1 n1 0 6
+R1 n1 0 2
+R2 n1 n2 3
+.op
+.end

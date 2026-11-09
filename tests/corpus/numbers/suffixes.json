@@ -1,0 +1,2518 @@
+{
+ "00": {
+  "string": "1M",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": []
+  }
+ },
+ "01": {
+  "string": "1m",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": []
+  }
+ },
+ "02": {
+  "string": "1meg",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  }
+ },
+ "03": {
+  "string": "1MEG",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  }
+ },
+ "04": {
+  "string": "1Meg",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  }
+ },
+ "05": {
+  "string": "1mil",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2.5399999999999997e-05,
+    "@i1[dc]": 2.5399999999999997e-05
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2.5399999999999997e-05,
+    "@i1[dc]": 2.5399999999999997e-05
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2.5399999999999997e-05,
+    "@r1[resistance]": 2.5399999999999997e-05
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2.5399999999999997e-05,
+    "@r1[resistance]": 2.5399999999999997e-05
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 2.5399999999999997e-05
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 2.5399999999999997e-05
+   },
+   "messages": []
+  }
+ },
+ "06": {
+  "string": "3A",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0000000000000002e-18,
+    "@i1[dc]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0000000000000002e-18,
+    "@i1[dc]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0000000000000002e-18,
+    "@r1[resistance]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@r1[resistance]": 1e-12
+   },
+   "messages": [
+    "Warning: Value of resistor r1 is too small, set to 1.000000e-12"
+   ]
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 3.0000000000000002e-18
+   },
+   "messages": []
+  }
+ },
+ "07": {
+  "string": "3a",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0000000000000002e-18,
+    "@i1[dc]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0000000000000002e-18,
+    "@i1[dc]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0000000000000002e-18,
+    "@r1[resistance]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@r1[resistance]": 1e-12
+   },
+   "messages": [
+    "Warning: Value of resistor r1 is too small, set to 1.000000e-12"
+   ]
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 3.0000000000000002e-18
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 3.0000000000000002e-18
+   },
+   "messages": []
+  }
+ },
+ "08": {
+  "string": "1F",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-15,
+    "@i1[dc]": 1e-15
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-15,
+    "@i1[dc]": 1e-15
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-15,
+    "@r1[resistance]": 1e-15
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@r1[resistance]": 1e-12
+   },
+   "messages": [
+    "Warning: Value of resistor r1 is too small, set to 1.000000e-12"
+   ]
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-15
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-15
+   },
+   "messages": []
+  }
+ },
+ "09": {
+  "string": "1f",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-15,
+    "@i1[dc]": 1e-15
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-15,
+    "@i1[dc]": 1e-15
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-15,
+    "@r1[resistance]": 1e-15
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@r1[resistance]": 1e-12
+   },
+   "messages": [
+    "Warning: Value of resistor r1 is too small, set to 1.000000e-12"
+   ]
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-15
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-15
+   },
+   "messages": []
+  }
+ },
+ "10": {
+  "string": "1u",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@i1[dc]": 1e-06
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@i1[dc]": 1e-06
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@r1[resistance]": 1e-06
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@r1[resistance]": 1e-06
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-06
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-06
+   },
+   "messages": []
+  }
+ },
+ "11": {
+  "string": "1µ",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@i1[dc]": 1e-06
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@i1[dc]": 1e-06
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@r1[resistance]": 1e-06
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-06,
+    "@r1[resistance]": 1e-06
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-06
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-06
+   },
+   "messages": []
+  }
+ },
+ "12": {
+  "string": "10k",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@i1[dc]": 10000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@i1[dc]": 10000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@r1[resistance]": 10000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@r1[resistance]": 10000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10000.0
+   },
+   "messages": []
+  }
+ },
+ "13": {
+  "string": "10K",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@i1[dc]": 10000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@i1[dc]": 10000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@r1[resistance]": 10000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@r1[resistance]": 10000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10000.0
+   },
+   "messages": []
+  }
+ },
+ "14": {
+  "string": "1g",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000.0,
+    "@i1[dc]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000.0,
+    "@i1[dc]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 999999999.9999999,
+    "@r1[resistance]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 999999999.9999999,
+    "@r1[resistance]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000.0
+   },
+   "messages": []
+  }
+ },
+ "15": {
+  "string": "1t",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@i1[dc]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@i1[dc]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@r1[resistance]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@r1[resistance]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000000.0
+   },
+   "messages": []
+  }
+ },
+ "16": {
+  "string": "1p",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@i1[dc]": 1e-12
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@i1[dc]": 1e-12
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@r1[resistance]": 1e-12
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-12,
+    "@r1[resistance]": 1e-12
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-12
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-12
+   },
+   "messages": []
+  }
+ },
+ "17": {
+  "string": "1n",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-09,
+    "@i1[dc]": 1e-09
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-09,
+    "@i1[dc]": 1e-09
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-09,
+    "@r1[resistance]": 1e-09
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1e-09,
+    "@r1[resistance]": 1e-09
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-09
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1e-09
+   },
+   "messages": []
+  }
+ },
+ "18": {
+  "string": "2.2k",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2200.0,
+    "@i1[dc]": 2200.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2200.0,
+    "@i1[dc]": 2200.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2200.0,
+    "@r1[resistance]": 2200.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2200.0,
+    "@r1[resistance]": 2200.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 2200.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 2200.0
+   },
+   "messages": []
+  }
+ },
+ "19": {
+  "string": "2k2",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2000.0,
+    "@i1[dc]": 2000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2000.0,
+    "@i1[dc]": 2000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2000.0,
+    "@r1[resistance]": 2000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 2000.0,
+    "@r1[resistance]": 2000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 2000.0
+   },
+   "messages": [
+    "warning, can't find model '2k2' from line",
+    "    c1 n1 0 2k2"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 2000.0
+   },
+   "messages": [
+    "warning, can't find model '2k2' from line",
+    "    c1 n1 0 2k2"
+   ]
+  }
+ },
+ "20": {
+  "string": "10kOhm",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@i1[dc]": 10000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@i1[dc]": 10000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@r1[resistance]": 10000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10000.0,
+    "@r1[resistance]": 10000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10000.0
+   },
+   "messages": [
+    "warning, can't find model '10kohm' from line",
+    "    c1 n1 0 10kohm"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10000.0
+   },
+   "messages": [
+    "warning, can't find model '10kohm' from line",
+    "    c1 n1 0 10kohm"
+   ]
+  }
+ },
+ "21": {
+  "string": "10V",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10.0,
+    "@i1[dc]": 10.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10.0,
+    "@i1[dc]": 10.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10.0,
+    "@r1[resistance]": 10.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 10.0,
+    "@r1[resistance]": 10.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10.0
+   },
+   "messages": [
+    "warning, can't find model '10v' from line",
+    "    c1 n1 0 10v"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 10.0
+   },
+   "messages": [
+    "warning, can't find model '10v' from line",
+    "    c1 n1 0 10v"
+   ]
+  }
+ },
+ "22": {
+  "string": "1e3",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": []
+  }
+ },
+ "23": {
+  "string": "1E3",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": []
+  }
+ },
+ "24": {
+  "string": "1 k",
+  "SI_42": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 2 or its substitute:",
+    "  i1 0 n1 1 k",
+    "  unknown parameter (k)",
+    "    Simulation interrupted due to error!",
+    "Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run"
+   ]
+  },
+  "SI_47": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 2 or its substitute:",
+    "  i1 0 n1 1 k",
+    "  unknown parameter (k)",
+    "    Simulation interrupted due to error!",
+    "Error: incomplete or empty netlist",
+    "       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;",
+    "no simulations run!"
+   ]
+  },
+  "SR_42": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "warning, can't find model 'k' from line",
+    "    r1 n1 0 1 k",
+    "Error on line 3 or its substitute:",
+    "  r1 n1 0 1 k",
+    "  unknown parameter (k)",
+    "    Simulation interrupted due to error!",
+    "Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run"
+   ]
+  },
+  "SR_47": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "warning, can't find model 'k' from line",
+    "    r1 n1 0 1 k",
+    "Error on line 3 or its substitute:",
+    "  r1 n1 0 1 k",
+    "  unknown parameter (k)",
+    "    Simulation interrupted due to error!",
+    "Error: incomplete or empty netlist",
+    "       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;",
+    "no simulations run!"
+   ]
+  },
+  "SC_42": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 3 or its substitute:",
+    "  c1 n1 0 1 k",
+    "  unknown parameter (k)",
+    "    Simulation interrupted due to error!",
+    "Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run"
+   ]
+  },
+  "SC_47": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 3 or its substitute:",
+    "  c1 n1 0 1 k",
+    "  unknown parameter (k)",
+    "    Simulation interrupted due to error!",
+    "Error: incomplete or empty netlist",
+    "       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;",
+    "no simulations run!"
+   ]
+  }
+ },
+ "25": {
+  "string": "1.",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": []
+  }
+ },
+ "26": {
+  "string": ".5",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@i1[dc]": 0.5
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@i1[dc]": 0.5
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@r1[resistance]": 0.5
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@r1[resistance]": 0.5
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.5
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.5
+   },
+   "messages": []
+  }
+ },
+ "27": {
+  "string": "1MOhm",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": [
+    "warning, can't find model '1mohm' from line",
+    "    c1 n1 0 1mohm"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": [
+    "warning, can't find model '1mohm' from line",
+    "    c1 n1 0 1mohm"
+   ]
+  }
+ },
+ "28": {
+  "string": "1Mohm",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": [
+    "warning, can't find model '1mohm' from line",
+    "    c1 n1 0 1mohm"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": [
+    "warning, can't find model '1mohm' from line",
+    "    c1 n1 0 1mohm"
+   ]
+  }
+ },
+ "29": {
+  "string": "4.7MΩ",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.0047,
+    "@i1[dc]": 0.0047
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.0047,
+    "@i1[dc]": 0.0047
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.0047,
+    "@r1[resistance]": 0.0047
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.0047,
+    "@r1[resistance]": 0.0047
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.0047
+   },
+   "messages": [
+    "warning, can't find model '4.7mΩ' from line",
+    "    c1 n1 0 4.7mΩ"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.0047
+   },
+   "messages": [
+    "warning, can't find model '4.7mΩ' from line",
+    "    c1 n1 0 4.7mΩ"
+   ]
+  }
+ },
+ "30": {
+  "string": "1kΩ",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": [
+    "warning, can't find model '1kΩ' from line",
+    "    c1 n1 0 1kΩ"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": [
+    "warning, can't find model '1kΩ' from line",
+    "    c1 n1 0 1kΩ"
+   ]
+  }
+ },
+ "31": {
+  "string": "1μ",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": [
+    "warning, can't find model '1μ' from line",
+    "    c1 n1 0 1μ"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": [
+    "warning, can't find model '1μ' from line",
+    "    c1 n1 0 1μ"
+   ]
+  }
+ },
+ "32": {
+  "string": "1G",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000.0,
+    "@i1[dc]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000.0,
+    "@i1[dc]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 999999999.9999999,
+    "@r1[resistance]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 999999999.9999999,
+    "@r1[resistance]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000.0
+   },
+   "messages": []
+  }
+ },
+ "33": {
+  "string": "1T",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@i1[dc]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@i1[dc]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@r1[resistance]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000000000.0,
+    "@r1[resistance]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000000000.0
+   },
+   "messages": []
+  }
+ },
+ "34": {
+  "string": "1mA",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": [
+    "warning, can't find model '1ma' from line",
+    "    c1 n1 0 1ma"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": [
+    "warning, can't find model '1ma' from line",
+    "    c1 n1 0 1ma"
+   ]
+  }
+ },
+ "35": {
+  "string": "100mV",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.1,
+    "@i1[dc]": 0.1
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.1,
+    "@i1[dc]": 0.1
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.1,
+    "@r1[resistance]": 0.1
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.1,
+    "@r1[resistance]": 0.1
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.1
+   },
+   "messages": [
+    "warning, can't find model '100mv' from line",
+    "    c1 n1 0 100mv"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.1
+   },
+   "messages": [
+    "warning, can't find model '100mv' from line",
+    "    c1 n1 0 100mv"
+   ]
+  }
+ },
+ "36": {
+  "string": "1e3k",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": []
+  }
+ },
+ "37": {
+  "string": "-2",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": -2.0,
+    "@i1[dc]": -2.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": -2.0,
+    "@i1[dc]": -2.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": -2.0,
+    "@r1[resistance]": -2.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": -2.0,
+    "@r1[resistance]": -2.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": -2.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": -2.0
+   },
+   "messages": []
+  }
+ },
+ "38": {
+  "string": "+3",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0,
+    "@i1[dc]": 3.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0,
+    "@i1[dc]": 3.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0,
+    "@r1[resistance]": 3.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 3.0,
+    "@r1[resistance]": 3.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 3.0
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 3.0
+   },
+   "messages": []
+  }
+ },
+ "39": {
+  "string": "5 V",
+  "SI_42": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 2 or its substitute:",
+    "  i1 0 n1 5 v",
+    "no such parameter on this device",
+    "    Simulation interrupted due to error!",
+    "Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run"
+   ]
+  },
+  "SI_47": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 2 or its substitute:",
+    "  i1 0 n1 5 v",
+    "no such parameter on this device or parameter is missing",
+    "    Simulation interrupted due to error!",
+    "Error: incomplete or empty netlist",
+    "       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;",
+    "no simulations run!"
+   ]
+  },
+  "SR_42": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "warning, can't find model 'v' from line",
+    "    r1 n1 0 5 v",
+    "Error on line 3 or its substitute:",
+    "  r1 n1 0 5 v",
+    "  unknown parameter (v)",
+    "    Simulation interrupted due to error!",
+    "Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run"
+   ]
+  },
+  "SR_47": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "warning, can't find model 'v' from line",
+    "    r1 n1 0 5 v",
+    "Error on line 3 or its substitute:",
+    "  r1 n1 0 5 v",
+    "  unknown parameter (v)",
+    "    Simulation interrupted due to error!",
+    "Error: incomplete or empty netlist",
+    "       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;",
+    "no simulations run!"
+   ]
+  },
+  "SC_42": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 3 or its substitute:",
+    "  c1 n1 0 5 v",
+    "  unknown parameter (v)",
+    "    Simulation interrupted due to error!",
+    "Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run"
+   ]
+  },
+  "SC_47": {
+   "exit": "1",
+   "values": {},
+   "messages": [
+    "Error on line 3 or its substitute:",
+    "  c1 n1 0 5 v",
+    "  unknown parameter (v)",
+    "    Simulation interrupted due to error!",
+    "Error: incomplete or empty netlist",
+    "       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;",
+    "no simulations run!"
+   ]
+  }
+ },
+ "40": {
+  "string": "1x",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": [
+    "warning, can't find model '1x' from line",
+    "    c1 n1 0 1x"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": [
+    "warning, can't find model '1x' from line",
+    "    c1 n1 0 1x"
+   ]
+  }
+ },
+ "41": {
+  "string": "4k7",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 4000.0,
+    "@i1[dc]": 4000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 4000.0,
+    "@i1[dc]": 4000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 4000.0,
+    "@r1[resistance]": 4000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 4000.0,
+    "@r1[resistance]": 4000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 4000.0
+   },
+   "messages": [
+    "warning, can't find model '4k7' from line",
+    "    c1 n1 0 4k7"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 4000.0
+   },
+   "messages": [
+    "warning, can't find model '4k7' from line",
+    "    c1 n1 0 4k7"
+   ]
+  }
+ },
+ "42": {
+  "string": "0.5",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@i1[dc]": 0.5
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@i1[dc]": 0.5
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@r1[resistance]": 0.5
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.5,
+    "@r1[resistance]": 0.5
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.5
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.5
+   },
+   "messages": []
+  }
+ },
+ "43": {
+  "string": "1e-3",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@i1[dc]": 0.001
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 0.001,
+    "@r1[resistance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": []
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 0.001
+   },
+   "messages": []
+  }
+ },
+ "44": {
+  "string": "1d3",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@i1[dc]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000.0,
+    "@r1[resistance]": 1000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": [
+    "warning, can't find model '1d3' from line",
+    "    c1 n1 0 1d3"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000.0
+   },
+   "messages": [
+    "warning, can't find model '1d3' from line",
+    "    c1 n1 0 1d3"
+   ]
+  }
+ },
+ "45": {
+  "string": "1meg5",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@i1[dc]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1000000.0,
+    "@r1[resistance]": 1000000.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": [
+    "warning, can't find model '1meg5' from line",
+    "    c1 n1 0 1meg5"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1000000.0
+   },
+   "messages": [
+    "warning, can't find model '1meg5' from line",
+    "    c1 n1 0 1meg5"
+   ]
+  }
+ },
+ "46": {
+  "string": "1.5.2",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.5,
+    "@i1[dc]": 1.5
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.5,
+    "@i1[dc]": 1.5
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.5,
+    "@r1[resistance]": 1.5
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.5,
+    "@r1[resistance]": 1.5
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.5
+   },
+   "messages": [
+    "warning, can't find model '1.5.2' from line",
+    "    c1 n1 0 1.5.2"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.5
+   },
+   "messages": [
+    "warning, can't find model '1.5.2' from line",
+    "    c1 n1 0 1.5.2"
+   ]
+  }
+ },
+ "47": {
+  "string": "1_000",
+  "SI_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SI_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@i1[dc]": 1.0
+   },
+   "messages": []
+  },
+  "SR_42": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SR_47": {
+   "exit": "0",
+   "values": {
+    "v(n1)": 1.0,
+    "@r1[resistance]": 1.0
+   },
+   "messages": []
+  },
+  "SC_42": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": [
+    "warning, can't find model '1_000' from line",
+    "    c1 n1 0 1_000"
+   ]
+  },
+  "SC_47": {
+   "exit": "0",
+   "values": {
+    "@c1[capacitance]": 1.0
+   },
+   "messages": [
+    "warning, can't find model '1_000' from line",
+    "    c1 n1 0 1_000"
+   ]
+  }
+ }
+}

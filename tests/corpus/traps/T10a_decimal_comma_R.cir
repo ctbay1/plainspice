@@ -1,0 +1,5 @@
+T10a: a decimal comma in a resistor value (1,5k)
+V1 a 0 6
+R1 a 0 1,5k
+.op
+.end

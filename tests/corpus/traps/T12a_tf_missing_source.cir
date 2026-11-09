@@ -1,0 +1,6 @@
+T12a: .tf naming a source that does not exist
+V1 s 0 24
+R1 s n1 6
+R2 n1 0 3
+.tf v(n1) V9
+.end

@@ -1,0 +1,5 @@
+T03b: ground written as gnd
+V1 n1 gnd 6
+R1 n1 gnd 2
+.op
+.end

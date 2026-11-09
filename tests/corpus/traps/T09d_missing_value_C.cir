@@ -1,0 +1,6 @@
+T09d: a capacitor with no value
+V1 a 0 6
+R1 a b 2
+C1 b 0
+.op
+.end

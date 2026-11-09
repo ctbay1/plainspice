@@ -1,0 +1,6 @@
+T06c: two equal voltage sources in parallel
+V1 n1 0 5
+V2 n1 0 5
+R1 n1 0 1k
+.op
+.end

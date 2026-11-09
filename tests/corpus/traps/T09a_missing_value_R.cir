@@ -1,0 +1,5 @@
+T09a: a resistor with no value
+V1 a 0 6
+R1 a 0
+.op
+.end

@@ -1,0 +1,6 @@
+T12c: .tf naming a resistor as the input source
+V1 s 0 24
+R1 s n1 6
+R2 n1 0 3
+.tf v(n1) R1
+.end

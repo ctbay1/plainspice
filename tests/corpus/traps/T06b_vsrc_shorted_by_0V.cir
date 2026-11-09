@@ -1,0 +1,6 @@
+T06b: a voltage source shorted by a 0 V source
+V1 n1 0 5
+Vshort n1 0 0
+R1 n1 0 1k
+.op
+.end

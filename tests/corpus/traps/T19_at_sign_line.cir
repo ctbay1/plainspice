@@ -1,0 +1,7 @@
+T19: a line starting with @ ends the netlist
+V1 n1 0 6
+R2 n1 0 3
+@ note: R1 below
+R1 n1 0 2
+.op
+.end

@@ -1,0 +1,7 @@
+T20c: .dc from 12 down to 0 with a positive step
+V1 in 0 0
+R1 in out 1k
+R2 out 0 2k
+C1 out 0 1u
+.dc V1 12 0 1
+.end

@@ -1,0 +1,5 @@
+T02: a 3A current source (A is atto, 3e-18 A)
+I1 0 n1 3A
+R1 n1 0 4
+.op
+.end

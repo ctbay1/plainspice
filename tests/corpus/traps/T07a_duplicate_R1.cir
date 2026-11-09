@@ -1,0 +1,6 @@
+T07a: two resistors both named R1
+V1 n1 0 6
+R1 n1 0 2
+R1 n1 0 4
+.op
+.end

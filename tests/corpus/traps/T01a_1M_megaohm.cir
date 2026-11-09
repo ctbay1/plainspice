@@ -1,0 +1,6 @@
+T01a: 1M meant as a megaohm (it is a milliohm)
+V1 n1 0 6
+R1 n1 n2 1M
+R2 n2 0 1meg
+.op
+.end

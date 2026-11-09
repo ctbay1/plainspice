@@ -1,0 +1,7 @@
+T20b: .dc with a negative step and an increasing range
+V1 in 0 0
+R1 in out 1k
+R2 out 0 2k
+C1 out 0 1u
+.dc V1 0 12 -1
+.end

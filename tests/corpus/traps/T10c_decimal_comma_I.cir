@@ -1,0 +1,5 @@
+T10c: a decimal comma in a current source value (2,5)
+I1 0 a 2,5
+R1 a 0 1
+.op
+.end

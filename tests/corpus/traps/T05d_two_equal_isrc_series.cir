@@ -1,0 +1,7 @@
+T05d: two equal current sources in series (node n1 voltage undefined)
+I1 0 n1 1m
+I2 n1 0 1m
+R1 n2 0 1k
+V1 n2 0 1
+.op
+.end

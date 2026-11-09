@@ -1,0 +1,6 @@
+T12b: .tf naming an output node that does not exist
+V1 s 0 24
+R1 s n1 6
+R2 n1 0 3
+.tf v(n9) V1
+.end

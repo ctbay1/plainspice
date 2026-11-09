@@ -1,0 +1,5 @@
+T13: node names N1 and n1
+V1 N1 0 6
+R1 n1 0 2
+.op
+.end

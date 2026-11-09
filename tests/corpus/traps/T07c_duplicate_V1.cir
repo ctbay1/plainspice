@@ -1,0 +1,7 @@
+T07c: two voltage sources both named V1
+V1 n1 0 6
+V1 n2 0 3
+R1 n1 0 2
+R2 n2 0 3
+.op
+.end

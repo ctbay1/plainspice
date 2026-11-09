@@ -1,0 +1,6 @@
+T07b: R1 and r1
+V1 n1 0 6
+R1 n1 0 2
+r1 n1 0 4
+.op
+.end

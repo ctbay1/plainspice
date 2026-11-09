@@ -1,0 +1,6 @@
+T14a: a 0 ohm resistor
+V1 a 0 6
+R1 a b 0
+R2 b 0 2
+.op
+.end

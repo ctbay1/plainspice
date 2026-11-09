@@ -1,0 +1,6 @@
+T11e: are lines after .end read? (R1 comes after .end)
+V1 n1 0 6
+R2 n1 0 3
+.op
+.end
+R1 n1 0 2

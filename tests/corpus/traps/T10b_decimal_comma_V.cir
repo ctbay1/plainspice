@@ -1,0 +1,5 @@
+T10b: a decimal comma in a source value (1,5)
+V1 a 0 1,5
+R1 a 0 1
+.op
+.end

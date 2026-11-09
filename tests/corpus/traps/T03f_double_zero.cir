@@ -1,0 +1,5 @@
+T03f: ground written as 00
+V1 n1 00 6
+R1 n1 00 2
+.op
+.end

@@ -1,0 +1,7 @@
+T21c: .tran with step larger than stop
+V1 in 0 0
+R1 in out 1k
+R2 out 0 2k
+C1 out 0 1u
+.tran 1 5m
+.end

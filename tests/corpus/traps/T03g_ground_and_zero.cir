@@ -1,0 +1,5 @@
+T03g: one source to ground, one resistor to 0 (are they the same node?)
+V1 n1 ground 6
+R1 n1 0 2
+.op
+.end

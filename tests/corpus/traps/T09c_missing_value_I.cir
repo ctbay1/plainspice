@@ -1,0 +1,5 @@
+T09c: a current source with no value
+I1 0 a
+R1 a 0 2
+.op
+.end

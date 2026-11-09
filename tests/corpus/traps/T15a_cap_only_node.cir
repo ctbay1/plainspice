@@ -1,0 +1,6 @@
+T15a: a node connected only to capacitors in .op
+V1 a 0 6
+C1 a b 1u
+C2 b 0 1u
+.op
+.end

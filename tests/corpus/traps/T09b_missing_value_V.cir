@@ -1,0 +1,5 @@
+T09b: a voltage source with no value
+V1 a 0
+R1 a 0 2
+.op
+.end

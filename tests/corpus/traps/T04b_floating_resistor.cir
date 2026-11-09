@@ -1,0 +1,6 @@
+T04b: a resistor whose both nodes connect to nothing else
+V1 n1 0 6
+R1 n1 0 2
+R2 n3 n4 3
+.op
+.end

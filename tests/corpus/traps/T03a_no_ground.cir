@@ -1,0 +1,5 @@
+T03a: no ground (no node 0 anywhere)
+V1 a b 6
+R1 a b 2
+.op
+.end

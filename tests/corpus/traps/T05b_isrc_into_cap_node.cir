@@ -1,0 +1,5 @@
+T05b: a current source feeding a node that only has a capacitor
+I1 0 n1 1m
+C1 n1 0 1u
+.op
+.end
