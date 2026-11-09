@@ -140,6 +140,20 @@ describe('classifyOutput', () => {
     expect(d.map((x) => x.code)).toEqual(['model-not-in-build', 'circuit-not-parsed']);
     expect(d[0]).toMatchObject({ line: 3, subject: 'LossyXmissionLine' });
   });
+  it('names the messages the trap checks rely on', () => {
+    const lines: [string, string][] = [
+      ['Unable to find definition of given model', 'missing-model'],
+      ['Unknown device type for model foo', 'unknown-model-type'],
+      ['f1: unknown controlling source vx', 'unknown-control-source'],
+      ['instance v2 is a shorted VSRC', 'shorted-source'],
+      ['Could not find include file models.lib', 'file-not-found'],
+      ['Not enough parameters for v source', 'missing-fields'],
+      ['Fatal error: t1: transmission line z0 must be given', 'missing-parameter'],
+      ['YYparse error', 'expression-error'],
+      ["unimplemented dot command '.1'", 'unknown-dot-command'],
+    ];
+    for (const [text, code] of lines) expect(classifyOutput('', text).map((d) => d.code), text).toContain(code);
+  });
   it('ignores the lines ngspice prints on every run', () => {
     expect(classifyOutput('Note: No compatibility mode selected!\nUsing SPARSE 1.3 as Direct Linear Solver\n', '')).toEqual([]);
   });

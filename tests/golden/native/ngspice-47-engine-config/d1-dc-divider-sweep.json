@@ -1,0 +1,106 @@
+{
+ "fixture": "tests/fixtures/d1-dc-divider-sweep.cir",
+ "netlist": "* D1 (ours): a divider swept from 0 to 12 V with .dc\nV1 in 0 0\nR1 in out 1k\nR2 out 0 2k\n.dc V1 0 12 1\n.end\n",
+ "ngspice": {
+  "version": "47",
+  "banner": [
+   "ngspice-47 : Circuit level simulation program",
+   "Compiled with Sparse Direct Linear Solver"
+  ],
+  "host": "Linux x86_64"
+ },
+ "commands": {
+  "printed": "ngspice -b circuit.cir",
+  "plots": "ngspice -b -r out.raw circuit.cir"
+ },
+ "printed": {
+  "exitCode": 1,
+  "stdout": "\nNote: No compatibility mode selected!\n\n\nCircuit: * d1 (ours): a divider swept from 0 to 12 v with .dc\n\n",
+  "stderr": "Error: incomplete or empty netlist\n       or no \".plot\", \".print\", or \".fourier\" lines in batch mode;\nno simulations run!\n"
+ },
+ "plots": [
+  {
+   "plotname": "DC transfer characteristic",
+   "flags": "real",
+   "points": 13,
+   "vectors": [
+    {
+     "name": "v(v-sweep)",
+     "type": "voltage",
+     "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+     ]
+    },
+    {
+     "name": "v(in)",
+     "type": "voltage",
+     "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+     ]
+    },
+    {
+     "name": "v(out)",
+     "type": "voltage",
+     "values": [
+      0,
+      0.6666666666666666,
+      1.3333333333333333,
+      2,
+      2.6666666666666665,
+      3.333333333333333,
+      4,
+      4.666666666666666,
+      5.333333333333333,
+      6,
+      6.666666666666666,
+      7.333333333333332,
+      8
+     ]
+    },
+    {
+     "name": "i(v1)",
+     "type": "current",
+     "values": [
+      0,
+      -0.0003333333333333334,
+      -0.0006666666666666668,
+      -0.001,
+      -0.0013333333333333335,
+      -0.001666666666666667,
+      -0.002,
+      -0.002333333333333334,
+      -0.002666666666666667,
+      -0.003000000000000001,
+      -0.003333333333333334,
+      -0.003666666666666667,
+      -0.004
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -154,6 +154,9 @@ Notes:
   ideal-step formula 5(1 − e^(−t/τ)) is up to 2.5 mV off because of that ramp). ngspice 42 uses a slightly
   different time grid (ngspice 46 changed how steps land before a breakpoint), so its points are not
   compared one by one; the WebAssembly run and native ngspice 47 have identical grids.
+- Native ngspice 47 built with the engine's options (no XSPICE, OSDI or KLU) also gives the
+  WebAssembly results bit for bit, on every fixture and on a 1 ns-edge RL step where an XSPICE
+  build takes different time steps (\`tests/golden/engine-config.test.ts\`).
 
 ## Every vector, point by point (WebAssembly vs native)
 

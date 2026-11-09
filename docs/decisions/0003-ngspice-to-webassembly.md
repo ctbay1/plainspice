@@ -94,6 +94,14 @@ Build ngspice 47 ourselves with `engine/build.sh` and commit the outputs to `eng
 - Sizes, `ngspice.wasm`: with every device model, `-O2` gave 4,416,560 B (gzip 1,509,944);
   `-Oz` was only 2.5 % smaller compressed and slower, so we ship `-O2`. Without the left-out
   models: **1,692,067 B (gzip 623,939, brotli 479,301)**. The glue is 74,057 B (gzip 20,326).
+- **Built the same way, native ngspice gives exactly the engine's numbers.** Native ngspice 47
+  configured like the engine (`--disable-xspice --disable-osdi --disable-klu`) gives the same
+  time grid and values as the WebAssembly engine on every fixture and on an RL step with 1 ns
+  edges (`tests/golden/engine-config.test.ts`). The usual native build *with* XSPICE (and
+  Ubuntu's) takes different time steps on such fast edges (83 points instead of 59, first step
+  10 ps instead of 0.5 µs), while the final values agree to 6 significant figures; on the
+  fixtures' 1 µs edges both builds agree point for point. So `.tran` golden tests compare with
+  the engine-config build point by point and with XSPICE builds by value.
 - Speed (Node 22): compile 13 ms, instantiate 1–8 ms, run 2–23 ms per fixture. In headless
   Chromium the spike page ran all 10 fixtures through the Worker in about 0.1 s.
 

@@ -1,0 +1,51 @@
+{
+ "fixture": "tests/fixtures/f4-tf-output-impedance.cir",
+ "netlist": "* F4: output impedance at v(a) with .tf\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n.end\n",
+ "ngspice": {
+  "version": "47",
+  "banner": [
+   "ngspice-47 : Circuit level simulation program",
+   "Compiled with Sparse Direct Linear Solver"
+  ],
+  "host": "Linux x86_64"
+ },
+ "commands": {
+  "printed": "ngspice -b circuit.cir",
+  "plots": "ngspice -b -r out.raw circuit.cir"
+ },
+ "printed": {
+  "exitCode": 0,
+  "stdout": "\nNote: No compatibility mode selected!\n\n\nCircuit: * f4: output impedance at v(a) with .tf\n\nDoing analysis at TEMP = 27.000000 and TNOM = 27.000000\n\n\nNo. of Data Rows : 1\nTransfer function information:\ntransfer_function = 3.333333e-01\noutput_impedance_at_v(a) = 4.000000e+00\nv1#input_impedance = 9.000000e+00\n\n\n\n\n\n\n",
+  "stderr": ""
+ },
+ "plots": [
+  {
+   "plotname": "Transfer Function",
+   "flags": "real",
+   "points": 1,
+   "vectors": [
+    {
+     "name": "v(Transfer_function)",
+     "type": "voltage",
+     "values": [
+      0.33333333333333337
+     ]
+    },
+    {
+     "name": "v(v1#Input_impedance)",
+     "type": "voltage",
+     "values": [
+      9
+     ]
+    },
+    {
+     "name": "v(output_impedance_at_V(a))",
+     "type": "voltage",
+     "values": [
+      4
+     ]
+    }
+   ]
+  }
+ ]
+}

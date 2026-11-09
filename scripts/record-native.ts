@@ -2,6 +2,7 @@
  * Record what native ngspice prints and computes for every fixture, for the golden tests.
  *
  *   node --experimental-strip-types scripts/record-native.ts --ngspice /usr/bin/ngspice [--ngspice /path/to/ngspice-47]
+ *        [--label <folder name> (applies to the --ngspice before it)] [--fixtures <dir of .cir files>]
  *
  * For each binary and each tests/fixtures/*.cir it runs, in a temporary directory:
  *   ngspice -b <file>               -> "printed": what a student sees on the command line
@@ -13,25 +14,31 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import { parseRawfile } from '../src/engine/rawfile.ts';
 
 const root = resolve(import.meta.dirname, '..');
-const fixturesDir = join(root, 'tests/fixtures');
+let fixturesDir = join(root, 'tests/fixtures');
 const outRoot = join(root, 'tests/golden/native');
 
-const binaries: string[] = [];
+const binaries: { bin: string; label?: string }[] = [];
 for (let i = 2; i < process.argv.length; i += 1) {
-  if (process.argv[i] === '--ngspice' && process.argv[i + 1]) binaries.push(process.argv[++i]!);
+  const arg = process.argv[i];
+  const next = process.argv[i + 1];
+  if (arg === '--ngspice' && next) binaries.push({ bin: next });
+  else if (arg === '--label' && next && binaries.length) binaries[binaries.length - 1]!.label = next;
+  else if (arg === '--fixtures' && next) fixturesDir = resolve(next);
+  else continue;
+  i += 1;
 }
-if (binaries.length === 0) binaries.push('ngspice');
+if (binaries.length === 0) binaries.push({ bin: 'ngspice' });
 
-for (const bin of binaries) {
+for (const { bin, label } of binaries) {
   const banner = spawnSync(bin, ['--version'], { encoding: 'utf8' }).stdout;
   const version = /ngspice-([\d.]+)/.exec(banner)?.[1];
   if (!version) throw new Error(`${bin}: cannot read the version from: ${banner}`);
   const major = version.split('.')[0]!;
-  const outDir = join(outRoot, `ngspice-${major}`);
+  const outDir = join(outRoot, label ?? `ngspice-${major}`);
   mkdirSync(outDir, { recursive: true });
   console.log(`# ${bin}: ngspice ${version}`);
 
@@ -45,7 +52,7 @@ for (const bin of binaries) {
       if (raw.status !== 0) throw new Error(`${id}: ngspice -b -r exited ${raw.status}\n${raw.stderr}`);
       const plots = parseRawfile(readFileSync(join(work, 'out.raw')));
       const record = {
-        fixture: `tests/fixtures/${file}`,
+        fixture: relative(root, join(fixturesDir, file)),
         netlist: readFileSync(join(fixturesDir, file), 'utf8'),
         ngspice: {
           version,

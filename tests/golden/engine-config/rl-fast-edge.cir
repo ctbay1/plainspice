@@ -1,0 +1,6 @@
+* RL step with 1 ns edges: L/R = 5 ms (time steps depend on how ngspice was built)
+V1 in 0 PULSE(0 1 0 1n 1n 1 2)
+R1 in out 1
+L1 out 0 5m
+.tran 0.1m 5m
+.end
