@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="ngspice 47 compiled to WebAssembly, running in your browser, checked against native ngspice on the Solved Circuits fixtures." />
+    <title>Engine check: ngspice in your browser</title>
+    <link rel="stylesheet" href="/src/spike/spike.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to the content</a>
+    <main id="main">
+      <h1>Engine check: ngspice in your browser, compared with ngspice on a PC</h1>
+      <p>
+        This page runs <strong>ngspice 47</strong>, compiled to WebAssembly, inside a background worker in your browser.
+        It simulates the fixture circuits from the Solved Circuits channel and compares every number with what
+        native ngspice 47 and ngspice 42 computed for the same files on a PC (recorded with <code>ngspice -b</code>).
+        The rule: the numbers must agree to 6 significant figures.
+      </p>
+      <p id="engine-status" class="status" role="status">Loading ngspice (about 1.5 MB)…</p>
+
+      <section aria-labelledby="fixtures-heading">
+        <h2 id="fixtures-heading">The fixture circuits</h2>
+        <p><button type="button" id="run-all" disabled>Run all fixtures again</button></p>
+        <p id="fixtures-summary" class="summary" role="status"></p>
+        <div class="table-wrap" tabindex="0" role="region" aria-labelledby="key-caption">
+          <table id="key-table">
+            <caption id="key-caption">Key results: by hand, native ngspice, and this browser</caption>
+            <thead>
+              <tr>
+                <th scope="col">Fixture</th>
+                <th scope="col">Quantity</th>
+                <th scope="col">By hand</th>
+                <th scope="col">Native ngspice 47 printed</th>
+                <th scope="col">Native ngspice 42 printed</th>
+                <th scope="col">This browser</th>
+                <th scope="col">Agrees to 6 significant figures?</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <details>
+          <summary>Every vector, point by point</summary>
+          <div class="table-wrap" tabindex="0" role="region" aria-labelledby="vector-caption">
+            <table id="vector-table">
+              <caption id="vector-caption">Largest relative difference between this browser and native ngspice, over all points</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Fixture</th>
+                  <th scope="col">Vector</th>
+                  <th scope="col">Points</th>
+                  <th scope="col">vs native 47</th>
+                  <th scope="col">vs native 42</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section aria-labelledby="try-heading">
+        <h2 id="try-heading">Try your own netlist</h2>
+        <p>
+          Line 1 is the title (SPICE always skips it), one line per part, ground is node <code>0</code>, and end with
+          <code>.end</code>. Analyses on this page: <code>.op</code>, <code>.tf</code>, <code>.dc</code> and <code>.tran</code>.
+        </p>
+        <label for="netlist">Netlist</label>
+        <textarea id="netlist" rows="9" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="netlist-hint"></textarea>
+        <p id="netlist-hint" class="hint">Press Ctrl+Enter (or ⌘+Enter) to run.</p>
+        <p>
+          <label class="check"><input type="checkbox" id="savecurrents" checked /> Also report the current in every part (adds <code>.options savecurrents</code> before <code>.end</code>)</label>
+        </p>
+        <p><button type="button" id="run" disabled>Run</button></p>
+        <div id="own-results"></div>
+      </section>
+    </main>
+    <footer>
+      <p>
+        Simulation engine: ngspice 47 compiled to WebAssembly (Modified BSD; includes numparam, GNU LGPL v2 or later).
+        <a href="../licenses/">Licences and the engine's source</a>.
+      </p>
+    </footer>
+    <script type="module" src="/src/spike/main.ts"></script>
+  </body>
+</html>

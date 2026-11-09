@@ -1,0 +1,57 @@
+/* Spike page: the Solved Circuits notebook colours, checked for WCAG AA contrast on the paper. */
+:root {
+  --paper: #f6f1e4;
+  --ink: #1e2a45;
+  --pencil: #545863; /* 5.6:1 on paper (the brand's #6B6F7A is 4.45:1, too light for text) */
+  --rule: #c9c2ae;
+  --ok: #1e6b30; /* 5.8:1 */
+  --bad: #b42318; /* 5.8:1 */
+  --warn: #8a4b00; /* 6.0:1 */
+  --focus: #1971c2;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 1rem/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+main { max-width: 72rem; margin: 0 auto; padding: 1rem; }
+h1 { font-size: 1.6rem; line-height: 1.25; }
+h2 { font-size: 1.3rem; margin-top: 2rem; border-top: 1px solid var(--rule); padding-top: 1rem; }
+code, textarea, .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
+.skip-link { position: absolute; left: -999px; top: 0; background: var(--ink); color: var(--paper); padding: 0.5rem 1rem; }
+.skip-link:focus { left: 0.5rem; z-index: 10; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+button {
+  font: inherit; min-height: 44px; min-width: 44px; padding: 0.5rem 1rem;
+  color: var(--paper); background: var(--ink); border: 2px solid var(--ink); border-radius: 6px; cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: not-allowed; }
+textarea {
+  display: block; width: 100%; font-size: 1rem; padding: 0.5rem; color: var(--ink);
+  background: #fffdf6; border: 2px solid var(--pencil); border-radius: 6px;
+}
+label { font-weight: 600; }
+.check { font-weight: 400; }
+.check input { width: 1.25rem; height: 1.25rem; vertical-align: middle; margin-right: 0.4rem; }
+.hint, .summary { color: var(--pencil); }
+.status { font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 1rem; background: #fffdf6; }
+caption { text-align: left; font-weight: 600; padding: 0.25rem 0; }
+th, td { border: 1px solid var(--rule); padding: 0.35rem 0.5rem; text-align: left; vertical-align: top; }
+th { background: #efe8d6; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.yes { color: var(--ok); font-weight: 700; }
+.no { color: var(--bad); font-weight: 700; }
+.warning { border-left: 6px solid var(--warn); padding: 0.5rem 0.75rem; background: #fff7e6; }
+.error { border-left: 6px solid var(--bad); padding: 0.5rem 0.75rem; background: #fdecea; }
+details { margin: 0.5rem 0 1rem; }
+summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }
+pre { white-space: pre-wrap; background: #fffdf6; border: 1px solid var(--rule); padding: 0.5rem; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+@media (forced-colors: active) { .yes, .no { forced-color-adjust: auto; } button { border-color: ButtonText; } }
+footer { max-width: 72rem; margin: 2rem auto 0; padding: 1rem; border-top: 1px solid var(--rule); color: var(--pencil); }
+a { color: #1554a0; } /* 6.4:1 on paper */
