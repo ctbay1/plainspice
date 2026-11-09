@@ -2,7 +2,7 @@
  * Classify what ngspice printed into diagnostics the UI can explain.
  *
  * Every pattern here was observed by running ngspice 42 and 47 natively and the WebAssembly
- * build on small netlists (docs/spice-facts.md lists the netlists and the verbatim output).
+ * build on small netlists (docs/spice-facts/ lists the netlists and the verbatim output).
  * The main lesson: ngspice's exit code and "results" are not enough. With a singular DC matrix
  * it falls back to a "transient op" and still prints numbers, which can be wrong.
  */
