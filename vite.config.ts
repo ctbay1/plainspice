@@ -146,7 +146,7 @@ function pageHead(): Plugin {
       order: 'post',
       handler(html, ctx) {
         const page = ctx.filename.replace(/\\/g, '/');
-        if (/\/(spike|licenses)\/index\.html$/.test(page)) {
+        if (/\/(spike|licenses)\/index\.html$/.test(page) || /\/design\//.test(page)) {
           return html.replace(/\s*<link rel="manifest"[^>]*>/, '');
         }
         const files = Object.keys(ctx.bundle ?? {});
@@ -181,6 +181,22 @@ function pageHead(): Plugin {
       },
     },
   };
+}
+
+/**
+ * Milestone 2's design prototypes (design/prototypes/<direction>/index.html, and design/index.html
+ * comparing them): built and deployed at /design/... so Tarık can click them, but not part of the
+ * app (no offline cache, no manifest).
+ */
+function designPages(): Record<string, string> {
+  const pages: Record<string, string> = {};
+  const add = (key: string, file: string): void => {
+    if (existsSync(resolve(root, file))) pages[key] = resolve(root, file);
+  };
+  add('design', 'design/index.html');
+  const dir = resolve(root, 'design/prototypes');
+  if (existsSync(dir)) for (const name of readdirSync(dir)) add(`design-${name}`, `design/prototypes/${name}/index.html`);
+  return pages;
 }
 
 /** The installed app's theme and background colour (the same value as --paper in src/styles/app.css). */
@@ -222,7 +238,7 @@ function offlineApp(): Plugin[] {
     workbox: {
       globPatterns: ['**/*.{html,js,css,wasm,svg,png}', 'engine/*.{txt,md,sh}', 'engine/patches/*', 'licenses/*.{md,txt}'],
       // The spike page is a check for developers, not part of the app: not worth 40 kB offline.
-      globIgnores: ['engine/source/**', 'spike/**', 'assets/spike-*'],
+      globIgnores: ['engine/source/**', 'spike/**', 'assets/spike-*', 'design/**', 'assets/design-*'],
       // Files with a content hash in their name never change, so the service worker may take them
       // from the HTTP cache: a first visit then downloads ngspice.wasm once, not twice (perf review 2;
       // without this Workbox fetches every revisioned file again with cache: 'reload').
@@ -270,6 +286,7 @@ export default defineConfig({
         main: resolve(root, 'index.html'),
         spike: resolve(root, 'spike/index.html'),
         licenses: resolve(root, 'licenses/index.html'),
+        ...designPages(),
       },
       output: {
         // Keep the engine in engine/, next to its source and notices.
