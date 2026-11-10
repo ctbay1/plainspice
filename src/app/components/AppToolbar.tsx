@@ -1,7 +1,8 @@
 /**
  * The header's toolbar: Run (Stop while a slow run is going), Examples, Share, Export, Settings,
- * Help. One Tab stop with arrow keys between the buttons (React Aria's Toolbar), placed before the
- * editor so Run is reachable first.
+ * Help. One Tab stop with arrow keys between the buttons (useToolbarFocus: React Aria's Toolbar
+ * behaviour, minus a focus jump that could swallow a click), placed before the editor so Run is
+ * reachable first.
  *
  * Menus and dialogs are lazy-loaded (decision 0002): the first screen has only these buttons. Each
  * button owns its open state and says what it opens (aria-haspopup, aria-expanded); the menu or
@@ -10,9 +11,10 @@
  * dialog when it opens and back to the button when it closes (React Aria's FocusScope).
  */
 import { lazy, Suspense, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Button, Toolbar } from 'react-aria-components';
+import { Button } from 'react-aria-components';
 import { t } from '../../i18n/index.ts';
 import type { Settings } from '../settings.ts';
+import { useToolbarFocus } from '../toolbar-focus.ts';
 import type { ExportKind } from '../overlays/ExportMenu.tsx';
 import { ChevronDown, RunIcon, StopIcon } from './Icons.tsx';
 
@@ -60,6 +62,8 @@ export function AppToolbar({
   const [focus, setFocus] = useState<MenuFocus>('first');
   const examplesButton = useRef<HTMLButtonElement>(null);
   const exportButton = useRef<HTMLButtonElement>(null);
+  const toolbar = useRef<HTMLDivElement>(null);
+  const toolbarFocus = useToolbarFocus(toolbar);
 
   const toggle = (key: OverlayKey, how: MenuFocus = 'first'): void => {
     setFocus(how);
@@ -79,7 +83,7 @@ export function AppToolbar({
   const runLabel = running ? (running.slow ? t('stop') : t('running')) : t('run');
   return (
     <>
-      <Toolbar className="toolbar" aria-label={t('toolbarLabel')}>
+      <div ref={toolbar} className="toolbar" role="toolbar" aria-label={t('toolbarLabel')} aria-orientation="horizontal" {...toolbarFocus}>
         <Button
           className={`button button--primary button--run${running?.slow ? ' button--stop' : ''}`}
           onPress={() => (running ? running.slow && onStop() : onRun())}
@@ -119,7 +123,7 @@ export function AppToolbar({
         <Button className="button button--tool" aria-haspopup="dialog" aria-expanded={open === 'help'} onPress={() => toggle('help')}>
           {t('help')}
         </Button>
-      </Toolbar>
+      </div>
 
       {/* Only the open overlay is mounted; its code may still be on its way (Suspense shows nothing). */}
       <Suspense fallback={null}>
