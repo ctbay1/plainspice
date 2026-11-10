@@ -86,7 +86,7 @@ export interface VoltageLoop {
 }
 
 export interface CircuitGraph {
-  /** Element lines outside .subckt ... .ends that ngspice builds (it drops an R, C or L without a value). */
+  /** Element lines outside .subckt ... .ends that ngspice builds (it drops an R, C or L with nothing after its nodes). */
   elements: number[];
   /** Element lines inside .subckt ... .ends (their nodes are local to the subcircuit). */
   inSubcircuit: ReadonlySet<number>;
@@ -115,11 +115,13 @@ export function subcircuitLines(netlist: Netlist): Set<number> {
   return inside;
 }
 
-/** True when ngspice builds the part: R, C and L need two nodes and a value, or a model. */
+/**
+ * True when ngspice builds the part. It leaves an R, C or L line out only when nothing follows its
+ * two nodes (missing-value-1, -2); with a setting and no value it keeps the part: a resistor at
+ * 1 mΩ, a capacitor or inductor without capacitance or inductance (missing-value-8 ... -10).
+ */
 export function isBuilt(e: Element): boolean {
-  if (e.letter === 'R' || e.letter === 'C' || e.letter === 'L') {
-    return e.nodes.length >= 2 && (e.value !== undefined || e.fields.some((f) => f.role === 'model'));
-  }
+  if (e.letter === 'R' || e.letter === 'C' || e.letter === 'L') return e.nodes.length >= 2 && e.fields.length > 3;
   return e.letter !== undefined;
 }
 
@@ -138,6 +140,16 @@ export function behaviouralKind(e: Element): 'v' | 'i' | undefined {
   const words = e.fields.filter((f) => f.role === 'parameter').map((f) => f.token.text.toLowerCase());
   const first = words[0];
   return first === 'v' || first === 'i' ? first : undefined;
+}
+
+/**
+ * A part whose current F and H can read: a voltage source, the output of E or H (they are voltage
+ * sources too), or a B line with V=. Any other part stops ngspice with "unknown controlling
+ * source", and a B line with I= has no current to read (control-source-4 ... -6 in
+ * docs/spice-facts/traps.md; P10b, P10d in explanations.md).
+ */
+export function hasReadableCurrent(e: Element): boolean {
+  return e.letter === 'V' || e.letter === 'E' || e.letter === 'H' || (e.letter === 'B' && behaviouralKind(e) === 'v');
 }
 
 function dcRole(e: Element): DcRole {

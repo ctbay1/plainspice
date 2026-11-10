@@ -301,8 +301,8 @@ export const DESCRIBE_STRINGS = {
   missingModelTitle: (name: string): string => `No model for ${name}`,
   missingModelWhy: (name: string, model: string): string => `${name} needs a .model line called ${model}, and there is none, so ngspice stops.`,
   leftOutModelTitle: (name: string): string => `The model of ${name} is not in PlainSpice's engine`,
-  leftOutModelWhy: (model: string, level: string, kind: string): string =>
-    `The .model line for ${model} uses level=${level}, which selects ${kind}, a chip-design model that PlainSpice's engine leaves out, so ngspice says "could not find a valid modelname". For a simple MOSFET, use level=1.`,
+  leftOutModelWhy: (model: string, level: string, name: string, kind: string, message: string, mosfet: boolean): string =>
+    `The .model line for ${model} uses level=${level}, which selects ${name}, ${kind} that PlainSpice's engine leaves out, so ngspice says "${message}".${mosfet ? ' For a simple MOSFET, use level=1.' : ''}`,
   missingFieldsTitle: 'Not enough fields on a line',
   missingFieldsWhy: 'This line has fewer fields than its part needs: E and G need four nodes and a number, F and H two nodes, a control source and a number.',
   spaceTitle: (word: string): string => `A space before "${word}"`,
@@ -504,7 +504,7 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
     default: {
       const info = el.letter ? elementInfo(el.letter) : undefined;
       const labels = info?.nodeLabels ?? [];
-      const nodes = el.nodes.map((ref, k) => S.labelled((labels[Math.min(k, labels.length - 1)] ?? 'node').replace(/ \(.*\)$/, '').replace(/(^|\s)-(\s|$)/g, `$1${MINUS}$2`), nodeWritten(ref)));
+      const nodes = el.nodes.map((ref, k) => S.labelled((labels[Math.min(k, labels.length - 1)] ?? 'node').replace(/ \(.*\)$/, ''), nodeWritten(ref)));
       const model = el.fields.find((f) => f.role === 'model');
       if (model) nodes.push(el.letter === 'X' ? S.subcircuitOf(model.token.text) : S.modelOf(model.token.text));
       return S.otherPart(name, article(info?.name ?? 'part'), nodes.join(', '));
@@ -897,8 +897,8 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
     }
     const [p, n] = el.nodes;
     if (!p || !n || !el.letter || el.letter === 'K') continue;
-    // P15, P15b: an R, C or L line with no value is left out of the circuit, so it gets no note.
-    if ((el.letter === 'R' || el.letter === 'C' || el.letter === 'L') && !el.value) continue;
+    // P15, P15b: an R, C or L line with nothing after its nodes is left out of the circuit, so it gets no note.
+    if ((el.letter === 'R' || el.letter === 'C' || el.letter === 'L') && !el.value && el.fields.length === 3) continue;
     const vp = volts.get(nodeName(p));
     const vn = volts.get(nodeName(n));
     if (vp === undefined || vn === undefined) continue;
@@ -991,7 +991,8 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
   }
   const node = netlist.nodes.get(lowerAscii(subject));
   // M9: an E or G line with fewer than four nodes leaves a node with no single answer in our engine.
-  const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && (l.element.nodes.length < 4 || !l.element.value));
+  // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count.
+  const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && l.element.nodes.length < 4);
   if (short?.element) return { title: S.shortLineTitle(short.element.name.text), why: S.shortLineWhy(short.element.name.text), line: short.number };
   if (node && node.connections.length > 0) {
     const letters = node.connections.map((c) => partsOf(netlist).byKey.get(c.element)?.element?.letter);
@@ -1072,7 +1073,7 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       if (model) {
         const at = dotModel(netlist, model);
         const left = at === undefined ? undefined : leftOutModel(netlist, at);
-        if (left) return withLine({ title: S.leftOutModelTitle(name), why: S.leftOutModelWhy(model, left.level, left.model) }); // M8
+        if (left) return withLine({ title: S.leftOutModelTitle(name), why: S.leftOutModelWhy(model, left.level, left.model, left.kind, left.message, left.mosfet) }); // M8
         return withLine({ title: S.missingModelTitle(name), why: S.missingModelWhy(name, model) }); // M7
       }
       return withLine({ title: S.missingModelTitle(name), why: S.missingModelWhy(name, '?') });

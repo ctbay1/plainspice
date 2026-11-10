@@ -10,6 +10,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { describeCircuit } from '../../src/spice/describe.ts';
+import { explainNetlist } from '../../src/spice/explain.ts';
 import { buildGraph, subcircuitLines, UnionFind } from '../../src/spice/graph.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps, looksLikeTypo, TRAP_IDS, type TrapId } from '../../src/spice/traps.ts';
@@ -142,6 +144,16 @@ const CASES: Case[] = [
   { name: ".lib with a file", id: 'include-not-available', severity: 'error', line: 4, at: ".lib", all: ["include-not-available"], fixes: [], netlist: "* t\nV1 a 0 1\nR1 a 0 1\n.lib models.lib tt\n.op\n.end\n" },
   { name: "a + line lost in a ; comment", id: 'lost-continuation', severity: 'warning', line: 6, at: "+", all: ["missing-value","lost-continuation"], fixes: ["Make the comment start with *"], netlist: "* t\nI1 0 n1 1\nR0 n1 0 1k\nR1 n1 0\n; a comment\n+ 2\n.op\n.end\n" },
   { name: "a + line after the title", id: 'lost-continuation', severity: 'warning', line: 2, at: "+", all: ["lost-continuation"], fixes: ["Remove the +"], netlist: "* t\n+ R1 n1 0 2\nI1 0 n1 1\nR2 n1 0 4\n.op\n.end\n" },
+  // Added by the core review of 10 Nov 2026 (docs/spice-facts/review.md).
+  { name: "F naming a B source with I=", id: 'control-source', severity: 'error', line: 5, at: "B1", all: ["control-source"], fixes: [], netlist: "* t\nV1 a 0 6\nB1 0 b I=v(a)/6\nRb b 0 6\nF1 0 p B1 1\nRp p 0 1\n.op\n.end\n" },
+  { name: "a word after a resistor value", id: 'unknown-word', severity: 'error', line: 3, at: "load", all: ["unknown-word"], fixes: ["Make load and the rest of the line a comment"], netlist: "* t\nV1 a 0 5\nR1 a 0 1k load\n.op\n.end\n" },
+  { name: "a word after a voltage source value", id: 'unknown-word', severity: 'error', line: 2, at: "battery", all: ["unknown-word"], fixes: ["Make battery and the rest of the line a comment"], netlist: "* t\nV1 a 0 5 battery\nR1 a 0 1k\n.op\n.end\n" },
+  { name: "1d-3 on a voltage source", id: 'unknown-word', severity: 'error', line: 2, at: "-3", all: ["unknown-word"], fixes: ["Write 1e-3"], netlist: "* t\nV1 n1 0 1d-3\nR1 n1 0 1\n.op\n.end\n" },
+  { name: "a third number on a resistor", id: 'unknown-word', severity: 'error', line: 3, at: "3k", all: ["unknown-word"], fixes: [], netlist: "* t\nV1 a 0 5\nR1 a 0 1k 2k 3k\n.op\n.end\n" },
+  { name: "a value a resistor can only report", id: 'unknown-word', severity: 'error', line: 3, at: "i", all: ["unknown-word"], fixes: ["Make i and the rest of the line a comment"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1k i\n.op\n.end\n" },
+  { name: "a number after a gain", id: 'unknown-word', severity: 'error', line: 4, at: "3", all: ["unknown-word"], fixes: [], netlist: "* t\nV1 a 0 1\nR0 a 0 1\nE1 b 0 a 0 2 3\nR1 b 0 1\n.op\n.end\n" },
+  { name: "a misspelt .tran", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".tarn", all: ["unknown-dot-command"], fixes: ["Use .tran", "Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.tarn 1u 1m\n.op\n.end\n" },
+  { name: ".pss, unknown to ngspice 47 as built", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".pss", all: ["unknown-dot-command"], fixes: ["Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n" },
 ];
 
 describe('each trap fires on a minimal netlist', () => {
@@ -415,6 +427,166 @@ describe('the research netlists (tests/corpus/traps)', () => {
 
   it.each(files)('%s', (file) => {
     expect(ids(readFileSync(join(dir, file), 'utf8'))).toEqual(CORPUS[basename(file, '.cir')]);
+  });
+});
+
+/** The first-letter netlists (tests/corpus/letters): a two-node line starting with each character. */
+const LETTERS: Record<string, string[]> = {
+  L00: ['unknown-letter'], L01: ['fatal-syntax'], L02: [], L03: ['missing-model'], L04: ['missing-fields'], L05: ['missing-fields'],
+  L06: ['missing-fields'], L07: ['missing-fields'], L08: [], L09: ['missing-model'], L10: ['dangling-node', 'unknown-letter'], L11: [],
+  L12: ['missing-model'], L13: ['unknown-letter'], L14: ['model-not-in-engine'], L15: ['unknown-letter'], L16: ['missing-model'], L17: [],
+  L18: ['unknown-letter'], L19: ['unknown-letter'], L20: ['unknown-letter'], L21: [], L22: ['unknown-letter'], L23: ['missing-subcircuit'],
+  L24: ['unknown-letter'], L25: ['unknown-letter'], L26: ['dangling-node', 'unknown-letter'], L27: ['dangling-node', 'unknown-letter'],
+  L28: ['dangling-node', 'unknown-letter'], L29: ['dangling-node'],
+  // "+1 a 0 5" joins Rref's line and stops ngspice at a (unknown-word-10); ".1" is no dot command (unknown-dot-command).
+  L30: ['dangling-node', 'unknown-word'], L31: ['dangling-node', 'unknown-dot-command'],
+  L32: ['dangling-node'], L33: ['dangling-node'], L34: ['dangling-node'], L35: ['dangling-node', 'unknown-letter'],
+  L36: ['dangling-node', 'unknown-letter'], L37: ['dangling-node'], L38: ['dangling-node'], L39: ['dangling-node', 'unknown-letter'],
+  L40: ['dangling-node'], L41: ['dangling-node'], L42: ['dangling-node'], L43: ['dangling-node', 'unknown-letter'],
+  L44: ['dangling-node', 'unknown-letter'], L45: ['dangling-node', 'unknown-letter'], L46: ['dangling-node'], L47: ['dangling-node', 'unknown-letter'],
+  L48: ['dangling-node'], L49: ['dangling-node', 'unknown-letter'], L50: ['dangling-node'], L51: ['dangling-node'], L52: ['dangling-node'],
+  L53: ['dangling-node', 'unknown-letter'], L54: ['dangling-node', 'unknown-letter'], L55: ['dangling-node', 'unknown-letter'],
+  L56: ['dangling-node', 'unknown-letter'],
+};
+
+describe('the first-letter netlists (tests/corpus/letters)', () => {
+  const dir = join(root, 'tests/corpus/letters');
+  const files = readdirSync(dir).filter((f) => f.endsWith('.cir')).sort();
+
+  it('has an expectation for every file', () => {
+    expect(files.map((f) => basename(f, '.cir')).sort()).toEqual(Object.keys(LETTERS).sort());
+  });
+
+  it.each(files)('%s', (file) => {
+    expect(ids(readFileSync(join(dir, file), 'utf8'))).toEqual(LETTERS[basename(file, '.cir')]);
+  });
+});
+
+describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+
+  it('lets F and H read the current of E, H and a B line with V= (control-source-4)', () => {
+    const net = '* t\nV1 a 0 6\nE1 e 0 a 0 1\nRe e 0 3\nF1 0 p E1 1\nRp p 0 1\nVs a b 0\nRb b 0 6\nH1 h 0 Vs 2\nRh h 0 1\nH2 k 0 H1 3\nRk k 0 1\nB1 c 0 V=2*v(a)\nRc c 0 6\nF2 0 q B1 1\nRq q 0 1\n.op\n.end\n';
+    expect(ids(net)).toEqual([]);
+    // A typo of an E source is offered as the fix, like a V source.
+    expect(first('* t\nV1 c 0 3\nR1 c 0 1\nEamp e 0 c 0 2\nRe e 0 1\nF1 0 a Eapm 2\nR2 a 0 1\n.op\n.end\n', 'control-source').fixes.map((f) => f.label)).toEqual(['Use Eamp']);
+  });
+
+  it('knows the arguments of a .func and the nodes inside v( ) and i( ) (fatal-syntax-10, -11)', () => {
+    expect(ids('* t\nV1 a 0 1\nR1 a 0 1k\n.func dbl(x) {2*x}\nR2 a 0 {dbl(1k)}\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 1\nR1 in 0 1k\nB1 out 0 V={2*v(in)}\nR2 out 0 1k\nB2 o2 0 V={2*i(V1)}\nR3 o2 0 1k\nR4 in 0 {2*v(in)}\n.op\n.end\n')).toEqual([]);
+    expect(first('* t\nV1 in 0 1\nR1 in 0 1k\nB1 out 0 V={k*v(in)}\nR2 out 0 1k\n.op\n.end\n', 'fatal-syntax').title).toBe('k is not defined: add a .param line');
+  });
+
+  it('says that ngspice warns about a model on an inductor with a decimal comma (decimal-comma-3)', () => {
+    const t = first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1\nL1 out 0 1,5m\n.tran 0.1m 5m\n.end\n', 'decimal-comma');
+    expect(t.ngspice).toContain("except a warning that it can't find a model called '1,5m'");
+  });
+
+  it('gives the uic message for a loop of voltage sources when every analysis is .tran uic (voltage-loop-7)', () => {
+    const uic = first('* t\nV1 a 0 5\nV2 a 0 3\nR1 a 0 1k\n.tran 1u 10u uic\n.end\n', 'voltage-loop');
+    expect(uic.ngspice).toContain("'Timestep too small'");
+    expect(uic.ngspice).not.toContain('operating point could not');
+    expect(first('* t\nV1 a 0 5\nV2 a 0 3\nR1 a 0 1k\n.op\n.end\n', 'voltage-loop').ngspice).toContain('operating point could not');
+  });
+
+  it('names the word a P line takes for its model (unknown-letter-16, -17)', () => {
+    expect(first('* t\nRref a 0 1\nP1 a 0 5\n.op\n.end\n', 'unknown-letter').ngspice).toBe("ngspice stops: 'Unable to find definition of model 5'. [unknown-letter-17]");
+    expect(first('* t\nV1 a 0 6\nR1 a 0 2\nP1 a 0 b 0\nR2 b 0 1\n.op\n.end\n', 'unknown-letter').ngspice).toBe("ngspice stops: 'model name is not found'. [unknown-letter-16]");
+  });
+
+  it('gives E, F, G and H the message our engine prints for p, v and i (space-before-suffix-15, unknown-word-11)', () => {
+    expect(first('* t\nV1 a 0 1\nR0 a 0 1\nE1 b 0 a 0 2 p\nR1 b 0 1\n.op\n.end\n', 'space-before-suffix').ngspice).toContain("'no such parameter on this device or parameter is missing'");
+    expect(first('* t\nV1 a 0 1\nR0 a 0 1\nE1 b 0 a 0 2 i\nR1 b 0 1\n.op\n.end\n', 'unknown-word').ngspice).toContain("'no such parameter on this device or parameter is missing'");
+  });
+
+  it('does not offer .model 5 D for a number in the diode model place (missing-model-7)', () => {
+    const net = '* t\nRref a 0 1\nD1 a 0 5\n.op\n.end\n';
+    const t = first(net, 'missing-model');
+    expect(t.fixes.map((f) => f.label)).toEqual(['Use a standard diode model: dmod']);
+    expect(applyFix(net, t.fixes[0]!)).toBe('* t\nRref a 0 1\nD1 a 0 dmod\n.model dmod D\n.op\n.end\n');
+  });
+
+  it('keeps no-analysis quiet for a misspelt analysis, which has its own fix', () => {
+    expect(ids('* t\nV1 a 0 1\nR1 a 0 1k\n.tarn 1u 1m\n.end\n')).toEqual(['unknown-dot-command']);
+    expect(ids('* t\nV1 a 0 1\nR1 a 0 1k\n.foo 1\n.end\n')).toEqual(['unknown-dot-command', 'no-analysis']);
+  });
+
+  it('leaves words a more specific trap explains to that trap', () => {
+    expect(ids('* t\nV1 a 0 1,5\nR1 a 0 1\n.op\n.end\n')).toEqual(['decimal-comma']);
+    expect(ids('* t\nI1 0 n1 1\nR1 n1 0 1 k\n.op\n.end\n')).toEqual(['space-before-suffix']);
+    expect(ids('* t\nI1 0 n1 1\nR1 n1 0 2 * load\n.op\n.end\n')).toEqual(['midline-comment']);
+    expect(ids('* t\nV1 a 0 5\nR1 a 0 1k tc1=1m m=2\nC1 a 0 1u ic=0\n.op\n.end\n')).toEqual([]);
+  });
+
+  it('writes display text with the true minus sign', () => {
+    const texts = CASES.flatMap((c) => traps(c.netlist).flatMap((t) => [t.title, t.why, t.ngspice]));
+    for (const t of texts) expect(t, t).not.toMatch(/(^|\s)- node|10\^-/);
+    expect(first('* t\nV1 n1 0 1\nR1 n1 0 1\nE1 a 0 n1 0 -2M\nR2 a 0 1\n.op\n.end\n', 'mega-as-milli').title).toContain('\u2212');
+  });
+
+  it('keeps every span exact on odd input: tabs, CRLF, Ω, Turkish letters, continuations, inline comments', () => {
+    const body = [
+      '* Türkçe başlık Ω', 'V1\tgiriş\t0\tDC 5 ; kaynak', 'R1 giriş çıkış 10kΩ $ direnç', '+ m=1', 'R2 çıkış 0 4,7k // yük', 'C1 çıkış 0 1µ',
+      'Vx çıkış ölçü 0', 'R3 ölçü İ 1k load', 'R4 İ 0 2k2', 'E1 ş 0 giriş 0 2 m', 'Rş ş 0 1k', '.op', '.tarn 1u 1m', '.end',
+    ];
+    for (const eol of ['\n', '\r\n']) {
+      const text = body.join(eol) + eol;
+      const n = parseNetlist(text);
+      const lineOf = (offset: number): number => n.lines.filter((l) => l.span.from <= offset).length;
+      for (const l of n.lines) for (const t of l.tokens) expect(text.slice(t.from, t.to)).toBe(t.text);
+      const found = checkTraps(n);
+      expect(found.map((t) => t.id)).toEqual(['decimal-comma', 'unknown-word', 'rkm-notation', 'space-before-suffix', 'unknown-dot-command']);
+      for (const t of found) {
+        expect(lineOf(t.span.from), t.id).toBe(t.line);
+        for (const f of t.fixes) {
+          for (const c of f.changes) expect(c.from >= 0 && c.from <= c.to && c.to <= text.length, `${t.id}: ${f.label}`).toBe(true);
+          expect(() => checkTraps(parseNetlist(applyFix(text, f)))).not.toThrow();
+        }
+      }
+      for (const x of explainNetlist(n)) for (const f of x.fields) if (f.span) expect(text.slice(f.span.from, f.span.to)).toBe(f.text);
+      expect(describeCircuit(n)).toContain('giriş');
+    }
+  });
+
+  it('parses, checks and explains a 2000-line netlist quickly, in time proportional to its length', () => {
+    const ladder = (n: number): string => {
+      const out = ['* ladder', 'V1 n0 0 DC 12'];
+      for (let i = 0; i < n; i++) out.push(`R${i}a n${i} n${i + 1} 1k`, `R${i}b n${i + 1} 0 ${i % 7 ? '2k' : '2k2'}`);
+      return [...out, '.op', '.tran 1u 1m', '.end'].join('\n');
+    };
+    const time = (text: string): number => {
+      let best = Number.POSITIVE_INFINITY;
+      for (let k = 0; k < 3; k++) {
+        const t0 = performance.now();
+        const n = parseNetlist(text);
+        checkTraps(n);
+        explainNetlist(n);
+        best = Math.min(best, performance.now() - t0);
+      }
+      return best;
+    };
+    time(ladder(50));
+    const small = time(ladder(100));
+    const large = time(ladder(1000)); // 2004 lines; about 35 ms on a developer machine
+    expect(large).toBeLessThan(300);
+    expect(large).toBeLessThan(30 * Math.max(small, 1));
+  });
+
+  it('stays fast on netlists with thousands of problems (each was quadratic: seconds)', () => {
+    const build = (n: number, line: (i: number) => string, head: string[]): string => [...head, ...Array.from({ length: n }, (_, i) => line(i)), '.op', '.end'].join('\n');
+    const cases = [
+      build(2000, (i) => `R${i} a n${i} 1k`, ['* dangling', 'V1 a 0 5']),
+      build(2000, () => 'R1 a 0 1k', ['* duplicates', 'V1 a 0 5']),
+      build(2000, (i) => `C${i} n${i} m${i} 1u`, ['* floating', 'V1 a 0 5', 'R0 a 0 1k']),
+    ];
+    for (const text of cases) {
+      const n = parseNetlist(text);
+      checkTraps(n);
+      const t0 = performance.now();
+      checkTraps(n);
+      expect(performance.now() - t0, text.slice(0, 12)).toBeLessThan(1000);
+    }
   });
 });
 

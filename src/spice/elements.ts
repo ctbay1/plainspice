@@ -1,6 +1,6 @@
 /**
  * The element catalog: what each first letter of a netlist line means to ngspice, in plain words,
- * with the field labels the channel uses ("name / + node / - node / value" for V,
+ * with the field labels the channel uses ("name / + node / − node / value" for V,
  * "name / from node / to node / current" for I).
  *
  * The letter meanings come from ngspice 47's parser (src/spicelib/parser/inppas2.c and inp2*.c)
@@ -34,7 +34,7 @@ export interface ElementInfo {
   inEngine: boolean;
   /** Unit of the main value; absent when the part has no main number. */
   unit?: ValueUnit;
-  /** The field table's labels, in order, in the channel's words. "nodes ..." marks a variable list. */
+  /** The field table's labels, in order, in the channel's words (with the true minus sign, U+2212). "nodes ..." marks a variable list. */
   fields: readonly string[];
   /** The label of each node, in the order of Element.nodes (the last one repeats for longer lists). */
   nodeLabels: readonly string[];
@@ -62,8 +62,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     name: 'behavioural source',
     explained: false,
     inEngine: true,
-    fields: ['name', '+ node', '- node', 'expression'],
-    nodeLabels: ['+ node', '- node'],
+    fields: ['name', '+ node', '− node', 'expression'],
+    nodeLabels: ['+ node', '− node'],
     needs: 'a V= or I= expression',
   },
   C: {
@@ -81,8 +81,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     name: 'diode',
     explained: false,
     inEngine: true,
-    fields: ['name', '+ node (anode)', '- node (cathode)', 'model'],
-    nodeLabels: ['+ node (anode)', '- node (cathode)', 'thermal node'],
+    fields: ['name', '+ node (anode)', '− node (cathode)', 'model'],
+    nodeLabels: ['+ node (anode)', '− node (cathode)', 'thermal node'],
     needs: 'a .model line',
   },
   E: {
@@ -92,8 +92,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     explained: true,
     inEngine: true,
     unit: { symbol: '', name: 'volt per volt', ratio: 'V/V' },
-    fields: ['name', '+ node', '- node', 'control + node', 'control - node', 'gain'],
-    nodeLabels: ['+ node', '- node', 'control + node', 'control - node'],
+    fields: ['name', '+ node', '− node', 'control + node', 'control − node', 'gain'],
+    nodeLabels: ['+ node', '− node', 'control + node', 'control − node'],
     valueLabel: 'gain',
   },
   F: {
@@ -115,8 +115,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     explained: true,
     inEngine: true,
     unit: { symbol: 'S', name: 'siemens', ratio: 'A/V' },
-    fields: ['name', 'from node', 'to node', 'control + node', 'control - node', 'amps per volt'],
-    nodeLabels: ['from node', 'to node', 'control + node', 'control - node'],
+    fields: ['name', 'from node', 'to node', 'control + node', 'control − node', 'amps per volt'],
+    nodeLabels: ['from node', 'to node', 'control + node', 'control − node'],
     valueLabel: 'amps per volt',
   },
   H: {
@@ -126,8 +126,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     explained: true,
     inEngine: true,
     unit: { symbol: 'Ω', name: 'ohm', ratio: 'V/A' },
-    fields: ['name', '+ node', '- node', 'control source', 'volts per amp'],
-    nodeLabels: ['+ node', '- node'],
+    fields: ['name', '+ node', '− node', 'control source', 'volts per amp'],
+    nodeLabels: ['+ node', '− node'],
     valueLabel: 'volts per amp',
     needs: 'a voltage source to read the current from (a 0 V source works: the ammeter trick)',
   },
@@ -198,8 +198,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     code: 'LTRA',
     explained: false,
     inEngine: false,
-    fields: ['name', 'port 1 + node', 'port 1 - node', 'port 2 + node', 'port 2 - node', 'model'],
-    nodeLabels: ['port 1 + node', 'port 1 - node', 'port 2 + node', 'port 2 - node'],
+    fields: ['name', 'port 1 + node', 'port 1 − node', 'port 2 + node', 'port 2 − node', 'model'],
+    nodeLabels: ['port 1 + node', 'port 1 − node', 'port 2 + node', 'port 2 − node'],
     needs: "a .model line, and the LTRA model, which PlainSpice's engine leaves out",
   },
   P: {
@@ -237,8 +237,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     name: 'voltage-controlled switch',
     explained: false,
     inEngine: true,
-    fields: ['name', '+ node', '- node', 'control + node', 'control - node', 'model'],
-    nodeLabels: ['+ node', '- node', 'control + node', 'control - node'],
+    fields: ['name', '+ node', '− node', 'control + node', 'control − node', 'model'],
+    nodeLabels: ['+ node', '− node', 'control + node', 'control − node'],
     needs: 'a .model line',
   },
   T: {
@@ -246,8 +246,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     name: 'lossless transmission line',
     explained: false,
     inEngine: true,
-    fields: ['name', 'port 1 + node', 'port 1 - node', 'port 2 + node', 'port 2 - node'],
-    nodeLabels: ['port 1 + node', 'port 1 - node', 'port 2 + node', 'port 2 - node'],
+    fields: ['name', 'port 1 + node', 'port 1 − node', 'port 2 + node', 'port 2 − node'],
+    nodeLabels: ['port 1 + node', 'port 1 − node', 'port 2 + node', 'port 2 − node'],
     needs: 'its impedance z0= and delay td= (or frequency f=)',
   },
   U: {
@@ -266,8 +266,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     explained: true,
     inEngine: true,
     unit: { symbol: 'V', name: 'volt' },
-    fields: ['name', '+ node', '- node', 'value'],
-    nodeLabels: ['+ node', '- node'],
+    fields: ['name', '+ node', '− node', 'value'],
+    nodeLabels: ['+ node', '− node'],
     valueLabel: 'value',
   },
   W: {
@@ -275,8 +275,8 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     name: 'current-controlled switch',
     explained: false,
     inEngine: true,
-    fields: ['name', '+ node', '- node', 'control source', 'model'],
-    nodeLabels: ['+ node', '- node'],
+    fields: ['name', '+ node', '− node', 'control source', 'model'],
+    nodeLabels: ['+ node', '− node'],
     needs: 'a .model line, and a voltage source to read the current from',
   },
   X: {

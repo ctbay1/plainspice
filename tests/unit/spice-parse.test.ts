@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ELEMENTS, EXPLAINED_LETTERS, elementInfo, fieldLabel } from '../../src/spice/elements.ts';
-import { lowerAscii, parseNetlist } from '../../src/spice/parse.ts';
+import { lowerAscii, parseNetlist, partParameter } from '../../src/spice/parse.ts';
 import type { Element, FieldRole, LineKind, Netlist } from '../../src/spice/types.ts';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -345,6 +345,32 @@ describe('fields of each part', () => {
     expect(roles(element(m, 'v2'))).toEqual(['name:V2', 'plus:n1', 'minus:0', 'value:1', 'other:5']);
     expect(roles(element(m, 'v3'))).toEqual(['name:V3', 'plus:n1', 'minus:0', 'value:1d', 'other:-3']);
   });
+
+  // ngspice 47's parameter tables for R, C, L, E, F, G and H (unknown-word-1 ... -11 in traps.md).
+  it('knows the settings of R, C, L, E, F, G and H, and marks any other word other', () => {
+    const m = parseNetlist(
+      't\nR1 a 0 1k load\nR2 a 0 1k tc1=1m m=2 ac=2k\nR3 a 0 1k tc=0.1 0.2\nR4 a 0 1k i\nC1 a 0 1u big\nC2 a 0 1u ic=1 m=2\nL1 a 0 1m v\nL2 a 0 1m ic=0 nt=5\n' +
+        'E1 b 0 a 0 2 m\nG1 0 b a 0 2 m\nF1 0 b Vx 2 m\nH1 b 0 Vx 2 fast\nR5 a 0 1k 2k 3k',
+    );
+    expect(roles(element(m, 'r1')).slice(3)).toEqual(['value:1k', 'other:load']);
+    expect(roles(element(m, 'r2')).slice(3)).toEqual(['value:1k', 'parameter:tc1', 'parameter:1m', 'parameter:m', 'parameter:2', 'parameter:ac', 'parameter:2k']);
+    // "tc=a b" is read as tc1=a tc2=b (inp2r.c).
+    expect(roles(element(m, 'r3')).slice(3)).toEqual(['value:1k', 'parameter:tc', 'parameter:0.1', 'parameter:0.2']);
+    // i, p, v ... can only be reported, not set.
+    expect(roles(element(m, 'r4')).slice(3)).toEqual(['value:1k', 'other:i']);
+    expect(roles(element(m, 'c1')).slice(3)).toEqual(['value:1u', 'other:big']);
+    expect(roles(element(m, 'c2')).slice(3)).toEqual(['value:1u', 'parameter:ic', 'parameter:1', 'parameter:m', 'parameter:2']);
+    expect(roles(element(m, 'l1')).slice(3)).toEqual(['value:1m', 'other:v']);
+    expect(roles(element(m, 'l2')).slice(3)).toEqual(['value:1m', 'parameter:ic', 'parameter:0', 'parameter:nt', 'parameter:5']);
+    // G and F have a multiplier m; E and H do not.
+    expect(roles(element(m, 'e1')).slice(5)).toEqual(['gain:2', 'other:m']);
+    expect(roles(element(m, 'g1')).slice(5)).toEqual(['transconductance:2', 'parameter:m']);
+    expect(roles(element(m, 'f1')).slice(4)).toEqual(['gain:2', 'parameter:m']);
+    expect(roles(element(m, 'h1')).slice(4)).toEqual(['transresistance:2', 'other:fast']);
+    expect(roles(element(m, 'r5')).slice(3)).toEqual(['value:1k', 'value:2k', 'other:3k']);
+    expect(element(m, 'r5').value?.token.text).toBe('2k');
+    expect([partParameter('R', 'TC1'), partParameter('L', 'flux'), partParameter('C', 'load'), partParameter('D', 'area')]).toEqual(['setting', 'report-only', 'unknown', undefined]);
+  });
 });
 
 describe('the value ngspice uses', () => {
@@ -637,7 +663,8 @@ describe('element catalog', () => {
   });
 
   it('uses the channel’s field words', () => {
-    expect(elementInfo('V')!.fields).toEqual(['name', '+ node', '- node', 'value']);
+    // Display text uses the true minus sign (U+2212).
+    expect(elementInfo('V')!.fields).toEqual(['name', '+ node', '\u2212 node', 'value']);
     expect(elementInfo('I')!.fields).toEqual(['name', 'from node', 'to node', 'current']);
     expect(elementInfo('R')!.fields).toEqual(['name', 'node', 'node', 'value']);
   });
@@ -657,12 +684,12 @@ describe('element catalog', () => {
         return fieldLabel(e.letter, f.role as FieldRole, isNode ? node++ : 0);
       });
     };
-    expect(table('V1 n1 0 6')).toEqual(['name', '+ node', '- node', 'value']);
+    expect(table('V1 n1 0 6')).toEqual(['name', '+ node', '\u2212 node', 'value']);
     expect(table('I1 0 n1 3')).toEqual(['name', 'from node', 'to node', 'current']);
-    expect(table('E1 out1 0 c 0 2')).toEqual(['name', '+ node', '- node', 'control + node', 'control - node', 'gain']);
-    expect(table('G1 0 out2 c 0 0.5')).toEqual(['name', 'from node', 'to node', 'control + node', 'control - node', 'amps per volt']);
+    expect(table('E1 out1 0 c 0 2')).toEqual(['name', '+ node', '\u2212 node', 'control + node', 'control \u2212 node', 'gain']);
+    expect(table('G1 0 out2 c 0 0.5')).toEqual(['name', 'from node', 'to node', 'control + node', 'control \u2212 node', 'amps per volt']);
     expect(table('F1 0 out3 Vs 3')).toEqual(['name', 'from node', 'to node', 'control source', 'gain']);
-    expect(table('H1 out4 0 Vs 4')).toEqual(['name', '+ node', '- node', 'control source', 'volts per amp']);
+    expect(table('H1 out4 0 Vs 4')).toEqual(['name', '+ node', '\u2212 node', 'control source', 'volts per amp']);
     expect(table('Q1 c b e qm')).toEqual(['name', 'collector', 'base', 'emitter', 'model']);
     expect(table('X1 a b sub')).toEqual(['name', 'node', 'node', 'subcircuit']);
   });

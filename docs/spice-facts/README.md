@@ -20,7 +20,7 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 | File | What it covers | Relied on by | Test |
 |---|---|---|---|
 | [numbers-and-syntax.md](numbers-and-syntax.md) | How ngspice reads numbers (scale letters, `M` is milli, units ignored, decimal commas, exponents), lines (the title, comments, continuation lines, `.end`, `@`, `.control`), words, node names and ground, which number a part line uses, and what each first letter means | `src/spice/numbers.ts`, `src/spice/parse.ts`, `src/spice/elements.ts` | `tests/golden/facts-numbers.test.ts` (and the unit tests `tests/unit/spice-numbers.test.ts`, `tests/unit/spice-parse.test.ts`) |
-| [traps.md](traps.md) | What ngspice does with each beginner trap PlainSpice checks for (the scale letters, ground, floating nodes, current sources with no path, loops of voltage sources, duplicate names, unknown first letters, missing values, `.tf`/`.dc` on names that don't exist …), so each check says what really happens and its fix changes only what it should | `src/spice/traps.ts`, `src/spice/graph.ts` | `tests/golden/facts-traps.test.ts` (and `tests/unit/spice-traps.test.ts`) |
+| [traps.md](traps.md) | What ngspice does with each beginner trap PlainSpice checks for (the scale letters, ground, floating nodes, current sources with no path, loops of voltage sources, duplicate names, unknown first letters, missing values, `.tf`/`.dc` on names that don't exist, words and dot commands ngspice doesn't know …), so each check says what really happens and its fix changes only what it should | `src/spice/traps.ts`, `src/spice/graph.ts` | `tests/golden/facts-traps.test.ts` (and `tests/unit/spice-traps.test.ts`) |
 | [explanations.md](explanations.md) | What each kind of line means (parts, sources and their waveforms, dot commands), what each analysis computes and saves, which way currents and powers are counted, and what ngspice's messages mean | `src/spice/explain.ts`, `src/spice/describe.ts` | `tests/golden/facts-explain.test.ts` (and `tests/unit/spice-explain.test.ts`, `tests/unit/spice-describe.test.ts`) |
 
 ## Adding a fact
@@ -36,6 +36,15 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 - Native ngspice used so far: 47 built from the release tarball
   (`./configure --with-x=no --disable-debug --with-readline=no && make`, see `CLAUDE.md`), and 42 from
   Ubuntu's `ngspice 42+ds-3build1` package.
+
+## The review of 10 November 2026
+
+An adversarial review of `src/spice/` checked every sentence the trap checks, the explanations and the
+results in words say about ngspice against this evidence, ran the trap checks on every netlist we have,
+and fixed what it found: [review.md](review.md) lists each finding with its evidence. The claims it
+added (control-source-4 to -9, unknown-word-1 to -11, unknown-dot-command-1 to -3, unknown-letter-17, missing-value-8 to -10,
+missing-model-7, fatal-syntax-10 and -11, space-before-suffix-15, include-not-available-3, P10d, A2b,
+A29b, A29c) were run the same way, on 10 November 2026, and are in the same tests.
 
 ## Where the evidence came from
 

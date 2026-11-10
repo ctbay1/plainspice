@@ -6,7 +6,9 @@
  * Every statement about how SPICE behaves was checked by running native ngspice 47, native
  * ngspice 42 and our WebAssembly engine. The IDs in brackets name the claims:
  * - P, A, C, M: docs/spice-facts/explanations.md (asserted by tests/golden/facts-explain.test.ts);
- * - N, S, W, V, L: docs/spice-facts/numbers-and-syntax.md (tests/golden/facts-numbers.test.ts).
+ * - N, S, W, V, L: docs/spice-facts/numbers-and-syntax.md (tests/golden/facts-numbers.test.ts);
+ * - trap claims such as missing-value-4 or unknown-word-1: docs/spice-facts/traps.md
+ *   (tests/golden/facts-traps.test.ts).
  *
  * Words follow the project's vocabulary: a "part" is an element line, a "dot command" a directive,
  * "ground" is node 0, and every number goes through src/format/si.ts. Display text uses the true
@@ -14,8 +16,9 @@
  */
 import { formatNumber, formatSI } from '../format/si.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
+import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { readNumber } from './numbers.ts';
-import { lowerAscii } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -136,7 +139,10 @@ export const EXPLAIN_STRINGS = {
   parameterValue: (value: string): string => `its value, ${value}`,
   icName: 'ic: its starting value for .tran with uic',
   unknownWord: 'ngspice cannot use this word here and stops: "unknown parameter"',
-  extraWord: 'a word ngspice does not use here',
+  unknownWordEngine:
+    'PlainSpice\'s engine cannot use this word here and stops: "unknown parameter" (native ngspice 47, with XSPICE, reads extra words on E, F, G and H lines as a polynomial)',
+  reportOnlyWord: 'a value ngspice can report for this part, not one a line can set: ngspice stops ("no such parameter on this device")',
+  extraWord: 'a word PlainSpice cannot place on this line',
   keywordDc: 'DC: the steady (DC) value comes next (DC is optional)',
   keywordByName: (key: string, what: string): string => `${key}=: the ${what} is given by name`,
   keywordAc: 'AC: the next number is its size in an .ac analysis',
@@ -158,6 +164,8 @@ export const EXPLAIN_STRINGS = {
     `F is femto (10⁻¹⁵), so ${text} is tiny. Don't type units after numbers: write ${fix}.`,
   digitsAfterScaleNote: (text: string, ignored: string, scale: string, fix: string): string =>
     `ngspice ignores the '${ignored}' after the ${scale} in ${text}. For ${fix}, write a decimal point.`,
+  rkmNote: (text: string, ignored: string, fix: string): string =>
+    `ngspice ignores the '${ignored}' in ${text}: on resistor codes R marks the decimal point, but SPICE stops reading at it. For ${fix}, write a decimal point.`,
   greekMuNote: (text: string): string =>
     `The Greek letter μ is not a scale letter, so ngspice ignores it and everything after it in ${text}. For micro, write u.`,
   unitsIgnoredNote: (letters: string): string => `ngspice ignores '${letters}' after the number. Don't type units after numbers.`,
@@ -173,6 +181,8 @@ export const EXPLAIN_STRINGS = {
   tinyR: 'ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω, with a warning ("Value of resistor … is too small").',
   missingValueRCL: (what: string): string =>
     `This ${what} has no value, so ngspice leaves it out of the circuit, with a warning ("… is not a valid ${what} instance line, ignored!").`,
+  missingValueKeptR: 'This resistor has settings but no value, so ngspice keeps it at 1 mΩ, almost a wire, with a warning ("resistance too low or not given, set to 1 mOhm").',
+  missingValueKept: (what: string, quantity: string): string => `This ${what} has settings but no value, so ngspice keeps it without any ${quantity}, and says nothing.`,
   missingValueSource: (unit: string): string =>
     `This source has no DC value, so in .op ngspice uses 0 ${unit} and says so in a note ("has no value, DC 0 assumed"). An AC value alone is not a DC value.`,
   timeZeroValue: (fn: string, value: string): string =>
@@ -225,8 +235,13 @@ export const EXPLAIN_STRINGS = {
   controlMissingNote: (name: string): string =>
     `There is no voltage source called ${name} in this netlist, so ngspice stops: "unknown controlling source".`,
   controlWrongNote: (name: string, what: string): string =>
-    `${name} is ${withArticle(what)}, and ngspice can only read the current of a voltage source (V, or a controlled one, E or H), so it stops: "unknown controlling source".`,
+    `${name} is ${withArticle(what)}, and ngspice can only read the current of a voltage source (V, a controlled one, E or H, or a B line with V=), so it stops: "unknown controlling source".`,
+  controlBCurrentNote: (name: string): string =>
+    `${name} has I=, so it is a current source with no current of its own to read: ngspice accepts the name, warns "singular matrix" and stops.`,
+  bCurrentSource: 'behavioural source with I= (a current source)',
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
+  noGainNote: (word: string): string =>
+    `This line has no ${word}. PlainSpice's engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".`,
   gainRatio: (gain: string, what: string): string => `${gain}: the output ${what} is ${gain} × the ${what} it reads`,
   gmMeaning: (gm: string): string => `${gm} for every volt it reads (amps per volt)`,
   rmMeaning: (r: string): string => `${r} for every amp it reads (volts per amp, which is ohms)`,
@@ -242,8 +257,8 @@ export const EXPLAIN_STRINGS = {
   notInEngine: "PlainSpice's engine cannot run this line.",
   modelMissingNote: (name: string): string =>
     `There is no .model line called ${name}, so ngspice stops: it cannot find the model.`,
-  modelLeftOutNote: (name: string, level: string, model: string): string =>
-    `The .model line for ${name} uses level=${level}, which selects ${model}, a chip-design model that PlainSpice's engine leaves out. ngspice stops: "could not find a valid modelname".`,
+  modelLeftOutNote: (name: string, level: string, model: string, kind: string, message: string): string =>
+    `The .model line for ${name} uses level=${level}, which selects ${model}, ${kind} that PlainSpice's engine leaves out. ngspice stops: "${message}".`,
   subcircuitMissingNote: (name: string): string => `There is no .subckt ${name}, so ngspice stops: "unknown subckt".`,
   bMalformedNote: 'A B line needs an expression, V=… or I=…; without one ngspice stops with a fatal error.',
   bVoltage: 'V=: the voltage between the + node and the − node is the expression that follows',
@@ -290,6 +305,9 @@ export const EXPLAIN_STRINGS = {
   dcNoPoints: 'With these numbers the sweep has no points (start is past stop for this step), so ngspice runs nothing and says nothing.',
   dcStepZero: 'A step of 0 (or no step at all) stops ngspice 47: "Bad syntax!".',
   dcSourceMissing: (name: string): string => `There is no ${name} in the circuit, so ngspice stops: the source to sweep "is not in the circuit".`,
+  dcSourceWrong: (name: string, what: string): string =>
+    `${name} is ${withArticle(what)}, and .dc sweeps only a voltage source, a current source, a resistor or the temperature, so ngspice stops: the source to sweep "is not in the circuit".`,
+  dcSourceWrongField: (name: string, what: string): string => `${name}: ${withArticle(what)}, which .dc cannot sweep`,
   dcSourceField: (name: string, line: number, what: string): string => `the ${what} ${name} (line ${line}), the one to sweep`,
   dcSourceTemp: 'the temperature, in °C',
   dcSourceMissingField: (name: string): string => `${name}: there is no voltage source, current source or resistor called ${name}`,
@@ -325,7 +343,7 @@ export const EXPLAIN_STRINGS = {
   endGlued: 'A comment glued to .end (.end;…) makes ngspice stop reading here.',
   optionsWhat: 'settings for ngspice',
   options: 'Settings for ngspice.',
-  optionSaveCurrents: 'savecurrents: save the current through every part (R, C, L, F, G, I, B …), not only the voltage sources',
+  optionSaveCurrents: 'savecurrents: save the current through every part (R, C, L, F, G, I, B, diodes, transistors), not only the voltage sources',
   optionGeneric: (name: string): string => `${name}: an ngspice setting`,
   optionValue: (v: string): string => `its value, ${v}`,
   paramWhat: 'named numbers',
@@ -342,6 +360,7 @@ export const EXPLAIN_STRINGS = {
   libWhat: 'read a library file',
   lib: 'Reads part of a library file into the netlist. PlainSpice runs in your browser and has no other files to give ngspice, so ngspice stops.',
   fileName: (f: string): string => `${f}: the file to read`,
+  libOneWord: 'ngspice\'s .lib takes two words, the file and the section; with one word it does not recognise the line and stops: "unimplemented dot command".',
   printWhat: (name: string): string => (name === '.plot' ? 'plot in text' : 'print a table'),
   print: (name: string): string =>
     `Asks ngspice to ${name === '.plot' ? 'plot results as text' : 'print a table of results'}. PlainSpice's engine writes a results file instead, and then ngspice ignores ${name} ("${name} line ignored since rawfile was produced"). PlainSpice shows the results itself, so you don't need it.`,
@@ -590,6 +609,11 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
       const intended = Number(`${reading.value / scale.factor}.${digits}`) * scale.factor;
       notes.push(S.digitsAfterScaleNote(token.text, digits, scale.letters, plain(intended, unit)));
       trap = true;
+    } else if (/^[rR]\d/.test(reading.ignored) && !scale) {
+      // rkm-notation-1: 4R7 is 4, not 4.7.
+      const digits = /^[rR](\d+)/.exec(reading.ignored)![1]!;
+      notes.push(S.rkmNote(token.text, reading.ignored, plain(Number(`${reading.value}.${digits}`), unit)));
+      trap = true;
     } else if (reading.ignored.includes('μ')) {
       // N5: the Greek letter mu is not the micro sign.
       notes.push(S.greekMuNote(token.text));
@@ -636,12 +660,18 @@ function nodeSpecial(ref: NodeRef): { meaning?: string; note?: string } {
 
 // ------------------------------------------------------------------ labels
 
-/** The field-table label in the channel's words, with the true minus sign. */
+/**
+ * The field-table label in the channel's words (elements.ts, with the true minus sign). G's and H's
+ * values are "amps per volt" and "volts per amp", the plain words for transconductance and
+ * transresistance.
+ */
 function labelFor(letter: ElementLetter | undefined, role: FieldRole, nodeIndex: number): string {
-  if (role === 'transconductance') return 'transconductance';
-  if (role === 'transresistance') return 'transresistance';
-  return fieldLabel(letter, role, nodeIndex).replace(/(^|\s)-(\s|$)/g, `$1${MINUS}$2`);
+  return fieldLabel(letter, role, nodeIndex);
 }
+
+const NODE_ROLES: ReadonlySet<FieldRole> = new Set(['node', 'plus', 'minus', 'from', 'to', 'control-plus', 'control-minus']);
+/** One pattern per emphasised word, made once. */
+const EMPHASIS_PATTERNS = new Map<string, RegExp>();
 
 const EMPHASIS: Partial<Record<FieldRole, string>> = {
   plus: '+',
@@ -655,7 +685,14 @@ const EMPHASIS: Partial<Record<FieldRole, string>> = {
 function fieldOf(label: string, token: Token | undefined, meaning: string, emphasis?: string): FieldExplanation {
   const f: FieldExplanation = { label, text: token?.text ?? '', meaning };
   if (token) f.span = { from: token.from, to: token.to };
-  if (emphasis && new RegExp(`(^|\\s|\\()${emphasis.replace(/[+]/g, '\\+')}(\\s|$|\\))`).test(meaning)) f.emphasis = [emphasis];
+  if (emphasis) {
+    let re = EMPHASIS_PATTERNS.get(emphasis);
+    if (!re) {
+      re = new RegExp(`(^|\\s|\\()${emphasis.replace(/[+]/g, '\\+')}(\\s|$|\\))`);
+      EMPHASIS_PATTERNS.set(emphasis, re);
+    }
+    if (re.test(meaning)) f.emphasis = [emphasis];
+  }
   return f;
 }
 
@@ -1024,9 +1061,13 @@ function controlSourceInfo(netlist: Netlist, token: Token): { meaning: string; n
   const part = partKind(netlist, token.text);
   if (part.line === undefined) return { meaning: S.controlSourceMissing(token.text), note: S.controlMissingNote(token.text) };
   const info = part.letter ? elementInfo(part.letter) : undefined;
-  // P7, P10b: V, E and H can be read; P10, P10c: a resistor or an inductor cannot.
-  if (part.letter === 'V' || part.letter === 'E' || part.letter === 'H') {
+  const target = netlist.lines[part.line]?.element;
+  // P7, P10b, P10d: V, E, H and a B line with V= can be read; P10, P10c: a resistor or an inductor cannot.
+  if (target && hasReadableCurrent(target)) {
     return { meaning: S.controlSourceFound(token.text, part.line + 1, partWhat(info)) };
+  }
+  if (target && part.letter === 'B' && behaviouralKind(target) === 'i') {
+    return { meaning: S.controlSourceWrong(token.text, S.bCurrentSource), note: S.controlBCurrentNote(token.text) }; // P10d
   }
   return { meaning: S.controlSourceWrong(token.text, partWhat(info)), note: S.controlWrongNote(token.text, partWhat(info)) };
 }
@@ -1036,7 +1077,7 @@ function controlSourceInfo(netlist: Netlist, token: Token): { meaning: string; n
  * engine leaves out (engine/build.sh, REMOVED_MODELS), the level as written and the model's name;
  * ngspice then says only "could not find a valid modelname" (M8). Levels from ngspice's inpdomod.c.
  */
-export function leftOutModel(netlist: Netlist, modelLine: number): { level: string; model: string } | undefined {
+export function leftOutModel(netlist: Netlist, modelLine: number): { level: string; model: string; kind: string; message: string; mosfet: boolean } | undefined {
   const d = netlist.lines[modelLine]?.directive;
   if (!d) return undefined;
   const type = lowerAscii(d.args[1]?.text ?? '');
@@ -1048,9 +1089,12 @@ export function leftOutModel(netlist: Netlist, modelLine: number): { level: stri
     4: 'BSIM1', 5: 'BSIM2', 8: 'BSIM3', 49: 'BSIM3', 14: 'BSIM4', 54: 'BSIM4', 10: 'BSIM-SOI', 58: 'BSIM-SOI',
     55: 'BSIM3-SOI', 56: 'BSIM3-SOI', 57: 'BSIM3-SOI', 60: 'SOI3', 68: 'HiSIM2', 73: 'HiSIM_HV',
   };
-  if ((type === 'nmos' || type === 'pmos') && mos[n]) return { level, model: mos[n]! };
-  if ((type === 'npn' || type === 'pnp') && n === 8) return { level, model: 'HICUM2' };
-  if ((type === 'njf' || type === 'pjf') && n === 2) return { level, model: 'JFET2' };
+  // The message differs by type (M8; model-not-in-engine-3 and -4 in traps.md).
+  if ((type === 'nmos' || type === 'pmos') && mos[n]) return { level, model: mos[n]!, kind: 'a chip-design model', message: 'could not find a valid modelname', mosfet: true };
+  if ((type === 'npn' || type === 'pnp') && n === 8) return { level, model: 'HICUM2', kind: 'a chip-design model', message: 'Unable to find definition of given model', mosfet: false };
+  if ((type === 'njf' || type === 'pjf') && n === 2) {
+    return { level, model: 'JFET2', kind: 'a detailed JFET model', message: `Unknown device type for model ${lowerAscii(d.args[0]?.text ?? '')}`, mosfet: false };
+  }
   return undefined;
 }
 
@@ -1091,7 +1135,7 @@ function partFields(p: PartContext): FieldExplanation[] {
   let acNext = false;
   const valueRoles: readonly FieldRole[] = ['value', 'gain', 'transconductance', 'transresistance'];
   el.fields.forEach((f, k) => {
-    const isNode = ['node', 'plus', 'minus', 'from', 'to', 'control-plus', 'control-minus'].includes(f.role);
+    const isNode = NODE_ROLES.has(f.role);
     const label = labelFor(el.letter, f.role, isNode ? nodeIndex : 0);
     if (isNode) {
       const ref = el.nodes[nodeIndex]!;
@@ -1121,7 +1165,7 @@ function partFields(p: PartContext): FieldExplanation[] {
           if (at === undefined) addNote(p.notes, S.modelMissingNote(f.token.text));
           else {
             const left = leftOutModel(netlist, at);
-            if (left) addNote(p.notes, S.modelLeftOutNote(f.token.text, left.level, left.model));
+            if (left) addNote(p.notes, S.modelLeftOutNote(f.token.text, left.level, left.model, left.kind, left.message));
           }
         }
         return;
@@ -1192,7 +1236,7 @@ function partFields(p: PartContext): FieldExplanation[] {
           if (!found) addNote(p.notes, S.kMissingNote(f.token.text));
           return;
         }
-        rows.push(fieldOf(label, f.token, el.letter === 'V' || el.letter === 'I' || el.letter === 'R' || el.letter === 'C' || el.letter === 'L' ? S.unknownWord : S.extraWord));
+        rows.push(fieldOf(label, f.token, otherWordMeaning(el.letter, f.token.text)));
         return;
       default:
         break;
@@ -1223,6 +1267,17 @@ function partFields(p: PartContext): FieldExplanation[] {
     rows.push(fieldOf(label, f.token, f.token.text));
   });
   return rows;
+}
+
+/**
+ * A word the parser could not give a role (unknown-word-1 ... -6 in traps.md): on R, C, L, V and I
+ * lines ngspice stops at it, and so does PlainSpice's engine on E, F, G and H lines.
+ */
+function otherWordMeaning(letter: ElementLetter | undefined, word: string): string {
+  if (isReportOnlyParameter(letter, word)) return S.reportOnlyWord;
+  if (letter === 'V' || letter === 'I' || letter === 'R' || letter === 'C' || letter === 'L') return S.unknownWord;
+  if (letter === 'E' || letter === 'F' || letter === 'G' || letter === 'H') return S.unknownWordEngine;
+  return S.extraWord;
 }
 
 /** A B line's words: V= or I= and the expression after it (M19). */
@@ -1341,7 +1396,11 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       sentences.push(S.twoTerminal(el.name.text, value?.value !== undefined ? plain(value.value, unitOf(el.letter)) : '', partWhat(info), nodePhrase(a), nodePhrase(b)));
       if (el.value && value?.value === undefined && /^[{']/.test(el.value.token.text)) sentences.push(S.valueIsExpression);
       addNote(p.notes, twoNumbersNote(p));
-      if (!el.value && el.nodes.length >= 2) addNote(p.notes, S.missingValueRCL(partWhat(info))); // P15, P15b
+      if (!el.value && el.nodes.length >= 2 && !el.fields.some((f) => f.role === 'model' || f.role === 'other')) {
+        // P15, P15b: nothing after the nodes; missing-value-8 ... -10 in traps.md: settings but no value.
+        if (el.fields.length === 3) addNote(p.notes, S.missingValueRCL(partWhat(info)));
+        else addNote(p.notes, el.letter === 'R' ? S.missingValueKeptR : S.missingValueKept(partWhat(info), el.letter === 'C' ? 'capacitance' : 'inductance'));
+      }
       if (el.letter === 'R') {
         const v = value?.value;
         if (v !== undefined && v < 0) addNote(p.notes, S.negativeR); // P14
@@ -1399,7 +1458,8 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         const gain = value.value !== undefined ? formatNumber(value.value) : value.text;
         sentences.push(S.eSentence(voltagePhrase(a, b), gain, voltagePhrase(c, d)));
         sentences.push(S.eReads(nodeFormula(a), nodeFormula(b), gain, nodeFormula(c), nodeFormula(d)));
-      } else addNote(p.notes, S.eFieldsNote); // M9
+      } else if (d && !value) addNote(p.notes, S.noGainNote('gain')); // missing-value-4 in traps.md
+      else addNote(p.notes, S.eFieldsNote); // M9
       break;
     }
     case 'G': {
@@ -1410,7 +1470,8 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         sentences.push(capitalise(S.gSentence(gm, control, nodePhrase(a), nodePhrase(b))));
         const g = value.value !== undefined ? formatNumber(value.value) : value.text;
         sentences.push(S.gReads(g, nodeFormula(c), nodeFormula(d), nodeFormula(a), el.name.text, nodeFormula(b)));
-      } else addNote(p.notes, S.eFieldsNote); // M9
+      } else if (d && !value) addNote(p.notes, S.noGainNote('value in amps per volt')); // missing-value-5
+      else addNote(p.notes, S.eFieldsNote); // M9
       break;
     }
     case 'F':
@@ -1431,6 +1492,8 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         if (tl && (target.letter === 'V' || target.letter === 'E' || target.letter === 'H') && tl.nodes[0] && tl.nodes[1]) {
           sentences.push(S.controlCurrentSign(control.text, nodeFormula(tl.nodes[0]), nodeFormula(tl.nodes[1])));
         }
+      } else if (a && b && control && !value && !readNumber(control.text)) {
+        addNote(p.notes, S.noGainNote(el.letter === 'F' ? 'gain' : 'value in volts per amp')); // missing-value-6, -7
       }
       addNote(p.notes, S.ammeterTrick); // P9, P10
       break;
@@ -1462,9 +1525,11 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
 
 // ------------------------------------------------------------------ dot commands
 
-const OTHER_ANALYSES = new Set(['.noise', '.disto', '.pz', '.sens', '.sp', '.fourier', '.four', '.pss', '.hb', '.sens2']);
+// .pss, .hb and .sens2 are left out: ngspice 47 as built for PlainSpice stops at them (A29b).
+const OTHER_ANALYSES = new Set(['.noise', '.disto', '.pz', '.sens', '.sp', '.fourier', '.four']);
 const KNOWN_DOT = new Set([
-  '.width', '.temp', '.nodeset', '.global', '.func', '.csparam', '.if', '.elseif', '.else', '.endif', '.endl', '.title',
+  // No .endl: a library section is only read from another file; in the netlist it stops ngspice (unknown-dot-command-3).
+  '.width', '.temp', '.nodeset', '.global', '.func', '.csparam', '.if', '.elseif', '.else', '.endif', '.title',
   '.probe', '.prot', '.unprot', '.macro', '.eom', '.para', '.parameter', '.parameters',
 ]);
 const EXPLAINED_DOT = new Set([
@@ -1498,7 +1563,7 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
   const ctx = contextOf(netlist);
   switch (name) {
     case '.op': {
-      const notes = ctx.hasSaveCurrents ? [] : [S.opSaveCurrents]; // A2
+      const notes = ctx.hasSaveCurrents ? [] : [S.opSaveCurrents]; // A2, A2b, C7
       return out(S.opWhat, S.op, [], notes); // A1, P11, P12
     }
     case '.tf':
@@ -1520,7 +1585,7 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
       for (const [n, v] of pairs(netlist, d.args)) {
         const key = lowerAscii(n.text);
         // Only savecurrents has a meaning PlainSpice checked by running ngspice (A2); the rest are named only.
-        const meaning = key === 'savecurrents' ? S.optionSaveCurrents : S.optionGeneric(n.text);
+        const meaning = key === 'savecurrents' ? S.optionSaveCurrents : S.optionGeneric(n.text); // A2, A2b, C7
         fields.push(fieldOf('setting', n, meaning));
         if (v) {
           const r = readNumber(v.text);
@@ -1555,14 +1620,14 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
       }
       const notes: string[] = [];
       const left = leftOutModel(netlist, line.index);
-      if (left && m) notes.push(S.modelLeftOutNote(m.text, left.level, left.model)); // M8
+      if (left && m) notes.push(S.modelLeftOutNote(m.text, left.level, left.model, left.kind, left.message)); // M8
       return out(S.modelWhat, S.model(m?.text ?? '', kind), fields, notes); // A30
     }
     case '.include':
     case '.inc':
       return out(S.includeWhat, S.include, d.args.map((a) => fieldOf('file', a, S.fileName(a.text)))); // A26
     case '.lib':
-      return out(S.libWhat, S.lib, d.args.map((a, k) => fieldOf(k === 0 ? 'file' : 'section', a, k === 0 ? S.fileName(a.text) : S.libSection(a.text)))); // A33
+      return out(S.libWhat, S.lib, d.args.map((a, k) => fieldOf(k === 0 ? 'file' : 'section', a, k === 0 ? S.fileName(a.text) : S.libSection(a.text))), d.args.length < 2 ? [S.libOneWord] : []); // A33, include-not-available-3
     case '.print':
     case '.plot':
       return out(S.printWhat(name), S.print(name), vectorFields(netlist, d.args)); // A25, A25b
@@ -1687,7 +1752,11 @@ function explainDc(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     const second = k > 0 ? 'second ' : '';
     if (s.kind === 'temperature') fields.push(fieldOf(`${second}source`, s.source, S.dcSourceTemp));
     else if (s.line !== undefined && s.kind !== 'unknown') fields.push(fieldOf(`${second}source`, s.source, S.dcSourceField(s.source.text, s.line + 1, partWord(netlist, s.line))));
-    else {
+    else if (s.line !== undefined) {
+      // dc-sweep-problems-7: a part .dc cannot sweep, such as a capacitor.
+      fields.push(fieldOf(`${second}source`, s.source, S.dcSourceWrongField(s.source.text, partWord(netlist, s.line))));
+      addNote(notes, S.dcSourceWrong(s.source.text, partWord(netlist, s.line)));
+    } else {
       fields.push(fieldOf(`${second}source`, s.source, S.dcSourceMissingField(s.source.text)));
       addNote(notes, S.dcSourceMissing(s.source.text)); // M12
     }

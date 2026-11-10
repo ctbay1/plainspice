@@ -45,12 +45,14 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   3 A from node 0, through the source, into a (P4).
 - E: V(+) − V(−) = gain × (V(c+) − V(c−)). G: gain × (V(c+) − V(c−)) amps from its first node into its
   second. F: gain × the current in its control source, the same way. H: V(+) − V(−) = gain × that
-  current (P5–P8). The control source of F and H must be a voltage source: V, E or H, not a resistor
-  or an inductor (P7, P10, P10b, P10c). A 0 V source is a wire that measures its current (P9).
+  current (P5–P8). The control source of F and H must be a voltage source: V, E, H or a B line
+  with V=, not a resistor, an inductor or a B line with I= (P7, P10, P10b, P10c, P10d). A 0 V source
+  is a wire that measures its current (P9).
 - In `.op` and `.dc` a capacitor is an open circuit and an inductor a short circuit (P11, P12, A31).
 - ngspice 47 turns 0 Ω (and anything below 1e-12 Ω) into 1e-12 Ω with a warning, and currents next to
   it come out inaccurate (P13, P24). A negative resistance is accepted silently (P14). An R, C or L with
-  no value is dropped with a warning; a source with no value is 0, with a note (P15, P15b, P16).
+  nothing after its nodes is dropped with a warning (with settings but no value it is kept:
+  missing-value-8 to -10 in traps.md); a source with no value is 0, with a note (P15, P15b, P16).
 - In `.op`, a PULSE, SIN, PWL or EXP source without a DC value uses its value at time 0 (P17); an AC
   value alone is not a DC value (P16). The arguments of PULSE, SIN, PWL and EXP (P18–P20b). K couples
   two inductors by name (P21). Blank lines are ignored (P22). `ic=` and `uic` (P23).
@@ -70,7 +72,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   lin, and `lin` with 2 points gives 1 (A20–A22b).
 - `.param`, `.save`, `.print` and `.plot` (ignored when a results file is written), `.include` and
   `.lib` (no files in the browser), `.control` (runs first), `.meas` (skipped with a results file),
-  unknown dot commands (stop), `.model` types, `.ic` (A23–A33); dot commands ngspice knows but
+  unknown dot commands (stop; so do `.pss`, `.hb` and `.sens2` in ngspice 47 as built, A29b, A29c),
+  `.model` types, `.ic` (A23–A33); dot commands ngspice knows but
   PlainSpice does not explain yet do not stop it (A34); `.subckt` … `.ends` and X lines (A35).
 
 **Currents and power** (section 3): a voltage source's current is positive entering at its + node,
@@ -450,6 +453,35 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
     run simulation(s) aborted
   vectors: (none)
   diagnostics: run-aborted
+```
+
+### P10d. A B line with V= works as the control source too; a B line with I= does not
+
+B1 with V= is a voltage source with a branch current, so F2 reads it like a V source. B1 delivers 2 A into Rc, so its current reads −2 A (positive entering at the + node, as for a V source in C1), and F2 pushes that −2 A from ground into q: v(q) = −2 V. A B line with I= has no current to read: control-source-5 in traps.md shows the singular matrix.
+
+```spice
+* F reading a B source with V=
+V1 a 0 6
+B1 c 0 V=2*v(a)
+Rc c 0 6
+F2 0 q B1 1
+Rq q 0 1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        q                                -2.00000e+00
+        c                                1.200000e+01
+        a                                6.000000e+00
+        v1#branch                        0.000000e+00
+        b1#branch                        -2.00000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(c) = 12, v(q) = -2, i(b1) = -2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(c) = 12, v(q) = -2, i(b1) = -2
 ```
 
 ### P11. In .op a capacitor is an open circuit: no current flows through it
@@ -1122,6 +1154,53 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(a) = 10, v(b) = 5.806451612903226, v(c) = 5.806451612903226, v(e) = 11.612903225806452, v(d) = 5.806451612903226, v(f) = 3.483870967741936, v(g) = 0.5806451612903226, v(h) = 8.129032258064516, i(vs) = 1.1612903225806452, i(h1) = -8.129032258064516, i(l1) = 2.096774193548387, i(e1) = -2.903225806451613, i(v1) = -2.096774193548387, i(@r1[i]) = 2.096774193548387, i(@l1[i]) = 2.096774193548387, i(@r2[i]) = 1.935483870967742, i(@c1[i]) = 0, i(@i1[current]) = 1, i(@re[i]) = 2.903225806451613, i(@rd[i]) = 1.1612903225806452, i(@f1[i]) = 3.483870967741936, i(@rf[i]) = 3.483870967741936, i(@g1[i]) = 0.5806451612903226, i(@rg[i]) = 0.5806451612903226, i(@rh[i]) = 8.129032258064516
+```
+
+### A2b. .options savecurrents saves the currents of diodes, BJTs and MOSFETs too
+
+With savecurrents ngspice also saves the terminal currents of semiconductor parts: the diode current @d1[id], the BJT currents @q1[ic], [ib], [ie], [is], the MOSFET currents @m1[id], [ig], [is], [ib]. PlainSpice does not show them yet (src/spice/describe.ts).
+
+```spice
+* savecurrents with a diode, a BJT and a MOSFET
+V1 a 0 5
+R1 a b 1k
+D1 b 0 dmod
+.model dmod D
+Vc c 0 5
+Vb bb 0 0.7
+Q1 c bb 0 qm
+.model qm npn
+M1 c bb 0 0 nm
+.model nm nmos
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        bb                               7.000000e-01
+        c                                5.000000e+00
+        b                                6.928910e-01
+        a                                5.000000e+00
+        @m1[ib]                          -5.01000e-12
+        @m1[ig]                          0.000000e+00
+        @m1[is]                          -4.90000e-06
+        @m1[id]                          4.900005e-06
+        @q1[is]                          5.000000e-12
+        @q1[ib]                          5.670311e-07
+        @q1[ie]                          -5.72705e-05
+        @q1[ic]                          5.670347e-05
+        @d1[id]                          4.307675e-03
+        @r1[i]                           4.307109e-03
+        v1#branch                        -4.30711e-03
+        vc#branch                        -6.16035e-05
+        vb#branch                        -5.67031e-07
+  ngspice -b -r out.raw (exit 0)
+    rawfile: i(@d1[id]) = 0.004307674725988779, i(@q1[ic]) = 0.00005670347201442283, i(@m1[id]) = 0.0000049000050100000015
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: i(@d1[id]) = 0.004307674725988779, i(@q1[ic]) = 0.00005670347201442283, i(@m1[id]) = 0.0000049000050100000015
 ```
 
 ### A3. .tf v(a) V1 gives the transfer function v(a)/V1, the input resistance seen by V1 and the output resistance at a
@@ -1948,6 +2027,92 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
     Error: circuit not parsed.
   vectors: (none)
   diagnostics: circuit-not-parsed [line 4]
+```
+
+### A29b. .pss, .hb and .sens2 stop native ngspice 47 and our engine: unimplemented dot command
+
+ngspice 47 built as for our engine has no periodic steady-state (.pss), harmonic balance (.hb) or .sens2 analysis, so these lines stop it like any unknown dot command. ngspice 42 knows .pss (unknown-dot-command-2 in traps.md); none of them knows .hb or .sens2.
+
+```spice
+* .hb in a netlist
+V1 a 0 1
+R1 a 0 1k
+.hb
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .hb
+     unimplemented dot command '.hb'
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .hb
+     unimplemented dot command '.hb'
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 4 or its substitute:
+      .hb
+     unimplemented dot command '.hb'
+        Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+### A29c. .sens2 stops them too
+
+The same for .sens2, in ngspice 47 and 42 alike.
+
+```spice
+* .sens2 in a netlist
+V1 a 0 1
+R1 a 0 1k
+.sens2
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .sens2
+     unimplemented dot command '.sens2'
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .sens2
+     unimplemented dot command '.sens2'
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 4 or its substitute:
+      .sens2
+     unimplemented dot command '.sens2'
+        Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
 ```
 
 ### A30. .model types: D (diode), NPN and PNP (BJT), NJF (JFET), NMOS and PMOS (MOSFET), SW and CSW (switches)
@@ -3583,9 +3748,9 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 |---|---|
 | `explain.ts`: R, C, L lines (either way round, open/short in `.op` and `.dc`, 0 Ω, negative values, missing values) | P1, P2, P11–P15b, P24, A31 |
 | `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values) | P3, P4, P9, P16–P20b |
-| `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10c, P21, M9 |
+| `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
 | `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`) | A1–A22b, A31, M10–M15b |
-| `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A23–A30, A32–A35, M6, M8 |
+| `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
 | `describe.ts`: directions, power, ammeters, `.tf` words, switches left out | C1–C8, A3–A6 |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 

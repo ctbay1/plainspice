@@ -42,7 +42,9 @@
  * field it introduces: "DC 6" is two 'value' fields, "PULSE(0 5 ...)" is 'source-function' fields,
  * "w=1u" is two 'parameter' fields. When ngspice reads two numbers for the main value, both are
  * 'value' fields and `Element.value` is the one ngspice uses (the second: "1,5k" is 5 kΩ; V1, V2).
- * Words ngspice cannot use as a parameter (where it stops with "unknown parameter") are 'other'.
+ * Words ngspice cannot use as a parameter (where it stops with "unknown parameter") are 'other':
+ * the parameter names of V, I, R, C, L, E, F, G and H follow ngspice 47's tables; on other parts
+ * any name is taken as a parameter.
  *
  * Nodes: lower-case (ASCII letters only, like ngspice; W6, W7). "0" is ground, and so is "gnd" in
  * any case, except as the last word of its line, where ngspice keeps it as an ordinary node called
@@ -446,13 +448,73 @@ class ElementBuilder {
   }
 }
 
-type ParamKind = 'real' | 'vector' | 'string' | 'flag';
+/** 'pair': one number, or two (a resistor's "tc=a b" is read as tc1=a tc2=b; inp2r.c). */
+type ParamKind = 'real' | 'vector' | 'string' | 'flag' | 'pair';
 
 interface ParamSpec {
   kind: ParamKind;
   role: FieldRole;
   /** A transient source function such as PULSE: Element.sourceFunction. */
   func?: true;
+  /** A value the part can only report (its current, its power): ngspice stops when a line sets it. */
+  reportOnly?: true;
+}
+
+const SENSITIVITY_OUTPUTS = ['sens_dc', 'sens_real', 'sens_imag', 'sens_mag', 'sens_ph', 'sens_cplx'];
+
+/** A part's parameter table: names for its main value, other numbers, flags, and report-only values. */
+function partParams(main: readonly string[], role: FieldRole, real: readonly string[], flags: readonly string[], reports: readonly string[]): ReadonlyMap<string, ParamSpec> {
+  const m = new Map<string, ParamSpec>();
+  for (const k of main) m.set(k, { kind: 'real', role });
+  for (const k of real) m.set(k, { kind: 'real', role: 'parameter' });
+  for (const k of flags) m.set(k, { kind: 'flag', role: 'parameter' });
+  for (const k of [...reports, ...SENSITIVITY_OUTPUTS]) m.set(k, { kind: 'flag', role: 'other', reportOnly: true });
+  return m;
+}
+
+/**
+ * The instance parameters of R, C, L, E, F, G and H, as ngspice 47 lists them (devices/res/res.c,
+ * cap/cap.c, ind/ind.c, vcvs/vcvs.c, cccs/cccs.c, vccs/vccs.c, ccvs/ccvs.c). INPdevParse
+ * (inpdpar.c) stops at any other word after the value with "unknown parameter (word)", and at a
+ * value the part can only report with "no such parameter on this device" (unknown-word-1 ... -11 in
+ * docs/spice-facts/traps.md). The F and H "control" parameter names a source, like the line's
+ * fourth word.
+ */
+const R_PARAMS = (() => {
+  const m = new Map(partParams(['resistance', 'r'], 'value', ['ac', 'temp', 'dtemp', 'l', 'w', 'm', 'tc1', 'tc2', 'tce', 'bv_max', 'scale', 'noisy', 'noise'], ['sens_resist'], ['i', 'p']));
+  m.set('tc', { kind: 'pair', role: 'parameter' });
+  return m;
+})();
+const C_PARAMS = partParams(['capacitance', 'cap', 'c'], 'value', ['ic', 'temp', 'dtemp', 'w', 'l', 'm', 'tc1', 'tc2', 'bv_max', 'scale'], ['sens_cap'], ['i', 'p']);
+const L_PARAMS = partParams(['inductance'], 'value', ['ic', 'temp', 'dtemp', 'm', 'tc1', 'tc2', 'scale', 'nt'], ['sens_ind'], ['flux', 'v', 'volt', 'i', 'current', 'p']);
+const CONTROLLED_REPORTS = ['pos_node', 'neg_node', 'i', 'v', 'p'];
+const E_PARAMS = partParams(['gain'], 'gain', [], ['sens_gain'], [...CONTROLLED_REPORTS, 'cont_p_node', 'cont_n_node']);
+const G_PARAMS = partParams(['gain'], 'transconductance', ['m'], ['sens_trans'], [...CONTROLLED_REPORTS, 'cont_p_node', 'cont_n_node']);
+const F_PARAMS = new Map([...partParams(['gain'], 'gain', ['m'], ['sens_gain'], CONTROLLED_REPORTS), ['control', { kind: 'string', role: 'parameter' } as ParamSpec]]);
+const H_PARAMS = new Map([...partParams(['gain'], 'transresistance', [], ['sens_trans'], CONTROLLED_REPORTS), ['control', { kind: 'string', role: 'parameter' } as ParamSpec]]);
+const PART_PARAMS: Readonly<Record<'R' | 'C' | 'L' | 'E' | 'F' | 'G' | 'H', ReadonlyMap<string, ParamSpec>>> = {
+  R: R_PARAMS, C: C_PARAMS, L: L_PARAMS, E: E_PARAMS, F: F_PARAMS, G: G_PARAMS, H: H_PARAMS,
+};
+
+/**
+ * What ngspice makes of `word` as a parameter name on an R, C, L, E, F, G or H line: a setting it
+ * accepts, a value the part can only report (ngspice stops: "no such parameter on this device"), or
+ * unknown (ngspice stops: "unknown parameter"). Undefined for other letters, whose tables PlainSpice
+ * does not have. For the editor's highlighting, which must read lines the way the parser does.
+ */
+export function partParameter(letter: ElementLetter | undefined, word: string): 'setting' | 'report-only' | 'unknown' | undefined {
+  const table = letter ? (PART_PARAMS as Partial<Record<ElementLetter, ReadonlyMap<string, ParamSpec>>>)[letter] : undefined;
+  if (!table) return undefined;
+  const spec = table.get(lowerAscii(word));
+  return spec ? (spec.reportOnly ? 'report-only' : 'setting') : 'unknown';
+}
+
+/**
+ * True when `word` names a value an R, C, L, E, F, G or H part can only report (i, p, flux ...):
+ * ngspice stops when a line sets it ("no such parameter on this device", space-before-suffix-12).
+ */
+export function isReportOnlyParameter(letter: ElementLetter | undefined, word: string): boolean {
+  return partParameter(letter, word) === 'report-only';
 }
 
 const TRANSIENT_FUNCTIONS = ['pulse', 'sin', 'sine', 'exp', 'pwl', 'sffm', 'am', 'trnoise', 'trrandom'];
@@ -512,8 +574,9 @@ function parseParameters(r: Reader, b: ElementBuilder, opts: ParseOptions): Pars
     }
     const key = lowerAscii(w.clean);
     const spec = opts.params?.get(key) ?? (!opts.strict && IDENTIFIER.test(key) ? undefined : null);
-    if (spec === null) {
-      // ngspice stops here: "unknown parameter (...)".
+    if (spec === null || spec?.reportOnly) {
+      // ngspice stops here: "unknown parameter (...)", or "no such parameter on this device" for
+      // a value the part can only report.
       b.field(w, 'other');
       stopped = true;
       continue;
@@ -529,7 +592,8 @@ function parseParameters(r: Reader, b: ElementBuilder, opts: ParseOptions): Pars
         args.push(s);
       }
     } else if (kind !== 'flag') {
-      for (let n = r.peekNumber(); n; n = kind === 'vector' ? r.peekNumber() : undefined) {
+      const most = kind === 'vector' ? Number.POSITIVE_INFINITY : kind === 'pair' ? 2 : 1;
+      for (let n = r.peekNumber(); n && args.length < most; n = r.peekNumber()) {
         b.field(r.take(n), role);
         args.push(n);
       }
@@ -644,11 +708,9 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       } else if (next && models.has(ngspiceName(next.clean))) {
         b.field(r.take(next), 'model');
       }
-      const full = letter === 'R' ? 'resistance' : letter === 'C' ? 'capacitance' : 'inductance';
-      const res = parseParameters(r, b, {
-        leadRole: 'value',
-        params: new Map([[full, { kind: 'real', role: 'value' }]]),
-      });
+      // Then a number that replaces the value, and name=value parameters; any other word stops
+      // ngspice ("unknown parameter"; unknown-word-1 ... -3).
+      const res = parseParameters(r, b, { leadRole: 'value', params: PART_PARAMS[letter], strict: true });
       value = res.lead ?? res.keyed ?? value;
       break;
     }
@@ -669,7 +731,8 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       const out: FieldRole[] = letter === 'E' ? ['plus', 'minus'] : ['from', 'to'];
       fixedNodes(r, b, [...out, 'control-plus', 'control-minus']);
       const role: FieldRole = letter === 'E' ? 'gain' : 'transconductance';
-      const res = parseParameters(r, b, { leadRole: role, params: new Map([['gain', { kind: 'real', role }]]) });
+      // Our engine (no XSPICE) stops at any other word: "unknown parameter" (unknown-word-4).
+      const res = parseParameters(r, b, { leadRole: role, params: PART_PARAMS[letter], strict: true });
       value = res.lead ?? res.keyed;
       break;
     }
@@ -680,7 +743,7 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       const control = b.nodes.length === 2 ? r.next('net') : undefined;
       if (control) controlSource = b.field(control, 'control-source');
       const role: FieldRole = letter === 'F' ? 'gain' : 'transresistance';
-      const res = parseParameters(r, b, { leadRole: role, params: new Map([['gain', { kind: 'real', role }]]) });
+      const res = parseParameters(r, b, { leadRole: role, params: PART_PARAMS[letter], strict: true });
       value = res.lead ?? res.keyed;
       break;
     }

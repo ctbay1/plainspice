@@ -382,6 +382,19 @@ describe('annotateLines', () => {
   });
 });
 
+describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
+  it('gives the message ngspice prints for a left-out BJT model, and the level=1 hint only for MOSFETs', () => {
+    const net = parseNetlist('* t\nV1 c 0 1\nQ1 c 0 0 qm\n.model qm npn level=8\n.op\n.end\n');
+    const w = explainDiagnostic(diag('missing-model', '', { line: 3 }), net);
+    expect(w.why).toBe('The .model line for qm uses level=8, which selects HICUM2, a chip-design model that PlainSpice\'s engine leaves out, so ngspice says "Unable to find definition of given model".');
+  });
+
+  it('blames an E line for a singular matrix only when it has too few nodes (M9), not for a missing gain', () => {
+    const net = parseNetlist('* t\nV1 c 0 3\nE1 a 0 c 0\nC1 a b 1u\nC2 b 0 1u\n.op\n.end\n');
+    expect(explainDiagnostic(diag('singular-matrix', '', { severity: 'warning', subject: 'a' }), net).title).not.toContain('E1');
+  });
+});
+
 describe('explainDiagnostic: every code in plain words', () => {
   const net = parseNetlist(
     '* t\nV1 n1 0 6\nR1 n1 0 2\nr1 n1 0 4\n1k a 0 5\nX1 a 0 amp\nD1 a 0 dmod\nM1 d g 0 0 nm\n.model nm nmos level=8\nK1 L1 L2 0.9\nB1 a 0 5\n.tf v(n1) V9\n.dc V9 0 1 1\n.tran 5m\n.foo\n$ odd\n',

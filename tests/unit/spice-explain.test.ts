@@ -224,9 +224,10 @@ describe('every part letter', () => {
     expect(table('V2 a 0 5')).toEqual(['name', '+ node', `${MINUS} node`, 'value']);
     expect(table('I1 0 a 3')).toEqual(['name', 'from node', 'to node', 'current']);
     expect(table('E1 a 0 c 0 2')).toEqual(['name', '+ node', `${MINUS} node`, 'control + node', `control ${MINUS} node`, 'gain']);
-    expect(table('G1 0 a c 0 0.5')).toEqual(['name', 'from node', 'to node', 'control + node', `control ${MINUS} node`, 'transconductance']);
+    // G's and H's values in plain words, the same as the trap texts and elements.ts (review, 10 Nov 2026).
+    expect(table('G1 0 a c 0 0.5')).toEqual(['name', 'from node', 'to node', 'control + node', `control ${MINUS} node`, 'amps per volt']);
     expect(table('F1 0 a V1 2')).toEqual(['name', 'from node', 'to node', 'control source', 'gain']);
-    expect(table('H1 a 0 V1 4')).toEqual(['name', '+ node', `${MINUS} node`, 'control source', 'transresistance']);
+    expect(table('H1 a 0 V1 4')).toEqual(['name', '+ node', `${MINUS} node`, 'control source', 'volts per amp']);
     expect(table('K1 L1 L2 0.9')).toEqual(['name', 'inductor', 'inductor', 'coupling']);
   });
 
@@ -237,16 +238,23 @@ describe('every part letter', () => {
     expect(sp(line(net, 7).summary)).toContain('The voltage at out4, measured from ground, is 4 V for every amp in Vs.');
     expect(line(net, 8).summary).toContain('The voltage at p, measured from q, is 1.5 × the voltage at c, measured from d.');
     expect(sp(line(net, 9).summary)).toContain('1 mA for every volt between c and d, pushed from x into y.');
-    expect(meaningOf(line(net, 6), 'transconductance')).toBe('500 mA for every volt it reads (amps per volt)');
-    expect(meaningOf(line(net, 7), 'transresistance')).toBe('4 V for every amp it reads (volts per amp, which is ohms)');
+    expect(meaningOf(line(net, 6), 'amps per volt')).toBe('500 mA for every volt it reads (amps per volt)');
+    expect(meaningOf(line(net, 7), 'volts per amp')).toBe('4 V for every amp it reads (volts per amp, which is ohms)');
   });
 
-  it('checks the control source of F and H (P10, P10b, P10c)', () => {
+  it('checks the control source of F and H (P10, P10b, P10c, P10d)', () => {
     const base = '* t\nV1 a 0 6\nR1 a 0 2\nL1 a b 1m\nE1 e 0 a 0 1\n';
     expect(meaningOf(line(`${base}F1 0 o E1 2\n`, 6), 'control source')).toBe('it reads the current in E1, the voltage-controlled voltage source on line 5');
     const r = line(`${base}F1 0 o R1 2\n`, 6);
     expect(meaningOf(r, 'control source')).toBe('it reads the current in R1, but R1 is a resistor, not a voltage source');
-    expect(notes(r)).toContain('ngspice can only read the current of a voltage source (V, or a controlled one, E or H), so it stops: "unknown controlling source".');
+    expect(notes(r)).toContain('ngspice can only read the current of a voltage source (V, a controlled one, E or H, or a B line with V=), so it stops: "unknown controlling source".');
+    // P10d: a B line with V= can be read; one with I= has no current to read (control-source-5).
+    const bv = `${base}B1 c 0 V=2*v(a)\nF1 0 o B1 2\n`;
+    expect(meaningOf(line(bv, 7), 'control source')).toBe('it reads the current in B1, the behavioural source on line 6');
+    expect(notes(line(bv, 7))).not.toContain('unknown controlling source');
+    const bi = line(`${base}B1 0 c I=v(a)/6\nF1 0 o B1 2\n`, 7);
+    expect(meaningOf(bi, 'control source')).toBe('it reads the current in B1, but B1 is a behavioural source with I= (a current source), not a voltage source');
+    expect(notes(bi)).toContain('B1 has I=, so it is a current source with no current of its own to read: ngspice accepts the name, warns "singular matrix" and stops.');
     expect(meaningOf(line(`${base}H1 o 0 L1 2\n`, 6), 'control source')).toBe('it reads the current in L1, but L1 is an inductor, not a voltage source');
     const missing = line(`${base}F1 0 o Vq 2\n`, 6);
     expect(meaningOf(missing, 'control source')).toBe('it reads the current in Vq, but there is no voltage source called Vq');
@@ -529,7 +537,7 @@ describe('dot commands', () => {
   it('.options, .param, .model, .include, .lib, .print, .plot, .save, .ic, .meas, .subckt, .ends', () => {
     const o = dot('.options savecurrents reltol=1e-4 temp=50');
     expect(rows(o).slice(1)).toEqual([
-      ['setting', 'savecurrents', 'savecurrents: save the current through every part (R, C, L, F, G, I, B …), not only the voltage sources'],
+      ['setting', 'savecurrents', 'savecurrents: save the current through every part (R, C, L, F, G, I, B, diodes, transistors), not only the voltage sources'],
       ['setting', 'reltol', 'reltol: an ngspice setting'],
       ['setting value', '1e-4', 'its value, 1e-4'],
       ['setting', 'temp', 'temp: an ngspice setting'],
@@ -615,14 +623,54 @@ describe('point counts and analysis readings', () => {
     expect(readAnalysis(n, 10)).toBeUndefined();
   });
 
-  it('leftOutModel knows the chip-design levels the engine leaves out (M8)', () => {
+  it('leftOutModel knows the levels the engine leaves out, and what ngspice says for each (M8, model-not-in-engine-3, -4)', () => {
     const at = (m: string): ReturnType<typeof leftOutModel> => leftOutModel(parseNetlist(`* t\n${m}\n`), 1);
-    expect(at('.model nm nmos level=8')).toEqual({ level: '8', model: 'BSIM3' });
-    expect(at('.model nm pmos level=54 version=4.8')).toEqual({ level: '54', model: 'BSIM4' });
-    expect(at('.model q npn level=8')).toEqual({ level: '8', model: 'HICUM2' });
-    expect(at('.model j njf level=2')).toEqual({ level: '2', model: 'JFET2' });
+    const mos = { kind: 'a chip-design model', message: 'could not find a valid modelname', mosfet: true };
+    expect(at('.model nm nmos level=8')).toEqual({ level: '8', model: 'BSIM3', ...mos });
+    expect(at('.model nm pmos level=54 version=4.8')).toEqual({ level: '54', model: 'BSIM4', ...mos });
+    // HICUM and JFET2 make ngspice say something else (verified in traps.md).
+    expect(at('.model q npn level=8')).toEqual({ level: '8', model: 'HICUM2', kind: 'a chip-design model', message: 'Unable to find definition of given model', mosfet: false });
+    expect(at('.model jm njf level=2')).toEqual({ level: '2', model: 'JFET2', kind: 'a detailed JFET model', message: 'Unknown device type for model jm', mosfet: false });
     expect(at('.model nm nmos level=1')).toBeUndefined();
     expect(at('.model nm nmos')).toBeUndefined();
+  });
+});
+
+describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
+  it('says a part .dc cannot sweep is in the circuit (dc-sweep-problems-7), not that it is missing', () => {
+    const e = line('* t\nV1 a 0 1\nR1 a b 1k\nC1 b 0 1u\n.dc C1 0 1 0.1\n.end\n', 5);
+    expect(meaningOf(e, 'source')).toBe('C1: a capacitor, which .dc cannot sweep');
+    expect(notes(e)).toContain('C1 is a capacitor, and .dc sweeps only a voltage source, a current source, a resistor or the temperature');
+    expect(notes(e)).not.toContain('There is no C1');
+  });
+
+  it('says a missing gain is read as 0 by our engine (missing-value-4 to -7), not a singular matrix', () => {
+    const net = '* t\nV1 c 0 3\nR1 c 0 1\nE1 a 0 c 0\nR2 a 0 1\nVx c d 0\nH1 h 0 Vx\nRh h 0 1\nE2 a 0 2\n.op\n.end\n';
+    expect(notes(line(net, 4))).toBe('This line has no gain. PlainSpice\'s engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".');
+    expect(notes(line(net, 7))).toContain('This line has no value in volts per amp.');
+    expect(notes(line(net, 9))).toContain('a singular matrix'); // M9: too few nodes
+  });
+
+  it('explains 4R7 as a resistor code, not as a unit (rkm-notation-1)', () => {
+    expect(notes(line('* t\nI1 0 n1 1\nR1 n1 0 4R7\n.op\n.end\n', 3))).toContain("ngspice ignores the 'R7' in 4R7: on resistor codes R marks the decimal point, but SPICE stops reading at it. For 4.7 Ω, write a decimal point.");
+  });
+
+  it('says what ngspice does with a word it cannot use, by part (unknown-word-1 to -11)', () => {
+    const net = '* t\nV1 a 0 5\nR1 a 0 1k load\nR2 a 0 1k i\nE1 b 0 a 0 2 fast\nD1 a 0 dmod 1 2\n.model dmod D\n.op\n.end\n';
+    expect(meaningOf(line(net, 3), 'extra word')).toBe('ngspice cannot use this word here and stops: "unknown parameter"');
+    expect(meaningOf(line(net, 4), 'extra word')).toBe('a value ngspice can report for this part, not one a line can set: ngspice stops ("no such parameter on this device")');
+    expect(meaningOf(line(net, 5), 'extra word')).toContain('PlainSpice\'s engine cannot use this word here and stops: "unknown parameter"');
+    expect(meaningOf(line(net, 6), 'extra word')).toBe('a word PlainSpice cannot place on this line');
+  });
+
+  it('calls .pss, .hb, .sens2 and .endl unknown: ngspice 47 as built stops at them (A29b, A29c, unknown-dot-command-2, -3)', () => {
+    for (const d of ['.pss', '.hb', '.sens2', '.endl']) expect(isKnownDotCommand(d), d).toBe(false);
+    expect(line('* t\nV1 a 0 1\nR1 a 0 1k\n.hb\n.op\n.end\n', 4).summary).toBe('ngspice does not know the dot command .hb, so it stops: "unimplemented dot command".');
+  });
+
+  it('gives the message ngspice prints for each left-out model in the note (model-not-in-engine-3, -4)', () => {
+    const net = '* t\nV1 d 0 1\nJ1 d 0 0 jm\n.model jm njf level=2\n.op\n.end\n';
+    expect(notes(line(net, 3))).toBe('The .model line for jm uses level=2, which selects JFET2, a detailed JFET model that PlainSpice\'s engine leaves out. ngspice stops: "Unknown device type for model jm".');
   });
 });
 
