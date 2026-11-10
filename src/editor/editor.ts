@@ -12,7 +12,7 @@
 import './editor.css';
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands';
 import { bracketMatching, syntaxHighlighting } from '@codemirror/language';
-import { linter, lintGutter, lintKeymap, openLintPanel, previousDiagnostic, setDiagnosticsEffect } from '@codemirror/lint';
+import { forEachDiagnostic, linter, lintGutter, lintKeymap, nextDiagnostic, openLintPanel, previousDiagnostic, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
 import { ChangeSet, EditorSelection, EditorState, Prec, type Extension } from '@codemirror/state';
 import {
   closeHoverTooltips,
@@ -75,6 +75,41 @@ const closePopUps = (view: EditorView): boolean => {
   return true;
 };
 
+/**
+ * At most this many traps are underlined. A netlist with thousands of mistakes (pasted, or opened
+ * from a link) froze the editor while each got its mark (security review M2); the Checks tab
+ * counts them all. Errors come first, then warnings, then notes.
+ */
+export const MAX_TRAP_MARKS = 200;
+
+export function trapsToMark(traps: readonly Trap[]): Trap[] {
+  if (traps.length <= MAX_TRAP_MARKS) return traps.slice();
+  const order: Trap['severity'][] = ['error', 'warning', 'info'];
+  const picked = order.flatMap((severity) => traps.filter((t) => t.severity === severity)).slice(0, MAX_TRAP_MARKS);
+  return picked.sort((a, b) => a.span.from - b.span.from || a.span.to - b.span.to);
+}
+
+/**
+ * F8 and Shift+F8 select a trap and show its pop-up, which a screen reader does not read: say the
+ * trap's message too (a11y review F8), as the pop-up shows it ("Warning, line 3: 1M means …").
+ */
+function moveToTrap(command: (view: EditorView) => boolean): (view: EditorView) => boolean {
+  return (view) => {
+    if (!command(view)) return false;
+    const { from, to } = view.state.selection.main;
+    let found: Diagnostic | undefined;
+    forEachDiagnostic(view.state, (d, a, b) => {
+      if (!found && a === from && b === to) found = d;
+    });
+    if (found) {
+      const line = view.state.doc.lineAt(from).number;
+      const heading = EDITOR_STRINGS.trapHeading(EDITOR_STRINGS.severity[found.severity === 'hint' ? 'info' : found.severity], line);
+      view.dispatch({ effects: EditorView.announce.of(`${heading} ${found.message}`) });
+    }
+    return true;
+  };
+}
+
 const validChange = (c: TextChange, length: number): boolean =>
   Number.isInteger(c.from) && Number.isInteger(c.to) && c.from >= 0 && c.from <= c.to && c.to <= length && typeof c.insert === 'string';
 
@@ -92,6 +127,9 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     autocorrect: 'off',
     autocapitalize: 'off',
     translate: 'no',
+    // Already a Tab stop (contenteditable); said out loud for checkers such as axe, which then see
+    // that the editor's scrolling box has something focusable inside (scrollable-region-focusable).
+    tabindex: '0',
   };
   if (opts.describedBy) contentAttributes['aria-describedby'] = opts.describedBy;
 
@@ -125,7 +163,8 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
         { key: 'Mod-Enter', run, preventDefault: true },
         { key: 'Ctrl-Enter', run, preventDefault: true }, // also on a Mac, so "Ctrl+Enter runs" is true everywhere
         { key: 'Ctrl-Shift-m', run: openLintPanel, preventDefault: true },
-        { key: 'Shift-F8', run: previousDiagnostic },
+        { key: 'F8', run: moveToTrap(nextDiagnostic) },
+        { key: 'Shift-F8', run: moveToTrap(previousDiagnostic) },
         { key: 'Escape', run: closePopUps },
       ]),
     ),
@@ -168,8 +207,16 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     const next = event.relatedTarget;
     if (!(next instanceof Node) || !view.dom.contains(next)) closePopUps(view);
   };
+  // A pop-up opened by the mouse while focus is elsewhere (on Run, say) closes with Escape too
+  // (a11y review F9, WCAG 1.4.13); inside the editor the keymap above does it.
+  const doc = opts.parent.ownerDocument;
+  const onDocumentKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape' || (event.target instanceof Node && view.dom.contains(event.target))) return;
+    closePopUps(view);
+  };
   view.dom.addEventListener('keydown', onKeydown);
   view.dom.addEventListener('focusout', onFocusOut);
+  doc.addEventListener('keydown', onDocumentKeydown);
 
   const handleFix = (fix: Fix): void => {
     const mapped = sinceTraps ? mapFix(fix, sinceTraps) : fix;
@@ -177,7 +224,11 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
       view.dispatch({ effects: EditorView.announce.of(EDITOR_STRINGS.fixOutOfDate) });
       return;
     }
+    // The fix's button is in the pop-up, which goes away with its trap: focus would fall to the
+    // page (a11y review F3, WCAG 2.4.3). It goes back to the text instead.
+    const fromPopUp = doc.activeElement instanceof Element && doc.activeElement.closest('.cm-tooltip') !== null;
     onFix?.(mapped);
+    if (fromPopUp && !view.hasFocus) view.focus();
   };
 
   return {
@@ -210,7 +261,7 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     setTraps(traps, callback) {
       onFix = callback;
       sinceTraps = ChangeSet.empty(view.state.doc.length);
-      view.dispatch({ effects: setDiagnosticsEffect.of(trapsToDiagnostics(traps, view.state.doc, handleFix)) });
+      view.dispatch({ effects: setDiagnosticsEffect.of(trapsToDiagnostics(trapsToMark(traps), view.state.doc, handleFix)) });
     },
     applyChanges(changes) {
       const length = view.state.doc.length;
@@ -237,6 +288,7 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
       observer?.disconnect();
       view.dom.removeEventListener('keydown', onKeydown);
       view.dom.removeEventListener('focusout', onFocusOut);
+      doc.removeEventListener('keydown', onDocumentKeydown);
       view.destroy();
     },
   };

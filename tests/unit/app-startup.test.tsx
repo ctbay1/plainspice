@@ -36,7 +36,8 @@ describe('decideStartup', () => {
 
   it('a damaged link says why, and the app opens the next choice', () => {
     const d = decideStartup({ share: { ok: false, code: 'cut-short', reason: 'This link looks cut short.' }, saved: '* mine\n', example });
-    expect(d).toEqual({ source: 'saved', netlist: '* mine\n', problem: 'This link looks cut short.' });
+    // With its code, so the app can react to some (a newer version: look for an update).
+    expect(d).toEqual({ source: 'saved', netlist: '* mine\n', problem: 'This link looks cut short.', problemCode: 'cut-short' });
   });
 
   it('a fragment that is no share link at all (#main) is ignored silently', () => {

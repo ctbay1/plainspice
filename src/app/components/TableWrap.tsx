@@ -15,9 +15,13 @@ export function TableWrap({ label, children }: { label: string; children: ReactN
     const element = box.current;
     if (!element) return;
     const measure = (): void => setScrolls(element.scrollWidth > element.clientWidth + 1);
-    measure();
-    if (typeof ResizeObserver === 'undefined') return; // no layout to follow (tests without a browser)
-    // The box changes with the window and the text size; the table, with its contents.
+    if (typeof ResizeObserver === 'undefined') {
+      measure(); // no layout to follow (tests without a browser)
+      return;
+    }
+    // The box changes with the window and the text size; the table, with its contents. The observer
+    // also reports each box once at the start, after layout: measuring here instead forced a layout
+    // of every table at once when a tab with hundreds of them opened (perf review 1).
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     if (element.firstElementChild) observer.observe(element.firstElementChild);

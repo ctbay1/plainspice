@@ -5,7 +5,7 @@
  */
 import { Fragment, type ReactNode } from 'react';
 import type { FieldExplanation, LineExplanation } from '../../spice/types.ts';
-import { t } from '../../i18n/index.ts';
+import { t, tn } from '../../i18n/index.ts';
 import { TableWrap } from './TableWrap.tsx';
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -26,31 +26,50 @@ export function emphasise(text: string, words: readonly string[] | undefined): R
   );
 }
 
+/** Rows drawn at most: a part with thousands of words (a PWL source pasted from a file) stays quick. */
+export const MAX_FIELD_ROWS = 200;
+
 export function FieldTable({ explanation }: { explanation: LineExplanation }): ReactNode {
   if (!explanation.fields.length) return null;
+  const more = explanation.fields.length - MAX_FIELD_ROWS;
   return (
-    <TableWrap label={t('fieldTableCaption', { line: explanation.line })}>
-      <table className="table table--fields">
-        <caption>{t('fieldTableCaption', { line: explanation.line })}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('fieldColumnField')}</th>
-            <th scope="col">{t('fieldColumnWritten')}</th>
-            <th scope="col">{t('fieldColumnMeaning')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {explanation.fields.map((f: FieldExplanation, i) => (
-            <tr key={`${i}-${f.label}`}>
-              <th scope="row">{f.label}</th>
-              <td>{f.text ? <code className="code">{f.text}</code> : <span className="muted">{t('fieldMissing')}</span>}</td>
-              <td>{emphasise(f.meaning, f.emphasis)}</td>
+    <>
+      <TableWrap label={t('fieldTableCaption', { line: explanation.line })}>
+        <table className="table table--fields">
+          <caption>{t('fieldTableCaption', { line: explanation.line })}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('fieldColumnField')}</th>
+              <th scope="col">{t('fieldColumnWritten')}</th>
+              <th scope="col">{t('fieldColumnMeaning')}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </TableWrap>
+          </thead>
+          <tbody>
+            {explanation.fields.slice(0, MAX_FIELD_ROWS).map((f: FieldExplanation, i) => (
+              <tr key={`${i}-${f.label}`}>
+                <th scope="row">{f.label}</th>
+                <td>{f.text ? <code className="code">{f.text}</code> : <span className="muted">{t('fieldMissing')}</span>}</td>
+                <td>{emphasise(f.meaning, f.emphasis)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
+      {more > 0 && <p className="muted">{tn('fieldRowsMore', more)}</p>}
+    </>
   );
+}
+
+/** Two explanations that read the same (the parser makes new objects on every reparse). */
+export function sameExplanation(a: LineExplanation, b: LineExplanation): boolean {
+  if (a === b) return true;
+  if (a.line !== b.line || a.heading !== b.heading || a.summary !== b.summary) return false;
+  if (a.notes.length !== b.notes.length || a.notes.some((n, i) => n !== b.notes[i])) return false;
+  if (a.fields.length !== b.fields.length) return false;
+  return a.fields.every((f, i) => {
+    const g = b.fields[i]!;
+    return f.label === g.label && f.text === g.text && f.meaning === g.meaning && (f.emphasis ?? []).join('\n') === (g.emphasis ?? []).join('\n');
+  });
 }
 
 /** Heading, summary, field table and notes of one line. */

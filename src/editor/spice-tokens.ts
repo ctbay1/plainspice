@@ -303,6 +303,15 @@ export function tokenizeLine(text: string, state: LineState, next?: NextLine): {
   return finish({ ...next0, statement: null });
 }
 
+/**
+ * A statement longer than this (in words and punctuation, over its '+' lines) is no longer styled
+ * past this point. Each '+' line classifies the whole statement again, so a statement of thousands
+ * of '+' lines cost time growing with the square of their number: 25 000 of them, from a 317-
+ * character link, took over a minute per keystroke (security review M3). Real netlists stay far
+ * below: a PWL source with 400 points has about 800.
+ */
+export const MAX_STYLED_PIECES = 1000;
+
 /** The pieces of a continuation ('+' line, or a line after two backslashes) added to its statement. */
 function continueStatement(
   tokens: SpiceToken[],
@@ -315,6 +324,10 @@ function continueStatement(
   next: NextLine | undefined,
 ): { tokens: SpiceToken[]; state: LineState } {
   const before = state.statement!;
+  if (before.pieces.length > MAX_STYLED_PIECES) {
+    for (const p of lex(text, from, codeEnd)) tokens.push({ from: p.from, to: p.to, type: 'word' });
+    return finish({ ...next0, statement: before });
+  }
   const pieces = before.kind === 'element' ? lexPart(text, from, codeEnd, before.head, before.pieces) : lex(text, from, codeEnd);
   const statement: Statement = { ...before, pieces: before.pieces.concat(pieces.map(plain)) };
   emit(tokens, pieces, classifyStatement(statement, state.subckt > 0), statement.pieces.length - pieces.length, statement.kind === 'element');

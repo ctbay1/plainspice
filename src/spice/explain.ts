@@ -90,6 +90,8 @@ export const EXPLAIN_STRINGS = {
   continuationLost: (line: number, name: string): string =>
     `So ${name} on line ${line} does not get these words.`,
   afterEndHeading: 'After .end',
+  afterEndIgnoredHeading: 'After .end: not read',
+  afterAtHeading: 'After the @ line: not read',
   afterEndRead: (end: number): string =>
     `This line comes after .end (line ${end}). ngspice does not stop reading at .end, so it still reads this line. Put it above .end, where it belongs.`,
   afterEndNotRead: (end: number): string =>
@@ -192,7 +194,7 @@ export const EXPLAIN_STRINGS = {
   // ---- parts
   partHeading: (name: string, what: string, code?: string): string => `${name}: ${withArticle(what)}${code ? ` (${code})` : ''}`,
   twoTerminal: (name: string, value: string, what: string, a: string, b: string): string =>
-    value ? `${name} is a ${value} ${what} between ${a} and ${b}.` : `${name} is ${withArticle(what)} between ${a} and ${b}.`,
+    value ? `${name} is ${articleBefore(value)} ${value} ${what} between ${a} and ${b}.` : `${name} is ${withArticle(what)} between ${a} and ${b}.`,
   valueIsExpression: 'Its value is an expression, which ngspice works out before running.',
   resistorNote: "Resistors work either way round, and the order of the lines doesn't matter either.",
   capacitorNote: 'In .op and .dc a capacitor is an open circuit: no DC current flows through it.',
@@ -207,8 +209,11 @@ export const EXPLAIN_STRINGS = {
   vSwept: (line: number): string => `The .dc on line ${line} sweeps this source, so in that analysis its value changes.`,
   vZeroCurrent: (name: string, plus: string, minusNode: string): string =>
     `Its current is the current in this branch, positive when it flows from ${plus}, through ${name}, to ${minusNode}.`,
-  sourceSignNote:
-    "SPICE counts a source's current as positive when it enters at the first node, here the + side, and flows through the source to the second. A source that delivers power shows a negative current.",
+  sourceSign: "SPICE counts a source's current as positive when it enters at the first node, here the + side, and flows through the source to the second.",
+  // C1, C1b, C2: the sign follows the + side, so it depends on which side is the higher one.
+  sourceSignPositive: 'So while this source delivers power, with its + side the higher one, its current is negative.',
+  sourceSignNegative: 'Its value is negative, so its + side is the lower one: while it delivers power, its current is positive.',
+  sourceSignGeneral: 'So a source whose + side is the higher one shows a negative current while it delivers power.',
   iPattern:
     "A current source has its own pattern: name, from node, to node, current. The current flows from the first node, through the source, into the second, the way the arrow points.",
   iPushes: (name: string, value: string, from: string, to: string): string =>
@@ -231,7 +236,7 @@ export const EXPLAIN_STRINGS = {
   controlCurrentSign: (control: string, plus: string, minusNode: string): string =>
     `The current in ${control} counts as positive when it flows from its + side (${plus}), through ${control}, to its ${MINUS} side (${minusNode}).`,
   ammeterTrick:
-    'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a zero-volt source in the branch you want to measure: the ammeter trick.',
+    'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a 0 V source in the branch you want to measure: the ammeter trick.',
   controlMissingNote: (name: string): string =>
     `There is no voltage source called ${name} in this netlist, so ngspice stops: "unknown controlling source".`,
   controlWrongNote: (name: string, what: string): string =>
@@ -336,7 +341,7 @@ export const EXPLAIN_STRINGS = {
   acType: (t: string): string => `${t}: how the points are spaced`,
   acStart: (v: string): string => `start frequency: ${v}`,
   acStop: (v: string): string => `stop frequency: ${v}`,
-  acNotShown: 'PlainSpice does not describe .ac results yet: they are passed on as ngspice wrote them.',
+  acNotShown: 'PlainSpice does not show .ac results yet: ngspice runs the analysis, and the ngspice output tab shows what it printed.',
   endWhat: 'end of the netlist',
   end: 'The end of the netlist.',
   endKeepsReading: 'ngspice does not stop reading at .end: it still reads the lines after it. Keep .end as the last line.',
@@ -400,6 +405,14 @@ export const EXPLAIN_STRINGS = {
 /** "a resistor", "an inductor" (and "a uniform RC line"). */
 function withArticle(what: string): string {
   return /^[aeiou]/i.test(what) && !/^(uni|one)/i.test(what) ? `an ${what}` : `a ${what}`;
+}
+
+/**
+ * The article before a number written in digits, chosen by how it is said: "an 8 Ω resistor"
+ * (eight), "an 11 kΩ resistor" (eleven), "an 18 V source" (eighteen), but "a 1.5 kΩ resistor".
+ */
+export function articleBefore(value: string): string {
+  return value.startsWith('8') || /^1[18](?![\d])/.test(value) ? 'an' : 'a';
 }
 
 function capitalise(s: string): string {
@@ -1436,7 +1449,9 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
           addNote(p.notes, S.missingValueSource('V')); // P16
         }
       }
-      addNote(p.notes, S.sourceSignNote); // C1, C2
+      // C1, C1b, C2: which sign means "delivers power" depends on which side is the higher one.
+      const sign = v === undefined ? S.sourceSignGeneral : v > 0 ? S.sourceSignPositive : v < 0 ? S.sourceSignNegative : '';
+      addNote(p.notes, sign ? `${S.sourceSign} ${sign}` : S.sourceSign);
       break;
     }
     case 'I': {
@@ -1884,9 +1899,37 @@ function explainContinuation(netlist: Netlist, line: NetlistLine): LineExplanati
   const shell = !firstChar(line).startsWith('+');
   const summary = shell ? S.continuationShell(target.number, what) : S.continuation(target.number, what); // S18, S23, S24
   // The rows of the continued line that sit on this physical line.
-  const whole = explainLine(netlist, target.index);
-  const fields = (whole?.fields ?? []).filter((f) => f.span && f.span.from >= line.span.from && f.span.to <= line.span.to);
+  const fields = rowsByLine(netlist, target.index).get(line.index) ?? [];
   return { line: line.number, heading: S.continuationHeading, summary, fields, notes };
+}
+
+/**
+ * A continued statement's field rows, grouped by the physical line each one sits on. Worked out
+ * once per statement: explaining the whole statement again for each of its '+' lines made a
+ * netlist with thousands of them take minutes (the cost grew with the square of their number).
+ */
+const continuedRows = new WeakMap<Netlist, Map<number, Map<number, FieldExplanation[]>>>();
+
+function rowsByLine(netlist: Netlist, target: number): Map<number, FieldExplanation[]> {
+  let byTarget = continuedRows.get(netlist);
+  if (!byTarget) continuedRows.set(netlist, (byTarget = new Map()));
+  const cached = byTarget.get(target);
+  if (cached) return cached;
+  const rows = new Map<number, FieldExplanation[]>();
+  const lines = netlist.lines;
+  let k = target;
+  for (const f of explainLine(netlist, target)?.fields ?? []) {
+    if (!f.span) continue;
+    // Fields come in text order, so the line they sit on only moves forward.
+    while (k < lines.length - 1 && lines[k]!.span.to < f.span.from) k++;
+    const line = lines[k]!;
+    if (f.span.from < line.span.from || f.span.to > line.span.to) continue;
+    const list = rows.get(k);
+    if (list) list.push(f);
+    else rows.set(k, [f]);
+  }
+  byTarget.set(target, rows);
+  return rows;
 }
 
 function explainControl(line: NetlistLine): LineExplanation {
@@ -1906,12 +1949,41 @@ function explainControl(line: NetlistLine): LineExplanation {
 function explainAfterEnd(netlist: Netlist, line: NetlistLine): LineExplanation {
   const ctx = contextOf(netlist);
   const stop = ctx.stop;
+  // An @ line after a plain .end stops ngspice reading too (S29).
+  const at = netlist.lines.find((l) => stop !== undefined && l.index > stop && l.index <= line.index && l.text.trimStart().startsWith('@'));
   let summary: string;
+  let heading: string = S.afterEndIgnoredHeading;
   if (stop === undefined) summary = S.afterEndNotRead(0);
-  else if (netlist.lines[stop]?.kind === 'invalid') summary = S.afterAt(stop + 1); // S29
-  else if (ctx.endStops) summary = `${S.afterEndNotRead(stop + 1)} ${S.afterEndGlued}`; // S27
-  else summary = S.afterEndRead(stop + 1); // S25, S26, S28
-  return { line: line.number, heading: S.afterEndHeading, summary, fields: [], notes: [] };
+  else if (netlist.lines[stop]?.kind === 'invalid') {
+    summary = S.afterAt(stop + 1); // S29
+    heading = S.afterAtHeading;
+  } else if (at) {
+    summary = S.afterAt(at.number); // S29
+    heading = S.afterAtHeading;
+  } else if (ctx.endStops) summary = `${S.afterEndNotRead(stop + 1)} ${S.afterEndGlued}`; // S27
+  else {
+    summary = S.afterEndRead(stop + 1); // S25, S26, S28
+    heading = S.afterEndHeading;
+  }
+  return { line: line.number, heading, summary, fields: [], notes: [] };
+}
+
+/**
+ * The lines after a plain .end that ngspice still reads (S25, S26), up to a line starting with @
+ * (S29); none after ".end;…" (S27) or when an @ line came before .end.
+ */
+export function readAfterEnd(netlist: Netlist): NetlistLine[] {
+  const ctx = contextOf(netlist);
+  const stop = ctx.stop;
+  if (stop === undefined || stop !== netlist.end || ctx.endStops) return [];
+  const out: NetlistLine[] = [];
+  for (let i = stop + 1; i < netlist.lines.length; i++) {
+    const l = netlist.lines[i]!;
+    if (l.kind !== 'after-end') continue;
+    if (l.text.trimStart().startsWith('@')) break;
+    out.push(l);
+  }
+  return out;
 }
 
 function explainInvalid(line: NetlistLine): LineExplanation {

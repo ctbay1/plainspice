@@ -97,7 +97,7 @@ are in `SHARE_TEXT`, ready for translation.
 | `not-text` | data that is not valid UTF-8 | This link is damaged: the circuit in it is not readable text. Copy the whole link and open it again. |
 | `too-long` | a payload over 32,000 characters | This link is too long to open: the part after "c=" has more than 32,000 characters. |
 | `too-big` | text over 256,000 bytes (unpacking stopped there) | The circuit in this link is too big to open: it unpacks to more than 256 kB of text. |
-| `newer-version` | a format letter other than `t` or `z` | This link was made by a newer version of PlainSpice, or it is damaged. Reload the page to get the newest PlainSpice, then open the link again. |
+| `newer-version` | a format letter other than `t` or `z` | This link was made by a newer version of PlainSpice, or it is damaged. PlainSpice looks for its newest version now: if it then says a new version is ready, choose Reload and open the link again. |
 | `unsupported` | a `z` link in a browser without `DecompressionStream("deflate-raw")` | This browser cannot unpack PlainSpice links. Open the link in an up-to-date browser. |
 
 Examples, as fragments: `#c=tKiB0Ci5lbmQK` opens the two-line netlist `* t` and `.end` (a tiny

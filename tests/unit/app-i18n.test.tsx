@@ -16,8 +16,9 @@ describe('t and tn', () => {
 
   it('chooses plural forms (and the zero form where the catalog has one)', () => {
     expect(tn('checksCount', 0)).toBe('No traps found.');
-    expect(tn('checksCount', 1)).toBe('1 check found.');
-    expect(tn('checksCount', 3)).toBe('3 checks found.');
+    // One word for one idea: the checks find traps (words review m5).
+    expect(tn('checksCount', 1)).toBe('1 trap found.');
+    expect(tn('checksCount', 3)).toBe('3 traps found.');
     expect(tn('shareLength', 182)).toBe('The link is 182 characters long.');
   });
 });

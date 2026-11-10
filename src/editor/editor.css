@@ -27,6 +27,10 @@
   font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace);
   line-height: 1.7;
   min-height: 10.2em; /* six lines */
+  /* A long netlist scrolls inside the editor, so the line being edited, "This line" and the results
+     stay within reach instead of thousands of pixels further down the page (perf review 4). */
+  max-height: min(70vh, 40rem);
+  overflow: auto;
 }
 
 .cm-editor.ps-editor .cm-content {

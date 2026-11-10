@@ -5,9 +5,9 @@
  * same keys.
  *
  * Rules (docs/decisions/0010): plain words a first-year student can follow; one word for one idea
- * ("run" means simulate, a "check" is a beginner trap found before running, "results" are what
- * ngspice computed); placeholders are written {name}; keys ending in _one / _other are plural forms
- * chosen by tn().
+ * ("run" means simulate; the checks look for beginner traps before running, and what they find is
+ * a "trap"; "results" are what ngspice computed); placeholders are written {name}; keys ending in
+ * _one / _other are plural forms chosen by tn().
  */
 export const en = {
   // ---------------------------------------------------------------- page
@@ -55,6 +55,7 @@ export const en = {
   exportNgspice: 'Netlist for ngspice (.cir)',
   exportLtspice: 'Netlist for LTspice (.net)',
   saved: 'Saved {filename}.',
+  ltspiceSaved: 'Saved {filename} for LTspice. What changed from your netlist is listed above the netlist.',
   ltspiceNotesTitle: 'Saved {filename} for LTspice',
   ltspiceNotesIntro: 'What changed from your netlist:',
 
@@ -104,12 +105,13 @@ export const en = {
   helpKeyEscapeAction: 'Close a menu or a dialog',
   helpResultsHeading: 'How to read the results',
   helpResults1: 'Node voltages are measured from ground (node 0), which is 0 V. “v(a) = 14 V” means node a is 14 V above ground.',
-  helpResults2: 'Each number is shown in plain units (12 V, 4 mA, 3 kΩ), next to the way ngspice printed it (1.200000e+01).',
+  helpResults2: 'Each number is shown in plain units (12 V, 4 mA, 3 kΩ), next to the same value in ngspice’s format (1.200000e+01).',
   helpResults3: 'When ngspice says its DC solution failed, PlainSpice does not show its numbers as answers: they are kept under “What ngspice printed anyway”.',
   helpSignHeading: 'The sign of a source’s current',
   helpSign1: 'ngspice measures the current of a voltage source as the current that flows into its + node, through the source, and out of its − node.',
-  helpSign2: 'So a source that delivers power shows a negative current. In the first example, a 6 V source across 2 Ω, ngspice prints i(v1) = −3 A: 3 A leave the + node and flow through the resistor.',
-  helpSign3: 'The Results tab writes which way each current flows in words, so you do not have to work out the sign.',
+  helpSign2:
+    'So while a source delivers power with its + side the higher one (a positive value), its current is negative. In the example “A 6 V source and a resistor”, a 6 V source across 2 Ω, ngspice gives i(v1) = −3 A: 3 A leave the + node and flow through the resistor. With a negative value the + side is the lower one, and the sign turns around.',
+  helpSign3: 'After an operating point (.op), the Results tab writes which way each current flows in words, so you do not have to work out the sign.',
   helpMoreHeading: 'More',
   helpLicences: 'Licences and source',
   helpEngineCheck: 'Engine check: ngspice in your browser compared with ngspice on a PC',
@@ -126,7 +128,13 @@ export const en = {
   fieldColumnWritten: 'Written',
   fieldColumnMeaning: 'Meaning',
   fieldMissing: '(missing)',
+  fieldRowsMore_one: 'And {count} more word, not shown here.',
+  fieldRowsMore_other: 'And {count} more words, not shown here.',
   noticeClose: 'Dismiss this message',
+  toolbarHint: 'The arrow keys move between the buttons at the top.',
+  explainedGoTo: 'Line {line}',
+  explainedShowAll_one: 'Show the other {count} line',
+  explainedShowAll_other: 'Show the other {count} lines',
 
   // ---------------------------------------------------------------- tabs
   tabsLabel: 'Checks, results and explanations',
@@ -153,8 +161,10 @@ export const en = {
   fixesLabel: 'Fixes for line {line}',
   fixApplied: 'Done: {label}',
   checksCount_zero: 'No traps found.',
-  checksCount_one: '{count} check found.',
-  checksCount_other: '{count} checks found.',
+  checksCount_one: '{count} trap found.',
+  checksCount_other: '{count} traps found.',
+  checksMore_one: 'And {count} more, shown once the ones above are fixed.',
+  checksMore_other: 'And {count} more, shown once the ones above are fixed.',
 
   // ---------------------------------------------------------------- results
   resultsHeading: 'Results',
@@ -166,21 +176,29 @@ export const en = {
   statusUnreliableText: 'ngspice’s DC solution failed, so the numbers it printed are not answers.',
   statusError: 'Error',
   statusErrorText: 'ngspice stopped with an error, so there are no results.',
+  statusEmpty: 'No results',
+  statusEmptyText: 'ngspice finished without an error, but gave no results that PlainSpice can show. The message below says why.',
+  statusCheckedText: 'A check found an error in this netlist, so the numbers ngspice printed are not answers: {title}.',
   statusStopped: 'Stopped',
   statusStoppedText: 'The simulation was stopped.',
+  statusTimeoutText: 'ngspice had not finished after {seconds} s, so PlainSpice stopped it.',
+  statusTimeoutPoints: 'This netlist asks for about {points} points, which can take that long.',
   statusFailed: 'Error',
   statusFailedText: 'The simulation could not run: {reason}',
   staleResults: 'The netlist changed after this run. Press Run to see the results for the netlist as it is now.',
-  noAnalysis: 'This netlist has no analysis line (.op, .tf, .dc or .tran), so ngspice would have nothing to do. The Checks tab offers to add one.',
+  noAnalysis: 'This netlist has no analysis line (.op, .dc, .tran, .tf or .ac), so ngspice would have nothing to do. The Checks tab offers to add one.',
   noAnalysisTitle: 'Nothing to run yet',
-  trapsNote_one: 'This netlist has {count} check. Read it in the Checks tab before you trust the results.',
-  trapsNote_other: 'This netlist has {count} checks. Read them in the Checks tab before you trust the results.',
+  trapsNoteError: 'A check found an error in this netlist: the Checks tab explains it.',
+  trapsNoteWarning_one: 'The checks found {count} trap in this netlist. Read it in the Checks tab before you trust the results.',
+  trapsNoteWarning_other: 'The checks found {count} traps in this netlist. Read them in the Checks tab before you trust the results.',
+  trapsNoteInfo_one: 'There is a note about this netlist in the Checks tab.',
+  trapsNoteInfo_other: 'There are {count} notes about this netlist in the Checks tab.',
   showChecks: 'Show the checks',
   printedAnyway: 'What ngspice printed anyway',
   nodesCaption: 'Node voltages, measured from ground (node 0)',
   columnNode: 'Node',
   columnVoltage: 'Voltage',
-  columnPrinted: 'ngspice printed',
+  columnPrinted: 'In ngspice’s format',
   currentsCaption: 'Currents',
   columnPart: 'Part',
   columnCurrent: 'Current',
@@ -190,19 +208,20 @@ export const en = {
   flowsFromTo: 'from {from} to {to}',
   flowsNone: 'no current',
   powerDelivers: 'delivers {power}',
-  powerAbsorbs: 'takes in {power}',
+  powerAbsorbs: 'absorbs {power}',
   tfCaption: '.tf results',
   columnQuantity: 'Quantity',
   columnValue: 'Value',
   tfRatio: 'Transfer function {output} / {source}',
-  tfOutput: 'Output resistance at {output}',
+  tfOutput: 'Output resistance {at}',
+  tfOutputCurrent: 'ngspice’s output impedance for {output}: a stand-in number, not a resistance of your circuit',
   tfInput: 'Input resistance seen by {source}',
   ratioVV: 'volts per volt',
-  ratioAA: 'amperes per ampere',
-  ratioAV: 'amperes per volt',
-  ratioVA: 'volts per ampere',
+  ratioAA: 'amps per amp',
+  ratioAV: 'amps per volt',
+  ratioVA: 'volts per amp',
   minusWord: 'minus',
-  messagesHeading: 'Messages from ngspice',
+  messagesHeading: 'What happened, in plain words',
   sweepsNote: 'This run has sweep results: see the Plot tab.',
   showPlot: 'Show the plot',
 
@@ -213,6 +232,7 @@ export const en = {
   plotTitleDc: 'DC sweep: {series} as {source} changes',
   plotTitleTran: 'Transient analysis: {series} against time',
   plotTime: 'time',
+  plotTemperature: 'temperature',
   plotNone: 'No sweep results. A .dc or .tran line makes ngspice compute values to plot.',
 
   // ---------------------------------------------------------------- explained
@@ -237,11 +257,16 @@ export const en = {
   announceFinished: 'Simulation finished. {summary}',
   announceUnreliable: 'Simulation finished, but ngspice’s DC solution failed: the numbers are not answers.',
   announceError: 'ngspice stopped with an error. {detail}',
+  announceCheckError: 'Simulation finished, but a check found an error: {title}. The numbers are not answers.',
   announceStopped: 'The simulation was stopped.',
+  announceTimeout: 'ngspice had not finished after {seconds} s, so PlainSpice stopped it.',
   announceFailed: 'The simulation could not run: {reason}',
 
   // ---------------------------------------------------------------- updates
   updateReady: 'A new version of PlainSpice is ready.',
+  saveFailedTitle: 'Your netlist is not saved on this device',
+  saveFailedText:
+    'The browser did not let PlainSpice keep a copy (its storage may be full or blocked), so the netlist will be gone if you close or reload the page. It is still here: to keep it, use Export, then Netlist for ngspice.',
   updateReload: 'Reload to update',
   offlineReady: 'PlainSpice now works offline too.',
 

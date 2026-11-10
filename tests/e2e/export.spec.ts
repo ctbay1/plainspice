@@ -63,7 +63,8 @@ test('Export for LTspice applies the documented changes and lists them', async (
   const file = await exportAs(page, t('exportLtspice'));
   expect(file.name).toBe(`${FILE_NAME}.net`);
   expect(file.text).toBe(LTSPICE);
-  await expectAnnounced(page, t('saved', { filename: file.name }));
+  // The notes appear above the netlist, away from the menu: the announcement says where.
+  await expectAnnounced(page, t('ltspiceSaved', { filename: file.name }));
 
   // The changes, line by line as the student wrote them, in the message area next to the editor.
   const notes = page.getByRole('region', { name: t('ltspiceNotesTitle', { filename: file.name }) });

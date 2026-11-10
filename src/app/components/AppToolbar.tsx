@@ -10,7 +10,7 @@
  * fetched when the browser is idle after start-up or on first use. Focus goes into the menu or
  * dialog when it opens and back to the button when it closes (React Aria's FocusScope).
  */
-import { lazy, Suspense, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { lazy, Suspense, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button } from 'react-aria-components';
 import { t } from '../../i18n/index.ts';
 import type { Settings } from '../settings.ts';
@@ -50,7 +50,8 @@ export function AppToolbar({
   onSettings,
 }: {
   running: { slow: boolean } | null;
-  onRun: () => void;
+  /** `byPointer`: pressed with a mouse, pen or finger (not a key), so the app may scroll to the results. */
+  onRun: (byPointer: boolean) => void;
   onStop: () => void;
   onExample: (id: string) => void;
   onExport: (kind: ExportKind) => void;
@@ -60,6 +61,7 @@ export function AppToolbar({
 }): ReactNode {
   const [open, setOpen] = useState<OverlayKey | null>(null);
   const [focus, setFocus] = useState<MenuFocus>('first');
+  const runButton = useRef<HTMLButtonElement>(null);
   const examplesButton = useRef<HTMLButtonElement>(null);
   const exportButton = useRef<HTMLButtonElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
@@ -80,14 +82,19 @@ export function AppToolbar({
     setOpen(key);
   };
 
+  // React Aria's Button drops aria-keyshortcuts, so it is set on the element itself (a11y review F10).
+  useLayoutEffect(() => {
+    runButton.current?.setAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter');
+  });
+
   const runLabel = running ? (running.slow ? t('stop') : t('running')) : t('run');
   return (
     <>
       <div ref={toolbar} className="toolbar" role="toolbar" aria-label={t('toolbarLabel')} aria-orientation="horizontal" {...toolbarFocus}>
         <Button
+          ref={runButton}
           className={`button button--primary button--run${running?.slow ? ' button--stop' : ''}`}
-          onPress={() => (running ? running.slow && onStop() : onRun())}
-          aria-keyshortcuts="Control+Enter Meta+Enter"
+          onPress={(e) => (running ? running.slow && onStop() : onRun(e.pointerType !== 'keyboard' && e.pointerType !== 'virtual'))}
         >
           {running?.slow ? <StopIcon /> : <RunIcon />}
           <span>{runLabel}</span>

@@ -4,7 +4,7 @@
  * plain words and the app keeps working.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { SHARE_TEXT } from '../../src/share/link.ts';
+import { encodeShare, SHARE_TEXT } from '../../src/share/link.ts';
 import {
   expectAnnounced,
   expectFinished,
@@ -18,6 +18,7 @@ import {
   setNetlist,
   shownText,
   t,
+  TYPING,
 } from './helpers.ts';
 
 test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
@@ -56,7 +57,15 @@ test('a share link opens the same netlist in a new browser and runs it without p
     expect(await netlistText(opened)).toBe(SHARED);
     const n2 = rowNamed(nodeTable(opened), 'n2').getByRole('cell').first();
     expect(readPlain(await shownText(n2), 'V')).toBe(3);
-    // The link is taken out of the address once open, so a reload keeps the student's own edits.
+    // Nothing is saved yet, and the link stays in the address until the student edits the circuit
+    // (security review M4): a reload opens the link again, and the student's own netlist is safe.
+    expect(new URL(opened.url()).hash).not.toBe('');
+    expect(await opened.evaluate(() => localStorage.getItem('plainspice:netlist'))).toBeNull();
+    // The first edit makes it the student's own: then it is saved, and the link leaves the address.
+    await netlistEditor(opened).click();
+    await opened.keyboard.press('ControlOrMeta+End');
+    await opened.keyboard.type('* mine', TYPING);
+    await expect.poll(() => opened.evaluate(() => localStorage.getItem('plainspice:netlist'))).toContain('* mine');
     expect(new URL(opened.url()).hash).toBe('');
   } finally {
     await elsewhere.close();
@@ -114,4 +123,21 @@ test('a damaged link says why in plain words, and the app still works', async ({
   } finally {
     await elsewhere.close();
   }
+});
+
+test('opening a link never replaces the netlist saved on this device (security review M4)', async ({ page, context }) => {
+  // The student's own work, saved by the autosave.
+  await openApp(page);
+  await setNetlist(page, '* MY HOMEWORK\nV1 a 0 9\nR1 a 0 3\n.op\n.end\n');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('plainspice:netlist'))).toContain('MY HOMEWORK');
+  // A video's link, opened in another tab of the same browser, looked at, closed.
+  const video = await context.newPage();
+  await video.goto(`./#${await encodeShare('* from a video\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n', { run: true })}`);
+  await expectFinished(video);
+  expect(await netlistText(video)).toContain('from a video');
+  await video.close();
+  // The next visit without a link opens the student's own netlist.
+  const next = await context.newPage();
+  await openApp(next);
+  expect(await netlistText(next)).toContain('MY HOMEWORK');
 });

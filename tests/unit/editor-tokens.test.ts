@@ -5,7 +5,7 @@ import { EditorState } from '@codemirror/state';
 import { highlightTree, tagHighlighter } from '@lezer/highlight';
 import { describe, expect, it } from 'vitest';
 import { spiceLanguage, TOKEN_TAGS, type StyledTokenType } from '../../src/editor/spice-language.ts';
-import { commentStart, splitNumber, START_STATE, tokenizeLine, tokenizeNetlist, valueParts, type SpiceToken } from '../../src/editor/spice-tokens.ts';
+import { commentStart, MAX_STYLED_PIECES, splitNumber, START_STATE, tokenizeLine, tokenizeNetlist, valueParts, type SpiceToken } from '../../src/editor/spice-tokens.ts';
 
 const FIXTURES = resolve(import.meta.dirname, '../fixtures');
 
@@ -351,5 +351,20 @@ describe('the CodeMirror language gives each token its highlight tag', () => {
     expect(spans).toContain('; check:comment');
     expect(spans).toContain('.tran:directive');
     expect(spans).toContain('u:scale');
+  });
+});
+
+describe('very long statements (security review M3)', () => {
+  it('tokenizes 25 000 continuation lines in a moment, styling the first MAX_STYLED_PIECES words', () => {
+    const text = `* t\nV1 a 0 PWL(0 0\n${'+ 1 2\n'.repeat(25_000)}+ )\nR1 a 0 1k\n.op\n.end\n`;
+    const t0 = performance.now();
+    const lines = tokenizeNetlist(text);
+    // It used to grow with the square of the number of lines: over a minute for this netlist.
+    expect(performance.now() - t0).toBeLessThan(5000);
+    expect(lines[2]!.map((t) => t.type)).toEqual(['continuation', 'number', 'number']);
+    expect(lines[20_000]!.map((t) => t.type)).toEqual(['continuation', 'word', 'word']);
+    // The statement still ends where it ends: the next part is styled as usual.
+    expect(lines[25_003]!.map((t) => t.type)).toContain('element');
+    expect(MAX_STYLED_PIECES).toBeGreaterThanOrEqual(800);
   });
 });

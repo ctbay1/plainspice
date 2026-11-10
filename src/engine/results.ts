@@ -26,7 +26,7 @@ export interface ElementCurrent {
   /** Element name as ngspice reports it (lower-case), e.g. `v1`, `r1`, `f1`, `itest`. */
   element: string;
   /**
-   * The current in amperes with SPICE's sign: positive when it flows from the element's
+   * The current in amps with SPICE's sign: positive when it flows from the element's
    * first node, through the element, to its second node. (For a voltage source that means a
    * current entering at its + node; a source delivering power reads negative.)
    */

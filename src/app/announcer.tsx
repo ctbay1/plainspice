@@ -4,6 +4,13 @@
  * Both are always in the page (screen readers only watch regions that exist before they change).
  * Each message is added as its own element, so two messages close together are both read (a new
  * one never overwrites the last), and the same message can be announced again.
+ *
+ * - aria-atomic="false": role="status" and role="alert" are atomic by default, which makes a screen
+ *   reader read the whole region on each addition, the last run's numbers before the new ones
+ *   (a11y review F4). Only the new message is read.
+ * - data-live-announcer: while a dialog is open, React Aria makes the rest of the page inert, these
+ *   regions included, so "Link copied." in the Share dialog was never heard (a11y review F1). React
+ *   Aria leaves elements with this attribute out of that, as it does for its own announcer.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode } from 'react';
 
@@ -62,8 +69,26 @@ export function AnnouncerProvider({ children }: { children: ReactNode }): ReactN
       {children}
       {/* role="status" on a div, not <output>: <output> is a form control and is announced less reliably. */}
       {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-      <div ref={polite} className="visually-hidden" role="status" aria-live="polite" aria-relevant="additions" data-testid="live-polite" />
-      <div ref={assertive} className="visually-hidden" role="alert" aria-live="assertive" aria-relevant="additions" data-testid="live-alert" />
+      <div
+        ref={polite}
+        className="visually-hidden"
+        role="status"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-relevant="additions"
+        data-live-announcer="true"
+        data-testid="live-polite"
+      />
+      <div
+        ref={assertive}
+        className="visually-hidden"
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="false"
+        aria-relevant="additions"
+        data-live-announcer="true"
+        data-testid="live-alert"
+      />
     </AnnounceContext.Provider>
   );
 }

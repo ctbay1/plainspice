@@ -9,11 +9,16 @@ import { t } from '../../i18n/index.ts';
 import type { PlotHandle, PlotSpec } from '../../plot/types.ts';
 import type { Netlist } from '../../spice/types.ts';
 
-/** The swept source as written on the .dc line ("V1"), instead of ngspice's "v(v-sweep)". */
+/**
+ * The swept source as written on the .dc line ("V1"), instead of ngspice's "v(v-sweep)"; a sweep of
+ * TEMP is "temperature", the word the results use too (words review m11).
+ */
 export function dcSourceName(netlist: Netlist): string | undefined {
   for (const i of netlist.analyses) {
     const d = netlist.lines[i]?.directive;
-    if (d?.name === '.dc') return d.args[0]?.text;
+    if (d?.name !== '.dc') continue;
+    const source = d.args[0]?.text;
+    return source?.toLowerCase() === 'temp' ? t('plotTemperature') : source;
   }
   return undefined;
 }

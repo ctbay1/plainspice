@@ -74,10 +74,12 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   `.lib` (no files in the browser), `.control` (runs first), `.meas` (skipped with a results file),
   unknown dot commands (stop; so do `.pss`, `.hb` and `.sens2` in ngspice 47 as built, A29b, A29c),
   `.model` types, `.ic` (A23–A33); dot commands ngspice knows but
-  PlainSpice does not explain yet do not stop it (A34); `.subckt` … `.ends` and X lines (A35).
+  PlainSpice does not explain yet do not stop it (A34); `.subckt` … `.ends` and X lines (A35); a
+  `.control` block runs even without an analysis line, but writes nothing to the results file (A36).
 
 **Currents and power** (section 3): a voltage source's current is positive entering at its + node,
-so a source that delivers power reads negative (C1, C2); a part's current is positive from its first
+so a source whose + side is the higher one reads negative while it delivers power, and one with a
+negative value reads positive (C1, C1b, C2); a part's current is positive from its first
 node to its second, and a current source reports its value as written (C3); F, G, E, H and B follow
 the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8).
 
@@ -2334,11 +2336,40 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(a) = 2, v(b) = 1
 ```
 
+### A36. A .control block runs even when the netlist has no analysis line
+
+ngspice runs the commands in a .control block (here op and print), in batch mode too, so a netlist whose only analysis is inside .control does run. With a results file (-r) the block writes nothing to it, so PlainSpice has no results to show and points to the ngspice output tab.
+
+```spice
+* an operating point run from a .control block
+V1 a 0 1
+R1 a 0 1k
+.control
+op
+print v(a)
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    v(a) = 1.000000e+00
+    Note: Simulation executed from .control section
+  ngspice -b -r out.raw (exit 0)
+    rawfile: (no rawfile)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, no results):
+     Reference value :  0.00000e+00
+    v(a) = 1.000000e+00
+    OP information in rawfile.
+    vectors: (none)
+```
+
 ## 3. Currents and power in the results
 
 The signs describe.ts turns into directions ("3 A from n1 to 0 through R1") and power ("V1 delivers 18 W").
 
-### C1. A voltage source that delivers power shows a negative current
+### C1. A voltage source whose + side is the higher one shows a negative current while it delivers power
 
 F1a: i(v1) = −3: the current leaves V1 at its + node, so V1 delivers (6 V × 3 A =) 18 W to R1.
 
@@ -2358,6 +2389,29 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(n1) = 6, i(v1) = -3
+```
+
+### C1b. A voltage source with a negative value that delivers power shows a positive current
+
+V1 0 n1 -6 puts its + side on ground and sets V(0) − V(n1) = −6 V, so n1 sits at 6 V and its + side is the lower one. It still drives 3 A through R1 and delivers 18 W, but that current enters V1 at its + node (from ground) and leaves at n1, so i(v1) = +3. Which sign means "delivers power" depends on which side is the higher one: negative when the + side is higher (C1), positive when it is lower.
+
+```spice
+* a source with a negative value that delivers power
+V1 0 n1 -6
+R1 n1 0 2
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               6.000000e+00
+        v1#branch                        3.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 6, i(v1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(n1) = 6, i(v1) = 3
 ```
 
 ### C2. A voltage source that absorbs power shows a positive current

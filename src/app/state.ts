@@ -8,6 +8,7 @@ import type { AnalysisResults } from '../engine/results.ts';
 import type { RunResult } from '../engine/types.ts';
 import type { Netlist, Trap } from '../spice/types.ts';
 import type { ResultsDescription } from './model.ts';
+import { sameColours } from './nodes.ts';
 
 export type TabKey = 'checks' | 'results' | 'plot' | 'explained' | 'output';
 
@@ -29,10 +30,14 @@ export type RunOutcome =
       netlist: Netlist;
       /** Lines PlainSpice added to the copy ngspice ran (shown in the ngspice output tab). */
       added: readonly string[];
+      /** The traps of the netlist that ran: an error among them means its numbers are not answers. */
+      traps: readonly Trap[];
       /** The netlist text changed after this run: the results are kept but marked as old. */
       stale: boolean;
     }
   | { kind: 'stopped' }
+  /** ngspice had not finished within the time limit (`points`: about how many the netlist asks for). */
+  | { kind: 'timeout'; seconds: number; points?: number }
   | { kind: 'failed'; reason: string };
 
 export interface Notice {
@@ -72,9 +77,11 @@ export type Action =
       description: ResultsDescription;
       netlist: Netlist;
       added?: readonly string[];
+      traps?: readonly Trap[];
       tab: TabKey;
     }
   | { type: 'run-stopped' }
+  | { type: 'run-timeout'; seconds: number; points?: number }
   /** The run was cancelled because another circuit was loaded: nothing to report. */
   | { type: 'run-abandoned' }
   | { type: 'run-failed'; reason: string }
@@ -95,15 +102,26 @@ export function initialState(netlist: Netlist, traps: Trap[], colours: Map<strin
   };
 }
 
-/** Sweep results (.dc or .tran) exist, so the Plot tab is shown. */
+/** The first error-level trap of the netlist that ran: its numbers are then not answers, even when ngspice ran cleanly. */
+export function errorTrap(outcome: RunOutcome): Trap | undefined {
+  return outcome.kind === 'done' ? outcome.traps.find((t) => t.severity === 'error') : undefined;
+}
+
+/** Sweep results (.dc or .tran) that are answers exist, so the Plot tab is shown. */
 export function hasSweeps(outcome: RunOutcome): boolean {
-  return outcome.kind === 'done' && !outcome.result.unreliable && (outcome.results.dc !== undefined || outcome.results.tran !== undefined);
+  return (
+    outcome.kind === 'done' &&
+    !outcome.result.unreliable &&
+    errorTrap(outcome) === undefined &&
+    (outcome.results.dc !== undefined || outcome.results.tran !== undefined)
+  );
 }
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'parsed':
-      return { ...state, netlist: action.netlist, traps: action.traps, colours: action.colours };
+      // The same colours keep the same Map, so nothing that shows them has to draw again.
+      return { ...state, netlist: action.netlist, traps: action.traps, colours: sameColours(state.colours, action.colours) ? state.colours : action.colours };
     case 'text-changed':
       return state.outcome.kind === 'done' && !state.outcome.stale ? { ...state, outcome: { ...state.outcome, stale: true } } : state;
     case 'cursor':
@@ -124,9 +142,15 @@ export function reducer(state: AppState, action: Action): AppState {
         description: action.description,
         netlist: action.netlist,
         added: action.added ?? [],
+        traps: action.traps ?? [],
         stale: false,
       };
       return { ...state, running: null, outcome, tab: action.tab };
+    }
+    case 'run-timeout': {
+      const outcome: RunOutcome = { kind: 'timeout', seconds: action.seconds };
+      if (action.points !== undefined) outcome.points = action.points;
+      return { ...state, running: null, outcome, tab: 'results' };
     }
     case 'run-abandoned':
       return state.running ? { ...state, running: null } : state;

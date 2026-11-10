@@ -5,7 +5,7 @@
  * and dialogs close with Escape and give focus back to the button that opened them.
  */
 import { expect, test } from '@playwright/test';
-import { expectFinished, netlistEditor, netlistText, openApp, runButton, t, tab, TYPING } from './helpers.ts';
+import { chooseExample, expectFinished, netlistEditor, netlistText, openApp, runButton, t, tab, TYPING } from './helpers.ts';
 
 test('keyboard only: skip link, Run, the editor, Ctrl+Enter, the tabs, a fix, menus and dialogs', async ({ page }) => {
   await openApp(page);
@@ -103,4 +103,21 @@ test('keyboard only: skip link, Run, the editor, Ctrl+Enter, the tabs, a fix, me
     await expect(dialog).toHaveCount(0);
     await expect(opener).toBeFocused();
   }
+});
+
+test('a fix chosen in the editor\'s own pop-up (F8, Tab, Enter) leaves focus in the netlist (a11y review F3)', async ({ page }) => {
+  await openApp(page);
+  await chooseExample(page, t('exampleF3a'));
+  await netlistEditor(page).click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  await page.keyboard.press('F8');
+  const popUp = page.locator('.cm-tooltip-lint');
+  await expect(popUp).toBeVisible();
+  // F8 also says the trap in words, for screen readers.
+  await expect(page.locator('.cm-announced')).toContainText(/Warning, line 3:/);
+  await page.keyboard.press('Tab');
+  await expect(popUp.getByRole('button').first()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => netlistText(page)).toContain('R1 n1 n2 1meg');
+  await expect(netlistEditor(page)).toBeFocused();
 });

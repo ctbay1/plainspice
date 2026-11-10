@@ -16,7 +16,7 @@ import type { ElementLetter, FieldRole } from './types.ts';
 export interface ValueUnit {
   /** The symbol for src/format/si.ts (formatSI, speakSI): 'Ω', 'F', 'H', 'V', 'A', 'S'; '' for a ratio. */
   symbol: string;
-  /** In words, singular: "ohm", "farad", "henry", "volt", "ampere", "siemens", "volt per volt". */
+  /** In words, singular: "ohm", "farad", "henry", "volt", "amp", "siemens", "volt per volt". */
   name: string;
   /** For a controlled source, the ratio it stands for: 'V/V', 'A/A', 'A/V', 'V/A'. */
   ratio?: string;
@@ -102,7 +102,7 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     code: 'CCCS',
     explained: true,
     inEngine: true,
-    unit: { symbol: '', name: 'ampere per ampere', ratio: 'A/A' },
+    unit: { symbol: '', name: 'amp per amp', ratio: 'A/A' },
     fields: ['name', 'from node', 'to node', 'control source', 'gain'],
     nodeLabels: ['from node', 'to node'],
     valueLabel: 'gain',
@@ -136,7 +136,7 @@ const CATALOG: Readonly<Record<ElementLetter, ElementInfo>> = {
     name: 'current source',
     explained: true,
     inEngine: true,
-    unit: { symbol: 'A', name: 'ampere' },
+    unit: { symbol: 'A', name: 'amp' },
     fields: ['name', 'from node', 'to node', 'current'],
     nodeLabels: ['from node', 'to node'],
     valueLabel: 'current',

@@ -45,8 +45,10 @@ export const SHARE_TEXT = {
     `This link is too long to open: the part after "c=" has more than ${maxCharacters.toLocaleString('en-US')} characters.`,
   tooBig: (maxKilobytes: number): string =>
     `The circuit in this link is too big to open: it unpacks to more than ${maxKilobytes} kB of text.`,
+  // A plain reload keeps the version the service worker has (security review m3): the app asks the
+  // service worker to look for a newer one instead, and its "new version" banner has the reload.
   newerVersion:
-    'This link was made by a newer version of PlainSpice, or it is damaged. Reload the page to get the newest PlainSpice, then open the link again.',
+    'This link was made by a newer version of PlainSpice, or it is damaged. PlainSpice looks for its newest version now: if it then says a new version is ready, choose Reload and open the link again.',
   unsupported: 'This browser cannot unpack PlainSpice links. Open the link in an up-to-date browser.',
   netlistTooBig: (maxKilobytes: number): string =>
     `This circuit is too big for a link: a link holds up to ${maxKilobytes} kB of text. Save it as a file instead.`,

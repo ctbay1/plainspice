@@ -15,7 +15,7 @@ export interface InlineNote {
   line: number;
   /** What is shown, e.g. "→ 3 A, n1 → 0". */
   text: string;
-  /** The same in words, for the tooltip, e.g. "3 amperes flow from n1 to node 0". */
+  /** The same in words, for the tooltip, e.g. "3 amps flow from n1 to node 0". */
   speech: string;
 }
 

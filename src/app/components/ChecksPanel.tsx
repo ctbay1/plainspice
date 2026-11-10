@@ -6,6 +6,10 @@
  * A fix usually removes its trap, and with it the button that was just pressed. Focus would then
  * fall to the page and a keyboard user would start again from the top (WCAG 2.4.3), so it moves to
  * the trap now in that place, or to the panel's heading when no trap is left.
+ *
+ * At most SHOWN_PER_GROUP traps of each severity are drawn: a pasted or linked netlist with
+ * thousands of identical mistakes froze the page for many seconds while every one of them and its
+ * buttons were drawn (security review M2). The rest are counted, and appear as the first are fixed.
  */
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Button } from 'react-aria-components';
@@ -15,6 +19,17 @@ import { groupTraps } from '../state.ts';
 import { OkIcon, SEVERITY_ICON } from './Icons.tsx';
 
 const SEVERITY_WORD: Record<Trap['severity'], MessageKey> = { error: 'severityError', warning: 'severityWarning', info: 'severityInfo' };
+/** How many traps of one severity are drawn at most. */
+export const SHOWN_PER_GROUP = 50;
+
+/**
+ * The trap's "what ngspice does" without the claim IDs at its end ("[mega-as-milli-1, …]"): they
+ * name the evidence in docs/spice-facts/ for the tests and the docs, and mean nothing to a student
+ * (words review m13).
+ */
+export function withoutClaimIds(text: string): string {
+  return text.replace(/\s*\[[a-z][\w-]*\d[a-z]?(?:(?:,\s*|\s*\.\.\.\s*)[a-z][\w-]*\d[a-z]?)*\]\s*$/, '');
+}
 const GROUP_TITLE: Record<Trap['severity'], PluralBase> = { error: 'checksGroupError', warning: 'checksGroupWarning', info: 'checksGroupInfo' };
 
 export function SeverityLabel({ severity }: { severity: Trap['severity'] }): ReactNode {
@@ -75,18 +90,19 @@ export function ChecksPanel({
               {tn(GROUP_TITLE[g.severity], g.traps.length)}
             </h3>
             <ul className="trap-list">
-              {g.traps.map((trap, i) => (
+              {g.traps.slice(0, SHOWN_PER_GROUP).map((trap, i) => (
                 <li key={`${trap.id}-${trap.line}-${i}`} className={`trap trap--${trap.severity}`}>
                   <h4 className="trap__title" tabIndex={-1}>
                     <SeverityLabel severity={trap.severity} />
-                    <span className="trap__text">{trap.title}</span>
+                    {/* "Warning: 1M means …", with a pause after the severity word for screen readers. */}
+                    <span className="visually-hidden">:</span> <span className="trap__text">{trap.title}</span>
                   </h4>
                   <Button className="link-button" onPress={() => onGoToLine(trap)} aria-label={t('goToLine', { line: trap.line })}>
                     {t('lineButton', { line: trap.line })}
                   </Button>
                   <p>{trap.why}</p>
                   <p>
-                    <strong>{t('whatNgspiceDoes')}</strong> {trap.ngspice}
+                    <strong>{t('whatNgspiceDoes')}</strong> {withoutClaimIds(trap.ngspice)}
                   </p>
                   {trap.fixes.length > 0 && (
                     // A named group of buttons ("Fixes for line 3"); a fieldset is for form fields.
@@ -109,6 +125,7 @@ export function ChecksPanel({
                 </li>
               ))}
             </ul>
+            {g.traps.length > SHOWN_PER_GROUP && <p className="muted">{tn('checksMore', g.traps.length - SHOWN_PER_GROUP)}</p>}
           </section>
         ))
       )}

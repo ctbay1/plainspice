@@ -62,7 +62,8 @@ export function NetlistEditor({
     <>
       <div ref={host} className="editor-host" id="netlist-editor" />
       <p id="netlist-hint" className="hint">
-        {EDITOR_HINT}
+        {/* The toolbar's buttons are one Tab stop, reached with the arrow keys: say so (a11y review F15). */}
+        {EDITOR_HINT} {t('toolbarHint')}
       </p>
     </>
   );

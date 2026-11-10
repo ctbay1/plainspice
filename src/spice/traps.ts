@@ -17,7 +17,7 @@
  * skips the DC operating point).
  */
 import { formatNumber, formatSI, speakSI } from '../format/si.ts';
-import { isKnownDotCommand } from './explain.ts';
+import { isKnownDotCommand, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, parseNetlist } from './parse.ts';
@@ -45,6 +45,7 @@ export const TRAP_IDS = [
   'greek-mu',
   'rkm-notation',
   'decimal-comma',
+  'sign-in-value',
   'space-before-suffix',
   'midline-comment',
   'nbsp',
@@ -285,6 +286,15 @@ function amount(value: number, letter: ElementLetter | undefined): string {
   return formatSI(value, letter ? (UNIT[letter] ?? '') : '');
 }
 
+/**
+ * The value in words and in symbols, for titles a screen reader reads aloud: "1 milliohm (1 mΩ)".
+ * Speech does not carry letter case, so "1 mΩ, not 1 MΩ" alone would sound like the same thing twice.
+ */
+function amountSaid(value: number, letter: ElementLetter | undefined): string {
+  const unit = letter ? UNIT[letter] : undefined;
+  return unit ? `${speakSI(value, unit)} (${formatSI(value, unit)})` : amount(value, letter);
+}
+
 /** The number as written, without its scale letters and the letters after them ("4.7" of "4.7MOhm"). */
 function numberPart(r: NumberReading): string {
   const tail = (r.scale?.letters ?? '') + (r.ignored ?? '') + (r.rest ?? '');
@@ -429,8 +439,8 @@ function checkValueSpelling(c: Ctx, i: number): void {
       'mega-as-milli',
       'warning',
       v.token,
-      ohms || gain ? `${text} means ${amount(r.value, letter)}, not ${amount(base * 1e6, letter)}` : `${text} means ${amount(r.value, letter)}`,
-      `SPICE ignores capital letters, so M is the same as m: milli. For mega, write meg: ${digits}meg.`,
+      ohms || gain ? `${text} means ${amountSaid(r.value, letter)}, not ${amountSaid(base * 1e6, letter)}` : `${text} means ${amountSaid(r.value, letter)}`,
+      `SPICE ignores capital letters, so a capital M is the same as a small m: milli. For mega, write meg: ${digits}meg.`,
       `ngspice reads ${text} as ${amount(r.value, letter)}${r.ignored ? ` (it ignores the ${r.ignored})` : ''} and says nothing. [mega-as-milli-1, mega-as-milli-2, mega-as-milli-3]`,
       ohms || gain ? [mega, milli] : [milli, mega],
     );
@@ -459,12 +469,14 @@ function checkValueSpelling(c: Ctx, i: number): void {
 /** Number-like words with the Greek letter mu, which ngspice ignores (the micro sign works). */
 function checkGreekMu(c: Ctx): void {
   const looksLikeNumber = /^[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?\u03bc/;
-  const visit = (t: Token, unit: string | undefined): void => {
+  const visit = (t: Token, unit: string | undefined, letter?: ElementLetter): void => {
     if (!looksLikeNumber.test(t.text)) return;
     const r = readNumber(t.text);
     if (!r) return;
     const shown = unit === undefined ? formatNumber(r.value) : formatSI(r.value, unit);
     const meant = t.text.replaceAll('\u03bc', 'u');
+    // greek-mu-2: a capacitor's or an inductor's value word is also looked up as a model name.
+    const model = letter === 'C' || letter === 'L';
     add(
       c,
       'greek-mu',
@@ -472,7 +484,9 @@ function checkGreekMu(c: Ctx): void {
       t,
       `${t.text} is read as ${shown}: SPICE ignores this \u03bc`,
       `This \u03bc is the Greek letter mu, not the micro sign \u00b5 that SPICE knows (phone keyboards often type the Greek one). SPICE ignores it like a unit. Write u for micro: ${meant}.`,
-      `ngspice reads ${t.text} as ${shown} and says nothing. [greek-mu-1]`,
+      model
+        ? `ngspice reads ${t.text} as ${shown}; it only warns that it can't find a model called '${lowerAscii(t.text)}'. [greek-mu-2]`
+        : `ngspice reads ${t.text} as ${shown} and says nothing. [greek-mu-1]`,
       [fix(`Write u for micro: ${meant}`, replace(t, meant))],
     );
   };
@@ -480,7 +494,8 @@ function checkGreekMu(c: Ctx): void {
     const e = el(c, i);
     for (const f of e.fields) {
       if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role)) continue;
-      visit(f.token, e.value?.token === f.token && e.letter ? (UNIT[e.letter] ?? '') : undefined);
+      const main = e.value?.token === f.token;
+      visit(f.token, main && e.letter ? (UNIT[e.letter] ?? '') : undefined, main ? e.letter : undefined);
     }
   }
   for (const i of c.n.analyses) for (const t of c.n.lines[i]!.directive!.args) visit(t, undefined);
@@ -516,6 +531,44 @@ function checkDecimalComma(c: Ctx, i: number): void {
       `SPICE writes decimals with a point. A comma separates words, so ${written} is two numbers, ${f1.token.text} and ${f2.token.text}.`,
       ngspice,
       [fix(`Write ${meant}`, replace(span, meant))],
+    );
+    return;
+  }
+}
+
+/**
+ * "1k-2" or "1d-3" as the value of R, C or L: a + or − after a digit or letter starts a new number
+ * in ngspice, so it reads two numbers and the part silently takes the second: −2 Ω, −3 Ω
+ * (sign-in-value-1, N9, N10). On C and L ngspice also warns that it can't find a model named after
+ * the whole word (sign-in-value-2). On V, I, E, F, G and H ngspice stops instead: unknown-word.
+ */
+function checkSignInValue(c: Ctx, i: number): void {
+  const e = el(c, i);
+  if (e.letter !== 'R' && e.letter !== 'C' && e.letter !== 'L') return;
+  for (const f1 of mainFields(e)) {
+    const f2 = fieldAfter(e, f1);
+    if (!f2 || !MAIN_ROLES.has(f2.role) || f2.token.from !== f1.token.to || !/^[+-]\d/.test(f2.token.text)) continue;
+    const first = readNumber(f1.token.text);
+    const second = readNumber(f2.token.text);
+    if (!first || !second) continue;
+    const span = { from: f1.token.from, to: f2.token.to };
+    const written = c.text.slice(span.from, span.to);
+    const shownSecond = f2.token.text.replace(/^-/, MINUS);
+    const fixes: Fix[] = [];
+    // "1d-3" meant as an exponent: SPICE writes it with e.
+    const exponent = /^([+-]?\d+\.?\d*|[+-]?\.\d+)[dDeE]$/.exec(f1.token.text);
+    const meant = exponent ? `${exponent[1]}e${f2.token.text}` : undefined;
+    if (meant && readNumber(meant)) fixes.push(fix(`Write ${meant} (${amount(readNumber(meant)!.value, e.letter)})`, replace(span, meant)));
+    else fixes.push(fix(`Keep ${f1.token.text} (${amount(first.value, e.letter)})`, replace(span, f1.token.text)));
+    add(
+      c,
+      'sign-in-value',
+      'warning',
+      span,
+      `${written}: SPICE reads two numbers, ${f1.token.text} and ${shownSecond}`,
+      `A + or ${MINUS} right after a digit or a letter starts a new number in SPICE, so ${written} is two numbers, and ${nameOf(e)} takes the second one. For an exponent, write e: 1e-3.`,
+      `ngspice reads two numbers, ${f1.token.text} and ${f2.token.text}, keeps the second one and says nothing${e.letter === 'C' || e.letter === 'L' ? ` except a warning that it can't find a model called '${lowerAscii(written)}'` : ''}: ${nameOf(e)} gets ${amount(second.value, e.letter)}. [${e.letter === 'R' ? 'sign-in-value-1' : 'sign-in-value-2'}]`,
+      fixes,
     );
     return;
   }
@@ -774,7 +827,7 @@ function checkControlSource(c: Ctx, i: number): void {
   const targetEl = target === undefined ? undefined : el(c, target);
   if (targetEl && hasReadableCurrent(targetEl)) return;
   c.broken.add(i);
-  const why = 'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a zero-volt source in the branch you want to measure: the ammeter trick.';
+  const why = 'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a 0 V source in the branch you want to measure: the ammeter trick.';
   if (targetEl?.letter === 'B') {
     // A B line with I= is accepted as the control, but it has no branch current (control-source-5).
     add(c, 'control-source', 'error', t, `${t.text} is a current source: it has no current to read`, why,
@@ -938,7 +991,7 @@ function checkDangling(c: Ctx): void {
         'info',
         t,
         `Only ${name} touches ${t.text}`,
-        `No current flows in ${name}, so ${t.text} sits at the same voltage as ${other}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
+        `No current flows in ${name}, so ${t.text} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : other}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1]`,
       );
     }
@@ -1566,8 +1619,10 @@ function checkEnd(c: Ctx): void {
     const t = c.n.lines[0]?.text.trim().toLowerCase() ?? '';
     return /^\.(op|tf|dc|tran|ac|noise|disto|pz|sens|sp|four|fourier)\b/.test(t);
   })();
-  // A misspelt analysis has its own trap (unknown-dot-command), which says what to fix.
-  if (c.n.analyses.length === 0 && !c.hasControl && !titleIsAnalysis && !c.analysisTypo) {
+  // A misspelt analysis has its own trap (unknown-dot-command), which says what to fix. ngspice still
+  // reads the lines after a plain .end, so an analysis written there runs (after-end-1, S25).
+  const analysisAfterEnd = readAfterEnd(c.n).some((l) => /^\s*\.(op|tf|dc|tran|ac|noise|disto|pz|sens|sp|four|fourier)\b/i.test(l.text));
+  if (c.n.analyses.length === 0 && !c.hasControl && !titleIsAnalysis && !c.analysisTypo && !analysisAfterEnd) {
     const endLine = c.n.end === undefined ? undefined : c.n.lines[c.n.end];
     const lastEl = c.n.lines[c.top[c.top.length - 1]!]!;
     const anchor = endLine?.directive?.token ?? lastEl.element!.name;
@@ -1607,6 +1662,51 @@ function checkEnd(c: Ctx): void {
     [fix('Move .end to the bottom', change(endLine.span.from, next.span.from, ''), change(c.text.length, c.text.length, `${tail}${endText}\n`))]);
 }
 
+/**
+ * The voltage sources (V, the outputs of E and H) and inductors joining nodes a and b, found along
+ * one path, and whether their voltages could add up to more than 0 V: true unless every part on the
+ * path is an inductor or a V source with a plain number, and those numbers cancel.
+ */
+function voltageAcross(c: Ctx, a: string, b: string): { parts: Element[]; nonzero: boolean } | undefined {
+  const edges = new Map<string, { e: Element; to: string; sign: number }[]>();
+  const link = (from: string, edge: { e: Element; to: string; sign: number }): void => {
+    const list = edges.get(from);
+    if (list) list.push(edge);
+    else edges.set(from, [edge]);
+  };
+  for (const k of c.graph.elements) {
+    const e = el(c, k);
+    if (c.broken.has(k) || !e.letter || !'VEHL'.includes(e.letter) || e.nodes.length < 2) continue;
+    const [p, n] = [e.nodes[0]!.name, e.nodes[1]!.name];
+    link(p, { e, to: n, sign: 1 });
+    link(n, { e, to: p, sign: -1 });
+  }
+  const back = new Map<string, { from: string; e: Element; sign: number }>();
+  const queue = [a];
+  const seen = new Set([a]);
+  while (queue.length && !seen.has(b)) {
+    const x = queue.shift()!;
+    for (const edge of edges.get(x) ?? []) {
+      if (seen.has(edge.to)) continue;
+      seen.add(edge.to);
+      back.set(edge.to, { from: x, e: edge.e, sign: edge.sign });
+      queue.push(edge.to);
+    }
+  }
+  if (!seen.has(b)) return undefined;
+  const parts: Element[] = [];
+  let sum = 0;
+  let known = true;
+  for (let x = b; x !== a; ) {
+    const step = back.get(x)!;
+    parts.unshift(step.e);
+    if (step.e.letter === 'V' && !step.e.sourceFunction && step.e.value?.number) sum += step.sign * step.e.value.number.value;
+    else if (step.e.letter !== 'L' && !(step.e.letter === 'V' && !step.e.value && !step.e.sourceFunction)) known = false;
+    x = step.from;
+  }
+  return { parts, nonzero: !known || sum !== 0 };
+}
+
 function checkZeroOhm(c: Ctx, i: number): void {
   const e = el(c, i);
   const v = e.value?.number?.value;
@@ -1616,6 +1716,15 @@ function checkZeroOhm(c: Ctx, i: number): void {
   if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
     const name = freshName(c, `V${e.name.text}`);
     fixes.push(fix(`Use a 0 V source instead (${name})`, replace(e.name, name), replace(e.value!.token, '0')));
+  }
+  const across = a !== b && !c.graph.inSubcircuit.has(i) && c.graph.voltagePaths.same(a, b) ? voltageAcross(c, a, b) : undefined;
+  if (across?.nonzero) {
+    // zero-ohm-2: ngspice puts 1e-12 ohm there, so the current is the voltage times a million million.
+    const sources = across.parts.filter((p) => p.letter !== 'L').map(nameOf);
+    add(c, 'zero-ohm', 'error', e.value!.token, `${nameOf(e)} shorts ${list(sources)}: its current has no finite answer`,
+      `A resistance of 0 straight across ${sources.length === 1 ? 'a voltage source' : 'voltage sources'} would need an endless current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where ${nameOf(e)} should go.`,
+      `ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to 1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2]`);
+    return;
   }
   add(c, 'zero-ohm', 'warning', e.value!.token, `${nameOf(e)} has a resistance of ${formatSI(v, 'Ω')}`,
     "SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).",
@@ -1821,6 +1930,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   for (const i of netlist.elements) {
     checkValueSpelling(c, i);
     checkDecimalComma(c, i);
+    checkSignInValue(c, i);
     checkSpaceBeforeSuffix(c, i);
     checkMidlineComment(c, i);
     checkUnknownWord(c, i);

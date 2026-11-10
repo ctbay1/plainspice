@@ -120,8 +120,10 @@ const FACTS: Fact[] = [
   { code: 'A32', id: 'an-ic', netlist: "* .ic with .tran uic\nV1 in 0 0\nR1 in out 1k\nC1 out 0 1u\n.ic v(out)=3\n.tran 10u 1m uic\n.end\n", summaries: { "time": { points: 111, first: 1e-7, last: 0.001, maxStep: 0.00001 }, "v(out)": { points: 111, first: 2.9997000299970007, last: 1.103629591624538 } } },
   { code: 'A33', id: 'an-lib', netlist: "* .lib a file\n.lib models.lib tt\nV1 a 0 6\nR1 a 0 2\n.op\n.end\n", fails: true },
   { code: 'A34', id: 'an-known-dots', netlist: "* dot commands ngspice knows\nV1 a 0 AC 1\nR1 a 0 1k\n.global vdd\n.nodeset v(a)=1\n.width out=80\n.func dbl(x) {2*x}\n.temp 27\n.csparam xx=1\n.op\n.noise v(a) V1 dec 1 1 10\n.end\n", vectors: { "v(a)": 0 } },
+  { code: 'A36', id: 'an-control-only', netlist: "* an operating point run from a .control block\nV1 a 0 1\nR1 a 0 1k\n.control\nop\nprint v(a)\n.endc\n.end\n", prints: ["v(a) = 1.000000e+00"], fails: true },
   { code: 'A35', id: 'an-subckt', netlist: "* a subcircuit\n.subckt div in out\nR1 in out 1k\nR2 out 0 1k\n.ends\nV1 a 0 2\nX1 a b div\n.op\n.end\n", vectors: { "v(a)": 2, "v(b)": 1 } },
   { code: 'C1', id: 'cur-v-delivers', netlist: "* F1a: a 6 V source across a 2 ohm resistor\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "i(v1)": -3 } },
+  { code: 'C1b', id: 'cur-v-negative-delivers', netlist: "* a source with a negative value that delivers power\nV1 0 n1 -6\nR1 n1 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "i(v1)": 3 } },
   { code: 'C2', id: 'cur-v-absorbs', netlist: "* V1 absorbing power (V2 pushes current into the + node of V1)\nV1 a 0 6\nV2 b 0 12\nR1 b a 3\n.op\n.end\n", vectors: { "v(a)": 6, "v(b)": 12, "i(v2)": -2, "i(v1)": 2 } },
   { code: 'C3', id: 'cur-r-isource', netlist: "* current directions with savecurrents\nI1 0 n1 3\nR1 n1 0 4\nI2 n2 0 3\nR2 n2 0 4\n.options savecurrents\n.op\n.end\n", vectors: { "v(n1)": 12, "v(n2)": -12, "i(@i1[current])": 3, "i(@r1[i])": 3, "i(@i2[current])": 3, "i(@r2[i])": -3 } },
   { code: 'C4', id: 'cur-f-g', netlist: "* F and G current directions\nV1 c 0 2\nVs c d 0\nRd d 0 1\nF1 0 o Vs 2\nRo o 0 1\nF2 p 0 Vs 2\nRp p 0 1\nG1 0 q c 0 0.5\nRq q 0 1\nG2 r 0 c 0 0.5\nRr r 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "i(vs)": 2, "v(o)": 4, "v(p)": -4, "v(q)": 1, "v(r)": -1, "i(@f1[i])": 4, "i(@f2[i])": 4, "i(@g1[i])": 1, "i(@g2[i])": 1 } },
@@ -433,7 +435,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(plain(currentText(d, 'F1'))).toBe('2 A from 0 to n1 through F1');
     expect(plain(powerText(d, 'Itest'))).toBe('Itest delivers 14 W');
     expect(plain(powerText(d, 'F1'))).toBe('F1 delivers 24 W');
-    expect(d.words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amperes flow from n1 to ground through R1');
+    expect(d.words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from n1 to ground through R1');
     expect(plain(d.words.summary)).toBe('Simulation finished: a = 14 V, x = 14 V, n1 = 12 V; 5 currents. Open the results for details.');
   });
 
@@ -449,7 +451,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const s = d.words.sweeps[0]!;
     expect(s.points).toBe(13);
     expect(plain(s.text)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. At V1 = 12 V: v(in) = 12 V, v(out) = 8 V, i(v1) = −4 mA.');
-    expect(s.speech).toContain('the voltage at out is 8 volts, the current in V1 is minus 4 milliamperes');
+    expect(s.speech).toContain('the voltage at out is 8 volts, the current in V1 is minus 4 milliamps');
   });
 
   it('T1: a transient over 5 ms on ngspice\'s own time points (A16)', () => {
@@ -470,6 +472,29 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
 });
 
 describe('results in words: currents and power (C1–C8, A5)', () => {
+  it('C1, C1b: which sign means "delivers" depends on which side of the source is the higher one', () => {
+    const c1 = ofFact('C1');
+    expect(plain(powerText(c1, 'V1'))).toBe('V1 delivers 18 W');
+    expect(c1.words.currents.find((c) => c.name === 'V1')!.value).toBeLessThan(0);
+    expect(explainLine(c1.netlist, 1)!.notes.join(' ')).toContain('while this source delivers power, with its + side the higher one, its current is negative');
+    // V1 0 n1 -6: the + side is the lower one, so the source delivers 18 W with a positive current.
+    const c1b = ofFact('C1b');
+    expect(plain(powerText(c1b, 'V1'))).toBe('V1 delivers 18 W');
+    expect(c1b.words.currents.find((c) => c.name === 'V1')!.value).toBeGreaterThan(0);
+    expect(plain(currentText(c1b, 'V1'))).toBe('3 A from 0 to n1 through V1');
+    const note = explainLine(c1b.netlist, 1)!.notes.join(' ');
+    expect(note).toContain('Its value is negative, so its + side is the lower one: while it delivers power, its current is positive.');
+    expect(note).not.toContain('negative current');
+  });
+
+  it('A36: a netlist whose only analysis is in .control runs; PlainSpice says so instead of "nothing to run"', () => {
+    const d = ofFact('A36');
+    expect(d.words.status).toBe('failed');
+    expect(d.words.ngspiceError).toBe(false);
+    expect(d.words.warnings.map((m) => m.code)).toEqual(['control-only']);
+    expect(d.words.summary).toBe('ngspice finished but gave no results: ngspice ran the .control block. Open the results for details.');
+  });
+
   it('C2: a source that absorbs power says so, and its note says the current goes into +', () => {
     const d = ofFact('C2');
     expect(plain(powerText(d, 'V1'))).toBe('V1 absorbs 12 W');
@@ -525,7 +550,7 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
   it('A4: a current-source input gives a ratio in V/A', () => {
     const tf = ofFact('A4').words.tf!;
     expect(tf.ratio).toBe('V/A');
-    expect(tf.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at b is 1 volt per ampere, which is an ohm');
+    expect(tf.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at b is 1 volt per amp, which is an ohm');
     expect(plain(tf.outputResistance?.text)).toContain('output resistance at b: 1.5 Ω');
   });
 });

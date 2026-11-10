@@ -22,7 +22,7 @@ import {
   tab,
 } from './helpers.ts';
 
-/** Three traps of two kinds: 1M (a milliohm), 3A (attoamperes) and a node only one part touches. */
+/** Three traps of two kinds: 1M (a milliohm), 3A (attoamps) and a node only one part touches. */
 const TRAPS = '* Several traps at once\nV1 n1 0 6\nR1 n1 n2 1M\nR2 n2 0 1meg\nR3 n2 n9 1k\nI1 0 n1 3A\nC1 n2 0 1u\n.op\n.end\n';
 
 /** A display setting as the app applies it: an attribute on <html> (null: follow the device). */
@@ -165,6 +165,47 @@ test('reflow: no horizontal scrolling at 320 px wide, with normal and extra-larg
   await page.getByRole('button', { name: t('help'), exact: true }).click();
   await expect(page.getByRole('dialog', { name: t('helpTitle') })).toBeVisible();
   await fits('the Help dialog, 150 % text');
+});
+
+test('reflow: the Plot tab with its data table open fits 320 px; the table scrolls in its own box (a11y review F2)', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await openApp(page);
+  for (const example of [t('exampleT1'), t('exampleD1')]) {
+    await chooseExample(page, example);
+    await runAndExpectFinished(page);
+    await tab(page, t('tabPlot')).click();
+    const figure = page.getByRole('figure').first();
+    await figure.getByText(PLOT_STRINGS.tableToggle).click();
+    await expect(figure.getByRole('table')).toBeVisible();
+    await settle(page);
+    expect(await sidewaysScroll(page), `${example}: the page does not scroll sideways`).toBeLessThanOrEqual(0);
+  }
+  await chooseSetting(page, t('textSize'), t('textSizeXLarge'));
+  await settle(page);
+  expect(await sidewaysScroll(page), 'the plot and its table, 150 % text').toBeLessThanOrEqual(0);
+});
+
+test('the Examples menu fits a 320 px screen with extra-large text (a11y review F7)', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await openApp(page);
+  await chooseSetting(page, t('textSize'), t('textSizeXLarge'));
+  await page.getByRole('button', { name: t('examples') }).click();
+  await expect(page.getByRole('menu', { name: t('examplesMenu') })).toBeVisible();
+  await settle(page);
+  expect(await sidewaysScroll(page)).toBeLessThanOrEqual(0);
+});
+
+test('"Link copied." reaches screen readers while the Share dialog is open (a11y review F1)', async ({ page }) => {
+  await openApp(page);
+  await page.getByRole('button', { name: t('share'), exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: t('shareTitle') });
+  await expect(dialog.getByRole('textbox', { name: t('shareLinkLabel') })).toHaveValue(/#c=/);
+  await dialog.getByRole('button', { name: t('shareCopy') }).click();
+  const polite = page.getByTestId('live-polite');
+  await expect(polite).toContainText(t('shareCopied'));
+  // React Aria makes the page outside a dialog inert; the live regions must stay out of that.
+  expect(await polite.evaluate((el) => el.closest('[inert], [aria-hidden="true"]') === null)).toBe(true);
+  await expect(polite).toHaveAttribute('aria-atomic', 'false');
 });
 
 /** Text colour, the colour behind it (the nearest ancestor that paints one) and a border, as computed. */

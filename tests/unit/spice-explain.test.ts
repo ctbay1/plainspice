@@ -150,7 +150,7 @@ describe('the fixtures, in the channel\'s words', () => {
     expect(meaningOf(f1, 'control source')).toBe('it reads the current in Vx, the voltage source on line 3');
     expect(meaningOf(f1, 'gain')).toBe('2: the output current is 2 × the current it reads');
     expect(notes(f1)).toBe(
-      'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a zero-volt source in the branch you want to measure: the ammeter trick.',
+      'F and H read a current. But SPICE can only read the current through a voltage source. So first, put a 0 V source in the branch you want to measure: the ammeter trick.',
     );
   });
 
@@ -531,7 +531,7 @@ describe('dot commands', () => {
     expect(sp(dot('.ac oct 2 1 8').summary)).toContain('2 points per octave: 7 points.');
     expect(sp(dot('.ac lin 5 1 2').summary)).toContain('5 points in all, evenly spaced. The');
     expect(sp(dot('.ac lin 2 1 2').summary)).toContain('2 points in all, evenly spaced: 1 point.');
-    expect(notes(dot('.ac dec 10 1 1k'))).toContain('PlainSpice does not describe .ac results yet');
+    expect(notes(dot('.ac dec 10 1 1k'))).toContain('PlainSpice does not show .ac results yet');
   });
 
   it('.options, .param, .model, .include, .lib, .print, .plot, .save, .ic, .meas, .subckt, .ends', () => {

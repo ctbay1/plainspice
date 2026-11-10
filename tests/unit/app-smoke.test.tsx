@@ -164,7 +164,7 @@ describe('<App />', () => {
     expect(folded!.open).toBe(false);
     // The only node table is the folded one.
     for (const table of screen.queryAllByRole('table', { hidden: true })) expect(folded!.contains(table)).toBe(true);
-    expect(screen.getByText('Messages from ngspice')).toBeTruthy();
+    expect(screen.getByText('What happened, in plain words')).toBeTruthy();
   }, 30000);
 
   it('a share link with run=1 opens the circuit and runs it once the engine is warm', async () => {
@@ -174,8 +174,25 @@ describe('<App />', () => {
     expect(editorText()).toContain('from a link');
     await screen.findByRole('table', { name: /Node voltages/ }, { timeout: 15000 });
     expect(engine.runs).toEqual([asRun(netlist)]);
-    expect(localStorage.getItem('plainspice:netlist')).toBe(netlist);
+    // Opening a link saves nothing until the student edits the circuit (security review M4).
+    expect(localStorage.getItem('plainspice:netlist')).toBeNull();
   }, 30000);
+
+  it('a link never replaces the saved netlist until the student edits it; then it is saved and leaves the address', async () => {
+    localStorage.setItem('plainspice:netlist', '* MY HOMEWORK\nV1 a 0 1\nR1 a 0 1\n.op\n.end\n');
+    history.replaceState(null, '', '#c=from-a-link'); // the address while the link's circuit is open (no hashchange)
+    render(<App startup={start('* from a link\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n', { run: false })} engine={realEngine()} serviceWorker={false} />);
+    await new Promise((r) => setTimeout(r, 700)); // past the autosave's wait
+    expect(localStorage.getItem('plainspice:netlist')).toContain('MY HOMEWORK');
+    expect(location.hash).toBe('#c=from-a-link'); // a reload opens the link again
+    const { EditorView } = await import('@codemirror/view');
+    const view = EditorView.findFromDOM(document.querySelector('.cm-content') as HTMLElement)!;
+    act(() => {
+      view.dispatch({ changes: { from: view.state.doc.length, insert: '* my change\n' } });
+    });
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('my change'));
+    expect(location.hash).toBe('');
+  });
 
   it('a share link pasted into the address (hashchange) opens; a broken one says why', async () => {
     render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
@@ -185,12 +202,15 @@ describe('<App />', () => {
       location.hash = fragment;
     });
     await waitFor(() => expect(editorText()).toContain('pasted'));
-    await waitFor(() => expect(location.hash).toBe('')); // removed once open, so a reload keeps edits
+    // The link stays in the address until the first edit (a reload opens it again), and nothing is saved.
+    expect(location.hash).toBe(`#${fragment}`);
+    expect(localStorage.getItem('plainspice:netlist')).toBeNull();
     act(() => {
       location.hash = 'c=q999';
     });
-    expect(await screen.findByText('The link could not be opened')).toBeTruthy();
-    expect(screen.getByText(/made by a newer version of PlainSpice/)).toBeTruthy();
+    // In the notice itself (the live region repeats the reason for a moment, so not the whole page).
+    const notice = await screen.findByRole('region', { name: 'The link could not be opened' });
+    expect(within(notice).getByText(/made by a newer version of PlainSpice/)).toBeTruthy();
     expect(editorText()).toContain('pasted'); // the circuit stays
     // A skip-link fragment is no share link: nothing happens.
     act(() => {
@@ -239,6 +259,21 @@ describe('<App />', () => {
     await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toContain('Opened the example “The 1M trap”.'));
   });
 
+  it('choosing an example keeps the student\'s last edits saved, and saves nothing of the example', async () => {
+    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
+    const { EditorView } = await import('@codemirror/view');
+    const view = EditorView.findFromDOM(document.querySelector('.cm-content') as HTMLElement)!;
+    act(() => {
+      view.dispatch({ changes: { from: view.state.doc.length, insert: '* my last edit\n' } });
+    });
+    // At once, before the autosave's wait is over.
+    fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'The 1M trap' }, { timeout: 5000 }));
+    await waitFor(() => expect(editorText()).toContain('F3a: the 1M trap'));
+    await new Promise((r) => setTimeout(r, 700));
+    expect(localStorage.getItem('plainspice:netlist')).toContain('* my last edit');
+  });
+
   it('typing: the checks follow the text, and the new count is announced after a pause', async () => {
     render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
     const editor = document.querySelector('.cm-content') as HTMLElement;
@@ -249,7 +284,7 @@ describe('<App />', () => {
       view.dispatch({ changes: { from: view.state.doc.length, insert: 'R9 a 0 1M\n' } });
     });
     await waitFor(() => expect(screen.getByRole('tab', { name: /^Checks \([1-9]/ })).toBeTruthy());
-    await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toMatch(/checks? found/), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toMatch(/traps? found/), { timeout: 3000 });
     expect(localStorage.getItem('plainspice:netlist')).toContain('R9 a 0 1M');
   });
 });

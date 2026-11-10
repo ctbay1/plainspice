@@ -9,6 +9,19 @@ export interface PwaEvents {
   onOfflineReady: () => void;
 }
 
+/**
+ * Ask the service worker to look for a newer PlainSpice now (a link made by a newer version was
+ * opened). If there is one, the usual "new version" banner appears, with its Reload button: a plain
+ * reload would keep serving the version the service worker already has.
+ */
+export function checkForUpdate(): void {
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker
+    .getRegistration()
+    .then((registration) => registration?.update())
+    .catch(() => undefined); // offline, or no service worker yet: the message still says what to do
+}
+
 export async function registerServiceWorker(events: PwaEvents): Promise<void> {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   try {

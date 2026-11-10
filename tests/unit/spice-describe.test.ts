@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import type { EngineDiagnostic, RawPlot, RunResult } from '../../src/engine/types.ts';
-import { DESCRIBE_STRINGS, annotateLines, describeCircuit, describeResults, explainDiagnostic } from '../../src/spice/describe.ts';
+import { DESCRIBE_STRINGS, DESCRIBED_PARTS, annotateLines, describeCircuit, describeResults, explainDiagnostic } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
 const MINUS = '−';
@@ -130,9 +130,9 @@ describe('describeResults: node voltages and currents', () => {
       ['F1', '2 A from 0 to n1 through F1', '0', 'n1', false, 'F1 delivers 24 W'],
     ]);
     expect(words.currents[0]).toMatchObject({ element: 'itest', line: 2, value: 1 });
-    expect(words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amperes flow from n1 to ground through R1');
-    expect(words.currents.find((c) => c.name === 'R2')?.speech).toBe('1 ampere flows from x to n1 through R2');
-    expect(words.currents.find((c) => c.name === 'Vx')?.speech).toBe('Vx measures 1 ampere flowing from a to x');
+    expect(words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from n1 to ground through R1');
+    expect(words.currents.find((c) => c.name === 'R2')?.speech).toBe('1 amp flows from x to n1 through R2');
+    expect(words.currents.find((c) => c.name === 'Vx')?.speech).toBe('Vx measures 1 amp flowing from a to x');
     expect(words.currents.find((c) => c.name === 'F1')?.power).toMatchObject({ watts: 24, delivers: true, speech: 'F1 delivers 24 watts' });
   });
 
@@ -211,13 +211,13 @@ describe('describeResults: .tf', () => {
     expect(w.tf?.ratio).toBe('A/V');
     expect(sp(w.tf?.transferFunction?.text)).toBe('i(Vm)/V1 = 0.1667 (A/V)');
     expect(sp(w.tf?.outputResistance?.text)).toBe("ngspice's output impedance for i(Vm): 1e+20 Ω, a stand-in number rather than a resistance of your circuit");
-    expect(w.tf?.outputResistance?.speech).toBe('ngspice reports 1e+20 ohms as the output impedance for i(Vm); it is not a resistance of your circuit');
+    expect(w.tf?.outputResistance?.speech).toBe('ngspice reports 1 times 10 to the power 20 ohms as the output impedance for i(Vm); it is not a resistance of your circuit');
   });
 
   it('a differential output, and a current-source input in V/A (A4)', () => {
     const w = describeResults(parseNetlist('* t\nI1 0 a 1\nR1 a b 4\nR2 b 0 2\n.tf v(a,b) I1\n'), tfResults(1, { at: 'v(a,b)', value: 3 }, { source: 'i1', value: 6 }), run());
     expect(w.tf?.ratio).toBe('V/A');
-    expect(w.tf?.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at a and b is 1 volt per ampere, which is an ohm');
+    expect(w.tf?.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at a and b is 1 volt per amp, which is an ohm');
     expect(sp(w.tf?.outputResistance?.text)).toContain('output resistance between a and b: 3 Ω');
   });
 
@@ -240,7 +240,7 @@ describe('describeResults: sweeps', () => {
     const w = describeResults(n, { dc: sweep('v(v-sweep)', 'V', v, [['v(out)', 'V', v.map((x) => (2 * x) / 3)], ['i(v1)', 'A', v.map((x) => -x / 3000)]]), other: [] }, run());
     expect(w.sweeps).toHaveLength(1);
     expect(sp(w.sweeps[0]!.text)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. At V1 = 12 V: v(out) = 8 V, i(v1) = −4 mA.');
-    expect(sp(w.sweeps[0]!.speech)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. At V1 = 12 V: the voltage at out is 8 volts, the current in V1 is minus 4 milliamperes.');
+    expect(sp(w.sweeps[0]!.speech)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. When V1 is 12 volts: the voltage at out is 8 volts, the current in V1 is minus 4 milliamps.');
     expect(w.sweeps[0]!.final.map((f) => [f.name, f.value])).toEqual([['v(out)', 8], ['i(v1)', -0.004]]);
     expect(w.summary).toBe('Simulation finished: a DC sweep of 13 points. Open the results for details.');
   });
@@ -255,7 +255,7 @@ describe('describeResults: sweeps', () => {
     const n = parseNetlist('* T1\nV1 in 0 PULSE(0 5 0 1u 1u 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 10u 5m\n');
     const w = describeResults(n, { tran: sweep('time', 's', [0, 0.001, 0.005], [['v(out)', 'V', [0, 3.16, 4.966]], ['i(@c1[i])', 'A', [0, 1e-3, 3.4e-5]]]), other: [] }, run());
     expect(sp(w.sweeps[0]!.text)).toBe('Transient from 0 s to 5 ms: 3 time points. At 5 ms: v(out) = 4.966 V, i(@c1[i]) = 34 µA.');
-    expect(w.sweeps[0]!.speech).toContain('At 5 milliseconds: the voltage at out is 4.966 volts, the current in C1 is 34 microamperes.');
+    expect(w.sweeps[0]!.speech).toContain('At 5 milliseconds: the voltage at out is 4.966 volts, the current in C1 is 34 microamps.');
   });
 
   it('other analyses are counted, not described', () => {
@@ -309,13 +309,16 @@ describe('describeResults: messages and status', () => {
     expect(w.warnings[0]!.why).toBe(
       'Each part needs its own name, and SPICE ignores capital letters, so r1 here is the same name as R1 on line 3. ngspice stops at the second one ("device already exists"). Rename one of them.',
     );
-    expect(w.summary).toBe('The simulation did not run: two parts are called R1. Open the results for details.');
+    expect(w.ngspiceError).toBe(true);
+    expect(w.summary).toBe('ngspice stopped with an error: two parts are called R1. Open the results for details.');
   });
 
   it('no results and no message: no analysis line, or nothing at all (M20)', () => {
     const none = describeResults(parseNetlist('* t\nR1 a 0 1\n'), { other: [] }, run({ ok: false }));
     expect(none.warnings.map((m) => m.code)).toEqual(['no-analysis']);
-    expect(none.summary).toBe('The simulation did not run: nothing to run. Open the results for details.');
+    // ngspice ran nothing and said nothing (exit 0): it gave no results, it did not stop with an error (M4).
+    expect(none.ngspiceError).toBe(false);
+    expect(none.summary).toBe('ngspice finished but gave no results: nothing to run. Open the results for details.');
     const empty = describeResults(parseNetlist('* t\nR1 a 0 1\n.op\n'), { other: [] }, run({ ok: false }));
     expect(empty.warnings.map((m) => m.code)).toEqual(['no-results']);
   });
@@ -349,11 +352,11 @@ describe('annotateLines', () => {
   it('F5: one short note per part line', () => {
     const n = parseNetlist(F5);
     expect(annotateLines(n, F5_RESULTS).map((a) => [a.line, sp(a.text), a.speech])).toEqual([
-      [2, '1 A, 0 → a, delivers 14 W', '1 ampere flows from ground to a; delivers 14 watts'],
-      [3, '1 A, a → x', 'measures 1 ampere flowing from a to x'],
-      [4, '1 A, x → n1', '1 ampere flows from x to n1'],
-      [5, '3 A, n1 → 0', '3 amperes flow from n1 to ground'],
-      [6, '2 A, 0 → n1, delivers 24 W', '2 amperes flow from ground to n1; delivers 24 watts'],
+      [2, '1 A, 0 → a, delivers 14 W', '1 amp flows from ground to a; delivers 14 watts'],
+      [3, '1 A, a → x', 'measures 1 amp flowing from a to x'],
+      [4, '1 A, x → n1', '1 amp flows from x to n1'],
+      [5, '3 A, n1 → 0', '3 amps flow from n1 to ground'],
+      [6, '2 A, 0 → n1, delivers 24 W', '2 amps flow from ground to n1; delivers 24 watts'],
     ]);
   });
 
@@ -365,7 +368,7 @@ describe('annotateLines', () => {
       [3, 'delivers 24 W, 2 A out of +'],
       [4, '6 V across'],
     ]);
-    expect(notes[1]!.speech).toBe('delivers 24 watts; 2 amperes flow out of its + side');
+    expect(notes[1]!.speech).toBe('delivers 24 watts; 2 amps flow out of its + side');
   });
 
   it('gives nothing without an operating point, or when the numbers can\'t be trusted', () => {
@@ -474,5 +477,93 @@ describe('explainDiagnostic: every code in plain words', () => {
   it('explains an empty .dc sweep behind a "rawfile" error (A11)', () => {
     const w = explainDiagnostic(diag('rawfile', 'header without a Binary: or Values: section'), parseNetlist('* t\nV1 in 0 0\nR1 in 0 1k\n.dc V1 12 0 1\n'));
     expect(w).toMatchObject({ title: 'The .dc sweep has no points', line: 4 });
+  });
+});
+
+describe('the app reviews of 10 Nov 2026', () => {
+  it('a part ngspice left out has no current and no note, and its savecurrents warning is dropped (words review M5)', () => {
+    const n = parseNetlist('* T09a\nV1 a 0 6\nR1 a 0\n.op\n.end\n');
+    const r = run({ diagnostics: [diag('line-ignored', "'r1 a 0' is not a valid resistor instance line, ignored!", { severity: 'warning', subject: 'resistor' }), diag('warning', 'Warning: unrecognized variable - @r1[i]', { severity: 'warning' })] });
+    const results = op({ a: 6 }, [['v1', 0, 'branch'], ['r1', 0, 'device']]);
+    const w = describeResults(n, results, r);
+    expect(w.currents.map((c) => c.name)).toEqual(['V1']);
+    expect(w.warnings.map((m) => m.title)).toEqual(['R1 was left out']);
+    expect(annotateLines(n, results, r).map((a) => a.line)).toEqual([2]);
+  });
+
+  it('parts after a plain .end are in the results, as ngspice builds them; not after .end;… (words review M6)', () => {
+    const results = op({ a: 6 }, [['v1', -6, 'branch'], ['r1', 3, 'device'], ['r2', 3, 'device']]);
+    const after = describeResults(parseNetlist('* t\nV1 a 0 6\nR1 a 0 2\n.op\n.end\nR2 a 0 2\n'), results, run());
+    expect(after.currents.map((c) => sp(c.text))).toEqual(['6 A from 0 to a through V1', '3 A from a to 0 through R1', '3 A from a to 0 through R2']);
+    expect(annotateLines(parseNetlist('* t\nV1 a 0 6\nR1 a 0 2\n.op\n.end\nR2 a 0 2\n'), results, run()).map((a) => a.line)).toEqual([2, 3, 6]);
+    const glued = describeResults(parseNetlist('* t\nV1 a 0 6\nR1 a 0 2\n.op\n.end;x\nR2 a 0 2\n'), results, run());
+    expect(glued.currents.map((c) => c.name)).toEqual(['V1', 'R1']);
+  });
+
+  it('explains "can\'t find model" for a value word a check covers (words review M7, greek-mu-2)', () => {
+    const n = parseNetlist('* t\nV1 a 0 PULSE(0 1 0 1n 1n 1 2)\nR1 a b 1\nC1 b 0 2μF\n.tran 1m 10m\n.end\n');
+    const w = explainDiagnostic(diag('warning', "warning, can't find model '2μf' from line", { severity: 'warning' }), n);
+    expect(w.title).toBe('ngspice looked for a model called 2μF');
+    expect(w.line).toBe(4);
+    expect(w.why).toContain("can't find model '2μf'");
+  });
+
+  it('says when ngspice finished quietly without results, not that it stopped with an error (words review M4)', () => {
+    const n = parseNetlist('* t\nV1 a 0 1\nR1 a 0 1\n.dc V1 12 0 1\n.end\n');
+    const w = describeResults(n, { other: [] }, run({ ok: false, diagnostics: [diag('rawfile', 'no data')] }));
+    expect(w.status).toBe('failed');
+    expect(w.ngspiceError).toBe(false);
+    expect(w.summary).toMatch(/^ngspice finished but gave no results: the \.dc sweep has no points\./);
+  });
+
+  it('names why nothing ran: a .control block, an @ line, an analysis on the title line (words review M1, A36)', () => {
+    const quiet = run({ ok: false });
+    const control = describeResults(parseNetlist('* t\nV1 a 0 1\nR1 a 0 1k\n.control\nop\n.endc\n.end\n'), { other: [] }, quiet);
+    expect(control.warnings.map((m) => [m.code, m.severity, m.title])).toEqual([['control-only', 'note', 'ngspice ran the .control block']]);
+    const at = describeResults(parseNetlist('* t\nV1 a 0 1\nR1 a 0 1k\n@ oops\n.op\n.end\n'), { other: [] }, quiet);
+    expect(at.warnings[0]).toMatchObject({ code: 'no-analysis', line: 4 });
+    expect(at.warnings[0]!.why).toContain('Line 4 starts with @');
+    const title = describeResults(parseNetlist('.op\nV1 a 0 1\nR1 a 0 1k\n.end\n'), { other: [] }, quiet);
+    expect(title.warnings[0]!.why).toBe('Line 1 is always the title, so ngspice never runs the .op written there. It ran nothing.');
+  });
+
+  it('writes the spoken summary with units in words (a11y review F11, words review m10)', () => {
+    const w = describeResults(parseNetlist(F5), F5_RESULTS, run());
+    expect(sp(w.summary)).toBe('Simulation finished: a = 14 V, x = 14 V, n1 = 12 V; 5 currents. Open the results for details.');
+    expect(w.summarySpeech).toBe('Simulation finished: a is 14 volts, x is 14 volts, n1 is 12 volts; 5 currents. Open the results for details.');
+  });
+
+  it('says "an 8 Ω resistor" and "an 11 kΩ resistor", but "a 1.5 kΩ resistor" (words review m12)', () => {
+    const text = describeCircuit(parseNetlist('* t\nV1 a 0 18\nR1 a b 8\nR2 b c 11k\nR3 c 0 1.5k\n.op\n.end\n'));
+    expect(sp(text)).toContain('V1: an 18 V source');
+    expect(sp(text)).toContain('R1: an 8 Ω resistor');
+    expect(sp(text)).toContain('R2: an 11 kΩ resistor');
+    expect(sp(text)).toContain('R3: a 1.5 kΩ resistor');
+  });
+
+  it('a temperature sweep ends "At 100 °C", not "At the temperature = 100 °C" (words review m11)', () => {
+    const n = parseNetlist('* t\nV1 a 0 1\nR1 a 0 1k\n.dc TEMP 0 100 50\n.end\n');
+    const values = new Float64Array([0, 50, 100]);
+    const results: AnalysisResults = { dc: { scale: { name: 'temp-sweep', values, unit: '°C' }, series: [{ name: 'v(a)', values: new Float64Array([1, 1, 1]), unit: 'V' }] }, other: [] };
+    const s = describeResults(n, results, run()).sweeps[0]!;
+    expect(sp(s.text)).toBe('DC sweep of the temperature from 0 °C to 100 °C in steps of 50 °C: 3 points. At 100 °C: v(a) = 1 V.');
+    expect(s.speech).toContain('At 100 degrees Celsius: the voltage at a is 1 volt.');
+  });
+
+  it('writes ngspice\'s 1e20 Ω stand-in and other numbers beyond the prefixes with an exponent (words review m1)', () => {
+    const n = parseNetlist('* t\nI1 0 a 3A\nR1 a 0 4\n.op\n.end\n');
+    const w = describeResults(n, op({ a: 1.2e-17 }, [['i1', 3e-18, 'device'], ['r1', 3e-18, 'device']]), run());
+    expect(sp(w.currents.find((c) => c.name === 'I1')!.power!.text)).toBe('I1 delivers 3.6e-35 W');
+    expect(w.currents.find((c) => c.name === 'I1')!.power!.speech).toBe('I1 delivers 3.6 times 10 to the power minus 35 watts');
+  });
+});
+
+describe('a very long netlist', () => {
+  it('describes the first DESCRIBED_PARTS parts one by one and counts the rest', () => {
+    const text = `* many\nV1 a 0 1\n${Array.from({ length: 300 }, (_, i) => `R${i} a 0 1k`).join('\n')}\n.op\n.end\n`;
+    const words = describeCircuit(parseNetlist(text));
+    expect(words).toContain('301 parts and 1 node besides ground (a).');
+    expect(words).toContain(`And ${301 - DESCRIBED_PARTS} more parts.`);
+    expect(words).not.toContain('R299:');
   });
 });

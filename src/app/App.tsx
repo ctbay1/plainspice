@@ -15,10 +15,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import { I18nProvider, Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 import type { PlainSpiceEditor } from '../editor/index.ts';
 import { interpretPlots } from '../engine/results.ts';
-import { downloadFile, exportLtspice, exportNgspice } from '../export/export.ts';
 import { LOCALE, t, tn } from '../i18n/index.ts';
 import { decodeShare } from '../share/link.ts';
-import type { Fix, Span, Trap } from '../spice/types.ts';
+import type { Fix, Netlist, Span, Trap } from '../spice/types.ts';
 import { AnnouncerProvider, useAnnounce } from './announcer.tsx';
 import { AppToolbar, preloadOverlays } from './components/AppToolbar.tsx';
 import { ChecksPanel } from './components/ChecksPanel.tsx';
@@ -33,10 +32,10 @@ import { ThisLine } from './components/ThisLine.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
 import { exampleById, exampleName } from './examples.ts';
-import { annotateLines, checkTraps, describeResults, netlistToRun, parseNetlist } from './model.ts';
+import { annotateLines, checkTraps, describeResults, loadDescribe, netlistToRun, parseNetlist, pointsAskedFor } from './model.ts';
 import { nodeColours, sameColours } from './nodes.ts';
 import type { ExportKind } from './overlays/ExportMenu.tsx';
-import { registerServiceWorker } from './pwa.ts';
+import { checkForUpdate, registerServiceWorker } from './pwa.ts';
 import { applySettings, DEFAULT_SETTINGS, saveSettings, type Settings } from './settings.ts';
 import { clearShareFragment, type StartupDecision } from './startup.ts';
 import { hasSweeps, initialState, reducer, tabAfterRun, type EngineStatus, type TabKey } from './state.ts';
@@ -68,6 +67,14 @@ export function App(props: AppProps): ReactNode {
       </AnnouncerProvider>
     </I18nProvider>
   );
+}
+
+const loadExport = (): Promise<typeof import('../export/export.ts')> => import('../export/export.ts');
+
+/** The point count of a run that timed out, when its size explains it. */
+function withPoints(netlist: Netlist): { points?: number } {
+  const points = pointsAskedFor(netlist);
+  return points === undefined ? {} : { points };
 }
 
 function engineText(engine: EngineStatus): string {
@@ -131,15 +138,28 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const parseSoon = useDebounced(reparse, PARSE_DELAY_MS);
   // The editor may be gone when a waiting save is flushed on unmount: keep the text it last had.
   const lastText = useRef(startup.netlist);
+  /** Said once: the browser would not keep the netlist (storage full or blocked). */
+  const saveFailedShown = useRef(false);
   const saveSoon = useDebounced(
     () => {
       const editor = editorRef.current;
       if (editor) lastText.current = editor.getDoc();
-      writeStored(STORAGE_KEYS.netlist, lastText.current);
+      if (writeStored(STORAGE_KEYS.netlist, lastText.current) || saveFailedShown.current) return;
+      saveFailedShown.current = true;
+      dispatch({ type: 'notice', notice: { tone: 'problem', title: t('saveFailedTitle'), text: t('saveFailedText') } });
+      announce(t('saveFailedTitle'));
     },
     SAVE_DELAY_MS,
     { flushOnUnmount: true },
   );
+  /**
+   * A circuit just opened from a link or the examples is only saved once the student changes it,
+   * so opening one never replaces the student's own saved netlist. Until then a link stays in the
+   * address bar, so a reload opens it again.
+   */
+  const linkInAddress = useRef(startup.source === 'share');
+  /** The editor's text is being replaced by load(): that change is not the student's. */
+  const loading = useRef(false);
   // Said only after a pause in typing, and only when the number of checks changed.
   const announceChecksSoon = useDebounced(() => {
     const count = latestTraps.current.length;
@@ -202,61 +222,115 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     whenIdle(() => void warmUp());
   }, [warmUp]);
 
+  // ------------------------------------------------------------------ results on a narrow screen
+  const resultsPane = useRef<HTMLElement>(null);
+  /**
+   * After a tap on Run on a phone (one column), the results are far below the netlist: bring the
+   * results pane into view (perf review 4), at once when the student asked for reduced motion.
+   */
+  const showResultsOnNarrowScreen = useCallback(() => {
+    const pane = resultsPane.current;
+    if (!pane || !window.matchMedia?.('(max-width: 999px)').matches) return;
+    requestAnimationFrame(() => {
+      if (pane.getBoundingClientRect().top < window.innerHeight * 0.75) return; // already in view
+      const reduce = document.documentElement.dataset.motion === 'reduce' || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      pane.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    });
+  }, []);
+
   const runningRef = useRef(false);
+  /** The run in progress, so a circuit opened during it can wait for it to end before running. */
+  const currentRun = useRef<Promise<void> | null>(null);
   /** Set when a new circuit replaces the one running: its cancelled run then reports nothing. */
   const replacedRun = useRef(false);
+  /** Run was pressed with a pointer (a tap): on a narrow screen the results are then scrolled into view. */
+  const tappedRun = useRef(false);
   const run = useCallback(async (): Promise<void> => {
     const editor = editorRef.current;
     if (!editor || runningRef.current) return;
     parseSoon.flush();
     const text = editor.getDoc();
     const netlist = parseNetlist(text);
-    if (netlist.analyses.length === 0) {
+    const traps = checkTraps(netlist);
+    // Refuse only when ngspice would really run nothing: the no-analysis check knows about .control
+    // blocks, a title that is an analysis, misspelt analyses and lines after .end (words review M1).
+    if (traps.some((trap) => trap.id === 'no-analysis')) {
       dispatch({ type: 'notice', notice: { tone: 'info', title: t('noAnalysisTitle'), text: t('noAnalysis') } });
       dispatch({ type: 'tab', tab: 'checks' });
       announce(t('noAnalysis'));
       return;
     }
-    const traps = checkTraps(netlist);
+    const byTap = tappedRun.current;
+    tappedRun.current = false;
     runningRef.current = true;
     dispatch({ type: 'run-start' });
     const slow = setTimeout(() => dispatch({ type: 'run-slow' }), SLOW_RUN_MS);
-    try {
-      await warmUp();
-      // For .op, the copy that runs also saves every part's current (src/spice/run-netlist.ts).
-      const toRun = netlistToRun(netlist);
-      const result = await engine.run(toRun.text, RUN_TIMEOUT_MS);
-      const results = interpretPlots(result.plots);
-      const description = describeResults(netlist, results, result);
-      dispatch({ type: 'run-done', result, results, description, netlist, added: toRun.added, tab: tabAfterRun(result, traps) });
-      // Results go on the netlist lines only while the text is still the one that ran (annotateLines
-      // gives none when the numbers are not answers).
-      if (editor.getDoc() === text) editor.setInlineNotes(annotateLines(netlist, results, result));
-      // describe.ts writes the summary for exactly this: one paragraph for a polite live region.
-      if (description.summary) announce(description.summary);
-      else if (description.status === 'unreliable') announce(t('announceUnreliable'));
-      else if (description.status === 'ok') announce(t('announceFinished', { summary: '' }));
-      else announce(t('announceError', { detail: result.diagnostics.find((d) => d.severity === 'error')?.text ?? '' }));
-    } catch (error) {
-      if (isCancelled(error) && replacedRun.current) {
-        dispatch({ type: 'run-abandoned' });
-      } else if (isCancelled(error)) {
-        dispatch({ type: 'run-stopped' });
-        announce(t('announceStopped'));
-      } else {
-        const reason = error instanceof Error ? error.message : String(error);
-        dispatch({ type: 'run-failed', reason });
-        announce(t('announceFailed', { reason }), 'assertive');
-      }
-      if (isCancelled(error) || isTimeout(error)) restartEngine();
-    } finally {
-      clearTimeout(slow);
-      runningRef.current = false;
-      replacedRun.current = false;
+    // A sweep is plotted: fetch the plot's code while ngspice runs, not when the Plot tab opens.
+    if (netlist.analyses.some((i) => /^\.(dc|tran)$/.test(netlist.lines[i]?.directive?.name ?? ''))) {
+      import('../plot/plot.ts').catch(() => undefined); // offline before it was cached: it loads on first use
     }
+    const job = (async () => {
+      try {
+        await warmUp();
+        // For .op, the copy that runs also saves every part's current (src/spice/run-netlist.ts).
+        const toRun = netlistToRun(netlist);
+        const result = await engine.run(toRun.text, RUN_TIMEOUT_MS);
+        const results = interpretPlots(result.plots);
+        const description = await describeResults(netlist, results, result);
+        dispatch({ type: 'run-done', result, results, description, netlist, added: toRun.added, traps, tab: tabAfterRun(result, traps) });
+        // An error-level check means the numbers are not answers, even when ngspice ran cleanly
+        // (words review B1): no results on the netlist lines then, and the announcement says why.
+        const checkError = description.status === 'ok' ? traps.find((trap) => trap.severity === 'error') : undefined;
+        // Results go on the netlist lines only while the text is still the one that ran (annotateLines
+        // gives none when ngspice's numbers are not answers).
+        if (!checkError) {
+          const notes = await annotateLines(netlist, results, result);
+          if (editor.getDoc() === text) editor.setInlineNotes(notes);
+        }
+        // describe.ts writes the summary for exactly this: one paragraph for a polite live region,
+        // with the units in words for speech ("14 volts", not "14 V").
+        if (checkError) announce(t('announceCheckError', { title: checkError.title }));
+        else if (description.summarySpeech) announce(description.summarySpeech);
+        else if (description.status === 'unreliable') announce(t('announceUnreliable'));
+        else if (description.status === 'ok') announce(t('announceFinished', { summary: '' }));
+        else announce(t('announceError', { detail: result.diagnostics.find((d) => d.severity === 'error')?.text ?? '' }));
+        if (byTap) showResultsOnNarrowScreen();
+      } catch (error) {
+        if (isCancelled(error) && replacedRun.current) {
+          dispatch({ type: 'run-abandoned' });
+        } else if (isCancelled(error)) {
+          dispatch({ type: 'run-stopped' });
+          announce(t('announceStopped'));
+        } else if (isTimeout(error)) {
+          // Not "could not run": ngspice was running and had not finished (security review m5).
+          const seconds = Math.round(RUN_TIMEOUT_MS / 1000);
+          dispatch({ type: 'run-timeout', seconds, ...withPoints(netlist) });
+          announce(t('announceTimeout', { seconds }));
+        } else {
+          const reason = error instanceof Error ? error.message : String(error);
+          dispatch({ type: 'run-failed', reason });
+          announce(t('announceFailed', { reason }), 'assertive');
+        }
+        if (isCancelled(error) || isTimeout(error)) restartEngine();
+      } finally {
+        clearTimeout(slow);
+        runningRef.current = false;
+        replacedRun.current = false;
+      }
+    })();
+    currentRun.current = job;
+    await job;
+    if (currentRun.current === job) currentRun.current = null;
   }, [announce, engine, parseSoon, restartEngine, warmUp]);
 
   const stop = useCallback(() => engine.cancel(), [engine]);
+  const onRunPressed = useCallback(
+    (byPointer: boolean) => {
+      tappedRun.current = byPointer;
+      void run();
+    },
+    [run],
+  );
 
   // ------------------------------------------------------------------ loading a circuit
   const load = useCallback(
@@ -267,14 +341,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         replacedRun.current = true; // the running circuit is being replaced
         engine.cancel();
       }
-      editor.setDoc(text);
+      // The student's last edits, if the autosave is still waiting, are saved before they go.
+      saveSoon.flush();
+      loading.current = true;
+      try {
+        editor.setDoc(text);
+      } finally {
+        loading.current = false;
+      }
       dispatch({ type: 'loaded' });
       parseSoon.cancel();
       const traps = reparse();
       announcedChecks.current = traps.length;
       dispatch({ type: 'tab', tab: traps.length ? 'checks' : 'results' });
-      saveSoon.cancel();
-      writeStored(STORAGE_KEYS.netlist, text);
+      // Not saved yet: the student's own netlist stays saved until they change this one (security
+      // review M4: a link opened in another tab must not replace the homework saved on this device).
     },
     [engine, parseSoon, reparse, saveSoon],
   );
@@ -284,14 +365,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       const example = exampleById(id);
       if (!example) return;
       load(example.netlist);
+      // The link in the address is no longer what the editor shows.
+      if (linkInAddress.current) {
+        linkInAddress.current = false;
+        clearShareFragment();
+      }
       announce(t('exampleLoaded', { name: exampleName(example) }));
     },
     [announce, load],
   );
 
   const onExport = useCallback(
-    (kind: ExportKind) => {
+    async (kind: ExportKind) => {
       const text = editorRef.current?.getDoc() ?? '';
+      // Loaded when the browser is idle after start-up (perf review 9); at once from then on.
+      const { downloadFile, exportLtspice, exportNgspice } = await loadExport();
       if (kind === 'ngspice') {
         const file = exportNgspice(text);
         downloadFile(file);
@@ -304,7 +392,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         type: 'notice',
         notice: { tone: 'info', title: t('ltspiceNotesTitle', { filename: file.filename }), text: t('ltspiceNotesIntro'), items: file.notes },
       });
-      announce(t('saved', { filename: file.filename }));
+      // The notes appear above the netlist, away from the menu: say where (a11y review F16).
+      announce(t('ltspiceSaved', { filename: file.filename }));
     },
     [announce],
   );
@@ -323,21 +412,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (started.current) return;
     started.current = true;
     if (startup.source === 'share') {
-      clearShareFragment();
-      writeStored(STORAGE_KEYS.netlist, startup.netlist);
+      // Neither saved nor removed from the address yet: both happen on the student's first edit.
       announce(t('shareOpened'));
     } else if (startup.problem) {
       dispatch({ type: 'notice', notice: { tone: 'problem', title: t('shareProblemTitle'), text: startup.problem } });
       announce(startup.problem);
+      if (startup.problemCode === 'newer-version') checkForUpdate();
     }
-    whenIdle(() => {
-      void warmUp().then(() => {
-        if (startup.source === 'share' && startup.run) void run();
-      });
-      // Fetch the menus' and dialogs' code now, so they open at once later.
-      preloadOverlays().catch(() => undefined); // offline before they were cached: they load on first use
-    });
-    if (serviceWorker) {
+    const offline = (): void => {
+      if (!serviceWorker) return;
       void registerServiceWorker({
         onNeedRefresh: (reload) => {
           setUpdate(() => reload);
@@ -346,7 +429,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         // Shown quietly in the footer: worth knowing, not worth interrupting a screen reader.
         onOfflineReady: () => setOfflineReady(true),
       });
-    }
+    };
+    whenIdle(() => {
+      const ready = warmUp().then(() => {
+        if (startup.source === 'share' && startup.run) void run();
+      });
+      // The service worker's first download (about 1 MB) waits until ngspice is in, so it does not
+      // compete with the engine on a slow phone connection (perf review 10).
+      void ready.finally(() => whenIdle(offline));
+      // Fetch the menus' and dialogs' code now, so they open at once later; the same for the
+      // results in words and the export, which the first screen does not need.
+      preloadOverlays().catch(() => undefined); // offline before they were cached: they load on first use
+      loadDescribe().catch(() => undefined);
+      loadExport().catch(() => undefined);
+    });
     // Once, on purpose: the start-up decision never changes (the ref also guards React's double
     // effects in development).
     // oxlint-disable-next-line react-hooks/exhaustive-deps
@@ -361,13 +457,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       void decodeShare(location.hash).then((r) => {
         if (change !== hashChanges.current) return;
         if (r.ok) {
+          // A run still going is cancelled by load(); this link's run waits until it has ended, or
+          // run() would find it still busy and do nothing (security review m2).
+          const previous = currentRun.current;
           load(r.netlist);
-          clearShareFragment();
+          linkInAddress.current = true; // until the first edit, as at start-up
           announce(t('shareOpened'));
-          if (r.run) void warmUp().then(() => run());
+          if (r.run) void (previous ?? Promise.resolve()).then(() => warmUp()).then(() => run());
         } else if (r.code !== 'no-circuit') {
           dispatch({ type: 'notice', notice: { tone: 'problem', title: t('shareProblemTitle'), text: r.reason } });
           announce(r.reason);
+          if (r.code === 'newer-version') checkForUpdate();
         }
       });
     };
@@ -382,14 +482,23 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     return () => window.removeEventListener('pagehide', flush);
   }, [saveSoon]);
 
+
+
   // ------------------------------------------------------------------ editor callbacks
   const editorHandlers = useMemo(
     () => ({
       onChange: (doc: string) => {
         lastText.current = doc;
+        if (loading.current) return; // load() reads the new circuit itself
         dispatch({ type: 'text-changed' });
         parseSoon();
         announceChecksSoon();
+        // The first edit of a circuit just opened makes it the student's: from now on it is saved,
+        // and a link leaves the address bar, so a reload keeps the edits.
+        if (linkInAddress.current) {
+          linkInAddress.current = false;
+          clearShareFragment();
+        }
         saveSoon();
       },
       onRun: () => void run(),
@@ -424,6 +533,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const plotAvailable = hasSweeps(state.outcome);
   const tab: TabKey = state.tab === 'plot' && !plotAvailable ? 'results' : state.tab;
   const outcome = state.outcome;
+  // Stable callbacks, so the memoised panels draw again only when their data changes.
+  const onGoToTrap = useCallback((trap: Trap) => goToLine(trap.line, trap.span), [goToLine]);
+  const onGoToLineNumber = useCallback((line: number) => goToLine(line), [goToLine]);
+  const onShowChecks = useCallback(() => showTab('checks', checksTab), [showTab]);
+  const onShowPlot = useCallback(() => showTab('plot', plotTab), [showTab]);
+  // Once the Plot tab has been open, it stays mounted (hidden) while another tab is shown, so going
+  // back does not draw 100 000 points again (perf review 7).
+  const [keepPlot, setKeepPlot] = useState(false);
+  if (tab === 'plot' && !keepPlot) setKeepPlot(true);
 
   return (
     <>
@@ -449,7 +567,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         <div className="header-actions">
           <AppToolbar
             running={state.running}
-            onRun={() => void run()}
+            onRun={onRunPressed}
             onStop={stop}
             onExample={onExample}
             onExport={onExport}
@@ -484,7 +602,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           <ThisLine netlist={state.netlist} line={state.cursorLine} />
         </section>
 
-        <section className="pane pane--results" aria-label={t('tabsLabel')}>
+        <section ref={resultsPane} className="pane pane--results" aria-label={t('tabsLabel')}>
           <Tabs className="tabs" selectedKey={tab} onSelectionChange={(key) => dispatch({ type: 'tab', tab: key as TabKey })}>
             <TabList className="tab-list" aria-label={t('tabsLabel')}>
               <Tab id="checks" className="tab" ref={checksTab}>
@@ -506,27 +624,26 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
               </Tab>
             </TabList>
             <TabPanel id="checks" className="tab-panel">
-              <ChecksPanel traps={state.traps} onGoToLine={(trap) => goToLine(trap.line, trap.span)} onFix={applyFix} />
+              <ChecksPanel traps={state.traps} onGoToLine={onGoToTrap} onFix={applyFix} />
             </TabPanel>
             <TabPanel id="results" className="tab-panel">
               <ResultsPanel
                 outcome={outcome}
                 running={state.running !== null}
-                traps={state.traps}
                 colours={state.colours}
                 plotAvailable={plotAvailable}
-                onGoToLine={(line) => goToLine(line)}
-                onShowChecks={() => showTab('checks', checksTab)}
-                onShowPlot={() => showTab('plot', plotTab)}
+                onGoToLine={onGoToLineNumber}
+                onShowChecks={onShowChecks}
+                onShowPlot={onShowPlot}
               />
             </TabPanel>
             {plotAvailable && outcome.kind === 'done' && (
-              <TabPanel id="plot" className="tab-panel">
+              <TabPanel id="plot" className="tab-panel" shouldForceMount={keepPlot}>
                 <PlotPanel results={outcome.results} netlist={outcome.netlist} />
               </TabPanel>
             )}
             <TabPanel id="explained" className="tab-panel">
-              <ExplainedPanel netlist={state.netlist} />
+              <ExplainedPanel netlist={state.netlist} onGoToLine={onGoToLineNumber} />
             </TabPanel>
             <TabPanel id="output" className="tab-panel">
               <OutputPanel result={outcome.kind === 'done' ? outcome.result : undefined} added={outcome.kind === 'done' ? outcome.added : []} />

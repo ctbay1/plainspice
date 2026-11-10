@@ -1,23 +1,29 @@
 /**
- * The Results tab: what ngspice computed, in plain units, next to what ngspice printed.
+ * The Results tab: what ngspice computed, in plain units, next to the same values in ngspice's format.
  *
- * - A status banner: finished / ngspice's DC solution failed (the numbers are not answers) /
- *   ngspice stopped with an error / stopped / could not run.
+ * - A status banner: finished / not reliable (ngspice's DC solution failed, or a check found an
+ *   error, so the numbers are not answers) / ngspice stopped with an error / no results (ngspice
+ *   finished quietly without any) / stopped / could not run.
  * - The plain-words summary (src/spice/describe.ts), then tables: node voltages (colour swatch and
- *   name, voltage, ngspice's printout), currents (part, size, which way it flows, power for
- *   sources, ngspice's vector), .tf results, and the sweeps in words. Every number is shown as
- *   "14 V" and read out as "14 volts".
- * - ngspice's messages in plain words, each with a "Line n" button when it is about a line.
- * - When the DC solution failed, the numbers stay folded under "What ngspice printed anyway".
+ *   name, voltage, ngspice's format), currents (part, size, which way it flows, power for sources,
+ *   ngspice's vector), .tf results, and the sweeps in words. Every number is shown as "14 V" and
+ *   read out as "14 volts".
+ * - What happened, in plain words: ngspice's messages and PlainSpice's own findings, each with a
+ *   "Line n" button when it is about a line.
+ * - When the numbers are not answers, they stay folded under "What ngspice printed anyway".
+ *
+ * The panel and its tables are memoised: typing re-reads the netlist every few keystrokes, and
+ * drawing hundreds of result rows again each time made typing slow (perf review 5).
  */
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { Button } from 'react-aria-components';
 import type { AnalysisResults } from '../../engine/results.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../../format/si.ts';
 import { t, tn, type MessageKey } from '../../i18n/index.ts';
 import type { Trap } from '../../spice/types.ts';
 import type { MessageWords, ResultsDescription, TransferFunctionWords } from '../model.ts';
-import type { RunOutcome } from '../state.ts';
+import { sameColours } from '../nodes.ts';
+import { errorTrap, type RunOutcome } from '../state.ts';
 import { ErrorIcon, InfoIcon, OkIcon, StopIcon, WarningIcon } from './Icons.tsx';
 import { TableWrap } from './TableWrap.tsx';
 
@@ -31,17 +37,18 @@ function Quantity({ text, speech }: { text: string; speech: string }): ReactNode
   );
 }
 
-type BannerKind = 'finished' | 'unreliable' | 'error' | 'stopped' | 'failed';
+type BannerKind = 'finished' | 'unreliable' | 'error' | 'empty' | 'stopped' | 'failed';
 
 function StatusBanner({ kind, text }: { kind: BannerKind; text: string }): ReactNode {
   const word: Record<BannerKind, MessageKey> = {
     finished: 'statusFinished',
     unreliable: 'statusUnreliable',
     error: 'statusError',
+    empty: 'statusEmpty',
     stopped: 'statusStopped',
     failed: 'statusFailed',
   };
-  const Icon = kind === 'finished' ? OkIcon : kind === 'unreliable' ? WarningIcon : kind === 'stopped' ? StopIcon : ErrorIcon;
+  const Icon = kind === 'finished' ? OkIcon : kind === 'unreliable' ? WarningIcon : kind === 'stopped' ? StopIcon : kind === 'empty' ? InfoIcon : ErrorIcon;
   return (
     <div className={`banner banner--${kind}`}>
       <span className="banner__word">
@@ -53,46 +60,49 @@ function StatusBanner({ kind, text }: { kind: BannerKind; text: string }): React
   );
 }
 
-function NodeTable({ description, colours }: { description: ResultsDescription; colours: ReadonlyMap<string, string> }): ReactNode {
-  if (!description.nodes.length) return null;
-  return (
-    <TableWrap label={t('nodesCaption')}>
-      <table className="table table--results">
-        <caption>{t('nodesCaption')}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('columnNode')}</th>
-            <th scope="col">{t('columnVoltage')}</th>
-            <th scope="col">{t('columnPrinted')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {description.nodes.map((n) => {
-            const colour = colours.get(n.node);
-            return (
-              <tr key={n.node}>
-                <th scope="row" className="node-name">
-                  <span className={`swatch${colour ? '' : ' swatch--none'}`} style={colour ? { background: colour } : undefined} aria-hidden="true" />
-                  <code className="code">{n.node}</code>
-                </th>
-                <td className="num">
-                  <Quantity text={n.text} speech={n.speech} />
-                </td>
-                <td className="num">
-                  <code className="code">
-                    v({n.node}) = {formatLikeNgspice(n.value)}
-                  </code>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </TableWrap>
-  );
-}
+const NodeTable = memo(
+  function NodeTable({ description, colours }: { description: ResultsDescription; colours: ReadonlyMap<string, string> }): ReactNode {
+    if (!description.nodes.length) return null;
+    return (
+      <TableWrap label={t('nodesCaption')}>
+        <table className="table table--results">
+          <caption>{t('nodesCaption')}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('columnNode')}</th>
+              <th scope="col">{t('columnVoltage')}</th>
+              <th scope="col">{t('columnPrinted')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {description.nodes.map((n) => {
+              const colour = colours.get(n.node);
+              return (
+                <tr key={n.node}>
+                  <th scope="row" className="node-name">
+                    <span className={`swatch${colour ? '' : ' swatch--none'}`} style={colour ? { background: colour } : undefined} aria-hidden="true" />
+                    <code className="code">{n.node}</code>
+                  </th>
+                  <td className="num">
+                    <Quantity text={n.text} speech={n.speech} />
+                  </td>
+                  <td className="num">
+                    <code className="code">
+                      v({n.node}) = {formatLikeNgspice(n.value)}
+                    </code>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </TableWrap>
+    );
+  },
+  (a, b) => a.description === b.description && sameColours(a.colours, b.colours),
+);
 
-function CurrentTable({ description, results }: { description: ResultsDescription; results: AnalysisResults }): ReactNode {
+const CurrentTable = memo(function CurrentTable({ description, results }: { description: ResultsDescription; results: AnalysisResults }): ReactNode {
   if (!description.currents.length) return null;
   const showPower = description.currents.some((c) => c.power !== undefined);
   const vectorOf = (element: string): string => results.op?.currents.find((c) => c.element === element)?.vector ?? `i(${element})`;
@@ -140,7 +150,7 @@ function CurrentTable({ description, results }: { description: ResultsDescriptio
       </table>
     </TableWrap>
   );
-}
+});
 
 /**
  * describe.ts writes the summary for the live region, ending "Open the results for details.";
@@ -153,7 +163,7 @@ function panelSummary(summary: string): string {
 /** A .tf ratio's unit in words, for screen readers ("0.3333 volts per volt"). */
 const RATIO_WORDS: Record<string, MessageKey> = { 'V/V': 'ratioVV', 'A/A': 'ratioAA', 'A/V': 'ratioAV', 'V/A': 'ratioVA' };
 
-function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
+const TfTable = memo(function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
   const rows: { label: string; text: string; speech: string; value: number }[] = [];
   if (tf.transferFunction) {
     const v = tf.transferFunction.value;
@@ -166,7 +176,9 @@ function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
   }
   if (tf.outputResistance) {
     const v = tf.outputResistance.value;
-    rows.push({ label: t('tfOutput', { output: tf.output }), text: formatSI(v, 'Ω'), speech: speakSI(v, 'Ω'), value: v });
+    // For a current output ngspice's "output impedance" is a stand-in (1e20 Ω, A5), not a resistance.
+    const label = tf.ratio.startsWith('A/') ? t('tfOutputCurrent', { output: tf.output }) : t('tfOutput', { at: tf.at ?? tf.output });
+    rows.push({ label, text: formatSI(v, 'Ω'), speech: speakSI(v, 'Ω'), value: v });
   }
   if (tf.inputResistance) {
     const v = tf.inputResistance.value;
@@ -200,25 +212,44 @@ function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
       </table>
     </TableWrap>
   );
-}
+});
 
 const MESSAGE_ICON = { error: ErrorIcon, warning: WarningIcon, note: InfoIcon } as const;
 const MESSAGE_WORD: Record<MessageWords['severity'], MessageKey> = { error: 'severityError', warning: 'severityWarning', note: 'severityInfo' };
+const RANK: Record<MessageWords['severity'], number> = { note: 0, warning: 1, error: 2 };
+const AS_MESSAGE: Record<Trap['severity'], MessageWords['severity']> = { info: 'note', warning: 'warning', error: 'error' };
 
-function Messages({ warnings, onGoToLine }: { warnings: readonly MessageWords[]; onGoToLine: (line: number) => void }): ReactNode {
+/**
+ * One problem, one severity word (words review m7): a message about a line where a check found
+ * something more serious takes the check's severity ("n9 is not a node" is an error in the Checks
+ * tab, so it is one here too). An ngspice error is never made milder.
+ */
+function severityOf(m: MessageWords, traps: readonly Trap[]): MessageWords['severity'] {
+  let severity = m.severity;
+  if (m.line === undefined) return severity;
+  for (const trap of traps) {
+    if (trap.line !== m.line) continue;
+    const s = AS_MESSAGE[trap.severity];
+    if (RANK[s] > RANK[severity]) severity = s;
+  }
+  return severity;
+}
+
+function Messages({ warnings, traps, onGoToLine }: { warnings: readonly MessageWords[]; traps: readonly Trap[]; onGoToLine: (line: number) => void }): ReactNode {
   if (!warnings.length) return null;
   return (
     <section className="messages" aria-labelledby="ngspice-messages">
       <h3 id="ngspice-messages">{t('messagesHeading')}</h3>
       <ul className="message-list">
         {warnings.map((m, i) => {
-          const Icon = MESSAGE_ICON[m.severity];
+          const severity = severityOf(m, traps);
+          const Icon = MESSAGE_ICON[severity];
           return (
-            <li key={`${m.code}-${i}`} className={`message message--${m.severity}`}>
+            <li key={`${m.code}-${i}`} className={`message message--${severity}`}>
               <p className="message__title">
-                <span className={`severity severity--${m.severity === 'note' ? 'info' : m.severity}`}>
+                <span className={`severity severity--${severity === 'note' ? 'info' : severity}`}>
                   <Icon />
-                  {t(MESSAGE_WORD[m.severity])}
+                  {t(MESSAGE_WORD[severity])}
                 </span>{' '}
                 <strong>{m.title}</strong>
                 {m.line !== undefined && (
@@ -239,10 +270,14 @@ function Messages({ warnings, onGoToLine }: { warnings: readonly MessageWords[];
   );
 }
 
-export function ResultsPanel({
+function timeoutText(outcome: Extract<RunOutcome, { kind: 'timeout' }>): string {
+  const text = t('statusTimeoutText', { seconds: outcome.seconds });
+  return outcome.points === undefined ? text : `${text} ${t('statusTimeoutPoints', { points: outcome.points.toLocaleString('en-US') })}`;
+}
+
+export const ResultsPanel = memo(function ResultsPanel({
   outcome,
   running,
-  traps,
   colours,
   plotAvailable,
   onGoToLine,
@@ -251,7 +286,6 @@ export function ResultsPanel({
 }: {
   outcome: RunOutcome;
   running: boolean;
-  traps: readonly Trap[];
   colours: ReadonlyMap<string, string>;
   plotAvailable: boolean;
   onGoToLine: (line: number) => void;
@@ -264,11 +298,11 @@ export function ResultsPanel({
       {running && <p className="status-line">{t('resultsRunning')}</p>}
       {outcome.kind === 'none' && !running && <p className="muted">{t('resultsEmpty')}</p>}
       {outcome.kind === 'stopped' && <StatusBanner kind="stopped" text={t('statusStoppedText')} />}
+      {outcome.kind === 'timeout' && <StatusBanner kind="stopped" text={timeoutText(outcome)} />}
       {outcome.kind === 'failed' && <StatusBanner kind="failed" text={t('statusFailedText', { reason: outcome.reason })} />}
       {outcome.kind === 'done' && (
         <DoneResults
           outcome={outcome}
-          traps={traps}
           colours={colours}
           plotAvailable={plotAvailable}
           onGoToLine={onGoToLine}
@@ -278,11 +312,26 @@ export function ResultsPanel({
       )}
     </div>
   );
+});
+
+/** The note that points to the Checks tab, worded for what the checks found (words review m8). */
+function TrapsNote({ traps, onShowChecks }: { traps: readonly Trap[]; onShowChecks: () => void }): ReactNode {
+  if (!traps.length) return null;
+  const errors = traps.filter((x) => x.severity === 'error').length;
+  const warnings = traps.filter((x) => x.severity === 'warning').length;
+  const text = errors ? t('trapsNoteError') : warnings ? tn('trapsNoteWarning', warnings) : tn('trapsNoteInfo', traps.length);
+  return (
+    <p className="message message--note">
+      {text}{' '}
+      <Button className="link-button" onPress={onShowChecks}>
+        {t('showChecks')}
+      </Button>
+    </p>
+  );
 }
 
 function DoneResults({
   outcome,
-  traps,
   colours,
   plotAvailable,
   onGoToLine,
@@ -290,7 +339,6 @@ function DoneResults({
   onShowPlot,
 }: {
   outcome: Extract<RunOutcome, { kind: 'done' }>;
-  traps: readonly Trap[];
   colours: ReadonlyMap<string, string>;
   plotAvailable: boolean;
   onGoToLine: (line: number) => void;
@@ -298,8 +346,39 @@ function DoneResults({
   onShowPlot: () => void;
 }): ReactNode {
   const { results, description } = outcome;
-  const kind: BannerKind = description.status === 'ok' ? 'finished' : description.status === 'unreliable' ? 'unreliable' : 'error';
-  const text = kind === 'finished' ? t('statusFinishedText') : kind === 'unreliable' ? t('statusUnreliableText') : t('statusErrorText');
+  // A check that found an error means the numbers are not answers, however cleanly ngspice ran
+  // (words review B1): they are folded away like those of a failed DC solution.
+  const checkError = description.status === 'ok' ? errorTrap(outcome) : undefined;
+  const kind: BannerKind =
+    description.status === 'ok'
+      ? checkError
+        ? 'unreliable'
+        : 'finished'
+      : description.status === 'unreliable'
+        ? 'unreliable'
+        : description.ngspiceError
+          ? 'error'
+          : 'empty';
+  const text =
+    kind === 'finished'
+      ? t('statusFinishedText')
+      : kind === 'unreliable'
+        ? checkError
+          ? t('statusCheckedText', { title: checkError.title.replace(/[.!?:]$/, '') })
+          : t('statusUnreliableText')
+        : kind === 'error'
+          ? t('statusErrorText')
+          : t('statusEmptyText');
+  const sweeps = description.sweeps.length > 0 && (
+    <ul className="sweeps">
+      {description.sweeps.map((s, i) => (
+        <li key={i}>
+          <span aria-hidden="true">{s.text}</span>
+          <span className="visually-hidden">{s.speech}</span>
+        </li>
+      ))}
+    </ul>
+  );
   const tables = (
     <>
       <NodeTable description={description} colours={colours} />
@@ -307,31 +386,15 @@ function DoneResults({
       {description.tf && <TfTable tf={description.tf} />}
     </>
   );
-  const hasNumbers = description.nodes.length > 0 || description.currents.length > 0 || description.tf !== undefined;
+  const hasNumbers = description.nodes.length > 0 || description.currents.length > 0 || description.tf !== undefined || description.sweeps.length > 0;
   return (
     <>
       {outcome.stale && <p className="message message--note">{t('staleResults')}</p>}
       <StatusBanner kind={kind} text={text} />
-      {traps.length > 0 && (
-        <p className="message message--note">
-          {tn('trapsNote', traps.length)}{' '}
-          <Button className="link-button" onPress={onShowChecks}>
-            {t('showChecks')}
-          </Button>
-        </p>
-      )}
+      <TrapsNote traps={outcome.traps} onShowChecks={onShowChecks} />
       {kind === 'finished' && description.summary && <p className="summary">{panelSummary(description.summary)}</p>}
       {kind === 'finished' && tables}
-      {kind === 'finished' && description.sweeps.length > 0 && (
-        <ul className="sweeps">
-          {description.sweeps.map((s, i) => (
-            <li key={i}>
-              <span aria-hidden="true">{s.text}</span>
-              <span className="visually-hidden">{s.speech}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {kind === 'finished' && sweeps}
       {kind === 'finished' && plotAvailable && (
         <p>
           {t('sweepsNote')}{' '}
@@ -340,11 +403,12 @@ function DoneResults({
           </Button>
         </p>
       )}
-      <Messages warnings={description.warnings} onGoToLine={onGoToLine} />
+      <Messages warnings={description.warnings} traps={outcome.traps} onGoToLine={onGoToLine} />
       {kind === 'unreliable' && hasNumbers && (
         <details className="disclosure">
           <summary>{t('printedAnyway')}</summary>
           {tables}
+          {sweeps}
         </details>
       )}
     </>

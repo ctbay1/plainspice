@@ -122,7 +122,7 @@ describe('createPlot builds an accessible figure', () => {
     expect(container.querySelector('figcaption h2')?.textContent).toBe(D1().title);
   });
 
-  it('volts and amperes: two stacked panels, each canvas hidden from screen readers', async () => {
+  it('volts and amps: two stacked panels, each canvas hidden from screen readers', async () => {
     const { container } = mount(T1());
     await flush();
     const panels = container.querySelectorAll('.ps-plot__area > .ps-plot__panel');
@@ -148,7 +148,7 @@ describe('createPlot builds an accessible figure', () => {
     expect(slider.getAttribute('aria-valuemin')).toBe('0');
     expect(slider.getAttribute('aria-valuemax')).toBe('519');
     expect(slider.getAttribute('aria-valuenow')).toBe('519');
-    expect(slider.getAttribute('aria-valuetext')).toBe('time 5 milliseconds: v(in) 5 volts, v(out) 4.966 volts, i(v1) minus 33.71 microamperes');
+    expect(slider.getAttribute('aria-valuetext')).toBe('time 5 milliseconds: v(in) 5 volts, v(out) 4.966 volts, i(v1) minus 33.71 microamps');
     const help = document.getElementById(slider.getAttribute('aria-describedby')!)!;
     expect(help.textContent).toMatch(/arrow keys/);
   });
@@ -190,7 +190,7 @@ describe('keyboard', () => {
     const now = (): number => Number(slider.getAttribute('aria-valuenow'));
     expect(key(slider, 'Home').defaultPrevented).toBe(true);
     expect(now()).toBe(0);
-    expect(slider.getAttribute('aria-valuetext')).toBe('time 0 seconds: v(in) 0 volts, v(out) 0 volts, i(v1) 0 amperes');
+    expect(slider.getAttribute('aria-valuetext')).toBe('time 0 seconds: v(in) 0 volts, v(out) 0 volts, i(v1) 0 amps');
     key(slider, 'ArrowRight');
     expect(now()).toBe(1);
     expect(slider.getAttribute('aria-valuetext')).toMatch(/^time 10 nanoseconds: v\(in\) 50 millivolts/);

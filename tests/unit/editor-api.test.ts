@@ -4,6 +4,7 @@ import { diagnosticCount, forEachDiagnostic, type Diagnostic } from '@codemirror
 import { EditorSelection } from '@codemirror/state';
 import { hasHoverTooltips } from '@codemirror/view';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { MAX_TRAP_MARKS, trapsToMark } from '../../src/editor/editor.ts';
 import { createEditor, EDITOR_HINT, EDITOR_STRINGS, type EditorOptions, type PlainSpiceEditor } from '../../src/editor/index.ts';
 import type { Fix, Trap } from '../../src/spice/types.ts';
 
@@ -134,6 +135,60 @@ describe('keyboard', () => {
     const event = key(editor, { key: 'Escape', code: 'Escape', keyCode: 27 });
     expect(hasHoverTooltips(editor.view.state)).toBe(false);
     expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('F8 also says the trap in words, for screen readers (the pop-up alone is silent)', () => {
+    const { editor } = make();
+    editor.setTraps([megaTrap()], () => {});
+    key(editor, { key: 'F8', code: 'F8', keyCode: 119 });
+    const said = editor.view.dom.querySelector('.cm-announced')?.textContent ?? '';
+    expect(said).toBe('Warning, line 3: 1M means one milliohm. In SPICE, M is milli. Write 1meg for one megaohm.');
+    key(editor, { key: 'F8', code: 'F8', keyCode: 119, shiftKey: true });
+    expect(editor.view.dom.querySelector('.cm-announced')?.textContent).toContain('Warning, line 3:');
+  });
+
+  it('Escape closes a trap pop-up even when focus is outside the editor (WCAG 1.4.13)', () => {
+    const { editor } = make();
+    editor.setTraps([megaTrap()], () => {});
+    key(editor, { key: 'F8', code: 'F8', keyCode: 119 });
+    expect(hasHoverTooltips(editor.view.state)).toBe(true);
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(hasHoverTooltips(editor.view.state)).toBe(false);
+  });
+
+  it('a fix pressed in the pop-up brings focus back to the text, not to the page (WCAG 2.4.3)', () => {
+    const { editor } = make();
+    editor.setTraps([megaTrap()], (fix) => {
+      editor.applyChanges(fix.changes);
+      editor.setTraps([], () => {}); // the checks run again and the trap, with its pop-up, is gone
+    });
+    key(editor, { key: 'F8', code: 'F8', keyCode: 119 });
+    const button = editor.view.dom.querySelector<HTMLButtonElement>('.cm-tooltip .cm-diagnosticAction');
+    expect(button).not.toBeNull();
+    button!.focus();
+    button!.click();
+    expect(editor.getDoc()).toContain('R1 n1 n2 1meg');
+    expect(editor.view.hasFocus).toBe(true);
+  });
+
+  it('underlines at most MAX_TRAP_MARKS traps, errors first (thousands froze the page)', () => {
+    const lines = Array.from({ length: MAX_TRAP_MARKS + 50 }, (_, i) => `R${i} a 0 1M`);
+    const text = ['* many traps', ...lines].join('\n');
+    const { editor } = make({ doc: text });
+    // One trap per line, apart from each other; the last one is an error.
+    const many: Trap[] = lines.map((l, i) => {
+      const from = text.indexOf(`${l}\n`) >= 0 ? text.indexOf(`${l}\n`) : text.lastIndexOf(l);
+      return { ...megaTrap(), line: i + 2, severity: i === lines.length - 1 ? 'error' : 'warning', span: { from, to: from + 2 }, fixes: [] };
+    });
+    editor.setTraps(many, () => {});
+    expect(diagnostics(editor)).toHaveLength(MAX_TRAP_MARKS);
+    expect(diagnostics(editor).some(({ d }) => d.severity === 'error')).toBe(true);
+    const marked = trapsToMark(many);
+    expect(marked).toHaveLength(MAX_TRAP_MARKS);
+    expect(marked.map((t) => t.span.from)).toEqual(marked.map((t) => t.span.from).sort((a, b) => a - b));
+    expect(trapsToMark(many.slice(0, 3))).toHaveLength(3);
   });
 
   it('Ctrl+/ turns a line into a comment with "*", the comment every SPICE reads', () => {
@@ -296,14 +351,14 @@ describe('inline results', () => {
   it('appear at the end of their lines, hidden from screen readers, with the words as tooltip', () => {
     const { editor } = make();
     editor.setInlineNotes([
-      { line: 2, text: '→ −3 A', speech: 'V1 delivers 3 amperes' },
+      { line: 2, text: '→ −3 A', speech: 'V1 delivers 3 amps' },
       { line: 3, text: 'n1 → n2: 6 V', speech: '6 volts across R1' },
       { line: 99, text: 'ignored', speech: '' },
     ]);
     const notes = [...editor.view.dom.querySelectorAll<HTMLElement>('.ps-inline-note')];
     expect(notes.map((n) => n.textContent)).toEqual(['→ −3 A', 'n1 → n2: 6 V']);
     for (const n of notes) expect(n.getAttribute('aria-hidden')).toBe('true');
-    expect(notes[0]!.title).toBe('V1 delivers 3 amperes');
+    expect(notes[0]!.title).toBe('V1 delivers 3 amps');
     // the note sits after the line's text
     expect(notes[0]!.closest('.cm-line')?.textContent).toBe('V1 n1 0 6→ −3 A');
   });

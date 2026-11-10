@@ -34,6 +34,32 @@ const PROC_STATM = '0 0 0 0 0 0 0\n';
 
 export const NGSPICE_ARGS = ['-b', '-r', '/out.raw', '/circuit.cir'] as const;
 
+/**
+ * At most this many characters of each stream (standard output, standard error) are kept; the
+ * lines after that are only counted. A .control loop can print without end: every line used to be
+ * kept until the time-out, and on a phone the page ran out of memory first, in under 10 s (security
+ * review M1). Such a run now ends at the time-out with its memory flat. (Ending it earlier from the
+ * print callback does not work: Emscripten turns an exception there into a failed write, which
+ * ngspice ignores, and keeps the unfinished line, which then grows.)
+ */
+export const MAX_OUTPUT_CHARS = 1_000_000;
+
+/** One output stream, kept up to MAX_OUTPUT_CHARS; the lines past that are only counted. */
+function outputStream(): { push: (line: string) => void; text: () => string } {
+  const lines: string[] = [];
+  let kept = 0;
+  let dropped = 0;
+  return {
+    push(line) {
+      if (kept + line.length + 1 <= MAX_OUTPUT_CHARS) {
+        lines.push(line);
+        kept += line.length + 1;
+      } else dropped += 1;
+    },
+    text: () => (dropped ? `${lines.join('\n')}\n… ${dropped} more lines were not kept` : lines.join('\n')),
+  };
+}
+
 type ProcessLike = { exitCode?: number | string | undefined };
 
 export class NgspiceEngine {
@@ -74,8 +100,8 @@ export class NgspiceEngine {
 
   /** Run one netlist (title line first, `.end` last) in a fresh ngspice instance. */
   async run(netlist: string): Promise<RunResult> {
-    const out: string[] = [];
-    const err: string[] = [];
+    const out = outputStream();
+    const err = outputStream();
     const t0 = now();
     const compiled = this.compiled;
     const mod = await this.factory({
@@ -130,8 +156,8 @@ export class NgspiceEngine {
     }
     const t3 = now();
 
-    const stdout = out.join('\n');
-    const stderr = err.join('\n');
+    const stdout = out.text();
+    const stderr = err.text();
     const diagnostics: EngineDiagnostic[] = classifyOutput(stdout, stderr);
     if (crash !== undefined) {
       diagnostics.push({ severity: 'error', code: 'engine-crash', text: crash });

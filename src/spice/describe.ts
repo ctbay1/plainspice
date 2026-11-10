@@ -17,8 +17,9 @@ import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../eng
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { elementInfo } from './elements.ts';
-import { isKnownDotCommand, leftOutModel, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
-import { lowerAscii } from './parse.ts';
+import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
+import { isBuilt } from './graph.ts';
+import { lowerAscii, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
 
 const MINUS = '−';
@@ -84,6 +85,8 @@ export interface TransferFunctionWords {
   input: string;
   /** "V/V", "V/A", "A/V" or "A/A". */
   ratio: string;
+  /** For a voltage output, where it is measured: "at a", "between a and b". */
+  at?: string;
   transferFunction?: QuantityWords;
   inputResistance?: QuantityWords;
   outputResistance?: QuantityWords;
@@ -116,6 +119,11 @@ export interface MessageWords {
 export interface ResultsInWords {
   /** ok: trustworthy results; unreliable: numbers from a failed DC solution; failed: no results. */
   status: 'ok' | 'unreliable' | 'failed';
+  /**
+   * ngspice itself reported an error (an exit code other than 0, or an error message). False when it
+   * finished quietly, even without results: an empty .dc sweep, or only a .control block (M4).
+   */
+  ngspiceError: boolean;
   nodes: NodeVoltageWords[];
   currents: CurrentWords[];
   tf?: TransferFunctionWords;
@@ -124,6 +132,8 @@ export interface ResultsInWords {
   warnings: MessageWords[];
   /** One paragraph for a polite live region. */
   summary: string;
+  /** The same paragraph for speech: units in words ("14 volts"), no symbols to spell out. */
+  summarySpeech: string;
 }
 
 export interface LineAnnotation {
@@ -131,7 +141,7 @@ export interface LineAnnotation {
   line: number;
   /** "3 A, n1 → 0", "delivers 18 W, 3 A out of +" */
   text: string;
-  /** The same in words, e.g. "3 amperes flow from n1 to ground". */
+  /** The same in words, e.g. "3 amps flow from n1 to ground". */
   speech: string;
 }
 
@@ -152,14 +162,17 @@ export const DESCRIBE_STRINGS = {
   countsNoGround: (parts: number, nodes: number, names: string): string =>
     `${parts} ${parts === 1 ? 'part' : 'parts'} and ${nodes} ${nodes === 1 ? 'node' : 'nodes'}${names ? ` (${names})` : ''}. Nothing is connected to ground (node 0).`,
   noParts: 'No parts yet.',
-  resistor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `a ${v} resistor` : 'a resistor'} between ${a} and ${b}.`,
-  capacitor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `a ${v} capacitor` : 'a capacitor'} between ${a} and ${b}.`,
-  inductor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `a ${v} inductor` : 'an inductor'} between ${a} and ${b}.`,
-  vSource: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `a ${v} source` : 'a voltage source'} with its + side at ${a} and its ${MINUS} side at ${b}.`,
+  moreParts: (n: number): string => `And ${n} more ${n === 1 ? 'part' : 'parts'}.`,
+  resistor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} resistor` : 'a resistor'} between ${a} and ${b}.`,
+  capacitor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} capacitor` : 'a capacitor'} between ${a} and ${b}.`,
+  inductor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} inductor` : 'an inductor'} between ${a} and ${b}.`,
+  vSource: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${a} and its ${MINUS} side at ${b}.`,
   vFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} voltage source with its + side at ${a} and its ${MINUS} side at ${b}.`,
   ammeter: (name: string, a: string, b: string): string => `${name}: a 0 V source from ${a} to ${b}, used as an ammeter.`,
   swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${a} and its ${MINUS} side at ${b}, swept by .dc.`,
-  iSource: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `a ${v} current source` : 'a current source'} pushing current from ${a} into ${b}.`,
+  iSource: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${a} into ${b}.`,
   iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${a} into ${b}.`,
   vcvs: (name: string, out: string, gain: string, control: string): string =>
     `${name}: a voltage-controlled voltage source: ${out}, is ${gain} × ${control}.`,
@@ -180,6 +193,8 @@ export const DESCRIBE_STRINGS = {
   analysis: (list: string): string => `Analysis: ${list}.`,
   analyses: (list: string): string => `Analyses: ${list}.`,
   noAnalysis: 'No analysis line (.op, .dc, .tran, .tf or .ac), so ngspice will run nothing.',
+  noAnalysisControl: 'No analysis line (.op, .dc, .tran, .tf or .ac): ngspice runs the commands in the .control block instead.',
+  analysisAfterEnd: 'The analysis is written after .end, where ngspice still reads it.',
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
@@ -208,27 +223,30 @@ export const DESCRIBE_STRINGS = {
   outputRCurrent: (out: string, r: string): string =>
     `ngspice's output impedance for ${out}: ${r}, a stand-in number rather than a resistance of your circuit`,
   outputRCurrentSpeech: (out: string, r: string): string => `ngspice reports ${r} as the output impedance for ${out}; it is not a resistance of your circuit`,
-  ratioWords: { 'V/V': 'volts per volt', 'V/A': 'volts per ampere, which is ohms', 'A/V': 'amperes per volt', 'A/A': 'amperes per ampere' } as Record<string, string>,
-  ratioWordsOne: { 'V/V': 'volt per volt', 'V/A': 'volt per ampere, which is an ohm', 'A/V': 'ampere per volt', 'A/A': 'ampere per ampere' } as Record<string, string>,
+  ratioWords: { 'V/V': 'volts per volt', 'V/A': 'volts per amp, which is ohms', 'A/V': 'amps per volt', 'A/A': 'amps per amp' } as Record<string, string>,
+  ratioWordsOne: { 'V/V': 'volt per volt', 'V/A': 'volt per amp, which is an ohm', 'A/V': 'amp per volt', 'A/A': 'amp per amp' } as Record<string, string>,
   voltageOf: (n: string): string => `the voltage at ${n}`,
   currentIn: (name: string): string => `the current in ${name}`,
   dcSweepText: (what: string, points: number): string => `DC sweep of ${what}: ${points} ${points === 1 ? 'point' : 'points'}.`,
   dcNoPoints: (what: string): string => `DC sweep of ${what}: no points.`,
   tranText: (from: string, to: string, points: number): string => `Transient from ${from} to ${to}: ${points} time ${points === 1 ? 'point' : 'points'}.`,
   atEnd: (where: string, values: string): string => `At ${where}: ${values}.`,
+  atEndSpeech: (where: string, values: string): string => `When ${where}: ${values}.`,
   atLastPoint: 'the last point',
   sweepAt: (name: string, value: string): string => `${name} = ${value}`,
+  sweepAtSpeech: (name: string, value: string): string => `${name} is ${value}`,
   valueIs: (name: string, value: string): string => `${name} = ${value}`,
   valueIsSpeech: (name: string, value: string): string => `${name} is ${value}`,
   summaryOk: (parts: string, warnings: number, first: string): string =>
     `Simulation finished: ${parts}.${warnings ? ` ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}: ${first}.` : ''} Open the results for details.`,
   summaryUnreliable: (why: string): string => `Simulation finished, but its numbers can't be trusted: ${why}. Open the results for details.`,
-  summaryFailed: (why: string): string => `The simulation did not run: ${why}. Open the results for details.`,
+  summaryFailed: (why: string): string => `ngspice stopped with an error: ${why}. Open the results for details.`,
+  summaryEmpty: (why: string): string => `ngspice finished but gave no results: ${why}. Open the results for details.`,
   summaryNodes: (list: string, more: number): string => (more ? `${list} and ${more} more ${more === 1 ? 'node' : 'nodes'}` : list),
   summaryCurrents: (n: number): string => `${n} ${n === 1 ? 'current' : 'currents'}`,
   summaryTf: (value: string): string => `transfer function ${value}`,
   summaryDc: (n: number): string => `a DC sweep of ${n} ${n === 1 ? 'point' : 'points'}`,
-  summaryTran: (to: string, n: number): string => `a transient to ${to}, ${n} time points`,
+  summaryTran: (to: string, n: number): string => `a transient to ${to}, ${n} time ${n === 1 ? 'point' : 'points'}`,
   summaryOther: (n: number): string => `${n} other ${n === 1 ? 'analysis' : 'analyses'} that PlainSpice does not describe yet`,
   summaryNothing: 'no results to show',
   // ---- annotations
@@ -252,6 +270,12 @@ export const DESCRIBE_STRINGS = {
     "ngspice could not find a DC solution: its equations have no single answer (a singular matrix). It printed numbers from a fallback (a \"transient op\"), and they can be wrong, even for nodes that look fine.",
   noAnalysisTitle: 'Nothing to run',
   noAnalysisWhy: 'There is no analysis line (.op, .dc, .tran, .tf or .ac), so ngspice ran nothing, and with a results file it says nothing about it.',
+  noAnalysisAtWhy: (line: number): string =>
+    `Line ${line} starts with @, so ngspice stopped reading there and never saw the analysis lines after it. It ran nothing.`,
+  noAnalysisTitleWhy: (word: string): string => `Line 1 is always the title, so ngspice never runs the ${word} written there. It ran nothing.`,
+  controlOnlyTitle: 'ngspice ran the .control block',
+  controlOnlyWhy:
+    'ngspice ran the commands in the .control block; what they printed is in the ngspice output tab. PlainSpice shows the results of analysis lines such as .op, .dc and .tran, and this netlist has none.',
   noResultsTitle: 'No results',
   noResultsWhy: 'ngspice finished without writing any results, and it printed no message that says why.',
   noGroundTitle: 'No ground (node 0)',
@@ -368,6 +392,9 @@ export const DESCRIBE_STRINGS = {
   includeWhy: 'PlainSpice runs in your browser and has no other files to give ngspice, so .include and .lib cannot read anything, and ngspice stops.',
   errorTitle: 'ngspice reported an error',
   warningTitle: 'ngspice warns',
+  modelWordTitle: (word: string): string => `ngspice looked for a model called ${word}`,
+  modelWordWhy: (word: string, model: string): string =>
+    `ngspice printed "can't find model '${model}'": besides reading the value ${word}, it looked for a model with that name and found none. The Checks tab says what ngspice makes of this value.`,
   saysWhy: (text: string): string => `ngspice says: ${text}`,
   controlVectorTitle: 'A .control command ran before the results existed',
   controlVectorWhy: (v: string): string =>
@@ -430,6 +457,15 @@ function partsOf(netlist: Netlist): Parts {
     parts.lines.push(line);
     if (!parts.byKey.has(line.element.key)) parts.byKey.set(line.element.key, line);
   }
+  // S25, S26: ngspice still reads the parts after a plain .end, so they are part of the circuit and
+  // of its results (the parser gives those lines no element: read each one on its own).
+  for (const line of readAfterEnd(netlist)) {
+    const element = parseNetlist(`*\n${line.text}`).lines[1]?.element;
+    if (!element) continue;
+    const part: NetlistLine = { ...line, element };
+    parts.lines.push(part);
+    if (!parts.byKey.has(element.key)) parts.byKey.set(element.key, part);
+  }
   partsCache.set(netlist, parts);
   return parts;
 }
@@ -445,9 +481,8 @@ function flows(speech: string): string {
   return speech.split(' ')[0] === '1' ? 'flows' : 'flow';
 }
 
-/** Ohms in plain units; ngspice's 1e20 stand-in stays a plain number ("1e+20 Ω"). */
+/** Ohms in plain units; ngspice's 1e20 stand-in is written with its exponent ("1e+20 Ω", formatSI). */
 function ohms(v: number): { text: string; speech: string } {
-  if (Math.abs(v) >= 1e15) return { text: `${formatNumber(v)} Ω`, speech: `${formatNumber(v).replace(MINUS, 'minus ')} ohms` };
   return { text: formatSI(v, 'Ω'), speech: speakSI(v, 'Ω') };
 }
 
@@ -539,23 +574,30 @@ function sweepValue(s: SweepReading, v: number | undefined, text: string | undef
   return v !== undefined ? (s.unit ? formatSI(v, s.unit) : formatNumber(v)) : (text ?? '?');
 }
 
+/** Parts described one by one; a netlist with more (pasted, or from a link) is summed up after these. */
+export const DESCRIBED_PARTS = 100;
+
 /**
  * The circuit in a few sentences for screen readers, in netlist order: how many parts and nodes,
- * one short sentence per part, then the analyses.
+ * one short sentence per part (the first DESCRIBED_PARTS of them), then the analyses.
  */
 export function describeCircuit(netlist: Netlist): string {
   const parts = partsOf(netlist);
   const out: string[] = [];
   const nodes = [...netlist.nodes.values()].filter((n) => !n.ground && n.connections.length > 0);
-  const names = nodes.map((n) => n.name).join(', ');
+  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => n.name).join(', ');
   const grounded = netlist.nodes.get('0')?.connections.length ?? 0;
   if (parts.lines.length === 0) out.push(S.noParts);
   else out.push(grounded > 0 ? S.counts(parts.lines.length, nodes.length, names) : S.countsNoGround(parts.lines.length, nodes.length, names));
-  for (const line of parts.lines) out.push(partSentence(netlist, line));
+  for (const line of parts.lines.slice(0, DESCRIBED_PARTS)) out.push(partSentence(netlist, line));
+  if (parts.lines.length > DESCRIBED_PARTS) out.push(S.moreParts(parts.lines.length - DESCRIBED_PARTS));
   if (parts.subckts.length) out.push(S.subcircuits(parts.subckts.length, parts.subckts.join(', ')));
   const analyses = netlist.analyses.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
-  if (analyses.length === 0) out.push(S.noAnalysis); // M20
-  else {
+  if (analyses.length === 0) {
+    // M20; A36: a .control block runs; S25: so does an analysis written after a plain .end.
+    if (readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) out.push(S.analysisAfterEnd);
+    else out.push(netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text)) ? S.noAnalysisControl : S.noAnalysis);
+  } else {
     const list = analyses.map((r) => analysisPhrase(netlist, r)).join('; ');
     out.push(analyses.length === 1 ? S.analysis(list) : S.analyses(list));
   }
@@ -579,7 +621,8 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   const key = lowerAscii(c.element);
   const line = partsOf(netlist).byKey.get(key);
   const el = line?.element;
-  if (!el || !el.letter) return undefined;
+  // P15, P15b: a part ngspice left out has no current, even when savecurrents writes a 0 for it.
+  if (!el || !el.letter || !isBuilt(el)) return undefined;
   if (c.origin === 'device' && !DEVICE_LETTERS.has(el.letter)) return undefined;
   if (c.origin === 'branch' && !BRANCH_LETTERS.has(el.letter)) return undefined;
   const [p, n] = el.nodes;
@@ -690,6 +733,7 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
     } else {
       const [a, b] = reading?.outputNames ?? [];
       const at = b ? S.between(a ?? '?', b) : S.at(a ?? tf.outputImpedance.at);
+      words.at = at;
       words.outputResistance = { value: tf.outputImpedance.value, text: S.outputR(at, o.text), speech: S.outputRSpeech(at, o.speech) };
     }
   }
@@ -735,11 +779,14 @@ function sweepsOf(netlist: Netlist, results: AnalysisResults): SweepWords[] {
     const f = finals(netlist, sweep);
     const last = sweep.scale.values[points - 1];
     const firstSweep = sweeps[0];
-    const where =
-      sweeps.length === 1 && firstSweep && last !== undefined ? S.sweepAt(sweepName(firstSweep), formatSI(last, sweep.scale.unit)) : S.atLastPoint;
+    const one = sweeps.length === 1 && firstSweep && last !== undefined ? firstSweep : undefined;
+    // "At 100 °C: …" for a temperature sweep, "At V1 = 12 V: …" for a source.
+    const where = !one ? S.atLastPoint : one.kind === 'temperature' ? formatSI(last!, sweep.scale.unit) : S.sweepAt(sweepName(one), formatSI(last!, sweep.scale.unit));
+    const whereSpeech = !one ? S.atLastPoint : one.kind === 'temperature' ? speakSI(last!, sweep.scale.unit) : S.sweepAtSpeech(sweepName(one), speakSI(last!, sweep.scale.unit));
     const head = points ? S.dcSweepText(what, points) : S.dcNoPoints(what);
     const text = points && f.length ? `${head} ${S.atEnd(where, f.map((x) => x.text).join(', '))}` : head;
-    const speech = points && f.length ? `${head} ${S.atEnd(where, f.map((x) => x.speech).join(', '))}` : head;
+    const speech =
+      points && f.length ? `${head} ${(one && one.kind !== 'temperature' ? S.atEndSpeech : S.atEnd)(whereSpeech, f.map((x) => x.speech).join(', '))}` : head;
     out.push({ kind: 'dc', points, text, speech, final: f });
   }
   if (results.tran) {
@@ -782,6 +829,34 @@ function isFollowUp(d: EngineDiagnostic): boolean {
 /** Folded into the "these numbers can't be trusted" message. */
 const FOLDED_WHEN_UNRELIABLE = new Set(['gmin-stepping-failed', 'source-stepping-failed', 'transient-op-fallback']);
 
+/**
+ * "unrecognized variable - @r1[i]": the current of a part ngspice left out (or that is not in the
+ * circuit at all), asked for by `.options savecurrents`. It says nothing the "left out" message does
+ * not, and PlainSpice usually added that line itself (M5).
+ */
+function leftOutCurrent(netlist: Netlist, d: EngineDiagnostic): boolean {
+  const m = /unrecognized variable - @([^[\s]+)\[/i.exec(d.text);
+  if (!m) return false;
+  const el = partsOf(netlist).byKey.get(lowerAscii(m[1]!))?.element;
+  return !el || !isBuilt(el);
+}
+
+const ANALYSIS_WORD = /^\s*(\.(?:op|tf|dc|tran|ac|noise|disto|pz|sens|sp|four|fourier))\b/i;
+
+/** Why a run without analysis lines gave nothing: a .control block, an @ line, the title line (M20, S29, A34). */
+function nothingRanWords(netlist: Netlist): MessageWords {
+  if (netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text))) {
+    return { code: 'control-only', severity: 'note', title: S.controlOnlyTitle, why: S.controlOnlyWhy };
+  }
+  const at = netlist.lines.find((l) => l.index > 0 && l.kind === 'invalid' && l.text.trimStart().startsWith('@'));
+  if (at && netlist.lines.some((l) => l.index > at.index && ANALYSIS_WORD.test(l.text))) {
+    return { code: 'no-analysis', severity: 'error', title: S.noAnalysisTitle, why: S.noAnalysisAtWhy(at.number), line: at.number };
+  }
+  const title = ANALYSIS_WORD.exec(netlist.lines[0]?.text ?? '');
+  if (title) return { code: 'no-analysis', severity: 'error', title: S.noAnalysisTitle, why: S.noAnalysisTitleWhy(title[1]!), line: 1 };
+  return { code: 'no-analysis', severity: 'error', title: S.noAnalysisTitle, why: S.noAnalysisWhy };
+}
+
 function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults): MessageWords[] {
   const diagnostics = [...run.diagnostics, ...unclassified(run)];
   const out: MessageWords[] = [];
@@ -800,6 +875,7 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
     if (isFollowUp(d) && (specific || out.some((m) => m.severity === 'error'))) continue;
     // Once the run has failed for a known reason, ngspice's other warnings are noise.
     if (d.code === 'warning' && !run.ok && specific) continue;
+    if (d.code === 'warning' && leftOutCurrent(netlist, d)) continue;
     const words = explainDiagnostic(d, netlist);
     const m: MessageWords = { code: d.code, severity: d.severity, title: words.title, why: words.why };
     if (words.line !== undefined) m.line = words.line;
@@ -818,7 +894,7 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
     }
   }
   if (!run.ok && !hasResults && out.length === 0) {
-    if (netlist.analyses.length === 0) push({ code: 'no-analysis', severity: 'error', title: S.noAnalysisTitle, why: S.noAnalysisWhy }); // M20
+    if (netlist.analyses.length === 0 && !readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) push(nothingRanWords(netlist)); // M20
     else push({ code: 'no-results', severity: 'error', title: S.noResultsTitle, why: S.noResultsWhy });
   }
   // The general warning first, then the cause (a singular matrix explains the rest), then errors, warnings, notes.
@@ -829,26 +905,36 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
 
 // ------------------------------------------------------------------ describeResults
 
-function summaryOf(status: ResultsInWords['status'], words: Omit<ResultsInWords, 'summary' | 'status'>, results: AnalysisResults): string {
+type SummaryInput = Omit<ResultsInWords, 'summary' | 'summarySpeech' | 'status' | 'ngspiceError'>;
+
+/**
+ * The one-paragraph summary: written with unit symbols ("a = 14 V") for the page, or for speech
+ * with the units in words ("a is 14 volts"), so a screen reader never spells out "mV" or "kΩ".
+ */
+function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, words: SummaryInput, results: AnalysisResults, speech: boolean): string {
   const firstProblem = words.warnings.find((m) => m.code !== 'unreliable' && m.severity !== 'note') ?? words.warnings[0];
   const lower = (s: string): string => (s && !/^[A-Z]{2}|^[A-Z]\d|^\./.test(s) ? s[0]!.toLowerCase() + s.slice(1) : s);
-  if (status === 'failed') return S.summaryFailed(firstProblem ? lower(firstProblem.title) : S.summaryNothing);
+  if (status === 'failed') return (ngspiceError ? S.summaryFailed : S.summaryEmpty)(firstProblem ? lower(firstProblem.title) : S.summaryNothing);
   if (status === 'unreliable') {
     const specific = words.warnings.find((m) => m.code !== 'unreliable');
     return S.summaryUnreliable(lower(specific?.title ?? S.unreliableTitle));
   }
   const parts: string[] = [];
   if (words.nodes.length) {
-    const shown = words.nodes.slice(0, 4).map((n) => S.valueIs(n.node, n.text));
+    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(n.node === '0' ? S.ground : n.node, n.speech) : S.valueIs(n.node, n.text)));
     parts.push(S.summaryNodes(shown.join(', '), words.nodes.length - shown.length));
   }
   if (words.currents.length) parts.push(S.summaryCurrents(words.currents.length));
-  if (words.tf?.transferFunction) parts.push(S.summaryTf(words.tf.transferFunction.text));
-  if (words.tf?.inputResistance) parts.push(words.tf.inputResistance.text.replace(/ \(ngspice calls.*\)$/, ''));
-  if (words.tf?.outputResistance) parts.push(words.tf.outputResistance.text.replace(/, the Thevenin.*$| \(ngspice calls.*\)$/, ''));
+  const tf = words.tf;
+  if (tf?.transferFunction) parts.push(speech ? tf.transferFunction.speech : S.summaryTf(tf.transferFunction.text));
+  if (tf?.inputResistance) parts.push(speech ? tf.inputResistance.speech : tf.inputResistance.text.replace(/ \(ngspice calls.*\)$/, ''));
+  if (tf?.outputResistance) parts.push(speech ? tf.outputResistance.speech : tf.outputResistance.text.replace(/, the Thevenin.*$| \(ngspice calls.*\)$/, ''));
   for (const s of words.sweeps) {
     if (s.kind === 'dc') parts.push(S.summaryDc(s.points));
-    else parts.push(S.summaryTran(formatSI(results.tran?.scale.values[s.points - 1] ?? 0, 's'), s.points));
+    else {
+      const end = results.tran?.scale.values[s.points - 1] ?? 0;
+      parts.push(S.summaryTran(speech ? speakSI(end, 's') : formatSI(end, 's'), s.points));
+    }
   }
   if (results.other.length) parts.push(S.summaryOther(results.other.length));
   const problems = words.warnings.filter((m) => m.severity !== 'note');
@@ -865,7 +951,10 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   const hasResults = !!(results.op || results.tf || results.dc || results.tran || results.other.length);
   // M3: an unreliable run with no results at all has failed; any other run without results too.
   const status: ResultsInWords['status'] = !hasResults ? 'failed' : run.unreliable ? 'unreliable' : run.ok ? 'ok' : 'failed';
-  const words: Omit<ResultsInWords, 'summary' | 'status'> = {
+  // 'rawfile' is PlainSpice's own message (it could not read the results file), not ngspice's.
+  const ngspiceError =
+    run.exitCode !== 0 || run.diagnostics.some((d) => d.severity === 'error' && d.code !== 'rawfile') || unclassified(run).some((d) => d.severity === 'error');
+  const words: SummaryInput = {
     nodes: nodesOf(netlist, results),
     currents: currentsOf(netlist, results),
     sweeps: sweepsOf(netlist, results),
@@ -873,7 +962,13 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   };
   const tf = tfOf(netlist, results);
   if (tf) words.tf = tf;
-  return { status, ...words, summary: summaryOf(status, words, results) };
+  return {
+    status,
+    ngspiceError,
+    ...words,
+    summary: summaryOf(status, ngspiceError, words, results, false),
+    summarySpeech: summaryOf(status, ngspiceError, words, results, true),
+  };
 }
 
 // ------------------------------------------------------------------ annotateLines
@@ -890,6 +985,8 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
   const out: LineAnnotation[] = [];
   for (const line of partsOf(netlist).lines) {
     const el = line.element!;
+    // P15, P15b: an R, C or L line with nothing after its nodes is left out of the circuit, so it gets no note.
+    if (!isBuilt(el)) continue;
     const c = byKey.get(el.key);
     if (c) {
       out.push(sourceOrPartNote(line, el, c));
@@ -897,8 +994,6 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
     }
     const [p, n] = el.nodes;
     if (!p || !n || !el.letter || el.letter === 'K') continue;
-    // P15, P15b: an R, C or L line with nothing after its nodes is left out of the circuit, so it gets no note.
-    if ((el.letter === 'R' || el.letter === 'C' || el.letter === 'L') && !el.value && el.fields.length === 3) continue;
     const vp = volts.get(nodeName(p));
     const vn = volts.get(nodeName(n));
     if (vp === undefined || vn === undefined) continue;
@@ -1192,9 +1287,28 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
     default: {
       const vector = /vector (\S+) is not available or has zero length/i.exec(d.text);
       if (vector) return withLine({ title: S.controlVectorTitle, why: S.controlVectorWhy(vector[1]!) }); // A27
+      const model = /can't find model '([^']+)'/i.exec(d.text);
+      const part = model ? partWithWord(netlist, model[1]!) : undefined;
+      if (part) {
+        // decimal-comma-2, space-before-suffix-7, greek-mu-2: a value word ngspice also tried as a model name.
+        return withLine({ title: S.modelWordTitle(part.word), why: S.modelWordWhy(part.word, model![1]!) }, d.line ?? part.line);
+      }
       return withLine({ title: d.severity === 'error' ? S.errorTitle : S.warningTitle, why: S.saysWhy(d.text) });
     }
   }
+}
+
+/** The first part line with a word (after its name and nodes) that is `word` in lower case, as written. */
+function partWithWord(netlist: Netlist, word: string): { word: string; line: number } | undefined {
+  const key = lowerAscii(word);
+  for (const line of partsOf(netlist).lines) {
+    const el = line.element!;
+    const skip = el.nodes.length + 1;
+    const words = line.text.replace(/;.*$/, '').trim().split(/\s+/).slice(skip);
+    const found = words.find((w) => lowerAscii(w) === key);
+    if (found) return { word: found, line: line.number };
+  }
+  return undefined;
 }
 
 function dotModel(netlist: Netlist, model: string): number | undefined {

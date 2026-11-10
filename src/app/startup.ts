@@ -7,14 +7,14 @@
  * next choice; a fragment that is not a share link at all (e.g. "#main" from the skip link) is
  * ignored silently.
  */
-import { decodeShare, type DecodedShare } from '../share/link.ts';
+import { decodeShare, type DecodedShare, type ShareProblem } from '../share/link.ts';
 import { DEFAULT_EXAMPLE_ID, exampleById, EXAMPLES } from './examples.ts';
 import { readStored, STORAGE_KEYS } from './storage.ts';
 
 export type StartupDecision =
   | { source: 'share'; netlist: string; run: boolean }
-  | { source: 'saved'; netlist: string; problem?: string }
-  | { source: 'example'; netlist: string; exampleId: string; problem?: string };
+  | { source: 'saved'; netlist: string; problem?: string; problemCode?: ShareProblem }
+  | { source: 'example'; netlist: string; exampleId: string; problem?: string; problemCode?: ShareProblem };
 
 export interface StartupInput {
   /** decodeShare(location.hash), or null when there is no fragment. */
@@ -26,8 +26,9 @@ export interface StartupInput {
 
 export function decideStartup({ share, saved, example }: StartupInput): StartupDecision {
   if (share?.ok) return { source: 'share', netlist: share.netlist, run: share.run };
-  const problem = share && !share.ok && share.code !== 'no-circuit' ? share.reason : undefined;
-  const withProblem = <T extends object>(d: T): T & { problem?: string } => (problem === undefined ? d : { ...d, problem });
+  const failed = share && !share.ok && share.code !== 'no-circuit' ? share : undefined;
+  const withProblem = <T extends object>(d: T): T & { problem?: string; problemCode?: ShareProblem } =>
+    failed === undefined ? d : { ...d, problem: failed.reason, problemCode: failed.code };
   if (saved !== null && saved.trim() !== '') return withProblem({ source: 'saved' as const, netlist: saved });
   return withProblem({ source: 'example' as const, netlist: example.netlist, exampleId: example.id });
 }

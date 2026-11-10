@@ -175,6 +175,13 @@ pre {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
+/* React Aria marks the whole tab area (and a checkbox's or radio's label) as focus-visible while
+   focus is anywhere inside it: one ring, on the element that has focus, is enough (a11y review F6). */
+.tabs[data-focus-visible],
+.checkbox[data-focus-visible],
+.radio[data-focus-visible] {
+  outline: none;
+}
 /* React Aria marks keyboard focus with data-focus-visible; mouse clicks show no ring. */
 :focus:not(:focus-visible) {
   outline: none;
@@ -306,6 +313,17 @@ pre {
   }
   to {
     opacity: 0.35;
+  }
+}
+
+/* A phone's first screen is short: the tagline (also in the page title) gives way to the netlist. */
+@media (max-width: 599px) {
+  .app-header {
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem 1rem;
+  }
+  .brand__tagline {
+    display: none;
   }
 }
 
@@ -633,6 +651,11 @@ pre {
 .banner--stopped {
   background: var(--surface);
 }
+/* ngspice finished quietly without results (an empty sweep, only a .control block): not an error. */
+.banner--empty {
+  border-color: var(--note);
+  background: var(--tint-note);
+}
 
 .summary {
   font-size: 1.0625rem;
@@ -695,6 +718,10 @@ pre {
      (TableWrap.tsx). */
   overflow-wrap: normal;
 }
+/* Not even at the hyphen of an exponent ("6.000000e-" | "06", a11y review F13). */
+.table .num code {
+  white-space: nowrap;
+}
 
 .code {
   font-family: var(--font-mono);
@@ -740,6 +767,9 @@ pre {
 .explain__notes {
   margin: 0.25rem 0;
   padding-left: 1.25rem;
+}
+.explain__go {
+  margin-top: 0.25rem;
 }
 
 .messages h3 {
@@ -831,6 +861,10 @@ pre {
 
 .plots {
   display: grid;
+  /* minmax(0, 1fr), not the implicit auto column: the data table's unbreakable cells would
+     otherwise widen the column, the plot and the page past the screen (a11y review F2, WCAG
+     1.4.10); the table scrolls inside its own box instead. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
 }
 
@@ -887,7 +921,8 @@ pre {
 
 /* ------------------------------------------------------------------ menus and dialogs */
 .popover {
-  min-width: 16rem;
+  /* Never wider than the screen, even with large text (a11y review F7). */
+  min-width: min(16rem, calc(100vw - 2rem));
   max-width: calc(100vw - 2rem);
   max-height: min(70vh, 32rem);
   overflow: auto;
@@ -1123,6 +1158,11 @@ kbd {
   .checkbox__box,
   .radio__dot {
     border-color: CanvasText;
+  }
+  /* Only the chosen tab has a frame and a bar, as in normal colours: a shape, not only a colour,
+     tells it apart (a11y review F12). */
+  .tab:not([data-selected]) {
+    border-color: transparent;
   }
   .tab[data-selected] {
     border-bottom-color: Highlight;

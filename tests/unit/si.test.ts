@@ -40,10 +40,10 @@ describe('speakSI: words for screen readers', () => {
   it.each([
     [-6, 'V', 'minus 6 volts'],
     [1, 'V', '1 volt'],
-    [0.0015, 'A', '1.5 milliamperes'],
+    [0.0015, 'A', '1.5 milliamps'],
     [4, 'Ω', '4 ohms'],
     [1e6, 'Ω', '1 megaohm'],
-    [1e-3, 'A', '1 milliampere'],
+    [1e-3, 'A', '1 milliamp'],
   ])('%s %s -> %s', (value, unit, text) => expect(speakSI(value, unit)).toBe(text));
 });
 
@@ -52,5 +52,19 @@ describe('formatLikeNgspice', () => {
     expect(formatLikeNgspice(12)).toBe('1.200000e+01');
     expect(formatLikeNgspice(1 / 3)).toBe('3.333333e-01');
     expect(formatLikeNgspice(-6)).toBe('-6.000000e+00');
+  });
+});
+
+describe('beyond the prefixes: an exponent, never "0.000001 aW" or "100000000 TΩ" (words review m1)', () => {
+  it.each([
+    [3.6e-35, 'W', `3.6e-35${NB}W`, '3.6 times 10 to the power minus 35 watts'],
+    [1e20, 'Ω', `1e+20${NB}Ω`, '1 times 10 to the power 20 ohms'],
+    [-2.5e16, 'A', `−2.5e+16${NB}A`, 'minus 2.5 times 10 to the power 16 amps'],
+    [9.9996e14, 'Ω', `1e+15${NB}Ω`, '1 times 10 to the power 15 ohms'],
+    [1e-18, 'A', `1${NB}aA`, '1 attoamp'],
+    [6e12, 'A', `6${NB}TA`, '6 teraamps'],
+  ])('%s %s -> %s', (value, unit, text, speech) => {
+    expect(formatSI(value, unit)).toBe(text);
+    expect(speakSI(value, unit)).toBe(speech);
   });
 });

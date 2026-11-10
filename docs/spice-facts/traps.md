@@ -48,9 +48,10 @@ run that justifies it. A unit test checks that every cited ID has its section he
 |---|---|---|---|
 | [mega-as-milli](#mega-as-milli) | `1M`, `4.7M`, `1MOhm` as a value | warning | reads milli, silently |
 | [unit-letter](#unit-letter) | `3A` (atto), `1F` on a capacitor (femto) | warning, info | reads atto or femto, silently |
-| [greek-mu](#greek-mu) | the Greek letter μ in a value | warning | ignores it, silently |
+| [greek-mu](#greek-mu) | the Greek letter μ in a value | warning | ignores it; silently, except a model warning on C and L |
 | [rkm-notation](#rkm-notation) | `2k2`, `4k7`, `1M5`, `4R7` | warning | ignores the digits after the letter, silently |
 | [decimal-comma](#decimal-comma) | `1,5k` | error, warning | R, C, L: keeps the second number; V, I: stops |
+| [sign-in-value](#sign-in-value) | `1k-2`, `1d-3` on R, C or L | warning | keeps the second number: −2 Ω, silently (C, L: a model warning) |
 | [space-before-suffix](#space-before-suffix) | `1 k`, `5 V`, `1 m` | error | stops, or silently takes the word as a setting |
 | [midline-comment](#midline-comment) | `R1 a b 2 * load` | error | stops |
 | [nbsp](#nbsp) | a no-break space | warning | glues two words, silently |
@@ -75,7 +76,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [no-analysis](#no-analysis) | no analysis line | error | runs nothing |
 | [missing-end](#missing-end) | no `.end` | info | fine from a file |
 | [after-end](#after-end) | lines after `.end` | warning | still read from a file (unless `.end;...`) |
-| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω | warning | 47: 1e-12 Ω with a warning; 42: 1 mΩ silently |
+| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω | warning, error | 47: 1e-12 Ω with a warning; 42: 1 mΩ silently; across a source: absurd currents |
 | [fatal-syntax](#fatal-syntax) | an unclosed `{` or `'`, an undefined parameter, a malformed B line | error | stops with a fatal error |
 | [include-not-available](#include-not-available) | `.include`, `.lib file section`, `.lib` with one word | error | stops: the file is not there, or `.lib` is not recognised |
 | [lost-continuation](#lost-continuation) | a `+` line that ngspice loses | warning | loses it, silently |
@@ -88,7 +89,7 @@ A part value whose scale letter is a capital `M` alone (not `MEG`, not `MIL`) on
 
 What PlainSpice shows for mega-as-milli-1 (warning, line 3):
 
-> **1M means 1 mΩ, not 1 MΩ.** SPICE ignores capital letters, so M is the same as m: milli. For mega, write meg: 1meg.
+> **1M means 1 milliohm (1 mΩ), not 1 megaohm (1 MΩ).** SPICE ignores capital letters, so a capital M is the same as a small m: milli. For mega, write meg: 1meg.
 >
 > *ngspice:* ngspice reads 1M as 1 mΩ and says nothing. [mega-as-milli-1, mega-as-milli-2, mega-as-milli-3]
 >
@@ -180,11 +181,11 @@ A value whose scale letter is `A`/`a` (atto) on any part with a main value, or `
 
 What PlainSpice shows for unit-letter-1 (warning, line 2):
 
-> **3A means 3 attoamperes.** A is not amps here: SPICE reads it as the scale letter a, atto (10⁻¹⁸), and it does not use units. Write the number alone: 3 means 3 amperes.
+> **3A means 3 attoamps.** A is not amps here: SPICE reads it as the scale letter a, atto (10⁻¹⁸), and it does not use units. Write the number alone: 3 means 3 amps.
 >
-> *ngspice:* ngspice reads 3A as 3 attoamperes and says nothing. [unit-letter-1, unit-letter-2]
+> *ngspice:* ngspice reads 3A as 3 attoamps and says nothing. [unit-letter-1, unit-letter-2]
 >
-> *Fixes:* "Write 3 (3 amperes)"
+> *Fixes:* "Write 3 (3 amps)"
 
 ### unit-letter-1. 3A is 3 attoamperes, silently
 
@@ -263,7 +264,7 @@ PlainSpice's checks: no trap.
 
 ## greek-mu
 
-A number followed by the Greek letter μ (U+03BC), in a part line or an analysis line. ngspice knows the micro sign µ (U+00B5), which raises nothing. Warning. Fix: `u`.
+A number followed by the Greek letter μ (U+03BC), in a part line or an analysis line. ngspice knows the micro sign µ (U+00B5), which raises nothing. Warning. Fix: `u`. On a capacitor or an inductor ngspice also looks for a model named after the word and warns that it can't find one (greek-mu-2); the value is still the number alone, and the trap text says so.
 
 What PlainSpice shows for greek-mu-1 (warning, line 3):
 
@@ -272,6 +273,14 @@ What PlainSpice shows for greek-mu-1 (warning, line 3):
 > *ngspice:* ngspice reads 4.7μ as 4.7 Ω and says nothing. [greek-mu-1]
 >
 > *Fixes:* "Write u for micro: 4.7u"
+
+What PlainSpice shows for greek-mu-2 (warning, line 4):
+
+> **2μF is read as 2 F: SPICE ignores this μ.** This μ is the Greek letter mu, not the micro sign µ that SPICE knows (phone keyboards often type the Greek one). SPICE ignores it like a unit. Write u for micro: 2uF.
+>
+> *ngspice:* ngspice reads 2μF as 2 F; it only warns that it can't find a model called '2μf'. [greek-mu-2]
+>
+> *Fixes:* "Write u for micro: 2uF"
 
 ### greek-mu-1. The Greek letter μ is ignored; the micro sign µ works
 
@@ -298,6 +307,55 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `greek-mu`.
+
+### greek-mu-2. On a capacitor or an inductor ngspice also warns that it can't find a model named after the word
+
+The same Greek μ on C and L: ngspice reads 2μF as 2 F and 3μH as 3 H, and for these two parts it also looks for a model called 2μf (3μh) and warns that it can't find one. The value really is 2 F: C1 holds the charge of 2 F through 1 Ω, so out has barely moved after 1 ms.
+
+```spice
+* the Greek letter mu on a capacitor and an inductor
+V1 in 0 PULSE(0 1 0 1n 1n 1 2)
+R1 in out 1
+C1 out 0 2μF
+R2 in b 1
+L1 b 0 3μH
+.tran 0.1m 1m
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model '2μf' from line
+        c1 out 0 2μf
+    warning, can't find model '3μh' from line
+        l1 b 0 3μh
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(out): 81 points, last 0.0004998747709848901, v(b): 81 points, last 0.9996667223826431
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model '2μf' from line
+        c1 out 0 2μf
+    warning, can't find model '3μh' from line
+        l1 b 0 3μh
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(out): 80 points, last 0.0004998747709849339, v(b): 80 points, last 0.999666722382643
+our engine (wasm), as ngspice -b -r (exit 0):
+    in                                           0
+    out                                          0
+    b                                            0
+    l1#branch                                    0
+    v1#branch                                    0
+    warning, can't find model '2μf' from line
+        c1 out 0 2μf
+    warning, can't find model '3μh' from line
+        l1 b 0 3μh
+    vectors: v(out): 59 points, last 0.0004998750208322771, v(b): 59 points, last 0.9996667222160498
+```
+
+PlainSpice's checks: `greek-mu`, `greek-mu`.
 
 ## rkm-notation
 
@@ -655,6 +713,97 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `decimal-comma`.
+
+## sign-in-value
+
+A `+` or `−` glued inside the value of a resistor, capacitor or inductor: `1k-2`, `1d-3`, `1k+2`. ngspice ends a number at a + or − after a digit or a letter (N9, N10 in numbers-and-syntax.md), so the part reads two numbers and keeps the second one, silently on R; on C and L with a warning that it can't find a model named after the whole word. Warning. Fix: `1e-3` when the first number ends in d or e (an exponent was meant), otherwise keep the first number. On V, I, E, F, G and H ngspice stops at the second number instead: that is unknown-word (unknown-word-9).
+
+What PlainSpice shows for sign-in-value-1 (warning, line 3):
+
+> **1k-2: SPICE reads two numbers, 1k and −2.** A + or − right after a digit or a letter starts a new number in SPICE, so 1k-2 is two numbers, and R1 takes the second one. For an exponent, write e: 1e-3.
+>
+> *ngspice:* ngspice reads two numbers, 1k and -2, keeps the second one and says nothing: R1 gets −2 Ω. [sign-in-value-1]
+>
+> *Fixes:* "Keep 1k (1 kΩ)"
+
+### sign-in-value-1. A + or − inside a resistor value starts a second number, which the resistor takes, silently
+
+ngspice ends a number at a + or − after a digit or a letter, so 1k-2 is the two numbers 1k and −2, 1d-3 is 1d and −3 (d is no exponent there), and 1k+2 is 1k and +2. A resistor keeps the last number it reads, so R1 is −2 Ω, R2 −3 Ω and R3 2 Ω: 1 A into each gives −2 V, −3 V and 2 V. Nothing is printed about it.
+
+```spice
+* a sign inside a resistor's value
+I1 0 a 1
+R1 a 0 1k-2
+I2 0 b 1
+R2 b 0 1d-3
+I3 0 c 1
+R3 c 0 1k+2
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        c                                2.000000e+00
+        b                                -3.00000e+00
+        a                                -2.00000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = -2, v(b) = -3, v(c) = 2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(a) = -2, v(b) = -3, v(c) = 2
+```
+
+PlainSpice's checks: `sign-in-value`, `sign-in-value`, `sign-in-value`.
+
+### sign-in-value-2. On a capacitor or an inductor too, with a warning that it can't find a model
+
+The same on C and L: 1u-2 gives C1 a capacitance of −2 F and 1m-2 gives L1 an inductance of −2 H, and for these two parts ngspice also warns that it can't find a model called 1u-2 or 1m-2. The waveforms show the negative values: with 1 V switched on through 1 Ω, out runs away below 0 (1 − e^(t/2) = −0.6487 V after 1 s) where a 1 µF capacitor would follow in at once, and b grows (e^(t/2) = 1.649 V) where a 1 mH inductor would short it to 0 V.
+
+```spice
+* a sign inside a capacitor's and an inductor's value
+V1 in 0 PULSE(0 1 0 1n 1n 10 20)
+R1 in out 1
+C1 out 0 1u-2
+R2 in b 1
+L1 b 0 1m-2
+.tran 10m 1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model '1u-2' from line
+        c1 out 0 1u-2
+    warning, can't find model '1m-2' from line
+        l1 b 0 1m-2
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(out): 140 points, last -0.6487229588969943, v(b): 140 points, last 1.6487229588969943
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model '1u-2' from line
+        c1 out 0 1u-2
+    warning, can't find model '1m-2' from line
+        l1 b 0 1m-2
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(out): 139 points, last -0.6487229675210122, v(b): 139 points, last 1.6487229675210122
+our engine (wasm), as ngspice -b -r (exit 0):
+    in                                           0
+    out                                          0
+    b                                            0
+    l1#branch                                    0
+    v1#branch                                    0
+    warning, can't find model '1u-2' from line
+        c1 out 0 1u-2
+    warning, can't find model '1m-2' from line
+        l1 b 0 1m-2
+    vectors: v(out): 108 points, last -0.64872296771743, v(b): 108 points, last 1.64872296771743
+```
+
+PlainSpice's checks: `sign-in-value`, `sign-in-value`.
 
 ## space-before-suffix
 
@@ -2443,7 +2592,7 @@ An F or H line whose control source is not a voltage source of the netlist (miss
 
 What PlainSpice shows for control-source-1 (error, line 4):
 
-> **There is no voltage source called V9.** F and H read a current. But SPICE can only read the current through a voltage source. So first, put a zero-volt source in the branch you want to measure: the ammeter trick.
+> **There is no voltage source called V9.** F and H read a current. But SPICE can only read the current through a voltage source. So first, put a 0 V source in the branch you want to measure: the ammeter trick.
 >
 > *ngspice:* ngspice stops: 'f1: unknown controlling source v9'. [control-source-1, control-source-2, control-source-6]
 >
@@ -6012,7 +6161,7 @@ PlainSpice's checks: `after-end`.
 
 ## zero-ohm
 
-A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3).
+A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3). An error, with no fix, when the resistor sits straight across a voltage source, or a chain of voltage sources and inductors whose voltages need not add up to 0: its current then has no finite answer, and ngspice's stand-in gives an absurd one (zero-ohm-2: 6e12 A from a 6 V source).
 
 What PlainSpice shows for zero-ohm-1 (warning, line 3):
 
@@ -6021,6 +6170,14 @@ What PlainSpice shows for zero-ohm-1 (warning, line 3):
 > *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 Ω without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]
 >
 > *Fixes:* "Use a 0 V source instead (VR1)"
+
+What PlainSpice shows for zero-ohm-2 (error, line 3):
+
+> **R1 shorts V1: its current has no finite answer.** A resistance of 0 straight across a voltage source would need an endless current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where R1 should go.
+>
+> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor r1 is too small, set to 1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2]
+>
+> *Fixes:* none
 
 ### zero-ohm-1. A 0 Ω resistor: 47 uses 1e-12 Ω and warns, 42 used 1 mΩ silently
 

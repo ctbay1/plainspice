@@ -38,13 +38,14 @@ test('the F5 example runs in the browser: a = 14 V, n1 = 12 V, 3 A from n1 to 0 
   // R1 carries 3 A, and the table says which way: from n1 to 0 (not a sign to decode).
   const r1 = rowNamed(currentsTable(page), 'R1').getByRole('cell');
   expect(await shownText(r1.nth(0))).toBe(`3${NBSP}A`);
-  await expect(r1.nth(0)).toHaveAccessibleName('3 amperes');
+  await expect(r1.nth(0)).toHaveAccessibleName('3 amps');
   await expect(r1.nth(1)).toHaveText(t('flowsFromTo', { from: 'n1', to: '0' }));
   await expect(r1.last()).toContainText('3.000000e+00');
 
   // The same result on R1's own line of the netlist (line 5: "R1 n1 0 4").
   expect(await inlineNote(page, 5)).toMatch(/^3\sA, n1 → 0$/);
 
-  // And said in the polite live region, for screen-reader users who stayed in the editor.
-  await expectAnnounced(page, /Simulation finished: a = 14\sV, x = 14\sV, n1 = 12\sV/);
+  // And said in the polite live region, for screen-reader users who stayed in the editor, with the
+  // units in words (a screen reader would spell out "V" or "mV").
+  await expectAnnounced(page, /Simulation finished: a is 14 volts, x is 14 volts, n1 is 12 volts/);
 });

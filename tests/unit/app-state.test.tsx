@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import { interpretPlots } from '../../src/engine/results.ts';
 import type { EngineDiagnostic, RunResult } from '../../src/engine/types.ts';
-import { describeResults, parseNetlist } from '../../src/app/model.ts';
+import { parseNetlist } from '../../src/app/model.ts';
+import { describeResults } from '../../src/spice/describe.ts';
 import { groupTraps, hasSweeps, initialState, reducer, tabAfterRun, type AppState, type RunOutcome } from '../../src/app/state.ts';
 import type { Trap } from '../../src/spice/types.ts';
 
@@ -148,17 +149,21 @@ describe('hasSweeps', () => {
       series: [{ name: 'v(out)', values: new Float64Array([0, 1]), unit: 'V' as const }],
     };
     const result = run();
-    const done = (unreliable: boolean): RunOutcome => ({
+    const done = (unreliable: boolean, traps: Trap[] = []): RunOutcome => ({
       kind: 'done',
       result: run({ unreliable }),
       results: { tran: sweep, other: [] },
       description: describeResults(netlist, { other: [] }, result),
       netlist,
       added: [],
+      traps,
       stale: false,
     });
     expect(hasSweeps(done(false))).toBe(true);
     expect(hasSweeps(done(true))).toBe(false);
     expect(hasSweeps({ kind: 'none' })).toBe(false);
+    // An error-level check on the netlist that ran: its sweep is not an answer either (words review B1).
+    expect(hasSweeps(done(false, [trap(2, 'error')]))).toBe(false);
+    expect(hasSweeps(done(false, [trap(2, 'warning')]))).toBe(true);
   });
 });

@@ -40,7 +40,7 @@ export const PLOT_STRINGS = {
   /** One quantity in the readout and in the cursor's spoken value: "v(out) 4.59 V". */
   labelled: (label: string, value: string): string => `${label} ${value}`,
 
-  /** The cursor's spoken value: "time 2.5 milliseconds: v(out) 4.59 volts, i(v1) minus 459 microamperes". */
+  /** The cursor's spoken value: "time 2.5 milliseconds: v(out) 4.59 volts, i(v1) minus 459 microamps". */
   cursorValue: (x: string, values: readonly string[]): string => (values.length ? `${x}: ${values.join(', ')}` : x),
 
   /** Announced politely after a zoom (numbers in words). */

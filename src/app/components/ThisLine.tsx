@@ -9,10 +9,11 @@ export function ThisLine({ netlist, line }: { netlist: Netlist; line: number }):
   const explanation = useMemo(() => explainLine(netlist, line - 1), [netlist, line]);
   return (
     <section className="card this-line" aria-labelledby="this-line-heading">
-      <h2 id="this-line-heading" className="card__title">
+      {/* An h3: the card sits inside the Netlist section, whose heading is an h2 (a11y review F14). */}
+      <h3 id="this-line-heading" className="card__title">
         {t('thisLineHeading')}
-      </h2>
-      {explanation ? <LineExplanationView explanation={explanation} headingLevel={3} /> : <p className="muted">{t('thisLineEmpty')}</p>}
+      </h3>
+      {explanation ? <LineExplanationView explanation={explanation} headingLevel={4} /> : <p className="muted">{t('thisLineEmpty')}</p>}
     </section>
   );
 }

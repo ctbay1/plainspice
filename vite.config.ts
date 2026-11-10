@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
@@ -120,6 +121,67 @@ function shipDependencyLicences(): Plugin {
   };
 }
 
+/**
+ * The built pages' <head>, in production builds only (Vite's dev server needs inline scripts):
+ *
+ * - On the app page, a few lines that start downloading ngspice at once when the address is a
+ *   "run=1" link (the channel's "Open this circuit" links): otherwise the 0.6 MB engine waits for
+ *   the scripts, the first render and the Worker, and on a slow phone the results came about 2 s
+ *   later (perf review 3). Only for run=1, so an ordinary visit's first screen is not slowed.
+ * - A Content-Security-Policy (security review m1), as a <meta> because GitHub Pages sets no
+ *   headers. Defence in depth: nothing from a link is ever put into the page as HTML. Styles need
+ *   'unsafe-inline' (CodeMirror and React Aria add style elements and attributes), images data:
+ *   (CodeMirror's underline), and WebAssembly 'wasm-unsafe-eval'; the inline script above is
+ *   allowed by its hash.
+ * - The spike and licences pages are not part of the installable app: vite-plugin-pwa's manifest
+ *   link (relative, so a 404 there) is removed from them (security review m7).
+ */
+function pageHead(): Plugin {
+  return {
+    name: 'plainspice-page-head',
+    apply: 'build',
+    enforce: 'post',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const page = ctx.filename.replace(/\\/g, '/');
+        if (/\/(spike|licenses)\/index\.html$/.test(page)) {
+          return html.replace(/\s*<link rel="manifest"[^>]*>/, '');
+        }
+        const files = Object.keys(ctx.bundle ?? {});
+        const wasm = files.find((f) => /^engine\/ngspice-[\w-]+\.wasm$/.test(f));
+        const worker = files.find((f) => /^assets\/worker-[\w-]+\.js$/.test(f));
+        let script = '';
+        if (wasm && worker) {
+          script =
+            `if(/(?:^#|&)run=1(?:&|$)/.test(location.hash)){` +
+            `for(const[r,h,a]of[["preload","./${wasm}","fetch"],["prefetch","./${worker}",""]]){` +
+            `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"}document.head.append(l)}}`;
+        } else {
+          this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
+        }
+        const hash = script ? ` 'sha256-${createHash('sha256').update(script).digest('base64')}'` : '';
+        const policy = [
+          "default-src 'none'",
+          `script-src 'self' 'wasm-unsafe-eval'${hash}`,
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data:",
+          "font-src 'self'",
+          "connect-src 'self'",
+          "worker-src 'self'",
+          "manifest-src 'self'",
+          "base-uri 'none'",
+          "form-action 'none'",
+        ].join('; ');
+        const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy}" />`];
+        if (script) tags.push(`<script>${script}</script>`);
+        // Right after the charset (which must come first), before anything the policy covers.
+        return html.replace(/(<meta charset="utf-8"\s*\/?>)/i, `$1\n    ${tags.join('\n    ')}`);
+      },
+    },
+  };
+}
+
 /** Theme colours of the installed app (the same values as --paper and --ink in src/styles/app.css). */
 const PAPER = '#F6F1E4';
 const INK = '#1E2A45';
@@ -159,7 +221,12 @@ function offlineApp(): Plugin[] {
     },
     workbox: {
       globPatterns: ['**/*.{html,js,css,wasm,svg,png}', 'engine/*.{txt,md,sh}', 'engine/patches/*', 'licenses/*.{md,txt}'],
-      globIgnores: ['engine/source/**'],
+      // The spike page is a check for developers, not part of the app: not worth 40 kB offline.
+      globIgnores: ['engine/source/**', 'spike/**', 'assets/spike-*'],
+      // Files with a content hash in their name never change, so the service worker may take them
+      // from the HTTP cache: a first visit then downloads ngspice.wasm once, not twice (perf review 2;
+      // without this Workbox fetches every revisioned file again with cache: 'reload').
+      dontCacheBustURLsMatching: /-[\w-]{8}\.(?:js|css|wasm)$/,
       // ngspice.wasm is about 1.7 MB before compression; Workbox's default limit is 2 MiB.
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       manifestTransforms: [
@@ -194,6 +261,7 @@ export default defineConfig({
     shipEngineSourceAndNotices(),
     shipDependencyLicences(),
     offlineApp(),
+    pageHead(),
   ],
   build: {
     target: 'es2022',
