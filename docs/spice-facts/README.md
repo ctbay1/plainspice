@@ -20,6 +20,8 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 | File | What it covers | Relied on by | Test |
 |---|---|---|---|
 | [numbers-and-syntax.md](numbers-and-syntax.md) | How ngspice reads numbers (scale letters, `M` is milli, units ignored, decimal commas, exponents), lines (the title, comments, continuation lines, `.end`, `@`, `.control`), words, node names and ground, which number a part line uses, and what each first letter means | `src/spice/numbers.ts`, `src/spice/parse.ts`, `src/spice/elements.ts` | `tests/golden/facts-numbers.test.ts` (and the unit tests `tests/unit/spice-numbers.test.ts`, `tests/unit/spice-parse.test.ts`) |
+| [traps.md](traps.md) | What ngspice does with each beginner trap PlainSpice checks for (the scale letters, ground, floating nodes, current sources with no path, loops of voltage sources, duplicate names, unknown first letters, missing values, `.tf`/`.dc` on names that don't exist …), so each check says what really happens and its fix changes only what it should | `src/spice/traps.ts`, `src/spice/graph.ts` | `tests/golden/facts-traps.test.ts` (and `tests/unit/spice-traps.test.ts`) |
+| [explanations.md](explanations.md) | What each kind of line means (parts, sources and their waveforms, dot commands), what each analysis computes and saves, which way currents and powers are counted, and what ngspice's messages mean | `src/spice/explain.ts`, `src/spice/describe.ts` | `tests/golden/facts-explain.test.ts` (and `tests/unit/spice-explain.test.ts`, `tests/unit/spice-describe.test.ts`) |
 
 ## Adding a fact
 
@@ -37,7 +39,7 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 
 ## Where the evidence came from
 
-The facts in `numbers-and-syntax.md` were run for that file on 9 November 2026. Two parts come from the
+The facts in all three files were run for them on 9 November 2026. Two parts come from the
 research runs of the same day, which are not in the repository, so their results are copied here:
 the 48 value spellings (each put on a current source, a resistor and a capacitor, in ngspice 42 and 47;
 the table is in `tests/unit/spice-numbers.test.ts`) and the first-character sweep (57 first characters;
