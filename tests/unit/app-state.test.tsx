@@ -154,6 +154,7 @@ describe('hasSweeps', () => {
       results: { tran: sweep, other: [] },
       description: describeResults(netlist, { other: [] }, result),
       netlist,
+      added: [],
       stale: false,
     });
     expect(hasSweeps(done(false))).toBe(true);

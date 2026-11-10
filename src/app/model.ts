@@ -22,10 +22,12 @@ import {
 } from '../spice/describe.ts';
 import { explainLine as explainLineImpl, explainNetlist as explainNetlistImpl } from '../spice/explain.ts';
 import { parseNetlist } from '../spice/parse.ts';
+import { netlistToRun as netlistToRunImpl, type NetlistToRun } from '../spice/run-netlist.ts';
 import { checkTraps as checkTrapsImpl } from '../spice/traps.ts';
 import type { LineExplanation, Netlist, Trap } from '../spice/types.ts';
 
 export { parseNetlist };
+export type { NetlistToRun };
 export type { CurrentWords, LineAnnotation, MessageWords, NodeVoltageWords, QuantityWords, SweepWords, TransferFunctionWords };
 export type ResultsDescription = ResultsInWords;
 
@@ -71,4 +73,13 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
 /** Short results for the end of each part's line (empty when the run's numbers are not answers). */
 export function annotateLines(netlist: Netlist, results: AnalysisResults, run: RunResult): LineAnnotation[] {
   return guarded('annotating the lines', () => annotateLinesImpl(netlist, results, run), []);
+}
+
+/**
+ * The text ngspice runs: the student's text, plus `.options savecurrents` before .end for an
+ * operating point, so every part's current is saved (src/spice/run-netlist.ts). If that fails,
+ * the student's text unchanged.
+ */
+export function netlistToRun(netlist: Netlist): NetlistToRun {
+  return guarded('preparing the run', () => netlistToRunImpl(netlist), { text: netlist.text, added: [] });
 }

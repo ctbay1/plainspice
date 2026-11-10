@@ -22,6 +22,8 @@ const root = resolve(import.meta.dirname, '../..');
 const fixture = (name: string): string => readFileSync(resolve(root, 'tests/fixtures', name), 'utf8');
 const F5 = fixture('f5-thevenin-cccs.cir');
 const F3A = fixture('f3a-1M-trap.cir');
+/** What ngspice runs for a netlist with .op: the same text with .options savecurrents before .end. */
+const asRun = (netlist: string): string => netlist.replace(/^\.end$/m, '.options savecurrents\n.end');
 
 let ngspice: Promise<NgspiceEngine>;
 
@@ -101,16 +103,20 @@ describe('<App />', () => {
     expect(rowA.textContent).toContain('14 V');
     expect(rowA.textContent).toContain('14 volts'); // the visually hidden words
     expect(rowA.textContent).toContain('v(a) = 1.400000e+01');
-    expect(engine.runs).toEqual([F5]);
+    expect(engine.runs).toEqual([asRun(F5)]); // the editor's text is unchanged
     expect(screen.getByText('Finished')).toBeTruthy();
     const currents = screen.getByRole('table', { name: 'Currents' });
     expect(within(currents).getByRole('row', { name: /Vx/ }).textContent).toContain('from a to x');
+    // .options savecurrents in the copy that ran gives the resistors' currents too.
+    expect(within(currents).getByRole('row', { name: /R1/ }).textContent).toContain('from n1 to 0');
+    expect(editorText()).not.toContain('savecurrents');
     await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toMatch(/Simulation finished/));
     // The results on the netlist lines (inline notes from annotateLines).
     await waitFor(() => expect(editorText()).toContain('a → x'));
     // The raw output and the command.
     fireEvent.click(screen.getByRole('tab', { name: 'ngspice output' }));
     expect(screen.getByText('ngspice -b -r out.raw circuit.cir')).toBeTruthy();
+    expect(screen.getByText('.options savecurrents')).toBeTruthy(); // the line PlainSpice added
   }, 30000);
 
   it('Ctrl+Enter runs from anywhere on the page (not only in the editor), but not inside a dialog', async () => {
@@ -167,7 +173,7 @@ describe('<App />', () => {
     render(<App startup={start(netlist, { run: true })} engine={engine} serviceWorker={false} />);
     expect(editorText()).toContain('from a link');
     await screen.findByRole('table', { name: /Node voltages/ }, { timeout: 15000 });
-    expect(engine.runs).toEqual([netlist]);
+    expect(engine.runs).toEqual([asRun(netlist)]);
     expect(localStorage.getItem('plainspice:netlist')).toBe(netlist);
   }, 30000);
 

@@ -16,7 +16,7 @@ function Printed({ id, title, text }: { id: string; title: string; text: string 
   );
 }
 
-export function OutputPanel({ result }: { result: RunResult | undefined }): ReactNode {
+export function OutputPanel({ result, added }: { result: RunResult | undefined; added: readonly string[] }): ReactNode {
   return (
     <div className="panel">
       <h2 className="panel__title">{t('outputHeading')}</h2>
@@ -27,6 +27,14 @@ export function OutputPanel({ result }: { result: RunResult | undefined }): Reac
       {result ? (
         <>
           <p className="muted">{t('outputExit', { code: String(result.exitCode ?? '?'), ms: Math.round(result.timings.runMs) })}</p>
+          {added.length > 0 && (
+            <>
+              <p>{t('outputAdded')}</p>
+              <pre className="command">
+                <code>{added.join('\n')}</code>
+              </pre>
+            </>
+          )}
           <Printed id="ngspice-stdout" title={t('outputStdout')} text={result.stdout} />
           <Printed id="ngspice-stderr" title={t('outputStderr')} text={result.stderr} />
         </>

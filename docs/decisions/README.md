@@ -15,6 +15,7 @@ behind them is in [`../research/`](../research/).
 | [0008](0008-share-links.md) | Share links: the whole circuit in the URL fragment, versioned | accepted |
 | [0009](0009-testing-and-ci.md) | Unit, golden, fact and end-to-end tests in CI | accepted |
 | [0010](0010-accessibility.md) | WCAG 2.2 AA from day one | accepted |
+| [0011](0011-save-every-current.md) | For an operating point, the copy that runs saves every current | accepted |
 
 Also: [what we do differently from EEcircuit](../eecircuit-comparison.md) and the
 [fixture results](../fixture-results.md).

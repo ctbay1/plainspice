@@ -27,6 +27,8 @@ export type RunOutcome =
       description: ResultsDescription;
       /** The netlist that ran (results and explanations refer to its lines). */
       netlist: Netlist;
+      /** Lines PlainSpice added to the copy ngspice ran (shown in the ngspice output tab). */
+      added: readonly string[];
       /** The netlist text changed after this run: the results are kept but marked as old. */
       stale: boolean;
     }
@@ -63,7 +65,15 @@ export type Action =
   | { type: 'engine'; engine: EngineStatus }
   | { type: 'run-start' }
   | { type: 'run-slow' }
-  | { type: 'run-done'; result: RunResult; results: AnalysisResults; description: ResultsDescription; netlist: Netlist; tab: TabKey }
+  | {
+      type: 'run-done';
+      result: RunResult;
+      results: AnalysisResults;
+      description: ResultsDescription;
+      netlist: Netlist;
+      added?: readonly string[];
+      tab: TabKey;
+    }
   | { type: 'run-stopped' }
   /** The run was cancelled because another circuit was loaded: nothing to report. */
   | { type: 'run-abandoned' }
@@ -113,6 +123,7 @@ export function reducer(state: AppState, action: Action): AppState {
         results: action.results,
         description: action.description,
         netlist: action.netlist,
+        added: action.added ?? [],
         stale: false,
       };
       return { ...state, running: null, outcome, tab: action.tab };

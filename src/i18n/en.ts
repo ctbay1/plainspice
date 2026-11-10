@@ -230,6 +230,8 @@ export const en = {
   outputEmpty: '(nothing)',
   outputNone: 'Nothing yet: press Run.',
   outputExit: 'ngspice finished with exit code {code}, in {ms} ms.',
+  outputAdded:
+    'PlainSpice added this line before .end in the copy ngspice ran, so ngspice also saved the current through every part, not only through the voltage sources. The node voltages are the same without it, and your netlist is unchanged:',
 
   // ---------------------------------------------------------------- announcements
   announceFinished: 'Simulation finished. {summary}',

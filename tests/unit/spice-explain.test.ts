@@ -569,7 +569,7 @@ describe('dot commands', () => {
   });
 
   it('.op mentions savecurrents only when the netlist lacks it (A2)', () => {
-    expect(notes(dot('.op'))).toBe('With .options savecurrents, ngspice also saves the current through every part.');
+    expect(notes(dot('.op'))).toBe('ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.');
     expect(notes(dot('.op', '.options savecurrents\n'))).toBe('');
   });
 });

@@ -260,7 +260,7 @@ export const EXPLAIN_STRINGS = {
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
   opWhat: 'operating point',
   op: 'Find the DC operating point: every node voltage and the current in every voltage source. Capacitors act as open circuits and inductors as short circuits.',
-  opSaveCurrents: 'With .options savecurrents, ngspice also saves the current through every part.',
+  opSaveCurrents: 'ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.',
   tfWhat: 'transfer function',
   tf: (out: string, input: string, at: string): string =>
     `Find three DC quantities: the transfer function ${out}/${input} (output ÷ input), the input resistance seen by ${input}, and the output resistance ${at}, which is the Thevenin resistance seen ${at}. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms.`,

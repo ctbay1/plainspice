@@ -33,7 +33,7 @@ import { ThisLine } from './components/ThisLine.tsx';
 import { UpdateBanner } from './components/UpdateBanner.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
 import { exampleById, exampleName } from './examples.ts';
-import { annotateLines, checkTraps, describeResults, parseNetlist } from './model.ts';
+import { annotateLines, checkTraps, describeResults, netlistToRun, parseNetlist } from './model.ts';
 import { nodeColours, sameColours } from './nodes.ts';
 import type { ExportKind } from './overlays/ExportMenu.tsx';
 import { registerServiceWorker } from './pwa.ts';
@@ -213,10 +213,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const slow = setTimeout(() => dispatch({ type: 'run-slow' }), SLOW_RUN_MS);
     try {
       await warmUp();
-      const result = await engine.run(text, RUN_TIMEOUT_MS);
+      // For .op, the copy that runs also saves every part's current (src/spice/run-netlist.ts).
+      const toRun = netlistToRun(netlist);
+      const result = await engine.run(toRun.text, RUN_TIMEOUT_MS);
       const results = interpretPlots(result.plots);
       const description = describeResults(netlist, results, result);
-      dispatch({ type: 'run-done', result, results, description, netlist, tab: tabAfterRun(result, traps) });
+      dispatch({ type: 'run-done', result, results, description, netlist, added: toRun.added, tab: tabAfterRun(result, traps) });
       // Results go on the netlist lines only while the text is still the one that ran (annotateLines
       // gives none when the numbers are not answers).
       if (editor.getDoc() === text) editor.setInlineNotes(annotateLines(netlist, results, result));
@@ -505,7 +507,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
               <ExplainedPanel netlist={state.netlist} />
             </TabPanel>
             <TabPanel id="output" className="tab-panel">
-              <OutputPanel result={outcome.kind === 'done' ? outcome.result : undefined} />
+              <OutputPanel result={outcome.kind === 'done' ? outcome.result : undefined} added={outcome.kind === 'done' ? outcome.added : []} />
             </TabPanel>
           </Tabs>
         </section>
