@@ -44,9 +44,38 @@ jobs:
         with:
           path: dist
 
+  # The built app in a real browser (decisions 0009 and 0010): a desktop and a phone, the fixtures
+  # through the UI, traps, share links, export, keyboard only, plots, offline, and axe with the
+  # WCAG 2.2 AA rules. Runs beside "check"; the site deploys only when both pass.
+  e2e:
+    name: End-to-end and accessibility tests (Playwright, axe)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for the pinned Playwright (1.63.0)
+        run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: End-to-end and accessibility tests (desktop and phone)
+        run: npm run test:e2e
+      - name: Keep the Playwright report when a test fails
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
   deploy:
     name: Deploy to GitHub Pages
-    needs: check
+    needs: [check, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     permissions:
