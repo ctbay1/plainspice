@@ -35,7 +35,8 @@ export function findNodeMarks(doc: Text): NodeMark[] {
       state = blankLineState(state);
       continue;
     }
-    const r = tokenizeLine(line.text, state);
+    // The look-ahead lets "gnd" at the end of a line followed by a '+' line count as ground.
+    const r = tokenizeLine(line.text, state, (k) => (n + k <= doc.lines ? doc.line(n + k).text : undefined));
     state = r.state;
     for (const t of r.tokens) {
       if (t.node === undefined) continue;

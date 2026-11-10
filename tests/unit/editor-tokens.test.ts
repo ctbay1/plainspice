@@ -131,8 +131,10 @@ describe('tokenizer: what ngspice 47 does with odd lines', () => {
   });
 
   it('unbraced arithmetic in a value is an error (R1 n 0 2*3); braces or quotes make it an expression', () => {
-    expect(tok('R1 n 0 2*3')).toEqual(['R1:element', 'n:node=n', '0:ground=0', '2:number', '*3:invalid']);
-    expect(tok('R1 n 0 2/4')).toEqual(['R1:element', 'n:node=n', '0:ground=0', '2:number', '/4:invalid']);
+    // ngspice's number reader ends "2" at the '*', which is a word of its own that stops ngspice
+    // ("unknown parameter (*)"), so it and everything after it are invalid (as src/spice/parse.ts).
+    expect(tok('R1 n 0 2*3')).toEqual(['R1:element', 'n:node=n', '0:ground=0', '2:number', '*:invalid', '3:invalid']);
+    expect(tok('R1 n 0 2/4')).toEqual(['R1:element', 'n:node=n', '0:ground=0', '2:number', '/:invalid', '4:invalid']);
     expect(tok("R1 n 0 '2*3'")).toEqual(['R1:element', 'n:node=n', '0:ground=0', "'2*3':expression"]);
     expect(tok('R1 n 0 1,5k')).toEqual(['R1:element', 'n:node=n', '0:ground=0', '1:number', ',:punctuation', '5:number', 'k:scale']);
   });
@@ -159,7 +161,9 @@ describe('tokenizer: subcircuits and .control', () => {
   it('nodes inside a .subckt definition are local; ground is not', () => {
     const lines = ['* t', '.subckt amp in out gnd', 'R1 in out 1k', '.ends amp', 'R2 in 0 1k'];
     const t = tokenizeNetlist(lines.join('\n'));
-    expect(show(lines[1]!, t[1]!)).toEqual(['.subckt:directive', 'amp:model', 'in:node=in local', 'out:node=out local', 'gnd:ground=0']);
+    // "gnd" as the last word of its line is not ground (inp_fix_gnd_name works the same on every
+    // line, W9 in docs/spice-facts): here it is the subcircuit's own node called gnd.
+    expect(show(lines[1]!, t[1]!)).toEqual(['.subckt:directive', 'amp:model', 'in:node=in local', 'out:node=out local', 'gnd:node=gnd local']);
     expect(show(lines[2]!, t[2]!)).toEqual(['R1:element', 'in:node=in local', 'out:node=out local', '1:number', 'k:scale']);
     expect(show(lines[4]!, t[4]!)).toEqual(['R2:element', 'in:node=in', '0:ground=0', '1:number', 'k:scale']);
   });
