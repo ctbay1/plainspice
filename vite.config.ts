@@ -12,7 +12,7 @@ const root = import.meta.dirname;
 /**
  * Ship the engine's licences and exact source next to ngspice.wasm on the site:
  *   engine/ngspice-<hash>.wasm         (emitted by Vite, see assetFileNames)
- *   engine/SOURCE.txt, build.sh, patches/, BUILDINFO.txt, COPYING.ngspice.txt, README.md
+ *   engine/SOURCE.txt, build.sh, no-system.js, patches/, BUILDINFO.txt, COPYING.ngspice.txt, README.md
  *   engine/source/ngspice-47.tar.gz    (when scripts/fetch-ngspice-source.sh has fetched it; CI does)
  *   licenses/THIRD_PARTY_NOTICES.md, licenses/LGPL-2.1-or-later.txt, licenses/LICENSE.txt
  * See THIRD_PARTY_NOTICES.md and docs/decisions/0005-license.md.
@@ -31,6 +31,7 @@ function shipEngineSourceAndNotices(): Plugin {
       copy('LICENSE', 'licenses/LICENSE.txt');
       copy('engine/README.md', 'engine/README.md');
       copy('engine/build.sh', 'engine/build.sh');
+      copy('engine/no-system.js', 'engine/no-system.js');
       copy('engine/BUILDINFO.txt', 'engine/BUILDINFO.txt');
       copy('engine/COPYING.ngspice', 'engine/COPYING.ngspice.txt');
       for (const p of readdirSync(resolve(root, 'engine/patches'))) copy(`engine/patches/${p}`, `engine/patches/${p}`);
@@ -53,7 +54,7 @@ function shipEngineSourceAndNotices(): Plugin {
           ``,
           `Exact upstream source: ${haveTarball ? `source/ngspice-${version}.tar.gz (this site), also ` : ''}${pin('NGSPICE_URL')}`,
           `SHA-256: ${pin('NGSPICE_SHA256')}`,
-          `Build files: build.sh, patches/, BUILDINFO.txt (here) and the engine/ folder of the project's repository.`,
+          `Build files: build.sh, no-system.js, patches/, BUILDINFO.txt (here) and the engine/ folder of the project's repository.`,
           `How to rebuild it or use your own build: README.md.`,
           ``,
         ].join('\n'),
@@ -182,9 +183,8 @@ function pageHead(): Plugin {
   };
 }
 
-/** Theme colours of the installed app (the same values as --paper and --ink in src/styles/app.css). */
+/** The installed app's theme and background colour (the same value as --paper in src/styles/app.css). */
 const PAPER = '#F6F1E4';
-const INK = '#1E2A45';
 
 /** Licence texts larger than this stay online-only: they are links, not part of the app. */
 const OFFLINE_TEXT_LIMIT = 100_000;

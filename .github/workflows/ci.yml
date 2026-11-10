@@ -26,6 +26,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - name: Unit tests
         run: npm run test:unit
       - name: Golden tests (WebAssembly ngspice vs recorded native ngspice 47 and 42)

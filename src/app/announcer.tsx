@@ -68,10 +68,10 @@ export function AnnouncerProvider({ children }: { children: ReactNode }): ReactN
     <AnnounceContext.Provider value={announce}>
       {children}
       {/* role="status" on a div, not <output>: <output> is a form control and is announced less reliably. */}
-      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
       <div
         ref={polite}
         className="visually-hidden"
+        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="status"
         aria-live="polite"
         aria-atomic="false"

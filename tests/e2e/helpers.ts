@@ -243,13 +243,6 @@ export async function settle(page: Page, quietMs = 250, maxMs = 3000): Promise<v
 }
 
 /**
- * @axe-core/playwright brings its own copy of playwright-core (a peer dependency that npm resolved
- * to a newer version), so its Page type differs from @playwright/test's; axe only calls
- * page.evaluate and frame methods that both have.
- */
-type AxePage = ConstructorParameters<typeof AxeBuilder>[0]['page'];
-
-/**
  * Run axe on the page as it is now and expect no violations; the message lists what failed and
  * where. axe can fail outright when the page changes under it (a live-region message is removed
  * after 10 s): then it looks again, up to three times.
@@ -259,7 +252,7 @@ export async function expectNoAxeViolations(page: Page, state: string): Promise<
   for (let attempt = 1; !results; attempt++) {
     await settle(page);
     try {
-      results = await new AxeBuilder({ page: page as unknown as AxePage }).withTags(AXE_TAGS).analyze();
+      results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
     } catch (error) {
       if (attempt >= 3) throw error;
       // Kept in the report, so a page that keeps changing under axe gets noticed.

@@ -321,7 +321,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     currentRun.current = job;
     await job;
     if (currentRun.current === job) currentRun.current = null;
-  }, [announce, engine, parseSoon, restartEngine, warmUp]);
+  }, [announce, engine, parseSoon, restartEngine, showResultsOnNarrowScreen, warmUp]);
 
   const stop = useCallback(() => engine.cancel(), [engine]);
   const onRunPressed = useCallback(
