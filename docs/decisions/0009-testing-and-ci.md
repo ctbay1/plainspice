@@ -28,6 +28,20 @@ GitHub Pages only when they pass (`.github/workflows/ci.yml`).
 Playwright is pinned to the version whose browsers are installed in Claude's cloud sessions
 (1.63.0), so local and CI runs match; CI installs that version's Chromium.
 
+## As built (10 November 2026)
+
+- CI has two jobs side by side: **check** (typecheck, unit, golden and fact tests, the build) and
+  **e2e** (the built app served by `vite preview`, 30 Playwright tests on a desktop profile at
+  1280×800 and a phone profile, the Pixel 7). The site deploys only when both pass; a failing
+  e2e run keeps the Playwright report as an artifact for 14 days.
+- The e2e tests type every fixture into the editor and check the tables against the hand values
+  and native ngspice 47 (the `.dc` and `.tran` CSVs at every point), and run axe with the
+  WCAG 2.2 AA tags in 17 states per profile.
+- Fonts differ between machines, and layout bugs can hide behind them: the first CI run found a
+  lost click at 320 px with large text that only GitHub's wider fonts showed. To try a run with
+  fonts like the runners' on a machine with Inter installed:
+  `FONTCONFIG_FILE=$PWD/tests/e2e/fonts-like-ci.conf npm run test:e2e`.
+
 ## Consequences
 
 - A new ngspice version means re-recording native results with the same version
