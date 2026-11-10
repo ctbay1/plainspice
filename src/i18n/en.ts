@@ -1,0 +1,253 @@
+/**
+ * Every user-facing string of the app shell (src/app/), in English (en-US). The modules keep
+ * their own catalogs (EDITOR_STRINGS, SHARE_TEXT, EXPORT_TEXT, PLOT_STRINGS, and the texts of
+ * src/spice/); this one holds what the shell itself says. A Turkish catalog (tr.ts) will have the
+ * same keys.
+ *
+ * Rules (docs/decisions/0010): plain words a first-year student can follow; one word for one idea
+ * ("run" means simulate, a "check" is a beginner trap found before running, "results" are what
+ * ngspice computed); placeholders are written {name}; keys ending in _one / _other are plural forms
+ * chosen by tn().
+ */
+export const en = {
+  // ---------------------------------------------------------------- page
+  appName: 'PlainSpice',
+  tagline: 'Real SPICE, explained in plain words.',
+  skipToNetlist: 'Skip to the netlist',
+  loading: 'Loading PlainSpice…',
+
+  // ---------------------------------------------------------------- toolbar
+  toolbarLabel: 'Netlist actions',
+  run: 'Run',
+  running: 'Running…',
+  stop: 'Stop',
+  examples: 'Examples',
+  share: 'Share',
+  export: 'Export',
+  settings: 'Settings',
+  help: 'Help',
+
+  // ---------------------------------------------------------------- engine state
+  engineWaiting: 'ngspice starts in a moment',
+  engineLoading: 'ngspice is loading…',
+  engineReady: 'ngspice is ready',
+  engineFailed: 'ngspice could not start: {reason}',
+
+  // ---------------------------------------------------------------- examples
+  examplesMenu: 'Examples',
+  exampleGroupSources: 'Sources and resistors',
+  exampleGroupTraps: 'Traps',
+  exampleGroupAnalyses: 'Analyses',
+  exampleF1a: 'A 6 V source and a resistor',
+  exampleF1b: 'The same source with its nodes swapped',
+  exampleF2a: 'A current source into a resistor',
+  exampleF2b: 'The same current source with its nodes swapped',
+  exampleF3a: 'The 1M trap',
+  exampleF3b: 'The 1M trap, fixed: 1meg',
+  exampleF4: '.tf: output resistance at a node',
+  exampleF5: 'Thevenin resistance with a dependent source',
+  exampleD1: 'DC sweep of a divider',
+  exampleT1: 'RC charging (.tran)',
+  exampleLoaded: 'Opened the example “{name}”.',
+
+  // ---------------------------------------------------------------- export
+  exportMenu: 'Export',
+  exportNgspice: 'Netlist for ngspice (.cir)',
+  exportLtspice: 'Netlist for LTspice (.net)',
+  saved: 'Saved {filename}.',
+  ltspiceNotesTitle: 'Saved {filename} for LTspice',
+  ltspiceNotesIntro: 'What changed from your netlist:',
+
+  // ---------------------------------------------------------------- share
+  shareTitle: 'Share this circuit',
+  shareLinkLabel: 'Link to this circuit',
+  shareCopy: 'Copy link',
+  shareCopied: 'Link copied.',
+  shareCopyFailed: 'The link could not be copied automatically. It is selected: press Ctrl+C (Cmd+C on a Mac) to copy it.',
+  shareRunOption: 'Run the simulation when the link is opened',
+  shareLength_one: 'The link is {count} character long.',
+  shareLength_other: 'The link is {count} characters long.',
+  shareNote: 'The whole circuit is inside the link itself. No server is involved: nothing is uploaded or stored anywhere.',
+  shareMaking: 'Making the link…',
+  shareOpened: 'Opened the circuit from the link.',
+  shareProblemTitle: 'The link could not be opened',
+
+  // ---------------------------------------------------------------- dialogs
+  close: 'Close',
+  settingsTitle: 'Settings',
+  settingsIntro: 'PlainSpice remembers these settings on this device.',
+  followDevice: 'Follow my device',
+  textSize: 'Text size',
+  textSizeNormal: 'Normal',
+  textSizeLarge: 'Large (125 %)',
+  textSizeXLarge: 'Extra large (150 %)',
+  textSizeHelp: '“Follow my device” uses the text size of your browser or phone.',
+  contrast: 'Contrast',
+  contrastNormal: 'Normal',
+  contrastMore: 'High contrast',
+  contrastHelp: '“Follow my device” uses high contrast when your device asks for more contrast.',
+  motion: 'Motion',
+  motionNormal: 'Normal',
+  motionReduce: 'Reduce motion',
+  motionHelp: '“Follow my device” turns off animation when your device asks for reduced motion.',
+
+  helpTitle: 'Help',
+  helpKeysHeading: 'Keyboard',
+  helpKeysCaption: 'Keyboard shortcuts',
+  helpKeysColumnKeys: 'Keys',
+  helpKeysColumnAction: 'What they do',
+  helpKeyToolbar: 'Arrow keys (in the row of buttons at the top)',
+  helpKeyToolbarAction: 'Move between Run, Examples, Share, Export, Settings and Help',
+  helpKeyTabs: 'Arrow keys (on the tabs)',
+  helpKeyTabsAction: 'Move between Checks, Results, Plot, Explained and ngspice output',
+  helpKeyEscape: 'Escape',
+  helpKeyEscapeAction: 'Close a menu or a dialog',
+  helpResultsHeading: 'How to read the results',
+  helpResults1: 'Node voltages are measured from ground (node 0), which is 0 V. “v(a) = 14 V” means node a is 14 V above ground.',
+  helpResults2: 'Each number is shown in plain units (12 V, 4 mA, 3 kΩ), next to the way ngspice printed it (1.200000e+01).',
+  helpResults3: 'When ngspice says its DC solution failed, PlainSpice does not show its numbers as answers: they are kept under “What ngspice printed anyway”.',
+  helpSignHeading: 'The sign of a source’s current',
+  helpSign1: 'ngspice measures the current of a voltage source as the current that flows into its + node, through the source, and out of its − node.',
+  helpSign2: 'So a source that delivers power shows a negative current. In the first example, a 6 V source across 2 Ω, ngspice prints i(v1) = −3 A: 3 A leave the + node and flow through the resistor.',
+  helpSign3: 'The Results tab writes which way each current flows in words, so you do not have to work out the sign.',
+  helpMoreHeading: 'More',
+  helpLicences: 'Licences and source',
+  helpEngineCheck: 'Engine check: ngspice in your browser compared with ngspice on a PC',
+
+  // ---------------------------------------------------------------- netlist side
+  netlistHeading: 'Netlist',
+  editorLabel: 'Netlist',
+  thisLineHeading: 'This line',
+  thisLineEmpty: 'Move the cursor to a line of the netlist to see what each word on it means.',
+  lineButton: 'Line {line}',
+  goToLine: 'Go to line {line} in the netlist',
+  fieldTableCaption: 'What each word of line {line} means',
+  fieldColumnField: 'Field',
+  fieldColumnWritten: 'Written',
+  fieldColumnMeaning: 'Meaning',
+  fieldMissing: '(missing)',
+  noticeClose: 'Dismiss this message',
+
+  // ---------------------------------------------------------------- tabs
+  tabsLabel: 'Checks, results and explanations',
+  tabChecks: 'Checks ({count})',
+  tabResults: 'Results',
+  tabPlot: 'Plot',
+  tabExplained: 'Explained',
+  tabOutput: 'ngspice output',
+
+  // ---------------------------------------------------------------- checks
+  checksHeading: 'Checks before running',
+  checksIntro: 'PlainSpice looks for beginner traps before ngspice runs the netlist, says why each one matters, and offers a fix.',
+  checksNone: 'No traps found. Press Run to simulate.',
+  severityError: 'Error',
+  severityWarning: 'Warning',
+  severityInfo: 'Note',
+  checksGroupError_one: '{count} error',
+  checksGroupError_other: '{count} errors',
+  checksGroupWarning_one: '{count} warning',
+  checksGroupWarning_other: '{count} warnings',
+  checksGroupInfo_one: '{count} note',
+  checksGroupInfo_other: '{count} notes',
+  whatNgspiceDoes: 'What ngspice does:',
+  fixesLabel: 'Fixes for line {line}',
+  fixApplied: 'Done: {label}',
+  checksCount_zero: 'No traps found.',
+  checksCount_one: '{count} check found.',
+  checksCount_other: '{count} checks found.',
+
+  // ---------------------------------------------------------------- results
+  resultsHeading: 'Results',
+  resultsEmpty: 'No results yet. Press Run (or Ctrl+Enter in the netlist) to simulate.',
+  resultsRunning: 'ngspice is running the netlist…',
+  statusFinished: 'Finished',
+  statusFinishedText: 'ngspice finished the simulation.',
+  statusUnreliable: 'Not reliable',
+  statusUnreliableText: 'ngspice’s DC solution failed, so the numbers it printed are not answers.',
+  statusError: 'Error',
+  statusErrorText: 'ngspice stopped with an error, so there are no results.',
+  statusStopped: 'Stopped',
+  statusStoppedText: 'The simulation was stopped.',
+  statusFailed: 'Error',
+  statusFailedText: 'The simulation could not run: {reason}',
+  staleResults: 'The netlist changed after this run. Press Run to see the results for the netlist as it is now.',
+  noAnalysis: 'This netlist has no analysis line (.op, .tf, .dc or .tran), so ngspice would have nothing to do. The Checks tab offers to add one.',
+  noAnalysisTitle: 'Nothing to run yet',
+  trapsNote_one: 'This netlist has {count} check. Read it in the Checks tab before you trust the results.',
+  trapsNote_other: 'This netlist has {count} checks. Read them in the Checks tab before you trust the results.',
+  showChecks: 'Show the checks',
+  printedAnyway: 'What ngspice printed anyway',
+  nodesCaption: 'Node voltages, measured from ground (node 0)',
+  columnNode: 'Node',
+  columnVoltage: 'Voltage',
+  columnPrinted: 'ngspice printed',
+  currentsCaption: 'Currents',
+  columnPart: 'Part',
+  columnCurrent: 'Current',
+  columnDirection: 'Which way it flows',
+  columnPower: 'Power',
+  columnVector: 'ngspice vector',
+  flowsFromTo: 'from {from} to {to}',
+  flowsNone: 'no current',
+  powerDelivers: 'delivers {power}',
+  powerAbsorbs: 'takes in {power}',
+  tfCaption: '.tf results',
+  columnQuantity: 'Quantity',
+  columnValue: 'Value',
+  tfRatio: 'Transfer function {output} / {source}',
+  tfOutput: 'Output resistance at {output}',
+  tfInput: 'Input resistance seen by {source}',
+  ratioVV: 'volts per volt',
+  ratioAA: 'amperes per ampere',
+  ratioAV: 'amperes per volt',
+  ratioVA: 'volts per ampere',
+  minusWord: 'minus',
+  messagesHeading: 'Messages from ngspice',
+  sweepsNote: 'This run has sweep results: see the Plot tab.',
+  showPlot: 'Show the plot',
+
+  // ---------------------------------------------------------------- plot
+  plotHeading: 'Plot',
+  plotLoading: 'Loading the plot…',
+  plotFailed: 'The plot could not be loaded: {reason}',
+  plotTitleDc: 'DC sweep: {series} as {source} changes',
+  plotTitleTran: 'Transient analysis: {series} against time',
+  plotTime: 'time',
+  plotNone: 'No sweep results. A .dc or .tran line makes ngspice compute values to plot.',
+
+  // ---------------------------------------------------------------- explained
+  explainedHeading: 'Every line, explained',
+  circuitInWords: 'The circuit in words',
+  explainedIntro: 'Each line of the netlist in plain words, with what every word on it means.',
+  explainedLine: 'Line {line}: {heading}',
+
+  // ---------------------------------------------------------------- ngspice output
+  outputHeading: 'ngspice output',
+  outputIntro: 'PlainSpice runs ngspice exactly like this command:',
+  outputCommand: 'ngspice -b -r out.raw circuit.cir',
+  outputStdout: 'What ngspice printed (standard output)',
+  outputStderr: 'Messages (standard error)',
+  outputEmpty: '(nothing)',
+  outputNone: 'Nothing yet: press Run.',
+  outputExit: 'ngspice finished with exit code {code}, in {ms} ms.',
+
+  // ---------------------------------------------------------------- announcements
+  announceFinished: 'Simulation finished. {summary}',
+  announceUnreliable: 'Simulation finished, but ngspice’s DC solution failed: the numbers are not answers.',
+  announceError: 'ngspice stopped with an error. {detail}',
+  announceStopped: 'The simulation was stopped.',
+  announceFailed: 'The simulation could not run: {reason}',
+
+  // ---------------------------------------------------------------- updates
+  updateReady: 'A new version of PlainSpice is ready.',
+  updateReload: 'Reload to update',
+  offlineReady: 'PlainSpice now works offline too.',
+
+  // ---------------------------------------------------------------- footer
+  footerEngine: 'Engine: ngspice 47 in WebAssembly',
+  footerEngineCheck: 'Engine check',
+  footerLicences: 'Licences and source',
+  footerSource: 'Source on GitHub',
+} as const;
+
+export type Messages = { readonly [K in keyof typeof en]: string };

@@ -4,18 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PlainSpice: real SPICE, explained in plain words</title>
-    <link rel="stylesheet" href="/src/spike/spike.css" />
+    <meta
+      name="description"
+      content="A beginner-first, accessible circuit simulator: real ngspice in your browser, every netlist line explained in plain words, beginner traps caught before running."
+    />
+    <meta name="theme-color" content="#F6F1E4" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./icons/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <script type="module" src="./src/app/main.tsx"></script>
   </head>
   <body>
-    <main id="main">
-      <h1>PlainSpice</h1>
-      <p><strong>Real SPICE, explained in plain words.</strong> A beginner-first circuit simulator (in progress).</p>
-      <p>
-        Real ngspice, compiled to WebAssembly, running in your browser, with every netlist line explained in plain
-        words. The app is being built; the engine is ready to try.
-      </p>
-      <p><a href="./spike/">Engine check: ngspice in your browser, compared with ngspice on a PC</a></p>
-      <p><a href="./licenses/">Licences and source</a></p>
-    </main>
+    <div id="app">
+      <!-- Shown until the app has loaded (and without JavaScript). -->
+      <div class="boot">
+        <h1>PlainSpice</h1>
+        <p><strong>Real SPICE, explained in plain words.</strong></p>
+        <p>Loading PlainSpice…</p>
+        <noscript><p>PlainSpice needs JavaScript: it runs ngspice in your browser.</p></noscript>
+        <p><a href="./spike/">Engine check</a> · <a href="./licenses/">Licences and source</a></p>
+      </div>
+    </div>
   </body>
 </html>
