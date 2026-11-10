@@ -1,6 +1,6 @@
 # Plan
 
-*Updated 10 November 2026, at the end of the first session.*
+*Updated 10 November 2026: milestone 1 is done; milestone 2 (drawing circuits) has started.*
 
 ## Done: the first milestone
 
@@ -19,8 +19,8 @@
    identical; `.op`, `.tf` and `.dc` also match Ubuntu's ngspice 42 exactly. **Nothing disagrees
    with the expected values in the brief.** Native ngspice 47 built with the engine's options
    gives the engine's results bit for bit even where an ordinary (XSPICE) build takes different
-   time steps. Live: <https://ctbay1.github.io/plainspice/spike/>.
-3. **The netlist-first app**, live at <https://ctbay1.github.io/plainspice/>:
+   time steps. Live: <https://plainspice.com/spike/>.
+3. **The netlist-first app**, live at <https://plainspice.com/>:
    - an editor (CodeMirror 6) that reads each line the way ngspice does (the title, comments,
      continuation lines, ground, values), with node colours that are colour-blind-safe and never
      the only signal, and results at the end of each part's line ("3 A, n1 → 0");
@@ -53,6 +53,31 @@
    profile (78 runs, with axe and the WCAG 2.2 AA rules in every main state); the site deploys only
    when all pass. The README screenshot comes from `npm run screenshot`.
 
+## Milestone 2: make PlainSpice look and work like a real simulator (started 10 November 2026)
+
+Tarık's verdict on milestone 1: the engine, the checks and the explanations are great, but it is
+a text tool. Milestone 2 keeps everything underneath (engine, checks, explanations, tests,
+accessibility, offline use, every share link) and changes how it looks and how it is used:
+
+1. **Design first**: three visual directions for the whole app, desktop and phone, as clickable
+   prototypes (the circuit canvas front and centre, a parts toolbar, results drawn on the circuit,
+   the netlist, explanations and checks as panels). Tarık picks one.
+2. **The circuit drawn from the netlist**: standard symbols, node colours, node voltages at the
+   nodes, current arrows with values on the wires, redrawn after each run; automatic layout for
+   small circuits; share links can carry exact part positions (a circuit opens drawn as in the
+   video).
+3. **Live**: re-run automatically as you edit; Run stays for long analyses.
+4. **Schematic editor**: place R, C, L, V, I, E, F, G, H and ground; drag, rotate, wire, name
+   nodes, edit values in place, undo and redo; the netlist stays in sync both ways; keyboard and
+   screen reader.
+5. **First screen**: a 6 V source and two resistors, already solved, inviting you to change R1.
+
+Done so far:
+- The site moved to <https://plainspice.com/> (Tarık's domain). Links, `make-link`, the README and
+  the docs use it; links to the old address keep working (GitHub forwards them, and the
+  share-link tests decode both kinds).
+- `LICENSE`: "Tarık Bayraktar and PlainSpice contributors".
+
 ## Next
 
 - **Real people and devices** (needs Tarık or testers): a screen-reader pass (NVDA + Firefox,
@@ -64,8 +89,8 @@
   unlisted video's description and click it on a computer and a phone.
 - **"Open this circuit" in the channel's pipeline**: add the links to the upload sheets in the
   solved-circuits repository (`deliver/`), starting with SPICE for Beginners (sp01).
-- **Example library** from the channel's episodes (sp01, p01, p02, e04 …), with a credit line in
-  each netlist (CC BY 4.0, decision 0005).
+- **Example library** from the four public videos, in channel order: SPICE for Beginners (sp01),
+  then p01, p02 and e04, each with a credit line (CC BY 4.0, decision 0005).
 - **Turkish UI**: the strings are in a catalog (`src/i18n/en.ts`); translate them, and have a
   Turkish speaker review React Aria's tr-TR strings (one plural is already known to be wrong).
 - **Small known gaps**: the editor colours a word after an R, C or L value as a model name even
@@ -73,25 +98,15 @@
   would need the netlist's model names inside CodeMirror's line-by-line highlighter); a
   `.control` loop that prints forever runs until the 20 s time-out (stopping it earlier needs a
   change inside the engine).
-- **Later, designed for but not built**: the schematic editor (R, C, L, V, I, E, F, G, H, ground,
-  wires, node names), kept in sync with the netlist both ways through `src/spice/`; AC analysis
-  with Bode plots (log axes); cursors on plots for measurements; parameter sweeps (families of
-  curves; the plot module already recognises nested sweeps).
+- **Later, designed for but not built**: AC analysis with Bode plots (log axes); cursors on plots
+  for measurements; parameter sweeps (families of curves; the plot module already recognises
+  nested sweeps).
 
 ## Open questions for Tarık
 
-- **The permanent address, before the first video link goes out.** Links are forever
-  (decision 0008), and `ctbay1.github.io` is shared by every GitHub Pages site of the account,
-  which share local storage and the offline cache with PlainSpice. A custom domain (or a
-  dedicated account) fixes both; if the site ever moves, a forwarding page must stay.
-- "amps" is now the one word for the unit, also when spoken ("3 milliamps"), to match the
-  channel's "amps per volt". Prefer "amperes"? It is one table in `src/format/si.ts`.
-
-- The copyright line in `LICENSE` says "PlainSpice contributors". Do you want your name there?
-- Register "PlainSpice" (and "Solved Circuits") as trademarks? `TRADEMARKS.md` asks people not to
-  reuse the names, but only registration protects them.
-- Which episodes go into the example library first?
-- Should "Open this circuit" links run the simulation as soon as they open (`run=1`, the default
-  in `make-link`)?
 - Share links have no checksum (decision 0008): fine while links are clicked; worth adding only
   if links will ever be typed by hand.
+
+Answered on 10 November 2026: the address is plainspice.com; `LICENSE` names Tarık; no trademark
+registration for now (a quick search found no other PlainSpice); the example library follows the
+four public videos in channel order; "Open this circuit" links run at once (`run=1`); "amps" stays.

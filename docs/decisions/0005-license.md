@@ -42,7 +42,7 @@ What we do for those terms, from the first deploy:
 
 ## Decision for our code
 
-**MIT** (`LICENSE`, "Copyright (c) 2026 PlainSpice contributors").
+**MIT** (`LICENSE`, "Copyright (c) 2026 Tarık Bayraktar and PlainSpice contributors"; the name added at Tarık's request on 10 November 2026).
 
 - It fits the engine: the LGPL asks only that our terms allow modification and reverse
   engineering, and that the library stays replaceable; MIT and a separate `.wasm` do both.

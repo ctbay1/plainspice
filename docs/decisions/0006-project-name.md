@@ -31,7 +31,7 @@ as a five-minute manual check (USPTO, EUIPO, TÜRKPATENT).
 ## Decision
 
 **PlainSpice**: display name "PlainSpice", repository `ctbay1/plainspice`, site
-<https://ctbay1.github.io/plainspice/>, npm package name `plainspice` (private for now, nothing
+<https://ctbay1.github.io/plainspice/> (since 10 November 2026: <https://plainspice.com/>, Tarık's domain), npm package name `plainspice` (private for now, nothing
 published). Tagline: "Real SPICE, explained in plain words."
 
 ## Consequences

@@ -13,7 +13,7 @@ video descriptions for years, so the format must never break.
 ## Decision
 
 - The netlist (which includes its analysis lines) goes in the URL's **fragment**:
-  `https://ctbay1.github.io/plainspice/#c=<payload>[&run=1]`. A fragment never reaches the
+  `https://plainspice.com/#c=<payload>[&run=1]`. A fragment never reaches the
   server, so nothing is logged, and GitHub Pages serves the same page for every link.
 - `payload` starts with a **format letter**: `z` = base64url of the deflate-raw-compressed UTF-8
   netlist (`CompressionStream`), `t` = base64url of the plain UTF-8 netlist (for very short
@@ -40,6 +40,10 @@ video descriptions for years, so the format must never break.
 - A `run=1` link opened while a simulation is running waits for that run to end. While the page
   is still loading, a `run=1` link starts downloading the engine at once.
 - How hostile links are handled: [decision 0012](0012-netlists-and-links-are-data.md).
+- Since 10 November 2026 the site is at `https://plainspice.com/` (Tarık's domain). The first
+  links, made for `https://ctbay1.github.io/plainspice/`, keep working: GitHub forwards that
+  address to the new one, and a browser keeps the fragment across the forward
+  (`tests/unit/share.test.ts` keeps decoding them).
 
 ## Consequences
 

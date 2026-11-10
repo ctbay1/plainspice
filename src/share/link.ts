@@ -1,7 +1,7 @@
 /**
  * Share links: the whole circuit lives in the link, after the "#".
  *
- *   https://ctbay1.github.io/plainspice/#c=<payload>&run=1
+ *   https://plainspice.com/#c=<payload>&run=1
  *
  * docs/share-links.md is the full specification. The reasons for its shape:
  *

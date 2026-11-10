@@ -124,7 +124,7 @@ describe('round trips: what goes into a link comes back out', () => {
 
   it('accepts the fragment with or without "#", and a whole link', async () => {
     const fragment = await encodeShare(fixture('f2a-current-source.cir'), { run: true });
-    const url = shareUrl('https://ctbay1.github.io/plainspice/', fragment);
+    const url = shareUrl('https://plainspice.com/', fragment);
     for (const input of [fragment, `#${fragment}`, url]) {
       expect(await decodeShare(input)).toEqual({ ok: true, netlist: fixture('f2a-current-source.cir'), run: true });
     }
@@ -133,8 +133,8 @@ describe('round trips: what goes into a link comes back out', () => {
 
 describe('shareUrl', () => {
   it('puts the fragment after the base, replacing any fragment the base had', () => {
-    expect(shareUrl('https://ctbay1.github.io/plainspice/', 'c=tAA&run=1')).toBe('https://ctbay1.github.io/plainspice/#c=tAA&run=1');
-    expect(shareUrl('https://ctbay1.github.io/plainspice/#c=old', '#c=tAA')).toBe('https://ctbay1.github.io/plainspice/#c=tAA');
+    expect(shareUrl('https://plainspice.com/', 'c=tAA&run=1')).toBe('https://plainspice.com/#c=tAA&run=1');
+    expect(shareUrl('https://plainspice.com/#c=old', '#c=tAA')).toBe('https://plainspice.com/#c=tAA');
     expect(shareUrl('http://localhost:5173/?x=1', 'c=tAA')).toBe('http://localhost:5173/?x=1#c=tAA');
   });
 });
@@ -439,6 +439,20 @@ describe('published links open forever', () => {
       run: false,
     },
     { label: 'a tiny netlist (t), fragment only', link: '#c=tKiB0Ci5lbmQK', netlist: () => '* t\n.end\n', run: false },
+    // From 10 November 2026 the links start with https://plainspice.com/ (the address above
+    // forwards there and the browser keeps the fragment, so both kinds must open).
+    {
+      label: 'F1a at plainspice.com (z, run=1)',
+      link: 'https://plainspice.com/#c=z01JwM0y0UkhUMFMIUyjOLy1KTlVITC7KLy5WSFQwUsjPyFUoSi3OLC7JL-IKM1TIM1QwUDDjCoKyjLj08gu49FLzUrgA&run=1',
+      netlist: () => fixture('f1a-voltage-source.cir'),
+      run: true,
+    },
+    {
+      label: 'plain text at plainspice.com (t)',
+      link: 'https://plainspice.com/#c=tKiBPaG0ncyBsYXcKVjEgYSAwIDEKUjEgYSAwIDEKLm9wCi5lbmQK',
+      netlist: () => "* Ohm's law\nV1 a 0 1\nR1 a 0 1\n.op\n.end\n",
+      run: false,
+    },
   ];
 
   it.each(GOLDEN)('$label', async ({ link, netlist, run }) => {
@@ -447,7 +461,7 @@ describe('published links open forever', () => {
 
   it('every link in docs/share-links.md opens to one of the fixtures', async () => {
     const docs = readFileSync(join(root, 'docs/share-links.md'), 'utf8');
-    const links = docs.match(/https:\/\/ctbay1\.github\.io\/plainspice\/#c=[A-Za-z0-9_-]+(?:&run=1)?/g) ?? [];
+    const links = docs.match(/https:\/\/(?:plainspice\.com|ctbay1\.github\.io\/plainspice)\/#c=[A-Za-z0-9_-]+(?:&run=1)?/g) ?? [];
     expect(links.length).toBeGreaterThanOrEqual(fixtures.length);
     const texts = new Set(fixtures.map((f) => f.text));
     for (const link of links) {
@@ -471,7 +485,7 @@ describe('scripts/make-link.ts', () => {
     const links = result.stdout.trim().split('\n');
     expect(links).toHaveLength(fixtures.length);
     for (const [i, link] of links.entries()) {
-      expect(link.startsWith('https://ctbay1.github.io/plainspice/#c=z')).toBe(true);
+      expect(link.startsWith('https://plainspice.com/#c=z')).toBe(true);
       expect(await decodeShare(link)).toEqual({ ok: true, netlist: fixtures[i]!.text, run: true });
       expect(link.length).toBeLessThan(250);
     }

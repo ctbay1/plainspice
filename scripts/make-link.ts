@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { decodeShare, encodeShare, normaliseNetlist, shareUrl } from '../src/share/link.ts';
 
-const DEFAULT_BASE = 'https://ctbay1.github.io/plainspice/';
+const DEFAULT_BASE = 'https://plainspice.com/';
 const YOUTUBE_DESCRIPTION_LIMIT = 5000;
 
 const USAGE = `Usage: node --experimental-strip-types scripts/make-link.ts file.cir [more.cir ...] [--base URL] [--no-run]

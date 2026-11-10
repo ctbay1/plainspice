@@ -4,7 +4,8 @@ A beginner-first, accessible circuit simulator in the browser for first- and sec
 students, made with Tarık for his YouTube channel Solved Circuits (@SolvedCircuits). Real SPICE:
 ngspice 47 compiled to WebAssembly, run in a Web Worker exactly like `ngspice -b -r`. Our work is
 everything around it: explanations in plain words, beginner-trap checks with one-click fixes,
-accessibility, share links. Site: https://ctbay1.github.io/plainspice/ (deployed by CI from `main`).
+accessibility, share links. Site: https://plainspice.com/ (deployed by CI from `main` to GitHub Pages; the old
+https://ctbay1.github.io/plainspice/ address and its links forward there).
 
 ## Tarık's rules (from the brief, 9 Nov 2026)
 

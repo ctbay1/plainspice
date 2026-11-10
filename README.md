@@ -5,8 +5,8 @@ runs in your browser, made for first- and second-year students and for the
 [Solved Circuits](https://www.youtube.com/@SolvedCircuits) channel, where every answer is checked
 in a circuit simulator.
 
-**Try it: <https://ctbay1.github.io/plainspice/>** · [Engine check](https://ctbay1.github.io/plainspice/spike/) ·
-[Licences and source](https://ctbay1.github.io/plainspice/licenses/)
+**Try it: <https://plainspice.com/>** · [Engine check](https://plainspice.com/spike/) ·
+[Licences and source](https://plainspice.com/licenses/)
 
 ![PlainSpice running the F5 example: the netlist with each part's current on its line, and the Results tab with node voltages and currents in plain units](docs/screenshot.png)
 

@@ -38,6 +38,6 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - Styles need `'unsafe-inline'` in the policy (CodeMirror and React Aria set styles), and the
   inline preload script must keep its hash in step: `vite.config.ts` computes it at build time.
 - Native ngspice has no such guard: record only netlists you trust with `scripts/record-native.ts`.
-- The site shares the `ctbay1.github.io` origin, and with it local storage and the service
-  worker's caches, with any other GitHub Pages site of the account: the permanent address should
-  be decided before the first video link goes out (an open question in `docs/plan.md`).
+- Resolved on 10 November 2026: the site has its own origin, `https://plainspice.com/`, so its
+  local storage and the service worker's caches are no longer shared with the account's other
+  GitHub Pages sites (the old `ctbay1.github.io` address only forwards).

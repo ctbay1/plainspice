@@ -6,7 +6,7 @@ descriptions need no server and no account. This page specifies the link format 
 are `tests/unit/share.test.ts`, and links for the channel come from `scripts/make-link.ts`.
 
 ```text
-https://ctbay1.github.io/plainspice/#c=z01JwM0y0UkhUMFMIUyjOLy1KTlVITC7KLy5WSFQwUsjPyFUoSi3OLC7JL-IKM1TIM1QwUDDjCoKyjLj08gu49FLzUrgA&run=1
+https://plainspice.com/#c=z01JwM0y0UkhUMFMIUyjOLy1KTlVITC7KLy5WSFQwUsjPyFUoSi3OLC7JL-IKM1TIM1QwUDDjCoKyjLj08gu49FLzUrgA&run=1
 ```
 
 This link opens fixture F1a (a 6 V source across a 2 Ω resistor) and runs it at once.
@@ -36,9 +36,11 @@ Links go into YouTube descriptions, and those stay up for years. So:
 <base>#c=<payload>[&run=1]
 ```
 
-- **`<base>`** is the PlainSpice page. The channel's links use
-  `https://ctbay1.github.io/plainspice/`; the app makes links with its own address, so forks,
-  local copies and previews work too.
+- **`<base>`** is the PlainSpice page. The channel's links use `https://plainspice.com/`; the
+  app makes links with its own address, so forks, local copies and previews work too. Links made
+  before 10 November 2026 start with `https://ctbay1.github.io/plainspice/`: GitHub forwards that
+  address to `https://plainspice.com/`, and the browser keeps the fragment (the circuit) across
+  the forward, so those links keep opening.
 - **The fragment** (everything after `#`) never reaches the server: GitHub Pages does not see or
   log the circuit. It is a list of `key=value` parameters separated by `&`:
   - **`c`** (required): the payload.
@@ -129,25 +131,25 @@ Made by `node --experimental-strip-types scripts/make-link.ts tests/fixtures/*.c
 opens its fixture and runs it.
 
 - `d1-dc-divider-sweep.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zHcsxDoMwDEDR3af4Y-kQ2Rk79wQM2SucigiVVCGU66OyveXdeRq3urdtePDCy694bmxH_nberX5QesUiiaP0meCTJKOsKCrjpbp3bJExXlLiIsEnkqH_aRLy6nIC&run=1>
+  <https://plainspice.com/#c=zHcsxDoMwDEDR3af4Y-kQ2Rk79wQM2SucigiVVCGU66OyveXdeRq3urdtePDCy694bmxH_nberX5QesUiiaP0meCTJKOsKCrjpbp3bJExXlLiIsEnkqH_aRLy6nIC&run=1>
 - `f1a-voltage-source.cir`:
-  <https://ctbay1.github.io/plainspice/#c=z01JwM0y0UkhUMFMIUyjOLy1KTlVITC7KLy5WSFQwUsjPyFUoSi3OLC7JL-IKM1TIM1QwUDDjCoKyjLj08gu49FLzUrgA&run=1>
+  <https://plainspice.com/#c=z01JwM0y0UkhUMFMIUyjOLy1KTlVITC7KLy5WSFQwUsjPyFUoSi3OLC7JL-IKM1TIM1QwUDDjCoKyjLj08gu49FLzUrgA&run=1>
 - `f1b-voltage-source-swapped.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zFcUhDoAwDAVQ31N8jVhWBIIDcAAEHliTTdAta8muT3jmTdj4WuFZYOcjsPr2WzB6cRfFKJ5R3KA1icHG2ZokOhgRylho5_-ImUJtFEQTfQ&run=1>
+  <https://plainspice.com/#c=zFcUhDoAwDAVQ31N8jVhWBIIDcAAEHliTTdAta8muT3jmTdj4WuFZYOcjsPr2WzB6cRfFKJ5R3KA1icHG2ZokOhgRylho5_-ImUJtFEQTfQ&run=1>
 - `f2a-current-source.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zFcUxDoAgDAXQvaf4swMBYXJzMXH1BgSayGBrCtzf-Ja34FjzhoyIHWWasQx0nVYYTYYiI0HvB8a99aFGZ4CHBES6wr9HIqcvOZZKHw&run=1>
+  <https://plainspice.com/#c=zFcUxDoAgDAXQvaf4swMBYXJzMXH1BgSayGBrCtzf-Ja34FjzhoyIHWWasQx0nVYYTYYiI0HvB8a99aFGZ4CHBES6wr9HIqcvOZZKHw&run=1>
 - `f2b-current-source-swapped.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zLcYxDoAgDAXQvaf4swMRdfIAJq7eQKEJDBZCS7i-i296E47l2WGJoffLCL01FoOW3gJjtGzGgpEtIZtCSmSFjrtWjnR6iMeMla5_G7lSybFE-gA&run=1>
+  <https://plainspice.com/#c=zLcYxDoAgDAXQvaf4swMRdfIAJq7eQKEJDBZCS7i-i296E47l2WGJoffLCL01FoOW3gJjtGzGgpEtIZtCSmSFjrtWjnR6iMeMla5_G7lSybFE-gA&run=1>
 - `f3a-1M-trap.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zJci9CoAgFIbh_VzFN1aEeAwauoA2F4d2IUnBn0jvn7C2530n7Ivd0LwDa7TH3hg0QkUKMYYZtcBwb_5P8Wmkg5EZEiuZT1mBNRnVIcHJXSTKTcLlk14&run=1>
+  <https://plainspice.com/#c=zJci9CoAgFIbh_VzFN1aEeAwauoA2F4d2IUnBn0jvn7C2530n7Ivd0LwDa7TH3hg0QkUKMYYZtcBwb_5P8Wmkg5EZEiuZT1mBNRnVIcHJXSTKTcLlk14&run=1>
 - `f3b-1meg.cir`:
-  <https://ctbay1.github.io/plainspice/#c=z01JwM06yUggyVCgvyiwpSc1TSCxWMMxNTVfQyM9LVchNTU_Mz8jV5AozVMgzVDBQMOMKArPyjMCquIKMQEwDCEcvv4BLLzUvhQsA&run=1>
+  <https://plainspice.com/#c=z01JwM06yUggyVCgvyiwpSc1TSCxWMMxNTVfQyM9LVchNTU_Mz8jV5AozVMgzVDBQMOMKArPyjMCquIKMQEwDCEcvv4BLLzUvhQsA&run=1>
 - `f4-tf-output-impedance.cir`:
-  <https://ctbay1.github.io/plainspice/#c=z01JwM7FSyC8tKSgtUcjMLUhNScxLTlVILFEo00jUVCjPLMlQ0CtJ4wozVChWMFAwMuEKArHyDBXMuIKMQLSBgjFXkDGIlahgxKVXkgbRGWbIpZeal8IFAA&run=1>
+  <https://plainspice.com/#c=z01JwM7FSyC8tKSgtUcjMLUhNScxLTlVILFEo00jUVCjPLMlQ0CtJ4wozVChWMFAwMuEKArHyDBXMuIKMQLSBgjFXkDGIlahgxKVXkgbRGWbIpZeal8IFAA&run=1>
 - `f5-thevenin-cccs.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zPcixCsIwFIXh_T7FGdWhJEEXH6DgWqR7aA4kgzeludY8vtTB6eP_Lxhvdzwzd2pRbGylWdSF-BTLiEhcqYlqaPW9LcTJ2P7xouWazvL4TYcIL3NHRIeTKaBDPYJM_tDhKuOBeswdQYa6ykBN8gU&run=1>
+  <https://plainspice.com/#c=zPcixCsIwFIXh_T7FGdWhJEEXH6DgWqR7aA4kgzeludY8vtTB6eP_Lxhvdzwzd2pRbGylWdSF-BTLiEhcqYlqaPW9LcTJ2P7xouWazvL4TYcIL3NHRIeTKaBDPYJM_tDhKuOBeswdQYa6ykBN8gU&run=1>
 - `t1-tran-rc-charge.cir`:
-  <https://ctbay1.github.io/plainspice/#c=zHYu7CoRAEATz-YoO9RDZOTAxFTMD8R75sic6iCPs7eDviwsdFFT1A29GcVj8ly28YuoQJAaThLD6uIguFU5JK-oUvdKXIQqH8TO8-sKhgQNbHp4lTVkflsAbdZzpDii_wc7Q7FTP-qML&run=1>
+  <https://plainspice.com/#c=zHYu7CoRAEATz-YoO9RDZOTAxFTMD8R75sic6iCPs7eDviwsdFFT1A29GcVj8ly28YuoQJAaThLD6uIguFU5JK-oUvdKXIQqH8TO8-sKhgQNbHp4lTVkflsAbdZzpDii_wc7Q7FTP-qML&run=1>
 
 ## Making links for a video
 
