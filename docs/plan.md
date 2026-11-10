@@ -77,6 +77,14 @@ Done so far:
   the docs use it; links to the old address keep working (GitHub forwards them, and the
   share-link tests decode both kinds).
 - `LICENSE`: "Tarık Bayraktar and PlainSpice contributors".
+- **Three design directions**, clickable on desktop and phone, all running real ngspice:
+  <https://plainspice.com/design/> compares Notebook (the channel's paper look), Studio (a dark
+  pro tool) and Playground (a light, hand-drawn whiteboard). Each was designed, critiqued by a
+  second designer and refined. **Waiting for Tarık to pick one.**
+- **The schematic model** (`src/schematic/`, decision 0013), which every direction needs: the
+  circuit drawn from its netlist with a textbook-style automatic layout (all examples:
+  <https://plainspice.com/design/lab/>), the drawing format, the edit operations for the
+  schematic editor, and keyboard and screen-reader navigation; 900 tests.
 - **Example library**: the circuits of the four public videos, in channel order (SPICE for
   Beginners, then p01, p02 and e04): 20 netlists in [examples/](../examples/), each crediting its
   video, first in the Examples menu. Each gives the values the channel recorded with native
@@ -105,6 +113,11 @@ Done so far:
   nested sweeps).
 
 ## Open questions for Tarık
+
+- **Which direction** (Notebook, Studio or Playground, <https://plainspice.com/design/>)?
+- **Where part positions live** (decision 0013): in the netlist as `*@` comment lines, which
+  ngspice ignores (recommended: one file carries the circuit and its drawing), or only in share
+  links? This becomes permanent once links with drawings are in video descriptions.
 
 - Share links have no checksum (decision 0008): fine while links are clicked; worth adding only
   if links will ever be typed by hand.
