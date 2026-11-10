@@ -8,6 +8,8 @@ in a circuit simulator.
 **Try it: <https://ctbay1.github.io/plainspice/>** · [Engine check](https://ctbay1.github.io/plainspice/spike/) ·
 [Licences and source](https://ctbay1.github.io/plainspice/licenses/)
 
+![PlainSpice running the F5 example: the netlist with each part's current on its line, and the Results tab with node voltages and currents in plain units](docs/screenshot.png)
+
 ## What it does
 
 PlainSpice is not a new simulator: the engine is **ngspice 47**, the same engine KiCad uses,
@@ -36,8 +38,10 @@ tool: [docs/eecircuit-comparison.md](docs/eecircuit-comparison.md).
 ## Status
 
 First milestone, November 2026: the decisions ([docs/decisions/](docs/decisions/)), the engine
-(checked against native ngspice: [docs/fixture-results.md](docs/fixture-results.md)), and the
-netlist-first app (in progress).
+(checked against native ngspice: [docs/fixture-results.md](docs/fixture-results.md)), the
+netlist-first app, and its tests in CI (unit, golden against native ngspice, and end-to-end with
+accessibility checks on a desktop and a phone). What's next and the open questions:
+[docs/plan.md](docs/plan.md).
 
 ## Develop
 
