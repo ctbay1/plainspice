@@ -10,6 +10,7 @@ numparam, LGPL v2 or later).
 |---|---|
 | `build.sh` | the whole build: pinned emsdk and ngspice tarball, patches, configure, link |
 | `patches/*.patch` | our four source changes, each explained in the file |
+| `no-system.js` | linked in with `--js-library`: `system()` refuses everywhere, so a netlist's `shell` or `gnuplot` command never starts a program (see below) |
 | `BUILDINFO.txt` | versions, flags, features compiled in, SHA-256 of the outputs |
 | `COPYING.ngspice` | ngspice's licence statement, verbatim |
 | `dist/ngspice.mjs` | Emscripten's ES-module glue (default export: `createNgspice`) |
@@ -42,6 +43,13 @@ ngspice runs exactly as on the command line in batch mode, one fresh instance pe
 
 The interface is therefore just the command line, a file in, a file out. Any `ngspice.wasm`
 built from ngspice's sources with the same Emscripten settings works in its place.
+
+A netlist is data, never a program to run on the machine: `.control` blocks run, but nothing
+in them can start a program, because `system()` refuses. `shell echo hi` prints
+`Unable to execute "echo hi".` and the block carries on; `gnuplot` starts nothing. In a browser
+that is Emscripten's default; under Node (the tests and scripts) its default would hand the
+command to a shell, so `no-system.js` replaces it (`tests/golden/engine-no-shell.test.ts`).
+Native ngspice has no such guard: record only netlists you trust with `scripts/record-native.ts`.
 
 ## Rebuild it
 

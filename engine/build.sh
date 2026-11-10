@@ -119,7 +119,8 @@ REPRO_FLAGS="-ffile-prefix-map=$SRC=/ngspice-$NGSPICE_VERSION -ffile-prefix-map=
 log "5. make"
 LINK_FLAGS="$OPT -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME=createNgspice \
  -s ENVIRONMENT=web,worker,node -s INVOKE_RUN=0 -s ALLOW_MEMORY_GROWTH=1 -s FORCE_FILESYSTEM=1 \
- -s EXPORTED_RUNTIME_METHODS=callMain,FS,ENV -s STACK_SIZE=4MB"
+ -s EXPORTED_RUNTIME_METHODS=callMain,FS,ENV -s STACK_SIZE=4MB \
+ --js-library $ENGINE/no-system.js"
 # Append the flags and a second -o to the libtool link line of the ngspice program (last -o wins).
 sed -i "s|\$(ngspice_LDADD) \$(LIBS)|\$(ngspice_LDADD) \$(LIBS) $LINK_FLAGS -o ngspice.mjs|" "$BUILD/src/Makefile"
 grep -q 'MODULARIZE=1' "$BUILD/src/Makefile"
@@ -137,7 +138,7 @@ cp "$BUILD/src/ngspice.mjs" "$BUILD/src/ngspice.wasm" "$ENGINE/dist/"
   echo "models left out: ${REMOVED_MODELS[*]%%:*}"
   echo "emcc:      $(emcc --version | head -1)"
   echo "configure: ${CONFIGURE_FLAGS[*]} CFLAGS=$OPT (+ -ffile-prefix-map, SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH)"
-  echo "link:      $(echo $LINK_FLAGS)"
+  echo "link:      $(echo $LINK_FLAGS | sed "s|$ENGINE/|engine/|g")"
   echo "features (config.h):"
   grep -E '^#define (KLU|XSPICE|OSDI|CIDER|HAVE_LIBFFTW3|HAVE_GNUREADLINE|HAVE_BSDEDITLINE|USE_OMP|NGDEBUG|SHARED_MODULE|RFSPICE)\b' \
     "$BUILD/src/include/ngspice/config.h" | sed 's/^/  /' || true
