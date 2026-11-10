@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PlainSpice Playground</title>
+    <meta
+      name="description"
+      content="PlainSpice design prototype, direction Playground: a friendly whiteboard where the circuit is drawn by hand, real ngspice solves it as you play, and the numbers sit on the drawing like sticky notes."
+    />
+    <meta name="theme-color" content="#FFFFFF" />
+    <link rel="icon" href="../../../favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="./fonts/nunito-latin-wght.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./fonts/shantell-sans-playground.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./main.ts"></script>
+  </head>
+  <body>
+    <a class="skip" href="#board">Skip to the circuit</a>
+    <div id="app" class="app" data-layout="desktop" data-tool="select">
+      <main class="stage">
+        <h1 class="sr-only">PlainSpice Playground: a voltage divider, solved by ngspice</h1>
+        <div id="canvas" class="canvas">
+          <svg id="board" class="board" tabindex="-1" role="group" aria-labelledby="board-title" aria-describedby="board-desc">
+            <title id="board-title">The circuit drawing</title>
+            <desc id="board-desc"></desc>
+            <defs>
+              <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="1.2" stdDeviation="1.4" flood-color="#14142B" flood-opacity="0.18" />
+              </filter>
+            </defs>
+            <g id="world">
+              <g id="layer-swash" aria-hidden="true"></g>
+              <g id="layer-wires" aria-hidden="true"></g>
+              <g id="layer-flow" aria-hidden="true"></g>
+              <g id="layer-arrows" aria-hidden="true"></g>
+              <g id="layer-parts"></g>
+              <g id="layer-ghost" aria-hidden="true"></g>
+            </g>
+            <g id="layer-screen" aria-hidden="true"></g>
+          </svg>
+          <div id="labels" class="labels" aria-hidden="true"></div>
+        </div>
+        <div id="results-text" class="sr-only" role="region" aria-label="Results on the drawing"></div>
+      </main>
+      <!-- Right after the drawing in the tab order, outside <main> so a phone sheet can cover the dock. -->
+      <section id="part-card" class="part-card" role="dialog" aria-modal="false" aria-labelledby="card-title" hidden></section>
+      <section id="invite" class="invite" aria-labelledby="invite-title" hidden></section>
+
+      <header class="topbar">
+        <div class="island brand">
+          <a class="brand__mark" href="../../../" aria-label="PlainSpice: open the app"></a>
+          <div class="brand__text">
+            <span class="brand__name">PlainSpice</span>
+            <span class="brand__doc" id="doc-title">Voltage divider</span>
+          </div>
+        </div>
+        <div class="island run" id="run-island">
+          <button id="live" class="live is-on" type="button" role="switch" aria-checked="true">
+            <span class="live__dot" aria-hidden="true"></span>
+            <span class="live__word">Live</span>
+            <span class="live__tick" aria-hidden="true"></span>
+            <span class="live__meta" id="live-meta" aria-hidden="true"></span>
+          </button>
+          <button id="run" class="btn btn--primary run__btn" type="button" aria-keyshortcuts="Control+Enter"></button>
+        </div>
+      </header>
+
+      <nav class="dock" id="dock" aria-label="Parts and panels">
+        <div class="toolbar island" id="toolbar" role="toolbar" aria-label="Parts and tools" aria-orientation="horizontal"></div>
+        <div class="phone-tools" id="phone-tools" role="group" aria-label="Tools"></div>
+        <div class="panel-switch island" id="panel-switch" role="group" aria-label="Panels"></div>
+        <div id="ctrl-menu" class="menu" role="menu" aria-label="Controlled sources" hidden></div>
+      </nav>
+
+      <section class="island view" id="view-island" aria-label="View and history"></section>
+
+      <aside id="panel-stack" class="panel-stack" aria-label="Netlist, checks and explanations"></aside>
+      <section id="parts-sheet" class="parts-sheet" role="dialog" aria-modal="true" aria-labelledby="parts-title" hidden></section>
+      <p id="hint" class="hint" aria-hidden="true"></p>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+      <section id="keys" class="keys" role="dialog" aria-modal="true" aria-labelledby="keys-title" hidden></section>
+    </div>
+  </body>
+</html>

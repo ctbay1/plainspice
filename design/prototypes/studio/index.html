@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PlainSpice Studio</title>
+    <meta
+      name="description"
+      content="PlainSpice design prototype, direction Studio: a dark, pro circuit simulator with the circuit front and centre, results drawn on it and real ngspice re-running as you edit."
+    />
+    <meta name="theme-color" content="#13161D" />
+    <link rel="icon" href="../../../favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./main.ts"></script>
+  </head>
+  <body>
+    <div id="app" class="app" data-dock="bottom">
+      <a class="skip" href="#canvas">Skip to the circuit</a>
+
+      <header class="topbar">
+        <div class="tb__left">
+          <a id="brand" class="brand" href="../../../" aria-label="PlainSpice: open the app"></a>
+          <span class="tb__slash" aria-hidden="true">/</span>
+          <h1 id="doc-title" class="doc-title">A voltage divider</h1>
+          <div class="tb__history">
+            <button id="btn-undo" class="icon-btn has-tip" type="button" aria-label="Undo"></button>
+            <button id="btn-redo" class="icon-btn has-tip" type="button" aria-label="Redo"></button>
+          </div>
+        </div>
+
+        <button id="cmdk" class="cmdk" type="button" aria-label="Search or run a command"></button>
+
+        <div class="tb__right">
+          <button id="live-toggle" class="live is-on" type="button" role="switch" aria-checked="true" aria-label="Live: re-run ngspice as you edit"></button>
+          <button id="btn-run" class="btn btn--soft run" type="button"></button>
+          <div class="pop-anchor desk-only">
+            <button id="btn-share" class="btn btn--ghost" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="share-pop"></button>
+            <div id="share-pop" class="pop pop--share" role="dialog" aria-label="Share this circuit" hidden></div>
+          </div>
+          <button id="btn-theme" class="icon-btn has-tip desk-only" type="button" aria-label="Switch to the light theme"></button>
+          <div class="pop-anchor phone-only">
+            <button id="btn-more" class="icon-btn" type="button" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop"></button>
+            <div id="more-pop" class="pop pop--menu" role="menu" aria-label="More" hidden></div>
+          </div>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <nav class="rail" aria-label="Tools">
+          <div id="tools" class="rail__tools" role="toolbar" aria-orientation="vertical" aria-label="Tools"></div>
+          <div id="ctrl-menu" class="pop pop--flyout" role="menu" aria-label="Controlled sources" hidden></div>
+          <button id="rail-help" class="tool tool--help" type="button" aria-label="Keyboard shortcuts and commands" aria-keyshortcuts="?"></button>
+        </nav>
+
+        <main class="stage" id="main">
+          <div class="stage__canvas">
+            <div id="canvas" class="canvas" data-mode="select">
+              <svg id="schematic" class="schematic" role="group" aria-labelledby="sch-title" aria-describedby="sch-desc">
+                <title id="sch-title">Schematic of the circuit</title>
+                <desc id="sch-desc"></desc>
+                <g id="world"></g>
+              </svg>
+              <div id="overlay" class="overlay"></div>
+              <div id="canvas-hint" class="canvas-hint" hidden></div>
+            </div>
+            <div id="pcard" class="pcard" hidden></div>
+            <aside id="inspector" class="inspector" aria-labelledby="insp-title" hidden></aside>
+          </div>
+          <div id="dock-bottom-slot" class="dock-slot dock-slot--bottom">
+            <section id="dock" class="dock" aria-label="Panels" data-count="0"></section>
+          </div>
+          <div class="dockbar">
+            <div id="panel-toggles" class="ptoggles" role="group" aria-label="Panels"></div>
+            <div id="status" class="status" data-tone="busy"></div>
+            <div id="zoom" class="zoom" role="group" aria-label="Zoom"></div>
+          </div>
+        </main>
+
+        <div id="dock-right-slot" class="dock-slot dock-slot--right"></div>
+      </div>
+
+      <nav id="phonebar" class="phonebar" aria-label="Tools and panels"></nav>
+
+      <section id="sheet" class="sheet is-closed" aria-labelledby="sheet-title" hidden>
+        <div id="sheet-grip" class="sheet__grip" aria-hidden="true"><span></span></div>
+        <div class="sheet__head">
+          <h2 id="sheet-title" class="sheet__title" tabindex="-1"></h2>
+          <span id="sheet-sub" class="sheet__sub"></span>
+          <button id="sheet-close" class="icon-btn sheet__close" type="button" data-action="sheet-close" aria-label="Close the panel"></button>
+        </div>
+        <div id="sheet-body" class="sheet__body" role="region" aria-labelledby="sheet-title" tabindex="0"></div>
+      </section>
+
+      <div id="parts-pop" class="pop pop--parts" role="dialog" aria-label="Place a part" hidden></div>
+    </div>
+
+    <div id="palette" class="palette-root" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="announcer" class="sr-only" aria-live="polite"></div>
+  </body>
+</html>

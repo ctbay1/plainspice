@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#F6F1E4" />
+    <title>PlainSpice · Notebook (design prototype)</title>
+    <meta
+      name="description"
+      content="Milestone 2 design direction “Notebook”: PlainSpice as the Solved Circuits page. Real ngspice, results written on the drawing."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23FFFDF6'/%3E%3Cpath d='M4 36h8l4-10 6 20 6-20 6 20 4-10' fill='none' stroke='%231E2A45' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M38 36l7 9L60 18' fill='none' stroke='%231E6B30' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="preload" href="./fonts/inter-regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./fonts/caveat-700.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#canvas">Skip to the circuit</a>
+
+    <div class="app" id="app" data-tool="select" data-panels="closed">
+
+      <!-- Top bar: the document on the left, the live status and Run on the right. -->
+      <header class="topbar" id="topbar">
+        <div class="doc island">
+          <span class="doc__mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64"><path class="mark-zig" d="M4 36h8l4-10 6 20 6-20 6 20 4-10" /><path class="mark-check" d="M38 36l7 9L60 18" /></svg>
+          </span>
+          <div class="doc__text">
+            <p class="doc__app">PlainSpice</p>
+            <p class="doc__name"><span>Voltage divider</span> <span class="doc__file">divider.cir</span></p>
+          </div>
+          <span class="doc__sep" aria-hidden="true"></span>
+          <button class="icon-btn" id="undo" type="button" aria-label="Undo" aria-keyshortcuts="Control+Z" data-tip="Undo" data-key="Ctrl Z" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 6.5L4 10l3.5 3.5" /><path d="M4.5 10H12a4 4 0 0 1 0 8h-1.5" /></svg>
+          </button>
+          <button class="icon-btn" id="redo" type="button" aria-label="Redo" aria-keyshortcuts="Control+Shift+Z" data-tip="Redo" data-key="Ctrl Shift Z" disabled>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 6.5L16 10l-3.5 3.5" /><path d="M15.5 10H8a4 4 0 0 0 0 8h1.5" /></svg>
+          </button>
+        </div>
+
+        <div class="run island">
+          <p class="live" id="live" data-state="idle" data-tip="Every change runs ngspice again">
+            <span class="live__dot" aria-hidden="true"></span>
+            <span class="live__word" id="live-word">Live</span>
+            <span class="live__detail" id="live-detail">up to date</span>
+          </p>
+          <button class="btn btn--outline" id="run" type="button" aria-label="Run ngspice again" aria-keyshortcuts="Control+Enter" data-tip="Run ngspice again (for long analyses)" data-key="Ctrl ↵">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 4.5l9 5.5-9 5.5z" /></svg>
+            <span class="run__word">Run</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Divider tabs: on the right edge of the page (desktop), above the thumb dock (phone). -->
+      <nav class="tabs" id="tabs" aria-label="Panels">
+        <button class="tab" type="button" id="tab-netlist" data-panel="netlist" aria-expanded="false" aria-controls="panel-netlist">
+          <svg class="tab__icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5.5h12M4 10h8M4 14.5h10" /></svg>
+          <span class="tab__label">Netlist</span>
+        </button>
+        <button class="tab" type="button" id="tab-checks" data-panel="checks" aria-expanded="false" aria-controls="panel-checks">
+          <svg class="tab__icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8" /></svg>
+          <span class="tab__label">Checks</span>
+          <span class="tab__badge" id="checks-badge" aria-hidden="true"></span>
+        </button>
+        <button class="tab" type="button" id="tab-explain" data-panel="explain" aria-expanded="false" aria-controls="panel-explain">
+          <svg class="tab__icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5" /><path d="M10 9v4.5M10 6.6v.1" /></svg>
+          <span class="tab__label">Explain</span>
+        </button>
+      </nav>
+
+      <!-- Parts and tools: in the page's margin (desktop) or in the thumb dock (phone). -->
+      <nav class="dock" aria-label="Parts and tools">
+        <div class="palette" id="palette" role="toolbar" aria-label="Parts and tools" aria-orientation="vertical"></div>
+      </nav>
+
+      <!-- The page: cream grid paper that pans and zooms, with a red margin line. -->
+      <main class="canvas" id="canvas" tabindex="-1" aria-labelledby="canvas-title">
+        <h1 class="sr-only" id="canvas-title">Voltage divider, drawn and solved</h1>
+        <div class="world" id="world">
+          <svg class="ink" id="ink" role="img" aria-labelledby="ink-title ink-desc" viewBox="-3000 -3000 6000 6000" width="6000" height="6000">
+            <title id="ink-title">Schematic of the circuit</title>
+            <desc id="ink-desc"></desc>
+            <g id="layer-highlight"></g>
+            <g id="layer-wires"></g>
+            <g id="layer-flow"></g>
+            <g id="layer-parts"></g>
+            <g id="layer-arrows"></g>
+            <g id="layer-ghost"></g>
+          </svg>
+          <div class="labels" id="labels"></div>
+        </div>
+        <svg class="overlay" id="overlay" aria-hidden="true"></svg>
+        <div class="margin-line" aria-hidden="true"></div>
+
+        <!-- The invitation (screen space, points at R1). -->
+        <aside class="note" id="note" aria-labelledby="note-title" hidden>
+          <span class="note__tape" aria-hidden="true"></span>
+          <p class="note__title" id="note-title">Change R1 and watch the numbers move</p>
+          <p class="note__hint" id="note-hint">Click R1, then drag the slider or type a value such as <kbd>3k</kbd>.</p>
+          <div class="note__actions">
+            <button class="btn btn--note" id="note-try" type="button">Change R1</button>
+            <button class="icon-btn icon-btn--note" id="note-close" type="button" aria-label="Hide this note">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9m0-9l-9 9" /></svg>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Placing a part from the keyboard: focus sits here while the arrow keys move the ghost. -->
+        <div class="placer" id="placer" tabindex="-1" role="application" aria-roledescription="placing" aria-label="Placing a part" hidden></div>
+
+        <!-- The value editor: an index card pinned to the part (a bottom sheet on a phone). -->
+        <section class="inspector" id="inspector" role="dialog" aria-modal="false" aria-labelledby="insp-title" hidden></section>
+
+        <div class="hud" id="hud">
+          <div class="zoom island" role="group" aria-label="Zoom">
+            <button class="icon-btn" id="zoom-out" type="button" aria-label="Zoom out" data-tip="Zoom out" data-key="−">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10" /></svg>
+            </button>
+            <button class="zoom__pct" id="zoom-fit" type="button" aria-label="Fit the circuit to the window" data-tip="Fit the circuit to the window" data-key="Shift 1">100%</button>
+            <button class="icon-btn" id="zoom-in" type="button" aria-label="Zoom in" data-tip="Zoom in" data-key="+">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10M10 5v10" /></svg>
+            </button>
+          </div>
+          <p class="credit">ngspice 47 runs in your browser</p>
+          <p class="hint" id="hint" aria-live="off"></p>
+        </div>
+      </main>
+
+      <!-- Panels you open when you want them: one paper sheet that slides out from the tabs (a bottom sheet on a phone). -->
+      <div class="panels" id="panels">
+        <section class="card card--netlist" id="panel-netlist" aria-labelledby="h-netlist" hidden></section>
+        <section class="card card--checks" id="panel-checks" aria-labelledby="h-checks" hidden></section>
+        <section class="card card--explain" id="panel-explain" aria-labelledby="h-explain" hidden></section>
+      </div>
+
+      <!-- Phone: the controlled sources, named in plain words (the dock has room for the common parts only). -->
+      <section class="parts-sheet" id="parts-sheet" role="dialog" aria-modal="false" aria-labelledby="parts-title" hidden></section>
+
+      <div class="toast" id="toast" hidden>
+        <p class="toast__text" id="toast-text"></p>
+        <button class="toast__undo" id="toast-undo" type="button">Undo</button>
+      </div>
+
+      <div class="tip" id="tip" role="tooltip" hidden></div>
+      <p class="sr-only" id="announcer" aria-live="polite" aria-atomic="true"></p>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

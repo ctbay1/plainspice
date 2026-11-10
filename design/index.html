@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>PlainSpice: three directions for milestone 2</title>
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --ink: #16181d;
+        --muted: #5b6170;
+        --line: #e3e5ea;
+        --card: #f7f8fa;
+        --link: #1d5bd6;
+        color-scheme: light;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
+      main { max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; }
+      h1 { font-size: 1.9rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+      .lede { color: var(--muted); max-width: 70ch; margin: 0 0 32px; }
+      .directions { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+      article { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+      h2 { margin: 0; font-size: 1.35rem; }
+      .what { margin: 0; color: var(--muted); }
+      .open { display: inline-block; align-self: flex-start; background: var(--ink); color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 10px; font-weight: 600; }
+      .open:focus-visible, a:focus-visible { outline: 3px solid var(--link); outline-offset: 2px; }
+      figure { margin: 0; }
+      figure img { width: 100%; height: auto; display: block; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+      figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+      .pair { display: grid; grid-template-columns: 3fr 1fr; gap: 10px; align-items: start; }
+      details { border-top: 1px solid var(--line); padding-top: 10px; }
+      summary { cursor: pointer; color: var(--link); font-weight: 600; }
+      .more { display: grid; gap: 10px; grid-template-columns: 3fr 1fr; margin-top: 10px; }
+      .note { margin-top: 40px; color: var(--muted); font-size: 0.95rem; max-width: 80ch; }
+      a { color: var(--link); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Three directions for PlainSpice</h1>
+      <p class="lede">
+        Milestone 2 makes PlainSpice look and work like a real simulator: the circuit in the middle, parts to place,
+        results drawn on the wires, and the netlist, checks and explanations in panels you open when you want them.
+        Each direction below is a clickable prototype running real ngspice in your browser: click R1 and change its
+        value to watch the numbers move. Try each on a computer and on a phone, then pick one.
+      </p>
+      <div class="directions">
+        <article aria-labelledby="notebook-title">
+          <h2 id="notebook-title">1. Notebook</h2>
+          <p class="what">The Solved Circuits look: cream grid paper, ink drawings and handwritten results, like the episodes.</p>
+          <a class="open" href="./prototypes/notebook/">Open the Notebook prototype</a>
+          <div class="pair">
+            <figure><img loading="lazy" src="../docs/design/m2/notebook-solved-desktop.png" alt="Notebook on a computer: the solved divider, handwritten node voltages and currents" /><figcaption>Computer</figcaption></figure>
+            <figure><img loading="lazy" src="../docs/design/m2/notebook-solved-phone.png" alt="Notebook on a phone" /><figcaption>Phone</figcaption></figure>
+          </div>
+          <details>
+            <summary>More screens: changing R1, the panels, a beginner trap</summary>
+            <div class="more">
+              <figure><img loading="lazy" src="../docs/design/m2/notebook-edit-desktop.png" alt="Notebook: R1 being changed to 3 kΩ" /><figcaption>Changing R1</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/notebook-edit-phone.png" alt="Notebook on a phone: changing R1" /><figcaption>Phone</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/notebook-panels-desktop.png" alt="Notebook: netlist and explanation panels open" /><figcaption>Netlist and Explain panels</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/notebook-panels-phone.png" alt="Notebook on a phone: a panel open" /><figcaption>Phone</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/notebook-check-desktop.png" alt="Notebook: the 1M trap in the Checks panel" /><figcaption>A beginner trap (R1 = 1M)</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/notebook-check-phone.png" alt="Notebook on a phone: the 1M trap" /><figcaption>Phone</figcaption></figure>
+            </div>
+          </details>
+        </article>
+
+        <article aria-labelledby="studio-title">
+          <h2 id="studio-title">2. Studio</h2>
+          <p class="what">A pro tool like Figma or Linear: dark and calm, current flowing along the wires, a command palette (Ctrl+K).</p>
+          <a class="open" href="./prototypes/studio/">Open the Studio prototype</a>
+          <div class="pair">
+            <figure><img loading="lazy" src="../docs/design/m2/studio-solved-desktop.png" alt="Studio on a computer: the solved divider with node chips and current arrows" /><figcaption>Computer</figcaption></figure>
+            <figure><img loading="lazy" src="../docs/design/m2/studio-solved-phone.png" alt="Studio on a phone" /><figcaption>Phone</figcaption></figure>
+          </div>
+          <details>
+            <summary>More screens: changing R1, the panels, a beginner trap</summary>
+            <div class="more">
+              <figure><img loading="lazy" src="../docs/design/m2/studio-edit-desktop.png" alt="Studio: R1 being changed to 3 kΩ" /><figcaption>Changing R1</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/studio-edit-phone.png" alt="Studio on a phone: changing R1" /><figcaption>Phone</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/studio-panels-desktop.png" alt="Studio: netlist and explanation panels open" /><figcaption>Netlist and Explain panels</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/studio-panels-phone.png" alt="Studio on a phone: a panel open" /><figcaption>Phone</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/studio-check-desktop.png" alt="Studio: the 1M trap in the Checks panel" /><figcaption>A beginner trap (R1 = 1M)</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/studio-check-phone.png" alt="Studio on a phone: the 1M trap" /><figcaption>Phone</figcaption></figure>
+            </div>
+          </details>
+        </article>
+
+        <article aria-labelledby="playground-title">
+          <h2 id="playground-title">3. Playground</h2>
+          <p class="what">A friendly whiteboard like Excalidraw: light and airy, slightly hand-drawn, big buttons, made for a first try.</p>
+          <a class="open" href="./prototypes/playground/">Open the Playground prototype</a>
+          <div class="pair">
+            <figure><img loading="lazy" src="../docs/design/m2/playground-solved-desktop.png" alt="Playground on a computer: the solved divider with sticky-note results" /><figcaption>Computer</figcaption></figure>
+            <figure><img loading="lazy" src="../docs/design/m2/playground-solved-phone.png" alt="Playground on a phone" /><figcaption>Phone</figcaption></figure>
+          </div>
+          <details>
+            <summary>More screens: changing R1, the panels, a beginner trap</summary>
+            <div class="more">
+              <figure><img loading="lazy" src="../docs/design/m2/playground-edit-desktop.png" alt="Playground: R1 being changed to 3 kΩ" /><figcaption>Changing R1</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/playground-edit-phone.png" alt="Playground on a phone: changing R1" /><figcaption>Phone</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/playground-panels-desktop.png" alt="Playground: netlist and explanation panels open" /><figcaption>Netlist and Explain panels</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/playground-panels-phone.png" alt="Playground on a phone: a panel open" /><figcaption>Phone</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/playground-check-desktop.png" alt="Playground: the 1M trap in the Checks panel" /><figcaption>A beginner trap (R1 = 1M)</figcaption></figure>
+              <figure><img loading="lazy" src="../docs/design/m2/playground-check-phone.png" alt="Playground on a phone: the 1M trap" /><figcaption>Phone</figcaption></figure>
+            </div>
+          </details>
+        </article>
+      </div>
+      <p class="note">
+        These are prototypes for choosing a direction. What works: the first circuit, solved by real ngspice; changing
+        any of its values with live results; the toolbar and its keys; the Netlist, Checks and Explain panels with the
+        real checks and explanations; the 1M trap and its fix; undo and redo. Not yet: parts you place are drawn and can
+        be moved, but they are not wired into the netlist or simulated, and typing in the netlist does not change the
+        drawing. That is what gets built next, in the direction you choose. Everything that works today in
+        <a href="../">PlainSpice</a> (the checks, the explanations, share links, offline use, accessibility) stays.
+        The automatic layout that will draw any netlist is already working: see
+        <a href="./lab/">every example circuit drawn from its netlist</a>.
+      </p>
+    </main>
+  </body>
+</html>
