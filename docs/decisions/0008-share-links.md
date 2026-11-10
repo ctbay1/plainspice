@@ -32,6 +32,15 @@ video descriptions for years, so the format must never break.
   fixture links still decoded. If links ever need to be typed, a checksummed format gets new
   format letters (about 6 more characters); v1 links keep opening.
 
+## As built (10 November 2026)
+
+- Opening a link shows its circuit but does not replace the netlist the student saved: the
+  opened circuit is saved, and the fragment leaves the address bar, at the student's first edit
+  (so a reload before that opens the link again). Examples follow the same rule.
+- A `run=1` link opened while a simulation is running waits for that run to end. While the page
+  is still loading, a `run=1` link starts downloading the engine at once.
+- How hostile links are handled: [decision 0012](0012-netlists-and-links-are-data.md).
+
 ## Consequences
 
 - Links are long but self-contained: they work offline (PWA) and without any server.

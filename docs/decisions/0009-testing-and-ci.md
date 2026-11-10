@@ -37,6 +37,9 @@ Playwright is pinned to the version whose browsers are installed in Claude's clo
 - The e2e tests type every fixture into the editor and check the tables against the hand values
   and native ngspice 47 (the `.dc` and `.tran` CSVs at every point), and run axe with the
   WCAG 2.2 AA tags in 17 states per profile.
+- CI's check job also runs `npm run lint` (oxlint with its accessibility and React rules).
+- `vite preview` sends `ngspice.wasm` uncompressed and with `Cache-Control: no-cache`, so local
+  load measurements overstate the engine download: GitHub Pages sends it gzipped (about 608 KiB).
 - Fonts differ between machines, and layout bugs can hide behind them: the first CI run found a
   lost click at 320 px with large text that only GitHub's wider fonts showed. To try a run with
   fonts like the runners' on a machine with Inter installed:

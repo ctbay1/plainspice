@@ -40,8 +40,9 @@ tool: [docs/eecircuit-comparison.md](docs/eecircuit-comparison.md).
 First milestone, November 2026: the decisions ([docs/decisions/](docs/decisions/)), the engine
 (checked against native ngspice: [docs/fixture-results.md](docs/fixture-results.md)), the
 netlist-first app, and its tests in CI (unit, golden against native ngspice, and end-to-end with
-accessibility checks on a desktop and a phone). What's next and the open questions:
-[docs/plan.md](docs/plan.md).
+accessibility checks on a desktop and a phone). The app was then reviewed for SPICE wording,
+accessibility, security and speed on phones, and the findings were fixed. What's next and the
+open questions: [docs/plan.md](docs/plan.md).
 
 ## Develop
 
