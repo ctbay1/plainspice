@@ -17,6 +17,7 @@ behind them is in [`../research/`](../research/).
 | [0010](0010-accessibility.md) | WCAG 2.2 AA from day one | accepted |
 | [0011](0011-save-every-current.md) | For an operating point, the copy that runs saves every current | accepted |
 | [0012](0012-netlists-and-links-are-data.md) | Netlists and links are data, never code | accepted |
+| [0013](0013-schematic-model.md) | The schematic model: the circuit drawn from its netlist, in step both ways | accepted (open question: where positions live) |
 
 Also: [what we do differently from EEcircuit](../eecircuit-comparison.md) and the
 [fixture results](../fixture-results.md).

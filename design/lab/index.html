@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Schematic lab: auto-layout of every example and fixture</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111;
+        --muted: #555;
+        --line: #d6d6d6;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #fff;
+        color: var(--ink);
+        font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+      header {
+        max-width: 72rem;
+        margin-bottom: 20px;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin: 0 0 6px;
+      }
+      header p {
+        margin: 0 0 6px;
+        color: var(--muted);
+      }
+      main {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+        gap: 20px;
+        align-items: start;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px 14px 10px;
+        background: #fff;
+      }
+      .card h2 {
+        font-size: 1rem;
+        margin: 0;
+      }
+      .card .title {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .card svg {
+        display: block;
+        max-width: 100%;
+        height: auto;
+        margin: 4px 0 8px;
+      }
+      .card dl {
+        margin: 0;
+        font-size: 0.85rem;
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 2px 10px;
+      }
+      .card dt {
+        color: var(--muted);
+      }
+      .card dd {
+        margin: 0;
+      }
+      .ok {
+        color: #0a6a2a;
+      }
+      .bad {
+        color: #a3141f;
+        font-weight: 600;
+      }
+      .boxes .reserved {
+        display: inline;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Schematic lab</h1>
+      <p>
+        Every example netlist (<code>examples/*/*.cir</code>) and fixture (<code>tests/fixtures/*.cir</code>) drawn by the
+        automatic layout of <code>src/schematic/</code>, in a neutral style: thin black lines, standard US/ANSI symbols, node
+        names in italics, open circles for open ends, an open arrowhead where a node goes on to parts the drawing does not show
+        (their names under the node name), and a small hop where two wires cross without joining. Under each drawing: what
+        the check says (overlaps, and whether the drawing connects exactly what the netlist connects), the dot lines, and any
+        part the drawing does not show. The last cards ("more") show shapes beyond the channel's circuits: a bridge, an
+        amplifier, a star, a part typed into a drawn circuit, a drawing that gives one position, parts not drawn, an ammeter
+        in a branch, and sources with AC values and transient functions.
+      </p>
+      <p>Add <code>?boxes</code> to the address to see the room kept for labels and results.</p>
+    </header>
+    <main id="cards" aria-live="polite"></main>
+    <script type="module" src="./lab.ts"></script>
+  </body>
+</html>

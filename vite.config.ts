@@ -185,8 +185,9 @@ function pageHead(): Plugin {
 
 /**
  * Milestone 2's design prototypes (design/prototypes/<direction>/index.html, and design/index.html
- * comparing them): built and deployed at /design/... so Tarık can click them, but not part of the
- * app (no offline cache, no manifest).
+ * comparing them) and the schematic lab (design/lab/: every example drawn by the automatic layout):
+ * built and deployed at /design/... so Tarık can click them, but not part of the app (no offline
+ * cache, no manifest).
  */
 function designPages(): Record<string, string> {
   const pages: Record<string, string> = {};
@@ -194,6 +195,7 @@ function designPages(): Record<string, string> {
     if (existsSync(resolve(root, file))) pages[key] = resolve(root, file);
   };
   add('design', 'design/index.html');
+  add('design-lab', 'design/lab/index.html');
   const dir = resolve(root, 'design/prototypes');
   if (existsSync(dir)) for (const name of readdirSync(dir)) add(`design-${name}`, `design/prototypes/${name}/index.html`);
   return pages;
