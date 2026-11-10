@@ -639,8 +639,27 @@ pre {
 }
 
 .table-wrap {
+  /* A table wider than the screen scrolls inside its box, never the page (TableWrap.tsx). The
+     box must also be the containing block of the visually hidden words in the cells (they are
+     position: absolute), or they stick out past it and make the page scroll sideways after all. */
+  position: relative;
   max-width: 100%;
   margin: 0.75rem 0;
+  overflow-x: auto;
+}
+/* While a table scrolls sideways, a soft shadow marks each edge where more of it is hidden (phones
+   hide scrollbars): the shadows stay at the box's edges, and two covers that move with the table
+   hide each one when that end is reached. */
+.table-wrap--scrolls {
+  background:
+    linear-gradient(to right, var(--surface) 40%, transparent) left center / 1.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 40%, transparent) right center / 1.5rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.25), transparent) left center / 0.6rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.25), transparent) right center / 0.6rem 100% no-repeat scroll,
+    var(--surface);
+}
+.table-wrap--scrolls > .table {
+  background: transparent;
 }
 .table {
   width: 100%;
@@ -671,7 +690,10 @@ pre {
   font-variant-numeric: tabular-nums;
 }
 .table code {
-  overflow-wrap: anywhere;
+  /* Lines break between words only: a number or a name cut in two ("1.0000 | 00e+00", "Ites | t")
+     reads as something else. A table too wide for the screen scrolls inside its box instead
+     (TableWrap.tsx). */
+  overflow-wrap: normal;
 }
 
 .code {

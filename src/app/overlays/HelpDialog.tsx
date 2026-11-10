@@ -7,6 +7,7 @@
 import type { ReactNode } from 'react';
 import { EDITOR_STRINGS } from '../../editor/index.ts';
 import { t } from '../../i18n/index.ts';
+import { TableWrap } from '../components/TableWrap.tsx';
 import { DialogFrame } from './DialogFrame.tsx';
 
 export default function HelpDialog({ onOpenChange }: { onOpenChange: (isOpen: boolean) => void }): ReactNode {
@@ -19,7 +20,7 @@ export default function HelpDialog({ onOpenChange }: { onOpenChange: (isOpen: bo
   return (
     <DialogFrame title={t('helpTitle')} onOpenChange={onOpenChange} wide>
       <h3>{t('helpKeysHeading')}</h3>
-      <div className="table-wrap">
+      <TableWrap label={t('helpKeysCaption')}>
         <table className="table">
           <caption className="visually-hidden">{t('helpKeysCaption')}</caption>
           <thead>
@@ -39,7 +40,7 @@ export default function HelpDialog({ onOpenChange }: { onOpenChange: (isOpen: bo
             ))}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
       <h3>{t('helpResultsHeading')}</h3>
       <p>{t('helpResults1')}</p>
       <p>{t('helpResults2')}</p>

@@ -19,6 +19,7 @@ import type { Trap } from '../../spice/types.ts';
 import type { MessageWords, ResultsDescription, TransferFunctionWords } from '../model.ts';
 import type { RunOutcome } from '../state.ts';
 import { ErrorIcon, InfoIcon, OkIcon, StopIcon, WarningIcon } from './Icons.tsx';
+import { TableWrap } from './TableWrap.tsx';
 
 /** A number shown with its unit symbol and read out with the unit in words. */
 function Quantity({ text, speech }: { text: string; speech: string }): ReactNode {
@@ -55,7 +56,7 @@ function StatusBanner({ kind, text }: { kind: BannerKind; text: string }): React
 function NodeTable({ description, colours }: { description: ResultsDescription; colours: ReadonlyMap<string, string> }): ReactNode {
   if (!description.nodes.length) return null;
   return (
-    <div className="table-wrap">
+    <TableWrap label={t('nodesCaption')}>
       <table className="table table--results">
         <caption>{t('nodesCaption')}</caption>
         <thead>
@@ -87,7 +88,7 @@ function NodeTable({ description, colours }: { description: ResultsDescription; 
           })}
         </tbody>
       </table>
-    </div>
+    </TableWrap>
   );
 }
 
@@ -96,7 +97,7 @@ function CurrentTable({ description, results }: { description: ResultsDescriptio
   const showPower = description.currents.some((c) => c.power !== undefined);
   const vectorOf = (element: string): string => results.op?.currents.find((c) => c.element === element)?.vector ?? `i(${element})`;
   return (
-    <div className="table-wrap">
+    <TableWrap label={t('currentsCaption')}>
       <table className="table table--results">
         <caption>{t('currentsCaption')}</caption>
         <thead>
@@ -137,7 +138,7 @@ function CurrentTable({ description, results }: { description: ResultsDescriptio
           ))}
         </tbody>
       </table>
-    </div>
+    </TableWrap>
   );
 }
 
@@ -173,7 +174,7 @@ function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
   }
   if (!rows.length) return null;
   return (
-    <div className="table-wrap">
+    <TableWrap label={t('tfCaption')}>
       <table className="table table--results">
         <caption>{t('tfCaption')}</caption>
         <thead>
@@ -197,7 +198,7 @@ function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
           ))}
         </tbody>
       </table>
-    </div>
+    </TableWrap>
   );
 }
 

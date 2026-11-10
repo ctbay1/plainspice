@@ -11,7 +11,7 @@
  * "This line" card on the left and the tabs (Checks, Results, Plot, Explained, ngspice output) on
  * the right; one column on a phone.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { I18nProvider, Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 import type { PlainSpiceEditor } from '../editor/index.ts';
 import { interpretPlots } from '../engine/results.ts';
@@ -166,6 +166,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   });
 
   const goToLine = useCallback((line: number, span?: Span) => editorRef.current?.goToLine(line, span), []);
+
+  // "Show the checks" and "Show the plot" sit inside the Results panel, which goes away when the
+  // other tab opens: focus moves to that tab instead of falling to the page (WCAG 2.4.3). Discrete
+  // events (a press) are rendered before the timer fires, so the tab is selected by then.
+  const checksTab = useRef<HTMLDivElement>(null);
+  const plotTab = useRef<HTMLDivElement>(null);
+  const showTab = useCallback((tab: TabKey, element: RefObject<HTMLDivElement | null>) => {
+    dispatch({ type: 'tab', tab });
+    setTimeout(() => element.current?.focus(), 0);
+  }, []);
 
   // ------------------------------------------------------------------ the engine
   const warming = useRef<Promise<void> | null>(null);
@@ -395,11 +405,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
 
   // Ctrl+Enter (Cmd+Enter) runs from anywhere on the page, as the Run button says (aria-keyshortcuts).
   // Caught before React Aria sees it (capture phase): a focused tab or button would otherwise take
-  // the Enter as a press. The editor has its own Ctrl+Enter; menus and dialogs keep their keys.
+  // the Enter as a press. Menus and dialogs keep their keys. The editor is included on purpose:
+  // CodeMirror's own Ctrl+Enter is lost in Chrome for Android with a keyboard attached (it holds
+  // every Enter back and sends it again later without Ctrl, so a line break is typed instead).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
-      if (e.target instanceof Element && e.target.closest('.cm-editor, [role=dialog], [role=menu]')) return;
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.isComposing) return;
+      if (e.target instanceof Element && e.target.closest('[role=dialog], [role=menu]')) return;
       e.preventDefault();
       e.stopPropagation();
       void run();
@@ -457,7 +469,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           <h2 id="netlist-heading" className="pane__title">
             {t('netlistHeading')}
           </h2>
-          {state.notice && <Notice notice={state.notice} onDismiss={() => dispatch({ type: 'notice', notice: null })} />}
+          {state.notice && (
+            <Notice
+              notice={state.notice}
+              onDismiss={() => {
+                // The message (and its button) goes away: continue in the netlist right below it,
+                // not at the top of the page.
+                editorRef.current?.focus();
+                dispatch({ type: 'notice', notice: null });
+              }}
+            />
+          )}
           <NetlistEditor initialDoc={startup.netlist} editorRef={editorRef} handlers={editorHandlers} {...(createEditor ? { create: createEditor } : {})} />
           <ThisLine netlist={state.netlist} line={state.cursorLine} />
         </section>
@@ -465,14 +487,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         <section className="pane pane--results" aria-label={t('tabsLabel')}>
           <Tabs className="tabs" selectedKey={tab} onSelectionChange={(key) => dispatch({ type: 'tab', tab: key as TabKey })}>
             <TabList className="tab-list" aria-label={t('tabsLabel')}>
-              <Tab id="checks" className="tab">
+              <Tab id="checks" className="tab" ref={checksTab}>
                 {t('tabChecks', { count: state.traps.length })}
               </Tab>
               <Tab id="results" className="tab">
                 {t('tabResults')}
               </Tab>
               {plotAvailable && (
-                <Tab id="plot" className="tab">
+                <Tab id="plot" className="tab" ref={plotTab}>
                   {t('tabPlot')}
                 </Tab>
               )}
@@ -494,8 +516,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
                 colours={state.colours}
                 plotAvailable={plotAvailable}
                 onGoToLine={(line) => goToLine(line)}
-                onShowChecks={() => dispatch({ type: 'tab', tab: 'checks' })}
-                onShowPlot={() => dispatch({ type: 'tab', tab: 'plot' })}
+                onShowChecks={() => showTab('checks', checksTab)}
+                onShowPlot={() => showTab('plot', plotTab)}
               />
             </TabPanel>
             {plotAvailable && outcome.kind === 'done' && (

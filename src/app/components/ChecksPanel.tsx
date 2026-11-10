@@ -2,8 +2,12 @@
  * The Checks tab: beginner traps found before running (src/spice/traps.ts), grouped by severity.
  * Each says where (a "Line n" button that selects it in the editor), what, why, what ngspice does,
  * and offers its fixes as buttons. Severity is an icon AND a word, never colour alone.
+ *
+ * A fix usually removes its trap, and with it the button that was just pressed. Focus would then
+ * fall to the page and a keyboard user would start again from the top (WCAG 2.4.3), so it moves to
+ * the trap now in that place, or to the panel's heading when no trap is left.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Button } from 'react-aria-components';
 import { t, tn, type MessageKey, type PluralBase } from '../../i18n/index.ts';
 import type { Fix, Trap } from '../../spice/types.ts';
@@ -33,9 +37,31 @@ export function ChecksPanel({
   onFix: (fix: Fix) => void;
 }): ReactNode {
   const groups = groupTraps(traps);
+  const panel = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  /** The place (in reading order) of the trap whose fix was just pressed. */
+  const fixedAt = useRef<number | null>(null);
+
+  // The fix has been applied and the checks have run again (new traps): if the pressed button went
+  // away with its trap, focus the trap now at its place (the next one), the last one, or the heading.
+  useEffect(() => {
+    const at = fixedAt.current;
+    if (at === null) return;
+    fixedAt.current = null;
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && focused.isConnected) return; // focus was not lost
+    const titles = panel.current?.querySelectorAll<HTMLElement>('.trap__title') ?? [];
+    (titles[Math.min(at, titles.length - 1)] ?? heading.current)?.focus();
+  }, [traps]);
+
+  // Each trap's place in reading order, across the severity groups.
+  const placeOf = new Map(groups.flatMap((g) => g.traps).map((trap, i) => [trap, i]));
   return (
-    <div className="panel">
-      <h2 className="panel__title">{t('checksHeading')}</h2>
+    <div className="panel" ref={panel}>
+      {/* tabIndex -1: focusable by the app (after the last fix), not a Tab stop. */}
+      <h2 className="panel__title" ref={heading} tabIndex={-1}>
+        {t('checksHeading')}
+      </h2>
       <p className="muted">{t('checksIntro')}</p>
       {traps.length === 0 ? (
         <p className="status-line status-line--ok">
@@ -51,7 +77,7 @@ export function ChecksPanel({
             <ul className="trap-list">
               {g.traps.map((trap, i) => (
                 <li key={`${trap.id}-${trap.line}-${i}`} className={`trap trap--${trap.severity}`}>
-                  <h4 className="trap__title">
+                  <h4 className="trap__title" tabIndex={-1}>
                     <SeverityLabel severity={trap.severity} />
                     <span className="trap__text">{trap.title}</span>
                   </h4>
@@ -67,7 +93,14 @@ export function ChecksPanel({
                     // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
                     <div className="trap__fixes" role="group" aria-label={t('fixesLabel', { line: trap.line })}>
                       {trap.fixes.map((fix, k) => (
-                        <Button key={k} className="button button--fix" onPress={() => onFix(fix)}>
+                        <Button
+                          key={k}
+                          className="button button--fix"
+                          onPress={() => {
+                            fixedAt.current = placeOf.get(trap) ?? 0;
+                            onFix(fix);
+                          }}
+                        >
                           {fix.label}
                         </Button>
                       ))}

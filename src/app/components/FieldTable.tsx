@@ -6,6 +6,7 @@
 import { Fragment, type ReactNode } from 'react';
 import type { FieldExplanation, LineExplanation } from '../../spice/types.ts';
 import { t } from '../../i18n/index.ts';
+import { TableWrap } from './TableWrap.tsx';
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -28,7 +29,7 @@ export function emphasise(text: string, words: readonly string[] | undefined): R
 export function FieldTable({ explanation }: { explanation: LineExplanation }): ReactNode {
   if (!explanation.fields.length) return null;
   return (
-    <div className="table-wrap">
+    <TableWrap label={t('fieldTableCaption', { line: explanation.line })}>
       <table className="table table--fields">
         <caption>{t('fieldTableCaption', { line: explanation.line })}</caption>
         <thead>
@@ -48,7 +49,7 @@ export function FieldTable({ explanation }: { explanation: LineExplanation }): R
           ))}
         </tbody>
       </table>
-    </div>
+    </TableWrap>
   );
 }
 
