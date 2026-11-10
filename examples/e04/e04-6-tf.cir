@@ -1,0 +1,10 @@
+* Norton, example 3: R_N with .tf
+* From the Solved Circuits video "Norton Equivalent and Source Transformation: 3 Solved Examples", https://youtu.be/ONxhzqlOw6M (CC BY 4.0)
+Vin s 0 40
+Vx s s2 0
+R1 s2 n1 6
+R2 n1 m 4
+H1 0 m Vx 2
+R3 n1 a 2
+.tf v(a) Vin
+.end

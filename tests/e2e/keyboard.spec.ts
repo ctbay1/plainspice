@@ -68,23 +68,25 @@ test('keyboard only: skip link, Run, the editor, Ctrl+Enter, the tabs, a fix, me
   await expect(runButton(page)).toBeFocused();
 
   // The Examples menu: arrow keys open it and move through it, Enter chooses, focus comes back.
+  // Its first items are the first video's (SPICE for Beginners): examples/examples.json.
+  const [FIRST, SECOND] = ['Example 1', 'Example 1 with a 0 V ammeter'];
   const examples = page.getByRole('button', { name: t('examples') });
   await press('ArrowRight');
   await expect(examples).toBeFocused();
   await press('ArrowDown');
   const menu = page.getByRole('menu', { name: t('examplesMenu') });
-  await expect(menu.getByRole('menuitem', { name: t('exampleF1a') })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: FIRST, exact: true })).toBeFocused();
   await press('Escape');
   await expect(menu).toHaveCount(0);
   await expect(examples).toBeFocused();
   await press('Enter');
-  await expect(menu.getByRole('menuitem', { name: t('exampleF1a') })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: FIRST, exact: true })).toBeFocused();
   await press('ArrowDown');
-  await expect(menu.getByRole('menuitem', { name: t('exampleF1b') })).toBeFocused();
+  await expect(menu.getByRole('menuitem', { name: SECOND, exact: true })).toBeFocused();
   await press('Enter');
   await expect(menu).toHaveCount(0);
   await expect(examples).toBeFocused();
-  await expect.poll(() => netlistText(page)).toMatch(/^\* F1b/);
+  await expect.poll(() => netlistText(page)).toMatch(/^\* SPICE for Beginners, example 1 with a 0 V ammeter/);
 
   // Dialogs: Enter opens, focus goes inside, Escape closes and focus returns to the button.
   for (const [button, title, steps] of [

@@ -1,0 +1,8 @@
+* Nodal analysis, example 1: a source to ground
+* From the Solved Circuits video "Nodal Analysis with a Supernode: 3 Solved Examples (Easy to Exam Level)", https://youtu.be/7w-oSkPatcw (CC BY 4.0)
+V1 n1 0 6
+R1 n1 n2 2
+R2 n2 0 4
+I1 0 n2 3
+.op
+.end

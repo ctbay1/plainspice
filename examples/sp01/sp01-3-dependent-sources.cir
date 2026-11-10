@@ -1,0 +1,13 @@
+* SPICE for Beginners, dependent sources E, G, F and H
+* From the Solved Circuits video "SPICE for Beginners: Check Any Circuit Answer with a Free Simulator (LTspice & ngspice)", https://youtu.be/eYtco4K4pm8 (CC BY 4.0)
+Vc c 0 3
+E1 out1 0 c 0 2
+G1 0 out2 c 0 0.5
+R2 out2 0 2
+Vs c cs 0
+Rs cs 0 1
+F1 0 out3 Vs 3
+R3 out3 0 2
+H1 out4 0 Vs 4
+.op
+.end

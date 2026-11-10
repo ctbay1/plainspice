@@ -1,0 +1,7 @@
+* SPICE for Beginners, mistake 3: 1M is one milliohm
+* From the Solved Circuits video "SPICE for Beginners: Check Any Circuit Answer with a Free Simulator (LTspice & ngspice)", https://youtu.be/eYtco4K4pm8 (CC BY 4.0)
+V1 n1 0 6
+R1 n1 n2 1M
+R2 n2 0 1meg
+.op
+.end

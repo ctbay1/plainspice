@@ -77,6 +77,10 @@ Done so far:
   the docs use it; links to the old address keep working (GitHub forwards them, and the
   share-link tests decode both kinds).
 - `LICENSE`: "Tarık Bayraktar and PlainSpice contributors".
+- **Example library**: the circuits of the four public videos, in channel order (SPICE for
+  Beginners, then p01, p02 and e04): 20 netlists in [examples/](../examples/), each crediting its
+  video, first in the Examples menu. Each gives the values the channel recorded with native
+  ngspice (`tests/golden/examples.test.ts`); the three "mistake" examples show the check they teach.
 
 ## Next
 
@@ -89,8 +93,6 @@ Done so far:
   unlisted video's description and click it on a computer and a phone.
 - **"Open this circuit" in the channel's pipeline**: add the links to the upload sheets in the
   solved-circuits repository (`deliver/`), starting with SPICE for Beginners (sp01).
-- **Example library** from the four public videos, in channel order: SPICE for Beginners (sp01),
-  then p01, p02 and e04, each with a credit line (CC BY 4.0, decision 0005).
 - **Turkish UI**: the strings are in a catalog (`src/i18n/en.ts`); translate them, and have a
   Turkish speaker review React Aria's tr-TR strings (one plural is already known to be wrong).
 - **Small known gaps**: the editor colours a word after an R, C or L value as a model name even

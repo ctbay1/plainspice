@@ -1,0 +1,9 @@
+* Thévenin, example 2: only a dependent source, 1 A test current
+* From the Solved Circuits video "Thévenin Equivalent with Dependent Sources: 3 Solved Examples", https://youtu.be/Ttx-AeMLwVc (CC BY 4.0)
+It 0 a 1
+Vsense a a1 0
+R1 a1 n1 2
+R2 n1 0 4
+F1 0 n1 Vsense 2
+.op
+.end

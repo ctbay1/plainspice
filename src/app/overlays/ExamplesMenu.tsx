@@ -1,6 +1,7 @@
 /**
  * The Examples menu (lazy-loaded with React Aria's Popover and Menu, which the first screen does
- * not need). Anchored to the toolbar's Examples button; choosing an example closes it.
+ * not need): the channel's videos in channel order, then the basics (src/app/examples.ts). Anchored
+ * to the toolbar's Examples button; choosing an example closes it.
  */
 import type { ReactNode, RefObject } from 'react';
 import { Header, Menu, MenuItem, MenuSection, Popover } from 'react-aria-components';
@@ -34,12 +35,12 @@ export default function ExamplesMenu({
           onSelect(String(key));
         }}
       >
-        {EXAMPLE_GROUPS.map(({ group, labelKey }) => (
+        {EXAMPLE_GROUPS.map(({ group, label }) => (
           <MenuSection key={group} className="menu__section">
-            <Header className="menu__header">{t(labelKey)}</Header>
+            <Header className="menu__header">{label}</Header>
             {EXAMPLES.filter((e) => e.group === group).map((e) => (
-              <MenuItem key={e.id} id={e.id} className="menu__item" textValue={t(e.nameKey)}>
-                {t(e.nameKey)}
+              <MenuItem key={e.id} id={e.id} className="menu__item" textValue={e.name}>
+                {e.name}
               </MenuItem>
             ))}
           </MenuSection>

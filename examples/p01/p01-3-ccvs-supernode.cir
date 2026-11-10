@@ -1,0 +1,11 @@
+* Nodal analysis, example 3: a supernode with a dependent source
+* From the Solved Circuits video "Nodal Analysis with a Supernode: 3 Solved Examples (Easy to Exam Level)", https://youtu.be/7w-oSkPatcw (CC BY 4.0)
+V1 n1 0 20
+R2 n2 0 12
+R3 n3 0 2
+Rp n2 n3 5
+Vsense n1 nx 0
+R1 nx n2 4
+H1 n2 n3 Vsense 5
+.op
+.end

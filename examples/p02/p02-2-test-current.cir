@@ -1,0 +1,9 @@
+* Thévenin, example 1: R_Th with a 1 A test current
+* From the Solved Circuits video "Thévenin Equivalent with Dependent Sources: 3 Solved Examples", https://youtu.be/Ttx-AeMLwVc (CC BY 4.0)
+V1 s 0 0
+R1 s n1 6
+R2 n1 0 3
+R3 n1 a 2
+It 0 a 1
+.op
+.end

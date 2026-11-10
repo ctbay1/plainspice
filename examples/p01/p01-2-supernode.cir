@@ -1,0 +1,10 @@
+* Nodal analysis, example 2: a supernode
+* From the Solved Circuits video "Nodal Analysis with a Supernode: 3 Solved Examples (Easy to Exam Level)", https://youtu.be/7w-oSkPatcw (CC BY 4.0)
+I1 0 n1 5
+Ra n1 n2 2
+Rb n2 0 4
+Rc n3 0 6
+Rd n1 n3 8
+Vs n2 n3 10
+.op
+.end

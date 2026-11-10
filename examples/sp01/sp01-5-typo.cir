@@ -1,0 +1,8 @@
+* SPICE for Beginners, mistake 2: a typo in a node name
+* From the Solved Circuits video "SPICE for Beginners: Check Any Circuit Answer with a Free Simulator (LTspice & ngspice)", https://youtu.be/eYtco4K4pm8 (CC BY 4.0)
+V1 n1 0 6
+R1 n1 n2 2
+R2 n12 0 4
+I1 0 n2 3
+.op
+.end

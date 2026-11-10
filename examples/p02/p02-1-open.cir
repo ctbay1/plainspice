@@ -1,0 +1,8 @@
+* Thévenin, example 1: open circuit (V_Th)
+* From the Solved Circuits video "Thévenin Equivalent with Dependent Sources: 3 Solved Examples", https://youtu.be/Ttx-AeMLwVc (CC BY 4.0)
+V1 s 0 24
+R1 s n1 6
+R2 n1 0 3
+R3 n1 a 2
+.op
+.end

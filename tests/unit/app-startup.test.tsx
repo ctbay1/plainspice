@@ -5,7 +5,7 @@
  * opened say why; a fragment that is not a share link is ignored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_EXAMPLE_ID, EXAMPLES, exampleById } from '../../src/app/examples.ts';
+import { DEFAULT_EXAMPLE_ID, EXAMPLE_GROUPS, EXAMPLES, exampleById } from '../../src/app/examples.ts';
 import { clearShareFragment, decideStartup, readStartup } from '../../src/app/startup.ts';
 import { encodeShare } from '../../src/share/link.ts';
 
@@ -77,8 +77,11 @@ describe('clearShareFragment', () => {
 });
 
 describe('examples', () => {
-  it('every fixture is an example with a name, in teaching order, F5 among them', () => {
-    expect(EXAMPLES.map((e) => e.id)).toEqual([
+  it('the channel’s videos come first, in channel order, then every fixture in teaching order, F5 among them', () => {
+    expect(EXAMPLE_GROUPS.map((g) => g.group)).toEqual(['sp01', 'p01', 'p02', 'e04', 'sources', 'traps', 'analyses']);
+    expect(EXAMPLES.slice(0, 20).map((e) => e.group)).toEqual([...Array(6).fill('sp01'), ...Array(3).fill('p01'), ...Array(5).fill('p02'), ...Array(6).fill('e04')]);
+    for (const e of EXAMPLES.slice(0, 20)) expect(e.netlist).toMatch(/^\* .+\n\* From the Solved Circuits video "/);
+    expect(EXAMPLES.slice(20).map((e) => e.id)).toEqual([
       'f1a-voltage-source',
       'f1b-voltage-source-swapped',
       'f2a-current-source',

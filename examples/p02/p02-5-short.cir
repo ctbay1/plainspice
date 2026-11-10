@@ -1,0 +1,10 @@
+* Thévenin, example 3: short circuit (I_sc)
+* From the Solved Circuits video "Thévenin Equivalent with Dependent Sources: 3 Solved Examples", https://youtu.be/Ttx-AeMLwVc (CC BY 4.0)
+V1 s 0 12
+R1 s n1 3
+R2 n1 a 2
+R3 n1 0 6
+G1 0 a n1 0 0.25
+Vshort a 0 0
+.op
+.end

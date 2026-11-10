@@ -1,0 +1,9 @@
+* Norton, example 1: two sources and a load
+* From the Solved Circuits video "Norton Equivalent and Source Transformation: 3 Solved Examples", https://youtu.be/ONxhzqlOw6M (CC BY 4.0)
+V1 s1 0 32
+R1 s1 v 4
+V2 0 s2 24
+R2 s2 v 12
+RL v 0 6
+.op
+.end

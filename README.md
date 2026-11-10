@@ -80,7 +80,8 @@ The engine is committed (`engine/dist/`); to rebuild it from the ngspice source,
 
 ## Licence
 
-PlainSpice's code is [MIT](LICENSE); its documentation is CC BY 4.0. The simulation engine is
+PlainSpice's code is [MIT](LICENSE); its documentation and the example circuits from the
+channel's videos ([examples/](examples/)) are CC BY 4.0. The simulation engine is
 ngspice 47 (Modified BSD, with numparam under the GNU LGPL): see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); its exact source is served next to it. The names
 "PlainSpice" and "Solved Circuits" are not licensed: [TRADEMARKS.md](TRADEMARKS.md).

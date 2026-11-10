@@ -1,0 +1,250 @@
+{
+  "videos": [
+    {
+      "id": "sp01",
+      "title": "SPICE for Beginners: Check Any Circuit Answer with a Free Simulator (LTspice & ngspice)",
+      "short": "SPICE for Beginners",
+      "youtube": "eYtco4K4pm8"
+    },
+    {
+      "id": "p01",
+      "title": "Nodal Analysis with a Supernode: 3 Solved Examples (Easy to Exam Level)",
+      "short": "Nodal Analysis with a Supernode",
+      "youtube": "7w-oSkPatcw"
+    },
+    {
+      "id": "p02",
+      "title": "Thévenin Equivalent with Dependent Sources: 3 Solved Examples",
+      "short": "Thévenin with Dependent Sources",
+      "youtube": "Ttx-AeMLwVc"
+    },
+    {
+      "id": "e04",
+      "title": "Norton Equivalent and Source Transformation: 3 Solved Examples",
+      "short": "Norton and Source Transformation",
+      "youtube": "ONxhzqlOw6M"
+    }
+  ],
+  "examples": [
+    {
+      "id": "sp01-1-example-1",
+      "video": "sp01",
+      "file": "sp01/sp01-1-example-1.cir",
+      "name": "Example 1",
+      "source": "solved-circuits/design/sp01/ex1.cir",
+      "expect": {
+        "v(n1)": 6,
+        "v(n2)": 8,
+        "i(v1)": 1
+      }
+    },
+    {
+      "id": "sp01-2-ammeter",
+      "video": "sp01",
+      "file": "sp01/sp01-2-ammeter.cir",
+      "name": "Example 1 with a 0 V ammeter",
+      "source": "solved-circuits/design/sp01/ex1m.cir",
+      "expect": {
+        "i(vm)": 2
+      }
+    },
+    {
+      "id": "sp01-3-dependent-sources",
+      "video": "sp01",
+      "file": "sp01/sp01-3-dependent-sources.cir",
+      "name": "Dependent sources E, G, F and H",
+      "source": "solved-circuits/design/sp01/dep_v2.cir",
+      "expect": {
+        "v(out1)": 6,
+        "v(out2)": 3,
+        "v(out3)": 18,
+        "v(out4)": 12,
+        "i(vs)": 3
+      }
+    },
+    {
+      "id": "sp01-4-no-ground",
+      "video": "sp01",
+      "file": "sp01/sp01-4-no-ground.cir",
+      "name": "Mistake 1: no ground (node 0)",
+      "source": "solved-circuits/design/sp01/noground_v2.cir",
+      "expect": {}
+    },
+    {
+      "id": "sp01-5-typo",
+      "video": "sp01",
+      "file": "sp01/sp01-5-typo.cir",
+      "name": "Mistake 2: a typo in a node name",
+      "source": "solved-circuits/design/sp01/typo.cir",
+      "expect": {}
+    },
+    {
+      "id": "sp01-6-mega",
+      "video": "sp01",
+      "file": "sp01/sp01-6-mega.cir",
+      "name": "Mistake 3: 1M is one milliohm",
+      "source": "solved-circuits/design/sp01/mega.cir",
+      "expect": {}
+    },
+    {
+      "id": "p01-1-source-to-ground",
+      "video": "p01",
+      "file": "p01/p01-1-source-to-ground.cir",
+      "name": "Example 1: a source to ground",
+      "source": "solved-circuits/design/spice/p1e1.cir",
+      "expect": {
+        "v(n1)": 6,
+        "v(n2)": 8,
+        "i(v1)": 1
+      }
+    },
+    {
+      "id": "p01-2-supernode",
+      "video": "p01",
+      "file": "p01/p01-2-supernode.cir",
+      "name": "Example 2: a supernode",
+      "source": "solved-circuits/design/spice/p1e2.cir",
+      "expect": {
+        "v(n1)": 22,
+        "v(n2)": 16,
+        "v(n3)": 6,
+        "i(vs)": -1
+      }
+    },
+    {
+      "id": "p01-3-ccvs-supernode",
+      "video": "p01",
+      "file": "p01/p01-3-ccvs-supernode.cir",
+      "name": "Example 3: a supernode with a dependent source",
+      "source": "solved-circuits/design/p01/example3.cir",
+      "expect": {
+        "v(n1)": 20,
+        "v(n2)": 12,
+        "v(n3)": 2,
+        "i(vsense)": 2,
+        "i(h1)": -1
+      }
+    },
+    {
+      "id": "p02-1-open",
+      "video": "p02",
+      "file": "p02/p02-1-open.cir",
+      "name": "Example 1: open circuit (V_Th)",
+      "source": "solved-circuits/design/spice/p2e1_oc.cir",
+      "expect": {
+        "v(a)": 8
+      }
+    },
+    {
+      "id": "p02-2-test-current",
+      "video": "p02",
+      "file": "p02/p02-2-test-current.cir",
+      "name": "Example 1: R_Th with a 1 A test current",
+      "source": "solved-circuits/design/spice/p2e1_test.cir",
+      "expect": {
+        "v(a)": 4
+      }
+    },
+    {
+      "id": "p02-3-dependent-only",
+      "video": "p02",
+      "file": "p02/p02-3-dependent-only.cir",
+      "name": "Example 2: only a dependent source, 1 A test current",
+      "source": "solved-circuits/design/spice/p2e2_test.cir",
+      "expect": {
+        "v(a)": 14,
+        "v(n1)": 12
+      }
+    },
+    {
+      "id": "p02-4-open",
+      "video": "p02",
+      "file": "p02/p02-4-open.cir",
+      "name": "Example 3: open circuit (V_Th)",
+      "source": "solved-circuits/design/p02/example3.cir",
+      "expect": {
+        "v(a)": 24,
+        "v(n1)": 16
+      }
+    },
+    {
+      "id": "p02-5-short",
+      "video": "p02",
+      "file": "p02/p02-5-short.cir",
+      "name": "Example 3: short circuit (I_sc)",
+      "source": "solved-circuits/design/p02/example3_short.cir",
+      "expect": {
+        "i(vshort)": 3,
+        "v(n1)": 4
+      }
+    },
+    {
+      "id": "e04-1-two-sources",
+      "video": "e04",
+      "file": "e04/e04-1-two-sources.cir",
+      "name": "Example 1: two sources and a load",
+      "source": "solved-circuits/design/e04/spice/ex1.cir",
+      "expect": {
+        "v(v)": 12,
+        "i(v1)": -5,
+        "i(v2)": -3
+      }
+    },
+    {
+      "id": "e04-2-open",
+      "video": "e04",
+      "file": "e04/e04-2-open.cir",
+      "name": "Example 2: a and b open",
+      "source": "solved-circuits/design/e04/spice/ex2_open.cir",
+      "expect": {
+        "v(a)": 15,
+        "v(n1)": 21
+      }
+    },
+    {
+      "id": "e04-3-short",
+      "video": "e04",
+      "file": "e04/e04-3-short.cir",
+      "name": "Example 2: a and b shorted (I_N)",
+      "source": "solved-circuits/design/e04/spice/ex2_short.cir",
+      "expect": {
+        "i(vshort)": 5,
+        "v(n1)": 16
+      }
+    },
+    {
+      "id": "e04-4-open",
+      "video": "e04",
+      "file": "e04/e04-4-open.cir",
+      "name": "Example 3: a and b open",
+      "source": "solved-circuits/design/e04/spice/ex3_open.cir",
+      "expect": {
+        "v(a)": 10,
+        "v(n1)": 10,
+        "i(vx)": 5
+      }
+    },
+    {
+      "id": "e04-5-short",
+      "video": "e04",
+      "file": "e04/e04-5-short.cir",
+      "name": "Example 3: a and b shorted (I_N)",
+      "source": "solved-circuits/design/e04/spice/ex3_short.cir",
+      "expect": {
+        "i(vshort)": 2,
+        "v(n1)": 4,
+        "i(vx)": 6
+      }
+    },
+    {
+      "id": "e04-6-tf",
+      "video": "e04",
+      "file": "e04/e04-6-tf.cir",
+      "name": "Example 3: R_N with .tf",
+      "source": "solved-circuits/design/e04/spice/ex3_tf.cir",
+      "expect": {
+        "output_impedance_at_v(a)": 5
+      }
+    }
+  ]
+}
