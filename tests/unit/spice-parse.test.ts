@@ -578,23 +578,34 @@ describe('robustness', () => {
     expectExactSpans(long);
   });
 
-  it('parses 10 000 lines in under 100 ms', () => {
-    const lines = ['* ten thousand lines'];
-    for (let i = 0; i < 10_000; i++) {
-      lines.push(
-        i % 4 === 0 ? `R${i} n${i} n${i + 1} 1k` : i % 4 === 1 ? `V${i} n${i} 0 PULSE(0 5 0 1u 1u 1 2)` : i % 4 === 2 ? `+ ; note ${i}` : `* comment ${i}`,
-      );
-    }
-    const text = lines.join('\n');
+  // About 55 ms here and twice that on GitHub's runners, so the time limit is generous; the
+  // scaling check catches a parser that slows down with length (quadratic work would make
+  // 10 000 lines about 100 times slower than 1 000) on any machine.
+  it('parses 10 000 lines quickly, in time proportional to their number', () => {
+    const netlist = (count: number): string => {
+      const lines = ['* many lines'];
+      for (let i = 0; i < count; i++) {
+        lines.push(
+          i % 4 === 0 ? `R${i} n${i} n${i + 1} 1k` : i % 4 === 1 ? `V${i} n${i} 0 PULSE(0 5 0 1u 1u 1 2)` : i % 4 === 2 ? `+ ; note ${i}` : `* comment ${i}`,
+        );
+      }
+      return lines.join('\n');
+    };
+    const bestOf3 = (text: string, elements: number): number => {
+      let best = Number.POSITIVE_INFINITY;
+      for (let k = 0; k < 3; k++) {
+        const t0 = performance.now();
+        const n = parseNetlist(text);
+        best = Math.min(best, performance.now() - t0);
+        expect(n.elements).toHaveLength(elements);
+      }
+      return best;
+    };
     parseNetlist('* warm-up\nR1 a 0 1k\nV1 a 0 PULSE(0 5 0 1u 1u 1 2)\n.op\n.end');
-    let best = Number.POSITIVE_INFINITY;
-    for (let k = 0; k < 3; k++) {
-      const t0 = performance.now();
-      const n = parseNetlist(text);
-      best = Math.min(best, performance.now() - t0);
-      expect(n.elements).toHaveLength(5000);
-    }
-    expect(best).toBeLessThan(100);
+    const small = bestOf3(netlist(1000), 500);
+    const large = bestOf3(netlist(10_000), 5000);
+    expect(large).toBeLessThan(400);
+    expect(large).toBeLessThan(25 * Math.max(small, 1));
   });
 });
 
