@@ -96,6 +96,29 @@ Done so far:
   Beginners, then p01, p02 and e04): 20 netlists in [examples/](../examples/), each crediting its
   video, first in the Examples menu. Each gives the values the channel recorded with native
   ngspice (`tests/golden/examples.test.ts`); the three "mistake" examples show the check they teach.
+- **Step A: the app in the Notebook look** (decision 0016): the app at <https://plainspice.com/> is
+  now the drawing first, solved by ngspice as you edit (items 3 and 5 above). One netlist text with
+  one undo history behind the drawing and the Netlist panel; live runs a moment after each change,
+  never two at once, paused (with the reason on the status line) for slow runs and very long
+  `.tran`s; the panels (Netlist on the dark screen with the drawing lines folded, Checks, Explain,
+  Numbers, Plot, ngspice output) open when wanted; Ctrl+K reaches every command; the first screen is
+  Start here, already solved, inviting a change to R1. Every feature of the first app is kept, and
+  the tests follow it (unit, jsdom with the real ngspice, and end to end on a computer and a phone,
+  axe in every main state).
+- **Step A, reviewed** (design, accessibility, and "is everything kept"; fixed on 11 Nov): a part's
+  card now types into the netlist without ever leaving stray words behind, keeps a value SPICE cannot
+  read in the field with the checks' reason and fix ("4,7k" → "Write 4.7k"), and Put back restores
+  the line exactly; an undo or redo onto an example never overwrites the student's saved netlist;
+  Run is not Stop while ngspice downloads, and a run=1 link runs however long; old numbers are
+  marked as old (in pencil, and "Before your last change" for screen readers); links and exports
+  carry the netlist exactly as written; the drawing follows the Text size setting, the card never
+  covers the numbers (docked below the drawing when no side has room), larger text keeps the title,
+  the tools and the tabs reachable, a phone on its side or 400 % zoom gets the phone's layout, and
+  Windows High Contrast in a dark theme shows the drawing; traps are read out with each part;
+  "This line" is back under the netlist; the empty netlist, a part ngspice leaves out, and the Plot
+  panel say what is going on.
+- **Next: step B**, the schematic editor (item 4): place, move and wire parts with the toolbar;
+  until then the part tools say plainly that placing comes in the next update.
 
 ## Next
 
@@ -110,6 +133,11 @@ Done so far:
   solved-circuits repository (`deliver/`), starting with SPICE for Beginners (sp01).
 - **Turkish UI**: the strings are in a catalog (`src/i18n/en.ts`); translate them, and have a
   Turkish speaker review React Aria's tr-TR strings (one plural is already known to be wrong).
+- **Step A's known gaps** (from the reviews, not done this round): the model's own sentences say
+  units as symbols ("a 1 kΩ resistor", read "omega" by some screen readers) and "the ngspice output
+  tab"; both are in src/spice and src/schematic and need a spoken variant there. Text-spacing
+  overrides (WCAG 1.4.12) can make a result touch its arrow on the drawing. Netlist and another
+  panel side by side on wide screens. The Plot panel is drawn again each time it opens.
 - **Small known gaps**: the editor colours a word after an R, C or L value as a model name even
   when no `.model` defines it (the check underlines it as an error and explains it; the colour
   would need the netlist's model names inside CodeMirror's line-by-line highlighter); a

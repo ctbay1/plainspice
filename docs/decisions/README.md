@@ -20,6 +20,7 @@ behind them is in [`../research/`](../research/).
 | [0013](0013-schematic-model.md) | The schematic model: the circuit drawn from its netlist, in step both ways; positions in the netlist | accepted (Tarık chose the netlist) |
 | [0014](0014-the-look.md) | The look: Notebook, with a named toolbar, Ctrl+K and a plain-font setting | accepted (Tarık) |
 | [0015](0015-notebook-canvas.md) | The Notebook canvas: four voices, exact room for words, results in their own lines, a turned drawing on phones | accepted (the phone's turned drawing waits for Tarık) |
+| [0016](0016-the-app-shell.md) | The app shell: one netlist text with one undo history (only the student's texts saved), a card that types only values SPICE reads, live runs, links and files exactly as written, the paper with panels on demand, every size of screen and text, the Start here first screen | accepted |
 
 Also: [what we do differently from EEcircuit](../eecircuit-comparison.md) and the
 [fixture results](../fixture-results.md).
