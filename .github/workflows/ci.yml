@@ -60,7 +60,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Install Chromium for the pinned Playwright (1.63.0)
-        run: npx playwright install --with-deps chromium
+        # The runner image already has Chromium's libraries: --with-deps adds only fonts from
+        # Ubuntu's package mirror (the app's own fonts are bundled). On 11 Nov 2026 that mirror could
+        # not be reached for over ten minutes and the run failed, so after four minutes install the
+        # browser alone (from Playwright's own download host) rather than fail.
+        run: timeout 240 npx playwright install --with-deps chromium || npx playwright install chromium
       - run: npm run build
       - name: End-to-end and accessibility tests (desktop and phone)
         run: npm run test:e2e
