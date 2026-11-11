@@ -86,7 +86,8 @@ Done so far:
 - **The Notebook canvas** (`src/notebook/`, decision 0015): any netlist drawn from the schematic
   model in the chosen look, with the results written on it, solved live. **Checkpoint for Tarık**:
   <https://plainspice.com/design/checkpoint/> shows it on p02's dependent-source circuits (G1 and
-  F1), on a computer and a phone. **Waiting for his OK before the rest is built.**
+  F1), on a computer and a phone. **Tarık approved it on 11 November ("Build the rest")**; phones
+  open a wide drawing turned to fit, with "As in the video" one tap away.
 - **The schematic model** (`src/schematic/`, decision 0013), which every direction needs: the
   circuit drawn from its netlist with a textbook-style automatic layout (all examples:
   <https://plainspice.com/design/lab/>), the drawing format, the edit operations for the
@@ -120,9 +121,6 @@ Done so far:
 
 ## Open questions for Tarık
 
-- **The checkpoint** (<https://plainspice.com/design/checkpoint/>): does the Notebook look work on
-  p02's circuits, on a computer and a phone? On a phone, a wide drawing is turned a quarter to fit
-  at a readable size, with "As in the video" one tap away: keep that, or always show it as drawn?
 - **"Nothing after .end counts"**: ngspice does read a part written after a plain `.end` (fact S25,
   re-run on 11 Nov in native ngspice 47 and 42: with `R2 n1 0 2` after `.end`, n1 drops from 2 V to
   1 V); only `.end;…` with a comment glued on stops it. So the explanation says "the parts go

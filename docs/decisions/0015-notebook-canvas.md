@@ -1,7 +1,7 @@
 # 0015. The Notebook canvas: words, results and phones
 
-- Status: accepted for the checkpoint, revised after the design review (11 Nov); the phone's turned
-  drawing waits for Tarık's look
+- Status: accepted (Tarık approved the checkpoint on 11 November 2026: "Build the rest"; a phone
+  opens a wide drawing **turned to fit**, with "As in the video" one tap away)
 - Date: 2026-11-11
 - Code: `src/notebook/` (the canvas the app will use), `design/checkpoint/` (Tarık's checkpoint page);
   screenshots in [`../design/checkpoint/`](../design/checkpoint/)
