@@ -89,7 +89,7 @@ describe('the fixtures, in the channel\'s words', () => {
       ['node', '0', 'the other end is at ground (node 0)'],
       ['value', '2', '2 Ω'],
     ]);
-    expect(notes(r1)).toBe("Resistors work either way round, and the order of the lines doesn't matter either.");
+    expect(notes(r1)).toBe("Resistors work either way round, and the part lines can come in any order. Line 1 is always the title, and the parts go before .end.");
     expect(line(text, 4).heading).toBe('.op: operating point');
     expect(line(text, 4).summary).toBe(
       'Find the DC operating point: every node voltage and the current in every voltage source. Capacitors act as open circuits and inductors as short circuits.',

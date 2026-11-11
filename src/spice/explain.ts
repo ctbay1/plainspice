@@ -196,7 +196,9 @@ export const EXPLAIN_STRINGS = {
   twoTerminal: (name: string, value: string, what: string, a: string, b: string): string =>
     value ? `${name} is ${articleBefore(value)} ${value} ${what} between ${a} and ${b}.` : `${name} is ${withArticle(what)} between ${a} and ${b}.`,
   valueIsExpression: 'Its value is an expression, which ngspice works out before running.',
-  resistorNote: "Resistors work either way round, and the order of the lines doesn't matter either.",
+  // P1, P2 (the part lines in any order), S1 (line 1 is the title). "Before .end" is advice: ngspice
+  // still reads a part after a plain .end (S25), which the after-end check explains.
+  resistorNote: "Resistors work either way round, and the part lines can come in any order. Line 1 is always the title, and the parts go before .end.",
   capacitorNote: 'In .op and .dc a capacitor is an open circuit: no DC current flows through it.',
   inductorNote: 'In .op and .dc an inductor is a short circuit: both ends sit at the same voltage.',
   vSides: (name: string, plus: string, minusNode: string): string =>

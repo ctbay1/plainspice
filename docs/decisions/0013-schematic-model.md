@@ -1,8 +1,8 @@
 # 0013. The schematic model: the circuit drawn from its netlist, in step both ways
 
-- Status: accepted for the model and the layout; **open questions for Tarık: where positions live**
-  (in the netlist, as below, or only in share links), **and whether format v1 says enough** (see
-  the end)
+- Status: accepted. **Positions live in the netlist** (Tarık, 11 November 2026), with the `*@`
+  block folded away by default in the netlist panel. Still open: whether format v1 says enough for
+  the drawings in the videos (see the end)
 - Date: 2026-11-10 (revised the same day after a review: limits, hidden connections, version
   blocks, word sides, reverse, partial drawings)
 - Code: `src/schematic/`; for contributors: [`../schematic.md`](../schematic.md); layouts to judge:
@@ -115,7 +115,8 @@ which parts it connects, including those the drawing does not show.
 
 ## Open questions for Tarık
 
-**Where do the positions live?** The code supports both answers: `buildSchematic(text, { lines })`
+**Where do the positions live? Decided on 11 November 2026: in the netlist,** as recommended, with the
+`*@` block folded away by default in the netlist panel. What was weighed: the code supports both answers: `buildSchematic(text, { lines })`
 reads positions kept elsewhere, `applyEdit(…, { drawingInText: false })` changes only part lines
 and returns the drawing lines to keep, and `stripDrawing` removes the block.
 

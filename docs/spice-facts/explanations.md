@@ -40,7 +40,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 
 **Parts** (section 1)
 
-- A resistor works either way round, and the order of the lines does not matter (P1, P2).
+- A resistor works either way round, and the part lines can come in any order (P1, P2); line 1 is
+  always the title (S1 in numbers-and-syntax.md).
 - `V1 n1 0 6` means V(n1) − V(0) = 6 V; written `V1 0 n1 6` it makes n1 −6 V (P3). `I1 0 a 3` pushes
   3 A from node 0, through the source, into a (P4).
 - E: V(+) − V(−) = gain × (V(c+) − V(c−)). G: gain × (V(c+) − V(c−)) amps from its first node into its
@@ -128,9 +129,9 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(a) = 6, v(b) = 6, i(v1) = -3, i(v2) = -3, i(@r1[i]) = 3, i(@r2[i]) = -3
 ```
 
-### P2. The order of the lines does not matter
+### P2. The order of the part lines does not matter
 
-This is F5 with its lines in a different order: the numbers are the same as F5's (`tests/fixtures/f5-thevenin-cccs.cir`).
+This is F5 with its part lines in a different order: the numbers are the same as F5's (`tests/fixtures/f5-thevenin-cccs.cir`). Only the part lines move: line 1 is always the title (S1 in numbers-and-syntax.md), and the explanation tells students to put the parts before `.end`, because ngspice still reads a part written after a plain `.end` (S25), which the after-end check explains.
 
 ```spice
 * the order of the lines does not matter
