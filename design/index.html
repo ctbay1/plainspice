@@ -36,6 +36,7 @@
       summary { cursor: pointer; color: var(--link); font-weight: 600; }
       .more { display: grid; gap: 10px; grid-template-columns: 3fr 1fr; margin-top: 10px; }
       .note { margin-top: 40px; color: var(--muted); font-size: 0.95rem; max-width: 80ch; }
+      .checkpoint { background: #fffbe6; border: 1px solid #e9d679; border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; margin: 0 0 32px; }
       a { color: var(--link); }
     </style>
   </head>
@@ -48,6 +49,25 @@
         Each direction below is a clickable prototype running real ngspice in your browser: click R1 and change its
         value to watch the numbers move. Try each on a computer and on a phone, then pick one.
       </p>
+      <section class="checkpoint" aria-labelledby="checkpoint-title">
+        <h2 id="checkpoint-title">Tarık chose Notebook: the checkpoint</h2>
+        <p class="what">
+          The Notebook look, built for real, on the dependent-source circuits of “Thévenin Equivalent with Dependent Sources”:
+          drawn from the netlist, solved live by ngspice, with the named parts toolbar and its hint line, Ctrl+K and the status
+          line, and the handwriting / plain font setting. Try it on a computer and on a phone. On a phone, “As in the video”
+          shows the drawing the usual way round: <a href="../docs/design/checkpoint/p02-4-open-phone-views.png">both views side by side</a>.
+        </p>
+        <a class="open" href="./checkpoint/">Open the checkpoint</a>
+        <div class="pair">
+          <figure><img loading="lazy" src="../docs/design/checkpoint/p02-4-open-solved-desktop.png" alt="The checkpoint on a computer: example 3 drawn and solved, 24 V at a" /><figcaption>Computer</figcaption></figure>
+          <figure><img loading="lazy" src="../docs/design/checkpoint/p02-4-open-solved-phone.png" alt="The checkpoint on a phone: the same circuit, turned to fit the screen" /><figcaption>Phone</figcaption></figure>
+        </div>
+        <div class="pair">
+          <figure><img loading="lazy" src="../docs/design/checkpoint/p02-4-open-G1-typing-desktop.png" alt="G1 changed from 0.25 to 0.3 amps per volt: the card beside G1, a now 32 V with 24 V crossed out on the paper" /><figcaption>Changing G1: the numbers move, the old ones crossed out</figcaption></figure>
+          <figure><img loading="lazy" src="../docs/design/checkpoint/p02-4-open-G1-typing-phone-keyboard.png" alt="On a phone while typing: one strip above the keyboard, G1 and the nodes it changes above it" /><figcaption>Typing on a phone</figcaption></figure>
+        </div>
+      </section>
+
       <div class="directions">
         <article aria-labelledby="notebook-title">
           <h2 id="notebook-title">1. Notebook</h2>

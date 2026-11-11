@@ -1,0 +1,2372 @@
+/*
+ * The Notebook frame around the canvas for Tarık's checkpoint: the page's margin with the named
+ * parts toolbar (a dock on a phone), the top bar (the circuit, Ctrl+K, settings, Run), divider tabs
+ * and paper-card panels, the index card, the sticky note, the hint line and the status line, and
+ * the command palette. Tokens come from src/notebook/notebook.css (--nb-*).
+ *
+ * Text colours are at least 4.5:1 on their backgrounds; every control has a visible focus ring;
+ * motion stops for prefers-reduced-motion.
+ */
+
+:root {
+  color-scheme: light;
+}
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: #f6f1e4;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
+p,
+h2,
+h3 {
+  margin: 0;
+}
+
+.ck-app {
+  --ck-margin: 118px; /* the page's margin: the parts toolbar lives left of the red line */
+  --ck-shadow-1: 0 1px 0 rgb(30 42 69 / 0.04), 0 1px 2px rgb(30 42 69 / 0.08);
+  --ck-shadow-2: 0 1px 2px rgb(30 42 69 / 0.07), 0 6px 18px -6px rgb(30 42 69 / 0.16);
+  --ck-shadow-3: 0 2px 4px rgb(30 42 69 / 0.08), 0 18px 44px -14px rgb(30 42 69 / 0.3);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: var(--nb-font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--nb-ink);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss03';
+}
+.ck-paper {
+  position: absolute;
+  inset: 0;
+}
+.ck-margin-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--ck-margin);
+  width: 1.5px;
+  background: var(--nb-margin-red);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Focus: a clear ink ring on paper and cards, amber on the dark screen. */
+.ck-app :focus {
+  outline: none;
+}
+.ck-app :focus-visible {
+  outline: 2.5px solid var(--nb-ink);
+  outline-offset: 2px;
+}
+.ck-screen :focus-visible {
+  outline-color: var(--nb-screen-amber);
+}
+/* The drawing draws its own ring, round the symbol's body (src/notebook: .nb-focus), never across its words. */
+.ck-app .nb-hit:focus-visible {
+  outline: none;
+}
+/* A heading the page moves the focus to (a card's or a panel's title) is not a control: no ring. */
+.ck-app h2[tabindex='-1']:focus-visible {
+  outline: none;
+}
+.ck-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* "Skip to the drawing": the first stop for the keyboard, shown when it has the focus. */
+.ck-skip {
+  position: absolute;
+  z-index: 60;
+  top: 8px;
+  left: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-160%);
+}
+.ck-skip:focus,
+.ck-skip:focus-visible {
+  transform: none;
+  outline: 2.5px solid var(--nb-amber);
+  outline-offset: 2px;
+}
+.nb-hand {
+  font-family: var(--nb-font-hand);
+  font-weight: 700;
+}
+/* The Plain font setting: every handwritten result in the plain sans, at once. */
+.nb-plain .nb-hand {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+  font-size: 0.8em;
+}
+
+/* ------------------------------------------------------------------ islands, buttons */
+.ck-island {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge);
+  border-radius: 14px;
+  box-shadow: var(--ck-shadow-2);
+  pointer-events: auto;
+}
+.ck-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color var(--nb-t-fast) var(--nb-ease-out),
+    border-color var(--nb-t-fast) var(--nb-ease-out);
+}
+.ck-btn .ck-icon {
+  width: 15px;
+  height: 15px;
+}
+.ck-btn--outline {
+  background: transparent;
+  color: var(--nb-ink);
+  border: 1.5px solid var(--nb-paper-edge-strong);
+  padding: 0 13px 0 10px;
+}
+.ck-btn--outline:hover {
+  background: var(--nb-paper-sunk);
+}
+.ck-btn--outline .ck-icon path {
+  fill: currentColor;
+}
+.ck-btn--paper {
+  background: var(--nb-paper-raised);
+  color: var(--nb-ink);
+  border-color: var(--nb-paper-edge-strong);
+  box-shadow: var(--ck-shadow-1);
+}
+.ck-btn--green {
+  background: var(--nb-green-text);
+  color: #fff;
+}
+.ck-btn--note {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13.5px;
+  background: var(--nb-ink);
+  color: var(--nb-note);
+}
+.ck-btn--note:hover {
+  background: #2b3a5e;
+}
+.ck-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ck-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--nb-ink-2);
+  flex: none;
+  transition: background-color var(--nb-t-fast) var(--nb-ease-out);
+}
+.ck-icon-btn:hover:not(:disabled) {
+  background: var(--nb-paper-sunk);
+  color: var(--nb-ink);
+}
+.ck-icon-btn:disabled {
+  color: #9a9ea8;
+  cursor: default;
+}
+.ck-icon-btn--note {
+  color: #5c4e14;
+}
+.ck-icon-btn--note:hover:not(:disabled) {
+  background: rgb(120 100 20 / 0.12);
+}
+.ck-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--nb-ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--nb-pencil-faint);
+}
+.ck-link:hover {
+  text-decoration-color: currentColor;
+}
+kbd,
+.ck-kbd {
+  display: inline-block;
+  min-width: 1.45em;
+  padding: 0 0.4em;
+  font-family: var(--nb-font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--nb-ink-2);
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ top bar */
+.ck-topbar {
+  position: absolute;
+  z-index: 20;
+  top: 12px;
+  left: calc(var(--ck-margin) + 14px);
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+.ck-topbar > * {
+  pointer-events: auto;
+}
+.ck-doc {
+  padding: 4px 6px 4px 6px;
+  min-width: 0;
+}
+.ck-doc__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--nb-paper);
+  border: 1px solid var(--nb-paper-edge);
+  flex: none;
+}
+.ck-mark {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ck-mark__zig {
+  stroke: var(--nb-ink);
+  stroke-width: 5;
+}
+.ck-mark__check {
+  stroke: var(--nb-green);
+  stroke-width: 6;
+}
+.ck-switch {
+  position: relative;
+  min-width: 0;
+}
+.ck-title {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  min-width: 0;
+}
+/* The circuit's name is the page's heading and its switcher: one button, at least 44 px tall (critique 12). */
+.ck-switch__btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 2px 8px 2px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--nb-ink);
+  text-align: left;
+  line-height: 1.15;
+}
+.ck-switch__btn:hover {
+  background: var(--nb-paper-sunk);
+}
+.ck-title__kicker {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+  white-space: nowrap;
+}
+.ck-title__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.ck-title__text {
+  white-space: nowrap;
+}
+.ck-title__finds sub {
+  font-size: 0.72em;
+  vertical-align: -0.28em;
+  line-height: 0;
+}
+.ck-switch__btn .ck-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.ck-doc__file {
+  margin-left: 6px;
+  font-family: var(--nb-font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--nb-pencil);
+  white-space: nowrap;
+}
+/* At in-between widths the file name goes first (it is in the netlist panel anyway). */
+@media (max-width: 1239px) {
+  .ck-doc__file,
+  .ck-doc__file + .ck-doc__sep {
+    display: none;
+  }
+}
+@media (max-width: 1099px) {
+  .ck-cmd__text {
+    display: none;
+  }
+  .ck-cmd {
+    flex: 0 0 auto;
+  }
+}
+.ck-doc__sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 6px 2px 6px 6px;
+  background: var(--nb-paper-edge);
+}
+.ck-cmd {
+  flex: 0 1 380px;
+  margin: 0 auto;
+  height: 46px;
+  padding: 0 8px 0 14px;
+  gap: 10px;
+  border-radius: 14px;
+  color: var(--nb-pencil);
+  text-align: left;
+}
+.ck-cmd:hover {
+  border-color: var(--nb-paper-edge-strong);
+}
+.ck-cmd__text {
+  flex: 1;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.ck-run {
+  margin-left: auto;
+  padding: 4px;
+  gap: 6px;
+}
+.ck-run__btn {
+  min-height: 38px;
+}
+
+/* ------------------------------------------------------------------ the parts toolbar (the margin) */
+.ck-margin {
+  position: absolute;
+  z-index: 15;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: calc(var(--ck-margin) - 20px);
+}
+.ck-tools {
+  position: relative;
+}
+.ck-tools--vertical .ck-tools__bar {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge);
+  border-radius: 16px;
+  box-shadow: var(--ck-shadow-2);
+}
+.ck-tools__slot {
+  display: contents;
+}
+.ck-tools--vertical .ck-tools__sep {
+  display: block;
+  height: 1px;
+  margin: 4px 14px;
+  background: var(--nb-paper-edge);
+  flex: none;
+}
+.ck-tool {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+  padding: 5px 2px 6px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--nb-ink);
+  transition:
+    background-color var(--nb-t-fast) var(--nb-ease-out),
+    color var(--nb-t-fast) var(--nb-ease-out);
+}
+.ck-tool:hover {
+  background: var(--nb-paper-sunk);
+}
+.ck-tool.is-on {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 1px 3px rgb(30 42 69 / 0.35);
+}
+.ck-tool__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.ck-glyph {
+  width: 30px;
+  height: 30px;
+}
+.ck-tool__key {
+  position: absolute;
+  top: -2px;
+  left: calc(100% + 1px);
+  min-width: 0;
+  padding: 0 3px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  border-bottom-width: 1px;
+  color: var(--nb-ink-2);
+}
+.ck-tool.is-on .ck-tool__key {
+  background: rgb(255 253 248 / 0.16);
+  border-color: rgb(255 253 248 / 0.35);
+  color: var(--nb-paper-raised);
+}
+.ck-tool__word {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  max-width: 100%;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  color: inherit;
+}
+.ck-tool__caret {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+  margin-right: -6px;
+}
+
+/* The controlled sources: a menu beside the toolbar. */
+.ck-menu {
+  position: absolute;
+  z-index: 40;
+  min-width: 300px;
+  padding: 8px;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 14px;
+  box-shadow: var(--ck-shadow-3);
+}
+.ck-tools--vertical .ck-menu {
+  left: calc(100% + 12px);
+  top: 40%;
+  width: 380px;
+}
+.ck-menu__title {
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.ck-ctrl {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--nb-ink);
+  text-align: left;
+}
+.ck-ctrl:hover,
+.ck-ctrl:focus-visible {
+  background: var(--nb-paper-sunk);
+}
+.ck-ctrl[aria-checked='true'] {
+  background: #fff6c8;
+}
+.ck-ctrl__icon .ck-glyph {
+  width: 40px;
+  height: 40px;
+}
+.ck-ctrl__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ck-ctrl__name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.ck-ctrl__line {
+  font-size: 12.5px;
+  color: var(--nb-pencil);
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------------ divider tabs and the panel sheet */
+.ck-right {
+  position: absolute;
+  z-index: 22;
+  top: 84px;
+  bottom: 64px;
+  right: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  pointer-events: none;
+}
+.ck-right > * {
+  pointer-events: auto;
+}
+.ck-tabs {
+  --tab-bg: #ebe3cf;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+  flex: none;
+}
+.ck-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 42px;
+  min-height: 128px;
+  padding: 13px 0 10px 3px;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-right: 0;
+  border-radius: 12px 0 0 12px;
+  background: var(--tab-bg);
+  color: var(--nb-ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: -3px 2px 8px -5px rgb(30 42 69 / 0.35);
+  transition: background-color var(--nb-t-fast) var(--nb-ease-out);
+}
+.ck-tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: var(--tab-colour);
+}
+.ck-tab--netlist {
+  --tab-colour: var(--nb-screen);
+}
+.ck-tab--checks {
+  --tab-colour: var(--nb-green);
+}
+.ck-tab--explain {
+  --tab-colour: var(--nb-amber);
+}
+.ck-tab__label {
+  writing-mode: vertical-rl;
+  line-height: 1;
+}
+.ck-tab:hover {
+  background: #f3edde;
+  color: var(--nb-ink);
+}
+.ck-tab[aria-expanded='true'] {
+  background: var(--nb-paper-raised);
+  color: var(--nb-ink);
+}
+.ck-tab[aria-expanded='true']::before {
+  width: 6px;
+}
+.ck-tab__badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  font-size: 12px;
+  background: var(--nb-red-text);
+  color: #fff;
+}
+.ck-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 470px;
+  max-height: 100%;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-right: 0;
+  border-radius: 16px 0 0 16px;
+  box-shadow:
+    -22px 0 44px -26px rgb(30 42 69 / 0.42),
+    var(--ck-shadow-1);
+  overflow: hidden;
+  animation: ck-slide-in var(--nb-t-slow) var(--nb-ease-out);
+}
+@keyframes ck-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.ck-sheet--netlist {
+  --tab-colour: var(--nb-screen);
+}
+.ck-sheet--checks {
+  --tab-colour: var(--nb-green);
+}
+.ck-sheet--explain {
+  --tab-colour: var(--nb-amber);
+}
+.ck-card__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 10px 11px 20px;
+  background: var(--nb-paper-raised);
+  border-bottom: 3px double var(--nb-paper-edge-strong);
+  flex: none;
+}
+.ck-card__head::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 4px;
+  background: var(--tab-colour, var(--nb-ink));
+}
+.ck-card__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.ck-card__title {
+  font-size: 17px;
+  font-weight: 600;
+}
+.ck-card__sub {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--nb-pencil);
+}
+.ck-card__body {
+  padding: 16px 20px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+.ck-panel-foot {
+  margin: 12px 4px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--nb-pencil);
+}
+
+/* The netlist: the dark simulator screen of the videos. */
+.ck-sheet--netlist .ck-card__body {
+  padding: 14px 12px 18px;
+}
+.ck-screen {
+  border-radius: 12px;
+  background: var(--nb-screen);
+  color: var(--nb-screen-ink);
+  box-shadow: 0 6px 16px -8px rgb(15 20 30 / 0.5);
+  overflow: hidden;
+  /* Node colours bright enough for the dark screen (the channel's dark palette). */
+  --ps-node-1: #ff9a6b;
+  --ps-node-2: #6cc8f8;
+  --ps-node-3: #7ee2a8;
+  --ps-node-4: #e0b0ff;
+  --ps-node-5: #ff8fa3;
+  --ps-node-6: #a9a6ff;
+  --ps-node-7: #f2b8d4;
+  --ps-node-8: #d8b48f;
+}
+.ck-screen__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 6px 0 12px;
+  background: var(--nb-screen-bar);
+  border-bottom: 1px solid #353c49;
+}
+.ck-screen__dots {
+  display: flex;
+  gap: 6px;
+}
+.ck-screen__dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.ck-screen__dots span:nth-child(2) {
+  background: #febc2e;
+}
+.ck-screen__dots span:nth-child(3) {
+  background: #28c840;
+}
+.ck-screen__file {
+  flex: 1;
+  text-align: center;
+  font-family: var(--nb-font-mono);
+  font-size: 12.5px;
+  color: var(--nb-screen-muted);
+}
+.ck-screen__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #4a5363;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--nb-screen-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ck-screen__copy:hover {
+  background: #343b48;
+}
+.ck-screen__copy .ck-icon {
+  width: 14px;
+  height: 14px;
+}
+.ck-screen__code {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #444c5c transparent;
+}
+.ck-code {
+  padding: 10px 0 12px;
+  font-family: var(--nb-font-mono);
+  font-size: 12.5px;
+  line-height: 1.8;
+  min-width: max-content;
+}
+.ck-code__line,
+.ck-code__fold {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  column-gap: 14px;
+  min-height: 1.8em;
+  padding: 0 14px 0 36px;
+}
+.ck-code__line.is-sel {
+  background: var(--nb-screen-line);
+}
+.ck-code__line.is-sel::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--nb-screen-amber);
+}
+.ck-code__no {
+  position: absolute;
+  left: 0;
+  width: 26px;
+  text-align: right;
+  color: #8a92a2;
+  user-select: none;
+}
+.ck-code__text {
+  white-space: pre;
+}
+/* A comment (the title, the credit to the video) wraps at the screen's edge instead of widening the netlist. */
+.ck-code__line.is-comment .ck-code__text {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  contain: inline-size;
+}
+.ck-tok--name {
+  color: #fff;
+  font-weight: 600;
+}
+.ck-tok--node {
+  color: var(--nb-screen-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--node, var(--nb-screen-muted));
+  text-decoration-thickness: 2.5px;
+  text-underline-offset: 4px;
+}
+.ck-tok--gnd {
+  color: var(--nb-screen-muted);
+}
+.ck-tok--value {
+  color: #ffe08a;
+}
+.ck-tok--dot {
+  color: #9fdcef;
+}
+.ck-tok--comment {
+  color: var(--nb-screen-muted);
+  font-style: italic;
+}
+.ck-tok--drawing {
+  color: #9aa2b1;
+}
+.ck-tok--trap {
+  color: var(--nb-screen-red);
+  text-decoration: underline wavy var(--nb-screen-red);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.ck-code__note {
+  font-size: 16px;
+  line-height: 1.15;
+  color: var(--nb-screen-amber);
+  white-space: nowrap;
+}
+.ck-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+  padding: 0 8px 0 4px;
+  border: 1px dashed #5a6374;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.03);
+  color: #c9d0db;
+  font-family: var(--nb-font-ui);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+.ck-fold:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+}
+.ck-fold .ck-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.2;
+}
+
+/* The checks: green pen when clean, red pen for a trap. */
+.ck-checks-ok {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.ck-checks-ok__tick {
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+.ck-checks-ok__tick path {
+  fill: none;
+  stroke: var(--nb-green);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ck-checks-ok__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--nb-green-text);
+}
+.ck-checks-ok__text {
+  margin-top: 4px;
+  color: var(--nb-ink-2);
+}
+.ck-trap {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--nb-paper-edge);
+}
+.ck-sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ck-trap--error .ck-sev,
+.ck-trap--warning .ck-sev {
+  color: var(--nb-red-text);
+}
+.ck-trap--info .ck-sev {
+  color: var(--nb-ink-2);
+}
+.ck-sev .ck-icon {
+  width: 16px;
+  height: 16px;
+}
+.ck-trap__title {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.ck-trap__why,
+.ck-trap__ng {
+  margin-top: 6px;
+  color: var(--nb-ink-2);
+}
+.ck-trap__fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ck-trap__line {
+  margin-top: 10px;
+}
+
+/* Explain */
+.ck-ex + .ck-ex {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--nb-paper-edge);
+}
+.ck-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.ck-ex__head {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 600;
+}
+.ck-ex__summary,
+.ck-ex__words,
+.ck-ex__empty {
+  margin-top: 6px;
+  color: var(--nb-ink-2);
+}
+.ck-ex__words {
+  line-height: 1.6;
+}
+.ck-fieldstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 14px 0 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--nb-paper);
+  border: 1px solid var(--nb-paper-edge);
+}
+.ck-fs {
+  display: flex;
+  flex-direction: column;
+}
+/* The field names are the page's words, not results: the plain sans (handwriting means "ngspice found this"). */
+.ck-fs__label {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--nb-pencil);
+}
+.ck-fs__text {
+  font-family: var(--nb-font-mono);
+  font-size: 16px;
+  font-weight: 500;
+}
+.ck-fs--node .ck-fs__text {
+  text-decoration: underline;
+  text-decoration-color: var(--node);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 5px;
+}
+.ck-ftable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.ck-ftable th {
+  padding: 6px 8px 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--nb-pencil);
+  border-bottom: 1.5px solid var(--nb-paper-edge-strong);
+}
+.ck-ftable td {
+  padding: 8px 8px 8px 0;
+  vertical-align: top;
+  border-bottom: 1px solid var(--nb-paper-edge);
+}
+.ck-ftable td:first-child {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ck-ftable__code {
+  font-family: var(--nb-font-mono);
+  white-space: nowrap;
+}
+.ck-ex__current {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--nb-paper);
+  border: 1px solid var(--nb-paper-edge);
+}
+.ck-ex__amps {
+  font-size: 22px;
+  color: var(--nb-amber-text);
+}
+.ck-ex__power {
+  font-size: 22px;
+  color: var(--nb-green-text);
+}
+.ck-ex__volts {
+  font-size: 22px;
+  color: var(--nb-ink);
+}
+.ck-ex__notes {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--nb-ink-2);
+}
+.ck-ex__notes li + li {
+  margin-top: 4px;
+}
+.ck-part-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ck-chip {
+  padding: 6px 10px;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 999px;
+  background: var(--nb-paper-raised);
+  font-size: 13px;
+  color: var(--nb-ink-2);
+}
+.ck-chip b {
+  color: var(--nb-ink);
+}
+
+/* ------------------------------------------------------------------ the sticky note */
+.ck-note {
+  position: absolute;
+  z-index: 12;
+  top: 84px;
+  right: 76px;
+  width: 300px;
+  padding: 18px 18px 14px;
+  background: var(--nb-note);
+  background-image: linear-gradient(170deg, rgb(255 255 255 / 0.35), rgb(255 255 255 / 0) 40%), linear-gradient(to bottom, var(--nb-note), #fbe992);
+  border-radius: 3px 3px 12px 3px;
+  box-shadow: 0 1px 1px rgb(110 86 0 / 0.14), 0 12px 22px -10px rgb(110 86 0 / 0.42);
+  transform: rotate(-1.4deg);
+  transform-origin: 30% 0;
+}
+.ck-note__tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 78px;
+  height: 22px;
+  margin-left: -39px;
+  background: rgb(255 255 255 / 0.55);
+  transform: rotate(2.5deg);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.05);
+}
+.ck-note__title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--nb-ink);
+}
+.ck-note__text {
+  margin-top: 6px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #45432f;
+}
+.ck-note__actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ck-note.is-placed {
+  right: auto;
+}
+/* The note's pen arrow to the part it invites you to change (the prototype's). */
+.ck-note-arrow {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ck-note-arrow path {
+  fill: none;
+  stroke: var(--nb-amber);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Drawn on, as a pen would (the prototype's). */
+.ck-note-arrow path:first-child {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: ck-draw-on 700ms var(--nb-ease-out) 250ms forwards;
+}
+.ck-note-arrow .ck-note-arrow__head {
+  opacity: 0;
+  animation: ck-appear 160ms linear 900ms forwards;
+}
+@keyframes ck-draw-on {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes ck-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ the index card */
+.ck-pinned {
+  position: absolute;
+  z-index: 18;
+}
+.ck-index {
+  position: relative;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 12px;
+  box-shadow: var(--ck-shadow-3);
+}
+/* On a computer: wide and short, beside its part, as tall as its tallest state (nothing moves as you type). */
+.ck-index--pinned {
+  display: flex;
+  flex-direction: column;
+  min-height: 204px;
+  animation: ck-pop-in 180ms var(--nb-ease-out) both;
+}
+.ck-index__explain {
+  font-size: 13px;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+/* Short enough that one pan makes room above or below a drawing on a laptop's screen (about 200 px). */
+.ck-index--pinned .ck-index__head {
+  padding: 5px 6px 5px 10px;
+}
+.ck-index--pinned .ck-index__glyph {
+  width: 32px;
+  height: 32px;
+}
+.ck-index--pinned .ck-index__body {
+  padding: 8px 14px 4px;
+}
+.ck-index--pinned .ck-field-label {
+  margin-bottom: 4px;
+}
+.ck-index--pinned .ck-reads {
+  margin-top: 4px;
+}
+.ck-index--pinned .ck-was {
+  min-height: 22px;
+  margin-top: 0;
+}
+.ck-index--pinned .ck-index__foot {
+  padding: 5px 14px 7px;
+}
+/* Wide and short: the value on the left, the three results side by side. */
+.ck-index--pinned .ck-index__body {
+  grid-template-columns: 228px minmax(0, 1fr);
+}
+.ck-index--pinned .ck-readouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 12px;
+  align-content: start;
+}
+.ck-index--pinned .ck-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ck-index--pinned .ck-readout__v {
+  justify-content: flex-start;
+}
+/* One line each, so the card never grows (the whole check is on the paper in red pen and in Checks). */
+.ck-index--pinned .ck-index__sentence,
+.ck-index--pinned .ck-index__trap > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-index--pinned .ck-index__trap {
+  min-width: 0;
+}
+/* The notch points at the part, on the edge facing it. */
+.ck-index--pinned::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-top: 0;
+  border-left: 0;
+}
+.ck-index--above::after {
+  bottom: -9px;
+  left: calc(var(--notch, 50%) - 8px);
+  transform: rotate(45deg);
+}
+.ck-index--below::after {
+  top: -9px;
+  left: calc(var(--notch, 50%) - 8px);
+  transform: rotate(-135deg);
+}
+.ck-index--right::after {
+  left: -9px;
+  top: calc(var(--notch, 50%) - 8px);
+  transform: rotate(135deg);
+}
+.ck-index--left::after {
+  right: -9px;
+  top: calc(var(--notch, 50%) - 8px);
+  transform: rotate(-45deg);
+}
+@keyframes ck-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ck-leader {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ck-leader path {
+  fill: none;
+  stroke: var(--nb-amber);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 4 5;
+}
+.ck-index__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 1.5px solid var(--nb-margin-red);
+}
+.ck-index__glyph {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: var(--nb-highlighter);
+  color: var(--nb-ink);
+  flex: none;
+}
+.ck-index__glyph .ck-glyph {
+  width: 28px;
+  height: 28px;
+}
+.ck-index__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.ck-index__name {
+  font-size: 19px;
+}
+.ck-index__kind {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--nb-ink-2);
+}
+.ck-index__line {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--nb-pencil);
+  white-space: nowrap;
+}
+.ck-index__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 4px 18px;
+  padding: 10px 14px 8px;
+  flex: 1;
+}
+.ck-index__field {
+  min-width: 0;
+}
+.ck-field-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.ck-value {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  border: 1.5px solid #7d818b;
+  border-radius: 10px;
+  background: #fff;
+}
+.ck-value:focus-within {
+  border-color: var(--nb-ink);
+  box-shadow: 0 0 0 3px rgb(30 42 69 / 0.14);
+}
+.ck-value.is-trap {
+  border-color: var(--nb-red);
+}
+.ck-value__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 6px 0 12px;
+  border: 0;
+  background: transparent;
+  font-family: var(--nb-font-mono);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--nb-ink);
+}
+.ck-app .ck-value__input:focus-visible {
+  outline: none;
+}
+.ck-value__suffix {
+  padding: 0 12px 0 4px;
+  font-family: var(--nb-font-serif);
+  font-size: 17px;
+  color: var(--nb-ink-2);
+  white-space: nowrap;
+}
+.ck-reads {
+  margin-top: 6px;
+  min-height: 1.45em;
+  font-size: 13px;
+  color: var(--nb-pencil);
+}
+.ck-reads__val {
+  font-family: var(--nb-font-serif);
+  font-size: 16px;
+  color: var(--nb-ink);
+}
+.ck-reads__val--words {
+  font-family: var(--nb-font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.ck-reads.is-trap .ck-reads__val {
+  color: var(--nb-red-text);
+}
+.ck-was {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+  min-height: 26px;
+  font-size: 13px;
+  color: var(--nb-pencil);
+}
+.ck-was.is-idle {
+  visibility: hidden;
+}
+.ck-was__old {
+  font-size: 19px;
+  color: var(--nb-pencil);
+  text-decoration-color: var(--nb-red);
+  text-decoration-thickness: 2px;
+}
+.ck-readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  list-style: none;
+  border-left: 1px solid rgb(191 211 230 / 0.9);
+}
+.ck-readout {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 10px;
+  min-width: 0;
+}
+/* The old number crossed out just before the new one, on its line (as on the paper). */
+.ck-readout__v {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 5px;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+.ck-readout__num {
+  font-size: 25px;
+  line-height: 1.05;
+  color: var(--nb-ink);
+  white-space: nowrap;
+}
+.ck-readout--current .ck-readout__num {
+  color: var(--nb-amber-text);
+}
+.ck-readout--power .ck-readout__num {
+  color: var(--nb-green-text);
+}
+.ck-readout__was {
+  font-size: 15px;
+  color: var(--nb-pencil);
+  text-decoration-color: var(--nb-red);
+  text-decoration-thickness: 2px;
+  white-space: nowrap;
+}
+.ck-readout__words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ck-readout__what {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--nb-ink-2);
+}
+.ck-readout__sub {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--nb-pencil);
+}
+.ck-index__none {
+  align-self: center;
+  color: var(--nb-red-text);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.ck-index__foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 14px;
+  flex-wrap: wrap;
+  padding: 7px 14px 10px;
+  border-top: 1px solid rgb(191 211 230 / 0.9);
+}
+.ck-index__sentence {
+  flex: 1 1 300px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--nb-ink-2);
+}
+.ck-index__trap {
+  flex: 1 1 300px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--nb-red-text);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.ck-index__trap .ck-icon {
+  margin-top: 1px;
+}
+.ck-index__more {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ck-link--red {
+  color: var(--nb-red-text);
+  text-decoration-color: currentColor;
+}
+.ck-btn--ink {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+}
+.nb-settle-html {
+  animation: ck-settle var(--nb-t-med) var(--nb-ease-out);
+}
+@keyframes ck-settle {
+  from {
+    opacity: 0.35;
+    transform: translateY(0.12em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ hint line and status line */
+.ck-bottom {
+  position: absolute;
+  z-index: 16;
+  left: calc(var(--ck-margin) + 14px);
+  right: 58px;
+  bottom: 10px;
+  pointer-events: none;
+}
+.ck-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.ck-hint {
+  max-width: 100%;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgb(246 241 228 / 0.88);
+  font-size: 13.5px;
+  color: var(--nb-ink-2);
+  text-align: center;
+}
+.ck-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 2px 6px 2px 14px;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge);
+  border-radius: 12px;
+  box-shadow: var(--ck-shadow-1);
+  font-size: 13px;
+  pointer-events: auto;
+}
+.ck-status__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--nb-green);
+}
+.ck-status__dot--busy {
+  background: var(--nb-amber);
+}
+.ck-status__dot--bad {
+  background: var(--nb-red);
+}
+.ck-status__main {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ck-status__detail {
+  color: var(--nb-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ck-status__detail::before {
+  content: '·';
+  margin-right: 12px;
+  color: var(--nb-pencil-faint);
+}
+.ck-status__engine {
+  color: var(--nb-pencil);
+}
+.ck-lines.is-bad .ck-status {
+  align-items: flex-start;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.ck-lines.is-bad .ck-status__dot {
+  margin-top: 5px;
+}
+.ck-lines.is-bad .ck-status__reason {
+  flex: 1;
+  white-space: normal;
+  overflow: visible;
+  color: var(--nb-red-text);
+}
+.ck-lines.is-bad .ck-zoom {
+  align-self: center;
+}
+.ck-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.ck-zoom .ck-icon-btn {
+  width: 32px;
+  height: 32px;
+}
+.ck-zoom__pct {
+  min-width: 56px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ck-zoom__pct:hover {
+  background: var(--nb-paper-sunk);
+}
+
+/* ------------------------------------------------------------------ menus, settings, palette */
+.ck-menu--switch {
+  top: calc(100% + 8px);
+  left: -6px;
+  width: 340px;
+}
+.ck-switch__item {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+.ck-switch__item:hover,
+.ck-switch__item:focus-visible {
+  background: var(--nb-paper-sunk);
+}
+.ck-switch__item[aria-checked='true'] {
+  background: #fff6c8;
+}
+.ck-switch__item-name {
+  font-weight: 600;
+}
+.ck-switch__item-file {
+  font-family: var(--nb-font-mono);
+  font-size: 12.5px;
+  color: var(--nb-pencil);
+}
+.ck-switch__credit {
+  margin: 6px 10px 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--nb-pencil);
+}
+.ck-settings {
+  --tab-colour: var(--nb-margin-red);
+  position: absolute;
+  z-index: 30;
+  top: 76px;
+  right: 14px;
+  width: 340px;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 14px;
+  box-shadow: var(--ck-shadow-3);
+  overflow: hidden;
+}
+.ck-choice {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ck-choice__opt {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  border: 1.5px solid var(--nb-paper-edge);
+  border-radius: 10px;
+  background: var(--nb-paper-raised);
+  cursor: pointer;
+}
+.ck-choice__opt.is-on {
+  border-color: var(--nb-ink);
+  background: #fff;
+}
+.ck-choice__opt input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--nb-ink);
+}
+.ck-choice__name {
+  font-weight: 600;
+}
+.ck-choice__sample {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--nb-amber-text);
+}
+.ck-choice__sample--hand {
+  font-family: var(--nb-font-hand);
+  font-weight: 700;
+  font-size: 22px;
+}
+.ck-choice__hint {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--nb-ink-2);
+}
+.ck-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 13vh 16px 16px;
+  background: rgb(30 42 69 / 0.28);
+}
+.ck-palette {
+  width: min(620px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 16px;
+  box-shadow: var(--ck-shadow-3);
+  overflow: hidden;
+}
+.ck-palette__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--nb-paper-edge);
+  color: var(--nb-pencil);
+}
+.ck-palette__input {
+  flex: 1;
+  height: 56px;
+  border: 0;
+  background: transparent;
+  font-size: 17px;
+  color: var(--nb-ink);
+}
+.ck-app .ck-palette__input:focus-visible {
+  outline: none;
+}
+.ck-palette__input::placeholder {
+  color: #74787f;
+}
+.ck-palette__list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+}
+.ck-palette__item {
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ck-palette__group {
+  display: block;
+  padding: 10px 10px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+  cursor: default;
+}
+.ck-palette__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.ck-palette__item.is-active .ck-palette__row {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+}
+.ck-palette__item.is-active .ck-palette__key {
+  background: rgb(255 253 248 / 0.12);
+  border-color: rgb(255 253 248 / 0.3);
+  color: var(--nb-paper-raised);
+}
+.ck-palette__empty {
+  padding: 14px 10px;
+  color: var(--nb-pencil);
+}
+
+/* ------------------------------------------------------------------ a phone (and anything narrower than 900 px) */
+.ck-app.is-phone {
+  --ck-margin: 14px;
+}
+.is-phone .ck-topbar {
+  top: 0;
+  left: 0;
+  right: 0;
+  gap: 2px;
+  padding: max(6px, env(safe-area-inset-top)) 6px 6px 8px;
+  background: var(--nb-paper-raised);
+  border-bottom: 1px solid var(--nb-paper-edge);
+  box-shadow: 0 6px 14px -12px rgb(30 42 69 / 0.4);
+}
+.is-phone .ck-island {
+  box-shadow: none;
+}
+.is-phone .ck-doc {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  gap: 2px;
+  background: transparent;
+}
+.is-phone .ck-doc__mark {
+  width: 36px;
+  height: 36px;
+}
+.is-phone .ck-switch {
+  flex: 1;
+}
+.is-phone .ck-switch__btn {
+  width: 100%;
+  padding: 2px 4px;
+}
+/* A short title, which may take two lines: no name is cut off (critique 10). */
+.is-phone .ck-title__name {
+  font-size: 15px;
+}
+.is-phone .ck-title__text {
+  white-space: normal;
+}
+.is-phone .ck-cmd-icon,
+.is-phone .ck-icon-btn {
+  width: 44px;
+  height: 44px;
+}
+.is-phone .ck-run {
+  border: 0;
+  padding: 0;
+  gap: 0;
+  background: transparent;
+}
+.is-phone .ck-run__btn {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+.is-phone .ck-menu--switch {
+  position: fixed;
+  top: 58px;
+  left: 8px;
+  right: 8px;
+  width: auto;
+}
+.ck-phone-bottom {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.ck-phone-bottom > * {
+  pointer-events: auto;
+}
+.is-phone .ck-lines {
+  align-items: stretch;
+  gap: 4px;
+  padding: 0 10px 6px 22px;
+  pointer-events: none;
+}
+.is-phone .ck-hint {
+  align-self: center;
+  padding: 2px 10px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.is-phone .ck-status {
+  min-height: 32px;
+  padding: 2px 4px 2px 12px;
+  gap: 8px;
+  border-radius: 999px;
+  align-self: center;
+  width: auto;
+  max-width: 100%;
+  font-size: 12.5px;
+}
+.is-phone .ck-lines.is-bad .ck-status {
+  border-radius: 14px;
+}
+.is-phone .ck-status__detail::before {
+  margin-right: 8px;
+}
+
+/* The one bar along the bottom (Playground's phone design, critique 5): Select · Parts · Netlist · Checks · Explain. */
+.ck-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 6px max(6px, env(safe-area-inset-bottom));
+  background: var(--nb-paper-raised);
+  border-top: 1px solid var(--nb-paper-edge);
+  box-shadow: 0 -6px 14px -12px rgb(30 42 69 / 0.35);
+}
+.ck-bar__btn {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 54px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--nb-ink);
+}
+.ck-bar__btn .ck-glyph,
+.ck-bar__icon {
+  width: 26px;
+  height: 26px;
+}
+.ck-bar__icon {
+  stroke-width: 1.6;
+}
+.ck-bar__btn.is-on {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+}
+/* An open panel: its tab's colour along the top (the chosen tool is the filled button). */
+.ck-bar__btn--panel.is-open {
+  background: var(--nb-paper-sunk);
+}
+.ck-bar__btn--panel.is-open::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 4px;
+  border-radius: 0 0 3px 3px;
+  background: var(--tab-colour);
+}
+.ck-bar__word {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-bar__sep {
+  width: 1px;
+  margin: 10px 2px;
+  background: var(--nb-paper-edge);
+  flex: none;
+}
+.ck-bar__badge {
+  position: absolute;
+  top: 2px;
+  right: 10%;
+  min-width: 20px;
+  height: 20px;
+  font-size: 11.5px;
+}
+
+.is-phone .ck-sheet,
+.is-phone .ck-settings {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  max-height: 56vh;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -14px 30px -18px rgb(30 42 69 / 0.4);
+  animation: ck-sheet-in var(--nb-t-slow) var(--nb-ease-out);
+}
+@keyframes ck-sheet-in {
+  from {
+    transform: translateY(30px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.ck-grab {
+  display: block;
+  width: 44px;
+  height: 5px;
+  margin: 8px auto 0;
+  border-radius: 3px;
+  background: var(--nb-paper-edge-strong);
+  flex: none;
+}
+.is-phone .ck-card__head {
+  padding-top: 8px;
+}
+
+/* The Parts sheet: the controlled sources first, named in plain words, then the rest in two columns. */
+.ck-parts-sheet {
+  padding-top: 6px;
+}
+.ck-sheet-group {
+  margin: 8px 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.ck-ctrl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ck-ctrl-list--grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.ck-ctrl-list--grid .ck-ctrl {
+  grid-template-columns: 40px 1fr;
+}
+.ck-ctrl-list--grid .ck-ctrl__icon .ck-glyph {
+  width: 32px;
+  height: 32px;
+}
+.ck-ctrl[aria-pressed='true'] {
+  background: #fff6c8;
+}
+
+/* The card on a phone: a short sheet (no bar under it), the drawing above it. */
+.is-phone .ck-sheet--card {
+  overflow-y: auto;
+  background: var(--nb-card);
+}
+.ck-index--sheet {
+  border: 0;
+  border-radius: 18px 18px 0 0;
+  box-shadow: none;
+}
+.ck-index--sheet .ck-index__head {
+  padding: 6px 4px 6px 12px;
+}
+.ck-index--sheet .ck-index__kind {
+  font-size: 13.5px;
+}
+.ck-index--sheet .ck-index__body {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px 14px 4px;
+}
+.ck-index--sheet .ck-readouts {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px 4px;
+  padding: 8px 0 0;
+  border-left: 0;
+  border-top: 1px solid rgb(191 211 230 / 0.9);
+}
+.ck-index--sheet .ck-readout {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ck-index--sheet .ck-readout__v {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+}
+.ck-index--sheet .ck-readout__num {
+  font-size: 23px;
+}
+.ck-index--sheet .ck-readout__was {
+  font-size: 14px;
+}
+.ck-index--sheet .ck-readout__sub {
+  font-size: 12px;
+}
+.ck-index--sheet .ck-index__foot {
+  padding: 6px 14px max(10px, env(safe-area-inset-bottom));
+}
+.ck-index--sheet .ck-index__sentence {
+  display: none;
+}
+
+/* While a value is typed: only a strip above the keyboard, the drawing above it (critique 3). */
+.ck-phone-bottom.is-strip {
+  transition: bottom 120ms ease-out;
+}
+.ck-phone-bottom.is-strip .ck-sheet--card {
+  max-height: none;
+  border-radius: 14px 14px 0 0;
+  animation: none;
+}
+.ck-index--strip {
+  border: 0;
+  border-radius: 14px 14px 0 0;
+  box-shadow: none;
+}
+.ck-index--strip .ck-index__head {
+  display: none;
+}
+.ck-index--strip .ck-index__body {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 10px;
+}
+.ck-index--strip .ck-index__field {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'label was' 'value value';
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.ck-index--strip .ck-field-label {
+  grid-area: label;
+  margin: 0;
+}
+.ck-index--strip .ck-value {
+  grid-area: value;
+  height: 40px;
+}
+.ck-index--strip .ck-was {
+  grid-area: was;
+  justify-self: end;
+  min-height: 0;
+  margin: 0;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.ck-index--strip .ck-was__label {
+  display: none;
+}
+.ck-index--strip .ck-was__old {
+  font-size: 16px;
+}
+.ck-index--strip .ck-reads {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ck-strip__done {
+  min-height: 40px;
+  padding: 0 14px;
+}
+.ck-field-label__part {
+  display: none;
+}
+.ck-index--strip .ck-field-label__part {
+  display: inline;
+  color: var(--nb-ink);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 14px;
+}
+
+/* A drawing as in the video, wider than the phone: its edges say there is more (critique 4). */
+.ck-more {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 64px;
+  padding: 0 4px;
+  border: 0;
+  color: var(--nb-ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.ck-more--right {
+  right: 0;
+  background: linear-gradient(to right, rgb(246 241 228 / 0), rgb(246 241 228 / 0.92) 60%);
+}
+.ck-more--left {
+  left: 0;
+  justify-content: flex-start;
+  background: linear-gradient(to left, rgb(246 241 228 / 0), rgb(246 241 228 / 0.92) 60%);
+}
+.ck-more .ck-icon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.2;
+}
+.ck-more__word {
+  padding: 2px 0;
+}
+.ck-turn {
+  flex: none;
+  margin-left: 2px;
+  padding: 2px 12px;
+  min-height: 30px;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 999px;
+  background: var(--nb-paper);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nb-ink);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-sheet,
+  .ck-index--pinned,
+  .is-phone .ck-sheet,
+  .is-phone .ck-settings,
+  .nb-settle-html {
+    animation: none;
+  }
+  .ck-note-arrow path:first-child,
+  .ck-note-arrow .ck-note-arrow__head {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  .ck-phone-bottom.is-strip,
+  .ck-skip {
+    transition: none;
+  }
+}
