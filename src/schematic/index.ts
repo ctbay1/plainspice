@@ -56,14 +56,18 @@ export {
   OPPOSITE,
   ROTATIONS,
   boxesOverlap,
+  inflate,
   nextRotation,
   pointOnSegment,
   pt,
   rotate,
   samePoint,
+  segmentCrossesBox,
+  segmentsOf,
   transform,
   transformBox,
   transformDirection,
+  unionBoxes,
 } from './geometry.ts';
 export type { Box, Direction, Point, Rotation } from './geometry.ts';
 
@@ -76,7 +80,7 @@ export type { NavItem } from './navigate.ts';
 export { MAX_ROUTE_CELLS, ROUTE_COSTS, findRoute } from './route.ts';
 export type { RouteBudget, RouteEnd, RouteWorld } from './route.ts';
 
-export { SCENE_STRINGS, STUB_LENGTH, buildScene, defaultSide, findOverlaps, wireCrossings } from './scene.ts';
+export { INLINE_RESULT_GAP, SCENE_STRINGS, STUB_LENGTH, buildScene, defaultSide, findOverlaps, wireCrossings } from './scene.ts';
 export type { Overlap, PlacedGround, PlacedNodeLabel, PlacedPart, PlacedPin, PlacedWire, Scene, SceneItem, SceneOptions, Stub, Terminal } from './scene.ts';
 
 export { buildSchematic, placedPart, reconcile, schematicConnectivity } from './schematic.ts';

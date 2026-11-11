@@ -75,11 +75,13 @@ export function lineBox(x: number, y: number, width: number, align: TextAlign): 
 export interface LineSpec {
   text: string;
   role: TextRole;
+  /** A result line: a sample of the widest text it will hold (default TEXT.resultChars). */
+  room?: string;
 }
 
-/** The width a line needs: a result line keeps room for TEXT.resultChars. */
+/** The width a line needs: a result line keeps room for its sample (TEXT.resultChars by default). */
 export function lineWidth(spec: LineSpec, measure: Measure = defaultMeasure): number {
-  return measure(spec.role === 'result' ? TEXT.resultChars : spec.text, spec.role);
+  return measure(spec.role === 'result' ? (spec.room ?? TEXT.resultChars) : spec.text, spec.role);
 }
 
 /**

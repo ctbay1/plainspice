@@ -68,6 +68,17 @@ else announce(r.reason);
 - Widths: by default `textWidth`, an estimate for an ordinary sans-serif font. A style with another
   font passes `measure(text, role)` (grid units) in the options; the layout, the scene, the router
   and the edits then all use it, and `applyEdit` reuses the options the schematic was built with.
+- Result lines: by default one under each part's values, as wide as `TEXT.resultChars`. A style
+  that writes more passes `resultRoom(part)` in the options: the result lines it keeps for that part,
+  each as a sample of the widest text it will hold (measured with the `result` role); the layout
+  spaces the drawing for them. The Notebook look (`src/notebook/results.ts`) keeps three for a
+  source (its current, "delivers" or "absorbs", the watts) and one for a 0 V source ("measures"
+  and its current).
+- A node's result goes on a line of its own under (or over) its name by default. With
+  `nodeResultInline` (a sample of the widest result, e.g. `'= −888.8 mV'`) it shares the name's line
+  instead, just after the name (`INLINE_RESULT_GAP`): both lines are aligned to their start and
+  placed where one line as wide as both would go, so the name never moves when the number's width
+  changes. The Notebook writes "s = 12 V" there.
 - `part.arrow` is where a current arrow goes, pointing the way a positive SPICE current flows (pin 0
   into the part; flip it for a negative one). On a source in `part.sensedBy` it shows the current an
   F or H reads. A stub's `box` is the room kept for its mark (`STUB_LENGTH` on from the wire end).

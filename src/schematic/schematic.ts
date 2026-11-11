@@ -486,7 +486,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
       for (const node of missing) {
         const at = labelPoint(circuit, node.name, pins, segs, scene, taken, options);
         drawing.labels.push({ node: node.name, at });
-        const lines = nodeLabelLines(node.text, at, 'above-right', options.results ?? true, [], options.measure);
+        const lines = nodeLabelLines(node.text, at, 'above-right', options.results ?? true, [], options.measure, options.nodeResultInline);
         const box = unionBoxes(lines.map((l) => l.box));
         if (box) taken.push(box);
       }
@@ -732,7 +732,7 @@ function labelFits(scene: Scene, text: string, at: Point, taken: readonly Box[],
   const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box), ...taken];
   const segments = scene.wires.flatMap((w) => segmentsOf(w.points));
   return NODE_SPOTS.some((spot) => {
-    const lines = nodeLabelLines(text, at, spot, options.results ?? true, [], options.measure);
+    const lines = nodeLabelLines(text, at, spot, options.results ?? true, [], options.measure, options.nodeResultInline);
     const box = unionBoxes(lines.map((l) => l.box));
     return box !== undefined && !boxes.some((b) => boxesOverlap(box, b)) && !segments.some(([a, b]) => segmentCrossesBox(a, b, box));
   });

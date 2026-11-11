@@ -38,7 +38,7 @@ import {
   type Rotation,
 } from './geometry.ts';
 import { SYMBOLS, type PartLetter, type PinRole } from './symbols.ts';
-import { TEXT, defaultMeasure, stackLines, type LineSpec, type Measure, type TextLine } from './text.ts';
+import { TEXT, defaultMeasure, lineBox, stackLines, type LineSpec, type Measure, type TextLine } from './text.ts';
 
 export type { LabelSide, NodeSpot } from './drawing.ts';
 
@@ -47,6 +47,18 @@ export interface SceneOptions {
   results?: boolean;
   /** How wide a line of text is as the style draws it, in grid units (default: textWidth). */
   measure?: Measure;
+  /**
+   * The result lines kept under a part's values, each given as a sample of the widest text it will
+   * hold (measured with the 'result' role). Default: one line, TEXT.resultChars. A style that writes
+   * a source's power under its current asks for two lines there; [] keeps none.
+   */
+  resultRoom?: (part: CircuitPart) => readonly string[];
+  /**
+   * A node's result on its name's line, after the name ("s = 12 V"), instead of on a line of its
+   * own: a sample of the widest text it will hold (measured with the 'result' role). The result
+   * line then starts just after the name, aligned to its start, on the same row.
+   */
+  nodeResultInline?: string;
 }
 
 /** Words the scene writes, in one object so a Turkish UI can replace them later. */
@@ -176,11 +188,18 @@ export function defaultSide(rot: Rotation, mirror: boolean): LabelSide {
 const OTHER_SIDE: Readonly<Record<LabelSide, LabelSide>> = { right: 'left', left: 'right', above: 'below', below: 'above' };
 const ACROSS: Readonly<Record<LabelSide, readonly LabelSide[]>> = { right: ['above', 'below'], left: ['above', 'below'], above: ['right', 'left'], below: ['right', 'left'] };
 
-export function partLabelSpecs(part: CircuitPart, results: boolean): LineSpec[] {
+/** A part's lines: its name, its value lines, and the result lines (`room`: SceneOptions.resultRoom's samples; default one line). */
+export function partLabelSpecs(part: CircuitPart, results: boolean, room?: readonly string[]): LineSpec[] {
   const specs: LineSpec[] = [{ text: part.name, role: 'name' }, ...valueLines(part).map((text) => ({ text, role: 'value' as const }))];
-  if (results) specs.push({ text: '', role: 'result' });
+  if (results) {
+    if (room === undefined) specs.push({ text: '', role: 'result' });
+    else for (const sample of room) specs.push({ text: '', role: 'result', room: sample });
+  }
   return specs;
 }
+
+/** The result lines a part keeps with these options: SceneOptions.resultRoom's samples, or undefined for the default line. */
+export const resultRoomOf = (part: CircuitPart, options: SceneOptions): readonly string[] | undefined => options.resultRoom?.(part);
 
 /** The lines of a part's words on one side of its body. */
 export function partLabelLines(geom: SymbolGeometry, specs: readonly LineSpec[], side: LabelSide, measure: Measure = defaultMeasure): TextLine[] {
@@ -232,8 +251,17 @@ function overlapArea(a: Box, b: Box): number {
 /** Far enough from a wire to clear the widest symbol on it (a source's circle). */
 const FAR = 1.15;
 
-/** The lines of a node's name at a spot: the name nearest the wire, then the hidden parts, then the result. */
-export function nodeLabelLines(text: string, at: Point, spot: NodeSpot, results: boolean, hidden: readonly string[] = [], measure: Measure = defaultMeasure): TextLine[] {
+/** The space between a node's name and its result on the same line ("s = 12 V"), in grid units. */
+export const INLINE_RESULT_GAP = 0.2;
+
+/**
+ * The lines of a node's name at a spot: the name nearest the wire, then the hidden parts, then the
+ * result. With `inline` (SceneOptions.nodeResultInline) the result shares the name's line instead,
+ * after the name: both lines are aligned to their start, the pair placed where a line as wide as
+ * both would go, so the name never moves when the result's width changes.
+ */
+export function nodeLabelLines(text: string, at: Point, spot: NodeSpot, results: boolean, hidden: readonly string[] = [], measure: Measure = defaultMeasure, inline?: string): TextLine[] {
+  if (results && inline !== undefined) return inlineNodeLines(text, at, spot, hidden, measure, inline);
   const name: LineSpec = { text, role: 'node' };
   const below: LineSpec[] = [name];
   if (hidden.length) below.push({ text: SCENE_STRINGS.hidden(hidden), role: 'hidden' });
@@ -259,6 +287,54 @@ export function nodeLabelLines(text: string, at: Point, spot: NodeSpot, results:
     case 'far-left':
       return stackLines(below, { x: at.x - FAR, y: at.y - TEXT.lineHeight / 2 }, 'end', 'top', measure);
   }
+}
+
+/** A node's name with its result on the same line, at the spots nodeLabelLines uses (same anchors, rows and sides). */
+function inlineNodeLines(text: string, at: Point, spot: NodeSpot, hidden: readonly string[], measure: Measure, room: string): TextLine[] {
+  const nameWidth = measure(text, 'node');
+  const roomWidth = measure(room, 'result');
+  const width = nameWidth + INLINE_RESULT_GAP + roomWidth;
+  const hiddenText = hidden.length ? SCENE_STRINGS.hidden(hidden) : undefined;
+  const lh = TEXT.lineHeight;
+  const off = 0.3;
+  const lift = 0.2;
+  type Place = { x: number; y: number; align: 'start' | 'end'; from: 'top' | 'bottom' };
+  const place = ((): Place => {
+    switch (spot) {
+      case 'above-right':
+        return { x: at.x + off, y: at.y - lift, align: 'start', from: 'bottom' };
+      case 'above-left':
+        return { x: at.x - off, y: at.y - lift, align: 'end', from: 'bottom' };
+      case 'below-right':
+        return { x: at.x + off, y: at.y + lift, align: 'start', from: 'top' };
+      case 'below-left':
+        return { x: at.x - off, y: at.y + lift, align: 'end', from: 'top' };
+      case 'right':
+        return { x: at.x + off + 0.1, y: at.y - lh / 2, align: 'start', from: 'top' };
+      case 'left':
+        return { x: at.x - off - 0.1, y: at.y - lh / 2, align: 'end', from: 'top' };
+      case 'far-right':
+        return { x: at.x + FAR, y: at.y - lh / 2, align: 'start', from: 'top' };
+      case 'far-left':
+        return { x: at.x - FAR, y: at.y - lh / 2, align: 'end', from: 'top' };
+    }
+  })();
+  // The name's row is the one nearest the wire: the bottom row above it, the top row below or beside it.
+  const rows = hiddenText ? 2 : 1;
+  const top = place.from === 'top' ? place.y : place.y - rows * lh;
+  const nameRow = place.from === 'bottom' ? rows - 1 : 0;
+  const y = top + lh * (nameRow + 0.5);
+  const x0 = place.align === 'start' ? place.x : place.x - width;
+  const rx = x0 + nameWidth + INLINE_RESULT_GAP;
+  const lines: TextLine[] = [
+    { text, role: 'node', x: x0, y, align: 'start', box: lineBox(x0, y, nameWidth, 'start') },
+    { text: '', role: 'result', x: rx, y, align: 'start', box: lineBox(rx, y, roomWidth, 'start') },
+  ];
+  if (hiddenText) {
+    const hy = top + lh * (1 - nameRow + 0.5);
+    lines.push({ text: hiddenText, role: 'hidden', x: place.x, y: hy, align: place.align, box: lineBox(place.x, hy, measure(hiddenText, 'hidden'), place.align) });
+  }
+  return lines;
 }
 
 const OPPOSITE_DIRECTION: Readonly<Record<Direction, Direction>> = { up: 'down', down: 'up', left: 'right', right: 'left' };
@@ -345,7 +421,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
   for (const w of drawing.wires) obstacles.addWire(w);
 
   for (const { part, geom, side: stored } of geoms) {
-    const specs = partLabelSpecs(part, results);
+    const specs = partLabelSpecs(part, results, resultRoomOf(part, options));
     const first = stored ?? defaultSide(geom.rot, geom.mirror);
     // The part's own symbol is not in the way of its words.
     const own = obstacles.boxes.indexOf(geom.box);
@@ -465,7 +541,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const spots = label.side ? [label.side] : spotsFor(directionsAt(label.at, drawing.wires, allPins), atEnd);
     let best: { lines: TextLine[]; cost: number; spot: NodeSpot } | undefined;
     for (const spot of spots) {
-      const lines = nodeLabelLines(text, label.at, spot, results, names, measure);
+      const lines = nodeLabelLines(text, label.at, spot, results, names, measure, options.nodeResultInline);
       const cost = obstacles.cost(boxOfLines(lines));
       if (!best || cost < best.cost) best = { lines, cost, spot };
       if (cost === 0) break;

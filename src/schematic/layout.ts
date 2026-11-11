@@ -27,7 +27,7 @@ import { GROUND } from './circuit.ts';
 import { SegmentIndex } from './connectivity.ts';
 import { emptyDrawing, symbolGeometry, type Drawing } from './drawing.ts';
 import { DIRECTION_VECTORS, boxContains, boxesOverlap, inflate, pointKey, pt, segmentCrossesBox, segmentsOf, type Box, type Point, type Rotation } from './geometry.ts';
-import { buildScene, defaultSide, findOverlaps, partLabelLines, partLabelSpecs, type Scene, type SceneItem, type SceneOptions } from './scene.ts';
+import { buildScene, defaultSide, findOverlaps, partLabelLines, partLabelSpecs, resultRoomOf, type Scene, type SceneItem, type SceneOptions } from './scene.ts';
 import { isIndependentSource } from './symbols.ts';
 import { TEXT, defaultMeasure, type Measure } from './text.ts';
 
@@ -630,7 +630,7 @@ function sceneSlot(item: SceneItem, r: Realized): number | undefined {
 }
 
 /** How far a slot's contents reach left and right of its x (symbols and words), estimated. */
-function reach(slot: Slot, L: Ladder, results: boolean, measure: Measure): { left: number; right: number } {
+function reach(slot: Slot, L: Ladder, results: boolean, measure: Measure, options: LayoutOptions): { left: number; right: number } {
   const parts: { part: CircuitPart; rot: Rotation; mirror: boolean }[] = [];
   if (slot.kind === 'station' && slot.down) {
     for (const p of slot.down.stack) parts.push({ part: p, rot: 0, mirror: p === L.mainSource });
@@ -646,7 +646,7 @@ function reach(slot: Slot, L: Ladder, results: boolean, measure: Measure): { lef
   let right = 0.5;
   for (const { part, rot, mirror } of parts) {
     const geom = symbolGeometry(part.letter, pt(0, 0), rot, mirror);
-    const lines = partLabelLines(geom, partLabelSpecs(part, results), defaultSide(rot, mirror), measure);
+    const lines = partLabelLines(geom, partLabelSpecs(part, results, resultRoomOf(part, options)), defaultSide(rot, mirror), measure);
     for (const b of [geom.box, ...lines.map((l) => l.box)]) {
       left = Math.max(left, -b.x0);
       right = Math.max(right, b.x1);
@@ -711,15 +711,17 @@ export function layOut(circuit: Circuit, options: LayoutOptions = {}, start?: st
   // Heights: the tallest column sets the bottom rail; words above lying parts set the bridge spacing.
   let H = MIN_RAIL_HEIGHT;
   for (const p of plans) for (const ds of p.downs) for (const d of ds) H = Math.max(H, columnNeed(d));
-  const lines = results ? 3 : 2;
+  // A name, a value and the result lines (one each unless the style keeps more: SceneOptions.resultRoom).
+  const resultLines = results ? Math.max(0, ...circuit.parts.map((p) => resultRoomOf(p, options)?.length ?? 1)) : 0;
+  const lines = 2 + resultLines;
   const B = Math.max(5, Math.ceil(0.9 + TEXT.gap + lines * TEXT.lineHeight + 0.9 + 0.4));
 
   const gaps: number[] = [];
   for (let s = 0; s + 1 < slots.length; s++) {
     const a = slots[s]!;
     const b = slots[s + 1]!;
-    const ra = reach(a, L, results, measure);
-    const rb = reach(b, L, results, measure);
+    const ra = reach(a, L, results, measure, options);
+    const rb = reach(b, L, results, measure, options);
     let gap = Math.ceil(ra.right + rb.left + 1);
     if (a.kind === 'series' || b.kind === 'series') gap = Math.max(3, Math.ceil(ra.right + rb.left + 0.5));
     if (blockStart.includes(s + 1)) gap = Math.max(gap, Math.ceil(ra.right + rb.left + 2));
@@ -729,7 +731,7 @@ export function layOut(circuit: Circuit, options: LayoutOptions = {}, start?: st
   // Half the width of a lying part's words (a bridge part's), so wires crossing the bridge miss them.
   const halfWidth = (part: CircuitPart): number => {
     const geom = symbolGeometry(part.letter, pt(0, 0), 270, false);
-    const lines = partLabelLines(geom, partLabelSpecs(part, results), 'above', measure);
+    const lines = partLabelLines(geom, partLabelSpecs(part, results, resultRoomOf(part, options)), 'above', measure);
     return Math.max(2, ...lines.map((l) => Math.max(-l.box.x0, l.box.x1)));
   };
   let realized = realize(L, gaps, H, B, halfWidth);
@@ -1011,7 +1013,7 @@ export function placeParts(circuit: Circuit, drawing: Drawing, keys: readonly st
             else cost += (0.2 * (Math.abs(pin.x - cx) + Math.abs(pin.y - cy))) / 4;
           });
           if (bad || (best && cost >= best.cost + 4)) continue;
-          const lines = partLabelLines(geom, partLabelSpecs(part, results), defaultSide(rot, false), measure);
+          const lines = partLabelLines(geom, partLabelSpecs(part, results, resultRoomOf(part, options)), defaultSide(rot, false), measure);
           const lbox = lines.reduce<Box | undefined>((u, l) => (u ? { x0: Math.min(u.x0, l.box.x0), y0: Math.min(u.y0, l.box.y0), x1: Math.max(u.x1, l.box.x1), y1: Math.max(u.y1, l.box.y1) } : l.box), undefined)!;
           if (taken.hits(lbox)) cost += 4;
           if (!best || cost < best.cost - 1e-9) best = { at, rot, cost };
