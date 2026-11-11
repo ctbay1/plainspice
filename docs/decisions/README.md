@@ -19,6 +19,7 @@ behind them is in [`../research/`](../research/).
 | [0012](0012-netlists-and-links-are-data.md) | Netlists and links are data, never code | accepted |
 | [0013](0013-schematic-model.md) | The schematic model: the circuit drawn from its netlist, in step both ways; positions in the netlist | accepted (Tarık chose the netlist) |
 | [0014](0014-the-look.md) | The look: Notebook, with a named toolbar, Ctrl+K and a plain-font setting | accepted (Tarık) |
+| [0015](0015-notebook-canvas.md) | The Notebook canvas: four voices, exact room for words, results in their own lines, a turned drawing on phones | accepted (the phone's turned drawing waits for Tarık) |
 
 Also: [what we do differently from EEcircuit](../eecircuit-comparison.md) and the
 [fixture results](../fixture-results.md).

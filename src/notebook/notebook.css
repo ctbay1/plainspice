@@ -1,0 +1,384 @@
+/*
+ * The Notebook look (decision 0014): the Solved Circuits page as a tool. Cream grid paper with the
+ * red margin line, the circuit in dark blue-black ink with each node's wires in its colour, results
+ * handwritten on the drawing (currents amber, power green, traps red pen), values typeset, the
+ * netlist on the dark "simulator screen", panels as paper cards.
+ *
+ * Four voices, one job each: Inter for everything the app says, Caveat only for results on the
+ * drawing ("this is what ngspice found"; the Plain font setting switches it to Inter), Notebook Serif
+ * for values, JetBrains Mono for the netlist. Text colours are at least 4.5:1 on the paper and the
+ * cards (tests/unit/notebook-contrast.test.ts); node colours are graphics (3:1) and never carry
+ * text alone.
+ *
+ * Font sizes on the drawing are set from measure.ts's TYPE by the canvas (--nb-size-*), so the room
+ * the model keeps for each line is the room it is drawn in.
+ */
+@import './fonts.css';
+
+:where(.nb-theme, .nb-canvas) {
+  /* Paper */
+  --nb-paper: #f6f1e4;
+  --nb-paper-raised: #fffdf8;
+  --nb-card: #fffefa;
+  --nb-paper-sunk: #eee7d5;
+  --nb-paper-edge: #e3dac4;
+  --nb-paper-edge-strong: #cfc5ac;
+  --nb-grid: rgb(191 211 230 / 0.66);
+  --nb-grid-major: rgb(166 193 220 / 0.72);
+  --nb-margin-red: #e59a9a;
+
+  /* Inks (text at least 4.5:1 on paper and cards) */
+  --nb-ink: #1e2a45;
+  --nb-ink-2: #3a4560;
+  --nb-pencil: #5b606c;
+  --nb-pencil-faint: #8a8e98;
+  --nb-amber: #c46a00;
+  --nb-amber-text: #8f4d00;
+  --nb-red: #d9302c;
+  --nb-red-text: #b8231c;
+  --nb-green: #2b8a3e;
+  --nb-green-text: #1f6e36;
+  --nb-note: #fff1a8;
+  --nb-note-edge: #e9d679;
+  --nb-highlighter: #ffe066;
+
+  /* The simulator screen */
+  --nb-screen: #1f242d;
+  --nb-screen-bar: #282e39;
+  --nb-screen-line: #323a48;
+  --nb-screen-ink: #e9ecef;
+  --nb-screen-muted: #a7afbd;
+  --nb-screen-amber: #ffd54f;
+  --nb-screen-red: #ff8a80;
+  --nb-screen-green: #7ee2a8;
+
+  /* Type */
+  --nb-font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Caveat has no Ω: it comes from the typeset font, as in the episodes' notes. */
+  --nb-font-hand: 'Caveat', 'Notebook Serif', 'Inter', cursive;
+  --nb-font-serif: 'Notebook Serif', 'Latin Modern Roman', 'Times New Roman', serif;
+  --nb-font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Pen widths on screen, whatever the zoom: divided by the world's scale (--nb-k) and by the scale
+     of a group drawn in grid units (--nb-s, set on the group). */
+  --nb-pen: 2.1px;
+  --nb-k: 1;
+  --nb-s: 1;
+
+  /* Motion */
+  --nb-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --nb-t-fast: 120ms;
+  --nb-t-med: 220ms;
+  --nb-t-slow: 340ms;
+}
+
+/* ------------------------------------------------------------------ the paper */
+.nb-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: var(--nb-paper);
+  background-image:
+    linear-gradient(to right, var(--nb-grid-major) 1.5px, transparent 1.5px),
+    linear-gradient(to bottom, var(--nb-grid-major) 1.5px, transparent 1.5px),
+    linear-gradient(to right, var(--nb-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--nb-grid) 1px, transparent 1px);
+  touch-action: none;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.nb-canvas.is-placing {
+  cursor: crosshair;
+}
+.nb-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  transition: transform var(--nb-t-slow) var(--nb-ease-out);
+}
+.nb-ink {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+  /* The widths in metrics.ts were measured with each font's default features. */
+  font-feature-settings: normal;
+}
+
+/* ------------------------------------------------------------------ ink */
+.nb-wire,
+.nb-sym,
+.nb-lead,
+.nb-signs {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nb-sym {
+  stroke-width: calc(var(--nb-pen) / var(--nb-k) / var(--nb-s));
+}
+/* Wires and leads share one width and their node's colour, so a node reads as one line. */
+.nb-wire,
+.nb-lead {
+  stroke-width: calc(var(--nb-pen) * 1.15 / var(--nb-k) / var(--nb-s));
+  transition: stroke var(--nb-t-med) var(--nb-ease-out);
+}
+.nb-signs {
+  stroke-width: calc(var(--nb-pen) * 0.85 / var(--nb-k) / var(--nb-s));
+}
+.nb-sym-fill {
+  fill: var(--nb-ink);
+  stroke: none;
+}
+.nb-part.is-trap .nb-sym {
+  stroke: var(--nb-red);
+}
+.nb-part.is-trap .nb-sym-fill {
+  fill: var(--nb-red);
+}
+.nb-hop-gap {
+  stroke: var(--nb-paper);
+  stroke-width: calc(var(--nb-pen) * 4 / var(--nb-k) / var(--nb-s));
+}
+.nb-junction {
+  fill: var(--nb-ink);
+}
+.nb-terminal {
+  fill: var(--nb-paper-raised);
+  stroke: var(--nb-ink);
+  stroke-width: calc(var(--nb-pen) / var(--nb-k) / var(--nb-s));
+}
+.nb-stub {
+  fill: var(--nb-paper-raised);
+  stroke: var(--nb-ink);
+  stroke-width: calc(var(--nb-pen) / var(--nb-k) / var(--nb-s));
+  stroke-linejoin: round;
+}
+.nb-ghost .nb-sym {
+  opacity: 0.4;
+}
+.nb-ghost .nb-sym-fill {
+  opacity: 0.4;
+}
+
+/* Selection: a see-through highlighter swipe behind the part, as in the episodes (the grid shows through). */
+.nb-hl {
+  fill: var(--nb-highlighter);
+  opacity: 0;
+  mix-blend-mode: multiply;
+  transition: opacity var(--nb-t-med) var(--nb-ease-out);
+}
+.nb-hl--wire {
+  fill: none;
+  stroke: var(--nb-highlighter);
+  stroke-width: calc(14px / var(--nb-k));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nb-hl.is-hover {
+  opacity: 0.32;
+}
+.nb-hl.is-related {
+  opacity: 0.4;
+}
+.nb-hl.is-selected {
+  opacity: 0.62;
+}
+/* The keyboard's focus ring, drawn round the symbol's body (or the node's name), clear of its words. */
+.nb-focus {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(2.5px / var(--nb-k));
+}
+
+/* Red pen: a check's note, a misread value circled, an old value crossed out. */
+.nb-pen__text,
+.nb-was__text {
+  font-family: var(--nb-font-hand);
+  font-weight: 700;
+  fill: var(--nb-red-text);
+}
+/* In the plain font at the same share of the results' size (notes.ts measures both). */
+.nb-drawing.is-plain .nb-pen__text,
+.nb-drawing.is-plain .nb-was__text {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+}
+.nb-drawing.is-plain .nb-pen__text {
+  font-size: calc(var(--nb-size-plain) * 0.816) !important;
+}
+.nb-drawing.is-plain .nb-was__text {
+  font-size: calc(var(--nb-size-plain) * 0.78) !important;
+}
+.nb-was__text {
+  fill: var(--nb-pencil);
+}
+.nb-pen__circle,
+.nb-pen__stroke,
+.nb-was__strike {
+  fill: none;
+  stroke: var(--nb-red);
+  stroke-width: calc(2px / var(--nb-k));
+  stroke-linecap: round;
+}
+.nb-was__strike {
+  stroke-width: calc(2.2px / var(--nb-k));
+}
+
+/* ------------------------------------------------------------------ words */
+.nb-name,
+.nb-node__name {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+  fill: var(--nb-ink-2);
+}
+.nb-name {
+  font-size: var(--nb-size-name);
+}
+.nb-node__name {
+  font-size: var(--nb-size-node);
+  fill: var(--nb-ink);
+}
+.nb-node__bar {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(3px / var(--nb-k));
+  stroke-linecap: round;
+}
+.nb-control__node {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(3px / var(--nb-k));
+  stroke-linecap: round;
+}
+.nb-control__source {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(1.5px / var(--nb-k));
+  stroke-dasharray: calc(3px / var(--nb-k)) calc(2.5px / var(--nb-k));
+}
+.nb-value {
+  font-family: var(--nb-font-serif);
+  font-size: var(--nb-size-value);
+  fill: var(--nb-ink);
+}
+.nb-hidden {
+  font-family: var(--nb-font-ui);
+  font-size: var(--nb-size-hidden);
+  font-style: italic;
+  fill: var(--nb-pencil);
+}
+
+/* Results: handwritten, in the pen of what they are. */
+.nb-result__text {
+  font-family: var(--nb-font-hand);
+  font-weight: 700;
+  font-size: var(--nb-size-hand);
+}
+.nb-drawing.is-plain .nb-result__text {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+  font-size: var(--nb-size-plain);
+}
+.nb-result--current .nb-result__text {
+  fill: var(--nb-amber-text);
+}
+.nb-result--power .nb-result__text {
+  fill: var(--nb-green-text);
+}
+.nb-result--voltage .nb-result__text {
+  fill: var(--nb-ink);
+}
+.nb-flow__shaft {
+  fill: none;
+  stroke: var(--nb-amber);
+  stroke-width: calc(var(--nb-pen) / var(--nb-k) / var(--nb-s));
+  stroke-linecap: round;
+}
+.nb-flow__head {
+  fill: var(--nb-amber);
+}
+/* Numbers that have fallen behind the text are written in pencil until ngspice answers. */
+.nb-canvas.is-pending .nb-result__text {
+  fill: var(--nb-pencil);
+}
+.nb-canvas.is-pending .nb-flow__shaft {
+  stroke: var(--nb-pencil-faint);
+}
+.nb-canvas.is-pending .nb-flow__head {
+  fill: var(--nb-pencil-faint);
+}
+/* A new number settles in place; it never blanks out. */
+.nb-settle {
+  animation: nb-settle var(--nb-t-med) var(--nb-ease-out);
+}
+@keyframes nb-settle {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ keyboard and screen readers */
+.nb-hits {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.nb-hit {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: calc(8px / var(--nb-k));
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.nb-canvas.is-placing .nb-hit {
+  cursor: crosshair;
+}
+/* The ring is drawn in the drawing (.nb-focus), round the symbol rather than the button's box. */
+.nb-hit:focus,
+.nb-hit:focus-visible {
+  outline: none;
+}
+.nb-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.nb-anchored {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.nb-anchored > * {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-world,
+  .nb-wire,
+  .nb-lead,
+  .nb-hl {
+    transition: none;
+  }
+  .nb-settle {
+    animation: none;
+  }
+}

@@ -15,6 +15,7 @@ const root = import.meta.dirname;
  *   engine/SOURCE.txt, build.sh, no-system.js, patches/, BUILDINFO.txt, COPYING.ngspice.txt, README.md
  *   engine/source/ngspice-47.tar.gz    (when scripts/fetch-ngspice-source.sh has fetched it; CI does)
  *   licenses/THIRD_PARTY_NOTICES.md, licenses/LGPL-2.1-or-later.txt, licenses/LICENSE.txt
+ *   licenses/OFL-*.txt                 (the SIL Open Font License of each font in src/notebook/fonts/)
  * See THIRD_PARTY_NOTICES.md and docs/decisions/0005-license.md.
  */
 function shipEngineSourceAndNotices(): Plugin {
@@ -29,6 +30,8 @@ function shipEngineSourceAndNotices(): Plugin {
       copy('THIRD_PARTY_NOTICES.md', 'licenses/THIRD_PARTY_NOTICES.md');
       copy('LICENSES/LGPL-2.1-or-later.txt', 'licenses/LGPL-2.1-or-later.txt');
       copy('LICENSE', 'licenses/LICENSE.txt');
+      // The fonts the Notebook look ships (src/notebook/fonts/), each under the SIL Open Font License 1.1.
+      for (const f of readdirSync(resolve(root, 'src/notebook/fonts'))) if (/^OFL-.*\.txt$/.test(f)) copy(`src/notebook/fonts/${f}`, `licenses/${f}`);
       copy('engine/README.md', 'engine/README.md');
       copy('engine/build.sh', 'engine/build.sh');
       copy('engine/no-system.js', 'engine/no-system.js');
@@ -185,7 +188,8 @@ function pageHead(): Plugin {
 
 /**
  * Milestone 2's design prototypes (design/prototypes/<direction>/index.html, and design/index.html
- * comparing them) and the schematic lab (design/lab/: every example drawn by the automatic layout):
+ * comparing them), the schematic lab (design/lab/: every example drawn by the automatic layout) and
+ * Tarık's checkpoint of the chosen look (design/checkpoint/: the Notebook canvas on p02's circuits):
  * built and deployed at /design/... so Tarık can click them, but not part of the app (no offline
  * cache, no manifest).
  */
@@ -196,6 +200,7 @@ function designPages(): Record<string, string> {
   };
   add('design', 'design/index.html');
   add('design-lab', 'design/lab/index.html');
+  add('design-checkpoint', 'design/checkpoint/index.html');
   const dir = resolve(root, 'design/prototypes');
   if (existsSync(dir)) for (const name of readdirSync(dir)) add(`design-${name}`, `design/prototypes/${name}/index.html`);
   return pages;
@@ -239,8 +244,10 @@ function offlineApp(): Plugin[] {
     },
     workbox: {
       globPatterns: ['**/*.{html,js,css,wasm,svg,png}', 'engine/*.{txt,md,sh}', 'engine/patches/*', 'licenses/*.{md,txt}'],
-      // The spike page is a check for developers, not part of the app: not worth 40 kB offline.
-      globIgnores: ['engine/source/**', 'spike/**', 'assets/spike-*', 'design/**', 'assets/design-*'],
+      // The spike page is a check for developers, not part of the app: not worth 40 kB offline. Nor are
+      // the design pages, or the screenshots they show (assets/*.png, about 9 MB: the app's own
+      // images are the icons, in icons/).
+      globIgnores: ['engine/source/**', 'spike/**', 'assets/spike-*', 'design/**', 'assets/design-*', 'assets/*.png'],
       // Files with a content hash in their name never change, so the service worker may take them
       // from the HTTP cache: a first visit then downloads ngspice.wasm once, not twice (perf review 2;
       // without this Workbox fetches every revisioned file again with cache: 'reload').

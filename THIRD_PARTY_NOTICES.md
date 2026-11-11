@@ -161,3 +161,25 @@ Sorokin), and their dependencies. Every build writes the full list, with each pa
 licence and notice files, to `licenses/THIRD_PARTY_LICENSES.txt` on the site (generated from
 exactly what is bundled; see `vite.config.ts`). axe-core (MPL-2.0), Playwright (Apache-2.0)
 and the other development tools are used to build and test only and are not shipped.
+
+## 7. Fonts
+
+The Notebook look ([decision 0014](docs/decisions/0014-the-look.md)) ships four font families with
+the site, from [`src/notebook/fonts/`](src/notebook/fonts/) (subsets: Latin, Latin-1 and the symbols
+PlainSpice shows, as WOFF2; nothing is loaded from a font service). Each is under the **SIL Open Font
+License, version 1.1**; the licence texts are next to the fonts and on the site in `licenses/`
+(`OFL-Caveat.txt`, `OFL-Inter.txt`, `OFL-JetBrainsMono.txt`, `OFL-NotebookSerif-CMU.txt`).
+
+- **Caveat** (Copyright 2014 The Caveat Project Authors): the results written by hand on the drawing.
+  [`OFL-Caveat.txt`](src/notebook/fonts/OFL-Caveat.txt)
+- **Inter** (Copyright 2016 The Inter Project Authors): everything the app says, and the results in
+  the plain-font setting. [`OFL-Inter.txt`](src/notebook/fonts/OFL-Inter.txt)
+- **JetBrains Mono** (Copyright 2020 The JetBrains Mono Project Authors): the netlist.
+  [`OFL-JetBrainsMono.txt`](src/notebook/fonts/OFL-JetBrainsMono.txt)
+- **Notebook Serif**: a subset of **CMU Serif** (Computer Modern Unicode, Copyright Andrey V. Panov,
+  after Donald E. Knuth's Computer Modern), the values on the drawing. "Computer Modern Unicode" is a
+  Reserved Font Name under its licence, so the modified (subset) font is renamed, as the OFL asks.
+  [`OFL-NotebookSerif-CMU.txt`](src/notebook/fonts/OFL-NotebookSerif-CMU.txt)
+
+The design prototypes in `design/prototypes/` (kept as a record) carry their own copies of these and
+of Nunito, Recursive and Shantell Sans, each with its OFL text in its `fonts/` folder.

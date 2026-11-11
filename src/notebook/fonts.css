@@ -1,0 +1,72 @@
+/*
+ * The Notebook's fonts, shipped with the site (no CDN), each under the SIL Open Font License 1.1
+ * (licence texts in ./fonts/, and in the site's licenses/ folder). Subsets: Latin, Latin-1 and the
+ * symbols PlainSpice shows (Ω µ − → × …). See ./fonts/README.md.
+ *
+ *   Inter          everything the app says (and results in the plain font)
+ *   Caveat         results handwritten on the drawing
+ *   Notebook Serif values on the drawing, typeset like the episodes' LaTeX (CMU Serif, renamed as its licence asks)
+ *   JetBrains Mono the netlist
+ */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/inter-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/inter-medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/inter-semibold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Caveat';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/caveat-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Caveat';
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/caveat-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Notebook Serif';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('./fonts/notebook-serif-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Notebook Serif';
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+  src: url('./fonts/notebook-serif-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/jetbrains-mono-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/jetbrains-mono-medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/jetbrains-mono-semibold.woff2') format('woff2');
+}
