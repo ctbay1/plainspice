@@ -80,7 +80,13 @@ Done so far:
 - **Three design directions**, clickable on desktop and phone, all running real ngspice:
   <https://plainspice.com/design/> compares Notebook (the channel's paper look), Studio (a dark
   pro tool) and Playground (a light, hand-drawn whiteboard). Each was designed, critiqued by a
-  second designer and refined. **Waiting for Tarık to pick one.**
+  second designer and refined. **Tarık chose Notebook** (decision 0014), with Playground's named
+  parts toolbar and hint line, Studio's Ctrl+K and status line, and a plain-font setting; part
+  positions live in the netlist, folded away (decision 0013).
+- **The Notebook canvas** (`src/notebook/`, decision 0015): any netlist drawn from the schematic
+  model in the chosen look, with the results written on it, solved live. **Checkpoint for Tarık**:
+  <https://plainspice.com/design/checkpoint/> shows it on p02's dependent-source circuits (G1 and
+  F1), on a computer and a phone. **Waiting for his OK before the rest is built.**
 - **The schematic model** (`src/schematic/`, decision 0013), which every direction needs: the
   circuit drawn from its netlist with a textbook-style automatic layout (all examples:
   <https://plainspice.com/design/lab/>), the drawing format, the edit operations for the
@@ -114,10 +120,13 @@ Done so far:
 
 ## Open questions for Tarık
 
-- **Which direction** (Notebook, Studio or Playground, <https://plainspice.com/design/>)?
-- **Where part positions live** (decision 0013): in the netlist as `*@` comment lines, which
-  ngspice ignores (recommended: one file carries the circuit and its drawing), or only in share
-  links? This becomes permanent once links with drawings are in video descriptions.
+- **The checkpoint** (<https://plainspice.com/design/checkpoint/>): does the Notebook look work on
+  p02's circuits, on a computer and a phone? On a phone, a wide drawing is turned a quarter to fit
+  at a readable size, with "As in the video" one tap away: keep that, or always show it as drawn?
+- **"Nothing after .end counts"**: ngspice does read a part written after a plain `.end` (fact S25,
+  re-run on 11 Nov in native ngspice 47 and 42: with `R2 n1 0 2` after `.end`, n1 drops from 2 V to
+  1 V); only `.end;…` with a comment glued on stops it. So the explanation says "the parts go
+  before .end" as advice, and the after-end check explains what happens otherwise.
 
 - Share links have no checksum (decision 0008): fine while links are clicked; worth adding only
   if links will ever be typed by hand.
