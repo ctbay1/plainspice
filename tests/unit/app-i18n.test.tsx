@@ -10,7 +10,7 @@ import { t, tn } from '../../src/i18n/index.ts';
 
 describe('t and tn', () => {
   it('fills placeholders and leaves unknown ones visible', () => {
-    expect(t('lineButton', { line: 3 })).toBe('Line 3');
+    expect(t('cardLine', { line: 3 })).toBe(' · line 3');
     expect(t('goToLine', {})).toBe('Go to line {line} in the netlist');
   });
 

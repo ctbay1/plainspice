@@ -1,12 +1,13 @@
 /**
  * The Examples menu (lazy-loaded with React Aria's Popover and Menu, which the first screen does
- * not need): the channel's videos in channel order, then the basics (src/app/examples.ts). Anchored
- * to the toolbar's Examples button; choosing an example closes it.
+ * not need): Start here (the first screen's circuit), the channel's videos in channel order, then
+ * the basics (src/app/examples.ts). Anchored to the Examples button (the title, on a phone);
+ * choosing an example closes it.
  */
 import type { ReactNode, RefObject } from 'react';
 import { Header, Menu, MenuItem, MenuSection, Popover } from 'react-aria-components';
 import { t } from '../../i18n/index.ts';
-import type { MenuFocus } from '../components/AppToolbar.tsx';
+import type { MenuFocus } from '../components/Overlays.tsx';
 import { EXAMPLE_GROUPS, EXAMPLES } from '../examples.ts';
 
 export default function ExamplesMenu({

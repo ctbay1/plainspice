@@ -1,7 +1,8 @@
 /**
- * The Plot tab: .dc sweeps and .tran waveforms through the accessible plot module (src/plot,
- * decision 0004), loaded with a dynamic import only when a run has sweep results. The module
- * decides how voltages and currents are drawn (stacked panels for different units).
+ * The Plot panel: .dc sweeps and .tran waveforms through the accessible plot module (src/plot,
+ * decision 0004: a summary in words, a keyboard cursor, a data table and CSV), loaded with a dynamic
+ * import only when a run has sweep results. The module decides how voltages and currents are drawn
+ * (stacked panels for different units).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AnalysisResults, Sweep } from '../../engine/results.ts';
@@ -80,8 +81,7 @@ export function PlotPanel({ results, netlist }: { results: AnalysisResults; netl
   }, [specs]);
 
   return (
-    <div className="panel">
-      <h2 className="panel__title">{t('plotHeading')}</h2>
+    <div className="plot-panel">
       {!specs.length && <p className="muted">{t('plotNone')}</p>}
       {specs.length > 0 && status.kind === 'loading' && <p className="muted">{t('plotLoading')}</p>}
       {status.kind === 'failed' && <p className="message message--problem">{t('plotFailed', { reason: status.reason })}</p>}

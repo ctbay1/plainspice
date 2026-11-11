@@ -243,7 +243,15 @@ function offlineApp(): Plugin[] {
       ],
     },
     workbox: {
-      globPatterns: ['**/*.{html,js,css,wasm,svg,png}', 'engine/*.{txt,md,sh}', 'engine/patches/*', 'licenses/*.{md,txt}'],
+      // The Notebook's fonts (src/notebook/fonts/, about 400 kB) too, so the page looks the same
+      // offline; not the design prototypes' own fonts.
+      globPatterns: [
+        '**/*.{html,js,css,wasm,svg,png}',
+        'assets/{inter,caveat,notebook-serif,jetbrains-mono}-*.woff2',
+        'engine/*.{txt,md,sh}',
+        'engine/patches/*',
+        'licenses/*.{md,txt}',
+      ],
       // The spike page is a check for developers, not part of the app: not worth 40 kB offline. Nor are
       // the design pages, or the screenshots they show (assets/*.png, about 9 MB: the app's own
       // images are the icons, in icons/).
@@ -251,7 +259,7 @@ function offlineApp(): Plugin[] {
       // Files with a content hash in their name never change, so the service worker may take them
       // from the HTTP cache: a first visit then downloads ngspice.wasm once, not twice (perf review 2;
       // without this Workbox fetches every revisioned file again with cache: 'reload').
-      dontCacheBustURLsMatching: /-[\w-]{8}\.(?:js|css|wasm)$/,
+      dontCacheBustURLsMatching: /-[\w-]{8}\.(?:js|css|wasm|woff2)$/,
       // ngspice.wasm is about 1.7 MB before compression; Workbox's default limit is 2 MiB.
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       manifestTransforms: [

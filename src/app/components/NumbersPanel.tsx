@@ -1,5 +1,7 @@
 /**
- * The Results tab: what ngspice computed, in plain units, next to the same values in ngspice's format.
+ * The Numbers panel: every result of the last run in tables, in plain units next to the same values
+ * in ngspice's format, for precise values and for screen readers (the drawing shows the same numbers
+ * handwritten, decision 0016).
  *
  * - A status banner: finished / not reliable (ngspice's DC solution failed, or a check found an
  *   error, so the numbers are not answers) / ngspice stopped with an error / no results (ngspice
@@ -12,18 +14,19 @@
  *   "Line n" button when it is about a line.
  * - When the numbers are not answers, they stay folded under "What ngspice printed anyway".
  *
- * The panel and its tables are memoised: typing re-reads the netlist every few keystrokes, and
- * drawing hundreds of result rows again each time made typing slow (perf review 5).
+ * The panel and its tables are memoised: live runs come every few keystrokes, and drawing hundreds
+ * of result rows again each time made typing slow (perf review 5).
  */
 import { memo, type ReactNode } from 'react';
-import { Button } from 'react-aria-components';
 import type { AnalysisResults } from '../../engine/results.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../../format/si.ts';
 import { t, tn, type MessageKey } from '../../i18n/index.ts';
 import type { Trap } from '../../spice/types.ts';
-import type { MessageWords, ResultsDescription, TransferFunctionWords } from '../model.ts';
+import type { LiveOutcome } from '../live.ts';
+import { errorTrap, type MessageWords, type ResultsDescription, type RunRecord, type TransferFunctionWords } from '../model.ts';
 import { sameColours } from '../nodes.ts';
-import { errorTrap, type RunOutcome } from '../state.ts';
+import { pressRun } from '../words.ts';
+import { nodeWord } from '../../notebook/words.ts';
 import { ErrorIcon, InfoIcon, OkIcon, StopIcon, WarningIcon } from './Icons.tsx';
 import { TableWrap } from './TableWrap.tsx';
 
@@ -128,7 +131,8 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
               <td className="num">
                 <Quantity text={formatSI(Math.abs(c.value), 'A')} speech={speakSI(Math.abs(c.value), 'A')} />
               </td>
-              <td>{c.value === 0 ? t('flowsNone') : t('flowsFromTo', { from: c.from, to: c.to })}</td>
+              {/* Ground called "ground", as on the drawing and the card. */}
+              <td>{c.value === 0 ? t('flowsNone') : t('flowsFromTo', { from: nodeWord(c.from), to: nodeWord(c.to) })}</td>
               {showPower && (
                 <td>
                   {c.power && (
@@ -163,8 +167,16 @@ function panelSummary(summary: string): string {
 /** A .tf ratio's unit in words, for screen readers ("0.3333 volts per volt"). */
 const RATIO_WORDS: Record<string, MessageKey> = { 'V/V': 'ratioVV', 'A/A': 'ratioAA', 'A/V': 'ratioAV', 'V/A': 'ratioVA' };
 
-const TfTable = memo(function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
-  const rows: { label: string; text: string; speech: string; value: number }[] = [];
+export interface TfRow {
+  label: string;
+  text: string;
+  speech: string;
+  value: number;
+}
+
+/** The .tf results as rows: the transfer function, the output resistance and the input resistance, in words (the drawing's card shows them too). */
+export function tfRows(tf: TransferFunctionWords): TfRow[] {
+  const rows: TfRow[] = [];
   if (tf.transferFunction) {
     const v = tf.transferFunction.value;
     rows.push({
@@ -184,6 +196,11 @@ const TfTable = memo(function TfTable({ tf }: { tf: TransferFunctionWords }): Re
     const v = tf.inputResistance.value;
     rows.push({ label: t('tfInput', { source: tf.input }), text: formatSI(v, 'Ω'), speech: speakSI(v, 'Ω'), value: v });
   }
+  return rows;
+}
+
+const TfTable = memo(function TfTable({ tf }: { tf: TransferFunctionWords }): ReactNode {
+  const rows = tfRows(tf);
   if (!rows.length) return null;
   return (
     <TableWrap label={t('tfCaption')}>
@@ -255,9 +272,9 @@ function Messages({ warnings, traps, onGoToLine }: { warnings: readonly MessageW
                 {m.line !== undefined && (
                   <>
                     {' '}
-                    <Button className="link-button" onPress={() => onGoToLine(m.line!)} aria-label={t('goToLine', { line: m.line })}>
-                      {t('lineButton', { line: m.line })}
-                    </Button>
+                    <button type="button" className="link-button" onClick={() => onGoToLine(m.line!)}>
+                      {t('goToLine', { line: m.line })}
+                    </button>
                   </>
                 )}
               </p>
@@ -270,39 +287,52 @@ function Messages({ warnings, traps, onGoToLine }: { warnings: readonly MessageW
   );
 }
 
-function timeoutText(outcome: Extract<RunOutcome, { kind: 'timeout' }>): string {
+type Outcome = LiveOutcome<RunRecord>;
+
+function timeoutText(outcome: Extract<Outcome, { kind: 'timeout' }>): string {
   const text = t('statusTimeoutText', { seconds: outcome.seconds });
   return outcome.points === undefined ? text : `${text} ${t('statusTimeoutPoints', { points: outcome.points.toLocaleString('en-US') })}`;
 }
 
-export const ResultsPanel = memo(function ResultsPanel({
+export const NumbersPanel = memo(function NumbersPanel({
   outcome,
+  text,
   running,
+  paused,
   colours,
   plotAvailable,
+  phone = false,
   onGoToLine,
   onShowChecks,
   onShowPlot,
 }: {
-  outcome: RunOutcome;
+  outcome: Outcome;
+  /** The netlist as it is now (results of an older text are marked as such). */
+  text: string;
   running: boolean;
+  /** Live runs wait for Run. */
+  paused: boolean;
   colours: ReadonlyMap<string, string>;
   plotAvailable: boolean;
+  /** A phone: Run is tapped, not pressed with keys. */
+  phone?: boolean;
   onGoToLine: (line: number) => void;
   onShowChecks: () => void;
   onShowPlot: () => void;
 }): ReactNode {
   return (
-    <div className="panel">
-      <h2 className="panel__title">{t('resultsHeading')}</h2>
-      {running && <p className="status-line">{t('resultsRunning')}</p>}
-      {outcome.kind === 'none' && !running && <p className="muted">{t('resultsEmpty')}</p>}
+    <div className="numbers">
+      {running && <p className="status-note">{t('resultsRunning')}</p>}
+      {outcome.kind === 'none' && !running && <p className="muted">{paused ? t('resultsEmptyPaused', { run: pressRun(phone) }) : t('resultsEmpty')}</p>}
+      {outcome.kind === 'nothing' && <p className="muted">{t('noAnalysis')}</p>}
       {outcome.kind === 'stopped' && <StatusBanner kind="stopped" text={t('statusStoppedText')} />}
       {outcome.kind === 'timeout' && <StatusBanner kind="stopped" text={timeoutText(outcome)} />}
       {outcome.kind === 'failed' && <StatusBanner kind="failed" text={t('statusFailedText', { reason: outcome.reason })} />}
       {outcome.kind === 'done' && (
         <DoneResults
-          outcome={outcome}
+          record={outcome.result}
+          stale={paused && outcome.text !== text}
+          phone={phone}
           colours={colours}
           plotAvailable={plotAvailable}
           onGoToLine={onGoToLine}
@@ -314,7 +344,7 @@ export const ResultsPanel = memo(function ResultsPanel({
   );
 });
 
-/** The note that points to the Checks tab, worded for what the checks found (words review m8). */
+/** The note that points to the Checks panel, worded for what the checks found (words review m8). */
 function TrapsNote({ traps, onShowChecks }: { traps: readonly Trap[]; onShowChecks: () => void }): ReactNode {
   if (!traps.length) return null;
   const errors = traps.filter((x) => x.severity === 'error').length;
@@ -323,32 +353,36 @@ function TrapsNote({ traps, onShowChecks }: { traps: readonly Trap[]; onShowChec
   return (
     <p className="message message--note">
       {text}{' '}
-      <Button className="link-button" onPress={onShowChecks}>
+      <button type="button" className="link-button" onClick={onShowChecks}>
         {t('showChecks')}
-      </Button>
+      </button>
     </p>
   );
 }
 
 function DoneResults({
-  outcome,
+  record,
+  stale,
+  phone,
   colours,
   plotAvailable,
   onGoToLine,
   onShowChecks,
   onShowPlot,
 }: {
-  outcome: Extract<RunOutcome, { kind: 'done' }>;
+  record: RunRecord;
+  stale: boolean;
+  phone: boolean;
   colours: ReadonlyMap<string, string>;
   plotAvailable: boolean;
   onGoToLine: (line: number) => void;
   onShowChecks: () => void;
   onShowPlot: () => void;
 }): ReactNode {
-  const { results, description } = outcome;
+  const { results, words: description } = record;
   // A check that found an error means the numbers are not answers, however cleanly ngspice ran
   // (words review B1): they are folded away like those of a failed DC solution.
-  const checkError = description.status === 'ok' ? errorTrap(outcome) : undefined;
+  const checkError = description.status === 'ok' ? errorTrap(record) : undefined;
   const kind: BannerKind =
     description.status === 'ok'
       ? checkError
@@ -389,21 +423,21 @@ function DoneResults({
   const hasNumbers = description.nodes.length > 0 || description.currents.length > 0 || description.tf !== undefined || description.sweeps.length > 0;
   return (
     <>
-      {outcome.stale && <p className="message message--note">{t('staleResults')}</p>}
+      {stale && <p className="message message--note">{t('staleResults', { run: pressRun(phone) })}</p>}
       <StatusBanner kind={kind} text={text} />
-      <TrapsNote traps={outcome.traps} onShowChecks={onShowChecks} />
+      <TrapsNote traps={record.checks} onShowChecks={onShowChecks} />
       {kind === 'finished' && description.summary && <p className="summary">{panelSummary(description.summary)}</p>}
       {kind === 'finished' && tables}
       {kind === 'finished' && sweeps}
       {kind === 'finished' && plotAvailable && (
         <p>
           {t('sweepsNote')}{' '}
-          <Button className="link-button" onPress={onShowPlot}>
+          <button type="button" className="link-button" onClick={onShowPlot}>
             {t('showPlot')}
-          </Button>
+          </button>
         </p>
       )}
-      <Messages warnings={description.warnings} traps={outcome.traps} onGoToLine={onGoToLine} />
+      <Messages warnings={description.warnings} traps={record.checks} onGoToLine={onGoToLine} />
       {kind === 'unreliable' && hasNumbers && (
         <details className="disclosure">
           <summary>{t('printedAnyway')}</summary>

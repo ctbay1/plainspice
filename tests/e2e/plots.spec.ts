@@ -1,15 +1,17 @@
 /**
- * 7. Plots (decision 0004): the .dc and .tran examples draw a figure with a heading and a summary in
- * words, a keyboard cursor (an ARIA slider whose value is spoken with units in words) and a data
+ * 7. Plots (decision 0004): a .dc or .tran example, solved as it opens, says what the sweep found on
+ * a card on the paper; "Show the plot" opens the Plot panel: a figure with a heading and a summary
+ * in words, a keyboard cursor (an ARIA slider whose value is spoken with units in words) and a data
  * table behind a disclosure.
  */
 import { expect, test } from '@playwright/test';
 import { PLOT_STRINGS } from '../../src/plot/strings.ts';
-import { chooseExample, openApp, resultsPanel, runAndExpectFinished, t, tab } from './helpers.ts';
+import { chooseExample, expectSolved, openApp, openPanel, panel, setNetlist, statusLine, t } from './helpers.ts';
 
 const CASES = [
   {
     example: t('exampleD1'),
+    analysis: '.dc',
     title: 'DC sweep: v(in), v(out), i(v1) as V1 changes',
     // v(out) = 2/3 of V1: 0 V to 8 V as V1 goes from 0 V to 12 V.
     summary: /v\(out\) rises[^.]* from 0\sV to 8\sV as V1 goes from 0\sV to 12\sV/,
@@ -22,6 +24,7 @@ const CASES = [
   },
   {
     example: t('exampleT1'),
+    analysis: '.tran',
     title: 'Transient analysis: v(in), v(out), i(v1) against time',
     // tau = 1 ms: after 5 ms the capacitor is at 5 (1 - e^-5) = 4.966 V.
     summary: /v\(out\) rises from 0\sV to 4\.966\sV over 5\sms/,
@@ -38,12 +41,17 @@ for (const c of CASES) {
   test(`the plot of “${c.example}”: heading, summary, keyboard cursor, data table`, async ({ page }) => {
     await openApp(page);
     await chooseExample(page, c.example);
-    await runAndExpectFinished(page);
+    await expectSolved(page);
 
-    // "Show the plot" opens the Plot tab, and focus moves to that tab (the button went with its panel).
-    await resultsPanel(page).getByRole('button', { name: t('showPlot') }).click();
-    await expect(tab(page, t('tabPlot'))).toHaveAttribute('aria-selected', 'true');
-    await expect(tab(page, t('tabPlot'))).toBeFocused();
+    // The sweep's summary is on a card on the paper; "Show the plot" opens the Plot panel, and focus
+    // moves to its heading.
+    // Named for its analysis ("What .tran found"): a .tran is not a sweep.
+    const card = page.getByRole('region', { name: t('resultsCardSweep', { analysis: c.analysis }) });
+    await expect(card).toContainText(/points|rises/);
+    await card.getByRole('button', { name: t('showPlot') }).click();
+    const plot = panel(page, 'plot');
+    await expect(plot).toBeVisible();
+    await expect(plot.getByRole('heading', { level: 2, name: t('panelPlot') })).toBeFocused();
 
     const figure = page.getByRole('figure', { name: c.title });
     await expect(figure.getByRole('heading', { name: c.title })).toBeVisible();
@@ -68,3 +76,16 @@ for (const c of CASES) {
     await expect(figure.getByRole('button', { name: /^Download CSV/ })).toBeVisible();
   });
 }
+
+test('the Plot panel says why there is no plot: no sweep line, or a run that has not happened yet', async ({ page }) => {
+  await openApp(page);
+  // Start here has an .op only: a .dc or .tran line makes a plot.
+  const plot = await openPanel(page, 'plot');
+  await expect(plot).toContainText(t('plotNone'));
+  // A .tran that waits for Run (very many points): the plot comes once ngspice has run it.
+  await setNetlist(page, '* A long .tran\nV1 a 0 1\nR1 a b 1k\nC1 b 0 1u\n.tran 1u 1 0 1u\n.end\n');
+  await expect(statusLine(page)).toContainText(t('statusPaused'));
+  const again = await openPanel(page, 'plot');
+  await expect(again).toContainText(t('plotWaiting'));
+  await expect(again).not.toContainText(t('plotNone'));
+});

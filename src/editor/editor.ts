@@ -13,7 +13,7 @@ import './editor.css';
 import { defaultKeymap, history, historyKeymap, isolateHistory } from '@codemirror/commands';
 import { bracketMatching, syntaxHighlighting } from '@codemirror/language';
 import { forEachDiagnostic, linter, lintGutter, lintKeymap, nextDiagnostic, openLintPanel, previousDiagnostic, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
-import { ChangeSet, EditorSelection, EditorState, Prec, type Extension } from '@codemirror/state';
+import { ChangeSet, EditorSelection, EditorState, Prec, Transaction, type Extension } from '@codemirror/state';
 import {
   closeHoverTooltips,
   EditorView,
@@ -25,7 +25,8 @@ import {
 } from '@codemirror/view';
 import type { Fix, Span, TextChange, Trap } from '../spice/types.ts';
 import { mapFix, trapsToDiagnostics } from './diagnostics.ts';
-import { editorColourTheme, spiceHighlightStyle } from './highlight.ts';
+import { drawingFold, setDrawingFoldedEffect } from './drawing-fold.ts';
+import { editorColourTheme, editorScreenTheme, spiceHighlightStyle } from './highlight.ts';
 import { inlineNotesField, setInlineNotesEffect, type InlineNote } from './inline-notes.ts';
 import { nodeColourExtension, setNodeColoursEffect } from './node-colours.ts';
 import { spiceLanguage } from './spice-language.ts';
@@ -47,6 +48,20 @@ export interface EditorOptions {
   onRun?: () => void;
   /** Called when the cursor moves to another line (1-based); not called for the starting line 1. */
   onCursorLine?: (line: number) => void;
+  /**
+   * The editor's own undo history (default true). The app keeps one history for the whole netlist
+   * (src/app/store.ts): with false the editor keeps none, and Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y call
+   * onUndo and onRedo instead.
+   */
+  history?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  /** 'screen': the dark "simulator screen" of the episodes (the app's Netlist panel); default 'paper'. */
+  look?: 'paper' | 'screen';
+  /** Fold the drawing's lines into one line (drawing-fold.ts) from the start: true or false; leave out for no fold. */
+  foldDrawing?: boolean;
+  /** The drawing's lines were folded or unfolded (a click on the folded line, or setDrawingFolded). */
+  onDrawingFold?: (folded: boolean) => void;
 }
 
 export interface PlainSpiceEditor {
@@ -54,6 +69,17 @@ export interface PlainSpiceEditor {
   getDoc(): string;
   /** Replace the whole text (one undo step); clears traps and inline notes, cursor to the start. */
   setDoc(text: string): void;
+  /**
+   * Make the text this one, changing only the part that differs, so the cursor stays where it was
+   * (the app's store changed the text: a value set on the drawing, an undo). No undo step of its
+   * own, and not reported to onChange (the text came from the app).
+   */
+  syncDoc(text: string): void;
+  /** Put the cursor at the start of a line (1-based) and bring it into view, without taking the focus. */
+  showLine(line: number): void;
+  /** Fold or unfold the drawing's lines (when the editor was made with foldDrawing). */
+  setDrawingFolded(folded: boolean): void;
+  drawingFolded(): boolean;
   focus(): void;
   /** Select a span (or the whole line), scroll it to the middle and focus the editor. */
   goToLine(line: number, span?: Span): void;
@@ -138,9 +164,20 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     return true; // Ctrl+Enter never inserts a blank line here, with or without onRun
   };
 
+  const ownHistory = opts.history !== false;
+  const fold = opts.foldDrawing === undefined ? undefined : drawingFold(opts.foldDrawing);
+  const undo = (): boolean => {
+    opts.onUndo?.();
+    return true;
+  };
+  const redo = (): boolean => {
+    opts.onRedo?.();
+    return true;
+  };
+
   const extensions: Extension[] = [
     EditorState.phrases.of(EDITOR_STRINGS.phrases),
-    EditorView.editorAttributes.of({ class: 'ps-editor' }),
+    EditorView.editorAttributes.of({ class: opts.look === 'screen' ? 'ps-editor ps-editor--screen' : 'ps-editor' }),
     EditorView.contentAttributes.of(contentAttributes),
     // Long lines and results wrap instead of scrolling sideways (WCAG 1.4.10 at 320 px).
     EditorView.lineWrapping,
@@ -150,11 +187,12 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     lintGutter({ tooltipFilter: () => [] }),
     highlightActiveLineGutter(),
     highlightActiveLine(),
-    history(),
+    ownHistory ? history() : [],
     bracketMatching(),
     spiceLanguage,
     syntaxHighlighting(spiceHighlightStyle),
-    editorColourTheme,
+    opts.look === 'screen' ? editorScreenTheme : editorColourTheme,
+    fold ?? [],
     linter(null), // diagnostics come from the app's trap checks (setTraps), not from a lint source
     inlineNotesField,
     nodeColourExtension,
@@ -166,14 +204,24 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
         { key: 'F8', run: moveToTrap(nextDiagnostic) },
         { key: 'Shift-F8', run: moveToTrap(previousDiagnostic) },
         { key: 'Escape', run: closePopUps },
+        ...(ownHistory
+          ? []
+          : [
+              { key: 'Mod-z', run: undo, preventDefault: true },
+              { key: 'Mod-Shift-z', run: redo, preventDefault: true },
+              { key: 'Mod-y', run: redo, preventDefault: true },
+            ]),
       ]),
     ),
     // No indentWithTab: Tab must move focus out of the editor.
-    keymap.of([...lintKeymap, ...historyKeymap, ...defaultKeymap]),
+    keymap.of([...lintKeymap, ...(ownHistory ? historyKeymap : []), ...defaultKeymap]),
     EditorView.updateListener.of((update) => {
+      if (fold && update.startState.field(fold).folded !== update.state.field(fold).folded) opts.onDrawingFold?.(update.state.field(fold).folded);
       if (update.docChanged) {
         if (sinceTraps) sinceTraps = sinceTraps.compose(update.changes);
-        opts.onChange?.(update.state.doc.toString());
+        // A text the app put in (syncDoc) is not a change to report back to it.
+        const synced = update.transactions.every((tr) => !tr.docChanged || tr.isUserEvent('sync'));
+        if (!synced) opts.onChange?.(update.state.doc.toString());
       }
       if (update.docChanged || update.selectionSet) {
         const line = update.state.doc.lineAt(update.state.selection.main.head).number;
@@ -245,6 +293,37 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
         scrollIntoView: true,
       });
     },
+    syncDoc(text) {
+      const current = view.state.doc.toString();
+      if (text === current) return;
+      // Only the part that differs changes, so the cursor (and the trap marks) stay where they were.
+      let start = 0;
+      const max = Math.min(current.length, text.length);
+      while (start < max && current.charCodeAt(start) === text.charCodeAt(start)) start += 1;
+      let endA = current.length;
+      let endB = text.length;
+      while (endA > start && endB > start && current.charCodeAt(endA - 1) === text.charCodeAt(endB - 1)) {
+        endA -= 1;
+        endB -= 1;
+      }
+      view.dispatch({
+        changes: { from: start, to: endA, insert: text.slice(start, endB) },
+        annotations: Transaction.addToHistory.of(false),
+        userEvent: 'sync',
+      });
+    },
+    showLine(line) {
+      const doc = view.state.doc;
+      if (!Number.isFinite(line)) return;
+      const n = Math.min(Math.max(Math.round(line), 1), doc.lines);
+      const at = doc.line(n).from;
+      if (view.state.selection.main.head === at) return;
+      view.dispatch({ selection: EditorSelection.cursor(at), effects: EditorView.scrollIntoView(at, { y: 'nearest' }), userEvent: 'select' });
+    },
+    setDrawingFolded(folded) {
+      if (fold && view.state.field(fold).folded !== folded) view.dispatch({ effects: setDrawingFoldedEffect.of(folded) });
+    },
+    drawingFolded: () => (fold ? view.state.field(fold).folded : false),
     focus: () => view.focus(),
     goToLine(line, span) {
       const doc = view.state.doc;

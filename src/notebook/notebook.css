@@ -77,6 +77,8 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
+  /* Clipped, not scrollable: focusing a part's button near an edge must not scroll the paper. */
+  overflow: clip;
   background-color: var(--nb-paper);
   background-image:
     linear-gradient(to right, var(--nb-grid-major) 1.5px, transparent 1.5px),
@@ -139,6 +141,15 @@
 }
 .nb-part.is-trap .nb-sym-fill {
   fill: var(--nb-red);
+}
+/* Left out by ngspice: pencil and dashes, as a part only sketched in. */
+.nb-part.is-left-out .nb-sym,
+.nb-part.is-left-out .nb-lead {
+  stroke: var(--nb-pencil) !important;
+  stroke-dasharray: calc(5px / var(--nb-k) / var(--nb-s)) calc(4px / var(--nb-k) / var(--nb-s));
+}
+.nb-part.is-left-out .nb-sym-fill {
+  fill: var(--nb-pencil);
 }
 .nb-hop-gap {
   stroke: var(--nb-paper);
@@ -380,5 +391,49 @@
   }
   .nb-settle {
     animation: none;
+  }
+}
+
+/*
+ * Windows High Contrast and other forced colours: the browser does not force an SVG's ink, so the
+ * drawing takes the system's colours itself, in light and dark themes alike. The node colours give
+ * way to the text colour (each node's name is written next to it), and the selection and the
+ * keyboard's ring take the system's highlight.
+ */
+@media (forced-colors: active) {
+  .nb-canvas {
+    --nb-paper: Canvas;
+    --nb-paper-raised: Canvas;
+    --nb-card: Canvas;
+    --nb-ink: CanvasText;
+    --nb-ink-2: CanvasText;
+    --nb-pencil: CanvasText;
+    --nb-pencil-faint: GrayText;
+    --nb-amber: CanvasText;
+    --nb-amber-text: CanvasText;
+    --nb-red: CanvasText;
+    --nb-red-text: CanvasText;
+    --nb-green: CanvasText;
+    --nb-green-text: CanvasText;
+    --nb-highlighter: Highlight;
+  }
+  .nb-canvas .nb-wire,
+  .nb-canvas .nb-lead,
+  .nb-canvas .nb-node__bar,
+  .nb-canvas .nb-terminal {
+    stroke: CanvasText !important;
+  }
+  .nb-canvas .nb-junction {
+    fill: CanvasText !important;
+  }
+  .nb-focus {
+    stroke: Highlight;
+    stroke-width: calc(3px / var(--nb-k));
+  }
+  .nb-hl {
+    mix-blend-mode: normal;
+  }
+  .nb-hl.is-selected {
+    opacity: 0.45;
   }
 }

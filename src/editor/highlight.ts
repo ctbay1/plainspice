@@ -14,7 +14,7 @@
 import { HighlightStyle } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { NODE_PALETTE_LIGHT, NODE_PALETTE_MORE } from '../theme/nodes.ts';
+import { NODE_PALETTE_LIGHT, NODE_PALETTE_MORE, NODE_PALETTE_SCREEN } from '../theme/nodes.ts';
 import { spiceTags } from './spice-language.ts';
 
 export type SyntaxRole =
@@ -77,6 +77,43 @@ export const GUTTER_TEXT: Readonly<Record<ContrastMode, string>> = { normal: '#5
 /** Inline results use the app's --accent-current; this is the fallback when the app does not define it. */
 export const INLINE_NOTE_FALLBACK = '#8A4B00';
 
+/**
+ * The Netlist panel's dark "simulator screen", as in the episodes (decision 0014). Each text colour
+ * has 4.5:1 or more on every screen background (tests/unit/editor-palette.test.ts), and the same
+ * signals besides colour as on paper (spiceHighlightStyle). In high contrast the screen turns white,
+ * with the high-contrast colours ('more').
+ */
+export const SCREEN_SYNTAX_COLOURS: Readonly<Record<SyntaxRole, string>> = {
+  comment: '#A7AFBD',
+  element: '#F4F6F8',
+  number: '#FFE08A',
+  scale: '#FFC27A',
+  warn: '#FFB86B',
+  directive: '#9FDCEF',
+  function: '#9CC8FF',
+  parameter: '#E8C9A0',
+  string: '#C7E79B',
+  invalid: '#FF8A80',
+};
+
+/** The screen's backgrounds: the text, the line with the cursor, the selection, the line numbers. */
+export const SCREEN_BACKGROUNDS: Readonly<{ surface: string; activeLine: string; selection: string; gutter: string; activeGutter: string }> = {
+  surface: '#1F242D',
+  activeLine: '#2A303B',
+  selection: '#2F3D55',
+  gutter: '#1B2028',
+  activeGutter: '#2C3340',
+};
+
+/** Line numbers on the screen. */
+export const SCREEN_GUTTER_TEXT = '#A7AFBD';
+
+/** Results at the ends of the lines on the screen (the episodes' amber). */
+export const SCREEN_INLINE_NOTE = '#FFD54F';
+
+/** Trap underlines and gutter markers on the screen (graphics: 3:1 or more on the screen's backgrounds). */
+export const SCREEN_MARKS: Readonly<{ error: string; warning: string; info: string }> = { error: '#FF8A80', warning: '#FFD54F', info: '#A7AFBD' };
+
 const syn = (role: SyntaxRole): string => `var(--ps-syn-${role}, ${SYNTAX_COLOURS.normal[role]})`;
 
 /**
@@ -121,6 +158,38 @@ export const spiceHighlightStyle = HighlightStyle.define([
   },
 ]);
 
+function screenVars(): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const [role, colour] of Object.entries(SCREEN_SYNTAX_COLOURS)) vars[`--ps-syn-${role}`] = colour;
+  const bg = SCREEN_BACKGROUNDS;
+  vars['--ps-surface'] = bg.surface;
+  vars['--ps-active-line'] = bg.activeLine;
+  vars['--ps-selection'] = bg.selection;
+  vars['--ps-gutter'] = bg.gutter;
+  vars['--ps-gutter-active'] = bg.activeGutter;
+  vars['--ps-gutter-text'] = SCREEN_GUTTER_TEXT;
+  vars['--ps-note'] = SCREEN_INLINE_NOTE;
+  vars['--ps-mark-error'] = SCREEN_MARKS.error;
+  vars['--ps-mark-warning'] = SCREEN_MARKS.warning;
+  vars['--ps-mark-info'] = SCREEN_MARKS.info;
+  NODE_PALETTE_SCREEN.forEach((c, i) => {
+    vars[`--ps-node-${i + 1}`] = c;
+  });
+  return vars;
+}
+
+/** The high-contrast screen: white, like the high-contrast page. */
+function screenMoreVars(): Record<string, string> {
+  return {
+    ...colourVars('more'),
+    '--ps-surface': EDITOR_BACKGROUNDS.more.surface,
+    '--ps-note': SYNTAX_COLOURS.more.warn,
+    '--ps-mark-error': SYNTAX_COLOURS.more.invalid,
+    '--ps-mark-warning': SYNTAX_COLOURS.more.warn,
+    '--ps-mark-info': SYNTAX_COLOURS.more.comment,
+  };
+}
+
 function colourVars(mode: ContrastMode): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const [role, colour] of Object.entries(SYNTAX_COLOURS[mode])) vars[`--ps-syn-${role}`] = colour;
@@ -142,12 +211,27 @@ function colourVars(mode: ContrastMode): Record<string, string> {
  * themes cannot select the editor itself, so the overrides sit on .cm-scroller, which holds the
  * text and the gutters.)
  */
-export const editorColourTheme = EditorView.theme({
-  '&': colourVars('normal'),
-  'html[data-contrast="more"] & .cm-scroller': colourVars('more'),
-  '@media (prefers-contrast: more)': { '.cm-scroller': colourVars('more') },
+const colourRules = {
   '.cm-content ::selection': { backgroundColor: 'var(--ps-selection)' },
   '.cm-activeLine': { backgroundColor: 'var(--ps-active-line)' },
   '.cm-gutters': { backgroundColor: 'var(--ps-gutter)', color: 'var(--ps-gutter-text)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--ps-gutter-active)', color: 'var(--ps-syn-element)' },
+};
+
+export const editorColourTheme = EditorView.theme({
+  '&': colourVars('normal'),
+  'html[data-contrast="more"] & .cm-scroller': colourVars('more'),
+  '@media (prefers-contrast: more)': { '.cm-scroller': colourVars('more') },
+  ...colourRules,
+});
+
+/**
+ * The dark "simulator screen" look (EditorOptions.look 'screen'): the same rules on the screen's
+ * colours; white again in high contrast. editor.css draws the screen's background from --ps-surface.
+ */
+export const editorScreenTheme = EditorView.theme({
+  '&': screenVars(),
+  'html[data-contrast="more"] &, html[data-contrast="more"] & .cm-scroller': screenMoreVars(),
+  '@media (prefers-contrast: more)': { 'html:not([data-contrast]) &, html:not([data-contrast]) & .cm-scroller': screenMoreVars() },
+  ...colourRules,
 });

@@ -1,7 +1,7 @@
 /**
- * The Checks tab: beginner traps found before running (src/spice/traps.ts), grouped by severity.
- * Each says where (a "Line n" button that selects it in the editor), what, why, what ngspice does,
- * and offers its fixes as buttons. Severity is an icon AND a word, never colour alone.
+ * The Checks panel: beginner traps found before every run (src/spice/traps.ts), grouped by
+ * severity. Each says where (a "Line n" button that shows it in the Netlist panel), what, why, what
+ * ngspice does, and offers its fixes as buttons. Severity is an icon AND a word, never colour alone.
  *
  * A fix usually removes its trap, and with it the button that was just pressed. Focus would then
  * fall to the page and a keyboard user would start again from the top (WCAG 2.4.3), so it moves to
@@ -11,12 +11,11 @@
  * thousands of identical mistakes froze the page for many seconds while every one of them and its
  * buttons were drawn (security review M2). The rest are counted, and appear as the first are fixed.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
-import { Button } from 'react-aria-components';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { t, tn, type MessageKey, type PluralBase } from '../../i18n/index.ts';
 import type { Fix, Trap } from '../../spice/types.ts';
-import { groupTraps } from '../state.ts';
-import { OkIcon, SEVERITY_ICON } from './Icons.tsx';
+import { groupTraps } from '../model.ts';
+import { SEVERITY_ICON } from './Icons.tsx';
 
 const SEVERITY_WORD: Record<Trap['severity'], MessageKey> = { error: 'severityError', warning: 'severityWarning', info: 'severityInfo' };
 /** How many traps of one severity are drawn at most. */
@@ -44,16 +43,21 @@ export function SeverityLabel({ severity }: { severity: Trap['severity'] }): Rea
 
 export function ChecksPanel({
   traps,
+  partOfLine,
   onGoToLine,
   onFix,
+  headingRef,
 }: {
   traps: readonly Trap[];
+  /** The name of the part on a line ("R1"), for the "Line 3" buttons' words. */
+  partOfLine?: (line: number) => string | undefined;
   onGoToLine: (trap: Trap) => void;
   onFix: (fix: Fix) => void;
+  /** The panel's heading: focus goes there when the last trap is fixed. */
+  headingRef?: RefObject<HTMLElement | null>;
 }): ReactNode {
   const groups = groupTraps(traps);
   const panel = useRef<HTMLDivElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
   /** The place (in reading order) of the trap whose fix was just pressed. */
   const fixedAt = useRef<number | null>(null);
 
@@ -66,68 +70,77 @@ export function ChecksPanel({
     const focused = document.activeElement;
     if (focused && focused !== document.body && focused.isConnected) return; // focus was not lost
     const titles = panel.current?.querySelectorAll<HTMLElement>('.trap__title') ?? [];
-    (titles[Math.min(at, titles.length - 1)] ?? heading.current)?.focus();
-  }, [traps]);
+    (titles[Math.min(at, titles.length - 1)] ?? headingRef?.current)?.focus();
+  }, [traps, headingRef]);
 
   // Each trap's place in reading order, across the severity groups.
   const placeOf = new Map(groups.flatMap((g) => g.traps).map((trap, i) => [trap, i]));
   return (
-    <div className="panel" ref={panel}>
-      {/* tabIndex -1: focusable by the app (after the last fix), not a Tab stop. */}
-      <h2 className="panel__title" ref={heading} tabIndex={-1}>
-        {t('checksHeading')}
-      </h2>
-      <p className="muted">{t('checksIntro')}</p>
+    <div className="checks" ref={panel}>
       {traps.length === 0 ? (
-        <p className="status-line status-line--ok">
-          <OkIcon />
-          {t('checksNone')}
-        </p>
+        <div className="checks-ok">
+          <svg className="checks-ok__tick" viewBox="0 0 44 44" aria-hidden="true" focusable="false">
+            <path d="M7 24.5c3.2 2.4 6.4 5.6 9.4 10.2C21.8 23 28.6 14.4 38 7.5" />
+          </svg>
+          <div>
+            <p className="checks-ok__title">{t('checksNone')}</p>
+            <p className="checks-ok__text">{t('checksIntro')}</p>
+          </div>
+        </div>
       ) : (
-        groups.map((g) => (
-          <section key={g.severity} className="trap-group" aria-labelledby={`traps-${g.severity}`}>
-            <h3 id={`traps-${g.severity}`} className="trap-group__title">
-              {tn(GROUP_TITLE[g.severity], g.traps.length)}
-            </h3>
-            <ul className="trap-list">
-              {g.traps.slice(0, SHOWN_PER_GROUP).map((trap, i) => (
-                <li key={`${trap.id}-${trap.line}-${i}`} className={`trap trap--${trap.severity}`}>
-                  <h4 className="trap__title" tabIndex={-1}>
-                    <SeverityLabel severity={trap.severity} />
-                    {/* "Warning: 1M means …", with a pause after the severity word for screen readers. */}
-                    <span className="visually-hidden">:</span> <span className="trap__text">{trap.title}</span>
-                  </h4>
-                  <Button className="link-button" onPress={() => onGoToLine(trap)} aria-label={t('goToLine', { line: trap.line })}>
-                    {t('lineButton', { line: trap.line })}
-                  </Button>
-                  <p>{trap.why}</p>
-                  <p>
-                    <strong>{t('whatNgspiceDoes')}</strong> {withoutClaimIds(trap.ngspice)}
-                  </p>
-                  {trap.fixes.length > 0 && (
-                    // A named group of buttons ("Fixes for line 3"); a fieldset is for form fields.
-                    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-                    <div className="trap__fixes" role="group" aria-label={t('fixesLabel', { line: trap.line })}>
-                      {trap.fixes.map((fix, k) => (
-                        <Button
-                          key={k}
-                          className="button button--fix"
-                          onPress={() => {
-                            fixedAt.current = placeOf.get(trap) ?? 0;
-                            onFix(fix);
-                          }}
-                        >
-                          {fix.label}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {g.traps.length > SHOWN_PER_GROUP && <p className="muted">{tn('checksMore', g.traps.length - SHOWN_PER_GROUP)}</p>}
-          </section>
-        ))
+        <>
+          <p className="muted">{t('checksIntro')}</p>
+          {groups.map((g) => (
+            <section key={g.severity} className="trap-group" aria-labelledby={`traps-${g.severity}`}>
+              <h3 id={`traps-${g.severity}`} className="trap-group__title">
+                {tn(GROUP_TITLE[g.severity], g.traps.length)}
+              </h3>
+              <ul className="trap-list">
+                {g.traps.slice(0, SHOWN_PER_GROUP).map((trap, i) => {
+                  const part = partOfLine?.(trap.line);
+                  return (
+                    <li key={`${trap.id}-${trap.line}-${i}`} className={`trap trap--${trap.severity}`}>
+                      <h4 className="trap__title" tabIndex={-1}>
+                        <SeverityLabel severity={trap.severity} />
+                        {/* "Warning: 1M means …", with a pause after the severity word for screen readers. */}
+                        <span className="visually-hidden">:</span> <span className="trap__text">{trap.title}</span>
+                      </h4>
+                      <p>{trap.why}</p>
+                      <p>
+                        <strong>{t('whatNgspiceDoes')}</strong> {withoutClaimIds(trap.ngspice)}
+                      </p>
+                      {trap.fixes.length > 0 && (
+                        // A named group of buttons ("Fixes for line 3"); a fieldset is for form fields.
+                        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+                        <div className="trap__fixes" role="group" aria-label={t('fixesLabel', { line: trap.line })}>
+                          {trap.fixes.map((fix, k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              className={`button ${k === 0 ? 'button--fix' : 'button--paper'}`}
+                              onClick={() => {
+                                fixedAt.current = placeOf.get(trap) ?? 0;
+                                onFix(fix);
+                              }}
+                            >
+                              {fix.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <p className="trap__line">
+                        <button type="button" className="link-button" onClick={() => onGoToLine(trap)}>
+                          {part ? t('goToLinePart', { part, line: trap.line }) : t('goToLine', { line: trap.line })}
+                        </button>
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+              {g.traps.length > SHOWN_PER_GROUP && <p className="muted">{tn('checksMore', g.traps.length - SHOWN_PER_GROUP)}</p>}
+            </section>
+          ))}
+        </>
       )}
     </div>
   );

@@ -1,28 +1,37 @@
 /**
- * 1. The engine and the results: ngspice runs in the browser's Web Worker and the Results tab shows
- * what it computed in plain units, with the direction of every current, on the netlist lines too,
- * and the run is announced.
+ * 1. The engine and the results: ngspice runs in the browser's Web Worker as soon as a circuit
+ * opens; the drawing shows what it computed in plain units, the Numbers panel lists every result
+ * with the direction of every current, the netlist lines carry them too, and the run is announced.
  */
 import { expect, test } from '@playwright/test';
 import {
   chooseExample,
   currentsTable,
+  drawnText,
   expectAnnounced,
+  expectFinished,
   inlineNote,
   nodeTable,
   openApp,
+  openNetlist,
   rowNamed,
-  runAndExpectFinished,
   shownText,
   t,
 } from './helpers.ts';
 
-const NBSP = '\u00a0';
+const NBSP = ' ';
 
-test('the F5 example runs in the browser: a = 14 V, n1 = 12 V, 3 A from n1 to 0 through R1', async ({ page }) => {
+test('the F5 example runs in the browser: a = 14 V, n1 = 12 V, 3 A from n1 to ground through R1', async ({ page }) => {
   await openApp(page);
   await chooseExample(page, t('exampleF5'));
-  await runAndExpectFinished(page);
+  // No Run pressed: a circuit is solved when it opens.
+  await expectFinished(page);
+
+  // On the drawing: each node's voltage beside its name, and R1's current.
+  const drawn = await drawnText(page);
+  expect(drawn).toMatch(/=\s14\sV/);
+  expect(drawn).toMatch(/=\s12\sV/);
+  expect(drawn).toMatch(/3\sA/);
 
   // Node voltages: "14 V" on screen, "14 volts" for a screen reader, ngspice's own printout beside them.
   for (const [node, volts] of [
@@ -35,17 +44,19 @@ test('the F5 example runs in the browser: a = 14 V, n1 = 12 V, 3 A from n1 to 0 
     await expect(cells.nth(1)).toHaveText(`v(${node}) = ${volts.toExponential(6).replace(/e\+(\d)$/, 'e+0$1')}`);
   }
 
-  // R1 carries 3 A, and the table says which way: from n1 to 0 (not a sign to decode).
+  // R1 carries 3 A, and the table says which way: from n1 to ground (not a sign to decode), ground
+  // called "ground" as on the drawing and the card.
   const r1 = rowNamed(currentsTable(page), 'R1').getByRole('cell');
   expect(await shownText(r1.nth(0))).toBe(`3${NBSP}A`);
   await expect(r1.nth(0)).toHaveAccessibleName('3 amps');
-  await expect(r1.nth(1)).toHaveText(t('flowsFromTo', { from: 'n1', to: '0' }));
+  await expect(r1.nth(1)).toHaveText(t('flowsFromTo', { from: 'n1', to: 'ground' }));
   await expect(r1.last()).toContainText('3.000000e+00');
 
-  // The same result on R1's own line of the netlist (line 5: "R1 n1 0 4").
-  expect(await inlineNote(page, 5)).toMatch(/^3\sA, n1 → 0$/);
+  // And said in the polite live region, with the units in words (a screen reader would spell out
+  // "V" or "mV").
+  await expectAnnounced(page, /a is 14 volts, x is 14 volts, n1 is 12 volts/);
 
-  // And said in the polite live region, for screen-reader users who stayed in the editor, with the
-  // units in words (a screen reader would spell out "V" or "mV").
-  await expectAnnounced(page, /Simulation finished: a is 14 volts, x is 14 volts, n1 is 12 volts/);
+  // The same result on R1's own line of the netlist (line 5: "R1 n1 0 4").
+  await openNetlist(page);
+  await expect.poll(() => inlineNote(page, 5)).toMatch(/^3\sA, n1 → 0$/);
 });

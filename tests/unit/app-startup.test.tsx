@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 /**
  * Which circuit the app opens with (src/app/startup.ts): a share link first (and whether to run
- * it), then the netlist saved on this device, then the first example (F5). Links that cannot be
- * opened say why; a fragment that is not a share link is ignored.
+ * it), then the netlist saved on this device, then the first screen (Start here, decision 0016).
+ * Links that cannot be opened say why; a fragment that is not a share link is ignored.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_EXAMPLE_ID, EXAMPLE_GROUPS, EXAMPLES, exampleById } from '../../src/app/examples.ts';
+import { DEFAULT_EXAMPLE_ID, EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, exampleById } from '../../src/app/examples.ts';
 import { clearShareFragment, decideStartup, readStartup } from '../../src/app/startup.ts';
 import { encodeShare } from '../../src/share/link.ts';
 
@@ -52,7 +54,8 @@ describe('readStartup', () => {
     expect(await readStartup(`#${fragment}`)).toEqual({ source: 'share', netlist: '* from a video\nV1 a 0 6\nR1 a 0 2\n.op\n.end\n', run: true });
   });
 
-  it('restores the saved netlist, or opens F5', async () => {
+  it('restores the saved netlist, or opens the first screen (Start here)', async () => {
+    expect(DEFAULT_EXAMPLE_ID).toBe(START_HERE_ID);
     expect(await readStartup('')).toMatchObject({ source: 'example', exampleId: DEFAULT_EXAMPLE_ID });
     expect((await readStartup('')).netlist).toBe(exampleById(DEFAULT_EXAMPLE_ID)!.netlist);
     localStorage.setItem('plainspice:netlist', '* saved\n.op\n.end\n');
@@ -77,11 +80,24 @@ describe('clearShareFragment', () => {
 });
 
 describe('examples', () => {
-  it('the channel’s videos come first, in channel order, then every fixture in teaching order, F5 among them', () => {
-    expect(EXAMPLE_GROUPS.map((g) => g.group)).toEqual(['sp01', 'p01', 'p02', 'e04', 'sources', 'traps', 'analyses']);
-    expect(EXAMPLES.slice(0, 20).map((e) => e.group)).toEqual([...Array(6).fill('sp01'), ...Array(3).fill('p01'), ...Array(5).fill('p02'), ...Array(6).fill('e04')]);
-    for (const e of EXAMPLES.slice(0, 20)) expect(e.netlist).toMatch(/^\* .+\n\* From the Solved Circuits video "/);
-    expect(EXAMPLES.slice(20).map((e) => e.id)).toEqual([
+  it('Start here comes first: the divider of the first screen, inviting the student to change R1', () => {
+    const first = EXAMPLES[0]!;
+    expect(first).toMatchObject({ id: START_HERE_ID, group: 'start', name: 'A 6 V source and two resistors: change R1' });
+    expect(first.netlist).toBe(readFileSync(resolve(import.meta.dirname, '../../examples/start-here.cir'), 'utf8'));
+    expect(first.netlist).toMatch(/^\* Start here: change R1 and watch the numbers move\n/);
+    expect(first.netlist).toMatch(/^V1 in 0 6$/m);
+    expect(first.netlist).toMatch(/^R1 in out 1k$/m);
+    expect(first.netlist).toMatch(/^R2 out 0 2k$/m);
+    expect(first.netlist).toMatch(/^\.op$/m);
+    expect(EXAMPLE_GROUPS[0]).toEqual({ group: 'start', label: 'Start here' });
+  });
+
+  it('then the channel’s videos, in channel order, then every fixture in teaching order, F5 among them', () => {
+    expect(EXAMPLE_GROUPS.map((g) => g.group)).toEqual(['start', 'sp01', 'p01', 'p02', 'e04', 'sources', 'traps', 'analyses']);
+    const videos = EXAMPLES.slice(1, 21);
+    expect(videos.map((e) => e.group)).toEqual([...Array(6).fill('sp01'), ...Array(3).fill('p01'), ...Array(5).fill('p02'), ...Array(6).fill('e04')]);
+    for (const e of videos) expect(e.netlist).toMatch(/^\* .+\n\* From the Solved Circuits video "/);
+    expect(EXAMPLES.slice(21).map((e) => e.id)).toEqual([
       'f1a-voltage-source',
       'f1b-voltage-source-swapped',
       'f2a-current-source',

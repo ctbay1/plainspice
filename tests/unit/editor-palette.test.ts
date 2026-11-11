@@ -5,8 +5,14 @@ import {
   EDITOR_BACKGROUNDS,
   GUTTER_TEXT,
   INLINE_NOTE_FALLBACK,
+  SCREEN_BACKGROUNDS,
+  SCREEN_GUTTER_TEXT,
+  SCREEN_INLINE_NOTE,
+  SCREEN_MARKS,
+  SCREEN_SYNTAX_COLOURS,
   SYNTAX_COLOURS,
   editorColourTheme,
+  editorScreenTheme,
   spiceHighlightStyle,
   type ContrastMode,
   type SyntaxRole,
@@ -17,6 +23,7 @@ import {
   NODE_PALETTE_MIN_DELTA_E,
   NODE_PALETTE_MIN_DELTA_E_NORMAL,
   NODE_PALETTE_MORE,
+  NODE_PALETTE_SCREEN,
   NODE_STRINGS,
   assignNodeColours,
   colourDifference,
@@ -159,6 +166,41 @@ describe('syntax colours: 4.5:1 on every background of their mode', () => {
   });
 });
 
+describe('the dark "simulator screen" of the Netlist panel (look: screen)', () => {
+  const backgrounds = Object.entries(SCREEN_BACKGROUNDS);
+  for (const [role, colour] of Object.entries(SCREEN_SYNTAX_COLOURS)) {
+    it(`${role} ${colour}: 4.5:1 or more on every screen background`, () => {
+      for (const [name, bg] of backgrounds) expect(contrastRatio(colour, bg), `${role} on ${name}`).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it('has a colour for every role the highlighting uses', () => {
+    expect(Object.keys(SCREEN_SYNTAX_COLOURS).sort()).toEqual(Object.keys(SYNTAX_COLOURS.normal).sort());
+  });
+
+  it('line numbers and the results at the ends of the lines pass 4.5:1; trap marks 3:1', () => {
+    expect(contrastRatio(SCREEN_GUTTER_TEXT, SCREEN_BACKGROUNDS.gutter)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(SCREEN_GUTTER_TEXT, SCREEN_BACKGROUNDS.activeGutter)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(SCREEN_SYNTAX_COLOURS.element, SCREEN_BACKGROUNDS.activeGutter)).toBeGreaterThanOrEqual(4.5);
+    for (const bg of [SCREEN_BACKGROUNDS.surface, SCREEN_BACKGROUNDS.activeLine, SCREEN_BACKGROUNDS.selection]) {
+      expect(contrastRatio(SCREEN_INLINE_NOTE, bg)).toBeGreaterThanOrEqual(4.5);
+      for (const mark of Object.values(SCREEN_MARKS)) expect(contrastRatio(mark, bg)).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('the screen theme defines the screen colours, and turns white with the high-contrast colours in high contrast', () => {
+    const state = EditorState.create({ extensions: [editorScreenTheme] });
+    const css = state.facet(EditorView.styleModule).map((m) => m.getRules()).join('\n');
+    for (const [role, colour] of Object.entries(SCREEN_SYNTAX_COLOURS)) expect(css).toContain(`--ps-syn-${role}: ${colour};`);
+    NODE_PALETTE_SCREEN.forEach((c, i) => expect(css).toContain(`--ps-node-${i + 1}: ${c};`));
+    expect(css).toContain(`--ps-surface: ${SCREEN_BACKGROUNDS.surface};`);
+    const attrRule = /html\[data-contrast="more"\] [^{]+\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(attrRule).toContain(`--ps-surface: ${EDITOR_BACKGROUNDS.more.surface};`);
+    for (const [role, colour] of Object.entries(SYNTAX_COLOURS.more)) expect(attrRule).toContain(`--ps-syn-${role}: ${colour};`);
+    expect(css).toMatch(/@media \(prefers-contrast: more\)/);
+  });
+});
+
 describe('colour is never the only signal in the highlighting', () => {
   /** Weight, slant and line of each token style; node names also get an underline from the node marks. */
   const signature = (tagName: string): string => {
@@ -221,9 +263,11 @@ describe('node colours: colour-blind safe, 8 colours, light and high contrast', 
     expect(minDifference(['#1971C2', '#7048E8'], 'deuteranopia').d).toBeLessThan(NODE_PALETTE_MIN_DELTA_E);
   });
 
-  for (const [name, palette, backgrounds, minContrast] of [
-    ['light', NODE_PALETTE_LIGHT, [PAPER, EDITOR_BACKGROUNDS.normal.surface, EDITOR_BACKGROUNDS.normal.activeLine], 3],
-    ['high contrast', NODE_PALETTE_MORE, ['#FFFFFF', EDITOR_BACKGROUNDS.more.activeLine], 4.5],
+  for (const [name, palette, backgrounds, minContrast, ink] of [
+    ['light', NODE_PALETTE_LIGHT, [PAPER, EDITOR_BACKGROUNDS.normal.surface, EDITOR_BACKGROUNDS.normal.activeLine], 3, '#1E2A45'],
+    ['high contrast', NODE_PALETTE_MORE, ['#FFFFFF', EDITOR_BACKGROUNDS.more.activeLine], 4.5, '#000000'],
+    // The netlist's dark screen: the bars under node names are graphics (3:1, WCAG 1.4.11).
+    ['the dark screen', NODE_PALETTE_SCREEN, [SCREEN_BACKGROUNDS.surface, SCREEN_BACKGROUNDS.activeLine], 3, SCREEN_SYNTAX_COLOURS.element],
   ] as const) {
     describe(name, () => {
       it('has 8 different colours, each with a plain-word name', () => {
@@ -247,7 +291,6 @@ describe('node colours: colour-blind safe, 8 colours, light and high contrast', 
       });
 
       it('stays apart from the ink colour, so a bar never looks like plain underlined text', () => {
-        const ink = name === 'light' ? '#1E2A45' : '#000000';
         for (const c of palette) {
           expect(colourDifference(c, ink)).toBeGreaterThanOrEqual(NODE_PALETTE_MIN_DELTA_E);
           for (const d of DEFICIENCIES) {
@@ -264,16 +307,18 @@ describe('node colours: colour-blind safe, 8 colours, light and high contrast', 
     }
   });
 
-  it('high contrast keeps each colour recognisable: same hue family as the light colour', () => {
+  it('high contrast and the dark screen keep each colour recognisable: same hue family as the light colour', () => {
     const hue = (c: string): number => {
       const [, a, b] = rgbToLab(c);
       return (Math.atan2(b, a) * 180) / Math.PI;
     };
-    NODE_PALETTE_LIGHT.forEach((c, i) => {
-      let dh = Math.abs(hue(c) - hue(NODE_PALETTE_MORE[i]!));
-      if (dh > 180) dh = 360 - dh;
-      expect(dh, `${c} vs ${NODE_PALETTE_MORE[i]}`).toBeLessThanOrEqual(25);
-    });
+    for (const other of [NODE_PALETTE_MORE, NODE_PALETTE_SCREEN]) {
+      NODE_PALETTE_LIGHT.forEach((c, i) => {
+        let dh = Math.abs(hue(c) - hue(other[i]!));
+        if (dh > 180) dh = 360 - dh;
+        expect(dh, `${c} vs ${other[i]}`).toBeLessThanOrEqual(25);
+      });
+    }
   });
 });
 

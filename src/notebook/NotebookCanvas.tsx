@@ -67,8 +67,15 @@ export interface NotebookCanvasProps {
   pending?: boolean;
   /** Results in the plain font instead of handwriting (settings.ts). */
   plain: boolean;
-  /** The drawing's accessible name. */
+  /**
+   * Each node's colour (ground is drawn in ink). Default: assignNodeColours over the netlist's nodes;
+   * a page passes its own so the drawing, the netlist and the tables agree.
+   */
+  colours?: ReadonlyMap<string, string> | undefined;
+  /** The drawing's accessible name (the group of its parts and nodes). */
   label: string;
+  /** The picture's own name (default: the same as `label`). */
+  pictureLabel?: string;
   /** The circuit in words (navigate.ts: describeSchematic). */
   description: string;
   selected: NavItem | undefined;
@@ -76,6 +83,13 @@ export interface NotebookCanvasProps {
   related?: readonly NavItem[] | undefined;
   /** Parts a check found a trap on. */
   traps?: ReadonlySet<string> | undefined;
+  /**
+   * What the red pen says beside a part or a node (a check's title, "No single answer at node n1"),
+   * by item key ('part:r1', 'node:n1'): read after its description, since the pen is a picture.
+   */
+  penWords?: ReadonlyMap<string, string> | undefined;
+  /** The part whose card is open (its button says the card is expanded). */
+  open?: string | undefined;
   onSelect: (item: NavItem | undefined) => void;
   /** Enter, or a click on a part: open it (the page shows its card). */
   onOpen: (item: NavItem) => void;
@@ -163,7 +177,8 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const frame = useMemo((): Box | undefined => (Number.isNaN(rx0) ? undefined : { x0: rx0, y0: ry0, x1: rx1, y1: ry1 }), [rx0, ry0, rx1, ry1]);
   const fill = props.fill ?? 'whole';
 
-  const colours = useMemo(() => assignNodeColours(s.netlist.nodes.keys()), [s.netlist]);
+  const given = props.colours;
+  const colours = useMemo(() => given ?? assignNodeColours(s.netlist.nodes.keys()), [given, s.netlist]);
   const order = useMemo(() => readingOrder(s), [s]);
   const items = useMemo(() => order.map((item) => ({ item, box: itemBox(s, item) })).filter((x): x is { item: NavItem; box: Box } => x.box !== undefined), [order, s]);
   const bounds = s.scene.bounds;
@@ -297,8 +312,20 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         moveView((v) => zoomAt(v, factor, { x: e.clientX - r.left, y: e.clientY - r.top }, { minUnit: minUnit * 0.5, maxUnit: maxUnit * 2.5 }));
       } else moveView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };
+    // The paper never scrolls: a part's button that gets the focus near an edge would otherwise
+    // scroll it sideways under the drawing's own view (browsers without overflow: clip).
+    const onScroll = (): void => {
+      if (el.scrollLeft || el.scrollTop) {
+        el.scrollLeft = 0;
+        el.scrollTop = 0;
+      }
+    };
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    el.addEventListener('scroll', onScroll);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('scroll', onScroll);
+    };
   }, [moveView, minUnit, maxUnit]);
 
   // Dragging the paper pans; two fingers pinch to zoom; a tap on empty paper lets go of the selection.
@@ -363,14 +390,20 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     return NOTEBOOK_STRINGS.nodeButton(s.circuit.nodes.get(item.name)?.text ?? item.name);
   };
   const resultsOf = (item: NavItem): string => {
+    // Numbers from before the last change say so: a screen reader must not take them for answers.
+    const before = props.pending ? `${NOTEBOOK_STRINGS.beforeChange} ` : '';
     if (item.kind === 'part') {
       const pm = results.parts.get(item.key);
-      return pm ? `${pm.speech}.` : '';
+      return pm ? `${before}${pm.speech}.` : '';
     }
     const n = results.nodes.find((x) => x.node === item.name);
     if (!n) return '';
     const name = s.circuit.nodes.get(item.name)?.text ?? item.name;
-    return `${DESCRIBE_STRINGS.valueIsSpeech(name, n.words.speech)}.`;
+    return `${before}${DESCRIBE_STRINGS.valueIsSpeech(name, n.words.speech)}.`;
+  };
+  const penOf = (item: NavItem): string => {
+    const words = props.penWords?.get(itemKey(item));
+    return words ? ` ${NOTEBOOK_STRINGS.check(words.replace(/[.!?:]$/, ''))}.` : '';
   };
   const hasResults = results.parts.size > 0 || results.nodes.length > 0;
 
@@ -440,7 +473,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
           height={vb.h}
           style={{ left: vb.x, top: vb.y }}
         >
-          <title id={`${descId}-title`}>{props.label}</title>
+          <title id={`${descId}-title`}>{props.pictureLabel ?? props.label}</title>
           <desc id={`${descId}-desc`}>{props.description}</desc>
           <Drawing schematic={s} results={results} colours={colours} plain={props.plain} selected={selected} related={props.related ?? []} hovered={hovered} focused={focused} traps={props.traps ?? EMPTY} pen={props.pen} />
           {ghost && ghostAt ? <Ghost kind={ghost} at={ghostAt} /> : null}
@@ -455,6 +488,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
             const cx = ((box.x0 + box.x1) / 2) * UNIT_PX;
             const cy = ((box.y0 + box.y1) / 2) * UNIT_PX;
             const isSel = !!selected && itemKey(selected) === key;
+            const isPart = item.kind === 'part';
             return (
               <button
                 key={key}
@@ -468,7 +502,9 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
                 tabIndex={key === keyOfFocus ? 0 : -1}
                 aria-label={nameOf(item)}
                 aria-describedby={`${descId}-${key}`}
-                aria-pressed={isSel}
+                // Selected is where you are, not a state to toggle; a part opens its card (a dialog).
+                aria-current={isSel ? 'true' : undefined}
+                {...(isPart ? { 'aria-haspopup': 'dialog' as const, 'aria-expanded': props.open === item.key } : {})}
                 data-item={key}
                 onClick={() => {
                   onSelect(item);
@@ -493,6 +529,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         {items.map(({ item }) => (
           <p key={itemKey(item)} id={`${descId}-${itemKey(item)}`}>
             {describeItem(s, item)} {hasResults ? resultsOf(item) : ''}
+            {penOf(item)}
           </p>
         ))}
       </div>

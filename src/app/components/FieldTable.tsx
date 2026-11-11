@@ -72,13 +72,13 @@ export function sameExplanation(a: LineExplanation, b: LineExplanation): boolean
   });
 }
 
-/** Heading, summary, field table and notes of one line. */
-export function LineExplanationView({ explanation, headingLevel }: { explanation: LineExplanation; headingLevel: 3 | 4 }): ReactNode {
+/** Heading, summary, field table and notes of one line (`hideHeading`: the table and notes only, under a heading of the page's own). */
+export function LineExplanationView({ explanation, headingLevel, hideHeading = false }: { explanation: LineExplanation; headingLevel: 3 | 4; hideHeading?: boolean }): ReactNode {
   const H = headingLevel === 3 ? 'h3' : 'h4';
   return (
     <>
-      <H className="explain__heading">{t('explainedLine', { line: explanation.line, heading: explanation.heading })}</H>
-      {explanation.summary && <p className="explain__summary">{explanation.summary}</p>}
+      {hideHeading ? null : <H className="explain__heading">{t('explainedLine', { line: explanation.line, heading: explanation.heading })}</H>}
+      {!hideHeading && explanation.summary && <p className="explain__summary">{explanation.summary}</p>}
       <FieldTable explanation={explanation} />
       {explanation.notes.length > 0 && (
         <ul className="explain__notes">

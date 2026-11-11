@@ -445,3 +445,72 @@ describe('accessKeys (the letters of the trap list)', () => {
     expect(accessKeys(['Change 1M to 1meg', 'Comment out the line', '123'])).toEqual(['C', 'o', '']);
   });
 });
+
+describe('in the app (decision 0016): one undo history, the store’s text, the drawing lines folded, the screen look', () => {
+  const DRAWN = `${F3A.replace('.end', '')}* plainspice-drawing v1\n*@ V1 0 3 0 m\n*@ R1 4 0 270\n*@ R2 8 3 0\n*@ ground 0 6 0\n.end`;
+
+  it('with history off, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y call the app’s undo and redo, and the editor keeps no history', () => {
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+    const { editor } = make({ history: false, onUndo, onRedo });
+    editor.view.dispatch({ changes: { from: 0, insert: '* x\n' } });
+    expect(key(editor, { key: 'z', ctrlKey: true }).defaultPrevented).toBe(true);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    key(editor, { key: 'Z', keyCode: 90, ctrlKey: true, shiftKey: true }); // a browser sends the capital letter with Shift
+    key(editor, { key: 'y', ctrlKey: true });
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).toHaveBeenCalledTimes(2);
+    // CodeMirror's own undo has nothing: the text stays as typed.
+    expect(undo(editor.view)).toBe(false);
+    expect(editor.getDoc().startsWith('* x\n')).toBe(true);
+  });
+
+  it('syncDoc changes only what differs: the cursor stays on its line, no undo step, no onChange', () => {
+    const onChange = vi.fn();
+    const { editor } = make({ onChange });
+    const line4 = lineRange(F3A, 4).from + 3;
+    editor.view.dispatch({ selection: EditorSelection.cursor(line4) });
+    editor.syncDoc(F3A.replace('n2 1M', 'n2 2k'));
+    expect(editor.getDoc()).toBe(F3A.replace('n2 1M', 'n2 2k'));
+    expect(editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number).toBe(4);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(undo(editor.view)).toBe(false);
+    editor.syncDoc(editor.getDoc()); // the same text: nothing happens
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('folds the drawing lines (*@) into one line, steps over them, and unfolds on request', () => {
+    const onDrawingFold = vi.fn();
+    const { editor, parent } = make({ doc: DRAWN, foldDrawing: true, onDrawingFold });
+    expect(editor.drawingFolded()).toBe(true);
+    const fold = parent.querySelector('.ps-fold');
+    expect(fold?.textContent).toContain(EDITOR_STRINGS.drawingFolded(5));
+    expect(parent.querySelector('.cm-content')!.textContent).not.toContain('*@ R1');
+    // The text itself is whole: only its view is folded.
+    expect(editor.getDoc()).toBe(DRAWN);
+    editor.setDrawingFolded(false);
+    expect(editor.drawingFolded()).toBe(false);
+    expect(onDrawingFold).toHaveBeenLastCalledWith(false);
+    expect(parent.querySelector('.ps-fold')).toBeNull();
+    expect(parent.querySelector('.cm-content')!.textContent).toContain('*@ R1 4 0 270');
+    // A click on the folded line unfolds it too.
+    editor.setDrawingFolded(true);
+    parent.querySelector('.ps-fold')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(editor.drawingFolded()).toBe(false);
+  });
+
+  it('the screen look: the dark “simulator screen” of the episodes', () => {
+    const { editor } = make({ look: 'screen' });
+    expect(editor.view.dom.classList.contains('ps-editor--screen')).toBe(true);
+    expect(make().editor.view.dom.classList.contains('ps-editor--screen')).toBe(false);
+  });
+
+  it('showLine puts the cursor on a line without taking the focus', () => {
+    const { editor } = make();
+    editor.showLine(4);
+    expect(editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number).toBe(4);
+    expect(editor.view.hasFocus).toBe(false);
+    editor.showLine(99);
+    expect(editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number).toBe(F3A.split('\n').length);
+  });
+});

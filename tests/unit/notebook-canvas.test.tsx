@@ -53,13 +53,30 @@ function solved(): DrawingResults {
   return placeResults(s.scene, describeResults(parseNetlist(text), results, run));
 }
 
-function Harness({ results = NO_RESULTS, plain = false, onOpen = () => undefined }: { results?: DrawingResults; plain?: boolean; onOpen?: (i: NavItem) => void }): ReactNode {
+function Harness({
+  results = NO_RESULTS,
+  plain = false,
+  onOpen = () => undefined,
+  pending = false,
+  penWords,
+  open,
+}: {
+  results?: DrawingResults;
+  plain?: boolean;
+  onOpen?: (i: NavItem) => void;
+  pending?: boolean;
+  penWords?: ReadonlyMap<string, string>;
+  open?: string;
+}): ReactNode {
   const [selected, setSelected] = useState<NavItem | undefined>(undefined);
   return (
     <div style={{ width: 1000, height: 600 }}>
       <NotebookCanvas
         schematic={s}
         results={results}
+        pending={pending}
+        penWords={penWords}
+        open={open}
         plain={plain}
         label="p02-4, drawn and solved"
         description={describeSchematic(s)}
@@ -122,6 +139,29 @@ describe('NotebookCanvas', () => {
     expect(onOpen).toHaveBeenCalledWith({ kind: 'part', key: 'r2' });
     fireEvent.keyDown(part(/^R2,/), { key: 'Escape' });
     expect(screen.getByTestId('selected').textContent).toBe('none');
+  });
+
+  it('says where you are and what a part opens, not a toggle: aria-current, aria-haspopup, aria-expanded', () => {
+    render(<Harness open="r2" />);
+    const g1 = part(/^G1,/);
+    expect(g1.hasAttribute('aria-pressed')).toBe(false);
+    expect(g1.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(g1.getAttribute('aria-expanded')).toBe('false');
+    expect(part(/^R2,/).getAttribute('aria-expanded')).toBe('true');
+    expect(part(/^Node n1$/).hasAttribute('aria-haspopup')).toBe(false);
+    g1.focus();
+    fireEvent.focusIn(g1);
+    expect(g1.getAttribute('aria-current')).toBe('true');
+    // The picture and the group of its buttons have names of their own.
+    expect(screen.getByRole('group', { name: 'p02-4, drawn and solved' })).toBeDefined();
+  });
+
+  it('reads the red pen with its part, and numbers from before the last change as such', () => {
+    render(<Harness results={solved()} pending penWords={new Map([['p:r1', 'R1 has a resistance of 0 Ω']])} />);
+    const r1 = document.getElementById(part(/^R1,/).getAttribute('aria-describedby')!)!.textContent!;
+    expect(r1).toContain('Check: R1 has a resistance of 0 Ω.');
+    const g1 = document.getElementById(part(/^G1,/).getAttribute('aria-describedby')!)!.textContent!;
+    expect(g1).toMatch(/Before your last change: 4 amps/);
   });
 
   it('writes the results on the drawing, and reads them out with each part', () => {
@@ -201,6 +241,26 @@ describe('NotebookCanvas', () => {
     expect(svg.querySelectorAll('ellipse.nb-pen__circle')).toHaveLength(1);
     // Red pen is for the eye: the page says the same in words.
     expect(svg.querySelector('.nb-pen')!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('draws each node’s wires in the colour the page gives it (the same as in the Netlist panel), else its own', () => {
+    const given = new Map([['n1', '#123456']]);
+    const { rerender } = render(
+      <div style={{ width: 1000, height: 600 }}>
+        <NotebookCanvas schematic={s} results={NO_RESULTS} plain={false} colours={given} label="p02-4" description="" selected={undefined} onSelect={() => undefined} onOpen={() => undefined} insets={NO_INSETS} fitKey="c" minUnit={10} maxUnit={40} />
+      </div>,
+    );
+    const strokes = (): string[] => [...document.querySelectorAll<SVGElement>('.nb-wire')].map((w) => w.style.stroke).filter(Boolean);
+    expect(strokes()).toContain('rgb(18, 52, 86)');
+    // Nodes the page gives no colour to are drawn in ink.
+    expect(strokes().every((c) => c === 'rgb(18, 52, 86)')).toBe(true);
+    rerender(
+      <div style={{ width: 1000, height: 600 }}>
+        <NotebookCanvas schematic={s} results={NO_RESULTS} plain={false} label="p02-4" description="" selected={undefined} onSelect={() => undefined} onOpen={() => undefined} insets={NO_INSETS} fitKey="c" minUnit={10} maxUnit={40} />
+      </div>,
+    );
+    // Without colours from the page, the canvas picks its own for every node.
+    expect(new Set(strokes()).size).toBeGreaterThan(1);
   });
 });
 

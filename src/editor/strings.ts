@@ -8,11 +8,11 @@ import type { TrapSeverity } from '../spice/types.ts';
 
 export const EDITOR_STRINGS = {
   /** A visible hint for next to the editor; point `describedBy` at it. */
-  hint: 'Ctrl+Enter runs the simulation. Tab leaves the editor. F8 jumps to the next trap; Ctrl+Shift+M lists them.',
+  hint: 'Ctrl+Enter runs ngspice now. Tab leaves the editor. F8 jumps to the next trap; Ctrl+Shift+M lists them.',
 
   /** Every key the editor adds or keeps, for a help dialog. */
   keys: [
-    { keys: 'Ctrl+Enter (Cmd+Enter on a Mac)', action: 'Run the simulation' },
+    { keys: 'Ctrl+Enter (Cmd+Enter on a Mac)', action: 'Run ngspice now' },
     { keys: 'Tab, Shift+Tab', action: 'Leave the editor (Tab never types a tab here)' },
     { keys: 'F8', action: 'Select the next trap and show what it means (Tab reaches its fix button, Escape closes it)' },
     { keys: 'Ctrl+Shift+M (Cmd+Shift+M on a Mac)', action: 'Open the list of traps' },
@@ -34,6 +34,11 @@ export const EDITOR_STRINGS = {
 
   /** In the trap list: "Press C: Change 1M to 1meg." */
   fixKey: (key: string, label: string): string => `Press ${key}: ${label.trim().replace(/[.!]$/, '')}.`,
+
+  /** The drawing's lines folded into one line (drawing-fold.ts): "Drawing: 16 lines, positions of the parts". */
+  drawingFolded: (lines: number): string => `Drawing: ${lines} ${lines === 1 ? 'line' : 'lines'}, positions of the parts`,
+  /** The folded line's tooltip. */
+  drawingUnfold: 'Click to show the drawing lines',
 
   /** Said when a fix cannot be used because its line was edited after the trap check. */
   fixOutOfDate: 'This fix no longer fits: the line changed after the check. The checks will run again.',

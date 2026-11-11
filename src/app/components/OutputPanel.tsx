@@ -1,4 +1,4 @@
-/** The ngspice output tab: exactly what ngspice printed, and the command it was run with. */
+/** The ngspice output panel: exactly what ngspice printed, the command it was run like, and the line PlainSpice added. */
 import type { ReactNode } from 'react';
 import type { RunResult } from '../../engine/types.ts';
 import { t } from '../../i18n/index.ts';
@@ -18,8 +18,7 @@ function Printed({ id, title, text }: { id: string; title: string; text: string 
 
 export function OutputPanel({ result, added }: { result: RunResult | undefined; added: readonly string[] }): ReactNode {
   return (
-    <div className="panel">
-      <h2 className="panel__title">{t('outputHeading')}</h2>
+    <div className="output">
       <p>{t('outputIntro')}</p>
       <pre className="command">
         <code>{t('outputCommand')}</code>

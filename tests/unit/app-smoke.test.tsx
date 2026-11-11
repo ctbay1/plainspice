@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 /**
  * The whole app in jsdom: <App /> with the real editor (CodeMirror), the real parser, trap checks,
- * explanations and descriptions, and the real ngspice (WebAssembly, run in Node instead of a Web
- * Worker, behind the app's Engine interface). Layout, focus and axe are checked in a real browser;
- * here the point is that the pieces are wired together: start-up, typing, checks with a fix, a run
- * with its results table and announcement, the dialogs, and share links.
+ * explanations and descriptions, the real drawing (src/schematic, src/notebook) and the real ngspice
+ * (WebAssembly, run in Node instead of a Web Worker, behind the app's Engine interface). Layout,
+ * focus order, phones and axe are checked in a real browser (tests/e2e); here the point is that the
+ * pieces are wired together (decision 0016): the first screen solved at once, the one netlist text
+ * changed from the drawing and from the Netlist panel with one undo history, live runs, checks with
+ * a fix, the panels, Ctrl+K, the dialogs, and share links.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -13,26 +15,37 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { App } from '../../src/app/App.tsx';
 import type { Engine } from '../../src/app/engine.ts';
+import { START_HERE_ID } from '../../src/app/examples.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
 import { EngineCancelledError } from '../../src/engine/client.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { encodeShare } from '../../src/share/link.ts';
+import { withDrawingBlock } from '../../src/notebook/schematic.ts';
 
 const root = resolve(import.meta.dirname, '../..');
-const fixture = (name: string): string => readFileSync(resolve(root, 'tests/fixtures', name), 'utf8');
-const F5 = fixture('f5-thevenin-cccs.cir');
-const F3A = fixture('f3a-1M-trap.cir');
+const read = (path: string): string => readFileSync(resolve(root, path), 'utf8');
+const START = read('examples/start-here.cir');
+const F5 = read('tests/fixtures/f5-thevenin-cccs.cir');
+const F3A = read('tests/fixtures/f3a-1M-trap.cir');
 /** What ngspice runs for a netlist with .op: the same text with .options savecurrents before .end. */
 const asRun = (netlist: string): string => netlist.replace(/^\.end$/m, '.options savecurrents\n.end');
 
 let ngspice: Promise<NgspiceEngine>;
 
 beforeAll(() => {
-  // jsdom has no layout; CodeMirror measures text with these (as in editor-api.test.ts).
+  // jsdom has no layout: CodeMirror measures text with these (as in editor-api.test.ts), and the
+  // drawing needs a size and a ResizeObserver that has nothing to report (as in notebook-canvas.test.tsx).
   const empty = (): DOMRectList => Object.assign([], { item: () => null }) as unknown as DOMRectList;
   const rect = (): DOMRect => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, toJSON: () => ({}) }) as DOMRect;
   if (!Range.prototype.getClientRects) Range.prototype.getClientRects = empty;
   if (!Range.prototype.getBoundingClientRect) Range.prototype.getBoundingClientRect = rect;
+  globalThis.ResizeObserver ??= class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1000 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 });
   // A compiled module, not bytes: Node's Buffer is from another realm under jsdom.
   ngspice = WebAssembly.compile(readFileSync(resolve(root, 'engine/dist/ngspice.wasm'))).then((m) =>
     NgspiceEngine.create(createNgspice as unknown as NgspiceFactory, m),
@@ -42,11 +55,13 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  history.replaceState(null, '', '/');
+  document.documentElement.removeAttribute('data-text-size');
   vi.useRealTimers();
 });
 
-/** The real ngspice behind the app's Engine interface (no Worker in jsdom). */
-function realEngine(): Engine & { runs: string[] } {
+/** The real ngspice behind the app's Engine interface (no Worker in jsdom); `delay` makes every run slow. */
+function realEngine(delay = 0): Engine & { runs: string[] } {
   const runs: string[] = [];
   return {
     runs,
@@ -56,109 +71,257 @@ function realEngine(): Engine & { runs: string[] } {
     },
     run: async (netlist) => {
       runs.push(netlist);
+      if (delay) await new Promise((r) => setTimeout(r, delay));
       return (await ngspice).run(netlist);
     },
     cancel: () => undefined,
   };
 }
 
-function start(netlist: string, extra: Partial<Extract<StartupDecision, { source: 'share' }>> = {}): StartupDecision {
-  return extra.run !== undefined ? { source: 'share', netlist, run: extra.run } : { source: 'example', netlist, exampleId: 'test' };
+/** A first visit: Start here (startup.ts's choice when there is no link and nothing saved). */
+const firstVisit = (): StartupDecision => ({ source: 'example', netlist: START, exampleId: START_HERE_ID });
+function start(netlist: string, extra: { run?: boolean } = {}): StartupDecision {
+  return extra.run !== undefined ? { source: 'share', netlist, run: extra.run } : { source: 'saved', netlist };
 }
 
-function editorText(): string {
-  return document.querySelector('.cm-content')?.textContent ?? '';
+const polite = (): string => screen.getByTestId('live-polite').textContent ?? '';
+const statusLine = (): string => document.querySelector('.status')?.textContent ?? '';
+const drawingText = (): string => document.querySelector('.nb-canvas svg')?.textContent ?? '';
+const editorText = (): string => document.querySelector('.cm-content')?.textContent ?? '';
+const part = (name: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^${name}, `) });
+const tab = (name: string): HTMLElement => within(screen.getByRole('navigation', { name: 'Panels' })).getByRole('button', { name: new RegExp(`^${name}`) });
+/** The words a screen reader reads after a part's or a node's name (its results). */
+const describedBy = (el: HTMLElement): string => document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+
+async function solved(): Promise<void> {
+  await waitFor(() => expect(statusLine()).toMatch(/Finished in \d+ ms/), { timeout: 15000 });
+}
+
+/** The CodeMirror view of the open Netlist panel. */
+async function editorView(): Promise<import('@codemirror/view').EditorView> {
+  const { EditorView } = await import('@codemirror/view');
+  const content = await waitFor(
+    () => {
+      const el = document.querySelector<HTMLElement>('.cm-content');
+      if (!el) throw new Error('no editor yet');
+      return el;
+    },
+    { timeout: 5000 },
+  );
+  return EditorView.findFromDOM(content)!;
 }
 
 describe('<App />', () => {
-  it('renders the page: landmarks, one h1, the toolbar with Run first, the editor, the tabs, the footer', async () => {
-    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+  it('the first screen: Start here, already solved, with the sticky note inviting a change to R1', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    // The page: one h1 (the circuit's title), the top bar, the parts, the drawing, the panels' tabs, the status.
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['PlainSpice: Start here: change R1 and watch the numbers move']);
     expect(screen.getByRole('banner')).toBeTruthy();
-    expect(screen.getByRole('main')).toBeTruthy();
+    expect(screen.getByRole('main').id).toBe('drawing');
     expect(screen.getByRole('contentinfo')).toBeTruthy();
-    const toolbar = screen.getByRole('toolbar', { name: 'Netlist actions' });
-    expect(within(toolbar).getAllByRole('button').map((b) => b.textContent)).toEqual(['Run', 'Examples', 'Share', 'Export', 'Settings', 'Help']);
-    const editor = screen.getByRole('textbox', { name: 'Netlist' });
-    expect(editor.getAttribute('aria-describedby')).toBe('netlist-hint');
-    expect(editorText()).toContain('F5: Thevenin');
-    // Run comes before the editor in the page (and so in the tab order).
-    expect(screen.getByRole('button', { name: 'Run' }).compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Checks (0)' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Results', selected: true })).toBeTruthy();
-    expect(screen.queryByRole('tab', { name: 'Plot' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Engine check' }).getAttribute('href')).toBe('./spike/');
-    expect(screen.getByRole('link', { name: 'Licences and source' }).getAttribute('href')).toBe('./licenses/');
-    // "This line" explains line 1 (the title) before the cursor moves.
-    expect(screen.getByRole('heading', { name: 'This line' })).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(/ngspice is ready/)).toBeTruthy());
-  });
+    expect(screen.getByRole('link', { name: 'Skip to the drawing' })).toBeTruthy();
+    const actions = screen.getByRole('toolbar', { name: 'Actions' });
+    expect(within(actions).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Share', 'Export', 'Help', 'Settings', 'Run']);
+    const tools = within(screen.getByRole('navigation', { name: 'Parts and tools' })).getByRole('toolbar', { name: 'Parts and tools' });
+    expect(within(tools).getAllByRole('button').map((b) => b.querySelector('.tool__word')?.textContent)).toEqual([
+      'Select',
+      'Wire',
+      'Resistor',
+      'Capacitor',
+      'Inductor',
+      'Voltage source',
+      'Current source',
+      'Controlled source',
+      'Ground',
+    ]);
+    expect(within(screen.getByRole('navigation', { name: 'Panels' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['Netlist', 'Checks', 'Explain', 'Numbers', 'Plot', 'ngspice output']);
+    // The drawing: every part and node a button, named.
+    expect(screen.getByRole('group', { name: 'Drawing of the circuit: Start here: change R1 and watch the numbers move' })).toBeTruthy();
+    for (const name of ['V1', 'R1', 'R2']) expect(part(name)).toBeTruthy();
+    // The sticky note.
+    const note = screen.getByRole('complementary', { name: 'Change R1 and watch the numbers move' });
+    expect(within(note).getByRole('button', { name: 'Change R1' })).toBeTruthy();
+    // Solved at once, with no Run: out = 6 V × 2k / 3k = 4 V, on the drawing and for screen readers.
+    await solved();
+    expect(engine.runs).toEqual([asRun(START)]);
+    expect(drawingText()).toMatch(/=\s*4\sV/);
+    expect(describedBy(screen.getByRole('button', { name: 'Node out' }))).toMatch(/out is 4 volts/);
+    expect(statusLine()).toContain('ngspice 47, in your browser');
+    expect(statusLine()).toContain('Operating point · .op');
+    await waitFor(() => expect(polite()).toMatch(/out = 4 volts|4 volts/));
+    // Nothing is saved for a circuit just opened.
+    await new Promise((r) => setTimeout(r, 600));
+    expect(localStorage.getItem('plainspice:netlist')).toBeNull();
+  }, 30000);
 
-  it('runs F5 through ngspice: v(a) = 14 V in the table, spoken with units, announced, notes on the lines', async () => {
+  it('change R1 on its card: ngspice solves again as you type, the old numbers are crossed out; Undo and Redo go back and forth', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(screen.getByRole('button', { name: 'Change R1' }));
+    const card = screen.getByRole('dialog', { name: /^R1 resistor/ });
+    expect(screen.queryByRole('complementary', { name: /Change R1/ })).toBeNull(); // the note has done its job
+    const field = within(card).getByRole('textbox', { name: /R1/ });
+    expect(document.activeElement).toBe(field);
+    expect((field as HTMLInputElement).value).toBe('1k');
+    fireEvent.change(field, { target: { value: '2k' } });
+    await waitFor(() => expect(within(card).getByText(/SPICE reads it as/).textContent).toMatch(/2\skΩ/));
+    // A moment later ngspice runs the new text: out = 6 V × 2k / 4k = 3 V (written "= 3 V" beside
+    // out); the 4 V is crossed out.
+    await waitFor(() => expect(drawingText()).toMatch(/=\s*3\sV/), { timeout: 15000 });
+    expect(engine.runs.at(-1)).toContain('R1 in out 2k');
+    expect(engine.runs).toHaveLength(2);
+    expect([...card.querySelectorAll('s.readout__was')].map((s) => s.textContent).join(' ')).toMatch(/4\sV|2\smA/);
+    expect(within(card).getByText('Was').closest('p')!.textContent).toContain('1k');
+    // Enter closes the card; the change was saved for this device.
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(screen.queryByRole('dialog', { name: /^R1 resistor/ })).toBeNull();
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 in out 2k'));
+    // One undo puts the whole card's change back, and ngspice solves the old text again.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(drawingText()).toMatch(/=\s*4\sV/), { timeout: 15000 });
+    expect(engine.runs.at(-1)).toContain('R1 in out 1k');
+    expect(polite()).toMatch(/Undone|out/);
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(drawingText()).toMatch(/=\s*3\sV/), { timeout: 15000 });
+    expect((screen.getByRole('button', { name: 'Redo' }) as HTMLButtonElement).disabled).toBe(true);
+  }, 30000);
+
+  it('the Netlist panel: the same text, its drawing lines folded; typing redraws the drawing, the checks follow, and the count is announced', async () => {
+    const engine = realEngine();
+    // A netlist that carries where its parts are drawn (the *@ lines, as a link or a file may).
+    const drawn = withDrawingBlock(START);
+    expect(drawn).toMatch(/^\*@ R1 /m);
+    render(<App startup={start(drawn)} engine={engine} serviceWorker={false} />);
+    await solved();
+    // A value changed on the drawing changes that value and nothing else.
+    fireEvent.click(part('R1'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R1/ }), { target: { value: '2k' } });
+    fireEvent.keyDown(screen.getByRole('textbox', { name: /R1/ }), { key: 'Escape' });
+    fireEvent.click(tab('Netlist'));
+    const panel = screen.getByRole('region', { name: 'Netlist' });
+    expect(document.activeElement).toBe(within(panel).getByRole('heading', { name: 'Netlist' }));
+    const view = await editorView();
+    expect(screen.getByRole('textbox', { name: 'Netlist' })).toBeTruthy();
+    expect(view.state.doc.toString()).toBe(drawn.replace('R1 in out 1k', 'R1 in out 2k'));
+    // The drawing lines are folded: one line says so, and a button shows them.
+    expect(editorText()).not.toContain('*@ R1');
+    const show = within(panel).getByRole('button', { name: /^Show the \d+ drawing lines$/ });
+    expect(show.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(show);
+    await waitFor(() => expect(editorText()).toContain('*@ R1'));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Hide the drawing lines' }));
+    await waitFor(() => expect(editorText()).not.toContain('*@ R1'));
+    // Typing: a new part is drawn at once (laid out, as it has no *@ line yet), the checks follow.
+    const doc = view.state.doc.toString();
+    act(() => {
+      view.dispatch({ changes: { from: doc.indexOf('.op'), insert: 'R9 out 0 1M\n' } });
+    });
+    await waitFor(() => expect(part('R9')).toBeTruthy());
+    await waitFor(() => expect(tab('Checks').textContent).toBe('Checks1 found'));
+    await waitFor(() => expect(polite()).toMatch(/1 trap found/), { timeout: 3000 });
+    // Red pen on the drawing names the trap next to R9.
+    expect(drawingText()).toMatch(/1M means 1 milliohm/);
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R9 out 0 1M'));
+    // Ctrl+Z in the editor is the app's undo: the whole typing step goes.
+    act(() => {
+      view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    });
+    await waitFor(() => expect(view.state.doc.toString()).not.toContain('R9'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^R9, / })).toBeNull());
+  }, 30000);
+
+  it('runs F5: the Numbers panel has v(a) = 14 V with words, the currents, the announcement, notes on the lines, and the ngspice output', async () => {
     const engine = realEngine();
     render(<App startup={start(F5)} engine={engine} serviceWorker={false} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
-    const table = await screen.findByRole('table', { name: /Node voltages/ }, { timeout: 15000 });
+    await solved();
+    expect(engine.runs).toEqual([asRun(F5)]); // the student's text is unchanged
+    fireEvent.click(tab('Numbers'));
+    const table = await screen.findByRole('table', { name: /Node voltages/ });
     const rowA = within(table).getByRole('row', { name: /^a / });
-    expect(rowA.textContent).toContain('14 V');
+    expect(rowA.textContent).toMatch(/14\sV/);
     expect(rowA.textContent).toContain('14 volts'); // the visually hidden words
     expect(rowA.textContent).toContain('v(a) = 1.400000e+01');
-    expect(engine.runs).toEqual([asRun(F5)]); // the editor's text is unchanged
     expect(screen.getByText('Finished')).toBeTruthy();
     const currents = screen.getByRole('table', { name: 'Currents' });
     expect(within(currents).getByRole('row', { name: /Vx/ }).textContent).toContain('from a to x');
     // .options savecurrents in the copy that ran gives the resistors' currents too.
-    expect(within(currents).getByRole('row', { name: /R1/ }).textContent).toContain('from n1 to 0');
-    expect(editorText()).not.toContain('savecurrents');
-    await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toMatch(/Simulation finished/));
-    // The results on the netlist lines (inline notes from annotateLines).
+    // Ground is called "ground", as on the drawing and the card.
+    expect(within(currents).getByRole('row', { name: /R1/ }).textContent).toContain('from n1 to ground');
+    await waitFor(() => expect(polite()).toMatch(/a = 14 volts|14 volts/));
+    // The results on the netlist's lines (inline notes from annotateLines), and the text unchanged.
+    fireEvent.click(tab('Netlist'));
+    await editorView();
     await waitFor(() => expect(editorText()).toContain('a → x'));
-    // The raw output and the command.
-    fireEvent.click(screen.getByRole('tab', { name: 'ngspice output' }));
-    expect(screen.getByText('ngspice -b -r out.raw circuit.cir')).toBeTruthy();
-    expect(screen.getByText('.options savecurrents')).toBeTruthy(); // the line PlainSpice added
+    expect(editorText()).not.toContain('savecurrents');
+    // ngspice's own output: the command, and the line PlainSpice added.
+    fireEvent.click(tab('ngspice output'));
+    const output = screen.getByRole('region', { name: 'ngspice output' });
+    expect(within(output).getByText('ngspice -b -r out.raw circuit.cir')).toBeTruthy();
+    expect(within(output).getByText('.options savecurrents')).toBeTruthy();
+    // Explain: the whole circuit in words, then every line.
+    fireEvent.click(tab('Explain'));
+    const explain = screen.getByRole('region', { name: 'Explain' });
+    expect(within(explain).getByRole('heading', { name: 'The whole circuit in words' })).toBeTruthy();
+    expect(within(explain).getByRole('heading', { name: 'Every line, explained' })).toBeTruthy();
   }, 30000);
 
   it('Ctrl+Enter runs from anywhere on the page (not only in the editor), but not inside a dialog', async () => {
     const engine = realEngine();
     render(<App startup={start(F5)} engine={engine} serviceWorker={false} />);
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Results' }), { key: 'Enter', ctrlKey: true });
-    await screen.findByRole('table', { name: /Node voltages/ }, { timeout: 15000 });
+    await solved();
     expect(engine.runs).toHaveLength(1);
+    fireEvent.keyDown(tab('Checks'), { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(engine.runs).toHaveLength(2), { timeout: 15000 });
+    await solved();
     fireEvent.click(screen.getByRole('button', { name: 'Help' }));
     const dialog = await screen.findByRole('dialog', { name: 'Help' }, { timeout: 5000 });
     fireEvent.keyDown(within(dialog).getAllByRole('button', { name: 'Close' })[0]!, { key: 'Enter', metaKey: true });
-    await new Promise((r) => setTimeout(r, 50));
-    expect(engine.runs).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(engine.runs).toHaveLength(2);
+    // The Help dialog: the keys, and the licences and the engine check.
+    expect(within(dialog).getByRole('link', { name: 'Licences and source' }).getAttribute('href')).toBe('./licenses/');
+    expect(within(dialog).getByRole('link', { name: /Engine check/ }).getAttribute('href')).toBe('./spike/');
+    expect(within(dialog).getByRole('table', { name: 'Keyboard shortcuts' }).textContent).toContain('Ctrl+K');
   }, 30000);
 
-  it('the 1M trap: the Checks tab shows it with its fix; the fix rewrites the line and the checks run again', async () => {
+  it('the 1M trap: red pen on the drawing, the Checks panel with its fix; the fix rewrites the line and the checks run again', async () => {
     render(<App startup={start(F3A)} engine={realEngine()} serviceWorker={false} />);
-    expect(screen.getByRole('tab', { name: 'Checks (1)', selected: true })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Go to line 3 in the netlist' })).toBeTruthy();
-    expect(screen.getByText(/What ngspice does:/)).toBeTruthy();
-    const fix = screen.getByRole('button', { name: /1meg/ });
-    fireEvent.click(fix);
-    expect(editorText()).toContain('R1 n1 n2 1meg');
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Checks (0)' })).toBeTruthy());
-    await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toMatch(/No traps found/));
-  });
+    expect(tab('Checks').textContent).toBe('Checks1 found');
+    await solved();
+    expect(drawingText()).toMatch(/1M means 1 milliohm/);
+    fireEvent.click(tab('Checks'));
+    const panel = screen.getByRole('region', { name: 'Checks' });
+    expect(within(panel).getByRole('button', { name: /Go to line 3/ })).toBeTruthy();
+    expect(within(panel).getByText(/What ngspice does:/)).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: /1meg/ }));
+    await waitFor(() => expect(tab('Checks').textContent).toBe('Checks'));
+    await waitFor(() => expect(polite()).toMatch(/No traps found/));
+    fireEvent.click(tab('Netlist'));
+    await editorView();
+    await waitFor(() => expect(editorText()).toContain('R1 n1 n2 1meg'));
+  }, 30000);
 
-  it('a netlist without an analysis line is not run; the app says why and shows the checks', async () => {
+  it('a netlist without an analysis line is not run; the app says why and the checks offer one', async () => {
     const engine = realEngine();
     render(<App startup={start('* no analysis\nV1 a 0 6\nR1 a 0 2\n.end\n')} engine={engine} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Nothing to run yet'));
     fireEvent.click(screen.getByRole('button', { name: 'Run' }));
-    expect(await screen.findByText('Nothing to run yet')).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Nothing to run yet' })).toBeTruthy();
     expect(engine.runs).toEqual([]);
-    expect(screen.getByRole('tab', { name: /^Checks/, selected: true })).toBeTruthy();
+    fireEvent.click(tab('Checks'));
     expect(screen.getByRole('button', { name: /Add \.op/ })).toBeTruthy();
   });
 
   it('when ngspice’s DC solution fails, the numbers are not shown as answers', async () => {
     // "ground" is an ordinary node name (docs/spice-facts W13): ngspice warns "singular matrix".
     render(<App startup={start('* ground word\nV1 a ground 6\nR1 a ground 2\n.op\n.end\n')} engine={realEngine()} serviceWorker={false} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
-    expect(await screen.findByText('Not reliable', {}, { timeout: 15000 })).toBeTruthy();
+    await waitFor(() => expect(statusLine()).toContain('Not reliable'), { timeout: 15000 });
+    // No numbers on the drawing: red pen says why instead.
+    expect(drawingText()).not.toMatch(/=\s*6\sV/);
+    fireEvent.click(tab('Numbers'));
+    expect(within(screen.getByRole('region', { name: 'Numbers' })).getByText('Not reliable')).toBeTruthy();
     const folded = screen.getByText('What ngspice printed anyway').closest('details');
     expect(folded).toBeTruthy();
     expect(folded!.open).toBe(false);
@@ -167,41 +330,52 @@ describe('<App />', () => {
     expect(screen.getByText('What happened, in plain words')).toBeTruthy();
   }, 30000);
 
-  it('a share link with run=1 opens the circuit and runs it once the engine is warm', async () => {
+  it('a share link with run=1 opens the circuit and runs it at once; nothing is saved', async () => {
     const engine = realEngine();
     const netlist = '* from a link\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n';
     render(<App startup={start(netlist, { run: true })} engine={engine} serviceWorker={false} />);
-    expect(editorText()).toContain('from a link');
-    await screen.findByRole('table', { name: /Node voltages/ }, { timeout: 15000 });
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('from a link');
+    await solved();
     expect(engine.runs).toEqual([asRun(netlist)]);
+    await waitFor(() => expect(polite()).toMatch(/Opened the circuit from the link|n1/));
     // Opening a link saves nothing until the student edits the circuit (security review M4).
+    await new Promise((r) => setTimeout(r, 600));
     expect(localStorage.getItem('plainspice:netlist')).toBeNull();
   }, 30000);
 
-  it('a link never replaces the saved netlist until the student edits it; then it is saved and leaves the address', async () => {
+  it('a link that asks not to run waits for Run, and never replaces the saved netlist until the student edits it', async () => {
     localStorage.setItem('plainspice:netlist', '* MY HOMEWORK\nV1 a 0 1\nR1 a 0 1\n.op\n.end\n');
     history.replaceState(null, '', '#c=from-a-link'); // the address while the link's circuit is open (no hashchange)
-    render(<App startup={start('* from a link\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n', { run: false })} engine={realEngine()} serviceWorker={false} />);
-    await new Promise((r) => setTimeout(r, 700)); // past the autosave's wait
+    const engine = realEngine();
+    render(<App startup={start('* from a link\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n', { run: false })} engine={engine} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Not run yet'));
+    await new Promise((r) => setTimeout(r, 700)); // past the live run's and the autosave's waits
+    expect(engine.runs).toEqual([]);
     expect(localStorage.getItem('plainspice:netlist')).toContain('MY HOMEWORK');
     expect(location.hash).toBe('#c=from-a-link'); // a reload opens the link again
-    const { EditorView } = await import('@codemirror/view');
-    const view = EditorView.findFromDOM(document.querySelector('.cm-content') as HTMLElement)!;
-    act(() => {
-      view.dispatch({ changes: { from: view.state.doc.length, insert: '* my change\n' } });
-    });
-    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('my change'));
+    // The student's first change makes it theirs: saved, and the link leaves the address. Live runs
+    // still wait for Run (the link asked), and Run turns them on.
+    fireEvent.click(part('R1'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R1/ }), { target: { value: '3' } });
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 n1 0 3'));
     expect(location.hash).toBe('');
-  });
+    expect(engine.runs).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await solved();
+    expect(engine.runs).toHaveLength(1);
+  }, 30000);
 
-  it('a share link pasted into the address (hashchange) opens; a broken one says why', async () => {
-    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
-    const fragment = await encodeShare('* pasted\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n');
+  it('a share link pasted into the address (hashchange) opens and runs; a broken one says why', async () => {
+    const engine = realEngine();
+    render(<App startup={start(F5)} engine={engine} serviceWorker={false} />);
+    await solved();
+    const fragment = await encodeShare('* pasted\nV1 n1 0 6\nR1 n1 0 2\n.op\n.end\n', { run: true });
     // Setting location.hash makes jsdom fire 'hashchange', as a browser does.
     act(() => {
       location.hash = fragment;
     });
-    await waitFor(() => expect(editorText()).toContain('pasted'));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('pasted'));
+    await waitFor(() => expect(engine.runs.at(-1)).toContain('* pasted'), { timeout: 15000 });
     // The link stays in the address until the first edit (a reload opens it again), and nothing is saved.
     expect(location.hash).toBe(`#${fragment}`);
     expect(localStorage.getItem('plainspice:netlist')).toBeNull();
@@ -211,35 +385,71 @@ describe('<App />', () => {
     // In the notice itself (the live region repeats the reason for a moment, so not the whole page).
     const notice = await screen.findByRole('region', { name: 'The link could not be opened' });
     expect(within(notice).getByText(/made by a newer version of PlainSpice/)).toBeTruthy();
-    expect(editorText()).toContain('pasted'); // the circuit stays
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('pasted'); // the circuit stays
     // A skip-link fragment is no share link: nothing happens.
     act(() => {
       location.hash = 'main';
     });
     await new Promise((r) => setTimeout(r, 100));
     expect(screen.getAllByText('The link could not be opened')).toHaveLength(1);
-    expect(editorText()).toContain('pasted');
-  });
+  }, 30000);
 
-  it('Stop cancels a slow run; Run says "Running…" first, then becomes Stop', async () => {
+  it('Stop cancels a run that takes long: Run becomes Stop, and live runs wait for Run again', async () => {
     let reject: (e: Error) => void = () => undefined;
-    const engine: Engine = {
+    const engine: Engine & { runs: number } = {
+      runs: 0,
       warmUp: async () => 1,
-      run: () => new Promise((_resolve, rej) => (reject = rej)),
+      run: () => {
+        engine.runs += 1;
+        return new Promise((_resolve, rej) => (reject = rej));
+      },
       cancel: vi.fn(() => reject(new EngineCancelledError('The simulation was stopped.'))),
     };
     render(<App startup={start(F5)} engine={engine} serviceWorker={false} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Run' }));
-    expect(await screen.findByRole('button', { name: 'Running…' })).toBeTruthy();
+    await waitFor(() => expect(statusLine()).toContain('Running…'));
     const stop = await screen.findByRole('button', { name: 'Stop' }, { timeout: 2000 });
     fireEvent.click(stop);
     expect(engine.cancel).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('The simulation was stopped.')).toBeTruthy();
+    await waitFor(() => expect(statusLine()).toContain('Stopped'));
+    expect(statusLine()).toContain('To run it again, press Run (Ctrl+Enter).');
+    await waitFor(() => expect(polite()).toContain('The simulation was stopped.'));
     expect(screen.getByRole('button', { name: 'Run' })).toBeTruthy();
+    // A change does not start a run while paused.
+    fireEvent.click(part('R1'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R1/ }), { target: { value: '5' } });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(engine.runs).toBe(1);
   });
 
-  it('Settings: choosing a text size applies it to <html> and remembers it', async () => {
-    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
+  it('a run slower than 1.5 s pauses live runs: the status line says to press Run, and Run solves the new text', async () => {
+    const engine = realEngine(1600);
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Live runs paused'), { timeout: 15000 });
+    expect(statusLine()).toMatch(/The last run took 1\.\d s, so ngspice does not run after every change: press Run \(Ctrl\+Enter\)\./);
+    await waitFor(() => expect(polite()).toMatch(/so ngspice now runs only when you press Run/));
+    // The numbers of that run are still shown.
+    await waitFor(() => expect(drawingText()).toMatch(/=\s*4\sV/));
+    fireEvent.click(part('R1'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R1/ }), { target: { value: '2k' } });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(engine.runs).toHaveLength(1);
+    expect(statusLine()).toContain('The numbers are from before your last change.');
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(engine.runs).toHaveLength(2));
+    await waitFor(() => expect(drawingText()).toMatch(/=\s*3\sV/), { timeout: 15000 });
+  }, 30000);
+
+  it('a netlist that asks for very many points is not run on its own: the status line says why', async () => {
+    const engine = realEngine();
+    render(<App startup={start('* long\nV1 a 0 1\nR1 a b 1k\nC1 b 0 1n\n.tran 1n 1 0 1n\n.end\n')} engine={engine} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Live runs paused'));
+    expect(statusLine()).toMatch(/This netlist asks for about [\d,]+ points, so ngspice does not run after every change/);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(engine.runs).toEqual([]);
+  });
+
+  it('Settings: the text size applies to <html> and is remembered; the results’ font switches between handwriting and plain', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const dialog = await screen.findByRole('dialog', { name: 'Settings' }, { timeout: 5000 });
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Extra large (150 %)' }));
@@ -247,44 +457,171 @@ describe('<App />', () => {
     expect(JSON.parse(localStorage.getItem('plainspice:settings') ?? '{}')).toMatchObject({ textSize: 'x-large' });
     fireEvent.click(within(dialog).getAllByRole('radio', { name: 'Follow my device' })[0]!);
     expect(document.documentElement.hasAttribute('data-text-size')).toBe(false);
+    // The results' font: handwriting (Caveat) by default, plain (Inter) on request, at once.
+    expect(document.querySelector('.app')!.classList.contains('nb-plain')).toBe(false);
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Plain/ }));
+    expect(document.querySelector('.app')!.classList.contains('nb-plain')).toBe(true);
+    await waitFor(() => expect(polite()).toContain('Results are now written in the plain font.'));
   });
 
-  it('Examples: choosing one opens it in the editor and announces it', async () => {
-    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
+  it('Examples: Start here comes first; choosing one opens it, solves it and announces it; the student’s last edits stay saved', async () => {
+    const engine = realEngine();
+    render(<App startup={start(F5)} engine={engine} serviceWorker={false} />);
+    await solved();
+    // An edit, then at once (before the autosave's wait is over) an example.
+    fireEvent.click(part('R1'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R1/ }), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
-    const item = await screen.findByRole('menuitem', { name: 'The 1M trap' }, { timeout: 5000 });
-    fireEvent.click(item);
-    await waitFor(() => expect(editorText()).toContain('F3a: the 1M trap'));
-    expect(screen.getByRole('tab', { name: 'Checks (1)', selected: true })).toBeTruthy();
-    await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toContain('Opened the example “The 1M trap”.'));
-  });
-
-  it('choosing an example keeps the student\'s last edits saved, and saves nothing of the example', async () => {
-    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
-    const { EditorView } = await import('@codemirror/view');
-    const view = EditorView.findFromDOM(document.querySelector('.cm-content') as HTMLElement)!;
-    act(() => {
-      view.dispatch({ changes: { from: view.state.doc.length, insert: '* my last edit\n' } });
-    });
-    // At once, before the autosave's wait is over.
-    fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'The 1M trap' }, { timeout: 5000 }));
-    await waitFor(() => expect(editorText()).toContain('F3a: the 1M trap'));
+    const menu = await screen.findByRole('menu', { name: 'Examples' }, { timeout: 5000 });
+    const items = within(menu).getAllByRole('menuitem');
+    expect(items[0]!.textContent).toContain('A 6 V source and two resistors: change R1');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'The 1M trap' }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('F3a: the 1M trap'));
+    expect(tab('Checks').textContent).toBe('Checks1 found');
+    await waitFor(() => expect(polite()).toContain('Opened the example “The 1M trap”.'));
+    await waitFor(() => expect(engine.runs.at(-1)).toContain('F3a'), { timeout: 15000 });
     await new Promise((r) => setTimeout(r, 700));
-    expect(localStorage.getItem('plainspice:netlist')).toContain('* my last edit');
-  });
+    expect(localStorage.getItem('plainspice:netlist')).toContain('R1 n1 0 5');
+    // Back to Start here: the sticky note comes back with it.
+    fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /A 6 V source and two resistors: change R1/ }, { timeout: 5000 }));
+    await waitFor(() => expect(screen.getByRole('complementary', { name: 'Change R1 and watch the numbers move' })).toBeTruthy());
+  }, 30000);
 
-  it('typing: the checks follow the text, and the new count is announced after a pause', async () => {
-    render(<App startup={start(F5)} engine={realEngine()} serviceWorker={false} />);
-    const editor = document.querySelector('.cm-content') as HTMLElement;
-    // Type a beginner trap through CodeMirror's own input path.
-    const { EditorView } = await import('@codemirror/view');
-    const view = EditorView.findFromDOM(editor)!;
-    act(() => {
-      view.dispatch({ changes: { from: view.state.doc.length, insert: 'R9 a 0 1M\n' } });
+  it('Ctrl+K: every command in one search; it opens a panel, opens a part’s card, and switches the results’ font', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const openPalette = (): HTMLElement => {
+      fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+      return screen.getByRole('dialog', { name: 'Commands' });
+    };
+    let palette = openPalette();
+    const input = within(palette).getByRole('combobox', { name: 'Search or run a command' });
+    expect(document.activeElement).toBe(input);
+    const names = within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent);
+    for (const want of ['Run ngspice now', 'Open the Netlist panel', 'Open the Checks panel', 'Open the Explain panel', 'Open the Numbers panel', 'Open the Plot panel', 'Open the ngspice output panel', 'Share this circuit', 'Netlist for ngspice (.cir)', 'Netlist for LTspice (.net)', 'Change R1, resistor', 'Write results in the plain font', 'Open the settings', 'Open the help']) {
+      expect(names.some((n) => n?.startsWith(want)), want).toBe(true);
+    }
+    fireEvent.change(input, { target: { value: 'numbers' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Numbers' })).toBeTruthy();
+    palette = openPalette();
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'change r2' } });
+    fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Enter' });
+    expect(screen.getByRole('dialog', { name: /^R2 resistor/ })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('textbox', { name: /R2/ }), { key: 'Escape' });
+    palette = openPalette();
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'plain font' } });
+    fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Enter' });
+    expect(document.querySelector('.app')!.classList.contains('nb-plain')).toBe(true);
+    // Escape closes it without running anything.
+    palette = openPalette();
+    fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Commands' })).toBeNull();
+    // A video's examples are found by the video, accents or not, and named with it; groups are named.
+    palette = openPalette();
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'thevenin example 3' } });
+    const found = within(palette).getAllByRole('option').map((o) => o.textContent ?? '');
+    expect(found.length).toBeGreaterThan(0);
+    expect(found.every((o) => o.includes('Thévenin with Dependent Sources'))).toBe(true);
+    expect(within(palette).getByRole('group', { name: 'Examples' })).toBeTruthy();
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'norton' } });
+    expect(within(palette).getAllByRole('option').some((o) => o.textContent?.includes('from Norton and Source Transformation'))).toBe(true);
+    fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Escape' });
+  }, 30000);
+
+  it('the part tools say plainly that placing parts comes in the next update, and change nothing', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const tools = screen.getByRole('toolbar', { name: 'Parts and tools' });
+    fireEvent.click(within(tools).getByRole('button', { name: /^Resistor/ }));
+    expect(document.querySelector('.hint')!.textContent).toBe(
+      'Placing a resistor comes in the next update of PlainSpice. For now, click a part on the drawing to change its value. Esc goes back to Select.',
+    );
+    await waitFor(() => expect(polite()).toContain('Placing a resistor comes in the next update of PlainSpice.'));
+    expect(within(tools).getByRole('button', { name: 'Resistor' }).getAttribute('aria-pressed')).toBe('true');
+    // Escape goes back to Select.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(within(tools).getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.hint')!.textContent).toMatch(/^Click a part to see its numbers/);
+    // A click on a part with a part tool does what the hint says: its card opens, back on Select; nothing is added.
+    fireEvent.click(within(tools).getByRole('button', { name: 'Wire' }));
+    expect(document.querySelector('.hint')!.textContent).toContain('Drawing wires comes in the next update of PlainSpice.');
+    fireEvent.click(part('R2'));
+    expect(screen.getByRole('dialog', { name: /^R2 resistor/ })).toBeTruthy();
+    expect(within(tools).getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getAllByRole('button', { name: /^[A-Z]+\d*, / })).toHaveLength(3);
+  }, 30000);
+
+  it('Undo and Redo across circuits opened from the Examples never save an example over the student’s netlist', async () => {
+    const HOMEWORK = '* MY HOMEWORK\nV1 a 0 9\nR1 a 0 3\n.op\n.end\n';
+    localStorage.setItem('plainspice:netlist', HOMEWORK);
+    render(<App startup={start(HOMEWORK)} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const choose = async (name: string): Promise<void> => {
+      fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
+      fireEvent.click(await screen.findByRole('menuitem', { name }, { timeout: 5000 }));
+      await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).not.toContain('MY HOMEWORK'));
+    };
+    await choose('The 1M trap');
+    await choose('The 1M trap, fixed: 1meg');
+    // Back to the first example, forward again, back and forth: nothing opened is saved.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await new Promise((r) => setTimeout(r, 700));
+    expect(localStorage.getItem('plainspice:netlist')).toBe(HOMEWORK);
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('MY HOMEWORK'));
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }));
+    await new Promise((r) => setTimeout(r, 700));
+    expect(localStorage.getItem('plainspice:netlist')).toBe(HOMEWORK);
+  }, 30000);
+
+  it('while ngspice loads, Run stays Run and the status says so; a load stopped by a new circuit is no failure', async () => {
+    let release: () => void = () => undefined;
+    let reject: (e: Error) => void = () => undefined;
+    const loading = new Promise<number>((resolve, rej) => {
+      release = () => resolve(1);
+      reject = rej;
     });
-    await waitFor(() => expect(screen.getByRole('tab', { name: /^Checks \([1-9]/ })).toBeTruthy());
-    await waitFor(() => expect(screen.getByTestId('live-polite').textContent).toMatch(/traps? found/), { timeout: 3000 });
-    expect(localStorage.getItem('plainspice:netlist')).toContain('R9 a 0 1M');
-  });
+    const engine: Engine & { runs: string[] } = {
+      runs: [],
+      warmUp: () => loading,
+      run: async (netlist) => {
+        engine.runs.push(netlist);
+        return (await ngspice).run(netlist);
+      },
+      cancel: vi.fn(),
+    };
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Loading ngspice…'));
+    expect(statusLine()).toContain('The first visit downloads it');
+    // However long the download takes, Run is not Stop: there is nothing to stop yet.
+    await new Promise((r) => setTimeout(r, 700));
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Run' })).toBeTruthy();
+    expect(engine.runs).toEqual([]);
+    release();
+    await solved();
+    expect(engine.runs).toHaveLength(1);
+    void reject;
+  }, 30000);
+
+  it('a value typed on a card that SPICE cannot read stays in the field, marked, with why; the netlist keeps its last value', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(part('R1'));
+    const card = screen.getByRole('dialog', { name: /^R1 resistor/ });
+    const field = within(card).getByRole('textbox', { name: /R1/ });
+    // Key by key, as a student types a decimal comma.
+    for (const value of ['4', '4,', '4,7', '4,7k']) fireEvent.change(field, { target: { value } });
+    await waitFor(() => expect(field.getAttribute('aria-invalid')).toBe('true'), { timeout: 3000 });
+    expect(card.textContent).toContain('4,7k: SPICE reads the comma as a space');
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 in out 4\n'));
+    // Undo: the whole card's change, back to 1k.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 in out 1k'));
+  }, 30000);
 });

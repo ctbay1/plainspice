@@ -1,46 +1,55 @@
 /*
- * PlainSpice app styles: the Solved Circuits notebook look (cream grid paper, ink), built on theme
- * tokens that the editor (src/editor/editor.css) and the plots (src/plot/plot.css) read too.
+ * PlainSpice in the Notebook look (decisions 0014 and 0016): the Solved Circuits page as a tool.
+ * The drawing's own look is src/notebook/notebook.css (imported below, with its fonts); this file is
+ * the frame around it (the top bar, the parts toolbar in the page's margin, the divider tabs and
+ * their panels, the card, the sticky note, the hint and status lines, Ctrl+K, a phone's bar and
+ * sheets) and what the panels and dialogs show (tables, banners, checks, menus).
  *
  * Accessibility (decision 0010):
  * - Every size is in rem/em, so html[data-text-size="large" | "x-large"] (125 % / 150 %) and the
- *   browser's own text size scale everything; the layout reflows to one column (320 px, 1.4.10).
- * - Text contrast is at least 4.5:1 and UI borders 3:1 in normal and high contrast (computed by
- *   tests/unit/app-contrast.test.ts from the tokens below).
- * - Focus is a 3 px outline that is never hidden: nothing is sticky (2.4.7, 2.4.11).
- * - Targets are at least 24 px; the main buttons 44 px (2.5.8).
- * - High contrast: html[data-contrast="more"], or the device's prefers-contrast when the app has
- *   no setting. Reduced motion: html[data-motion="reduce"], or prefers-reduced-motion unless the
+ *   browser's own text size scale everything; below 900 px the page uses the phone's layout, and
+ *   nothing scrolls sideways at 320 px (1.4.10).
+ * - Text contrast is at least 4.5:1 and UI boundaries 3:1, in normal and high contrast (computed by
+ *   tests/unit/app-contrast.test.ts from the tokens below and notebook.css's).
+ * - Focus is a clear outline that is never hidden; the drawing draws its own ring round a symbol.
+ * - Targets are at least 24 px; the main buttons 44 px on a phone (2.5.8).
+ * - High contrast: html[data-contrast="more"], or the device's prefers-contrast when the app has no
+ *   setting. Reduced motion: html[data-motion="reduce"], or prefers-reduced-motion unless the
  *   student chose "Normal". Forced colours (Windows High Contrast) keep borders and outlines.
  */
+@import '../notebook/notebook.css';
 
 /* ------------------------------------------------------------------ tokens */
 :root {
+  /* The old app's tokens: the editor (src/editor/editor.css), the plots (src/plot/plot.css) and the
+     dialogs read them. They are the Notebook's paper and inks. */
   --paper: #f6f1e4;
   --surface: #fffdf6;
   --ink: #1e2a45;
   --pencil: #545863;
   --rule: #c9c2ae;
-  --focus: #1971c2;
+  --focus: #1e2a45;
   --ok: #1e6b30;
   --bad: #b42318;
   --warn: #8a4b00;
   --accent-current: #8a4b00;
   --note: #1a5a96;
-  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
-
-  /* Derived (also checked for contrast). */
-  --grid-line: rgb(201 194 174 / 0.42);
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
   --hover: #efe7d3;
+  --tab-bg: #ebe3cf;
   --tint-ok: #e6f1e4;
   --tint-bad: #fbe9e6;
   --tint-warn: #f9eddc;
   --tint-note: #e8eff7;
   --on-strong: #fffdf6; /* text on ink, ok, bad backgrounds */
-  --overlay: rgb(30 42 69 / 0.5);
+  --overlay: rgb(30 42 69 / 0.42);
   --radius: 0.375rem;
-  --shadow: 0 0.25rem 1rem rgb(30 42 69 / 0.18);
+  --shadow-1: 0 1px 0 rgb(30 42 69 / 0.04), 0 1px 2px rgb(30 42 69 / 0.08);
+  --shadow-2: 0 1px 2px rgb(30 42 69 / 0.07), 0 6px 18px -6px rgb(30 42 69 / 0.16);
+  --shadow-3: 0 2px 4px rgb(30 42 69 / 0.08), 0 18px 44px -14px rgb(30 42 69 / 0.3);
+  /* The page's margin: the parts toolbar lives left of the red line. */
+  --margin: 7.375rem;
   color-scheme: light;
 }
 
@@ -50,21 +59,23 @@ html[data-contrast='more'] {
   --ink: #000000;
   --pencil: #333333;
   --rule: #595959;
-  --focus: #0b4f9c;
+  --focus: #000000;
   --ok: #0b5a23;
   --bad: #8f1a10;
   --warn: #6b3a00;
   --accent-current: #6b3a00;
   --note: #0b4f9c;
-  --grid-line: transparent;
   --hover: #e6e6e6;
+  --tab-bg: #ffffff;
   --tint-ok: #ffffff;
   --tint-bad: #ffffff;
   --tint-warn: #ffffff;
   --tint-note: #ffffff;
   --on-strong: #ffffff;
   --overlay: rgb(0 0 0 / 0.6);
-  --shadow: none;
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: none;
 }
 
 @media (prefers-contrast: more) {
@@ -74,21 +85,73 @@ html[data-contrast='more'] {
     --ink: #000000;
     --pencil: #333333;
     --rule: #595959;
-    --focus: #0b4f9c;
+    --focus: #000000;
     --ok: #0b5a23;
     --bad: #8f1a10;
     --warn: #6b3a00;
     --accent-current: #6b3a00;
     --note: #0b4f9c;
-    --grid-line: transparent;
     --hover: #e6e6e6;
+    --tab-bg: #ffffff;
     --tint-ok: #ffffff;
     --tint-bad: #ffffff;
     --tint-warn: #ffffff;
     --tint-note: #ffffff;
     --on-strong: #ffffff;
     --overlay: rgb(0 0 0 / 0.6);
-    --shadow: none;
+    --shadow-1: none;
+    --shadow-2: none;
+    --shadow-3: none;
+  }
+}
+
+/* The Notebook in high contrast: white paper, black ink, the grid nearly gone, darker pens. */
+html[data-contrast='more'] :is(.nb-theme, .nb-canvas) {
+  --nb-paper: #ffffff;
+  --nb-paper-raised: #ffffff;
+  --nb-card: #ffffff;
+  --nb-paper-sunk: #e6e6e6;
+  --nb-paper-edge: #595959;
+  --nb-paper-edge-strong: #333333;
+  --nb-grid: rgb(0 0 0 / 0.08);
+  --nb-grid-major: rgb(0 0 0 / 0.14);
+  --nb-margin-red: #b42318;
+  --nb-ink: #000000;
+  --nb-ink-2: #1a1a1a;
+  --nb-pencil: #333333;
+  --nb-pencil-faint: #595959;
+  --nb-amber: #6b3a00;
+  --nb-amber-text: #6b3a00;
+  --nb-red: #8f1a10;
+  --nb-red-text: #8f1a10;
+  --nb-green: #0b5a23;
+  --nb-green-text: #0b5a23;
+  --nb-note: #ffffff;
+  --nb-note-edge: #000000;
+}
+@media (prefers-contrast: more) {
+  html:not([data-contrast]) :is(.nb-theme, .nb-canvas) {
+    --nb-paper: #ffffff;
+    --nb-paper-raised: #ffffff;
+    --nb-card: #ffffff;
+    --nb-paper-sunk: #e6e6e6;
+    --nb-paper-edge: #595959;
+    --nb-paper-edge-strong: #333333;
+    --nb-grid: rgb(0 0 0 / 0.08);
+    --nb-grid-major: rgb(0 0 0 / 0.14);
+    --nb-margin-red: #b42318;
+    --nb-ink: #000000;
+    --nb-ink-2: #1a1a1a;
+    --nb-pencil: #333333;
+    --nb-pencil-faint: #595959;
+    --nb-amber: #6b3a00;
+    --nb-amber-text: #6b3a00;
+    --nb-red: #8f1a10;
+    --nb-red-text: #8f1a10;
+    --nb-green: #0b5a23;
+    --nb-green-text: #0b5a23;
+    --nb-note: #ffffff;
+    --nb-note-edge: #000000;
   }
 }
 
@@ -126,35 +189,39 @@ html[data-motion='reduce'] *::after {
 *::after {
   box-sizing: border-box;
 }
-
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
-
+html,
 body {
+  height: 100%;
   margin: 0;
-  min-height: 100vh;
+}
+body {
   color: var(--ink);
   background-color: var(--paper);
-  /* Notebook grid paper: decorative only (the lines carry no meaning). */
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 1.5rem 1.5rem;
   font-family: var(--font-ui);
   font-size: 1rem;
   line-height: 1.5;
+  overflow: hidden;
+  overscroll-behavior: none;
   overflow-wrap: break-word;
 }
-
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
 h1,
 h2,
 h3,
 h4 {
   line-height: 1.25;
 }
-
 a {
   color: var(--note);
   text-decoration-thickness: max(1px, 0.06em);
@@ -163,28 +230,36 @@ a {
 a:hover {
   text-decoration-thickness: 0.12em;
 }
-
 code,
 kbd,
 pre {
   font-family: var(--font-mono);
 }
 
+/* Focus: a clear ink ring on paper and cards, amber on the dark screen. */
 :focus-visible,
 [data-focus-visible] {
-  outline: 3px solid var(--focus);
+  outline: 0.1875rem solid var(--focus);
   outline-offset: 2px;
 }
-/* React Aria marks the whole tab area (and a checkbox's or radio's label) as focus-visible while
-   focus is anywhere inside it: one ring, on the element that has focus, is enough (a11y review F6). */
-.tabs[data-focus-visible],
+:focus:not(:focus-visible) {
+  outline: none;
+}
+/* React Aria marks a checkbox's or radio's label as focus-visible while focus is inside it: one ring is enough. */
 .checkbox[data-focus-visible],
 .radio[data-focus-visible] {
   outline: none;
 }
-/* React Aria marks keyboard focus with data-focus-visible; mouse clicks show no ring. */
-:focus:not(:focus-visible) {
+/* The drawing draws its own ring, round the symbol's body (notebook.css: .nb-focus), never across its words. */
+.app .nb-hit:focus-visible {
   outline: none;
+}
+/* A heading the page moves the focus to (a card's or a panel's title): a quiet ring, so a keyboard
+   user sees where the focus went (it is not a control, so not the controls' ring). */
+.app [tabindex='-1']:is(h2, h3, h4):focus-visible {
+  outline: 2px dashed var(--nb-ink-2);
+  outline-offset: 3px;
+  border-radius: 0.25rem;
 }
 
 .visually-hidden {
@@ -199,422 +274,1417 @@ pre {
   white-space: nowrap !important;
   border: 0 !important;
 }
-
 .muted {
   color: var(--pencil);
 }
-
-.hint {
-  color: var(--pencil);
-  font-size: 0.9375rem;
-  margin: 0.4rem 0 0;
+.hand {
+  font-family: var(--nb-font-hand);
+  font-weight: 700;
+}
+/* The Plain font setting: every handwritten result in the plain sans, at once. */
+.nb-plain .hand {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
+  font-size: 0.8em;
+}
+.nb-plain .ps-editor--screen .ps-inline-note {
+  font-family: var(--nb-font-ui);
+  font-weight: 600;
 }
 
 .skip-link {
   position: absolute;
-  left: 0.75rem;
-  top: -10rem;
   z-index: 200;
-  padding: 0.6rem 1rem;
-  background: var(--ink);
-  color: var(--on-strong);
-  border-radius: var(--radius);
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.625rem;
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
   font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
 }
-.skip-link:focus {
-  top: 0.75rem;
-}
-
-/* ------------------------------------------------------------------ header */
-.app-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--surface);
-  border-bottom: 2px solid var(--ink);
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: none;
+  outline: 0.1875rem solid var(--nb-amber);
+  outline-offset: 2px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
+/* The static page shown while the app loads (index.html). */
+.boot {
+  max-width: 40rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
 }
-.mark {
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: none;
+
+/* ------------------------------------------------------------------ the app */
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overflow: clip;
+  font-family: var(--nb-font-ui);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--nb-ink);
+  background: var(--nb-paper);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss03';
 }
-.mark__zigzag {
-  stroke: var(--ink);
-}
-.mark__check {
-  stroke: var(--ok);
-}
-.brand__name {
+.app p,
+.app h2,
+.app h3,
+.app h4 {
   margin: 0;
-  font-size: 1.5rem;
-  letter-spacing: 0.01em;
 }
-.brand__tagline {
-  margin: 0;
-  color: var(--pencil);
+.paper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  overflow: clip;
+}
+.margin-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--margin);
+  width: 1.5px;
+  background: var(--nb-margin-red);
+  opacity: 0.85;
+  pointer-events: none;
 }
 
-.header-actions {
+/* ------------------------------------------------------------------ islands, buttons, icons */
+.island {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge);
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-2);
+  pointer-events: auto;
 }
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.engine {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0;
-  color: var(--pencil);
-  font-size: 0.9375rem;
-}
-.engine__dot {
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 50%;
-  border: 2px solid var(--pencil);
-  flex: none;
-}
-.engine--ready .engine__dot {
-  background: var(--ok);
-  border-color: var(--ok);
-}
-.engine--loading .engine__dot {
-  border-color: var(--warn);
-  animation: pulse 1.2s ease-in-out infinite alternate;
-}
-.engine--failed .engine__dot {
-  background: var(--bad);
-  border-color: var(--bad);
-}
-.engine--failed {
-  color: var(--bad);
-}
-@keyframes pulse {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0.35;
-  }
-}
-
-/* A phone's first screen is short: the tagline (also in the page title) gives way to the netlist. */
-@media (max-width: 599px) {
-  .app-header {
-    padding: 0.5rem 0.75rem;
-    gap: 0.5rem 1rem;
-  }
-  .brand__tagline {
-    display: none;
-  }
-}
-
-/* ------------------------------------------------------------------ buttons */
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  min-height: 2.75rem; /* 44 px */
-  min-width: 2.75rem;
-  padding: 0.35rem 1rem;
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: background-color 0.12s ease;
-}
-.button[data-hovered] {
-  background: var(--hover);
-}
-.button[data-pressed] {
-  transform: translateY(1px);
-}
-.button[data-disabled] {
-  cursor: not-allowed;
-  border-style: dashed;
-  color: var(--pencil);
-}
-.button--primary {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--on-strong);
-}
-.button--primary[data-hovered] {
-  background: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-}
-.button--stop {
-  background: var(--bad);
-  border-color: var(--bad);
-}
-.button--stop[data-hovered] {
-  background: var(--bad);
-}
-.button--run {
-  min-width: 7.5rem;
-}
-.button--fix {
-  min-height: 2.75rem;
-  border-color: var(--ok);
-  color: var(--ok);
-}
-.button .icon {
-  width: 1.1em;
-  height: 1.1em;
-  flex: none;
-}
-
-/* A button that reads like a link ("Line 3"): still at least 24 px tall (2.5.8). */
-.link-button {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.5rem;
-  min-width: 1.5rem;
-  padding: 0.1rem 0.3rem;
-  margin: 0 -0.3rem;
-  border: 0;
-  border-radius: 0.25rem;
-  background: none;
-  color: var(--note);
-  font: inherit;
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-thickness: max(1px, 0.06em);
-  text-underline-offset: 0.15em;
-  cursor: pointer;
-}
-.link-button[data-hovered] {
-  text-decoration-thickness: 0.15em;
-}
-
-.icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: none;
-  padding: 0;
-  border: 2px solid transparent;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--ink);
-  cursor: pointer;
-}
-.icon-button[data-hovered] {
-  background: var(--hover);
-  border-color: var(--pencil);
-}
-.icon-button .icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
 .icon {
   display: inline-block;
   width: 1.1em;
   height: 1.1em;
   vertical-align: -0.15em;
   flex: none;
-  --icon-on: var(--surface);
+  --icon-on: var(--nb-paper-raised);
+}
+.line-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.glyph {
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: none;
+}
+.mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  fill: none;
+}
+.mark__zigzag {
+  stroke: var(--nb-ink);
+}
+.mark__check {
+  stroke: var(--nb-green);
 }
 
-/* ------------------------------------------------------------------ layout */
-.layout {
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0 0.875rem;
+  border: 1.5px solid transparent;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: var(--nb-ink);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition:
+    background-color var(--nb-t-fast) var(--nb-ease-out),
+    border-color var(--nb-t-fast) var(--nb-ease-out);
+}
+.button .line-icon {
+  width: 1rem;
+  height: 1rem;
+}
+.button:hover {
+  background: var(--nb-paper-sunk);
+}
+.button--quiet {
+  padding: 0 0.625rem;
+}
+.button--primary {
+  background: var(--nb-ink);
+  border-color: var(--nb-ink);
+  color: var(--on-strong);
+}
+.button--primary:hover {
+  background: var(--nb-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.button--run {
+  border-color: var(--nb-paper-edge-strong);
+  padding: 0 0.875rem 0 0.625rem;
+}
+.button--run .line-icon path {
+  fill: currentColor;
+}
+/* Live runs wait for Run (paused, a link not run yet): Run stands out, as the status line asks for it. */
+.button--run.is-wanted {
+  background: var(--nb-ink);
+  border-color: var(--nb-ink);
+  color: var(--on-strong);
+}
+.button--run.is-wanted:hover {
+  background: var(--nb-ink);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.button--stop {
+  background: var(--nb-red-text);
+  border-color: var(--nb-red-text);
+  color: var(--on-strong);
+}
+.button--stop:hover {
+  background: var(--nb-red-text);
+  text-decoration: underline;
+}
+.button--stop .line-icon path {
+  fill: currentColor;
+}
+.button--fix {
+  background: var(--nb-green-text);
+  border-color: var(--nb-green-text);
+  color: var(--on-strong);
+}
+.button--fix:hover {
+  background: var(--nb-green-text);
+  text-decoration: underline;
+}
+.button--paper {
+  background: var(--nb-paper-raised);
+  border-color: var(--nb-paper-edge-strong);
+  box-shadow: var(--shadow-1);
+}
+.button--note {
+  background: var(--nb-ink);
+  color: var(--nb-note);
+  font-size: 0.84375rem;
+}
+.button--note:hover {
+  background: var(--nb-ink);
+  text-decoration: underline;
+}
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: var(--nb-ink-2);
+  flex: none;
+  transition: background-color var(--nb-t-fast) var(--nb-ease-out);
+}
+.icon-button:hover:not(:disabled) {
+  background: var(--nb-paper-sunk);
+  color: var(--nb-ink);
+}
+.icon-button:disabled {
+  color: #767a84;
+  cursor: default;
+  opacity: 0.55;
+}
+.icon-button--small {
+  width: 2rem;
+  height: 2rem;
+}
+.icon-button--note {
+  color: #4f4410;
+}
+.link-button {
+  display: inline;
+  min-height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--nb-ink);
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--nb-pencil-faint);
+}
+.link-button:hover {
+  text-decoration-color: currentColor;
+}
+.link-button--red {
+  color: var(--nb-red-text);
+  text-decoration-color: currentColor;
+}
+kbd {
+  display: inline-block;
+  min-width: 1.45em;
+  padding: 0 0.4em;
+  font-family: var(--nb-font-ui);
+  font-size: 0.71875rem;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--nb-ink-2);
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-bottom-width: 2px;
+  border-radius: 0.3125rem;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ the top bar */
+/* The top bar's container: its rules below are in rem of its width, so they follow the text size too. */
+.top-area {
+  container: top / inline-size;
+  position: absolute;
+  z-index: 20;
+  top: 0.75rem;
+  left: calc(var(--margin) + 0.875rem);
+  right: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.625rem;
+  pointer-events: none;
+}
+.top-area > * {
+  pointer-events: auto;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  pointer-events: none;
+}
+.top > * {
+  pointer-events: auto;
+}
+.top__doc {
+  padding: 0.25rem 0.375rem;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.top__mark {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
-  max-width: 100rem;
+  place-items: center;
+  width: 2.375rem;
+  height: 2.375rem;
+  border-radius: 0.625rem;
+  background: var(--nb-paper);
+  border: 1px solid var(--nb-paper-edge);
+  flex: none;
+}
+.top__title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* The circuit's title is the page's heading: it keeps room for a few words whatever else must give way. */
+  min-width: min(9rem, 22vw);
+  overflow: hidden;
+  margin: 0;
+  padding: 0 0.375rem;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.15;
+}
+.top__kicker {
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+  white-space: nowrap;
+}
+.top__name {
+  max-width: 27rem;
+  font-size: 0.96875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.top__examples {
+  flex: none;
+}
+.top__sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 0.375rem 0.125rem;
+  background: var(--nb-paper-edge);
+  flex: none;
+}
+/* Ctrl+K's button takes the room left over, up to 22rem, and gives way first (the circuit's title
+   matters more); its words go when it is narrow. */
+.top__cmd {
+  flex: 1 40 10rem;
+  min-width: 6rem;
+  max-width: 22rem;
+  container-type: inline-size;
+  height: 2.875rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 0 0.5rem 0 0.875rem;
+  gap: 0.625rem;
+  color: var(--nb-pencil);
+  text-align: left;
 }
-.layout:focus {
-  outline: none;
+.top__cmd:hover {
+  border-color: var(--nb-paper-edge-strong);
 }
-@media (min-width: 1000px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-    align-items: start;
+.top__cmd-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top__kbd {
+  flex: none;
+}
+.top__actions {
+  margin-left: auto;
+  flex: none;
+}
+.run-button {
+  min-height: 2.375rem;
+}
+/* At in-between widths the words go first: the icons and the names (accessible names stay) remain. */
+@container (max-width: 15rem) {
+  .top__cmd-text {
+    display: none;
+  }
+}
+/* A window narrower than about 1410 px (with normal text). */
+@container top (max-width: 79rem) {
+  /* Less room: the app's name goes (the mark stays), and the circuit's title may take two lines. */
+  .top__kicker {
+    display: none;
+  }
+  .top__name {
+    max-width: 21rem;
+    line-height: 1.2;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+/* Narrower than about 1050 px (with normal text). */
+@container top (max-width: 56.5rem) {
+  .top__actions .button--quiet {
+    font-size: 0.8125rem;
+    padding: 0 0.5rem;
+  }
+  .top__actions .button--quiet .line-icon {
+    display: none;
+  }
+}
+/* Narrower still (large text on a laptop): the buttons keep their icons and lose their words to the
+   eye (their names stay), so the title keeps its room. */
+@container top (max-width: 50rem) {
+  .top__actions .button--quiet .line-icon {
+    display: inline-block;
+  }
+  .top__actions .button--quiet,
+  .top__examples {
+    padding: 0 0.5rem;
+  }
+  .top__actions .button__word,
+  .top__examples .button__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .top__cmd {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  .top__cmd .top__kbd {
+    display: none;
   }
 }
 
-.pane {
-  min-width: 0;
+/* ------------------------------------------------------------------ the paper's stack: notices, results the drawing cannot show */
+.paper-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: min(36rem, 100%);
 }
-.pane__title {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
+.notice,
+.results-card,
+.update-card {
+  max-width: 100%;
+  padding: 0.625rem 0.875rem 0.75rem;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-left: 0.3125rem solid var(--note);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-2);
 }
-
-.pane--results {
-  background: var(--surface);
-  border: 1px solid var(--pencil);
-  border-radius: var(--radius);
-  padding: 0.5rem 0.75rem 1rem;
+.notice--problem {
+  border-left-color: var(--nb-red-text);
 }
-
-.editor-host {
-  min-width: 0;
+.notice__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
-
-.card {
-  margin-top: 1rem;
-  padding: 0.75rem 1rem 1rem;
-  background: var(--surface);
-  border: 1px solid var(--pencil);
-  border-radius: var(--radius);
+.notice__title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-top: 0.375rem;
+  font-size: 1rem;
+  font-weight: 600;
 }
-.card__title {
-  margin: 0 0 0.25rem;
-  font-size: 1.125rem;
+.notice--problem .notice__title .icon {
+  color: var(--nb-red-text);
 }
-
-/* ------------------------------------------------------------------ tabs */
-.tab-list {
+.notice--info .notice__title .icon {
+  color: var(--note);
+}
+.notice p,
+.notice ul {
+  margin: 0.35rem 0 0;
+}
+.notice ul {
+  padding-left: 1.25rem;
+}
+.update-card {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
-  border-bottom: 2px solid var(--pencil);
-  margin-bottom: 0.25rem;
+  align-items: center;
+  gap: 0.5rem 1rem;
 }
-.tab {
+.update-card p {
+  font-weight: 600;
+}
+.results-card {
+  border-left-color: var(--nb-amber);
+  min-width: 16rem;
+}
+.results-card__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.results-card__rows {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0.375rem 0 0;
+}
+.results-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.results-card__row dt {
+  color: var(--nb-ink-2);
+}
+.results-card__row dd {
+  margin: 0;
+  font-size: 1.375rem;
+  line-height: 1.2;
+  color: var(--nb-amber-text);
+  white-space: nowrap;
+}
+.results-card__sweep {
+  margin-top: 0.375rem;
+  color: var(--nb-ink-2);
+}
+.results-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+}
+.results-card.is-pending .results-card__row dd {
+  color: var(--nb-pencil);
+}
+.not-drawn {
+  max-width: 100%;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: rgb(246 241 228 / 0.9);
+  color: var(--nb-ink-2);
+  font-size: 0.8125rem;
+}
+.too-big {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 6rem 2rem 8rem calc(var(--margin) + 2rem);
+}
+.too-big p {
+  max-width: 32rem;
+  padding: 1rem 1.25rem;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-2);
+  font-size: 1rem;
+}
+
+/* ------------------------------------------------------------------ the parts toolbar (the margin) */
+.margin {
+  position: absolute;
+  z-index: 15;
+  left: 0.625rem;
+  top: 4.5rem;
+  bottom: 0.75rem;
+  width: calc(var(--margin) - 1.25rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  pointer-events: none;
+  /* Its height decides how the tools are shown (below): rem here follows the page's text size. */
+  container: tools / size;
+}
+.margin > * {
+  pointer-events: auto;
+}
+.tools {
+  position: relative;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.tools__bar {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  padding: 0.375rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-2);
+}
+.tools__slot {
+  display: contents;
+}
+.tools__sep {
+  display: block;
+  height: 1px;
+  margin: 0.25rem 0.875rem;
+  background: var(--nb-paper-edge);
+  flex: none;
+}
+.tool {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+  padding: 0.3125rem 0.125rem 0.375rem;
+  border: 0;
+  border-radius: 0.6875rem;
+  background: transparent;
+  color: var(--nb-ink);
+  transition:
+    background-color var(--nb-t-fast) var(--nb-ease-out),
+    color var(--nb-t-fast) var(--nb-ease-out);
+}
+.tool:hover {
+  background: var(--nb-paper-sunk);
+}
+.tool.is-on {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 1px 3px rgb(30 42 69 / 0.35);
+}
+.tool__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.tool__key {
+  position: absolute;
+  top: -2px;
+  left: calc(100% + 1px);
+  min-width: 0;
+  padding: 0 0.1875rem;
+  font-size: 0.65625rem;
+  line-height: 1.35;
+  border-bottom-width: 1px;
+}
+.tool.is-on .tool__key {
+  background: rgb(255 253 248 / 0.16);
+  border-color: rgb(255 253 248 / 0.35);
+  color: var(--nb-paper-raised);
+}
+.tool__word {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  gap: 1px;
+  max-width: 100%;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  color: inherit;
+}
+.tool__caret {
+  width: 0.75rem;
+  height: 0.75rem;
+  stroke-width: 2;
+  margin-right: -0.375rem;
+}
+/* A short window, or large text: the tools a little tighter, so all of them fit without scrolling
+   (rem here follows the page's text size). */
+@container tools (max-height: 44rem) {
+  .tool {
+    padding: 0.1875rem 0.125rem 0.25rem;
+  }
+  .tool .glyph {
+    width: 1.625rem;
+    height: 1.625rem;
+  }
+  .tools__sep {
+    margin: 0.125rem 0.875rem;
+  }
+}
+/* Too short for the named tools (large text, a short window): the icons and their keys, the names
+   kept for screen readers and in each tool's tooltip-free accessible name. */
+@container tools (max-height: 31rem) {
+  .tool {
+    padding: 0.3125rem 0.125rem;
+  }
+  .tool__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .tools__sep {
+    margin: 0.125rem 0.875rem;
+  }
+}
+/* The controlled sources: a menu beside the toolbar. */
+.tools-menu {
+  position: absolute;
+  z-index: 40;
+  left: calc(100% + 0.75rem);
+  top: 40%;
+  width: min(23.75rem, calc(100vw - var(--margin) - 2rem));
+  padding: 0.5rem;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-3);
+}
+.tools-menu__title {
+  padding: 0.25rem 0.5rem 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.part-row {
+  display: grid;
+  grid-template-columns: 2.75rem 1fr auto;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
   min-height: 2.75rem;
-  padding: 0.4rem 0.75rem;
-  margin-bottom: -2px;
-  border: 2px solid transparent;
-  border-bottom-width: 4px;
-  border-radius: var(--radius) var(--radius) 0 0;
-  color: var(--ink);
-  font-weight: 500;
-  cursor: pointer;
+  padding: 0.5rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: var(--nb-ink);
+  text-align: left;
 }
-.tab[data-hovered] {
-  background: var(--hover);
+.part-row:hover,
+.part-row:focus-visible {
+  background: var(--nb-paper-sunk);
 }
-/* The chosen tab: bold and a thick ink underline, not colour alone. */
-.tab[data-selected] {
-  font-weight: 700;
-  border-bottom-color: var(--ink);
+.part-row[aria-checked='true'],
+.part-row[aria-pressed='true'] {
+  background: #fff6c8;
 }
-.tab-panel {
-  padding-top: 0.5rem;
+.part-row__icon .glyph {
+  width: 2.5rem;
+  height: 2.5rem;
 }
-.tab-panel[data-focus-visible] {
-  outline-offset: 0.25rem;
+.part-row__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.part-row__name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.part-row__line {
+  font-size: 0.78125rem;
+  color: var(--nb-pencil);
+  line-height: 1.35;
 }
 
-.panel__title {
-  margin: 0.25rem 0 0.5rem;
-  font-size: 1.25rem;
+/* ------------------------------------------------------------------ divider tabs and the panel */
+.right {
+  position: absolute;
+  z-index: 22;
+  top: 5.25rem;
+  bottom: 4.25rem;
+  right: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  pointer-events: none;
 }
-
-/* ------------------------------------------------------------------ checks */
-.trap-group__title {
-  margin: 1rem 0 0.5rem;
+.right > * {
+  pointer-events: auto;
+}
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: calc(100% - 0.75rem);
+  margin-top: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* When the tabs do not all fit (large text, a short window), the scroll bar shows there are more. */
+  scrollbar-width: thin;
+  flex: none;
+}
+/* More tabs than fit: the column fades at the end that has more, as well as its scroll bar. */
+.tabs.has-more-below {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), rgb(0 0 0 / 0.25));
+}
+.tabs.has-more-above {
+  mask-image: linear-gradient(to top, #000 calc(100% - 2.5rem), rgb(0 0 0 / 0.25));
+}
+.tabs.has-more-above.has-more-below {
+  mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.25), #000 2.5rem, #000 calc(100% - 2.5rem), rgb(0 0 0 / 0.25));
+}
+/* A short column (a short window, or large text): the tabs keep their words and colour, and lose
+   their icons. The column needs about 53rem with them; ems in a media query are the device's text
+   size, so the Text size setting's 125 % and 150 % have their own heights. */
+@media (max-height: 53em) {
+  html:not([data-text-size='large'], [data-text-size='x-large']) .tab__icon {
+    display: none;
+  }
+  html:not([data-text-size='large'], [data-text-size='x-large']) .tab {
+    gap: 0;
+    padding: 0.5rem 0 0.5rem 0.1875rem;
+  }
+}
+@media (max-height: 66.25em) {
+  html[data-text-size='large'] .tab__icon {
+    display: none;
+  }
+  html[data-text-size='large'] .tab {
+    gap: 0;
+    padding: 0.5rem 0 0.5rem 0.1875rem;
+  }
+}
+@media (max-height: 79.5em) {
+  html[data-text-size='x-large'] .tab__icon {
+    display: none;
+  }
+  html[data-text-size='x-large'] .tab {
+    gap: 0;
+    padding: 0.5rem 0 0.5rem 0.1875rem;
+  }
+}
+.tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  width: 2.625rem;
+  padding: 0.625rem 0 0.625rem 0.1875rem;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-right: 0;
+  border-radius: 0.75rem 0 0 0.75rem;
+  background: var(--tab-bg);
+  color: var(--nb-ink-2);
+  font-size: 0.84375rem;
+  font-weight: 600;
+  box-shadow: -3px 2px 8px -5px rgb(30 42 69 / 0.35);
+  flex: none;
+  transition: background-color var(--nb-t-fast) var(--nb-ease-out);
+}
+.tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: var(--tab-colour);
+}
+.tab__icon {
+  width: 1rem;
+  height: 1rem;
+}
+.tab__label {
+  writing-mode: vertical-rl;
+  line-height: 1;
+}
+.tab:hover {
+  background: #f3edde;
+  color: var(--nb-ink);
+}
+.tab[aria-expanded='true'] {
+  background: var(--nb-paper-raised);
+  color: var(--nb-ink);
+}
+.tab[aria-expanded='true']::before {
+  width: 6px;
+}
+.tab--netlist,
+.sheet--netlist {
+  --tab-colour: var(--nb-screen);
+}
+.tab--checks,
+.sheet--checks {
+  --tab-colour: var(--nb-green);
+}
+.tab--explain,
+.sheet--explain {
+  --tab-colour: var(--nb-amber);
+}
+.tab--numbers,
+.sheet--numbers {
+  --tab-colour: var(--nb-ink);
+}
+.tab--plot,
+.sheet--plot {
+  --tab-colour: #1971c2;
+}
+.tab--output,
+.sheet--output {
+  --tab-colour: var(--nb-pencil);
+}
+.tab--more {
+  --tab-colour: var(--nb-pencil);
+}
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 0.25rem;
+  border-radius: 0.6875rem;
+  font-size: 0.75rem;
+  background: var(--nb-red-text);
+  color: #fff;
+}
+.sheet {
+  display: flex;
+  flex-direction: column;
+  width: min(29.375rem, calc(100vw - var(--margin) - 4.5rem));
+  max-height: 100%;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-right: 0;
+  border-radius: 1rem 0 0 1rem;
+  box-shadow:
+    -22px 0 44px -26px rgb(30 42 69 / 0.42),
+    var(--shadow-1);
+  overflow: hidden;
+  animation: slide-in var(--nb-t-slow) var(--nb-ease-out);
+}
+.sheet--netlist,
+.sheet--numbers,
+.sheet--plot {
+  width: min(34rem, calc(100vw - var(--margin) - 4.5rem));
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.card-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 1rem 0.625rem 0.6875rem 1.25rem;
+  background: var(--nb-paper-raised);
+  border-bottom: 3px double var(--nb-paper-edge-strong);
+  flex: none;
+}
+.card-head::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 4px;
+  background: var(--tab-colour, var(--nb-ink));
+}
+.card-head__titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.5rem;
+}
+.card-head__title {
   font-size: 1.0625rem;
+  font-weight: 600;
+}
+.card-head__sub {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--nb-pencil);
+}
+.card-body {
+  padding: 1rem 1.25rem 1.375rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  scrollbar-width: thin;
+}
+.panel-foot {
+  margin: 0.75rem 0.25rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--nb-pencil);
+}
+.app .card-body > * + * {
+  margin-top: 0.5rem;
+}
+
+/* "This line", under the editor: the cursor's line, field by field. */
+.this-line {
+  margin: 0.75rem 0.25rem 0;
+}
+.this-line__title {
+  margin: 0 0 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--nb-ink);
+}
+.this-line .table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The netlist: the dark simulator screen of the videos, with the editor on it. */
+.sheet--netlist .card-body {
+  padding: 0.875rem 0.75rem 1.125rem;
+}
+.screen {
+  border-radius: 0.75rem;
+  background: var(--nb-screen);
+  color: var(--nb-screen-ink);
+  box-shadow: 0 6px 16px -8px rgb(15 20 30 / 0.5);
+  overflow: hidden;
+}
+.screen__bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.625rem;
+  min-height: 2.375rem;
+  padding: 0.25rem 0.375rem 0.25rem 0.75rem;
+  background: var(--nb-screen-bar);
+  border-bottom: 1px solid #353c49;
+}
+.screen__dots {
+  display: flex;
+  gap: 0.375rem;
+}
+.screen__dots span {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.screen__dots span:nth-child(2) {
+  background: #febc2e;
+}
+.screen__dots span:nth-child(3) {
+  background: #28c840;
+}
+.screen__file {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font-family: var(--nb-font-mono);
+  font-size: 0.78125rem;
+  color: var(--nb-screen-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screen__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 1.75rem;
+  padding: 0 0.625rem;
+  border: 1px solid #4a5363;
+  border-radius: 0.4375rem;
+  background: transparent;
+  color: var(--nb-screen-ink);
+  font-size: 0.78125rem;
+  font-weight: 600;
+}
+.screen__button:hover {
+  background: #343b48;
+}
+.screen__button .line-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+.screen :focus-visible {
+  outline-color: var(--nb-screen-amber);
+}
+.screen__waiting {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  color: var(--nb-screen-ink);
+}
+.netlist {
+  --font-mono: var(--nb-font-mono);
+  --font-ui: var(--nb-font-ui);
+}
+.netlist .cm-editor.ps-editor .cm-scroller {
+  max-height: none;
+  min-height: 8em;
+  line-height: 1.75;
+}
+.is-desktop .netlist .cm-editor.ps-editor {
+  font-size: 0.875rem;
+}
+.netlist .cm-editor.ps-editor .ps-inline-note {
+  font-family: var(--nb-font-hand);
+  font-weight: 700;
+  font-size: 1.15em;
+}
+html[data-contrast='more'] .screen,
+html[data-contrast='more'] .screen__bar {
+  background: #ffffff;
+  color: #000000;
+  border-color: #000000;
+}
+html[data-contrast='more'] .screen {
+  border: 2px solid #000000;
+}
+html[data-contrast='more'] .screen__file {
+  color: #333333;
+}
+html[data-contrast='more'] .screen__button {
+  color: #000000;
+  border-color: #000000;
+}
+@media (prefers-contrast: more) {
+  html:not([data-contrast]) .screen,
+  html:not([data-contrast]) .screen__bar {
+    background: #ffffff;
+    color: #000000;
+    border-color: #000000;
+  }
+  html:not([data-contrast]) .screen {
+    border: 2px solid #000000;
+  }
+  html:not([data-contrast]) .screen__file {
+    color: #333333;
+  }
+  html:not([data-contrast]) .screen__button {
+    color: #000000;
+    border-color: #000000;
+  }
+}
+
+/* The checks: green pen when clean, red pen for a trap. */
+.checks-ok {
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+}
+.checks-ok__tick {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+}
+.checks-ok__tick path {
+  fill: none;
+  stroke: var(--nb-green);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.checks-ok__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--nb-green-text);
+}
+.checks-ok__text {
+  margin-top: 0.25rem;
+  color: var(--nb-ink-2);
+}
+.trap-group__title {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
 }
 .trap-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.75rem;
 }
 .trap {
-  padding: 0.6rem 0.85rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--pencil);
-  border-left: 0.4rem solid var(--pencil);
-  border-radius: var(--radius);
-}
-.trap--error {
-  border-left-color: var(--bad);
-}
-.trap--warning {
-  border-left-color: var(--warn);
-}
-.trap--info {
-  border-left-color: var(--note);
+  padding: 0.875rem 0;
+  border-bottom: 1px solid var(--nb-paper-edge);
 }
 .trap p {
-  margin: 0.35rem 0;
+  margin-top: 0.375rem;
+  color: var(--nb-ink-2);
 }
 .trap__title {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.25rem 0.6rem;
-  margin: 0 0 0.25rem;
-  font-size: 1.0625rem;
+  gap: 0.25rem 0.625rem;
+  font-size: 1rem;
+  font-weight: 600;
 }
 .trap__fixes {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.625rem;
 }
-
+.trap__line {
+  margin-top: 0.625rem;
+}
 .severity {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.3125rem;
+  font-size: 0.75rem;
   font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
-.severity--error {
-  color: var(--bad);
+.severity--error,
+.severity--warning {
+  color: var(--nb-red-text);
 }
 .severity--warning {
-  color: var(--warn);
+  color: var(--nb-amber-text);
 }
 .severity--info {
-  color: var(--note);
+  color: var(--nb-ink-2);
 }
 
-.status-line {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+/* Explain */
+.explain-block + .explain-block {
+  margin-top: 1.375rem;
+  padding-top: 1.125rem;
+  border-top: 1px solid var(--nb-paper-edge);
 }
-.status-line--ok {
-  color: var(--ok);
+.kicker {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.explain-block__head {
+  margin-top: 0.375rem;
+  font-size: 1.0625rem;
   font-weight: 600;
 }
+.explain-block__summary,
+.explain-block__words {
+  margin-top: 0.375rem;
+  color: var(--nb-ink-2);
+}
+.explain-block__words {
+  line-height: 1.6;
+}
+.explain-block > .link-button {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+.explain-block__results {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  margin-top: 0.875rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.625rem;
+  background: var(--nb-paper);
+  border: 1px solid var(--nb-paper-edge);
+}
+.explain-block__amps {
+  font-size: 1.375rem;
+  color: var(--nb-amber-text);
+}
+.explain-block__power {
+  font-size: 1.375rem;
+  color: var(--nb-green-text);
+}
+.explain-block__volts {
+  font-size: 1.375rem;
+  color: var(--nb-ink);
+}
+.field-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.875rem;
+  margin: 0.875rem 0 0.625rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.625rem;
+  background: var(--nb-paper);
+  border: 1px solid var(--nb-paper-edge);
+}
+.field-strip__field {
+  display: flex;
+  flex-direction: column;
+}
+.field-strip__label {
+  font-size: 0.71875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--nb-pencil);
+}
+.field-strip__text {
+  font-family: var(--nb-font-mono);
+  font-size: 1rem;
+  font-weight: 500;
+}
+.field-strip__field--node .field-strip__text {
+  text-decoration: underline;
+  text-decoration-color: var(--node);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 5px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.chip {
+  min-height: 2rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 999px;
+  background: var(--nb-paper-raised);
+  font-size: 0.8125rem;
+  color: var(--nb-ink-2);
+}
+.chip b {
+  color: var(--nb-ink);
+}
+.explain {
+  padding: 0.5rem 0 0.75rem;
+  border-bottom: 1px solid var(--nb-paper-edge);
+}
+.explain__heading {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.explain__summary {
+  margin: 0.25rem 0;
+  color: var(--nb-ink-2);
+}
+.explain__notes {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+  color: var(--nb-ink-2);
+}
+.explain__go {
+  margin-top: 0.25rem;
+}
+.emph {
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: max(1px, 0.08em);
+  text-underline-offset: 0.18em;
+}
 
-/* ------------------------------------------------------------------ results */
+/* Numbers: banners and tables. */
+.status-note {
+  color: var(--nb-ink-2);
+}
 .banner {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 0.75rem;
-  margin: 0.5rem 0 0.75rem;
-  padding: 0.6rem 0.85rem;
+  margin: 0 0 0.75rem;
+  padding: 0.625rem 0.875rem;
   border: 2px solid var(--pencil);
   border-left-width: 0.5rem;
   border-radius: var(--radius);
@@ -656,23 +1726,17 @@ pre {
   border-color: var(--note);
   background: var(--tint-note);
 }
-
 .summary {
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
 }
-
 .table-wrap {
-  /* A table wider than the screen scrolls inside its box, never the page (TableWrap.tsx). The
-     box must also be the containing block of the visually hidden words in the cells (they are
-     position: absolute), or they stick out past it and make the page scroll sideways after all. */
+  /* A table wider than its panel scrolls inside its box, never the page (TableWrap.tsx). The box is
+     also the containing block of the visually hidden words in the cells (position: absolute). */
   position: relative;
   max-width: 100%;
   margin: 0.75rem 0;
   overflow-x: auto;
 }
-/* While a table scrolls sideways, a soft shadow marks each edge where more of it is hidden (phones
-   hide scrollbars): the shadows stay at the box's edges, and two covers that move with the table
-   hide each one when that end is reached. */
 .table-wrap--scrolls {
   background:
     linear-gradient(to right, var(--surface) 40%, transparent) left center / 1.5rem 100% no-repeat local,
@@ -688,6 +1752,7 @@ pre {
   width: 100%;
   border-collapse: collapse;
   background: var(--surface);
+  font-size: 0.84375rem;
 }
 .table caption {
   text-align: left;
@@ -697,14 +1762,14 @@ pre {
 }
 .table th,
 .table td {
-  padding: 0.4rem 0.55rem;
+  padding: 0.375rem 0.5rem;
   border-bottom: 1px solid var(--rule);
   text-align: left;
   vertical-align: top;
 }
 .table thead th {
   border-bottom: 2px solid var(--ink);
-  font-size: 0.9375rem;
+  font-size: 0.8125rem;
 }
 .table tbody th {
   font-weight: 600;
@@ -713,22 +1778,16 @@ pre {
   font-variant-numeric: tabular-nums;
 }
 .table code {
-  /* Lines break between words only: a number or a name cut in two ("1.0000 | 00e+00", "Ites | t")
-     reads as something else. A table too wide for the screen scrolls inside its box instead
-     (TableWrap.tsx). */
+  /* Lines break between words only: a number or a name cut in two reads as something else. */
   overflow-wrap: normal;
 }
-/* Not even at the hyphen of an exponent ("6.000000e-" | "06", a11y review F13). */
 .table .num code {
   white-space: nowrap;
 }
-
 .code {
   font-family: var(--font-mono);
   font-size: 0.9375em;
 }
-
-/* The swatch sits before the node's name; the name is always written (colour is never alone). */
 .node-name .swatch {
   margin-right: 0.4rem;
   vertical-align: -0.1em;
@@ -745,35 +1804,11 @@ pre {
   background: transparent;
   border-style: dashed;
 }
-
-.emph {
-  font-weight: 700;
-  text-decoration: underline;
-  text-decoration-thickness: max(1px, 0.08em);
-  text-underline-offset: 0.18em;
-}
-
-.explain {
-  padding: 0.25rem 0 0.75rem;
-  border-bottom: 1px solid var(--rule);
-}
-.explain__heading {
-  margin: 0.75rem 0 0.25rem;
-  font-size: 1.0625rem;
-}
-.explain__summary {
-  margin: 0.25rem 0;
-}
-.explain__notes {
-  margin: 0.25rem 0;
+.sweeps {
   padding-left: 1.25rem;
 }
-.explain__go {
-  margin-top: 0.25rem;
-}
-
 .messages h3 {
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   margin: 1rem 0 0.5rem;
 }
 .message-list {
@@ -804,7 +1839,6 @@ pre {
 .message--note {
   border-left-color: var(--note);
 }
-
 .disclosure {
   margin: 0.75rem 0;
   border: 1px dashed var(--pencil);
@@ -823,11 +1857,7 @@ pre {
 .disclosure > summary::-webkit-details-marker {
   display: none;
 }
-/*
- * A visible open/closed marker (a flex summary loses the browser's own triangle). A text glyph
- * follows the text colour in every mode, forced colours included; the empty alternative text
- * ("/ ''") keeps screen readers from reading it out (the open state is announced anyway).
- */
+/* A visible open/closed marker; the empty alternative text keeps screen readers from reading it. */
 .disclosure > summary::before {
   content: '▸' / '';
   display: inline-block;
@@ -837,7 +1867,6 @@ pre {
 .disclosure[open] > summary::before {
   transform: rotate(90deg);
 }
-
 .command {
   margin: 0.25rem 0 0.75rem;
   padding: 0.5rem 0.75rem;
@@ -856,110 +1885,814 @@ pre {
   border-radius: var(--radius);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
-
+.output h3 {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9375rem;
+}
 .plots {
   display: grid;
-  /* minmax(0, 1fr), not the implicit auto column: the data table's unbreakable cells would
-     otherwise widen the column, the plot and the page past the screen (a11y review F2, WCAG
-     1.4.10); the table scrolls inside its own box instead. */
+  /* minmax(0, 1fr): the data table's unbreakable cells must not widen the panel (a11y review F2). */
   grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
 }
 
-/* ------------------------------------------------------------------ notice (message area) */
-.notice {
-  margin: 0 0 0.75rem;
-  padding: 0.5rem 0.75rem 0.75rem;
-  background: var(--surface);
-  border: 2px solid var(--note);
-  border-left-width: 0.5rem;
-  border-radius: var(--radius);
+/* ------------------------------------------------------------------ the sticky note */
+.note {
+  position: absolute;
+  z-index: 12;
+  top: 5.25rem;
+  right: 4.75rem;
+  width: min(18.75rem, calc(100vw - var(--margin) - 6rem));
+  padding: 1.125rem 1.125rem 0.875rem;
+  background: var(--nb-note);
+  background-image: linear-gradient(170deg, rgb(255 255 255 / 0.35), rgb(255 255 255 / 0) 40%), linear-gradient(to bottom, var(--nb-note), #fbe992);
+  border-radius: 3px 3px 12px 3px;
+  box-shadow: 0 1px 1px rgb(110 86 0 / 0.14), 0 12px 22px -10px rgb(110 86 0 / 0.42);
+  transform: rotate(-1.4deg);
+  transform-origin: 30% 0;
 }
-.notice--problem {
-  border-color: var(--bad);
+html[data-contrast='more'] .note {
+  background: #ffffff;
+  border: 2px solid #000000;
 }
-.notice__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
+.note__tape {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 78px;
+  height: 22px;
+  margin-left: -39px;
+  background: rgb(255 255 255 / 0.55);
+  transform: rotate(2.5deg);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.05);
 }
-.notice__title {
+.note__title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--nb-ink);
+}
+.note__text {
+  margin-top: 0.375rem;
+  font-size: 0.84375rem;
+  line-height: 1.45;
+  color: #45432f;
+}
+html[data-contrast='more'] .note__text {
+  color: #000000;
+}
+.note__actions {
+  margin-top: 0.75rem;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  margin: 0.55rem 0 0;
-  font-size: 1.0625rem;
+  justify-content: space-between;
 }
-.notice--problem .notice__title .icon {
-  color: var(--bad);
+.note.is-placed {
+  right: auto;
 }
-.notice--info .notice__title .icon {
-  color: var(--note);
+/* The note's pen arrow to the part it invites you to change. */
+.note-arrow {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
 }
-.notice p,
-.notice ul {
-  margin: 0.35rem 0 0;
+.note-arrow path {
+  fill: none;
+  stroke: var(--nb-amber);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Drawn on, as a pen would. */
+.note-arrow path:first-child {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: draw-on 700ms var(--nb-ease-out) 250ms forwards;
+}
+.note-arrow .note-arrow__head {
+  opacity: 0;
+  animation: appear 160ms linear 900ms forwards;
+}
+@keyframes draw-on {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes appear {
+  to {
+    opacity: 1;
+  }
 }
 
-.update-banner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem 1rem;
-  padding: 0.5rem 1rem;
-  background: var(--tint-note);
-  border-bottom: 2px solid var(--note);
+/* ------------------------------------------------------------------ the index card */
+.pinned {
+  position: absolute;
+  z-index: 18;
 }
-.update-banner p {
-  margin: 0;
+/* Measured before it is placed: unseen for that moment (the focus is already in it). */
+.pinned.is-placing {
+  opacity: 0;
+}
+.index-card {
+  position: relative;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-3);
+}
+/* On a computer: wide and short, beside its part, as tall as its tallest state (nothing moves as you type). */
+.index-card--pinned {
+  display: flex;
+  flex-direction: column;
+  min-height: 12.75rem;
+  animation: pop-in 180ms var(--nb-ease-out) both;
+}
+.index-card__explain {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  margin-right: 0.125rem;
+}
+.index-card--pinned .index-card__head {
+  padding: 0.3125rem 0.375rem 0.3125rem 0.625rem;
+}
+.index-card--pinned .index-card__glyph {
+  width: 2rem;
+  height: 2rem;
+}
+.index-card--pinned .index-card__body {
+  grid-template-columns: 14.25rem minmax(0, 1fr);
+  padding: 0.5rem 0.875rem 0.25rem;
+}
+.index-card--pinned .field-label {
+  margin-bottom: 0.25rem;
+}
+.index-card--pinned .reads {
+  margin-top: 0.25rem;
+}
+.index-card--pinned .was {
+  min-height: 1.375rem;
+  margin-top: 0;
+}
+.index-card--pinned .index-card__foot {
+  padding: 0.3125rem 0.875rem 0.4375rem;
+}
+/* Wide and short: the value on the left, the three results side by side. */
+.index-card--pinned .readouts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 0.75rem;
+  align-content: start;
+}
+.index-card--pinned .readout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.index-card--pinned .readout__value {
+  justify-content: flex-start;
+}
+/* One line each, so the card never grows (the whole check is on the paper in red pen and in Checks). */
+.index-card--pinned .index-card__sentence,
+.index-card--pinned .index-card__trap > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.index-card--pinned .index-card__trap {
+  min-width: 0;
+}
+/* The notch points at the part, on the edge facing it. */
+.index-card--pinned::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-top: 0;
+  border-left: 0;
+}
+.index-card--above::after {
+  bottom: -9px;
+  left: calc(var(--notch, 50%) - 8px);
+  transform: rotate(45deg);
+}
+.index-card--below::after {
+  top: -9px;
+  left: calc(var(--notch, 50%) - 8px);
+  transform: rotate(-135deg);
+}
+.index-card--right::after {
+  left: -9px;
+  top: calc(var(--notch, 50%) - 8px);
+  transform: rotate(135deg);
+}
+.index-card--left::after {
+  right: -9px;
+  top: calc(var(--notch, 50%) - 8px);
+  transform: rotate(-45deg);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.leader {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.leader path {
+  fill: none;
+  stroke: var(--nb-amber);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 4 5;
+}
+.index-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-bottom: 1.5px solid var(--nb-margin-red);
+}
+.index-card__glyph {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5625rem;
+  background: var(--nb-highlighter);
+  color: #1e2a45;
+  flex: none;
+}
+.index-card__glyph .glyph {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+.index-card__title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.index-card__name {
+  font-size: 1.1875rem;
+}
+.index-card__kind {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--nb-ink-2);
+}
+.index-card__line {
+  font-weight: 500;
+  font-size: 0.8125rem;
+  color: var(--nb-pencil);
+  white-space: nowrap;
+}
+.index-card__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 0.25rem 1.125rem;
+  padding: 0.625rem 0.875rem 0.5rem;
+  flex: 1;
+}
+.index-card__field {
+  min-width: 0;
+}
+.field-label {
+  display: block;
+  margin-bottom: 0.3125rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.value-field {
+  display: flex;
+  align-items: center;
+  height: 2.625rem;
+  border: 1.5px solid #6f737d;
+  border-radius: 0.625rem;
+  background: #fff;
+}
+.value-field:focus-within {
+  border-color: var(--nb-ink);
+  box-shadow: 0 0 0 3px rgb(30 42 69 / 0.18);
+}
+.value-field.is-trap {
+  border-color: var(--nb-red);
+}
+.value-field__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 0.375rem 0 0.75rem;
+  border: 0;
+  background: transparent;
+  font-family: var(--nb-font-mono);
+  /* 16 px or more: iOS zooms the page when a smaller text field gets focus. */
+  font-size: max(1.125rem, 16px);
+  font-weight: 500;
+  color: var(--nb-ink);
+}
+.app .value-field__input:focus-visible {
+  outline: none;
+}
+.value-field__suffix {
+  padding: 0 0.75rem 0 0.25rem;
+  font-family: var(--nb-font-serif);
+  font-size: 1.0625rem;
+  color: var(--nb-ink-2);
+  white-space: nowrap;
+}
+.reads {
+  margin-top: 0.375rem;
+  /* Two lines kept: why a value stays in the field (and its fix) fits without the card growing. */
+  min-height: 2.9em;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--nb-pencil);
+}
+.reads.is-trap {
+  color: var(--nb-red-text);
+}
+.reads .icon {
+  vertical-align: -0.125em;
+}
+.reads__why {
   font-weight: 600;
 }
+.reads__fix {
+  font-size: inherit;
+  white-space: nowrap;
+}
+.reads__value {
+  font-family: var(--nb-font-serif);
+  font-size: 1rem;
+  color: var(--nb-ink);
+}
+.reads__value--words {
+  font-family: var(--nb-font-ui);
+  font-size: 0.84375rem;
+  font-weight: 600;
+}
+.reads.is-trap .reads__value {
+  color: var(--nb-red-text);
+}
+.was {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-top: 0.125rem;
+  min-height: 1.625rem;
+  font-size: 0.8125rem;
+  color: var(--nb-pencil);
+}
+.was.is-idle {
+  visibility: hidden;
+}
+.was__old {
+  font-size: 1.1875rem;
+  color: var(--nb-pencil);
+  text-decoration-color: var(--nb-red);
+  text-decoration-thickness: 2px;
+}
+.readouts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0 0 0 1rem;
+  list-style: none;
+  border-left: 1px solid rgb(191 211 230 / 0.9);
+}
+.readout {
+  display: grid;
+  grid-template-columns: 7.375rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0 0.625rem;
+  min-width: 0;
+}
+/* The old number crossed out just before the new one, on its line (as on the paper). */
+.readout__value {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.3125rem;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+.readout__number {
+  font-size: 1.5625rem;
+  line-height: 1.05;
+  color: var(--nb-ink);
+  white-space: nowrap;
+}
+.readout--current .readout__number {
+  color: var(--nb-amber-text);
+}
+.readout--power .readout__number {
+  color: var(--nb-green-text);
+}
+.readout__was {
+  font-size: 0.9375rem;
+  color: var(--nb-pencil);
+  text-decoration-color: var(--nb-red);
+  text-decoration-thickness: 2px;
+  white-space: nowrap;
+}
+.readout__words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.readout__what {
+  font-size: 0.84375rem;
+  font-weight: 600;
+  color: var(--nb-ink-2);
+}
+.readout__sub {
+  font-size: 0.78125rem;
+  line-height: 1.35;
+  color: var(--nb-pencil);
+}
+/* Besides the numbers, or instead of them: why there are none, or no new ones yet. Red only for "no answers". */
+.index-card__note {
+  align-self: center;
+  margin: 0;
+  font-size: 0.84375rem;
+  line-height: 1.45;
+  color: var(--nb-ink-2);
+}
+.index-card__note--busy {
+  color: var(--nb-pencil);
+}
+.index-card__note--bad {
+  color: var(--nb-red-text);
+  font-weight: 600;
+}
+.index-card__note .icon {
+  vertical-align: -0.125em;
+  margin-right: 0.25rem;
+}
+/* Numbers from before the last change: in pencil, as on the drawing, until ngspice answers. */
+.readouts.is-pending .readout__number,
+.readouts.is-pending .readout__words {
+  opacity: 0.55;
+}
+.index-card__foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.875rem;
+  flex-wrap: wrap;
+  padding: 0.4375rem 0.875rem 0.625rem;
+  border-top: 1px solid rgb(191 211 230 / 0.9);
+}
+.index-card__sentence {
+  flex: 1 1 18rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--nb-ink-2);
+}
+.index-card__trap {
+  flex: 1 1 18rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  color: var(--nb-red-text);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.index-card__trap .icon {
+  margin-top: 1px;
+}
+.index-card__more {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+.settle {
+  animation: settle var(--nb-t-med) var(--nb-ease-out);
+}
+@keyframes settle {
+  from {
+    opacity: 0.35;
+    transform: translateY(0.12em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
-/* ------------------------------------------------------------------ menus and dialogs */
+/* ------------------------------------------------------------------ hint line and status line */
+.bottom {
+  position: absolute;
+  z-index: 16;
+  left: calc(var(--margin) + 0.875rem);
+  bottom: 0.625rem;
+  pointer-events: none;
+  container-type: inline-size;
+}
+/* A narrow status line (a panel is open) keeps what matters: how the run went, and the zoom. */
+@container (max-width: 44rem) {
+  .status__engine {
+    display: none;
+  }
+}
+@container (max-width: 34rem) {
+  .status__analysis {
+    display: none;
+  }
+}
+.lines {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hint-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  pointer-events: none;
+}
+.hint__invite {
+  pointer-events: auto;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+}
+.lines .hint {
+  max-width: 100%;
+  padding: 0.1875rem 0.75rem;
+  border-radius: 999px;
+  background: rgb(246 241 228 / 0.88);
+  font-size: 0.84375rem;
+  color: var(--nb-ink-2);
+  text-align: center;
+}
+html[data-contrast='more'] .lines .hint {
+  background: #ffffff;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.125rem 0.375rem 0.125rem 0.875rem;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-1);
+  font-size: 0.8125rem;
+  pointer-events: auto;
+}
+.status__dot {
+  width: 0.5625rem;
+  height: 0.5625rem;
+  border-radius: 50%;
+  flex: none;
+  background: var(--nb-green);
+}
+.status__dot--busy {
+  background: var(--nb-amber);
+}
+.status__dot--paused {
+  background: var(--nb-pencil-faint);
+  box-shadow: inset 0 0 0 2px var(--nb-paper-raised);
+  border: 2px solid var(--nb-pencil-faint);
+}
+.status__dot--bad {
+  background: var(--nb-red);
+}
+.status__main {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.status__detail {
+  color: var(--nb-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.status__detail::before {
+  content: '·' / '';
+  margin-right: 0.75rem;
+  color: var(--nb-pencil-faint);
+}
+.status__engine {
+  color: var(--nb-pencil);
+}
+.lines.is-bad .status {
+  align-items: flex-start;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.lines.is-bad .status__dot {
+  margin-top: 0.3125rem;
+}
+.lines.is-bad .status__reason {
+  flex: 1;
+  white-space: normal;
+  overflow: visible;
+}
+.status[data-tone='bad'] .status__reason {
+  color: var(--nb-red-text);
+}
+.lines.is-bad .zoom {
+  align-self: center;
+}
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-left: auto;
+  flex: none;
+}
+.zoom__percent {
+  min-width: 3.5rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.zoom__percent:hover {
+  background: var(--nb-paper-sunk);
+}
+.turn-button {
+  flex: none;
+  margin-left: 0.125rem;
+  padding: 0.125rem 0.75rem;
+  min-height: 1.875rem;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 999px;
+  background: var(--nb-paper);
+  font-size: 0.78125rem;
+  font-weight: 600;
+  color: var(--nb-ink);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ Ctrl+K */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 13vh 1rem 1rem;
+  background: var(--overlay);
+}
+.palette {
+  width: min(38.75rem, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.palette__field {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0 0.875rem;
+  border-bottom: 1px solid var(--nb-paper-edge);
+  color: var(--nb-pencil);
+}
+.palette__input {
+  flex: 1;
+  min-width: 0;
+  height: 3.5rem;
+  border: 0;
+  background: transparent;
+  font-size: max(1.0625rem, 16px);
+  color: var(--nb-ink);
+}
+.app .palette__input:focus-visible,
+.palette__input:focus-visible {
+  outline: none;
+}
+.palette__input::placeholder {
+  color: #6d717a;
+}
+.palette__list {
+  margin: 0;
+  padding: 0.375rem;
+  list-style: none;
+  overflow-y: auto;
+}
+.palette__groupbox,
+.palette__options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.palette__item {
+  border-radius: 0.625rem;
+  cursor: pointer;
+}
+.palette__group {
+  display: block;
+  padding: 0.625rem 0.625rem 0.25rem;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+  cursor: default;
+}
+.palette__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.625rem;
+}
+.palette__item.is-active .palette__row {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+}
+.palette__item.is-active .palette__key {
+  background: rgb(255 253 248 / 0.12);
+  border-color: rgb(255 253 248 / 0.3);
+  color: var(--nb-paper-raised);
+}
+.palette__empty {
+  padding: 0.875rem 0.625rem;
+  color: var(--nb-pencil);
+}
+
+/* ------------------------------------------------------------------ menus and dialogs (React Aria) */
 .popover {
   /* Never wider than the screen, even with large text (a11y review F7). */
   min-width: min(16rem, calc(100vw - 2rem));
   max-width: calc(100vw - 2rem);
   max-height: min(70vh, 32rem);
   overflow: auto;
-  background: var(--surface);
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-3);
 }
 .menu {
-  padding: 0.25rem;
+  padding: 0.375rem;
   outline: none;
 }
 .menu__section + .menu__section {
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--nb-paper-edge);
   margin-top: 0.25rem;
   padding-top: 0.25rem;
 }
 .menu__header {
-  padding: 0.5rem 0.75rem 0.25rem;
-  color: var(--pencil);
-  font-size: 0.875rem;
-  font-weight: 700;
+  padding: 0.5rem 0.625rem 0.25rem;
+  font-size: 0.71875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
 }
 .menu__item {
   display: flex;
   align-items: center;
-  min-height: 2.75rem;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.25rem;
+  min-height: 2.5rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
   cursor: pointer;
   outline: none;
 }
 .menu__item[data-focused] {
-  background: var(--ink);
+  background: var(--nb-ink);
   color: var(--on-strong);
 }
-
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -975,40 +2708,53 @@ pre {
   max-width: 36rem;
   max-height: calc(100dvh - 2rem);
   overflow: auto;
-  background: var(--surface);
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-3);
+  font-family: var(--nb-font-ui);
+  font-size: 0.875rem;
+  color: var(--nb-ink);
 }
 .modal--wide {
   max-width: 50rem;
 }
 .dialog {
   outline: none;
-  padding: 0.5rem 1rem 1rem;
+  padding: 0.5rem 1.25rem 1.25rem;
 }
 .dialog__head {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 0.25rem;
+  margin: 0 -1.25rem;
+  padding: 0.625rem 0.75rem 0.5rem 1.25rem;
+  border-bottom: 3px double var(--nb-paper-edge-strong);
 }
 .dialog__title {
   margin: 0;
-  font-size: 1.375rem;
+  font-size: 1.1875rem;
+  font-weight: 600;
 }
 .dialog__body h3 {
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   margin: 1.25rem 0 0.4rem;
+}
+.dialog__body p {
+  margin: 0.5rem 0;
 }
 .dialog__foot {
   display: flex;
   justify-content: flex-end;
   margin-top: 1rem;
 }
-
+.dialog .hint {
+  color: var(--pencil);
+  font-size: 0.8125rem;
+  margin: 0.4rem 0 0;
+}
 .field {
   display: grid;
   gap: 0.3rem;
@@ -1022,17 +2768,16 @@ pre {
   width: 100%;
   min-height: 2.75rem;
   padding: 0.4rem 0.6rem;
-  border: 2px solid var(--ink);
-  border-radius: var(--radius);
+  border: 1.5px solid var(--ink);
+  border-radius: 0.5rem;
   background: var(--paper);
   color: var(--ink);
   font: inherit;
 }
 .field__input--mono {
   font-family: var(--font-mono);
-  font-size: 0.9375rem;
+  font-size: max(0.9375rem, 16px);
 }
-
 .row {
   display: flex;
   flex-wrap: wrap;
@@ -1044,7 +2789,6 @@ pre {
   color: var(--ok);
   font-weight: 600;
 }
-
 .checkbox,
 .radio {
   display: flex;
@@ -1082,7 +2826,6 @@ pre {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
-
 .radio-group {
   margin: 1rem 0;
 }
@@ -1103,71 +2846,542 @@ pre {
   border-width: 0.45rem;
 }
 
-kbd {
-  font-size: 0.9375em;
+/* ------------------------------------------------------------------ a phone (and anything narrower than 900 px) */
+.app.is-phone {
+  --margin: 0.875rem;
+}
+.is-phone .top-area {
+  top: 0;
+  left: 0;
+  right: 0;
+  gap: 0.375rem;
+}
+.is-phone .paper-stack {
+  margin: 0 0.5rem;
+  max-width: calc(100% - 1rem);
+}
+.top--phone {
+  container: phonetop / inline-size;
+  gap: 0.125rem;
+  padding: max(0.375rem, env(safe-area-inset-top)) 0.375rem 0.375rem 0.5rem;
+  background: var(--nb-paper-raised);
+  border-bottom: 1px solid var(--nb-paper-edge);
+  box-shadow: 0 6px 14px -12px rgb(30 42 69 / 0.4);
+  pointer-events: auto;
+}
+.top--phone .top__mark {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+.top--phone .top__title {
+  flex: 1;
+  padding: 0;
+}
+.top__switch {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.125rem 0.25rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: none;
+  color: var(--nb-ink);
+  text-align: left;
+  line-height: 1.15;
+}
+.top__switch:hover {
+  background: var(--nb-paper-sunk);
+}
+/* A short title, which may take two lines: no name is cut off in the middle of a line. */
+.top--phone .top__name {
+  max-width: none;
+  font-size: 0.9375rem;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.top__switch .icon {
+  flex: none;
+}
+.top--phone .icon-button,
+.top--phone .run-button {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+}
+/* A narrow phone or large text: the mark gives its room to the circuit's title. */
+@container phonetop (max-width: 22rem) {
+  .top--phone .top__mark {
+    display: none;
+  }
+  .top--phone .icon-button,
+  .top--phone .run-button {
+    width: 2.5rem;
+    min-width: 2.5rem;
+  }
+}
+.phone-bottom {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.phone-bottom > * {
+  pointer-events: auto;
+}
+.phone-lines {
+  pointer-events: none;
+}
+.is-phone .lines {
+  align-items: stretch;
+  gap: 0.25rem;
+  padding: 0 0.625rem 0.375rem 1.375rem;
+  pointer-events: none;
+}
+.is-phone .lines .hint {
+  align-self: center;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+.is-phone .status {
+  flex-wrap: wrap;
+  min-height: 2rem;
+  padding: 0.125rem 0.25rem 0.125rem 0.75rem;
+  gap: 0.5rem;
+  border-radius: 999px;
+  align-self: center;
+  width: auto;
+  max-width: 100%;
+  font-size: 0.78125rem;
+}
+.is-phone .lines.is-bad .status {
+  border-radius: 0.875rem;
+}
+.is-phone .status__detail::before {
+  margin-right: 0.5rem;
 }
 
-/* ------------------------------------------------------------------ footer */
-.app-footer {
-  max-width: 100rem;
-  margin: 0 auto;
-  padding: 0.5rem 1rem 2rem;
-  color: var(--pencil);
-}
-.footer-links {
+/* The one bar along the bottom: Select · Parts · Netlist · Checks · Explain · More. */
+.bar {
+  container: bar / inline-size;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1.25rem;
+  align-items: stretch;
+  gap: 0.125rem;
+  padding: 0.375rem 0.375rem max(0.375rem, env(safe-area-inset-bottom));
+  background: var(--nb-paper-raised);
+  border-top: 1px solid var(--nb-paper-edge);
+  box-shadow: 0 -6px 14px -12px rgb(30 42 69 / 0.35);
+}
+.bar__button {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  min-width: 0;
+  min-height: 3.375rem;
+  padding: 0.25rem 0.125rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--nb-ink);
+}
+.bar__button .glyph,
+.bar__icon {
+  width: 1.625rem;
+  height: 1.625rem;
+}
+.bar__icon {
+  stroke-width: 1.6;
+}
+.bar__icon--more {
+  stroke-width: 3;
+}
+.bar__button.is-on {
+  background: var(--nb-ink);
+  color: var(--nb-paper-raised);
+}
+/* An open panel: its tab's colour along the top (the chosen tool is the filled button). */
+.bar__button--panel.is-open {
+  background: var(--nb-paper-sunk);
+}
+.bar__button--panel.is-open::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 4px;
+  border-radius: 0 0 3px 3px;
+  background: var(--tab-colour);
+}
+.bar__word {
+  max-width: 100%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bar__sep {
+  width: 1px;
+  margin: 0.625rem 0.125rem;
+  background: var(--nb-paper-edge);
+  flex: none;
+}
+/* Too narrow for the words (a small phone, large text): the icons, the names kept for screen readers. */
+@container bar (max-width: 22rem) {
+  .bar__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .bar__button {
+    min-height: 2.875rem;
+  }
+}
+.bar__badge {
+  position: absolute;
+  top: 2px;
+  right: 10%;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.71875rem;
+}
+.is-phone .sheet {
+  position: relative;
+  width: 100%;
+  max-height: 56vh;
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-bottom: 0;
+  border-radius: 1.125rem 1.125rem 0 0;
+  box-shadow: 0 -14px 30px -18px rgb(30 42 69 / 0.4);
+  animation: sheet-in var(--nb-t-slow) var(--nb-ease-out);
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(30px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.grab {
+  display: block;
+  width: 2.75rem;
+  height: 5px;
+  margin: 0.5rem auto 0;
+  border-radius: 3px;
+  background: var(--nb-paper-edge-strong);
+  flex: none;
+}
+.is-phone .card-head {
+  padding-top: 0.5rem;
+}
+.is-phone .card-body {
+  padding: 0.75rem 0.875rem 1rem;
+}
+.sheet-group {
+  margin: 0.5rem 0.125rem 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nb-pencil);
+}
+.part-list,
+.more-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.footer-links li {
+.part-list--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+}
+.part-list--grid .part-row {
+  grid-template-columns: 2.5rem 1fr;
+}
+.part-list--grid .part-row__icon .glyph {
+  width: 2rem;
+  height: 2rem;
+}
+.more-row {
   display: flex;
   align-items: center;
-  min-height: 1.5rem;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.875rem;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: var(--nb-ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-align: left;
 }
-.footer-links a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.5rem;
+.more-row:hover:not(:disabled) {
+  background: var(--nb-paper-sunk);
+}
+.more-row:disabled {
+  color: #6d717a;
+  cursor: default;
 }
 
-/* The static page shown while the app loads (index.html). */
-.boot {
-  max-width: 40rem;
-  margin: 3rem auto;
-  padding: 0 1rem;
+/* The card on a phone: a short sheet (no bar under it), the drawing above it. */
+.is-phone .sheet--card {
+  overflow-y: auto;
+  background: var(--nb-card);
+}
+.index-card--sheet {
+  border: 0;
+  border-radius: 1.125rem 1.125rem 0 0;
+  box-shadow: none;
+}
+.index-card--sheet .index-card__head {
+  padding: 0.375rem 0.25rem 0.375rem 0.75rem;
+}
+.index-card--sheet .index-card__kind {
+  font-size: 0.84375rem;
+}
+.index-card--sheet .index-card__body {
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem 0.25rem;
+}
+.index-card--sheet .readouts {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.25rem;
+  padding: 0.5rem 0 0;
+  border-left: 0;
+  border-top: 1px solid rgb(191 211 230 / 0.9);
+}
+.index-card--sheet .readout {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 6rem;
+}
+.index-card--sheet .readout__value {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 0.25rem;
+}
+.index-card--sheet .readout__number {
+  font-size: 1.4375rem;
+}
+.index-card--sheet .readout__was {
+  font-size: 0.875rem;
+}
+.index-card--sheet .readout__sub {
+  font-size: 0.75rem;
+}
+.index-card--sheet .index-card__foot {
+  padding: 0.375rem 0.875rem max(0.625rem, env(safe-area-inset-bottom));
+}
+.index-card--sheet .index-card__sentence {
+  display: none;
+}
+
+/* While a value is typed: only a strip above the keyboard, the drawing above it. */
+.phone-bottom.is-strip {
+  transition: bottom 120ms ease-out;
+}
+.phone-bottom.is-strip .sheet--card {
+  max-height: none;
+  border-radius: 0.875rem 0.875rem 0 0;
+  animation: none;
+}
+.index-card--strip {
+  border: 0;
+  border-radius: 0.875rem 0.875rem 0 0;
+  box-shadow: none;
+}
+.index-card--strip .index-card__head {
+  display: none;
+}
+.index-card--strip .index-card__body {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.5rem 0.625rem;
+}
+.index-card--strip .index-card__field {
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'label was' 'value value';
+  align-items: baseline;
+  gap: 0.125rem 0.5rem;
+}
+.index-card--strip .field-label {
+  grid-area: label;
+  margin: 0;
+}
+.index-card--strip .value-field {
+  grid-area: value;
+  height: 2.5rem;
+}
+.index-card--strip .was {
+  grid-area: was;
+  justify-self: end;
+  min-height: 0;
+  margin: 0;
+  gap: 0.375rem;
+  font-size: 0.78125rem;
+}
+.index-card--strip .was__label {
+  display: none;
+}
+.index-card--strip .was__old {
+  font-size: 1rem;
+}
+.index-card--strip .reads {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* Unless it says why the value is not in the netlist (and how to write it), or names a trap: then it
+   is a line of its own under the field, its fix a tap away. */
+.index-card--strip .index-card__field {
+  grid-template-areas: 'label was' 'value value' 'reads reads';
+}
+.index-card--strip .reads.is-trap {
+  grid-area: reads;
+  position: static !important;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  margin: 0.125rem 0 0;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  font-size: 0.8125rem;
+}
+.strip-done {
+  min-height: 2.5rem;
+}
+.field-label__part {
+  display: none;
+}
+.index-card--strip .field-label__part {
+  display: inline;
+  color: var(--nb-ink);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.875rem;
+}
+
+/* A drawing as in the video, wider than the phone: its edges say there is more. */
+.more-edge {
+  position: absolute;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  min-height: 2.75rem;
+  padding: 0 0.5rem 0 0.625rem;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow-1);
+  color: var(--nb-ink);
+  font-size: 0.78125rem;
+  font-weight: 600;
+}
+.more-edge--left {
+  padding: 0 0.625rem 0 0.375rem;
+}
+.more-edge .line-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  stroke-width: 2.2;
+}
+.more-edge__word {
+  padding: 0.125rem 0;
+}
+
+/* ------------------------------------------------------------------ reduced motion: the animations stop */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion='normal']) .note-arrow path:first-child,
+  html:not([data-motion='normal']) .note-arrow .note-arrow__head {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+html[data-motion='reduce'] .note-arrow path:first-child,
+html[data-motion='reduce'] .note-arrow .note-arrow__head {
+  animation: none;
+  stroke-dashoffset: 0;
+  opacity: 1;
 }
 
 /* ------------------------------------------------------------------ forced colours */
 @media (forced-colors: active) {
-  body {
+  .nb-canvas {
     background-image: none;
   }
   .button,
   .icon-button,
   .tab,
+  .tool,
+  .island,
+  .sheet,
+  .index-card,
+  .note,
+  .notice,
+  .results-card,
+  .status,
+  .bar__button,
   .trap,
   .banner,
-  .notice,
   .message,
   .popover,
   .modal,
+  .palette,
   .field__input,
+  .value-field,
   .checkbox__box,
   .radio__dot {
-    border-color: CanvasText;
+    border: 1px solid CanvasText;
   }
-  /* Only the chosen tab has a frame and a bar, as in normal colours: a shape, not only a colour,
-     tells it apart (a11y review F12). */
-  .tab:not([data-selected]) {
-    border-color: transparent;
+  .tool.is-on,
+  .bar__button.is-on,
+  .tab[aria-expanded='true'],
+  .bar__button--panel.is-open {
+    border: 2px solid Highlight;
   }
-  .tab[data-selected] {
-    border-bottom-color: Highlight;
-  }
-  .menu__item[data-focused] {
+  .menu__item[data-focused],
+  .palette__item.is-active .palette__row {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }
@@ -1186,5 +3400,74 @@ kbd {
   }
   .icon {
     forced-color-adjust: auto;
+  }
+}
+
+/* ------------------------------------------------------------------ nothing to draw yet */
+.empty-card {
+  position: absolute;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.empty-card__body {
+  max-width: min(30rem, 100%);
+  padding: 1.25rem 1.5rem 1.375rem;
+  background: var(--nb-card);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-2);
+  pointer-events: auto;
+}
+.empty-card__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.empty-card__body p {
+  margin: 0;
+  color: var(--nb-ink-2);
+  line-height: 1.5;
+}
+.empty-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem !important;
+}
+
+/* ------------------------------------------------------------------ a phone: the netlist being typed */
+/* The hint and the status step aside (the bar stays, to change panels), so the drawing above the
+   netlist keeps as much room as it can; its numbers show in pencil until ngspice answers. */
+.is-phone.is-typing-netlist .phone-lines {
+  display: none;
+}
+
+/* A very short window (400 % zoom on a laptop, a phone on its side): the paper keeps what room it can.
+   The hint line steps out of sight (screen readers still have it), and the first screen's button with
+   it (the part itself is there to tap). */
+@media (max-height: 420px) {
+  .is-phone .phone-lines .hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .is-phone .hint__invite {
+    display: none;
+  }
+  .is-phone .bar__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .is-phone .bar__button {
+    min-height: 2.75rem;
   }
 }

@@ -1,6 +1,9 @@
 /**
  * The examples, in the Examples menu's order:
  *
+ * 0. Start here (examples/start-here.cir): the first screen, a 6 V source and two resistors that a
+ *    first visit opens already solved, inviting the student to change R1 (decision 0016); its
+ *    numbers are checked against native ngspice by tests/golden/start-here.test.ts;
  * 1. the circuits of the Solved Circuits videos, in channel order (SPICE for Beginners, then p01,
  *    p02 and e04): examples/<video>/*.cir with examples/examples.json, each netlist crediting its
  *    video; tests/golden/examples.test.ts checks each against the channel's native ngspice runs;
@@ -8,6 +11,7 @@
  *    native ngspice by the golden tests), including the only .dc and .tran examples.
  */
 import manifest from '../../examples/examples.json';
+import startHere from '../../examples/start-here.cir?raw';
 import { t, type MessageKey } from '../i18n/index.ts';
 
 const videoFiles = import.meta.glob<string>('../../examples/*/*.cir', { query: '?raw', import: 'default', eager: true });
@@ -52,7 +56,11 @@ const BASICS: readonly { id: string; group: string; nameKey: MessageKey }[] = [
   { id: 't1-tran-rc-charge', group: 'analyses', nameKey: 'exampleT1' },
 ];
 
+/** The first screen's circuit (also the first item of the Examples menu). */
+export const START_HERE_ID = 'start-here';
+
 export const EXAMPLES: readonly Example[] = [
+  { id: START_HERE_ID, group: 'start', name: t('exampleStart'), netlist: startHere },
   ...VIDEO_EXAMPLES,
   ...BASICS.flatMap((e) => {
     const netlist = fixtureText.get(e.id);
@@ -61,14 +69,15 @@ export const EXAMPLES: readonly Example[] = [
 ];
 
 export const EXAMPLE_GROUPS: readonly ExampleGroup[] = [
+  { group: 'start', label: t('exampleGroupStart') },
   ...manifest.videos.map((v) => ({ group: v.id, label: v.short, video: `https://youtu.be/${v.youtube}` })),
   { group: 'sources', label: t('exampleGroupSources') },
   { group: 'traps', label: t('exampleGroupTraps') },
   { group: 'analyses', label: t('exampleGroupAnalyses') },
 ];
 
-/** The circuit a first visit opens with: the channel's Thevenin example (F5). */
-export const DEFAULT_EXAMPLE_ID = 'f5-thevenin-cccs';
+/** The circuit a first visit opens with: Start here, already solved (decision 0016). */
+export const DEFAULT_EXAMPLE_ID = START_HERE_ID;
 
 export function exampleById(id: string): Example | undefined {
   return EXAMPLES.find((e) => e.id === id);

@@ -185,7 +185,9 @@ function Part({ part, colours, trap }: { part: PlacedPart; colours: ReadonlyMap<
     return <path className="nb-lead" d={ink.leads[i]} style={c ? { stroke: c } : undefined} />;
   };
   return (
-    <g className={`nb-part${trap ? ' is-trap' : ''}`} data-part={part.key}>
+    // A part ngspice leaves out of the circuit (an R, C or L with nothing after its nodes) is drawn
+    // in pencil, broken: it is in the netlist but not in what ngspice solved.
+    <g className={`nb-part${trap ? ' is-trap' : ''}${part.part.built ? '' : ' is-left-out'}`} data-part={part.key}>
       <g transform={t} style={SCALED}>
         {lead(0)}
         {lead(1)}

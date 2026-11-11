@@ -2,7 +2,7 @@
  * Which circuit the app opens with:
  *   1. a share link in the address (#c=...), and simulate at once when it says run=1;
  *   2. otherwise the netlist the student was working on last time (saved on this device);
- *   3. otherwise the first example (F5).
+ *   3. otherwise the default example (Start here, the first screen).
  * A link that cannot be opened says why (decodeShare's plain-words reason) and the app opens the
  * next choice; a fragment that is not a share link at all (e.g. "#main" from the skip link) is
  * ignored silently.

@@ -1,7 +1,9 @@
 /**
  * Colour contrast of the app's theme tokens (src/styles/app.css), computed, in the normal and the
- * high-contrast theme (WCAG 2.2: 1.4.3 text 4.5:1, 1.4.11 UI parts and focus rings 3:1). The editor
- * and the plots test their own colours (editor-palette, plot-palette).
+ * high-contrast theme (WCAG 2.2: 1.4.3 text 4.5:1, 1.4.11 UI parts and focus rings 3:1). The Notebook
+ * look's own tokens (--nb-*, src/notebook/notebook.css) are tested in notebook-look; here, the
+ * high-contrast Notebook the app adds. The editor and the plots test their own colours
+ * (editor-palette, plot-palette).
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -64,15 +66,57 @@ describe.each([
   });
 });
 
+/** The Notebook's tokens in the app's high-contrast theme (white paper, black ink, darker pens). */
+const notebookMore = (() => {
+  const at = css.indexOf("html[data-contrast='more'] :is(.nb-theme, .nb-canvas) {");
+  if (at < 0) throw new Error('no high-contrast Notebook block');
+  const body = css.slice(css.indexOf('{', at) + 1, css.indexOf('}', at));
+  return Object.fromEntries([...body.matchAll(/--nb-([\w-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]));
+})();
+
+describe('the Notebook in high contrast', () => {
+  /** [foreground, background, minimum ratio, what it is] */
+  const NB_PAIRS: [string, string, number, string][] = [
+    ['ink', 'paper', 7, 'the drawing, the app’s words'],
+    ['ink', 'card', 7, 'cards and panels'],
+    ['ink', 'note', 7, 'the sticky note'],
+    ['ink', 'paper-sunk', 4.5, 'a pressed tab'],
+    ['pencil', 'paper', 4.5, 'hints, the status line'],
+    ['pencil', 'card', 4.5, 'secondary words on cards'],
+    ['red-text', 'paper', 4.5, 'red pen: a trap, no single answer'],
+    ['red-text', 'card', 4.5, 'red words on a card'],
+    ['green-text', 'paper', 4.5, 'power, “Solved”'],
+    ['amber-text', 'paper', 4.5, 'currents'],
+    ['amber-text', 'card', 4.5, 'currents on a card'],
+    ['paper-edge', 'paper', 3, 'card and field borders'],
+    ['note-edge', 'note', 3, 'the sticky note’s edge'],
+  ];
+  it.each(NB_PAIRS)('%s on %s: at least %s:1 (%s)', (fg, bg, min) => {
+    const a = notebookMore[fg];
+    const b = notebookMore[bg];
+    expect(a, fg).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(b, bg).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(contrastRatio(a!, b!)).toBeGreaterThanOrEqual(min);
+  });
+
+  it('follows the device too, with the same values as data-contrast="more"', () => {
+    const media = css.indexOf('html:not([data-contrast]) :is(.nb-theme, .nb-canvas) {');
+    expect(media).toBeGreaterThan(0);
+    const block = css.slice(css.indexOf('{', media) + 1, css.indexOf('}', media));
+    const values = Object.fromEntries([...block.matchAll(/--nb-([\w-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]));
+    expect(values).toEqual(notebookMore);
+  });
+});
+
 describe('themes', () => {
-  it('the tokens the brief names keep their values', () => {
+  it('the tokens the brief names keep their values (the focus ring is ink, as in the Notebook look Tarık approved)', () => {
     expect(normal).toMatchObject({
       paper: '#f6f1e4',
       surface: '#fffdf6',
       ink: '#1e2a45',
       pencil: '#545863',
       rule: '#c9c2ae',
-      focus: '#1971c2',
+      focus: '#1e2a45',
       ok: '#1e6b30',
       bad: '#b42318',
       warn: '#8a4b00',

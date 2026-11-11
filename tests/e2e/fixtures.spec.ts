@@ -1,81 +1,29 @@
 /**
- * 2. Every fixture, typed into the editor and run in the real browser Worker: the values worked out
- * by hand (tests/fixtures/expected.json) appear in the results in plain units, and every number
- * native ngspice 47 computed for the same file (tests/golden/native/) is there to 6 significant
- * figures. The golden tests check the same numbers in Node; this checks them through the UI.
+ * 2. Every fixture, put into the Netlist panel and solved in the real browser Worker as it changes
+ * (live runs): the values worked out by hand (tests/fixtures/expected.json) appear in the Numbers
+ * panel in plain units, and every number native ngspice 47 computed for the same file
+ * (tests/golden/native/) is there to 6 significant figures; sweeps in the Plot panel and its CSV.
+ * The golden tests check the same numbers in Node; this checks them through the UI.
  */
 import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PLOT_STRINGS } from '../../src/plot/strings.ts';
 import {
   agrees,
-  currentsTable,
   expectedChecks,
+  expectShown,
   FIXTURE_IDS,
   fixtureText,
   nativeRecording,
-  nodeTable,
   openApp,
+  openPanel,
   rawfileName,
   readPlain,
-  readPrinted,
-  resultsPanel,
-  rowNamed,
-  runAndExpectFinished,
+  expectFinished,
   setNetlist,
   shownText,
-  t,
-  tab,
-  tfTable,
   type ExpectedCheck,
 } from './helpers.ts';
-
-/** Where the UI shows one ngspice vector: the plain-units cell and the "ngspice printed" cell. */
-interface Shown {
-  shown: Locator;
-  printed: Locator;
-  /** Currents are shown as a size and a direction in words, so the shown number has no sign. */
-  sizeOnly: boolean;
-  units: readonly string[];
-}
-
-const RATIOS = ['V/V', 'A/A', 'A/V', 'V/A'] as const;
-
-/** Find a vector by its ngspice name (as in the native recordings): v(a), i(vx), v(transfer_function) … */
-function shownVector(page: Page, vector: string): Shown {
-  const name = vector.toLowerCase();
-  const tf = tfTable(page);
-  const tfRow = (label: RegExp, units: readonly string[]): Shown => {
-    const cells = rowNamed(tf, label).getByRole('cell');
-    return { shown: cells.nth(0), printed: cells.nth(1), sizeOnly: false, units };
-  };
-  if (name === 'v(transfer_function)') return tfRow(/^Transfer function /, RATIOS);
-  if (/^v\(.+#input_impedance\)$/.test(name)) return tfRow(/^Input resistance seen by /, ['Ω']);
-  if (/^v\(output_impedance_at_.+\)$/.test(name)) return tfRow(/^Output resistance at /, ['Ω']);
-  const node = /^v\((.+)\)$/.exec(name);
-  if (node) {
-    const cells = rowNamed(nodeTable(page), node[1]!).getByRole('cell');
-    return { shown: cells.nth(0), printed: cells.nth(1), sizeOnly: false, units: ['V'] };
-  }
-  const current = /^i\((.+)\)$/.exec(name);
-  if (current) {
-    const cells = currentsTable(page).getByRole('row').filter({ hasText: `i(${current[1]}) =` }).getByRole('cell');
-    return { shown: cells.nth(0), printed: cells.last(), sizeOnly: true, units: ['A'] };
-  }
-  throw new Error(`no place in the results for ${vector}`);
-}
-
-async function expectShown(page: Page, vector: string, value: number, why: string): Promise<void> {
-  const where = shownVector(page, vector);
-  const text = await shownText(where.shown);
-  const read = where.units.map((u) => readPlain(text, u)).find((v) => v !== undefined);
-  expect(read, `${why}: "${text}" is a number in plain units (${where.units.join(' or ')})`).toBeDefined();
-  // Shown with 4 significant figures, printed with 7: each must round to the expected value.
-  const target = where.sizeOnly ? Math.abs(value) : value;
-  expect(agrees(read!, target, 4), `${why}: shows "${text}", expected ${target}`).toBe(true);
-  const printed = readPrinted((await where.printed.textContent()) ?? '');
-  expect(agrees(printed, value, 6), `${why}: ngspice printed ${printed}, expected ${value}`).toBe(true);
-}
 
 /** A CSV file from the plot's Download button: one column per vector, every point, full precision. */
 async function downloadCsv(page: Page, figure: Locator): Promise<Map<string, number[]>> {
@@ -95,11 +43,11 @@ function rcCharge(time: number): number {
   return time <= tr ? (5 / tr) * (time - tau * (1 - Math.exp(-time / tau))) : 5 - 5 * (tau / tr) * (Math.exp(tr / tau) - 1) * Math.exp(-time / tau);
 }
 
-async function checkSweep(page: Page, id: string, checks: ExpectedCheck[]): Promise<void> {
+async function checkSweep(page: Page, numbers: Locator, id: string, checks: ExpectedCheck[]): Promise<void> {
   const native = nativeRecording(id)[0]!;
   const [scale, ...vectors] = native.vectors;
-  // The Results tab sums the sweep up in words, with the last point's values in plain units.
-  const sweepWords = await shownText(resultsPanel(page).getByRole('listitem').filter({ hasText: /points\./ }));
+  // The Numbers panel sums the sweep up in words, with the last point's values in plain units.
+  const sweepWords = await shownText(numbers.getByRole('listitem').filter({ hasText: /points\./ }));
   const last = (name: string): number => native.vectors.find((v) => v.name === name)!.values.at(-1)!;
   for (const v of vectors) {
     const m = new RegExp(`${v.name.replace(/[()]/g, '\\$&')} = ([^,]+?)(?:,|\\.$)`).exec(sweepWords);
@@ -108,7 +56,7 @@ async function checkSweep(page: Page, id: string, checks: ExpectedCheck[]): Prom
     expect(read !== undefined && agrees(read, last(v.name), 4), `${v.name} last value "${m![1]}"`).toBe(true);
   }
 
-  await tab(page, t('tabPlot')).click();
+  await openPanel(page, 'plot');
   const figure = page.getByRole('figure');
   await expect(figure).toHaveCount(1);
 
@@ -158,16 +106,16 @@ async function checkSweep(page: Page, id: string, checks: ExpectedCheck[]): Prom
 }
 
 for (const id of FIXTURE_IDS) {
-  test(`${id}: typed into the editor and run, the results match the hand values and native ngspice`, async ({ page }) => {
+  test(`${id}: put into the Netlist panel and solved, the results match the hand values and native ngspice`, async ({ page }) => {
     const checks = expectedChecks(id);
     expect(checks.length, `tests/fixtures/expected.json has checks for ${id}`).toBeGreaterThan(0);
     await openApp(page);
     await setNetlist(page, fixtureText(id));
-    await runAndExpectFinished(page);
+    const numbers = await expectFinished(page);
 
     const plots = nativeRecording(id);
     if (plots.some((p) => p.points > 1)) {
-      await checkSweep(page, id, checks);
+      await checkSweep(page, numbers, id, checks);
       return;
     }
     for (const c of checks) {

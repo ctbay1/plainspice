@@ -54,6 +54,24 @@ export const NODE_PALETTE_MORE: readonly string[] = [
 ];
 
 /**
+ * The Netlist panel's dark "simulator screen" (#1F242D, decision 0014): the same hues, lighter, each
+ * 3:1 or more on the screen's backgrounds (a bar under a node's name is a graphic, WCAG 1.4.11),
+ * found by a search that kept them as close as it could to the channel's dark palette (the
+ * checkpoint's, whose pairs were only about 3 apart for colour-blind viewers). Smallest difference
+ * 21.2 normal, 10.6 protanopia, 10.7 deuteranopia, 10.7 tritanopia; lowest contrast 3.37:1.
+ */
+export const NODE_PALETTE_SCREEN: readonly string[] = [
+  '#FFAB84', // orange
+  '#34B7F9', // blue
+  '#87EBB7', // green
+  '#AD7DB5', // purple
+  '#FB778D', // red
+  '#6982FB', // indigo
+  '#FFCAFC', // pink
+  '#B98C37', // brown
+];
+
+/**
  * The smallest CIEDE2000 difference allowed between any two node colours under each simulated
  * colour vision deficiency (see tests/unit/editor-palette.test.ts for why 10).
  */

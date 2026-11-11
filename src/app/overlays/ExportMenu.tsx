@@ -2,9 +2,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { Menu, MenuItem, Popover } from 'react-aria-components';
 import { t } from '../../i18n/index.ts';
-import type { MenuFocus } from '../components/AppToolbar.tsx';
-
-export type ExportKind = 'ngspice' | 'ltspice';
+import type { ExportKind, MenuFocus } from '../components/Overlays.tsx';
 
 export default function ExportMenu({
   triggerRef,
