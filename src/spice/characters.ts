@@ -95,18 +95,29 @@ export const withoutSpaces = (s: string): string => s.replace(SPACE_LIKE_ALL, ''
  * "µF", "μF", "mA", "V". The scale letters and units of space-before-suffix (traps.ts), with the ohm
  * sign Ω (U+2126) and the Greek mu μ, which documents use too.
  */
-const SI_SUFFIX = /^(meg|mil|[tgkmunpfa\u00b5\u03bc])?(ohms?|\u03a9|\u2126|volts?|v|amps?|a|f|h|hz|s)?$/i;
-const DIGIT_GROUPS = new RegExp(`^\\d{3}(?:${SPACE_LIKE.source}\\d{3})*$`);
+const SI_SUFFIX = /^(meg|mil|[tgkmunpfaµμ])?(ohms?|Ω|Ω|volts?|v|amps?|a|f|h|hz|s)?$/i;
+const SPACE_SPLIT = new RegExp(SPACE_LIKE.source);
+/** The first group of digits as documents write them (10 of 10 000), and each group after it. */
+const FIRST_GROUP = /^[+-]?\d{1,3}$/;
+const GROUP = /^\d{3}$/;
+/** The last group with a scale letter or a unit written straight after it: 000k, 000kΩ. */
+const GROUP_AND_SUFFIX = /^(\d{3})(\D.*)$/;
 
 /** A value word read the way the document it came from meant it (spacedValue). */
 export interface SpacedValue {
-  /** The number before the character that looks like a space, as written ("4.7"). */
+  /** The number before the first character that looks like a space, as written ("4.7", "10"). */
   before: string;
-  /** What follows it ("kΩ", "000"; empty when it ends the word). */
+  /** What follows that character up to the next one ("kΩ", "000"; empty when it ends the word). */
+  next: string;
+  /** All that follows it, each such character written as a space ("kΩ", "000 Ω"). */
   after: string;
   /** How documents use the space here: between a number and its unit, or between groups of digits. */
   kind: 'unit' | 'digits';
-  /** The value written for SPICE: "4.7k", "10000"; for a capital M, mega: "1meg". */
+  /** Whether a scale letter or a unit follows the number ("kΩ", "Ω", "µF"; for 10 000 none). */
+  unit: boolean;
+  /** How many characters that look like a space the word has. */
+  spaces: number;
+  /** The value written for SPICE: "4.7k", "10000", "1000u"; for a capital M, mega: "1meg". */
   spice: string;
   /** What SPICE reads `spice` as. */
   value: number;
@@ -115,39 +126,65 @@ export interface SpacedValue {
 }
 
 /**
- * A value word with a character that looks like a space in it, read the way documents write values:
- * "4.7<thin space>kΩ" is 4.7k (a number, the space, a scale letter and a unit), "10<thin space>000" is
- * 10000 (groups of three digits), "1<thin space>MΩ" is 1meg, mega, as a document means it (SPICE would
- * read 1M as milli). A lone a or f after the space is a unit, amps or farads, not atto or femto.
- * Undefined for a word not written that way: ngspice reads such a word as one word all the same
- * (space-character-1 to -4), but what was meant is not clear.
+ * A number and what a document writes after it ("kΩ", "µF", "MΩ") as SPICE needs it: the scale letter
+ * only, µ as u, a capital M as meg (with the milli spelling too), a lone a or f as a unit (amps,
+ * farads), not atto or femto. Undefined when the suffix is no scale letter or unit, or doubles a scale.
  */
-export function spacedValue(word: string): SpacedValue | undefined {
-  const chars = [...word];
-  const at = chars.findIndex((ch) => SPACE_LIKE.test(ch));
-  if (at <= 0) return undefined;
-  const before = chars.slice(0, at).join('');
-  const after = chars.slice(at + 1).join('');
-  const first = readNumber(before);
+function withSuffix(number: string, suffix: string): Pick<SpacedValue, 'spice' | 'value' | 'milli' | 'unit'> | undefined {
+  const first = readNumber(number);
   if (!first || first.ignored || first.rest) return undefined;
-  if (!after) return { before, after, kind: 'unit', spice: before, value: first.value };
-  if (/^[+-]?\d{1,3}$/.test(before) && DIGIT_GROUPS.test(after)) {
-    const spice = `${before}${withoutSpaces(after)}`;
-    const r = readNumber(spice);
-    return r && !r.rest ? { before, after, kind: 'digits', spice, value: r.value } : undefined;
-  }
-  const m = SI_SUFFIX.exec(after);
+  if (!suffix) return { spice: number, value: first.value, unit: false };
+  const m = SI_SUFFIX.exec(suffix);
   if (!m || (!m[1] && !m[2])) return undefined;
   let scale = m[1] ?? '';
   if (!m[2] && /^[af]$/i.test(scale)) scale = '';
   if (scale && first.scale) return undefined;
   if (scale === 'M') {
-    const milli = `${before}m`;
-    return { before, after, kind: 'unit', spice: `${before}meg`, value: readNumber(`${before}meg`)!.value, milli: { spice: milli, value: readNumber(milli)!.value } };
+    const milli = `${number}m`;
+    return { spice: `${number}meg`, value: readNumber(`${number}meg`)!.value, unit: true, milli: { spice: milli, value: readNumber(milli)!.value } };
   }
-  const spice = `${before}${/^[\u00b5\u03bc]$/.test(scale) ? 'u' : scale.toLowerCase()}`;
+  const spice = `${number}${/^[µμ]$/.test(scale) ? 'u' : scale.toLowerCase()}`;
   const r = readNumber(spice);
-  return r && !r.rest ? { before, after, kind: 'unit', spice, value: r.value } : undefined;
+  return r && !r.rest ? { spice, value: r.value, unit: true } : undefined;
+}
+
+/**
+ * A value word with characters that look like a space in it, read the way documents write values:
+ * "4.7<thin space>kΩ" is 4.7k (a number, the space, a scale letter and a unit); "10<thin space>000" is
+ * 10000 and "10<thin space>000<thin space>Ω" 10000 too (groups of three digits, with or without a unit
+ * after them, or a scale letter on the last group: "1<thin space>000k" is 1000k); "1<thin space>MΩ" is
+ * 1meg, mega, as a document means it (SPICE would read 1M as milli). A lone a or f after the space is
+ * a unit, amps or farads, not atto or femto. Undefined for a word not written that way: ngspice reads
+ * such a word all the same, up to the first such character (space-character-1 to -3, -7, -11), but
+ * what was meant is not clear.
+ */
+export function spacedValue(word: string): SpacedValue | undefined {
+  const parts = word.split(SPACE_SPLIT);
+  const first = parts[0]!;
+  if (parts.length < 2 || !first) return undefined;
+  const shown = { before: first, next: parts[1]!, after: parts.slice(1).join(' '), spaces: parts.length - 1 };
+  // Groups of three digits after a first group of one to three (10 000, 1 000 000); the last may carry
+  // a scale letter or a unit (1 000k), or one may follow after a last space (10 000 Ω, 1 000 µF).
+  if (FIRST_GROUP.test(first)) {
+    let digits = first;
+    let k = 1;
+    while (k < parts.length && GROUP.test(parts[k]!)) digits += parts[k++];
+    const last = k < parts.length ? GROUP_AND_SUFFIX.exec(parts[k]!) : null;
+    let suffix = '';
+    if (last) {
+      digits += last[1];
+      suffix = last[2]!;
+      k += 1;
+    }
+    if (k > 1 && k >= parts.length - 1) {
+      if (k === parts.length - 1) suffix += parts[k];
+      const read = withSuffix(digits, suffix);
+      return read ? { ...shown, kind: 'digits', ...read } : undefined;
+    }
+  }
+  if (parts.length !== 2) return undefined;
+  const read = withSuffix(first, parts[1]!);
+  return read ? { ...shown, kind: 'unit', ...read } : undefined;
 }
 
 /**

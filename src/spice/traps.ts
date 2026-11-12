@@ -572,13 +572,17 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
 /**
  * A value with a character that looks like a space in it (critic of the final-review fixes, security
  * review F2): ngspice reads the character as part of the word, so the number ends there and the rest
- * is ignored: 4.7<thin space>kΩ is 4.7 Ω, 10<thin space>000 is 10 (space-character-1 to -3, nbsp-2),
- * and a word that starts with one is no number, so ngspice stops (space-character-5). The word is read
- * the way documents write values (spacedValue): a number, the space, a scale letter and a unit, or
- * groups of digits. Flagged when that differs from what ngspice reads, with a fix that writes it for
- * SPICE ("Write 4.7k"; after a capital M, mega or milli, as mega-as-milli offers them). A word not
- * written that way is left to checkSpaces, which says the character glues two words into one. The
- * words name the character, never show it.
+ * is ignored: 4.7<thin space>kΩ is 4.7 Ω, 10<thin space>000 is 10, 10<thin space>000<thin space>Ω is
+ * 10 Ω (space-character-1 to -3, -7, -8, nbsp-2), and a word that starts with one is no number, so
+ * ngspice stops (space-character-5). The word is read the way documents write values (spacedValue): a
+ * number, the space, a scale letter and a unit, or groups of digits with or without a unit. Flagged
+ * when that differs from what ngspice reads, with a fix that writes it for SPICE ("Write 4.7k"; after
+ * a capital M, mega or milli, as mega-as-milli offers them). A number written some other way is
+ * flagged, when it is a part's value, if taking the characters out changes what ngspice reads, and the
+ * fix takes them out (space-character-11). Never "Replace it with a normal space" inside a part's value:
+ * 10 000 Ω would be three words, and ngspice stops (space-character-9). Any other word (a source's
+ * PULSE(0<thin space>1 ..., an analysis line) not written as a value is two numbers glued, and a word
+ * that is no number at all is left to checkSpaces. The words name the character, never show it.
  */
 function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined): void {
   const chars = [...t.text];
@@ -601,13 +605,41 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
   }
   const meant = spacedValue(t.text);
   const read = readNumber(t.text);
-  if (!meant || !read) return;
+  // A part's value written some other way: one value all the same, never split into words. Elsewhere
+  // (a source's PULSE(0<thin space>1 ..., an analysis line) such a word is two numbers glued: checkSpaces'.
+  const main = letter !== undefined && unit !== undefined;
+  if (!read || (!meant && !main)) return;
   c.spaced.add(t.from);
-  // After the scale letter it changes nothing: 4.7k<thin space>Ω is 4.7 kΩ (space-character-1).
+  // A capacitor's or an inductor's value word is also looked up as a model name (greek-mu-2, space-character-8).
+  const model = letter === 'C' || letter === 'L';
+  const stops = `ngspice stops reading the number at the ${bare} and ignores the rest of the word${model ? '' : ', without a message'}: it reads ${shown(read.value)}${model ? ", and only warns that it can't find a model with the word's name" : ''}.`;
+  if (!meant) {
+    // Not written the way documents write a value (1<thin space>2, 0.000<thin space>001): say what ngspice
+    // reads, and offer to take the characters out when that changes it.
+    const clean = withoutSpaces(t.text);
+    const meantClean = readNumber(clean);
+    if (!meantClean || meantClean.rest || meantClean.value === read.value) return;
+    const at = chars.findIndex((x) => SPACE_LIKE.test(x));
+    const before = chars.slice(0, at).join('');
+    const after = withSpaces(chars.slice(at + 1).join(''));
+    const several = chars.filter((x) => SPACE_LIKE.test(x)).length > 1;
+    add(c, id, 'warning', t, `${subject} is read as ${shown(read.value)}`,
+      `${capital(what)} sits between ${before} and ${after} (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${after} after it does not count. Without ${several ? 'these characters' : 'it'}, the value reads ${clean}.`,
+      `${stops} [space-character-11${model ? ', space-character-8' : ''}]`,
+      [fix(`Take ${several ? 'them' : 'it'} out: write ${clean} (${shown(meantClean.value)})`, replace(t, clean))]);
+    return;
+  }
+  // After the scale letter it changes nothing: 4.7k<thin space>Ω is 4.7 kΩ (space-character-6).
   if (read.value === meant.value) return;
   const digits = meant.kind === 'digits';
-  const claim =
-    ch === '\u00a0' ? `nbsp-2${digits ? ', space-character-3' : ''}` : ch === '\u2009' ? (digits ? 'space-character-3' : 'space-character-1') : `space-character-2${digits ? ', space-character-3' : ''}`;
+  const grouped = digits ? (meant.unit || meant.spaces > 1 ? 'space-character-7' : 'space-character-3') : '';
+  const claim = [
+    ch === '\u00a0' ? 'nbsp-2' : ch === '\u2009' ? (digits ? '' : 'space-character-1') : 'space-character-2',
+    grouped,
+    model ? 'space-character-8' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
   // A capital M is mega in a document and milli in SPICE: both spellings, as mega-as-milli offers them.
   const big = letter === 'R' || (letter !== undefined && 'EFGH'.includes(letter));
   const fixes: Fix[] = [];
@@ -616,12 +648,13 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
     const milli = fix(`Keep milli: write ${meant.milli.spice}`, replace(t, meant.milli.spice));
     fixes.push(...(big ? [mega, milli] : [milli, mega]));
   } else fixes.push(fix(`Write ${meant.spice}${letter && unit !== undefined ? ` (${shown(meant.value)})` : ''}`, replace(t, meant.spice)));
+  const write = meant.unit
+    ? `SPICE needs no space and no units${meant.milli ? `, and a capital M is milli in SPICE: for mega, write meg: ${meant.spice}` : `: write ${meant.spice}`}.`
+    : `Write the number without ${meant.spaces > 1 ? 'them' : 'it'}: ${meant.spice}.`;
   add(c, id, 'warning', t,
     meant.milli && !big ? `${subject} is read as ${shown(read.value)}` : `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
-    digits
-      ? `${capital(what)} sits between ${meant.before} and ${meant.after}, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${meant.after} after it does not count. Write the number without it: ${meant.spice}.`
-      : `${capital(what)} sits between ${meant.before} and ${meant.after}, as documents write a number and its unit. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${meant.after} after it does not count. SPICE needs no space and no units${meant.milli ? `, and a capital M is milli in SPICE: for mega, write meg: ${meant.spice}` : `: write ${meant.spice}`}.`,
-    `ngspice stops reading the number at the ${bare} and ignores the rest of the word, without a message: it reads ${shown(read.value)}. [${claim}]`,
+    `${capital(what)} sits between ${meant.before} and ${meant.next}, as documents ${digits ? 'group digits' : 'write a number and its unit'}. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${meant.after} after it does not count. ${write}`,
+    `${stops} [${claim}]`,
     fixes);
 }
 
@@ -1135,11 +1168,12 @@ function checkDangling(c: Ctx): void {
   if (!c.graph.hasGround) return;
   const nodes = [...c.n.nodes.values()];
   const floating = new Set(c.graph.floating.flatMap((g) => g.nodes));
-  // A name with an invisible character or a look-alike letter, and the name it looks like, are the
-  // invisible-character and look-alike-letter checks': their fix joins them, so no "Did you mean"
-  // offers to rename out to ou<zero-width space>t or to оut (Cyrillic о).
-  const odd = (y: NodeInfo): boolean => !y.ground && y.refs.length > 0 && (hasInvisible(y.name) || lookAlikeName(y.refs[0]!.text) !== undefined);
-  const meantOf = (y: NodeInfo): string => lowerAscii(lookAlikeName(y.refs[0]!.text) ?? withoutInvisible(y.name));
+  // A name with an invisible character, a character that looks like a space or a look-alike letter,
+  // and the name it looks like, are the invisible-character, space-character and look-alike-letter
+  // checks': their fix joins them, so no "Did you mean" offers to rename out to ou<zero-width space>t,
+  // to o<thin space>ut or to оut (Cyrillic о).
+  const odd = (y: NodeInfo): boolean => !y.ground && y.refs.length > 0 && (hasInvisible(y.name) || hasSpaceLike(y.name) || lookAlikeName(y.refs[0]!.text) !== undefined);
+  const meantOf = (y: NodeInfo): string => lowerAscii(lookAlikeName(y.refs[0]!.text) ?? withoutSpaces(withoutInvisible(y.name)));
   const hidden = new Set(nodes.filter(odd).map(meantOf));
   const connected = nodes.filter((y) => y.connections.length > 0 && !odd(y));
   let index: TypoIndex | undefined;
@@ -1484,6 +1518,36 @@ function checkInvisibleNodes(c: Ctx): void {
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
       `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
       `ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]`,
+      [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
+  }
+}
+
+/**
+ * A node name with a character that looks like a space in it (critic of round 2; space-character-10):
+ * ngspice keeps it in the name, written with underscores, so o<thin space>ut is the node o___ut, not
+ * out, and the parts on it are not connected to out. As for an invisible character, the fix takes it
+ * out, which joins the node to out when the netlist has one, as was meant; "Replace it with a normal
+ * space" would make the line a word longer (space-character-9). Left to checkSpaces when a part on the
+ * node has no value: there the character stands where a space was meant (space-character-4). Runs
+ * before checkSpaces. The words name the character, never show it.
+ */
+function checkSpaceNodes(c: Ctx): void {
+  for (const info of c.n.nodes.values()) {
+    if (info.ground || info.refs.length === 0 || !hasSpaceLike(info.name) || hasInvisible(info.name)) continue;
+    const valueless = info.connections.some((k) => {
+      const e = el(c, k.line);
+      return !!e.letter && VALUE_LETTERS.has(e.letter) && !e.value && !e.fields.some((f) => f.role === 'model');
+    });
+    if (valueless) continue;
+    for (const r of info.refs) c.spaced.add(r.from);
+    const t = info.refs[0]!;
+    const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
+    const clean = withoutSpaces(t.text);
+    const other = c.n.nodes.get(lowerAscii(clean));
+    const changes = [...renameNode(info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `The node ${withSpaces(t.text)} has ${nameOfCharacter(ch)!} in it`,
+      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node, and the parts on it are not connected to ${clean}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]`,
       [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
@@ -2279,6 +2343,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   checkSyntax(c);
   checkGreekMu(c);
   for (const i of netlist.analyses) for (const t of netlist.lines[i]!.directive!.args) checkOddValue(c, t, undefined, undefined, undefined);
+  checkSpaceNodes(c);
   checkSpaces(c);
   checkTitle(c);
   checkDuplicates(c);

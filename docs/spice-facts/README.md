@@ -69,7 +69,10 @@ After the critic of round 2, the same day: C9h, C9i, C9j (a tiny real current fl
 parts in series and side by side with it, though their ends are a step of a double apart), C9k (a
 ladder of 1000 sections: real nanovolts and femtoamps, and a far end below the smallest normal
 double) and C9l (two ends more than a few steps of a double apart carry a real current; 300 random
-bridges) in explanations.md.
+bridges) in explanations.md; and in traps.md space-character-7 to -11 (groups of digits with a unit,
+`10<THIN>000<THIN>Ω` is 10 Ω; on a capacitor ngspice also looks the word up as a model; with normal
+spaces the groups are three words and ngspice stops; in a node name the character makes another node;
+digits not grouped in threes end the number too).
 
 ## Where the evidence came from
 

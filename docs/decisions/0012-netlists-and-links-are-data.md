@@ -96,3 +96,20 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   name with a Turkish letter too (çоk) stays that check's, and its fix writes the look-alike plain
   (cok, not ck). An invisible character right after a sign is said where it is: "It has a zero-width
   space (U+200B) right after the -" (invisible-character-6).
+- **Groups of digits with a unit, and no split inside a value** (critic of round 2). Documents write
+  `10 000 Ω`, `4 700 Ω` and `1 000 µF` with a thin space before the unit too; ngspice still stops
+  reading at the first one, so they are 10 Ω, 4 Ω and 1 F (space-character-7, -8). `spacedValue` now
+  reads groups of three digits with a unit after them, or a scale letter on the last group (`1 000k`),
+  so the check says "R1's value is read as 10 Ω, not 10 kΩ" and offers "Write 10000 (10 kΩ)". Before,
+  such a word fell to the glue check, whose "Replace it with a normal space" made `10 000 Ω` three
+  words that stop ngspice (space-character-9), and whose next fix left a 0 Ω resistor. So a part's
+  value never gets that fix: a number written some other way (`1<thin space>2`, `0.000<thin space>001`)
+  is said as ngspice reads it ("R1's value is read as 1 Ω") when taking the characters out changes
+  that, with the fix "Take it out: write 12" (space-character-11). Other words keep the glue check, where
+  two words were meant: `PULSE(0<thin space>1 …`, and a part line a word short. On a capacitor or an
+  inductor the words now say that ngspice also warns that it can't find a model with the word's name
+  (space-character-8), as for the Greek mu. In a node name the character makes another node
+  (`o<thin space>ut` is `o___ut`, space-character-10): the check names it ("The node o ut has a thin
+  space (U+2009) in it") and, as for an invisible character, its fix takes it out, "Take it out:
+  connect to out" when a node out exists, else "Take it out: name the node out"; the dangling-node
+  check says nothing about the pair, so no button reads "Rename out to o ut".

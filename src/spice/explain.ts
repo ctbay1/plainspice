@@ -193,7 +193,7 @@ export const EXPLAIN_STRINGS = {
     `${what} looks like a space but is none for SPICE, so ngspice stops reading the number at it and ignores everything after it.${write ? ` ${write}` : ''}`,
   spaceWrite: (spice: string): string => `SPICE needs no space and no units: write ${spice}.`,
   spaceWriteMega: (spice: string): string => `SPICE needs no space and no units, and a capital M is milli in SPICE: for mega, write ${spice}.`,
-  spaceWriteDigits: (spice: string): string => `Write the number without it: ${spice}.`,
+  spaceWriteDigits: (spice: string, several: boolean): string => `Write the number without ${several ? 'them' : 'it'}: ${spice}.`,
   spaceHarmless: (what: string): string => `There is ${what} in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.`,
   nodeWithSpace: (shown: string, what: string): string => `${shown} (one word for SPICE: written with ${what}, not a space)`,
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
@@ -673,7 +673,7 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     const meant = spacedValue(token.text);
     if (meant && meant.value === reading.value) notes.push(S.spaceHarmless(what));
     else {
-      const write = !meant ? '' : meant.kind === 'digits' ? S.spaceWriteDigits(meant.spice) : meant.milli ? S.spaceWriteMega(meant.spice) : S.spaceWrite(meant.spice);
+      const write = !meant ? '' : !meant.unit ? S.spaceWriteDigits(meant.spice, meant.spaces > 1) : meant.milli ? S.spaceWriteMega(meant.spice) : S.spaceWrite(meant.spice);
       notes.push(S.spaceNote(capitalized(what), write));
       trap = true;
     }

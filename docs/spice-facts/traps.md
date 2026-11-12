@@ -92,7 +92,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
 | [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`) | warning, error | ends the number silently; another node; at the start of a value: stops |
 | [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash from a document (`1e−3`, `−5`) | warning, error | ends the number silently; at the start of a value: stops |
-| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`) or between two words | warning, error | ends the number silently; glues two words, silently; at the start of a value: stops |
+| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), in a node name (`o<THIN>ut`) or between two words | warning, error | ends the number silently; another node; glues two words, silently; at the start of a value: stops |
 
 ## mega-as-milli
 
@@ -8352,6 +8352,18 @@ and no trap. Warning, with a fix that writes the value for SPICE; error when the
 words name the character ("a thin space (U+2009)") and never show it; the netlist editor shows it as a dot
 with that name, and Explain names it too.
 
+After the critic of round 2 (12 November 2026): groups of digits are read with a unit after them too,
+as documents write `10 000 Ω`, `4 700 Ω` or `1 000 µF` (`10<THIN>000<THIN>Ω` is meant as 10000,
+`1<THIN>000k` as 1000k; space-character-7, -8), and a number written some other way (`1<THIN>2`,
+`0.000<THIN>001`) is flagged when taking the characters out changes what ngspice reads, with the fix
+"Take it out" (space-character-11). Inside a value the fix is never "Replace it with a normal space": with
+normal spaces `10 000 Ω` is three words, and ngspice stops (space-character-9). On a capacitor or an
+inductor ngspice also warns that it can't find a model with the value word's name (space-character-8). In a
+node name the character makes another node (`o<THIN>ut` is `o___ut`, space-character-10): the check
+names it and its fix takes it out, which connects the parts to `out` when the netlist has that node; the
+dangling-node check then says nothing about the pair. Where a part on the node has no value, the character
+stands where a space was meant, and the glue check's fix stays (space-character-4).
+
 What PlainSpice shows for space-character-1 (warning, line 3):
 
 > **R1's value is read as 4.7 Ω, not 4.7 kΩ.** A thin space (U+2009) sits between 4.7 and kΩ, as documents write a number and its unit. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the kΩ after it does not count. SPICE needs no space and no units: write 4.7k.
@@ -8399,6 +8411,78 @@ What PlainSpice shows for space-character-5 (error, line 4):
 > *ngspice:* ngspice stops: 'unknown parameter (___2k)'. [space-character-5]
 >
 > *Fixes:* "Write 2k (2 kΩ)"
+
+What PlainSpice shows for space-character-7 (warning, line 3):
+
+> **R1's value is read as 10 Ω, not 10 kΩ.** A thin space (U+2009) sits between 10 and 000, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 000 Ω after it does not count. SPICE needs no space and no units: write 10000.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 10 Ω. [space-character-7]
+>
+> *Fixes:* "Write 10000 (10 kΩ)"
+
+What PlainSpice shows for space-character-7 (warning, line 5):
+
+> **R2's value is read as 4 Ω, not 4.7 kΩ.** A thin space (U+2009) sits between 4 and 700, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 700 Ω after it does not count. SPICE needs no space and no units: write 4700.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 4 Ω. [space-character-7]
+>
+> *Fixes:* "Write 4700 (4.7 kΩ)"
+
+What PlainSpice shows for space-character-7 (warning, line 7):
+
+> **R3's value is read as 1 Ω, not 1 MΩ.** A thin space (U+2009) sits between 1 and 000k, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 000k after it does not count. SPICE needs no space and no units: write 1000k.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 1 Ω. [space-character-7]
+>
+> *Fixes:* "Write 1000k (1 MΩ)"
+
+What PlainSpice shows for space-character-8 (warning, line 4):
+
+> **C1's value is read as 1 F, not 1 mF.** A thin space (U+2009) sits between 1 and 000, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 000 µF after it does not count. SPICE needs no space and no units: write 1000u.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word: it reads 1 F, and only warns that it can't find a model with the word's name. [space-character-7, space-character-8]
+>
+> *Fixes:* "Write 1000u (1 mF)"
+
+What PlainSpice shows for space-character-8 (warning, line 6):
+
+> **C2's value is read as 470 F, not 470 µF.** A thin space (U+2009) sits between 470 and µF, as documents write a number and its unit. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the µF after it does not count. SPICE needs no space and no units: write 470u.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word: it reads 470 F, and only warns that it can't find a model with the word's name. [space-character-1, space-character-8]
+>
+> *Fixes:* "Write 470u (470 µF)"
+
+What PlainSpice shows for space-character-10 (warning, line 3):
+
+> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]
+>
+> *Fixes:* "Take it out: connect to out"
+
+What PlainSpice shows for space-character-10 (warning, line 5):
+
+> **The node o ut has a no-break space (U+00A0) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (o__ut), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]
+>
+> *Fixes:* "Take it out: connect to out"
+
+What PlainSpice shows for space-character-11 (warning, line 3):
+
+> **R1's value is read as 0 Ω.** A thin space (U+2009) sits between 0.000 and 001 (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 001 after it does not count. Without it, the value reads 0.000001.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 0 Ω. [space-character-11]
+>
+> *Fixes:* "Take it out: write 0.000001 (1 µΩ)"
+
+What PlainSpice shows for space-character-11 (warning, line 6):
+
+> **R3's value is read as 1 Ω.** A thin space (U+2009) sits between 1 and 2 (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 2 after it does not count. Without it, the value reads 12.
+>
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 1 Ω. [space-character-11]
+>
+> *Fixes:* "Take it out: write 12 (12 Ω)"
 
 ### space-character-1. A thin space between a value and its unit ends the number: 4.7<THIN>kΩ is 4.7 Ω, and 1<THIN>MΩ is 1 Ω
 
@@ -8615,3 +8699,187 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: none.
+
+### space-character-7. Groups of digits with a unit after them end the number at the first space too: 10<THIN>000<THIN>Ω is 10 Ω, 4<THIN>700<THIN>Ω is 4 Ω, 1<THIN>000k is 1 Ω
+
+Added after the critic of round 2 (12 November 2026). As documents write 10 kΩ, 4.7 kΩ and 1 MΩ with their digits in groups: each resistor gets 1 A, so each node voltage is the resistance ngspice uses.
+
+```spice
+* groups of digits and a unit, as documents write 10 000 Ω, 4 700 Ω and 1 000k
+I1 0 n1 1
+R1 n1 0 10<THIN>000<THIN>Ω
+I2 0 n2 1
+R2 n2 0 4<THIN>700<THIN>Ω
+I3 0 n3 1
+R3 n3 0 1<THIN>000k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n3                               1.000000e+00
+        n2                               4.000000e+00
+        n1                               1.000000e+01
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 10, v(n2) = 4, v(n3) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(n1) = 10, v(n2) = 4, v(n3) = 1
+```
+
+PlainSpice's checks: `space-character` (3 times).
+
+### space-character-8. On a capacitor the same, and ngspice also looks the word up as a model: 1<THIN>000<THIN>µF is 1 F, 470<THIN>µF is 470 F
+
+A capacitor's value word is also looked up as a model name, as with the Greek mu (greek-mu-2), so ngspice warns that it can't find a model with the word's name (it writes µ as u in the message). With 1 F and 470 F through 1 Ω, the capacitors charge by 1 mV and 2.1 µV in 1 ms; with 1000 µF and 470 µF they would charge to 0.63 V and 0.88 V. Native 47's time grid differs from 42's and from our engine's here (81, 80 and 59 points); the final values agree to 6 significant figures.
+
+```spice
+* 1 000 µF and 470 µF as documents write them, on capacitors
+V1 in 0 PULSE(0 1 0 1n 1n 1 2)
+R1 in out 1
+C1 out 0 1<THIN>000<THIN>µF
+R2 in out2 1
+C2 out2 0 470<THIN>µF
+.tran 0.1m 1m
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model '1<THIN>000<THIN>uf' from line
+        c1 out 0 1<THIN>000<THIN>uf
+    warning, can't find model '470<THIN>uf' from line
+        c2 out2 0 470<THIN>uf
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(out): 81 points, last 0.000999499667207256, v(out2): 81 points, last 0.000002127656247281666
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model '1<THIN>000<THIN>uf' from line
+        c1 out 0 1<THIN>000<THIN>uf
+    warning, can't find model '470<THIN>uf' from line
+        c2 out2 0 470<THIN>uf
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(out): 80 points, last 0.000999499667207603, v(out2): 80 points, last 0.000002127656247281665
+our engine (wasm), as ngspice -b -r (exit 0):
+    in                                           0
+    out                                          0
+    out2                                         0
+    v1#branch                                    0
+    warning, can't find model '1<THIN>000<THIN>uf' from line
+        c1 out 0 1<THIN>000<THIN>uf
+    warning, can't find model '470<THIN>uf' from line
+        c2 out2 0 470<THIN>uf
+    vectors: v(out): 59 points, last 0.0009995001666473623, v(out2): 59 points, last 0.00000212765731100201
+```
+
+PlainSpice's checks: `space-character` (twice).
+
+### space-character-9. With normal spaces the groups are separate words: R1 in out 10 000 Ω stops ngspice
+
+Why the fix for a value never puts a normal space where the character was: ngspice then reads 10 and 000 as two numbers and uses the last one (0, so 47 sets it to 1e-12 Ω, zero-ohm-1), and stops at Ω, which it spells `__` (W16).
+
+```spice
+* 10 000 Ω written with normal spaces: three words
+V1 in 0 10
+R1 in out 10 000 Ω
+R2 out 0 10k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+    Error on line 3 or its substitute:
+      r1 in out 10 000 __
+      unknown parameter (__)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 3 or its substitute:
+      r1 in out 10 000 __
+      unknown parameter (__)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `zero-ohm`, `unknown-word`.
+
+### space-character-10. In a node name it makes another node: o<THIN>ut is o___ut, and o<NBSP>ut is o__ut, not out
+
+ngspice writes each byte of the character as `_` (the thin space has three, the no-break space two), so R1 and R3 end on nodes of their own, and no current flows: v(out) = 0 and i(v1) = 0.
+
+```spice
+* a thin space and a no-break space inside node names
+V1 in 0 10
+R1 in o<THIN>ut 2k
+R2 out 0 2k
+R3 in o<NBSP>ut 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        o__ut                            1.000000e+01
+        out                              0.000000e+00
+        o___ut                           1.000000e+01
+        in                               1.000000e+01
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 10, v(o___ut) = 10, v(out) = 0, v(o__ut) = 10, i(v1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 10, v(o___ut) = 10, v(out) = 0, v(o__ut) = 10, i(v1) = 0
+```
+
+PlainSpice's checks: `space-character`, `nbsp`.
+
+### space-character-11. Between digits not grouped in threes it ends the number as well: 0.000<THIN>001 is 0, 1<THIN>2 is 1
+
+ngspice reads 0.000 for R1, a resistance of 0, which ngspice 47 sets to 1e-12 Ω with a warning and ngspice 42 to 1 mΩ without one (zero-ohm-1, zero-ohm-2), and 1 for R3.
+
+```spice
+* a thin space that is not between groups of three digits: 0.000 001 and 1 2
+I1 0 n1 1
+R1 n1 0 0.000<THIN>001
+R2 n1 0 1
+I2 0 n2 1
+R3 n2 0 1<THIN>2
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n2                               1.000000e+00
+        n1                               1.000000e-12
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 9.99999999999e-13, v(n2) = 1
+ngspice 42, ngspice -b (exit 0):
+        n2                               1.000000e+00
+        n1                               9.990010e-04
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 0.000999000999000999, v(n2) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same messages as ngspice 47
+    vectors: v(n1) = 9.99999999999e-13, v(n2) = 1
+```
+
+PlainSpice's checks: `space-character`, `zero-ohm`, `space-character`.

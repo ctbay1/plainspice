@@ -882,10 +882,85 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(applyFix('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', thin.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 4.7k\nR2 out 0 4.7k\n.op\n.end\n');
     // The numbers of an analysis line too: .tran 1u 5<thin space>ms is 5 s.
     expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5\u2009ms\n.end\n', 'space-character').title).toBe('This value is read as 5, not 0.005');
-    // Between two words it glues them, named; in a node name the non-ascii-node check stays quiet.
+    // Between two words it glues them, named; in a node name the node check names it once, and the non-ascii-node check stays quiet.
     const glue = first('* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n', 'space-character');
     expect(glue.title).toBe('A thin space (U+2009) glues "0 2" into one word');
-    expect(ids('* t\nV1 in 0 6\nR1 in ou\u2009t 1k\nR2 ou\u2009t 0 2k\n.op\n.end\n')).toEqual(['space-character', 'space-character']);
+    expect(ids('* t\nV1 in 0 6\nR1 in ou\u2009t 1k\nR2 ou\u2009t 0 2k\n.op\n.end\n')).toEqual(['space-character']);
+  });
+
+  it('reads groups of digits with a unit after them the way documents write them: 10 000 Ω is 10000, never "Replace it with a normal space" (critic of round 2; space-character-7, -8)', () => {
+    // The critic's netlist: R1 10<thin space>000<thin space>Ω, read as 10 Ω (native 47 and 42: out = 9.99 V).
+    const text = '* t\nV1 in 0 10\nR1 in out 10\u2009000\u2009\u03a9\nR2 out 0 10k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['space-character']);
+    expect([found[0]!.title, found[0]!.why, found[0]!.ngspice, found[0]!.fixes.map((f) => f.label)]).toEqual([
+      'R1\'s value is read as 10\u00a0\u03a9, not 10\u00a0k\u03a9',
+      'A thin space (U+2009) sits between 10 and 000, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 000 \u03a9 after it does not count. SPICE needs no space and no units: write 10000.',
+      'ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 10\u00a0\u03a9. [space-character-7]',
+      ['Write 10000 (10\u00a0k\u03a9)'],
+    ]);
+    // One click, and nothing is left to fix: the critic's chain ended at a 0 Ω resistor.
+    expect(ids(applyFix(text, found[0]!.fixes[0]!))).toEqual([]);
+    const fixes = (value: string, letter = 'R'): string[] => first(`* t\nI1 0 n1 1\n${letter}1 n1 0 ${value}\nR2 n1 0 1\n.op\n.end\n`, 'space-character').fixes.map((f) => f.label);
+    expect(fixes('4\u2009700\u2009\u03a9')).toEqual(['Write 4700 (4.7\u00a0k\u03a9)']);
+    expect(fixes('1\u2009000k')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
+    expect(fixes('1\u2009000\u2009k\u03a9')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
+    expect(fixes('2\u202f200\u202f000')).toEqual(['Write 2200000 (2.2\u00a0M\u03a9)']);
+    expect(fixes('1\u2009000\u2009M\u03a9')).toEqual(['Make it 1000meg (1\u00a0G\u03a9)', 'Keep milli: write 1000m']);
+    // On a capacitor ngspice also looks the word up as a model, and says so (space-character-8).
+    const cap = first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1\nC1 out 0 1\u2009000\u2009\u00b5F\n.tran 0.1m 1m\n.end\n', 'space-character');
+    expect([cap.title, cap.ngspice, cap.fixes.map((f) => f.label)]).toEqual([
+      'C1\'s value is read as 1\u00a0F, not 1\u00a0mF',
+      "ngspice stops reading the number at the thin space and ignores the rest of the word: it reads 1\u00a0F, and only warns that it can't find a model with the word's name. [space-character-7, space-character-8]",
+      ['Write 1000u (1\u00a0mF)'],
+    ]);
+    // Never shown, only named.
+    for (const t of [...found, cap]) for (const x of [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)]) expect(x).not.toMatch(/[\u1680\u2000-\u200a\u202f\u205f\u3000]/);
+  });
+
+  it('a number written another way says what ngspice reads and takes the character out: 1 2 is 1, 0.000 001 is 0 (critic of round 2; space-character-9, -11)', () => {
+    const one = first('* t\nI1 0 n1 1\nR1 n1 0 1\u20092\n.op\n.end\n', 'space-character');
+    expect([one.title, one.why, one.ngspice, one.fixes.map((f) => f.label)]).toEqual([
+      'R1\'s value is read as 1\u00a0\u03a9',
+      'A thin space (U+2009) sits between 1 and 2 (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 2 after it does not count. Without it, the value reads 12.',
+      'ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 1\u00a0\u03a9. [space-character-11]',
+      ['Take it out: write 12 (12\u00a0\u03a9)'],
+    ]);
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 0.000\u2009001\nR2 n1 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Take it out: write 0.000001 (1\u00a0\u00b5\u03a9)']);
+    // No value word ever gets "Replace it with a normal space": 10 000 Ω with normal spaces stops ngspice (space-character-9).
+    for (const value of ['10\u2009000\u2009\u03a9', '1\u20092', '0.000\u2009001', '4.7\u2009k\u03a9', '1\u20092\u20093']) {
+      const labels = traps(`* t\nI1 0 n1 1\nR1 n1 0 ${value}\nR2 n1 0 1\n.op\n.end\n`).flatMap((t) => t.fixes.map((f) => f.label));
+      expect(labels, value).not.toContain('Replace it with a normal space');
+    }
+    // Where taking it out changes nothing, nothing is said: 4.7<thin space>xyz is 4.7 either way.
+    expect(ids('* t\nI1 0 n1 1\nR1 n1 0 4.7\u2009xyz\n.op\n.end\n')).toEqual([]);
+    // A word that is no number keeps the glue check: PULSE(0<thin space>1 ... is two words meant.
+    expect(first('* t\nV1 in 0 PULSE(0\u20091 0 1n 1n 1 2)\nR1 in 0 1\n.tran 1m 2m\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Replace it with a normal space']);
+  });
+
+  it('a character that looks like a space in a node name: "Take it out: connect to out", and no dangling-node notes for the pair (critic of round 2; space-character-10)', () => {
+    // The critic's netlist: R1 in o<thin space>ut 2k next to R2 out 0 2k. It got "Replace it with a normal space" and "Rename out to o ut".
+    const text = '* t\nV1 in 0 10\nR1 in o\u2009ut 2k\nR2 out 0 2k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['space-character']);
+    expect([found[0]!.title, found[0]!.why, found[0]!.fixes.map((f) => f.label)]).toEqual([
+      'The node o ut has a thin space (U+2009) in it',
+      'It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.',
+      ['Take it out: connect to out'],
+    ]);
+    expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 2k\nR2 out 0 2k\n.op\n.end\n');
+    // The no-break space under its own check's name; a name no other line writes is renamed everywhere.
+    expect(first('* t\nV1 in 0 10\nR1 in o\u00a0ut 2k\nR2 out 0 2k\n.op\n.end\n', 'nbsp').fixes.map((f) => f.label)).toEqual(['Take it out: connect to out']);
+    const alone = '* t\nV1 o\u2009ut 0 10\nR1 o\u2009ut 0 2k\n.op\n.end\n';
+    const renamed = first(alone, 'space-character');
+    expect(renamed.fixes.map((f) => f.label)).toEqual(['Take it out: name the node out']);
+    expect(applyFix(alone, renamed.fixes[0]!)).toBe('* t\nV1 out 0 10\nR1 out 0 2k\n.op\n.end\n');
+    // A part line a word short: the character stands where a space was meant, so the glue check's fix stays.
+    expect(traps('* t\nV1 in 0 10\nR1 in\u2009out 2k\nR2 out 0 2k\n.op\n.end\n').map((t) => [t.id, t.fixes.map((f) => f.label)])).toEqual([
+      ['missing-value', []],
+      ['space-character', ['Replace it with a normal space']],
+      ['dangling-node', []],
+    ]);
   });
 
   it('a look-alike in a node name is named, and its fix connects it to the node it looks like (critic of round 1; look-alike-letter-5)', () => {
