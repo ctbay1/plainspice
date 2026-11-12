@@ -319,6 +319,31 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   stop is under something else: some of what shows of it, inside the window and whatever scrolls around
   it, is the stop itself. On the previous fix each walk finds R2 under the sheet.
 
+- **In a very short window "Show the whole drawing" is under More, and a part the keys reach moves no
+  view of the reader's.** The second re-check (AP-1) found the pill back over the strip of drawing at
+  400 % (320 × 200: at the first key a 210 × 36 px pill over V1, 6 V and 2 mA, there to stay; at 320 ×
+  256 at End). A part reached with the keys and brought into view (the point before) took the view over
+  as the reader's, so the status line offered "Show the whole drawing", and a calm status with a button
+  keeps it (the point "A very short window" above). Two changes. A part the keys reach is brought into
+  view by the fit itself where the fit, which follows the selection, shows it: the view stays the fit's,
+  nobody's move; only where that fit cannot show it (a sheet leaving less paper than the part needs, a
+  view held while a card is open or something is moved, or the reader's own view) is the view moved for
+  it and becomes the reader's, as before. And in a very short window (`is-shorter`) the status line
+  never offers "Show the whole drawing", whatever moved the drawing (a key, a drag, a scroll, a zoom: on
+  30f3eec a drag already unfolded the pill): More keeps it, as do Ctrl+K and Shift+1. Undo after a change
+  made on the drawing still unfolds the dot there, as before. "Show the whole drawing" pressed on the
+  status line with the keys now gives the focus to the drawing's Tab stop: the button goes with the move
+  it undoes, and the focus fell to the page (the next Tab went to Select). Considered: the status line's
+  buttons as icons beside the dot in the margin (the reviewer's second way); the margin is 16 px wide, so
+  24 px targets would spill over the drawing. Tests (`tests/e2e/phone.spec.ts`): "a very short window (a
+  laptop at 400 %): walking the drawing with the keys, scrolling or zooming it…" walks Start here at 320 ×
+  200 and 320 × 256 (Tab, Enter, End, Home, ArrowRight twice, ArrowDown, then a scroll and a zoom) and
+  wants at each stop no button on the status and no word of the drawing under its painted dot or pill
+  (on b060bc8: the pill at 61..271, 105..141 after the skip link; with the fit's change alone, after the
+  scroll); "'Show the whole drawing' pressed on the status line with the keys gives the focus to the
+  drawing" (on b060bc8 the focus is on nothing); and `tests/unit/notebook-canvas.test.tsx`, a part the
+  keys reach that the fit shows leaves the view not moved (moved on b060bc8).
+
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the
 drawing is going, not where it is (seen in the tests, which wait for the drawing to settle; a sheet

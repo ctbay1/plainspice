@@ -469,6 +469,35 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
   });
 });
 
+describe('NotebookCanvas after the second re-check (AP-1)', () => {
+  it('an item the keys reach that the fit, following the selection, shows is nobody’s move: the view goes on following the fit', () => {
+    const views: CanvasViewInfo[] = [];
+    function Walk(): ReactNode {
+      const [selected, setSelected] = useState<NavItem | undefined>(undefined);
+      // At 60 px a unit (its readable size here) p02-4 is far wider than the window: the fit shows part of it.
+      return <NotebookCanvas schematic={s} results={NO_RESULTS} plain={false} label="p02-4" description="" selected={selected} onSelect={setSelected} onOpen={() => undefined} insets={NO_INSETS} fitKey="k" minUnit={60} maxUnit={60} onView={(v) => views.push(v)} />;
+    }
+    render(<Walk />);
+    const first = views.at(-1)!;
+    expect(first).toMatchObject({ moved: false, whole: false });
+    const across = (v: CanvasViewInfo, b: { x0: number; x1: number }): [number, number] => [v.view.x + b.x0 * v.unit, v.view.x + b.x1 * v.unit];
+    // A part the first view leaves off the screen, reached with the keys (jsdom's focus is a keyboard's: :focus-visible).
+    const off = s.scene.parts.find((p) => {
+      const [x0, x1] = across(first, p.box);
+      return x1 < 0 || x0 > 1000;
+    })!;
+    expect(off).toBeTruthy();
+    act(() => screen.getByRole('button', { name: new RegExp(`^${off.name}, `) }).focus());
+    const now = views.at(-1)!;
+    // In view, brought there by the fit, which follows the selection: not a move of the reader's, so
+    // nothing offers "Show the whole drawing" for it (on b060bc8 the view was taken over: moved).
+    const [x0, x1] = across(now, off.box);
+    expect(x0).toBeGreaterThanOrEqual(0);
+    expect(x1).toBeLessThanOrEqual(1000);
+    expect(now.moved).toBe(false);
+  });
+});
+
 describe('showBox: an item the keys reach, out from under the page (WCAG 2.4.11)', () => {
   // 10 px a grid unit; the free part of the window is 500 × 100 px, above a sheet.
   const v = { unit: 10, x: 0, y: 0 };

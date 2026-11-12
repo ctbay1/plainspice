@@ -369,13 +369,18 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   }, []);
 
   const selectedBox = selected ? itemBox(s, selected) : undefined;
-  const fitNow = useCallback((): View => {
-    const focus = frame ? undefined : selectedBox ? grow(selectedBox, 2.5) : focusBox;
-    // Asked for whole: as small as that takes (down to WHOLE_MIN_UNIT), words readable or not.
-    const lo = fitWhole && !frame ? Math.min(minUnit, WHOLE_MIN_UNIT) : minUnit;
-    const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit: lo, maxUnit, fill: frame || fitWhole ? 'whole' : fill, ...(focus ? { focus } : {}) });
-    return { unit: f.unit, x: f.x, y: f.y };
-  }, [bounds, size, insets, minUnit, maxUnit, padding, selectedBox, focusBox, frame, fill, fitWhole]);
+  /** The fit, which follows the selected item (`chosen`: the item and 2.5 units around it kept in view). */
+  const fitFor = useCallback(
+    (chosen: Box | undefined): View => {
+      const focus = frame ? undefined : chosen ? grow(chosen, 2.5) : focusBox;
+      // Asked for whole: as small as that takes (down to WHOLE_MIN_UNIT), words readable or not.
+      const lo = fitWhole && !frame ? Math.min(minUnit, WHOLE_MIN_UNIT) : minUnit;
+      const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit: lo, maxUnit, fill: frame || fitWhole ? 'whole' : fill, ...(focus ? { focus } : {}) });
+      return { unit: f.unit, x: f.x, y: f.y };
+    },
+    [bounds, size, insets, minUnit, maxUnit, padding, focusBox, frame, fill, fitWhole],
+  );
+  const fitNow = useCallback((): View => fitFor(selectedBox), [fitFor, selectedBox]);
   const applyFit = useCallback((): void => {
     const f = fitNow();
     setView((v) => (sameView(v, f) ? v : f));
@@ -532,9 +537,19 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     if (!box || !size.width || !now) return;
     const free: Box = { x0: insets.left + 8, y0: insets.top + 8, x1: size.width - insets.right - 8, y1: size.height - insets.bottom - 8 };
     if (free.x1 <= free.x0 || free.y1 <= free.y0) return;
+    const show = (v: View): View => showBox(v, grow(box, 0.5), free);
     // Only when it must move: the view follows the fit until something moves it.
-    if (showBox(now, grow(box, 0.5), free) === now) return;
-    moveView((v) => showBox(v, grow(box, 0.5), free), false);
+    if (show(now) === now) return;
+    // While the view follows the fit and nothing holds it, the fit follows the selection, which the focus
+    // makes this item: where that fit shows it, it brings it into view itself, and the view is nobody's
+    // move (moved, a laptop at 400 % offered "Show the whole drawing" over the drawing at the first key).
+    if (auto.current && !hold && !frame) {
+      const f = fitFor(box);
+      const o = offsetRef.current;
+      const fitted = { unit: f.unit, x: f.x + o.x, y: f.y + o.y };
+      if (show(fitted) === fitted) return;
+    }
+    moveView(show, false);
   };
 
   useImperativeHandle(

@@ -3301,6 +3301,27 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   );
 
   const zoomPercent = viewInfo ? Math.round((viewInfo.unit / 20) * 100) : undefined;
+  // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
+  // the way back to all of it (Fit, under More) at hand on the status line. Not in a very short window (a
+  // laptop at 400 %), where a calm status is a dot in the margin and a pill with this button sat over the
+  // strip of drawing there is, whatever moved it (a key, a drag, a zoom): More keeps it there (AP-1).
+  const wholeOnLine = phone && !shorter && !phoneSheet && !!viewInfo?.moved && !viewInfo.whole;
+  // Pressed with the keys, the button goes with the move it undoes: the focus goes on to the drawing's
+  // Tab stop, not to the page (WCAG 2.4.3), once the button has gone.
+  const focusAfterWhole = useRef(false);
+  const wholeFromLine = useCallback(
+    (byKeys: boolean) => {
+      focusAfterWhole.current = byKeys;
+      fit();
+    },
+    [fit],
+  );
+  useLayoutEffect(() => {
+    if (wholeOnLine || !focusAfterWhole.current) return;
+    focusAfterWhole.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) document.querySelector<HTMLElement>('.nb-hit[tabindex="0"]')?.focus({ preventScroll: true });
+  }, [wholeOnLine]);
   const lines = (
     <StatusLines
       hint={hint}
@@ -3313,9 +3334,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       {...(phone && turned && !linesAside ? { turn: { turned: turnWanted, video, onToggle: toggleTurn } } : {})}
       // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
       {...(phone && !linesAside && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
-      // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
-      // the way back to all of it (Fit, under More) at hand.
-      {...(phone && !phoneSheet && viewInfo?.moved && !viewInfo.whole ? { whole: fit } : {})}
+      // A phone whose drawing was moved partly off the screen: the way back to all of it at hand (wholeOnLine).
+      {...(wholeOnLine ? { whole: wholeFromLine } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line (not while the hint is out of sight).
       {...(phone && !hintAside && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
       // On a phone the hint gives way first when the stack is short of room, and scrolls: the status stays whole.

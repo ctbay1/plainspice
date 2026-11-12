@@ -438,6 +438,85 @@ test('a very short window (a laptop at 400 %): a calm status folds to its dot in
   expect((await status.locator('.status__main').boundingBox())!.width).toBeGreaterThan(20);
 });
 
+/**
+ * What the status line paints over the drawing: its pill, or (a calm status folded in a very short
+ * window, its box transparent) just its dot; the buttons on it; and the words of the drawing under
+ * what is painted.
+ */
+async function statusOverDrawing(page: Page): Promise<{ painted: string; buttons: string[]; under: string[] }> {
+  return page.evaluate(() => {
+    const status = document.querySelector<HTMLElement>('.status')!;
+    const bg = getComputedStyle(status).backgroundColor;
+    const clear = bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)';
+    const r = (clear ? status.querySelector('.status__dot') ?? status : status).getBoundingClientRect();
+    const under = [...document.querySelectorAll('.nb-canvas svg text')]
+      .filter((e) => {
+        const b = e.getBoundingClientRect();
+        return b.width > 0 && b.right > r.left && b.left < r.right && b.bottom > r.top && b.top < r.bottom;
+      })
+      .map((e) => (e.textContent ?? '').trim());
+    return { painted: `${clear ? 'dot' : 'pill'} ${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')}`, buttons: [...status.querySelectorAll('button')].map((b) => b.textContent ?? ''), under };
+  });
+}
+
+test('a very short window (a laptop at 400 %): walking the drawing with the keys, scrolling or zooming it keeps a calm status a dot over none of the drawing; More keeps “Show the whole drawing”', async ({ page }) => {
+  for (const [width, height] of [
+    [320, 200],
+    [320, 256],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await openApp(page);
+    await expectSolved(page);
+    // Tab reaches the skip link, Enter puts the focus on the drawing's first item; then the keys walk it.
+    await page.keyboard.press('Tab');
+    await expect(page.locator(':focus')).toHaveText(t('skipToDrawing'));
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.nb-hit:focus')).toHaveCount(1);
+    for (const key of ['', 'End', 'Home', 'ArrowRight', 'ArrowRight', 'ArrowDown']) {
+      if (key) await page.keyboard.press(key);
+      await settle(page);
+      const at = `${width} × ${height}, after ${key || 'the skip link'} (${await page.locator('.nb-hit:focus').getAttribute('aria-label')})`;
+      const over = await statusOverDrawing(page);
+      expect(over.buttons, `${at}: no button unfolds the calm status (${over.painted})`).toEqual([]);
+      expect(over.under, `${at}: none of the drawing's words under the status (${over.painted})`).toEqual([]);
+    }
+    // Moved by the laptop's own means, whatever is under the pointer: a scroll of the paper, then a zoom
+    // (Ctrl + wheel). The same: the status stays a dot over nothing (on b060bc8 and 30f3eec, a pill).
+    const paper = (await page.locator('.nb-canvas').boundingBox())!;
+    await page.mouse.move(paper.x + paper.width / 2, paper.y + 70);
+    for (const [how, dy] of [
+      ['scrolled', 60],
+      ['zoomed', -120],
+    ] as const) {
+      if (how === 'zoomed') await page.keyboard.down('Control');
+      await page.mouse.wheel(how === 'scrolled' ? 50 : 0, dy);
+      if (how === 'zoomed') await page.keyboard.up('Control');
+      await settle(page);
+      const moved = await statusOverDrawing(page);
+      expect(moved.buttons, `${width} × ${height}, ${how}: no button unfolds the calm status (${moved.painted})`).toEqual([]);
+      expect(moved.under, `${width} × ${height}, ${how}: none of the drawing's words under the status (${moved.painted})`).toEqual([]);
+    }
+    // The way back to all of it is still there, under More.
+    await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barMore'), exact: true }).click();
+    await expect(page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('zoomFit'), exact: true })).toBeEnabled();
+  }
+});
+
+test('“Show the whole drawing” pressed on the status line with the keys gives the focus to the drawing, not to the page', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  const from = { x: paper.x + paper.width * 0.55, y: paper.y + paper.height * 0.3 };
+  await fingers(page, [from], [{ x: from.x - 160, y: from.y }]);
+  const whole = statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true });
+  await expect(whole).toBeVisible();
+  await whole.focus();
+  await page.keyboard.press('Enter');
+  await expect(whole).toHaveCount(0);
+  // The drawing's one Tab stop has it (on b060bc8 it fell to the page: the next Tab went to Select).
+  await expect(page.locator('.nb-hit[tabindex="0"]')).toBeFocused();
+});
+
 test('a drawing shown as drawn opens at the smallest readable size, and Fit shows all of it', async ({ page }) => {
   await openApp(page);
   await chooseExample(page, 'Example 3: open circuit (V_Th)');

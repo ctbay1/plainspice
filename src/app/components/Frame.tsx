@@ -265,8 +265,8 @@ export function StatusLines({
   invite?: { label: string; onClick: () => void };
   /** A phone just after a change made on the drawing: Undo at hand (else it is under More). */
   undo?: () => void;
-  /** A phone whose drawing the reader moved partly out of view: the way back to all of it ("Show the whole drawing", Fit), at hand. */
-  whole?: () => void;
+  /** A phone whose drawing the reader moved partly out of view: the way back to all of it ("Show the whole drawing", Fit), at hand (`byKeys`: pressed with the keys). */
+  whole?: (byKeys: boolean) => void;
   /**
    * A phone: the hint in a box of its own (hintRef), which gives way first when the stack along the
    * bottom is short of room (large text on a small phone) and then scrolls, so the status and its
@@ -321,7 +321,8 @@ export function StatusLines({
           </button>
         ) : null}
         {whole ? (
-          <button type="button" className="turn-button" onClick={whole}>
+          // A click from the keys has no pointer press (detail 0).
+          <button type="button" className="turn-button" onClick={(e) => whole(e.detail === 0)}>
             {t('zoomFit')}
           </button>
         ) : null}
