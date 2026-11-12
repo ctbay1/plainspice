@@ -1980,11 +1980,7 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
     [...c.n.nodes.values()]
       .filter((y) => y.connections.length > 0 && y.name !== 'gnd' && looksLikeTypo(lowerAscii(t.text), y.name))
       .slice(0, 2)
-      .map((y) => {
-        const written = y.refs[0]?.text ?? y.name;
-        const name = /^[\x20-\x7e]*$/.test(written) ? y.name : written;
-        return fix(`Use ${y.name === 'ground' || y.name === '00' ? `"${name}"` : nodeNameInWords(name)}`, replace(t, name));
-      });
+      .map((y) => fix(`Use ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name))));
   if (kind === 'v') {
     outputs.forEach((t, idx) => {
       const name = lowerAscii(t.text);
