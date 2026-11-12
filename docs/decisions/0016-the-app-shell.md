@@ -310,3 +310,8 @@ Ctrl+K stay as they are.
   Explain's words for .end, "ngspice does not stop reading at .end: it still reads these lines …". The
   W11 test (`tests/unit/app-words-review.test.tsx`) now reads these checks too, and that Explain says
   "skips" for the same lines.
+- **A label written with µ goes with its node** (names lane critic, 5). The node-name fixes found the
+  drawing's `*@ label` lines by the name as written (`µş`) but looked them up by the node, which the
+  parser keys as ngspice reads it (`uş`), so "Rename µş to us" left `*@ label µş`, a label of no node.
+  The label lines are now kept by the node they name as ngspice reads it (µ as u), as the nodes are;
+  the aµ/au check, which renames one spelling only, takes the labels written that way.

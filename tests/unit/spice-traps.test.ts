@@ -1095,6 +1095,21 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(ids(fixed)).toEqual([]);
   });
 
+  it('renames the drawing\'s label of a node written with the micro sign and another odd letter too: *@ label µş goes with µş (names lane critic, 5)', () => {
+    // The labels were looked up by the name as written (µş), the node by the name as ngspice reads it (uş):
+    // "Rename µş to us" left "*@ label µş", a label of no node.
+    const drawing = (name: string): string => `.op\n.end\n* plainspice-drawing v1\n*@ label ${name} 0 0\n`;
+    const cases: [id: string, name: string, to: string][] = [
+      ['non-ascii-node', 'µş', 'us'],
+      ['invisible-character', 'µou​t', 'µout'],
+      ['look-alike-letter', 'µоut', 'µout'],
+    ];
+    for (const [id, name, to] of cases) {
+      const text = `* t\nV1 ${name} 0 12\nR1 ${name} 0 1k\n${drawing(name)}`;
+      expect(applyFix(text, first(text, id).fixes[0]!), id).toBe(`* t\nV1 ${to} 0 12\nR1 ${to} 0 1k\n${drawing(to)}`);
+    }
+  });
+
   it('never names a node after ground: ground\'s names count as taken, and names that read as ground are skipped (code-3; non-ascii-node-6)', () => {
     // Which ends of which parts are on ground: a fix that renames a node must not change them.
     const groundEnds = (text: string): boolean[][] => {

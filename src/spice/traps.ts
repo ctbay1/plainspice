@@ -160,8 +160,8 @@ interface Ctx {
   nextNumber: Map<string, number>;
   /** Value words with a character that looks like a space, by offset, that checkSpaceInValue read: checkSpaces leaves them alone. */
   spaced: Set<number>;
-  /** The drawing's `*@ label` lines, by the node name they write (lower-case), read on the first rename (labelChanges). */
-  labels?: Map<string, Span[]>;
+  /** The drawing's `*@ label` lines, by the node they name as ngspice reads it, with the name as written (lower-case), read on the first rename (labelChanges). */
+  labels?: Map<string, { span: Span; form: string }[]>;
   /** The node names inside v(...) on .control lines, by node, read on the first use (controlNodes). */
   controlNodes?: Map<string, { token: Token; command: string }[]>;
 }
@@ -1446,25 +1446,28 @@ function checkDuplicates(c: Ctx): void {
  * The drawing's line for a node's name (`*@ label <node> x y`, src/schematic/format.ts), renamed with
  * the node, so a fix that renames a node keeps its name on the drawing. The label lines are read once,
  * on the first rename: reading every line again for each node renamed took seconds for a link with
- * thousands of such nodes (code-2).
+ * thousands of such nodes (code-2). They are kept by the node they name as ngspice reads it, the micro
+ * sign as u, as the parser keys the nodes, so `*@ label µş` is the label of the node µş (key uş) and
+ * goes with it (names lane critic, 5); with `form`, only the labels written that way (aµ, not au:
+ * checkMicroNode renames one spelling of a node).
  */
-function labelChanges(c: Ctx, key: string, to: string): TextChange[] {
+function labelChanges(c: Ctx, key: string, to: string, form?: string): TextChange[] {
   if (!c.labels) {
-    const labels = new Map<string, Span[]>();
+    const labels = new Map<string, { span: Span; form: string }[]>();
     for (const l of c.n.lines) {
       if (l.kind !== 'comment') continue;
       const m = /^(\s*\*@\s*label\s+)(\S+)/i.exec(l.text);
       if (!m) continue;
       const from = l.span.from + m[1]!.length;
-      const name = lowerAscii(m[2]!);
-      const span = { from, to: from + m[2]!.length };
-      const spans = labels.get(name);
-      if (spans) spans.push(span);
-      else labels.set(name, [span]);
+      const label = { span: { from, to: from + m[2]!.length }, form: lowerAscii(m[2]!) };
+      const name = ngspiceName(m[2]!);
+      const same = labels.get(name);
+      if (same) same.push(label);
+      else labels.set(name, [label]);
     }
     c.labels = labels;
   }
-  return (c.labels.get(key) ?? []).map((s) => replace(s, to));
+  return (c.labels.get(key) ?? []).filter((x) => form === undefined || x.form === form).map((x) => replace(x.span, to));
 }
 
 /**
@@ -1662,7 +1665,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
   const spelled = ngspiceSpelling(info.name);
   const writing = (form: string, to: string): TextChange[] => [
     ...forms.get(form)!.map((t) => replace(t, to)),
-    ...labelChanges(c, form, to),
+    ...labelChanges(c, info.name, to, form),
     ...(controlNodes(c).get(info.name) ?? []).filter((x) => lowerAscii(x.token.text) === form).map((x) => replace(x.token, to)),
   ];
   const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}, without a message`;
