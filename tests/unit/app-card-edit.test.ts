@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { keepDrawing, spotValue, valueSpot, withValue, writeValue, type CardWrite, type ValueSpot } from '../../src/app/card-edit.ts';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/index.ts';
-import { buildSchematic } from '../../src/schematic/index.ts';
+import { buildSchematic, stripDrawing } from '../../src/schematic/index.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const START = readFileSync(resolve(ROOT, 'examples/start-here.cir'), 'utf8');
@@ -130,8 +130,9 @@ describe('where the parts are drawn', () => {
   });
 
   it('a value that would move the drawing writes where the parts were (the *@ lines)', () => {
-    // A 0 V ammeter given a voltage is a source: the automatic layout would draw it elsewhere.
-    const text = readFileSync(resolve(ROOT, 'examples/sp01/sp01-2-ammeter.cir'), 'utf8');
+    // A 0 V ammeter given a voltage is a source: the automatic layout would draw it elsewhere (the
+    // example's netlist without the drawing lines it opens with).
+    const text = stripDrawing(readFileSync(resolve(ROOT, 'examples/sp01/sp01-2-ammeter.cir'), 'utf8'));
     const spot: ValueSpot = valueSpot(text, 'vm')!;
     expect(spotValue(spot)).toBe('0');
     const r = writeValue(spot, '5', FALLBACK);

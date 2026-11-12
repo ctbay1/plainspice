@@ -50,7 +50,7 @@ import {
 } from '../../src/app/editing.ts';
 import { readNetlist } from '../../src/app/model.ts';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
-import { EDIT_STRINGS, applyEdit, buildSchematic, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
+import { EDIT_STRINGS, applyEdit, buildSchematic, schematicConnectivity, stripDrawing, type Schematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
 const START = readFileSync(resolve(import.meta.dirname, '../../examples/start-here.cir'), 'utf8');
@@ -364,7 +364,8 @@ describe('every edit through the model', () => {
 
 describe('after the reviews of step B', () => {
   it('a click on a wire selects the piece between the places something joins it, and Delete takes only that', () => {
-    const s = build(readFileSync(resolve(import.meta.dirname, '../../examples/p02/p02-4-open.cir'), 'utf8'));
+    // p02-4 as laid out automatically (its own *@ lines draw it as in the video), with the ground wire along the bottom.
+    const s = build(stripDrawing(readFileSync(resolve(import.meta.dirname, '../../examples/p02/p02-4-open.cir'), 'utf8')));
     const r3 = s.scene.parts.find((p) => p.key === 'r3')!;
     const g1 = s.scene.parts.find((p) => p.key === 'g1')!;
     const y = r3.pins[1].at.y + 1;

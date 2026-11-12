@@ -46,8 +46,9 @@ Everything around it is for beginners:
   circuit and its results are described for screen readers, node colours are colour-blind-safe
   and never the only signal, and there are high-contrast, large-text and reduced-motion modes.
 - **It is shareable.** The whole circuit lives in the link: no account, no server. Every Solved
-  Circuits video can link "Open this circuit". It works offline and on a phone (a wide drawing
-  turns to fit the screen), and exports netlists for ngspice and LTspice.
+  Circuits video can link "Open this circuit", and the circuit opens drawn as in the video. It works
+  offline and on a phone (a wide drawing turns to fit the screen, "As in the video" one tap away),
+  and exports netlists for ngspice and LTspice.
 
 ![Placing a part: Start here with a third resistor in hand, drawn in pencil where the pointer holds it; its left end lands on the ground wire at R2's foot and is marked as joining it, its right end is open (a new node), and the hint line says so before the click: "Click to place a resistor here: it joins ground and a new node · T turns it · M mirrors it · Esc goes back to Select"](docs/screenshot-editing.png)
 
@@ -68,8 +69,10 @@ drawing first, solved live as you edit, with every feature of the first app in p
 schematic editor ([0017](docs/decisions/0017-the-schematic-editor.md)): place, wire, move, turn, mirror,
 reverse and delete parts on the drawing, by mouse, finger or keyboard, then reviewed for how it
 feels, for keyboards and screen readers, and for keeping the netlist in step, and the findings
-fixed. What's next (step C: the
-examples drawn as in the videos) and the open questions: [docs/plan.md](docs/plan.md).
+fixed. Step C: the examples of the four videos drawn as in the videos, recorded from the channel's
+own drawing code ([0018](docs/decisions/0018-the-examples-drawn-as-in-the-videos.md); each example
+next to its video: [docs/design/video/](docs/design/video/README.md)). What's next and the open
+questions: [docs/plan.md](docs/plan.md).
 
 ## Develop
 

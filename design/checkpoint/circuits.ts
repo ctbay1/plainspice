@@ -2,9 +2,12 @@
  * The checkpoint's circuits: example 3 of the Solved Circuits video "Thévenin Equivalent with
  * Dependent Sources" (open circuit, then short circuit) and example 2 (only a dependent source,
  * tested with 1 A), exactly as in examples/p02/ (each credits the video on line 2). Their values
- * are checked against the channel's native ngspice runs in tests/golden/examples.test.ts.
+ * are checked against the channel's native ngspice runs in tests/golden/examples.test.ts. The
+ * page shows them laid out automatically, as Tarık approved them on 11 November 2026: the drawing
+ * lines the examples now carry (drawn as in the video, scripts/video-drawings/) are left out here.
  */
 import examples from '../../examples/examples.json';
+import { stripDrawing } from '../../src/schematic/index.ts';
 import open from '../../examples/p02/p02-4-open.cir?raw';
 import short from '../../examples/p02/p02-5-short.cir?raw';
 import dependentOnly from '../../examples/p02/p02-3-dependent-only.cir?raw';
@@ -13,7 +16,7 @@ export type CircuitId = 'p02-4-open' | 'p02-5-short' | 'p02-3-dependent-only';
 
 export interface CheckpointCircuit {
   id: CircuitId;
-  /** The netlist as in examples/p02/. */
+  /** The netlist as in examples/p02/, without its drawing lines. */
   text: string;
   /** The example's name in the library ("Example 3: open circuit (V_Th)"). */
   name: string;
@@ -28,7 +31,7 @@ export interface CheckpointCircuit {
   youtube: string;
 }
 
-const TEXTS: Readonly<Record<CircuitId, string>> = { 'p02-4-open': open, 'p02-5-short': short, 'p02-3-dependent-only': dependentOnly };
+const TEXTS: Readonly<Record<CircuitId, string>> = { 'p02-4-open': stripDrawing(open), 'p02-5-short': stripDrawing(short), 'p02-3-dependent-only': stripDrawing(dependentOnly) };
 
 /** The short titles: what each circuit is, and the Thévenin quantity it finds (the video's names). */
 const SHORT: Readonly<Record<CircuitId, CheckpointCircuit['short']>> = {

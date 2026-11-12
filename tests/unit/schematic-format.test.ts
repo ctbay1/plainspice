@@ -335,7 +335,8 @@ describe('fields and versions', () => {
 
 describe('every netlist round-trips through its drawing lines', () => {
   it.each(allNetlists())('%s', (path) => {
-    const text = readFileSync(join(root, path), 'utf8');
+    // The netlist as typed, without the drawing lines an example carries to open drawn as in its video.
+    const text = stripDrawing(readFileSync(join(root, path), 'utf8'));
     const first = buildSchematic(text);
     const written = applyChanges(text, drawingBlockChanges(first.netlist, serializeDrawing(first.circuit, first.drawing)));
     const again = buildSchematic(written);
@@ -376,7 +377,7 @@ describe('labels and positions after the text changes', () => {
 
 describe('drawings that give only some positions', () => {
   it('uses the whole layout, shifted, when the given positions agree with it', () => {
-    const p = readFileSync(join(root, 'examples/p01/p01-2-supernode.cir'), 'utf8');
+    const p = stripDrawing(readFileSync(join(root, 'examples/p01/p01-2-supernode.cir'), 'utf8'));
     const auto = buildSchematic(p);
     const vs = auto.drawing.parts.get('vs')!;
     const s = buildSchematic(p.replace('.end', `* plainspice-drawing v1\n*@ Vs ${vs.at.x + 16} ${vs.at.y - 4} ${vs.rot}\n.end`));
@@ -387,7 +388,7 @@ describe('drawings that give only some positions', () => {
   });
 
   it('lays out three or more missing parts together beside the given ones, cleanly', () => {
-    const p = readFileSync(join(root, 'examples/e04/e04-4-open.cir'), 'utf8');
+    const p = stripDrawing(readFileSync(join(root, 'examples/e04/e04-4-open.cir'), 'utf8'));
     const s = buildSchematic(p.replace('.op', '.op\n* plainspice-drawing v1\n*@ Vin 0 3 0'));
     expect(s.drawing.parts.get('vin')).toEqual({ at: { x: 0, y: 3 }, rot: 0, mirror: false });
     expect(schematicConnectivity(s)).toEqual([]);

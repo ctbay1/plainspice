@@ -5,7 +5,7 @@
  * scripts/lab-shots.ts.
  */
 import examples from '../../examples/examples.json';
-import { buildSchematic } from '../../src/schematic/index.ts';
+import { buildSchematic, stripDrawing } from '../../src/schematic/index.ts';
 import { card, type Entry } from './draw.ts';
 
 const files = import.meta.glob(['/examples/*/*.cir', '/tests/fixtures/*.cir'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
@@ -71,7 +71,8 @@ function entries(): Entry[] {
     const path = `/examples/${ex.file}`;
     const text = files[path];
     if (text === undefined) continue;
-    out.push({ name: ex.id, path, text });
+    // The automatic layout: an example's netlist without its drawing (each opens drawn as in its video).
+    out.push({ name: ex.id, path, text: stripDrawing(text) });
     seen.add(path);
   }
   for (const path of Object.keys(files).sort()) {

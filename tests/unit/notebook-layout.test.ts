@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { NOTEBOOK_OPTIONS, drawingLineIndexes, isWide, notebookSchematic, notebookMeasure, turnedQuarter, wireBends, withDrawingBlock } from '../../src/notebook/index.ts';
-import { INLINE_RESULT_GAP, TEXT, buildSchematic, checkConnectivity, findOverlaps, serializeDrawing } from '../../src/schematic/index.ts';
+import { INLINE_RESULT_GAP, TEXT, buildSchematic, checkConnectivity, findOverlaps, serializeDrawing, stripDrawing } from '../../src/schematic/index.ts';
 import { nodeLabelLines } from '../../src/schematic/scene.ts';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -49,15 +49,18 @@ describe('every example and fixture in the Notebook look', () => {
     const lines = drawingLineIndexes(read.netlist);
     expect(lines.length).toBeGreaterThan(1);
     expect(lines[lines.length - 1]! - lines[0]! + 1).toBe(lines.length);
-    expect(written.replace(/^(\*@|\* plainspice-drawing).*\n/gm, '')).toBe(text);
+    const block = /^(\*@|\* plainspice-drawing).*\n/gm;
+    expect(written.replace(block, '')).toBe(text.replace(block, ''));
     // Written again, nothing changes.
     expect(withDrawingBlock(written)).toBe(written);
   });
 });
 
 describe('a wide drawing turned for a phone held upright', () => {
+  // The checkpoint's circuits laid out automatically, as the checkpoint page shows them (the examples
+  // themselves open drawn as in the video, less long and low: tests/unit/video-drawings.test.ts).
   it.each(['p02-4-open', 'p02-5-short', 'p02-3-dependent-only'])('%s turns clean, taller than wide', (id) => {
-    const s = notebookSchematic(readFileSync(resolve(root, `examples/p02/${id}.cir`), 'utf8'));
+    const s = notebookSchematic(stripDrawing(readFileSync(resolve(root, `examples/p02/${id}.cir`), 'utf8')));
     expect(isWide(s)).toBe(true);
     const t = turnedQuarter(s);
     expect(t, 'turned').toBeDefined();
@@ -73,14 +76,17 @@ describe('a wide drawing turned for a phone held upright', () => {
   it('is offered for circuits that turn clean (most do)', () => {
     let turned = 0;
     for (const c of CIRCUITS) {
-      const s = notebookSchematic(c.text);
-      const t = turnedQuarter(s);
-      if (t) {
+      // Laid out automatically...
+      const auto = turnedQuarter(notebookSchematic(stripDrawing(c.text)));
+      if (auto) {
         turned += 1;
-        expect(clean(t), c.name).toEqual([]);
+        expect(clean(auto), c.name).toEqual([]);
       }
+      // ...and as the examples open (drawn as in their video).
+      const drawn = turnedQuarter(notebookSchematic(c.text));
+      if (drawn) expect(clean(drawn), c.name).toEqual([]);
     }
-    // 25 of the 30 today; the rest are shown as drawn (and a phone pans them).
+    // 25 of the 30 laid out automatically; the rest are shown as drawn (and a phone pans them).
     expect(turned).toBeGreaterThanOrEqual(25);
   });
 });
@@ -166,7 +172,8 @@ describe('a turned drawing has no more bends than the drawing as drawn (critique
   });
 
   it('p02-5’s ground runs down one straight wire, its parts’ leads lengthened to reach it', () => {
-    const s = notebookSchematic(readFileSync(resolve(root, 'examples/p02/p02-5-short.cir'), 'utf8'));
+    // Laid out automatically, as the checkpoint page shows it.
+    const s = notebookSchematic(stripDrawing(readFileSync(resolve(root, 'examples/p02/p02-5-short.cir'), 'utf8')));
     const t = turnedQuarter(s)!;
     const groundPins = t.scene.parts.flatMap((p) => p.pins.filter((q) => q.node === '0').map((q) => q.at));
     expect(groundPins.length).toBeGreaterThanOrEqual(4);

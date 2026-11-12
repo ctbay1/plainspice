@@ -14,7 +14,7 @@ export { MIN_TEXT_PX, NO_INSETS, fitView, minUnitFor, toGrid, toScreen, zoomAt }
 export type { Fit, FitOptions, Insets, Size, View } from './fit.ts';
 export { ARROW_ICON, NODE_INLINE_ROOM, NODE_VOLTAGE_ROOM, TYPE, notebookMeasure, resultWidth, widthIn } from './measure.ts';
 export type { TypeStyle } from './measure.ts';
-export { CURRENT_ROOM, METER_ROOM, NO_RESULTS, POWER_ROOM, POWER_WORD_ROOM, inkBoxes, inlineValue, isAmmeter, isInline, markBox, markLayout, markText, markWidth, placeResults, resultRoom, roomOf } from './results.ts';
+export { CURRENT_ROOM, METER_ROOM, NO_RESULTS, POWER_ROOM, POWER_WORD_ROOM, inkBoxes, inlineValue, isAmmeter, isInline, markBox, markLayout, markText, markWidth, nameShift, nameShifts, placeResults, resultRoom, roomOf } from './results.ts';
 export type { DrawingResults, MarkLayout, NodeMarks, PartMarks, ResultMark, ResultTone } from './results.ts';
 export { NOTEBOOK_OPTIONS, drawingLineIndexes, notebookSchematic, withDrawingBlock } from './schematic.ts';
 export { RESULT_FONTS, RESULT_FONT_KEY, RESULT_FONT_STRINGS, createResultFontStore, readResultFont, writeResultFont } from './settings.ts';

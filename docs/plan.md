@@ -1,6 +1,6 @@
 # Plan
 
-*Updated 11 November 2026: milestone 1 is done; milestone 2 (drawing circuits): steps A and B are done, step C is next.*
+*Updated 11 November 2026: milestone 1 is done; milestone 2 (drawing circuits): steps A, B and C are done; its final reviews are next.*
 
 ## Done: the first milestone
 
@@ -141,8 +141,21 @@ Done so far:
   a part moved with the keys stays in view and is said; calmer red pen and pencil numbers while
   building. New tests: `schematic-edit-review.test.ts` (with a seeded run of random edits on every
   example) and `tests/e2e/editor-review.spec.ts`.
-- **Next: step C**, the examples drawn as in the videos (their own `*@` lines, so "As in the video"
-  can replace "As drawn" on phones), and the final reviews of milestone 2.
+- **Step C: the examples drawn as in the videos** (item 2, decision 0018): all 20 examples open
+  drawn the way their videos draw them, with the node names the videos write, and a link made from
+  one carries its drawing. The drawings are recorded from the channel's own drawing code
+  (`scripts/video-drawings/record.py` parses the episode files and runs only their drawing
+  statements; it never imports them), converted to the grid with every change and its reason written
+  down (`plan.ts`, `convert.ts`), and checked by the tests: each block is what the converter makes,
+  clean, connecting exactly what the netlist connects, every name beside its own wire. Each example
+  next to its video, and every change from the video: [`docs/design/video/`](design/video/README.md).
+  On a phone, a video's own drawing gets "As in the video" (any other "As drawn"), until the student
+  changes the drawing. Two drawing fixes the examples showed: a name on the left of its point is
+  drawn up to it (e04-4's "s = 40 V" stood 2 to 5 squares away), and a phone's turned view places
+  the names again when one has no room once turned: 12 of the 20 examples open whole on a phone held
+  upright, up from 8; p02-4, the checkpoint's circuit, now opens turned but needs dragging (the
+  video's drawing is less long and low than the automatic layout's ladder).
+- **Next: the final reviews of milestone 2**, then fixes.
 
 ## Next
 
@@ -186,6 +199,16 @@ Done so far:
 
 - Share links have no checksum (decision 0008): fine while links are clicked; worth adding only
   if links will ever be typed by hand.
+
+- **The "b" and the "0" of the videos** (decision 0018): the Thévenin and Norton videos write the
+  terminal b at the end of the ground wire, and some write 0 beside it; the drawing format can only
+  name ground by its symbol. A label that writes another name (`*@ label 0 x y name=b`) would say it,
+  but every link made from then on would carry it, so it is your call. Until then the ground wire is
+  b, as in the netlist.
+
+- **Links with drawings are longer**: an example's link now carries its video's drawing, about 200
+  characters more (e04's six links: 3,188 characters of a description's 5,000, 1,798 without the
+  drawings). Links already in descriptions keep working, laid out automatically.
 
 Answered on 10 November 2026: the address is plainspice.com; `LICENSE` names Tarık; no trademark
 registration for now (a quick search found no other PlainSpice); the example library follows the

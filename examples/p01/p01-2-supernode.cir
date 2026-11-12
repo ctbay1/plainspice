@@ -7,4 +7,23 @@ Rc n3 0 6
 Rd n1 n3 8
 Vs n2 n3 10
 .op
+* plainspice-drawing v1
+*@ I1 0 11 180 side=right
+*@ Ra 5 6 270 side=above
+*@ Rb 11 11 0 side=right
+*@ Rc 21 11 0 side=right
+*@ Rd 11 0 270 side=above
+*@ Vs 16 6 270 side=above
+*@ ground 11 16 0
+*@ wire 0,9 0,0 9,0
+*@ wire 13,0 21,0 21,9
+*@ wire 0,6 3,6
+*@ wire 7,6 14,6
+*@ wire 11,6 11,9
+*@ wire 18,6 21,6
+*@ wire 0,13 0,16 21,16 21,13
+*@ wire 11,13 11,16
+*@ label n1 0 6 side=below-left
+*@ label n2 14 6 side=above-left
+*@ label n3 21 6 side=above-right
 .end

@@ -1,6 +1,7 @@
 /**
  * src/schematic/layout.ts and schematic.ts: the automatic layout on the channel's circuits
- * (examples/*\/*.cir) and the fixtures (tests/fixtures/*.cir). Each must lay out cleanly: nothing
+ * (examples/*\/*.cir, read without the drawing lines they carry to open drawn as in their video:
+ * tests/unit/video-drawings.test.ts checks those) and the fixtures (tests/fixtures/*.cir). Each must lay out cleanly: nothing
  * overlaps, wires are orthogonal on the grid, the drawing connects exactly what the netlist does,
  * and it reads like a textbook drawing (ground rail at the bottom, the first source on the left,
  * upright, + at the top, series parts along the top, terminals on the right ...). The test corpus
@@ -17,6 +18,7 @@ import {
   junctionPoints,
   placedPart,
   schematicConnectivity,
+  stripDrawing,
   type Point,
   type Schematic,
 } from '../../src/schematic/index.ts';
@@ -34,7 +36,8 @@ const EXAMPLES = readdirSync(join(root, 'examples'), { withFileTypes: true })
   .filter((d) => d.isDirectory())
   .flatMap((d) => cir(`examples/${d.name}`));
 const FIXTURES = cir('tests/fixtures');
-const read = (path: string): string => readFileSync(join(root, path), 'utf8');
+/** A netlist without its drawing lines: what the automatic layout draws. */
+const read = (path: string): string => stripDrawing(readFileSync(join(root, path), 'utf8'));
 const build = (path: string): Schematic => buildSchematic(read(path));
 const sp = (s: string): string => s.replace(/ /g, ' ');
 

@@ -10,4 +10,34 @@ F1 0 out3 Vs 3
 R3 out3 0 2
 H1 out4 0 Vs 4
 .op
+* plainspice-drawing v1
+*@ Vc 0 7 0 side=left
+*@ E1 17 7 0 side=right
+*@ G1 24 7 180 side=right
+*@ R2 31 7 0 side=right
+*@ Vs 7 3 0 side=right
+*@ Rs 7 10 0 side=left
+*@ F1 38 7 180 side=right
+*@ R3 46 7 0 side=right
+*@ H1 53 7 0 side=right
+*@ ground 4 15 0
+*@ wire 0,5 0,0 7,0 7,1
+*@ wire 17,0 17,5
+*@ wire 24,5 24,0 31,0 31,5
+*@ wire 38,5 38,0 46,0 46,5
+*@ wire 53,0 53,5
+*@ wire 7,5 7,8
+*@ wire 0,9 0,15 53,15 53,9
+*@ wire 17,9 17,15
+*@ wire 24,9 24,15
+*@ wire 31,9 31,15
+*@ wire 38,9 38,15
+*@ wire 46,9 46,15
+*@ wire 7,12 7,15
+*@ label c 0 0 side=above-left
+*@ label out1 17 0 side=above-right
+*@ label out2 24 0 side=above-right
+*@ label cs 7 7 side=right
+*@ label out3 38 0 side=above-right
+*@ label out4 53 0 side=above-right
 .end

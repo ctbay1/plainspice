@@ -10,7 +10,7 @@
 import { formatSI } from '../format/si.ts';
 import { DESCRIBE_STRINGS, type CurrentWords, type NodeVoltageWords, type ResultsInWords } from '../spice/describe.ts';
 import { lowerAscii } from '../spice/parse.ts';
-import { OPPOSITE, type Box, type CircuitPart, type Direction, type Scene, type TextLine } from '../schematic/index.ts';
+import { INLINE_RESULT_GAP, OPPOSITE, type Box, type CircuitPart, type Direction, type PlacedNodeLabel, type Scene, type TextLine } from '../schematic/index.ts';
 import { ARROW_ICON, TYPE, resultWidth, widthIn } from './measure.ts';
 import { NOTEBOOK_STRINGS } from './strings.ts';
 
@@ -214,14 +214,42 @@ export function markBox(m: ResultMark): Box {
 }
 
 /**
- * Everything written on the drawing, as drawn: names, values, node names, and the results' own
- * widths (a result's line keeps room for any number; a pen stroke may pass where none is written).
+ * How far right a node's name and its value are drawn from where the scene puts them, when they are
+ * written on the left of their point with the value on the name's line ("s = 12 V" left of s): the
+ * scene keeps room there for any value and places the pair so that the widest one would end at the
+ * point; the value written is narrower (or there is none), so the pair moves right by what it leaves
+ * of that room, and ends at its point, as the videos write a name. Within the room the scene kept,
+ * so nothing new can overlap.
+ */
+export function nameShift(label: PlacedNodeLabel, mark: ResultMark | undefined): number {
+  if (!label.spot.endsWith('left')) return 0;
+  const result = label.lines.find((l) => l.role === 'result');
+  if (!result || !isInline(label.lines, result)) return 0;
+  const room = roomOf(result);
+  return mark ? Math.max(0, room - markWidth(mark) * mark.scale) : room + INLINE_RESULT_GAP;
+}
+
+/** nameShift for each of the scene's node names, by its index in scene.nodeLabels. */
+export function nameShifts(scene: Scene, results: DrawingResults): number[] {
+  const marks = new Map(results.nodes.map((n) => [n.label, n.mark]));
+  return scene.nodeLabels.map((l, i) => nameShift(l, marks.get(i)));
+}
+
+const moved = (b: Box, dx: number): Box => (dx ? { ...b, x0: b.x0 + dx, x1: b.x1 + dx } : b);
+
+/**
+ * Everything written on the drawing, as drawn: names, values, node names (moved up to their point,
+ * nameShift), and the results' own widths (a result's line keeps room for any number; a pen stroke
+ * may pass where none is written).
  */
 export function inkBoxes(scene: Scene, results: DrawingResults): Box[] {
   const out: Box[] = [];
+  const shifts = nameShifts(scene, results);
   for (const p of scene.parts) for (const l of p.labels) if (l.role !== 'result') out.push(l.box);
-  for (const l of scene.nodeLabels) for (const line of l.lines) if (line.role !== 'result') out.push(line.box);
+  scene.nodeLabels.forEach((l, i) => {
+    for (const line of l.lines) if (line.role !== 'result') out.push(moved(line.box, line.role === 'node' ? shifts[i]! : 0));
+  });
   for (const pm of results.parts.values()) for (const m of pm.marks) out.push(markBox(m));
-  for (const n of results.nodes) if (n.mark) out.push(markBox(n.mark));
+  for (const n of results.nodes) if (n.mark) out.push(moved(markBox(n.mark), shifts[n.label] ?? 0));
   return out;
 }

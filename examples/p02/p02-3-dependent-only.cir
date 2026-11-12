@@ -6,4 +6,19 @@ R1 a1 n1 2
 R2 n1 0 4
 F1 0 n1 Vsense 2
 .op
+* plainspice-drawing v1
+*@ It 29 7 180 side=right
+*@ Vsense 21 0 90 side=below
+*@ R1 10 0 90 side=above
+*@ R2 0 7 0 side=left
+*@ F1 8 7 180 side=right
+*@ ground 8 13 0
+*@ wire 0,5 0,0 8,0 8,5
+*@ wire 12,0 19,0
+*@ wire 23,0 29,0 29,5
+*@ wire 0,9 0,13 29,13 29,9
+*@ wire 8,9 8,13
+*@ label a 23 0 side=above-right
+*@ label a1 13 0 side=above-right
+*@ label n1 0 0 side=above-right
 .end

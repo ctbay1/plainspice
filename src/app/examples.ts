@@ -56,6 +56,23 @@ const BASICS: readonly { id: string; group: string; nameKey: MessageKey }[] = [
   { id: 't1-tran-rc-charge', group: 'analyses', nameKey: 'exampleT1' },
 ];
 
+/** A netlist's `*@` lines, trimmed and in order: what it says about its drawing (decision 0013). */
+const drawingLines = (text: string): string => text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('*@')).join('\n');
+
+/** The videos' drawings: each video example's `*@` lines (scripts/video-drawings writes them from the videos). */
+const VIDEO_DRAWINGS = new Set(VIDEO_EXAMPLES.map((e) => drawingLines(e.netlist)).filter((lines) => lines !== ''));
+
+/**
+ * The netlist is drawn exactly as one of the videos draws it: its `*@` lines are a video example's.
+ * A value changed on the drawing keeps it so; a part moved, turned, added or deleted, or a node renamed,
+ * makes it the student's drawing. A phone then offers "As in the video" for the drawing as drawn, not
+ * "As drawn" (decision 0015).
+ */
+export function drawnAsInVideo(text: string): boolean {
+  const lines = drawingLines(text);
+  return lines !== '' && VIDEO_DRAWINGS.has(lines);
+}
+
 /** The first screen's circuit (also the first item of the Examples menu). */
 export const START_HERE_ID = 'start-here';
 

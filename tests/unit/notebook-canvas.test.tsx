@@ -12,7 +12,7 @@ import { createRef, useState, type ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import { NO_INSETS, NO_RESULTS, NotebookCanvas, notebookSchematic, placeResults, type CanvasHandle, type CanvasViewInfo, type DrawingResults } from '../../src/notebook/index.ts';
-import { describeItem, describeSchematic, neighbour, type NavItem } from '../../src/schematic/index.ts';
+import { describeItem, describeSchematic, neighbour, stripDrawing, type NavItem } from '../../src/schematic/index.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
@@ -193,7 +193,10 @@ describe('NotebookCanvas', () => {
 
   it('holds the view while the drawing’s words change (a value typed), and fits again when let go', () => {
     const views: CanvasViewInfo[] = [];
-    const narrower = notebookSchematic(text.replace(/^G1 0 a n1 0 0\.25$/m, 'G1 0 a n1 0 0.3'));
+    // Laid out automatically, so the drawing's bounds move as the words change (the example itself opens drawn as in the video).
+    const typed = stripDrawing(text);
+    const s = notebookSchematic(typed);
+    const narrower = notebookSchematic(typed.replace(/^G1 0 a n1 0 0\.25$/m, 'G1 0 a n1 0 0.3'));
     expect(narrower.scene.bounds.x1).not.toBe(s.scene.bounds.x1);
     const props = { results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: undefined, onSelect: () => undefined, onOpen: () => undefined, insets: NO_INSETS, fitKey: 'k', minUnit: 10, maxUnit: 400, onView: (v: CanvasViewInfo) => views.push(v) };
     const { rerender } = render(<NotebookCanvas {...props} schematic={s} />);

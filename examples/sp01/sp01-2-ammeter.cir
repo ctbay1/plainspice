@@ -6,4 +6,20 @@ Vm n2 n2b 0
 R2 n2b 0 4
 I1 0 n2 3
 .op
+* plainspice-drawing v1
+*@ V1 0 6 0 side=left
+*@ R1 7 0 270 side=above
+*@ Vm 15 3 0 side=left
+*@ R2 15 9 0 side=right
+*@ I1 23 6 180 side=right
+*@ ground 15 13 0
+*@ wire 0,4 0,0 5,0
+*@ wire 9,0 23,0 23,4
+*@ wire 15,0 15,1
+*@ wire 15,5 15,7
+*@ wire 0,8 0,13 23,13 23,8
+*@ wire 15,11 15,13
+*@ label n1 0 0 side=above-left
+*@ label n2 16 0 side=above-left
+*@ label n2b 15 6 side=right
 .end

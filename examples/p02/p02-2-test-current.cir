@@ -6,4 +6,20 @@ R2 n1 0 3
 R3 n1 a 2
 It 0 a 1
 .op
+* plainspice-drawing v1
+*@ V1 0 4 0 side=right
+*@ R1 5 0 270 side=above
+*@ R2 10 4 0 side=right
+*@ R3 14 0 270 side=above
+*@ It 23 4 180 side=right
+*@ ground 10 8 0
+*@ wire 0,2 0,0 3,0
+*@ wire 7,0 12,0
+*@ wire 10,0 10,2
+*@ wire 16,0 23,0 23,2
+*@ wire 0,6 0,8 23,8 23,6
+*@ wire 10,6 10,8
+*@ label s 0 1 side=right
+*@ label n1 10 1 side=right
+*@ label a 19 0 side=above-right
 .end

@@ -1,11 +1,16 @@
 /**
  * 10. Phones (decision 0015): a wide drawing is turned a quarter to fit a phone held upright, and
- * "As drawn" shows it unturned, with "more" at its edges (the turn is decided on the circuit opened,
+ * "As in the video" (a video's own drawing) or "As drawn" (any other) shows it unturned, with "more"
+ * at its edges (the turn is decided on the circuit opened,
  * whatever was open before); one bar along the bottom (Select, Parts, Netlist, Checks, Explain, More)
  * opens sheets, which take the focus and give it back; a part's card is a sheet, and while its value
  * is typed it becomes a strip held above the keyboard, the part and its numbers kept in view.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { stripDrawing } from '../../src/schematic/index.ts';
+import { encodeShare } from '../../src/share/link.ts';
 import { chooseExample, drawnText, expectSolved, hintLine, isPhone, openApp, openCard, partOnDrawing, sidewaysScroll, t, TYPING } from './helpers.ts';
 
 test.beforeEach(({ page }) => {
@@ -22,29 +27,43 @@ async function partsInView(page: Page, names: readonly string[]): Promise<boolea
   return true;
 }
 
-const P02_4 = ['V1', 'R1', 'R2', 'R3', 'G1'];
+/**
+ * SPICE for Beginners' example 1, drawn as in the video: wider than a phone held upright, it turns
+ * clean and fits whole. (p02's example 3, which this test used before, opens turned but no longer
+ * whole: its video's drawing is less long and low than the automatic layout's ladder, so turned it is
+ * still wider than the phone at a readable size.)
+ */
+const WIDE = 'Example 1';
+const WIDE_PARTS = ['V1', 'R1', 'R2', 'I1'];
 
-test('a wide drawing is turned to fit; “As drawn” shows it unturned, with “more” at its edges', async ({ page }) => {
+test('a wide drawing is turned to fit; “As in the video” shows it unturned, with “more” at its edges', async ({ page }) => {
   await openApp(page);
-  await chooseExample(page, 'Example 3: open circuit (V_Th)');
+  await chooseExample(page, WIDE);
   await expectSolved(page);
   await expect(hintLine(page)).toHaveText(t('hintTurned'));
   // An action named for what it does, not a toggle whose name changes as well.
-  const turn = page.getByRole('button', { name: t('asDrawn'), exact: true });
+  // The example is drawn as its video draws it (its own *@ lines): the way back to that is "As in the video".
+  const turn = page.getByRole('button', { name: t('asInVideo'), exact: true });
   await expect(turn).not.toHaveAttribute('aria-pressed', /.*/);
-  expect(await partsInView(page, P02_4), 'the whole circuit fits the screen').toBe(true);
-  expect(await drawnText(page)).toMatch(/=\s24\sV/);
+  expect(await partsInView(page, WIDE_PARTS), 'the whole circuit fits the screen').toBe(true);
+  expect(await drawnText(page)).toMatch(/=\s8\sV/);
   expect(await sidewaysScroll(page)).toBeLessThanOrEqual(0);
 
+  // Ctrl+K offers the same, in the same words.
+  await page.getByRole('banner').getByRole('button', { name: t('paletteLabel') }).click();
+  await expect(page.getByRole('dialog', { name: t('paletteTitle') }).getByRole('option', { name: t('paletteAsInVideo') })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: t('paletteTitle') })).toHaveCount(0);
+
   await turn.click();
-  await expect(hintLine(page)).toHaveText(t('hintAsDrawn'));
+  await expect(hintLine(page)).toHaveText(t('hintAsInVideo'));
   await expect(page.getByRole('button', { name: t('turnToFit'), exact: true })).toBeVisible();
-  expect(await partsInView(page, P02_4), 'as in the video, the drawing is wider than the screen').toBe(false);
+  expect(await partsInView(page, WIDE_PARTS), 'as in the video, the drawing is wider than the screen').toBe(false);
   const more = page.getByRole('button', { name: t('moreRight') });
   await expect(more).toBeVisible();
-  const before = (await partOnDrawing(page, 'G1').boundingBox())!;
+  const before = (await partOnDrawing(page, 'I1').boundingBox())!;
   await more.click();
-  await expect.poll(async () => (await partOnDrawing(page, 'G1').boundingBox())!.x).toBeLessThan(before.x - 20);
+  await expect.poll(async () => (await partOnDrawing(page, 'I1').boundingBox())!.x).toBeLessThan(before.x - 20);
   await expect(page.getByRole('button', { name: t('moreLeft') })).toBeVisible();
   expect(await sidewaysScroll(page), 'the paper pans; the page does not scroll').toBeLessThanOrEqual(0);
 
@@ -53,6 +72,23 @@ test('a wide drawing is turned to fit; “As drawn” shows it unturned, with �
   const palette = page.getByRole('dialog', { name: t('paletteTitle') });
   await palette.getByRole('option', { name: t('paletteTurnToFit') }).click();
   await expect(hintLine(page)).toHaveText(t('hintTurned'));
+});
+
+/** p02's example 3 laid out by PlainSpice (no *@ lines, as in a link made before step C): wide, so it turns, but it is not a video's drawing. */
+const AUTOMATIC = stripDrawing(readFileSync(resolve(import.meta.dirname, '../../examples/p02/p02-4-open.cir'), 'utf8'));
+
+test('a drawing that is not a video’s offers “As drawn”, not “As in the video”', async ({ page }) => {
+  await page.goto(`./#${await encodeShare(AUTOMATIC, { run: true })}`);
+  await expectSolved(page);
+  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  await expect(page.getByRole('button', { name: t('asInVideo'), exact: true })).toHaveCount(0);
+  await page.getByRole('banner').getByRole('button', { name: t('paletteLabel') }).click();
+  const palette = page.getByRole('dialog', { name: t('paletteTitle') });
+  await expect(palette.getByRole('option', { name: t('paletteAsDrawn') })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(palette).toHaveCount(0);
+  await page.getByRole('button', { name: t('asDrawn'), exact: true }).click();
+  await expect(hintLine(page)).toHaveText(t('hintAsDrawn'));
 });
 
 test('the bottom bar: the Parts sheet puts a part in hand; a tap shows where it goes, Place places it', async ({ page }) => {
@@ -124,7 +160,7 @@ test('the turn is decided on the circuit opened, whatever circuit was open befor
     await expect(hintLine(page)).not.toHaveText('');
     return { hint: (await hintLine(page).textContent()) ?? '', turnable: (await page.getByRole('button', { name: t('asDrawn'), exact: true }).count()) > 0 };
   };
-  const afterWide = await opened('Example 3: open circuit (V_Th)');
+  const afterWide = await opened(WIDE);
   const afterSmall = await opened(t('exampleStart'));
   expect(afterSmall).toEqual(afterWide);
 });

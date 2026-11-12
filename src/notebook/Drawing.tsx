@@ -14,7 +14,7 @@ import { memo, type CSSProperties, type ReactNode } from 'react';
 import { GROUND, unionBoxes, type Box, type Direction, type NavItem, type PlacedPart, type Schematic, type TextLine } from '../schematic/index.ts';
 import { TYPE, widthIn } from './measure.ts';
 import { NOTE_SIZE, WAS_SCALE, type PenNote, type WasMark } from './notes.ts';
-import { markLayout, type DrawingResults, type ResultMark } from './results.ts';
+import { markLayout, nameShifts, type DrawingResults, type ResultMark } from './results.ts';
 import { ARROWHEAD, GROUND_INK, INK, currentArrow, markPath } from './symbols.ts';
 
 /** User units per grid unit. */
@@ -113,13 +113,19 @@ function FocusRing({ box }: { box: Box }): ReactNode {
   return <rect className="nb-focus" x={u(box.x0 - pad)} y={u(box.y0 - pad)} width={u(box.x1 - box.x0 + 2 * pad)} height={u(box.y1 - box.y0 + 2 * pad)} rx={u(0.24)} />;
 }
 
-/** Where the focus ring goes for an item: a part's body, a node's name, ground's first symbol. */
-function focusBox(s: Schematic, item: NavItem): Box | undefined {
+/** Where the focus ring goes for an item: a part's body, a node's name (where it is drawn, nameShift), ground's first symbol. */
+function focusBox(s: Schematic, item: NavItem, shifts: readonly number[]): Box | undefined {
   if (item.kind === 'part') return s.scene.parts.find((p) => p.key === item.key)?.body;
   if (item.name === GROUND) return s.scene.grounds[0]?.body;
-  const label = s.scene.nodeLabels.find((l) => l.node === item.name);
-  return label?.lines.find((l) => l.role === 'node')?.box ?? label?.box;
+  const i = s.scene.nodeLabels.findIndex((l) => l.node === item.name);
+  const label = s.scene.nodeLabels[i];
+  const name = label?.lines.find((l) => l.role === 'node')?.box;
+  const dx = shifts[i] ?? 0;
+  return name ? { ...name, x0: name.x0 + dx, x1: name.x1 + dx } : label?.box;
 }
+
+/** A group moved right by `dx` grid units (a node's name and value drawn up to their point). */
+const shifted = (dx: number): string | undefined => (dx ? `translate(${u(dx)} 0)` : undefined);
 
 /** Red pen: a note's words, a stroke to what it is about; old values crossed out; misread values circled. */
 function Pen({ pen, schematic }: { pen: PenMarks; schematic: Schematic }): ReactNode {
@@ -256,7 +262,9 @@ function sameItem(a: NavItem | undefined, b: NavItem): boolean {
 
 export const Drawing = memo(function Drawing({ schematic, results, colours, plain, selected, related, hovered, focused, traps, pen }: DrawingProps): ReactNode {
   const sc = schematic.scene;
-  const focusedBox = focused ? focusBox(schematic, focused) : undefined;
+  // Names written on the left of their point, moved up to it (nameShift).
+  const shifts = nameShifts(sc, results);
+  const focusedBox = focused ? focusBox(schematic, focused, shifts) : undefined;
   const isOn = (item: NavItem, list: readonly NavItem[]): boolean => list.some((x) => sameItem(x, item));
   const highlightClass = (item: NavItem): string | undefined => {
     if (sameItem(selected, item)) return 'is-selected';
@@ -294,7 +302,7 @@ export const Drawing = memo(function Drawing({ schematic, results, colours, plai
           const cls = highlightClass({ kind: 'node', name: l.node });
           // A highlighter stroke under the name only: its value stays plain to read.
           const b = l.lines.find((x) => x.role === 'node')?.box ?? l.box;
-          return cls ? <rect key={`l${i}`} className={`nb-hl nb-hl--name ${cls}`} x={u(b.x0 - 0.1)} y={u(b.y0 + 0.08)} width={u(b.x1 - b.x0 + 0.2)} height={u(b.y1 - b.y0 - 0.12)} rx={u(0.2)} /> : null;
+          return cls ? <rect key={`l${i}`} className={`nb-hl nb-hl--name ${cls}`} x={u(b.x0 - 0.1 + shifts[i]!)} y={u(b.y0 + 0.08)} width={u(b.x1 - b.x0 + 0.2)} height={u(b.y1 - b.y0 - 0.12)} rx={u(0.2)} /> : null;
         })}
         {sc.grounds.map((g) => {
           const cls = highlightClass({ kind: 'node', name: GROUND });
@@ -363,7 +371,9 @@ export const Drawing = memo(function Drawing({ schematic, results, colours, plai
           <g key={`n${i}`}>
             {l.lines.map((line, k) =>
               line.role === 'node' ? (
-                <NodeName key={k} line={line} colour={nodeColour(colours, l.node)} />
+                <g key={k} transform={shifted(shifts[i]!)}>
+                  <NodeName line={line} colour={nodeColour(colours, l.node)} />
+                </g>
               ) : line.role === 'hidden' ? (
                 <Words key={k} line={line} className="nb-hidden" />
               ) : null,
@@ -374,7 +384,13 @@ export const Drawing = memo(function Drawing({ schematic, results, colours, plai
 
       <g className="nb-results">
         {[...results.parts.values()].flatMap((pm) => pm.marks.map((m, i) => <Mark key={`${pm.key}:${i}`} m={m} plain={plain} />))}
-        {results.nodes.map((n) => (n.mark ? <Mark key={`node:${n.label}`} m={n.mark} plain={plain} /> : null))}
+        {results.nodes.map((n) =>
+          n.mark ? (
+            <g key={`node:${n.label}`} transform={shifted(shifts[n.label] ?? 0)}>
+              <Mark m={n.mark} plain={plain} />
+            </g>
+          ) : null,
+        )}
       </g>
 
       {pen ? <Pen pen={pen} schematic={schematic} /> : null}

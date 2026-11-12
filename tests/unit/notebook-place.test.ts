@@ -2,7 +2,9 @@
  * src/notebook/place.ts: where the card goes (critique 1 and 2: it never changes the zoom, never
  * covers its part or the part's words, is panned into room once when the drawing leaves room for it,
  * and its leader is drawn only when it crosses no word and no wire), and the sticky note's arrow.
- * Every part of p02's three circuits, on a computer's window and a laptop's.
+ * Every part of p02's three circuits, on a computer's window and a laptop's, laid out automatically
+ * as the checkpoint page shows them (the examples themselves open drawn as in the video, taller:
+ * scripts/video-drawings/).
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -25,12 +27,13 @@ import {
   wireSegments,
   type Room,
 } from '../../src/notebook/index.ts';
-import { boxesOverlap, unionBoxes, type Box, type Point } from '../../src/schematic/index.ts';
+import { boxesOverlap, stripDrawing, unionBoxes, type Box, type Point } from '../../src/schematic/index.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
 const root = resolve(import.meta.dirname, '../..');
-const p02 = (id: string): ReturnType<typeof notebookSchematic> => notebookSchematic(readFileSync(resolve(root, `examples/p02/${id}.cir`), 'utf8'));
+const p02text = (id: string): string => stripDrawing(readFileSync(resolve(root, `examples/p02/${id}.cir`), 'utf8'));
+const p02 = (id: string): ReturnType<typeof notebookSchematic> => notebookSchematic(p02text(id));
 const CIRCUITS = ['p02-4-open', 'p02-5-short', 'p02-3-dependent-only'] as const;
 
 /** The checkpoint page on a computer: the free paper and the fit, as the page computes them (the card is not in the insets). */
@@ -151,7 +154,7 @@ describe('leaderFor', () => {
 
 describe('the sticky note’s arrow', () => {
   it('reaches G1 on p02-4 without touching a word or a wire', () => {
-    const text = readFileSync(resolve(root, 'examples/p02/p02-4-open.cir'), 'utf8');
+    const text = p02text('p02-4-open');
     const s = notebookSchematic(text);
     // ngspice's operating point for p02-4 (examples.json: a = 24 V, n1 = 16 V), in SPICE's signs.
     const results: AnalysisResults = {

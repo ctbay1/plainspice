@@ -160,7 +160,7 @@ import { isPartKind, kindName, toolPhrase, type Tool } from './tools.ts';
 import { PlotPanel } from './components/PlotPanel.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
-import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, exampleById, exampleName } from './examples.ts';
+import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, drawnAsInVideo, exampleById, exampleName } from './examples.ts';
 import { useKeyboardInset, useMedia, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
 import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
@@ -323,6 +323,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     store.snapshot,
   );
   const text = snap.text;
+  /** The drawing is a video's own (its *@ lines): a phone offers "As in the video" (decision 0015). */
+  const video = useMemo(() => drawnAsInVideo(text), [text]);
   const [fontStore] = useState<ResultFontStore>(() => givenFontStore ?? createResultFontStore());
   const font = useSyncExternalStore(fontStore.subscribe, fontStore.get);
   const plain = font === 'plain';
@@ -1314,7 +1316,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'zoom screen whole', shortcut: 'Shift 1' });
     list.push({ id: 'zoom-in', group: gDrawing, label: t('zoomIn'), keywords: 'bigger', shortcut: '+' });
     list.push({ id: 'zoom-out', group: gDrawing, label: t('zoomOut'), keywords: 'smaller', shortcut: '−' });
-    if (phone && turned) list.push({ id: 'turn', group: gDrawing, label: turnWanted ? t('paletteAsDrawn') : t('paletteTurnToFit'), keywords: 'turn rotate upright phone' });
+    if (phone && turned) list.push({ id: 'turn', group: gDrawing, label: turnWanted ? t(video ? 'paletteAsInVideo' : 'paletteAsDrawn') : t('paletteTurnToFit'), keywords: 'turn rotate upright phone video' });
     // Editing the drawing (decision 0017): every tool by name, the form, and what the selection can do.
     const gEdit = t('paletteGroupEdit');
     if (schematic && !tooBig) {
@@ -1353,7 +1355,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video ${plainWords(`${video ?? ''} ${e.name}`)}` });
     }
     return list;
-  }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, shown, plain, exampleId, schematic, tooBig, selected, selectedWire]);
+  }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, video, shown, plain, exampleId, schematic, tooBig, selected, selectedWire]);
 
   const runCommand = (id: string): void => {
     const [kind, arg] = id.split(/:(.*)/s) as [string, string | undefined];
@@ -1665,6 +1667,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     whole: viewInfo?.whole ?? true,
     turned: !!turned && shown === turned,
     asDrawn: asDrawnOnPhone,
+    video,
     invite: ((phone && noteWanted) || noteNoRoom) && firstScreenInvite ? firstScreenInvite.name : undefined,
     undrawn: tooBig,
     empty,
@@ -2847,7 +2850,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       analysis={analysis}
       phone={phone}
       {...(!phone ? { zoom: { percent: zoomPercent, onIn: () => canvas.current?.zoomBy(1.2), onOut: () => canvas.current?.zoomBy(1 / 1.2), onFit: fit } } : {})}
-      {...(phone && turned ? { turn: { turned: turnWanted, onToggle: () => setTurnWanted((w) => !w) } } : {})}
+      {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: () => setTurnWanted((w) => !w) } } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line.
       {...(phone && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
     />

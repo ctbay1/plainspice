@@ -6,4 +6,20 @@ V2 0 s2 24
 R2 s2 v 12
 RL v 0 6
 .op
+* plainspice-drawing v1
+*@ V1 0 4 0 side=left
+*@ R1 4 0 270 side=above
+*@ V2 14 4 180 side=right
+*@ R2 11 0 90 side=above
+*@ RL 7 4 0 side=right
+*@ ground 7 7 0
+*@ wire 0,2 0,0 2,0
+*@ wire 6,0 9,0
+*@ wire 7,0 7,2
+*@ wire 13,0 14,0 14,2
+*@ wire 0,6 0,7 14,7 14,6
+*@ wire 7,6 7,7
+*@ label s1 0 1 side=right
+*@ label v 7 1 side=right
+*@ label s2 14 0 side=above-right
 .end

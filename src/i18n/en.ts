@@ -74,6 +74,7 @@ export const en = {
   hintTurned: 'Turned to fit the screen · tap a part to change it',
   hintTurnedPan: 'Turned to fit as well as it can · drag the paper to see the rest',
   hintAsDrawn: 'As drawn, not turned · drag the paper to see the rest',
+  hintAsInVideo: 'As in the video, not turned · drag the paper to see the rest',
   hintInvitePhone: 'Tap {name} and type a new value: the numbers move as you type',
   hintInviteDesk: 'Click {name} and type a new value: the numbers move as you type · Ctrl K for every command',
   hintSelected: '{name} selected · Enter opens its card · T turns it · Shift+arrows move it · Delete deletes it · Esc lets go',
@@ -147,6 +148,7 @@ export const en = {
   statusNoParts: 'The netlist has no parts yet: add one on the drawing, or type its line in the Netlist panel (such as R1 in out 1k).',
   turnToFit: 'Turn to fit',
   asDrawn: 'As drawn',
+  asInVideo: 'As in the video',
   zoomLabel: 'Zoom',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
@@ -382,6 +384,7 @@ export const en = {
   paletteOpenVideoExample: 'Open “{name}” from {video}',
   paletteTurnToFit: 'Turn the drawing to fit the screen',
   paletteAsDrawn: 'Show the drawing as drawn, not turned',
+  paletteAsInVideo: 'Show the drawing as in the video, not turned',
   fontNowPlain: 'Results are now written in the plain font.',
   fontNowHand: 'Results are now handwritten.',
 

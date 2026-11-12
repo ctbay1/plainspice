@@ -8,4 +8,25 @@ H1 0 m Vx 2
 R3 n1 a 2
 Vshort a 0 0
 .op
+* plainspice-drawing v1
+*@ Vin 0 8 0 side=right
+*@ Vx 2 0 270 side=above
+*@ R1 13 0 270 side=above
+*@ R2 15 4 0 side=right
+*@ H1 15 11 180 side=right
+*@ R3 23 0 270 side=above
+*@ Vshort 31 8 0 side=right
+*@ ground 15 15 0
+*@ wire 0,0 0,6
+*@ wire 4,0 11,0
+*@ wire 15,2 15,0 21,0
+*@ wire 25,0 31,0 31,6
+*@ wire 15,6 15,9
+*@ wire 0,10 0,15 31,15 31,10
+*@ wire 15,13 15,15
+*@ label s 0 0 side=above-left
+*@ label s2 4 0 side=above-right
+*@ label n1 15 1 side=right
+*@ label m 15 8 side=left
+*@ label a 31 0 side=above-right
 .end

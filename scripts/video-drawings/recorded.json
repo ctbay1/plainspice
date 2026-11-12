@@ -1,0 +1,419 @@
+{
+ "about": "The Solved Circuits videos' circuit drawings, recorded by scripts/video-drawings/record.py from the channel's repository (solved-circuits). Manim units, y up.",
+ "files": {
+  "episodes/e04/circuits.py": "44a7d98e364eaee255964643fa866444606460bebe3eb1fa53a723ed3ea2e1c6",
+  "episodes/e04/scenes.py": "9d1086c4499837bf6a21c794937499ea1f62898a75f5eaf86b4134dbd05857b8",
+  "episodes/p01/scenes.py": "55dae5ebc34d8a59bda0ce634061ee64f6e2251ec8cf58a7865a8795ed2feaab",
+  "episodes/p02/scenes.py": "2b5a4412c471d314329b5eecb700d35a48a8eb28666aef763e8611c5d76bdece",
+  "episodes/sp01/scenes.py": "df6a23ed793a79add868174d292fa9ed28b94a13a8fc1f678a5f6b1c6e1ccc9f"
+ },
+ "drawings": {
+  "sp01/S6": {
+   "file": "episodes/sp01/scenes.py",
+   "what": "S6.construct, lines 684, 686, 719, 720, 721, 722, 730, 733",
+   "note": "S6 (Measuring a current): example 1 with its node names (node_tags), then the 4 ohm branch redrawn with the 0 V ammeter Vm (s2)",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-5.6, 1.0], "q": [-5.6, -1.6], "na": "n1", "nb": "gnd", "side": -1, "line": 39, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-5.6, 1.0], "q": [-2.6, 1.0], "na": "n1", "nb": "n2", "side": 1, "line": 40},
+      {"kind": "R", "name": "R2", "p": [-2.6, 1.0], "q": [-2.6, -1.6], "na": "n2", "nb": "gnd", "side": 1, "line": 41},
+      {"kind": "I", "name": "I1", "p": [-0.9, -1.6], "q": [-0.9, 1.0], "na": "gnd", "nb": "n2", "side": -1, "line": 42, "to": "q"}
+     ],
+     "wires": [{"node": "n2", "pts": [[-2.6, 1.0], [-0.9, 1.0]], "line": 43}, {"node": "gnd", "pts": [[-5.6, -1.6], [-2.6, -1.6], [-0.9, -1.6]], "line": 44}],
+     "grounds": [{"node": "gnd", "at": [-2.6, -1.6], "line": 46}],
+     "terms": []
+    },
+    "ntags": {
+     "kind": "tags",
+     "tags": [
+      {"kind": "tag", "text": "n1", "at": [-5.6, 1.0], "dir": "UL"},
+      {"kind": "tag", "text": "n2", "at": [-2.6, 1.0], "dir": "UL"},
+      {"kind": "tag", "text": "0", "at": [-2.3, -1.9], "dir": "RIGHT"}
+     ]
+    },
+    "s2": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "Vm", "p": [-2.6, 1.0], "q": [-2.6, -0.05], "na": "n2", "nb": "n2b", "side": -1, "line": 721, "plus": "p"},
+      {"kind": "R", "name": "R2b", "p": [-2.6, -0.05], "q": [-2.6, -1.6], "na": "n2b", "nb": "gnd", "side": 1, "line": 722}
+     ],
+     "wires": [],
+     "grounds": [],
+     "terms": []
+    },
+    "n2b": {"kind": "tag", "text": "n2b", "at": [-2.6, -0.05], "dir": "RIGHT"}
+   }
+  },
+  "sp01/S7": {
+   "file": "episodes/sp01/scenes.py",
+   "what": "S7.construct, lines 895, 917, 956, 957, 1012, 1013, 1065, 1066, 1067, 1068, 1069, 1077, 1078, 1079, 1082, 1083, 1084, 1085, 1097, 1125, 1126, 1184, 1185",
+   "note": "S7 (Dependent sources): Vc and the ground rail (base7), the wire from c to the measured branch (r1), Vs and Rs (vsn), and the four output circuits E1, G1, F1, H1 (out_net), each drawn in the same place in turn, with their node names",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [{"kind": "V", "name": "Vc", "p": [-5.75, 1.65], "q": [-5.75, -1.85], "na": "c", "nb": "gnd", "side": -1, "line": 821, "plus": "p"}],
+     "wires": [{"node": "gnd", "pts": [[-5.75, -1.85], [-4.15, -1.85], [-2.35, -1.85]], "line": 822}],
+     "grounds": [{"node": "gnd", "at": [-4.95, -1.85], "line": 823}],
+     "terms": []
+    },
+    "r1": {
+     "kind": "sch",
+     "parts": [{"kind": "R", "name": "R1o", "p": [-4.15, 1.65], "q": [-4.15, -1.85], "na": "c", "nb": "gnd", "side": -1, "line": 1067}],
+     "wires": [{"node": "c", "pts": [[-5.75, 1.65], [-4.15, 1.65]], "line": 1066}],
+     "grounds": [],
+     "terms": []
+    },
+    "vsn": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "Vs", "p": [-4.15, 1.65], "q": [-4.15, 0.45], "na": "c", "nb": "cs", "side": 1, "line": 1078, "plus": "p"},
+      {"kind": "R", "name": "Rs", "p": [-4.15, 0.45], "q": [-4.15, -1.85], "na": "cs", "nb": "gnd", "side": -1, "line": 1079}
+     ],
+     "wires": [],
+     "grounds": [],
+     "terms": []
+    },
+    "e": {
+     "kind": "sch",
+     "parts": [{"kind": "E", "name": "E1", "p": [-2.35, -1.85], "q": [-2.35, 1.65], "na": "gnd", "nb": "out", "side": -1, "line": 833, "plus": "q"}],
+     "wires": [],
+     "grounds": [],
+     "terms": []
+    },
+    "g": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "F", "name": "G1", "p": [-2.35, -1.85], "q": [-2.35, 1.65], "na": "gnd", "nb": "out", "side": -1, "line": 835, "to": "q"},
+      {"kind": "R", "name": "RL", "p": [-0.6, 1.65], "q": [-0.6, -1.85], "na": "out", "nb": "gnd", "side": 1, "line": 838}
+     ],
+     "wires": [{"node": "out", "pts": [[-2.35, 1.65], [-0.6, 1.65]], "line": 837}, {"node": "gnd", "pts": [[-2.35, -1.85], [-0.6, -1.85]], "line": 839}],
+     "grounds": [],
+     "terms": []
+    },
+    "f": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "F", "name": "F1", "p": [-2.35, -1.85], "q": [-2.35, 1.65], "na": "gnd", "nb": "out", "side": -1, "line": 835, "to": "q"},
+      {"kind": "R", "name": "RL", "p": [-0.6, 1.65], "q": [-0.6, -1.85], "na": "out", "nb": "gnd", "side": 1, "line": 838}
+     ],
+     "wires": [{"node": "out", "pts": [[-2.35, 1.65], [-0.6, 1.65]], "line": 837}, {"node": "gnd", "pts": [[-2.35, -1.85], [-0.6, -1.85]], "line": 839}],
+     "grounds": [],
+     "terms": []
+    },
+    "h": {
+     "kind": "sch",
+     "parts": [{"kind": "E", "name": "H1", "p": [-2.35, -1.85], "q": [-2.35, 1.65], "na": "gnd", "nb": "out", "side": -1, "line": 833, "plus": "q"}],
+     "wires": [],
+     "grounds": [],
+     "terms": []
+    },
+    "gc": {"kind": "tag", "text": "c", "at": [-5.75, 1.65], "dir": "UL"},
+    "gcs": {"kind": "tag", "text": "cs", "at": [-4.15, 0.45], "dir": "RIGHT"},
+    "go": {"kind": "tag", "text": "out1", "at": [-2.35, 1.65], "dir": "UP"},
+    "go2": {"kind": "tag", "text": "out2", "at": [-2.35, 1.65], "dir": "UP"},
+    "go3": {"kind": "tag", "text": "out3", "at": [-2.35, 1.65], "dir": "UP"},
+    "go4": {"kind": "tag", "text": "out4", "at": [-2.35, 1.65], "dir": "UP"}
+   }
+  },
+  "sp01/S9": {
+   "file": "episodes/sp01/scenes.py",
+   "what": "circuit_ex1()",
+   "note": "S9 (Three mistakes, a typo in a node name): example 1 drawn again, R2's top lead moved off node n2 and named n12",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-5.6, 1.0], "q": [-5.6, -1.6], "na": "n1", "nb": "gnd", "side": -1, "line": 39, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-5.6, 1.0], "q": [-2.6, 1.0], "na": "n1", "nb": "n2", "side": 1, "line": 40},
+      {"kind": "R", "name": "R2", "p": [-2.6, 1.0], "q": [-2.6, -1.6], "na": "n2", "nb": "gnd", "side": 1, "line": 41},
+      {"kind": "I", "name": "I1", "p": [-0.9, -1.6], "q": [-0.9, 1.0], "na": "gnd", "nb": "n2", "side": -1, "line": 42, "to": "q"}
+     ],
+     "wires": [{"node": "n2", "pts": [[-2.6, 1.0], [-0.9, 1.0]], "line": 43}, {"node": "gnd", "pts": [[-5.6, -1.6], [-2.6, -1.6], [-0.9, -1.6]], "line": 44}],
+     "grounds": [{"node": "gnd", "at": [-2.6, -1.6], "line": 46}],
+     "terms": []
+    },
+    "typo": {
+     "kind": "moved-lead",
+     "part": "R2",
+     "end": "p",
+     "by": [0.564516, -0.403226],
+     "scale": 0.62,
+     "word": {"text": "n12", "dir": "RIGHT"},
+     "lines": [1410, 1411, 1414, 1416]
+    }
+   }
+  },
+  "p01/e1": {
+   "file": "episodes/p01/scenes.py",
+   "what": "circuit_e1()",
+   "note": "circuit_e1: example 1",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-5.75, 1.35], "q": [-5.75, -1.75], "na": "n1", "nb": "gnd", "side": -1, "line": 54, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-5.75, 1.35], "q": [-2.75, 1.35], "na": "n1", "nb": "n2", "side": 1, "line": 55},
+      {"kind": "R", "name": "R2", "p": [-2.75, 1.35], "q": [-2.75, -1.75], "na": "n2", "nb": "gnd", "side": 1, "line": 56},
+      {"kind": "I", "name": "Is", "p": [-0.7, -1.75], "q": [-0.7, 1.35], "na": "gnd", "nb": "n2", "side": -1, "line": 57, "to": "q"}
+     ],
+     "wires": [
+      {"node": "n2", "pts": [[-2.75, 1.35], [-0.7, 1.35]], "line": 58},
+      {"node": "gnd", "pts": [[-5.75, -1.75], [-2.75, -1.75], [-0.7, -1.75]], "line": 59}
+     ],
+     "grounds": [{"node": "gnd", "at": [-2.75, -1.75], "line": 61}],
+     "terms": []
+    }
+   }
+  },
+  "p01/S2": {
+   "file": "episodes/p01/scenes.py",
+   "what": "S2.construct, lines 169, 196, 199",
+   "note": "S2 (Method): the node names written on example 1, v_1 and v_2 (the netlist's n1 and n2)",
+   "items": {"t1": {"kind": "tag", "text": "v_1", "at": [-5.75, 1.35], "dir": "UL"}, "t2": {"kind": "tag", "text": "v_2", "at": [-3.0, 1.35], "dir": "UP"}}
+  },
+  "p01/e2": {
+   "file": "episodes/p01/scenes.py",
+   "what": "circuit_e2()",
+   "note": "circuit_e2: example 2",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "R", "name": "Rd", "p": [-6.2, 2.2], "q": [-0.7, 2.2], "na": "n1", "nb": "n3", "side": 1, "line": 72},
+      {"kind": "R", "name": "Ra", "p": [-6.2, 0.5], "q": [-3.45, 0.5], "na": "n1", "nb": "n2", "side": 1, "line": 74},
+      {"kind": "V", "name": "Vs", "p": [-3.45, 0.5], "q": [-0.7, 0.5], "na": "n2", "nb": "n3", "side": 1, "line": 75, "plus": "p"},
+      {"kind": "I", "name": "Is", "p": [-6.2, -2.1], "q": [-6.2, 0.5], "na": "gnd", "nb": "n1", "side": -1, "line": 76, "to": "q"},
+      {"kind": "R", "name": "Rb", "p": [-3.45, 0.5], "q": [-3.45, -2.1], "na": "n2", "nb": "gnd", "side": 1, "line": 77},
+      {"kind": "R", "name": "Rc", "p": [-0.7, 0.5], "q": [-0.7, -2.1], "na": "n3", "nb": "gnd", "side": 1, "line": 78}
+     ],
+     "wires": [
+      {"node": "n1", "pts": [[-6.2, 0.5], [-6.2, 2.2]], "line": 71},
+      {"node": "n3", "pts": [[-0.7, 2.2], [-0.7, 0.5]], "line": 73},
+      {"node": "gnd", "pts": [[-6.2, -2.1], [-3.45, -2.1], [-0.7, -2.1]], "line": 79}
+     ],
+     "grounds": [{"node": "gnd", "at": [-3.45, -2.1], "line": 82}],
+     "terms": []
+    }
+   }
+  },
+  "p01/S4": {
+   "file": "episodes/p01/scenes.py",
+   "what": "S4.construct, lines 454, 464, 465",
+   "note": "S4 (Example 2): the node names written on example 2, v_1, v_2 and v_3 (the netlist's n1, n2 and n3)",
+   "items": {
+    "tags": {
+     "kind": "tags",
+     "tags": [
+      {"kind": "tag", "text": "v_1", "at": [-6.2, 0.5], "dir": "DL"},
+      {"kind": "tag", "text": "v_2", "at": [-3.75, 0.5], "dir": "UP"},
+      {"kind": "tag", "text": "v_3", "at": [-0.7, 0.5], "dir": "UR"}
+     ]
+    }
+   }
+  },
+  "p01/SK": {
+   "file": "episodes/p01/scenes.py",
+   "what": "SK.construct, lines 1266, 1267, 1296, 1299, 1302, 1305, 1341, 1347, 1349",
+   "note": "SK (Check it in a simulator): example 3 (circuit_e3) with Vsense drawn on the 4 ohm resistor's lead at vc, its new node nx at nx_pt, and the node names (and the 0 it writes beside the ground wire)",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-6.05, 0.9], "q": [-6.05, -1.9], "na": "n1", "nb": "gnd", "side": 1, "line": 92, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-6.05, 0.9], "q": [-3.45, 0.9], "na": "n1", "nb": "n2", "side": -1, "line": 93},
+      {"kind": "E", "name": "H", "p": [-3.45, 0.9], "q": [-0.75, 0.9], "na": "n2", "nb": "n3", "side": 1, "line": 94, "plus": "p"},
+      {"kind": "R", "name": "Rp", "p": [-3.45, 2.4], "q": [-0.75, 2.4], "na": "n2", "nb": "n3", "side": 1, "line": 96},
+      {"kind": "R", "name": "R2", "p": [-3.45, 0.9], "q": [-3.45, -1.9], "na": "n2", "nb": "gnd", "side": -1, "line": 98},
+      {"kind": "R", "name": "R3", "p": [-0.75, 0.9], "q": [-0.75, -1.9], "na": "n3", "nb": "gnd", "side": 1, "line": 99}
+     ],
+     "wires": [
+      {"node": "n2", "pts": [[-3.45, 0.9], [-3.45, 2.4]], "line": 95},
+      {"node": "n3", "pts": [[-0.75, 2.4], [-0.75, 0.9]], "line": 97},
+      {"node": "gnd", "pts": [[-6.05, -1.9], [-3.45, -1.9], [-0.75, -1.9]], "line": 100}
+     ],
+     "grounds": [{"node": "gnd", "at": [-3.45, -1.9], "line": 103}],
+     "terms": []
+    },
+    "vc": {"kind": "point", "at": [-5.62, 0.9]},
+    "nx_pt": {"kind": "point", "at": [-5.33, 0.9]},
+    "gn1": {"kind": "tag", "text": "n1", "at": [-6.05, 0.9], "dir": "UL"},
+    "gn2": {"kind": "tag", "text": "n2", "at": [-3.45, 0.9], "dir": "UL"},
+    "gn3": {"kind": "tag", "text": "n3", "at": [-0.75, 0.9], "dir": "UR"},
+    "gnx": {"kind": "tag", "text": "nx", "at": [-5.33, 0.9], "dir": "DOWN"},
+    "g0": {"kind": "tag", "text": "0", "at": [-3.15, -2.2], "dir": "RIGHT"}
+   }
+  },
+  "p02/e1": {
+   "file": "episodes/p02/scenes.py",
+   "what": "s, p = circuit_e1(); ts = test_source(p['TA'], p['TB'], x=p['TA'][0] + 1.15)",
+   "note": "circuit_e1: example 1; test_source: the video's own test source (S4) attached to example 1's terminals as far to their right as in S4 (1.15)",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-6.05, 1.0], "q": [-6.05, -1.6], "na": "s", "nb": "gnd", "side": 1, "line": 67, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-6.05, 1.0], "q": [-3.35, 1.0], "na": "s", "nb": "n1", "side": 1, "line": 68},
+      {"kind": "R", "name": "R2", "p": [-3.35, 1.0], "q": [-3.35, -1.6], "na": "n1", "nb": "gnd", "side": 1, "line": 69},
+      {"kind": "R", "name": "R3", "p": [-3.35, 1.0], "q": [-0.55, 1.0], "na": "n1", "nb": "a", "side": 1, "line": 70}
+     ],
+     "wires": [{"node": "gnd", "pts": [[-6.05, -1.6], [-3.35, -1.6], [-0.55, -1.6]], "line": 71}],
+     "grounds": [{"node": "gnd", "at": [-3.35, -1.6], "line": 73}],
+     "terms": [
+      {"node": "a", "at": [-0.55, 1.0], "text": "a", "dir": "UP", "line": 74},
+      {"node": "gnd", "at": [-0.55, -1.6], "text": "b", "dir": "DOWN", "line": 75}
+     ]
+    },
+    "ts": {
+     "kind": "sch",
+     "parts": [{"kind": "I", "name": "It", "p": [0.6, -1.6], "q": [0.6, 1.0], "na": "gnd", "nb": "a", "side": -1, "line": 129, "to": "q"}],
+     "wires": [{"node": "a", "pts": [[-0.465, 1.0], [0.6, 1.0]], "line": 127}, {"node": "gnd", "pts": [[-0.465, -1.6], [0.6, -1.6]], "line": 128}],
+     "grounds": [],
+     "terms": []
+    }
+   }
+  },
+  "p02/S4": {
+   "file": "episodes/p02/scenes.py",
+   "what": "S4.construct, lines 542, 633",
+   "note": "S4 (Example 2): circuit_e2 with the 1 A test source pushed into a (test_source at x = -0.35)",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "R", "name": "R2", "p": [-5.9, 1.0], "q": [-5.9, -1.6], "na": "n1", "nb": "gnd", "side": -1, "line": 85},
+      {"kind": "F", "name": "F", "p": [-4.3, -1.6], "q": [-4.3, 1.0], "na": "gnd", "nb": "n1", "side": -1, "line": 86, "to": "q"},
+      {"kind": "R", "name": "R1", "p": [-4.3, 1.0], "q": [-1.5, 1.0], "na": "n1", "nb": "a", "side": 1, "line": 87}
+     ],
+     "wires": [{"node": "n1", "pts": [[-5.9, 1.0], [-4.3, 1.0]], "line": 84}, {"node": "gnd", "pts": [[-5.9, -1.6], [-4.3, -1.6], [-1.5, -1.6]], "line": 88}],
+     "grounds": [{"node": "gnd", "at": [-4.3, -1.6], "line": 90}],
+     "terms": [
+      {"node": "a", "at": [-1.5, 1.0], "text": "a", "dir": "UP", "line": 91},
+      {"node": "gnd", "at": [-1.5, -1.6], "text": "b", "dir": "DOWN", "line": 92}
+     ]
+    },
+    "ts": {
+     "kind": "sch",
+     "parts": [{"kind": "I", "name": "It", "p": [-0.35, -1.6], "q": [-0.35, 1.0], "na": "gnd", "nb": "a", "side": -1, "line": 129, "to": "q"}],
+     "wires": [{"node": "a", "pts": [[-1.415, 1.0], [-0.35, 1.0]], "line": 127}, {"node": "gnd", "pts": [[-1.415, -1.6], [-0.35, -1.6]], "line": 128}],
+     "grounds": [],
+     "terms": []
+    }
+   }
+  },
+  "p02/SK": {
+   "file": "episodes/p02/scenes.py",
+   "what": "SK.construct, lines 1125, 1126, 1156, 1161, 1164, 1264",
+   "note": "SK (Check it in a simulator): example 3 (circuit_e3) with its node names (and the 0 it writes beside the ground wire), and the wire from a to b that Vshort is (short_wire)",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-6.2, 1.2], "q": [-6.2, -1.6], "na": "s", "nb": "gnd", "side": 1, "line": 101, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-6.2, 1.2], "q": [-3.7, 1.2], "na": "s", "nb": "n1", "side": 1, "line": 102},
+      {"kind": "R", "name": "R3", "p": [-3.7, 1.2], "q": [-3.7, -1.6], "na": "n1", "nb": "gnd", "side": -1, "line": 103},
+      {"kind": "R", "name": "R2", "p": [-3.7, 1.2], "q": [-1.2, 1.2], "na": "n1", "nb": "a", "side": 1, "line": 104},
+      {"kind": "F", "name": "G", "p": [-1.2, -1.6], "q": [-1.2, 1.2], "na": "gnd", "nb": "a", "side": 1, "line": 105, "to": "q"}
+     ],
+     "wires": [
+      {"node": "a", "pts": [[-1.2, 1.2], [-0.05, 1.2]], "line": 106},
+      {"node": "gnd", "pts": [[-6.2, -1.6], [-3.7, -1.6], [-1.2, -1.6], [-0.05, -1.6]], "line": 107}
+     ],
+     "grounds": [{"node": "gnd", "at": [-3.7, -1.6], "line": 109}],
+     "terms": [
+      {"node": "a", "at": [-0.05, 1.2], "text": "a", "dir": "UP", "line": 110},
+      {"node": "gnd", "at": [-0.05, -1.6], "text": "b", "dir": "DOWN", "line": 111}
+     ]
+    },
+    "gs": {"kind": "tag", "text": "s", "at": [-6.2, 1.2], "dir": "UL"},
+    "gn": {"kind": "tag", "text": "n1", "at": [-3.7, 1.2], "dir": "UR"},
+    "g0": {"kind": "tag", "text": "0", "at": [-3.4, -1.9], "dir": "RIGHT"},
+    "sw": {"kind": "line", "a": [-0.05, 1.115], "b": [-0.05, -1.515]}
+   }
+  },
+  "e04/e1": {
+   "file": "episodes/e04/circuits.py",
+   "what": "circuit_e1()",
+   "note": "circuit_e1: example 1",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-5.6, 1.0], "q": [-5.6, -1.6], "na": "s1", "nb": "gnd", "side": -1, "line": 30, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-5.6, 1.0], "q": [-3.175, 1.0], "na": "s1", "nb": "v", "side": 1, "line": 31},
+      {"kind": "R", "name": "R2", "p": [-3.175, 1.0], "q": [-0.75, 1.0], "na": "v", "nb": "s2", "side": 1, "line": 32},
+      {"kind": "R", "name": "RL", "p": [-3.175, 1.0], "q": [-3.175, -1.6], "na": "v", "nb": "gnd", "side": 1, "line": 33},
+      {"kind": "V", "name": "V2", "p": [-0.75, 1.0], "q": [-0.75, -1.6], "na": "s2", "nb": "gnd", "side": 1, "line": 34, "plus": "q"}
+     ],
+     "wires": [{"node": "gnd", "pts": [[-5.6, -1.6], [-3.175, -1.6], [-0.75, -1.6]], "line": 35}],
+     "grounds": [{"node": "gnd", "at": [-3.175, -1.6], "line": 37}],
+     "terms": []
+    }
+   }
+  },
+  "e04/S5": {
+   "file": "episodes/e04/scenes.py",
+   "what": "S5.construct, lines 801, 803",
+   "note": "S5 (Example 2): circuit_e2 with the wire from a to b for I_N (short_wire)",
+   "items": {
+    "s2": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "V1", "p": [-5.75, 1.0], "q": [-5.75, -1.6], "na": "s", "nb": "gnd", "side": -1, "line": 67, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-5.75, 1.0], "q": [-3.8, 1.0], "na": "s", "nb": "n1", "side": 1, "line": 68},
+      {"kind": "R", "name": "R2", "p": [-3.8, 1.0], "q": [-3.8, -1.6], "na": "n1", "nb": "gnd", "side": 1, "line": 69},
+      {"kind": "R", "name": "R3", "p": [-3.8, 1.0], "q": [-1.5, 1.0], "na": "n1", "nb": "a", "side": 1, "line": 70},
+      {"kind": "I", "name": "I2", "p": [-1.5, -1.6], "q": [-1.5, 1.0], "na": "gnd", "nb": "a", "side": 1, "line": 71, "to": "q"},
+      {"kind": "R", "name": "R4", "p": [-0.45, 1.0], "q": [-0.45, -1.6], "na": "a", "nb": "gnd", "side": 1, "line": 72}
+     ],
+     "wires": [
+      {"node": "a", "pts": [[-1.5, 1.0], [-0.45, 1.0], [0.4, 1.0]], "line": 73},
+      {"node": "gnd", "pts": [[-5.75, -1.6], [-3.8, -1.6], [-1.5, -1.6], [-0.45, -1.6], [0.4, -1.6]], "line": 74}
+     ],
+     "grounds": [{"node": "gnd", "at": [-3.8, -1.6], "line": 77}],
+     "terms": [
+      {"node": "a", "at": [0.4, 1.0], "text": "a", "dir": "UP", "line": 78},
+      {"node": "gnd", "at": [0.4, -1.6], "text": "b", "dir": "DOWN", "line": 79}
+     ]
+    },
+    "sh": {"kind": "line", "a": [0.4, 0.915], "b": [0.4, -1.515]}
+   }
+  },
+  "e04/SK": {
+   "file": "episodes/e04/scenes.py",
+   "what": "SK.construct, lines 1254, 1265, 1330",
+   "note": "SK (Check it in a simulator): example 3 as SPICE sees it (circuit_e3_spice: Vin, the 0 V source Vx), its node names, and Vshort's wire from a to b",
+   "items": {
+    "s": {
+     "kind": "sch",
+     "parts": [
+      {"kind": "V", "name": "Vin", "p": [-5.9, 1.0], "q": [-5.9, -1.6], "na": "s", "nb": "gnd", "side": 1, "line": 1234, "plus": "p"},
+      {"kind": "V", "name": "Vx", "p": [-5.9, 1.0], "q": [-4.65, 1.0], "na": "s", "nb": "s2", "side": 1, "line": 1235, "plus": "p"},
+      {"kind": "R", "name": "R1", "p": [-4.65, 1.0], "q": [-3.3, 1.0], "na": "s2", "nb": "n1", "side": 1, "line": 1236},
+      {"kind": "R", "name": "R2", "p": [-3.3, 1.0], "q": [-3.3, -0.3], "na": "n1", "nb": "m", "side": 1, "line": 1237},
+      {"kind": "E", "name": "H1", "p": [-3.3, -0.3], "q": [-3.3, -1.6], "na": "m", "nb": "gnd", "side": 1, "line": 1238, "plus": "q"},
+      {"kind": "R", "name": "R3", "p": [-3.3, 1.0], "q": [-0.35, 1.0], "na": "n1", "nb": "a", "side": 1, "line": 1239}
+     ],
+     "wires": [{"node": "gnd", "pts": [[-5.9, -1.6], [-3.3, -1.6], [-0.35, -1.6]], "line": 1240}],
+     "grounds": [{"node": "gnd", "at": [-3.3, -1.6], "line": 1242}],
+     "terms": [
+      {"node": "a", "at": [-0.35, 1.0], "text": "a", "dir": "UP", "line": 1243},
+      {"node": "gnd", "at": [-0.35, -1.6], "text": "b", "dir": "DOWN", "line": 1244}
+     ]
+    },
+    "names": {
+     "kind": "tags",
+     "tags": [
+      {"kind": "tag", "text": "s", "at": [-5.9, 1.0], "dir": "UL"},
+      {"kind": "tag", "text": "s2", "at": [-4.65, 1.0], "dir": "UP"},
+      {"kind": "tag", "text": "n1", "at": [-3.3, 1.0], "dir": "UR"},
+      {"kind": "tag", "text": "m", "at": [-3.3, -0.3], "dir": "LEFT"},
+      {"kind": "tag", "text": "0", "at": [-3.0, -1.9], "dir": "RIGHT"}
+     ]
+    },
+    "sh": {"kind": "line", "a": [-0.35, 0.915], "b": [-0.35, -1.515]}
+   }
+  }
+ }
+}

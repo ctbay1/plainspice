@@ -74,7 +74,7 @@ export function wireBends(wires: readonly (readonly Point[])[]): number {
   return bends;
 }
 
-function turnedBy(s: Schematic, k: number): Schematic | undefined {
+function turnedBy(s: Schematic, k: number, freshNames = false): Schematic | undefined {
   const turn = turner(k);
   const parts = new Map<string, PartPlacement>();
   // Stretching moves a part's pins apart, but not the part's own pins: a part lying along the stretch
@@ -99,7 +99,9 @@ function turnedBy(s: Schematic, k: number): Schematic | undefined {
     // The ground symbol and the node names are placed again: turned, they would point sideways.
     grounds: [],
     wires: [...s.drawing.wires.map((w) => w.map(turn)), ...leads],
-    labels: s.drawing.labels.map((l) => ({ node: l.node, at: turn(l.at) })),
+    // With freshNames, only the names at open ends (terminals) stay; the others are placed afresh,
+    // for when a name kept at its point has no room once turned.
+    labels: s.drawing.labels.filter((l) => !freshNames || s.scene.terminals.some((t) => t.at.x === l.at.x && t.at.y === l.at.y)).map((l) => ({ node: l.node, at: turn(l.at) })),
   };
   try {
     const drawing = reconcile(s.circuit, turned, [], s.options);
@@ -116,11 +118,12 @@ function turnedBy(s: Schematic, k: number): Schematic | undefined {
 /**
  * The schematic with its drawing turned a quarter clockwise, or undefined when no turned drawing is
  * clean. When the parts' words do not fit between the rails once turned (a source's long control
- * label, say), the rails are first set twice as far apart, the parts' leads lengthened to reach them.
+ * label, say), the rails are first set twice as far apart, the parts' leads lengthened to reach them;
+ * when a node's name has no room at its point once turned, the names are placed afresh.
  */
 export function turnedQuarter(s: Schematic): Schematic | undefined {
   if (!s.scene.parts.length) return undefined;
-  return turnedBy(s, 1) ?? turnedBy(s, 2);
+  return turnedBy(s, 1) ?? turnedBy(s, 2) ?? turnedBy(s, 1, true) ?? turnedBy(s, 2, true);
 }
 
 /** True when a drawing's box is more than `factor` times wider than tall (a phone held upright would rather see it turned). */

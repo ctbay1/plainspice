@@ -4,4 +4,14 @@ V1 n1 0 6
 R1 n1 n2 1M
 R2 n2 0 1meg
 .op
+* plainspice-drawing v1
+*@ V1 0 5 0 side=left
+*@ R1 6 0 270 side=above
+*@ R2 11 5 0 side=right
+*@ ground 11 10 0
+*@ wire 0,3 0,0 4,0
+*@ wire 8,0 11,0 11,3
+*@ wire 0,7 0,10 11,10 11,7
+*@ label n1 0 0 side=above-left
+*@ label n2 11 0 side=above-right
 .end

@@ -252,8 +252,8 @@ export function StatusLines({
   analysis: string | undefined;
   phone: boolean;
   zoom?: { percent: number | undefined; onIn: () => void; onOut: () => void; onFit: () => void };
-  /** A phone whose drawing can be turned: the button shows the other view ("As drawn" while turned). */
-  turn?: { turned: boolean; onToggle: () => void };
+  /** A phone whose drawing can be turned: the button shows the other view ("As drawn" while turned, "As in the video" when the drawing is a video's). */
+  turn?: { turned: boolean; video: boolean; onToggle: () => void };
   /** The first screen on a phone: the sticky note's button ("Change R1"), after the hint. */
   invite?: { label: string; onClick: () => void };
 }): ReactNode {
@@ -284,7 +284,7 @@ export function StatusLines({
         {turn ? (
           // An action, named for what it does (not a toggle whose name changes too, which would say the wrong state).
           <button type="button" className="turn-button" onClick={turn.onToggle}>
-            {turn.turned ? t('asDrawn') : t('turnToFit')}
+            {turn.turned ? t(turn.video ? 'asInVideo' : 'asDrawn') : t('turnToFit')}
           </button>
         ) : null}
         {zoom ? (

@@ -142,7 +142,8 @@ Ctrl+K stay as they are.
 - The status line's words follow the Numbers panel's ("Not reliable", "Error", "No results"), and its
   time is ngspice's own (the ngspice output panel's).
 - On a phone the turn button offers "As drawn" (not "As in the video", decision 0015) until a drawing
-  really comes from a video's own `*@` lines (step C): an automatic layout is not the video's.
+  really comes from a video's own `*@` lines (step C): an automatic layout is not the video's. (Done in
+  step C, decision 0018: a video's own drawing gets "As in the video", any other "As drawn".)
 - Some sentences of the model use "tab" for what are now panels opened from tabs ("in the ngspice
   output tab", src/spice/describe.ts and explain.ts); the tab is now named "ngspice output", so they
   stay true on a computer. Changing them is a model change, left to Tarık's review.

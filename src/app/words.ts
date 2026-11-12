@@ -117,6 +117,8 @@ export interface HintInput {
   /** A phone shows the drawing turned to fit, or as drawn. */
   turned: boolean;
   asDrawn: boolean;
+  /** The drawing is exactly a video's (drawnAsInVideo): "As in the video" rather than "As drawn". */
+  video?: boolean;
   /** The first screen (Start here) where the sticky note is not shown (a phone, or no free paper for it): the hint invites instead. */
   invite?: string | undefined;
   /** The drawing is not shown (too many parts). */
@@ -177,7 +179,7 @@ export function hintWords(p: HintInput): string {
   if (p.selectedName) return p.phone ? t('hintSelectedPhone', { name: p.selectedName }) : t('hintSelected', { name: p.selectedName });
   if (p.invite) return p.phone ? t('hintInvitePhone', { name: p.invite }) : t('hintInviteDesk', { name: p.invite });
   if (p.phone && p.turned) return p.whole ? t('hintTurned') : t('hintTurnedPan');
-  if (p.phone && p.asDrawn && !p.whole) return t('hintAsDrawn');
+  if (p.phone && p.asDrawn && !p.whole) return t(p.video ? 'hintAsInVideo' : 'hintAsDrawn');
   if (p.phone) return p.whole ? t('hintPhone') : t('hintPhonePan');
   return t('hintDesk');
 }

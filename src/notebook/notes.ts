@@ -10,7 +10,7 @@
 import { GROUND, boxesOverlap, inflate, segmentCrossesBox, unionBoxes, type Box, type Point, type Scene } from '../schematic/index.ts';
 import { TYPE, resultWidth, widthIn } from './measure.ts';
 import { placeBeside, segmentsIntersect, symbolBoxes, wireSegments, wordBoxes, type Room, type Side } from './place.ts';
-import type { DrawingResults, ResultMark } from './results.ts';
+import { markBox as drawnBox, nameShift, type DrawingResults, type ResultMark } from './results.ts';
 
 /** Size of a note's words and its line height, in grid units (a little smaller than the results). */
 export const NOTE_SIZE = 0.8;
@@ -161,7 +161,11 @@ export function wasMarks(scene: Scene, now: DrawingResults, before: DrawingResul
     const w = resultWidth(text) * WAS_SCALE + 0.1;
     const h = 0.8;
     const room = sceneRoom(scene, inflate(scene.bounds, 2), [...avoid, ...out.map((m) => m.box)]);
-    const target = markBox(n.mark);
+    // Next to the new value where it is drawn (a name on the left of its point is drawn up to it, nameShift).
+    const label = scene.nodeLabels[n.label];
+    const dx = label ? nameShift(label, n.mark) : 0;
+    const drawn = drawnBox(n.mark);
+    const target = dx ? { ...drawn, x0: drawn.x0 + dx, x1: drawn.x1 + dx } : markBox(n.mark);
     const p = placeBeside(target, w, h, room, { gap: 0.02, sides: ['above', 'below', 'right'], step: 0.1, reach: 0.6 });
     if (!p || p.cost > 0) continue;
     out.push({ node: n.node, text, x: p.box.x0 + 0.05, y: (p.box.y0 + p.box.y1) / 2, box: p.box });
