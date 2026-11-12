@@ -169,6 +169,8 @@ interface Ctx {
 const GROUND = '0';
 /** The true minus sign for display text (netlist text keeps the ASCII hyphen). */
 const MINUS = '\u2212';
+/** The micro sign, which ngspice reads as u (W15). */
+const MICRO = '\u00b5';
 const MAIN_ROLES: ReadonlySet<FieldRole> = new Set(['value', 'gain', 'transconductance', 'transresistance']);
 const NODE_ROLES: ReadonlySet<FieldRole> = new Set(['node', 'plus', 'minus', 'from', 'to', 'control-plus', 'control-minus']);
 const VALUE_LETTERS: ReadonlySet<string> = new Set(['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H']);
@@ -1553,12 +1555,24 @@ function nodeNamer(taken: Set<string>): (wanted: string) => string {
 }
 
 /**
+ * How ngspice writes the letters of a name outside a to z (W16): as underscores, and the micro sign as u
+ * (W15), said when one of the names has it, so the u of "u__" for µş is not left unexplained.
+ */
+function lettersRule(names: readonly string[], what: string): string {
+  return names.some((x) => x.includes(MICRO))
+    ? `reads the micro sign ${MICRO} as u and writes the other letters outside a to z (or A to Z) in ${what} as underscores`
+    : `writes each letter other than a to z (or A to Z) in ${what} as underscores`;
+}
+
+/**
  * Node names ngspice spells with underscores (W16, W17). It reads only printable ASCII in a name and
  * writes every byte of any other character as '_', so giriş is giri__ in its printout and results
  * (non-ascii-node-1), and names it spells the same are one node: ş and ç are both __
  * (non-ascii-node-2). A name on its own: a warning, with a fix to plain letters. Names that become
  * one: an error, because ngspice then simulates another circuit; the fix gives each its plain letters.
- * A name with an invisible character is the invisible-character check's; µ is fine (ngspice reads u).
+ * A name with an invisible character is the invisible-character check's. µ alone is fine (ngspice reads
+ * u), but one node written with µ in one place and u in another (aµ, au) looks like two nodes: a warning
+ * when a part has an end on each, so it has both ends on one node (non-ascii-node-5), else a note.
  * The fixes never give a name ngspice already uses, that would join two nodes, nor one of ground's
  * (nodeNamer).
  */
@@ -1585,7 +1599,7 @@ function checkNodeNames(c: Ctx): void {
       const to = odd.map((i) => [i, plainFor(i)] as const);
       const at = (odd[odd.length - 1] ?? infos[infos.length - 1]!).refs[0]!;
       add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
-        `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
+        `ngspice ${lettersRule(names, 'a node name')}, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
         `ngspice spells ${list(names)} as ${spelled} and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]`,
         to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${i.refs[0]!.text}`))}`, ...to.flatMap(([i, n]) => renaming(i, n)))] : []);
       continue;
@@ -1598,10 +1612,68 @@ function checkNodeNames(c: Ctx): void {
     const letter = [...written].find((ch) => !isPlainName(ch))!;
     const to = plainFor(info);
     add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells the node ${written} as ${spelled}`,
-      `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
+      `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
       spelledNodeSentence(c, info, spelled),
       [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
   }
+  for (const info of c.n.nodes.values()) checkMicroNode(c, info, freeName);
+}
+
+/**
+ * One node written with the micro sign in one place and u in another (aµ and au, words re-check 8):
+ * ngspice reads µ as u (W15), and so does PlainSpice's parser, so they are one node, and the drawing
+ * shows them joined, but nothing said why. Only spellings on part lines count: a directive that writes
+ * the node the other way still names the node meant. A part with an end on each spelling has both ends
+ * on the one node and carries no current (non-ascii-node-5): a warning, whose fix gives the µ spelling a
+ * plain name of its own, as the netlist reads to a person. Else a note, whose fix writes the node one
+ * way, as ngspice reads it. A name with other letters outside a to z is the check above's.
+ */
+function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => string): void {
+  if (info.ground || info.refs.length < 2 || !isPlainName(info.name)) return;
+  const forms = new Map<string, Token[]>();
+  for (const t of info.refs) {
+    const k = lowerAscii(t.text);
+    const refs = forms.get(k);
+    if (refs) refs.push(t);
+    else forms.set(k, [t]);
+  }
+  if (forms.size < 2) return;
+  const onParts = new Set<string>();
+  const across: Element[] = [];
+  for (const line of new Set(info.connections.map((k) => k.line))) {
+    const e = el(c, line);
+    const own = new Set(e.nodes.filter((r) => r.name === info.name).map((r) => lowerAscii(r.token.text)));
+    for (const f of own) onParts.add(f);
+    if (own.size > 1) across.push(e);
+  }
+  if (onParts.size < 2) return;
+  const all = [...forms];
+  const kept = all.find(([k]) => !k.includes(MICRO)) ?? all[0]!;
+  const others = all.filter((x) => x !== kept);
+  const shown = all.map(([, refs]) => refs[0]!.text);
+  const micro = others.map(([, refs]) => refs[0]!.text);
+  const spelled = ngspiceSpelling(info.name);
+  const writing = (form: string, to: string): TextChange[] => [
+    ...forms.get(form)!.map((t) => replace(t, to)),
+    ...labelChanges(c, form, to),
+    ...(controlNodes(c).get(info.name) ?? []).filter((x) => lowerAscii(x.token.text) === form).map((x) => replace(x.token, to)),
+  ];
+  const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}, without a message`;
+  if (across.length) {
+    const names = across.map(nameOf);
+    const at = across[0]!.nodes.find((r) => r.name === info.name && lowerAscii(r.token.text) !== kept[0])!.token;
+    const to = others.map(([form, refs]) => [form, refs[0]!.text, freeName(plainLetters(refs[0]!.text, true) || 'n1')] as const);
+    add(c, 'non-ascii-node', 'warning', at, `${list(shown)} are one node for ngspice`,
+      `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro)} a name of its own in plain letters.`,
+      `${ngspice}: in one test a resistor with an end on each carried no current. [non-ascii-node-5]`,
+      [fix(to.length === 1 ? `Rename ${to[0]![1]} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
+    return;
+  }
+  const one = kept[1][0]!.text;
+  add(c, 'non-ascii-node', 'info', others[0]![1][0]!, `${list(shown)} are one node for ngspice`,
+    `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node, written two ways. If they should be two nodes, give ${list(micro)} a name of its own in plain letters.`,
+    `${ngspice}. [non-ascii-node-5]`,
+    [fix(`Write ${one} for ${list(micro)}`, ...others.flatMap(([form]) => writing(form, one)))]);
 }
 
 /**

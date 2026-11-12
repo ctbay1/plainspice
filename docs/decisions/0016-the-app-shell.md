@@ -278,3 +278,15 @@ Ctrl+K stay as they are.
   kind of line only when such a line names the node; .save, .tf, .ic and .meas lines are read like part
   lines and work, so they get none. The rename fix also writes the plain name inside `v(...)` on the
   .control lines (it already did on .print lines): without that, the fixed netlist still stopped.
+- **aµ and au: one node, now said** (words re-check 8, the merge half). ngspice reads the micro sign as
+  u (W15), and so does PlainSpice's parser, so a netlist that writes a node `aµ` in one place and `au`
+  in another has one node, and the drawing shows it so, but nothing said why: R1 between them showed
+  0 A with "No traps found". When a part has an end on each spelling, the non-ascii-node check now
+  warns "aµ and au are one node for ngspice … R1 has both ends on it and carries no current" and offers
+  a plain name of its own for the µ spelling ("Rename aµ to au2", a divider again: non-ascii-node-5).
+  A warning, not the error that ş and ç get: here the drawing and the numbers are the circuit ngspice
+  simulates. When no part has an end on each, it is a note, "… written two ways", whose fix writes the
+  node one way. Only the spellings on part lines count, so `.save v(au)` for a node written `aµ` is no
+  trap. The check's other sentences now say what µ becomes when a name has it: "ngspice reads the micro
+  sign µ as u and writes the other letters outside a to z … as underscores". The names the drawing, the
+  Numbers panel and the Plot panel show for such a node (`au` for `aµ`) are the words lane's.

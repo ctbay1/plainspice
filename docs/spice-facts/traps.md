@@ -7778,7 +7778,8 @@ PlainSpice's checks: `unknown-dot-command`.
 ## non-ascii-node
 
 Added after the final reviews of 12 November 2026 (kept review F3). A node name with a letter outside
-a to z (or A to Z), the micro sign aside: ngspice writes each byte of such a letter as `_` (W16 in
+a to z (or A to Z), the micro sign aside (ngspice reads it as u: a node written aµ in one place and au
+in another is one node, non-ascii-node-5): ngspice writes each byte of such a letter as `_` (W16 in
 numbers-and-syntax.md), so its printout and results call `giriş` `giri__`. Warning, with a fix to the
 nearest plain letters (`giris`; the letters that have no plain form are left out, and a name another
 node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
@@ -7996,6 +7997,52 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 A `*# save v(çıkış)` line in place of the .control block does the same (native 47 and 42, `-b -r`,
 exit 1: "Error: no data saved for D.C. Transfer curve analysis; analysis not run").
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-5. aµ and au are one node: ngspice reads the micro sign as u
+
+Added after the re-check of the merged build, 12 November 2026 (words re-check 8). ngspice reads the
+micro sign µ as u on every line (W15), so `aµ` and `au` are one node, `au`: R1, with an end on each,
+has both ends on it and carries no current, and all 6 mA of V1 flow through R2. PlainSpice's parser
+reads µ as u too, so its drawing shows R1 with both ends on one node, as ngspice simulates it: unlike
+ş and ç (non-ascii-node-2), the numbers are answers for the circuit drawn, so this is a warning, not an
+error. Its fix gives the µ spelling a plain name of its own, as the netlist reads to a person; the fixed
+netlist is a divider (native 47 and 42, and our engine: v(au2) = 12, v(au) = 8, i(@r1[i]) = 0.004).
+Only the spellings on part lines count. When no part has an end on each, the two spellings are one node
+written two ways (`V1 aµ 0 12` with `R1 au 0 2k`: v(au) = 12, i(v1) = -0.006, native 47 and 42): a note,
+whose fix writes the node one way ("Write au for aµ").
+
+What PlainSpice shows for non-ascii-node-5 (warning, line 3):
+
+> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node: R1 has both ends on it and carries no current. Give aµ a name of its own in plain letters.
+>
+> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]
+>
+> *Fixes:* "Rename aµ to au2"
+
+```spice
+* aµ and au are one node
+V1 aµ 0 12
+R1 aµ au 1k
+R2 au 0 2k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        au                               1.200000e+01
+        @r2[i]                           6.000000e-03
+        @r1[i]                           0.000000e+00
+        v1#branch                        -6.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(au) = 12, i(v1) = -0.006, i(@r1[i]) = 0, i(@r2[i]) = 0.006
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(au) = 12, i(v1) = -0.006, i(@r1[i]) = 0, i(@r2[i]) = 0.006
+```
 
 PlainSpice's checks: `non-ascii-node`.
 

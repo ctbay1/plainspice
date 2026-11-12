@@ -164,6 +164,8 @@ const CASES: Case[] = [
   { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
   { name: "a node name that is gnd but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "g\u00f1d", all: ["non-ascii-node"], fixes: ["Rename g\u00f1d to gnd2"], netlist: "* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\n.op\n.end\n" },
   { name: "a node name that is ground but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "gr\u00f6und", all: ["non-ascii-node"], fixes: ["Rename gr\u00f6und to ground2"], netlist: "* t\nV1 a 0 5\nR1 a gr\u00f6und 1k\nR2 gr\u00f6und 0 1k\n.op\n.end\n" },
+  { name: "a node written a\u00b5 and au, with a part between the two (words-recheck-8)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Rename a\u00b5 to au2"], netlist: "* t\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.op\n.end\n" },
+  { name: "a node written a\u00b5 and au, one node meant (words-recheck-8)", id: 'non-ascii-node', severity: 'info', line: 2, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Write au for a\u00b5"], netlist: "* t\nV1 a\u00b5 0 12\nR1 au 0 2k\n.op\n.end\n" },
   { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
   // Characters that are not what they look like (security review F2).
   { name: "a zero-width space inside a value", id: 'invisible-character', severity: 'warning', line: 3, at: "1​k", all: ["invisible-character"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n" },
@@ -1152,6 +1154,30 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(applyFix(control, t.fixes[0]!)).toBe(net('.control\nrun\nprint v(cikis)\nsave v(cikis)\nrun\n.endc\n').replaceAll(name, 'cikis'));
     expect(first(net(`.control\nrun\nprint v(${name})\n.endc\n`), 'non-ascii-node').ngspice).toContain(`(.control) it reads the name as written too, so it finds no node ${name} there. [non-ascii-node-1, non-ascii-node-4]`);
     expect(first(net(`*# save v(${name})\n`), 'non-ascii-node').ngspice).toContain('In a command for ngspice (a *# line) it reads the name as written too');
+  });
+
+  it('says why a\u00b5 and au are one node, and keeps them apart when a part has an end on each (words-recheck-8; non-ascii-node-5)', () => {
+    const text = '* t\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.tf v(a\u00b5) V1\n.end\n* plainspice-drawing v1\n*@ label a\u00b5 0 0\n*@ label au 4 0\n';
+    const t = first(text, 'non-ascii-node');
+    expect([t.severity, t.title, t.why, t.ngspice]).toEqual([
+      'warning',
+      'a\u00b5 and au are one node for ngspice',
+      'ngspice reads the micro sign \u00b5 as u, so a\u00b5 and au are the same node: R1 has both ends on it and carries no current. Give a\u00b5 a name of its own in plain letters.',
+      'ngspice reads \u00b5 as u and makes a\u00b5 and au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]',
+    ]);
+    // The \u00b5 spelling gets a name no other node has, everywhere it is written: parts, the .tf line, the drawing's label.
+    expect(applyFix(text, t.fixes[0]!)).toBe('* t\nV1 au2 0 12\nR1 au2 au 1k\nR2 au 0 2k\n.tf v(au2) V1\n.end\n* plainspice-drawing v1\n*@ label au2 0 0\n*@ label au 4 0\n');
+    // A directive that writes the node the other way still names the node meant: no check.
+    expect(ids('* t\nV1 a\u00b5 0 6\nR1 a\u00b5 0 2\n.save v(au)\n.op\n.end\n')).toEqual([]);
+    // Written the same way everywhere, \u00b5 is fine (W16).
+    expect(ids('* t\nV1 \u00b5in 0 6\nR1 \u00b5in 0 2\n.op\n.end\n')).toEqual([]);
+    // With another letter outside a to z, the name is the other check's, and its words now say what \u00b5 becomes.
+    expect(first('* t\nV1 \u00b5\u015f 0 12\nR1 \u00b5\u015f 0 1k\n.op\n.end\n', 'non-ascii-node').why).toBe(
+      'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores (\u015f as __), so its printout and results call this node u__, and two names can become one node. A name in plain letters avoids both.',
+    );
+    expect(first('* t\nV1 \u00b5\u015f 0 12\nR1 \u00b5\u015f u\u00e7 1k\nR2 u\u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').why).toContain(
+      'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores, so \u00b5\u015f and u\u00e7 both become u__',
+    );
   });
 
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {

@@ -253,6 +253,7 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-2', netlist: "* two node names that become one\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n", vectors: { "v(__)": 12, "i(v1)": -0.006 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-3', netlist: "* a .print line naming a node with Turkish letters\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.dc V1 0 12 6\n.print dc v(\u00e7\u0131k\u0131\u015f)\n.end\n", vectors: { "v(____k____)": [0, 4, 8], "i(v1)": [0, -0.002, -0.004] }, prints: [".print line ignored since rawfile was produced."], traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-4', netlist: "* commands in a .control block naming a node with Turkish letters\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.dc V1 0 12 6\n.control\nrun\nprint v(\u00e7\u0131k\u0131\u015f)\nsave v(\u00e7\u0131k\u0131\u015f)\nrun\n.endc\n.end\n", prints: ["vector \u00e7\u0131k\u0131\u015f is not available or has zero length", "no data saved for D.C. Transfer curve analysis; analysis not run"], fails: true, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-5', netlist: "* a\u00b5 and au are one node\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.options savecurrents\n.op\n.end\n", vectors: { "v(au)": 12, "i(v1)": -0.006, "i(@r1[i])": 0, "i(@r2[i])": 0.006 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-6', netlist: "* g\u00f1d is not ground, and neither is gnd2: gnd is\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\nR3 a gnd2 1k\nR4 gnd2 0 1k\nR5 a gnd 1k\nR6 gnd 0 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(g__d)": 2.5, "v(gnd2)": 2.5, "i(@r2[i])": 0.0025, "i(@r5[i])": 0.005, "i(@r6[i])": 0, "i(v1)": -0.009999999999999998 }, traps: ['non-ascii-node'] },
   { code: 'duplicate-name-3', netlist: "* two part names that become one\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists"], fails: true, traps: ['duplicate-name'] },
   // Added after the final reviews of 12 Nov 2026: characters that are not what they look like (W16).
@@ -354,6 +355,14 @@ it('non-ascii-node-3, -4: the rename writes the plain name on the .print line an
     expect(f!.netlist, code).not.toContain('\u00e7\u0131k\u0131\u015f');
     expect(vector(f!.run, 'v(cikis)'), code).toEqual([0, 4, 8]);
   }
+});
+
+it('non-ascii-node-5: the fix gives aµ a plain name of its own, and R1 then carries current: a divider (words-recheck-8)', () => {
+  const [f] = fixed.get('non-ascii-node-5')!;
+  expect(f!.label).toBe('non-ascii-node: Rename a\u00b5 to au2');
+  expect(vector(f!.run, 'v(au2)')).toEqual([12]);
+  expect(vector(f!.run, 'v(au)')).toEqual([8]);
+  expect(vector(f!.run, 'i(@r1[i])')).toEqual([0.004]);
 });
 
 it('runs every offered fix (there are many)', () => {
