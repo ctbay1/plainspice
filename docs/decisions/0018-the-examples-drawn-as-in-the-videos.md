@@ -171,7 +171,11 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   change." only when the drawing shows some of the last run's numbers, in pencil: that run gave answers,
   and the drawing writes them where a part or a node still has its name. After a run that gave none (a
   check found an error), or with the netlist replaced in the Netlist panel by a circuit whose parts and
-  nodes have other names, the paper shows none, and the sentence was untrue there.
+  nodes have other names, the paper shows none, and the sentence was untrue there. The same holds for
+  the numbers kept in pencil while a circuit is built on the drawing: "The numbers in pencil are from
+  before your last changes." (on the status line and the phone's card) and the pencil itself, with
+  "Before your last changes:" for screen readers, only while the drawing still shows some. With every
+  part deleted, the status line spoke of numbers in pencil over an empty paper.
 - **A keyboard on a touch screen.** The editing strip (the value field held above the on-screen
   keyboard) is for a field tapped on a touch screen, or for any field while an on-screen keyboard is
   up. A value field reached with the keys (a tablet with a keyboard, switch access) keeps the card's

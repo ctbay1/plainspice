@@ -609,3 +609,26 @@ test('a run started by an edit leaves the status line, its buttons, the hint and
     expect(running.at(-1)!.edges, 'the “more” at the edge').toBe(end.edges);
   }
 });
+
+test('the status line speaks of numbers in pencil only while the drawing shows some', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  const status = statusLine(page);
+  const canvas = page.locator('.nb-canvas');
+  // The ground deleted on the drawing: no answers (no node 0), so the last ones stay, in pencil, and the status line says so.
+  await drawing(page).getByRole('button', { name: /^Ground, / }).focus();
+  await page.keyboard.press('Delete');
+  await expect(status).toHaveAttribute('data-tone', 'bad');
+  await expect(status).toContainText(t('statusOldPencil'));
+  await expect(canvas).toHaveClass(/\bis-pending\b/);
+  // Every part deleted: no numbers are left on the paper, so none are spoken of, in words or in pencil.
+  for (const name of ['R2', 'R1', 'V1']) {
+    await partOnDrawing(page, name).focus();
+    await page.keyboard.press('Delete');
+    await expect(partOnDrawing(page, name)).toHaveCount(0);
+  }
+  await expect(status).toContainText(t('noAnalysisTitle'));
+  await expect(page.locator('.nb-results text')).toHaveCount(0);
+  await expect(status).not.toContainText(t('statusOldPencil'));
+  await expect(canvas).not.toHaveClass(/\bis-pending\b/);
+});
