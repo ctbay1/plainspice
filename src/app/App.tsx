@@ -510,8 +510,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [cardTyping, setCardTyping] = useState(false);
   const cardSession = useRef(0);
   const [panel, setPanel] = useState<PanelId | undefined>(undefined);
-  /** The next panel opens without taking the focus (one opened along with an example). */
+  /** The next panel opens (or closes) without moving the focus (one opened or closed along with an example). */
   const quietPanel = useRef(false);
+  /**
+   * The Netlist panel was opened by a SPICE for Beginners example, not by the student: an example from
+   * another video closes it again (else its drawing runs under the panel). Forgotten as soon as the
+   * student opens or closes a panel.
+   */
+  const panelByExample = useRef(false);
   const [tool, setTool] = useState<Tool>('select');
   /** The tool was chosen with the keys: the hint line gives the keyboard's way to use it. */
   const [toolByKey, setToolByKey] = useState(false);
@@ -765,10 +771,22 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       if (!example) return;
       load(example.netlist, { run: true, example: example.id });
       // SPICE for Beginners is about the netlist: on a computer its examples open with the Netlist
-      // panel beside the drawing (the focus stays where the student chose the example).
-      if (example.group === 'sp01' && !phone) {
-        quietPanel.current = true;
-        setPanel('netlist');
+      // panel beside the drawing (the focus stays where the student chose the example). An example of
+      // another video closes the panel such an example opened (final reviews, student
+      // netlist-panel-stays); a panel the student opened stays.
+      const open = openedPanel.current;
+      if (example.group === 'sp01') {
+        if (!phone && open !== 'netlist') {
+          quietPanel.current = true;
+          panelByExample.current = true;
+          setPanel('netlist');
+        }
+      } else if (panelByExample.current) {
+        panelByExample.current = false;
+        if (open === 'netlist') {
+          quietPanel.current = true;
+          setPanel(undefined);
+        }
       }
       // The link in the address is no longer what is open.
       if (linkInAddress.current) {
@@ -1155,17 +1173,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     },
     [phone],
   );
-  // A panel that opens takes the focus to its heading; one that closes gives it back to its tab.
+  // A panel that opens takes the focus to its heading; one that closes gives it back to its tab
+  // (not one opened or closed along with an example: the focus stays where the example was chosen).
   const openedPanel = useRef<PanelId | undefined>(undefined);
   useEffect(() => {
     const was = openedPanel.current;
     openedPanel.current = panel;
     const quiet = quietPanel.current;
     quietPanel.current = false;
+    // The student opened or closed a panel: an example no longer closes it.
+    if (panel !== was && !quiet) panelByExample.current = false;
     if (panel && panel !== was) {
       if (!quiet) panelHeading.current?.focus({ preventScroll: true });
     }
-    else if (!panel && was && (document.activeElement === document.body || !document.activeElement)) {
+    else if (!panel && was && !quiet && (document.activeElement === document.body || !document.activeElement)) {
       // On a phone, Numbers, Plot and ngspice output open from More: back to More.
       const tab = document.querySelector<HTMLElement>(phone ? `.bar .tab--${was}` : `.tabs .tab--${was}`) ?? (phone ? barMore.current : null);
       tab?.focus({ preventScroll: true });

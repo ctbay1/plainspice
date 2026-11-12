@@ -3,7 +3,8 @@
  * Ctrl+K keeps the focus in its field (Tab stays there, a click on a group's name too, Escape closes
  * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); a fix on the video's
  * mistake examples leaves no drawing warning, and the tab and the announcement agree (kept F1); the
- * starter's why is shown in the hint line (words W9).
+ * starter's why is shown in the hint line (words W9); the Netlist panel a SPICE for Beginners example
+ * opened closes with the next video's example (student netlist-panel-stays).
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -102,4 +103,18 @@ test('the first part on a blank page: why .op and .end were written is shown fir
   await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
   await clickAt(page, 2, 2);
   await expect(hintLine(page)).toHaveText(`${starterWords()} ${t('drawingWritten')}`);
+});
+
+test('the Netlist panel a SPICE for Beginners example opened closes with the next video’s example (student netlist-panel-stays)', async ({ page }) => {
+  test.skip(isPhone(page), 'on a phone the examples open without the panel');
+  await openApp(page);
+  await chooseExample(page, 'Example 1');
+  await expect(panel(page, 'netlist')).toBeVisible();
+  await chooseExample(page, 'Example 3: a supernode with a dependent source');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(/supernode/i);
+  await expect(panel(page, 'netlist')).toHaveCount(0);
+  // The drawing has the paper to itself again: every part is in view.
+  await expect(page.getByRole('main').getByRole('button', { name: /^R3, / })).toBeInViewport();
+  await chooseExample(page, 'Dependent sources E, G, F and H');
+  await expect(panel(page, 'netlist')).toBeVisible();
 });

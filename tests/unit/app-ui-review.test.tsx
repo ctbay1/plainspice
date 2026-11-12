@@ -3,8 +3,9 @@
  * The page after the final reviews of milestone 2 (the ui lane), in jsdom with the real ngspice as
  * in app-smoke.test.tsx: Ctrl+K's real list found by the words it shows (words W4, W5, W12) and its
  * field keeping the focus (a11y A1, A3); a fix on a video's mistake example leaving no drawing
- * warning, and said with the tab's count (kept F1); the starter's why in the hint line (words W9). Focus order and axe in a real browser:
- * tests/e2e/ui-review.spec.ts.
+ * warning, and said with the tab's count (kept F1); the starter's why in the hint line (words W9);
+ * the Netlist panel a SPICE for Beginners example opened, closed by the next video's example
+ * (student netlist-panel-stays). Focus order and axe in a real browser: tests/e2e/ui-review.spec.ts.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -169,5 +170,40 @@ describe('the first part on a blank page (words W9)', () => {
     // (The form's part is placed by the drawing, so no drawing lines are written yet: only the starter's why.)
     await waitFor(() => expect(document.querySelector('.hint')!.textContent).toBe(starterWords()));
     await waitFor(() => expect(polite()).toContain(starterWords()));
+  }, 30000);
+});
+
+describe('the Netlist panel a SPICE for Beginners example opens (student netlist-panel-stays)', () => {
+  const choose = async (name: string | RegExp): Promise<void> => {
+    fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name }, { timeout: 5000 }));
+  };
+  const netlistOpen = (): boolean => screen.queryByRole('region', { name: t('panelNetlist') }) !== null;
+
+  it('closes when an example of another video opens, and opens again with the next SPICE for Beginners example', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await choose('Example 1');
+    await waitFor(() => expect(netlistOpen()).toBe(true));
+    await choose(/^Example 3: a supernode with a dependent source/);
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/supernode/i));
+    expect(netlistOpen()).toBe(false);
+    await choose(/^Dependent sources E, G, F and H/);
+    await waitFor(() => expect(netlistOpen()).toBe(true));
+  }, 30000);
+
+  it('stays open when the student opened it, whatever example opens next', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await choose('Example 1');
+    await waitFor(() => expect(netlistOpen()).toBe(true));
+    // The student closes it and opens it again: now it is the student's.
+    fireEvent.click(tab('Netlist'));
+    expect(netlistOpen()).toBe(false);
+    fireEvent.click(tab('Netlist'));
+    expect(netlistOpen()).toBe(true);
+    await choose(/^Example 3: a supernode with a dependent source/);
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).textContent).toMatch(/supernode/i));
+    expect(netlistOpen()).toBe(true);
   }, 30000);
 });

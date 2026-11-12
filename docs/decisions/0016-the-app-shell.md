@@ -191,3 +191,7 @@ Ctrl+K stay as they are.
   the checks, the drawing lines PlainSpice cannot use and the dependent sources still to choose, as
   the tab counts them. While everything counted is a trap it is said as before ("1 trap found.": the
   checks find traps); otherwise in the tab's own words, "2 found in Checks."
+- **The Netlist panel a SPICE for Beginners example opens closes again** when an example of another
+  video (or of the basics) opens, so that drawing has the paper to itself (student
+  netlist-panel-stays). A panel the student opened or closed is the student's: no example closes it.
+  A panel opened or closed along with an example leaves the focus where the example was chosen.
