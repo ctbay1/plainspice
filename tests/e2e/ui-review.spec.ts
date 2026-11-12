@@ -2,12 +2,12 @@
  * What the final reviews of milestone 2 found in the page (the ui lane), fixed, in a real browser:
  * Ctrl+K keeps the focus in its field (Tab stays there, a click on a group's name too, Escape closes
  * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); "dependent" lists the
- * dependent sources' Place commands first (words W4); a fix on the video's
- * mistake examples leaves no drawing warning, and the tab and the announcement agree, and a fix that
- * renames a part keeps it where it was drawn (kept F1); the
- * starter's why is shown in the hint line (words W9); the Netlist panel a SPICE for Beginners example
- * opened closes with the next video's example (student netlist-panel-stays); a new node never takes a
- * name just said to be ground (student node-name-reused).
+ * dependent sources' Place commands first (words W4); a fix on the video's mistake examples leaves no
+ * drawing warning, the tab and the announcement agree, and a fix that renames a part keeps it where it
+ * was drawn (kept F1); the starter's why is shown in the hint line until it has been read, on a phone
+ * too (words W9); the Netlist panel a SPICE for Beginners example opened closes with the next video's
+ * example (student netlist-panel-stays); a new node never takes a name just said to be ground
+ * (student node-name-reused).
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -31,6 +31,7 @@ import {
   setNetlistWithDrawing,
   statusLine,
   RUN_TIMEOUT,
+  TYPING,
   t,
 } from './helpers.ts';
 
@@ -155,11 +156,15 @@ test('a fix that renames a part keeps it where it was drawn: the 0 V source stan
   const checks = await openPanel(page, 'checks');
   const fix = 'Use a 0 V source instead (VR1)';
   await expect(checks.getByRole('button', { name: fix, exact: true })).toBeVisible();
-  const centre = async (name: string): Promise<{ x: number; y: number }> => {
+  // Whether a part is drawn at grid point (9, 0), R1's place, wherever the view is now (a computer: a
+  // phone may show this wide drawing turned a quarter, another drawing than the netlist's).
+  const phone = isPhone(page);
+  const standsAt = async (name: string): Promise<boolean> => {
     const b = (await partOnDrawing(page, name).boundingBox())!;
-    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    const p = await gridPoint(page, 9, 0);
+    return p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height;
   };
-  const before = await centre('R1');
+  if (!phone) expect(await standsAt('R1')).toBe(true);
   await checks.getByRole('button', { name: fix, exact: true }).click();
   await expectAnnounced(page, `${t('fixApplied', { label: fix })}. No traps found.`);
   // Its position line took the new name (nothing else changed in it), and the tab warns about nothing.
@@ -168,17 +173,64 @@ test('a fix that renames a part keeps it where it was drawn: the 0 V source stan
   await expect.poll(() => checksCount(page)).toBe(0);
   await expect(panel(page, 'checks')).not.toContainText(t('checksDrawingTitle'));
   // VR1 is drawn where R1 was (between n1 and n2), not placed elsewhere with new wires.
-  const after = await centre('VR1');
-  expect(Math.abs(after.x - before.x)).toBeLessThan(4);
-  expect(Math.abs(after.y - before.y)).toBeLessThan(4);
+  if (!phone) await expect.poll(() => standsAt('VR1')).toBe(true);
 });
 
-test('the first part on a blank page: why .op and .end were written is shown first in the hint line (words W9)', async ({ page }) => {
-  test.skip(isPhone(page), 'a phone places by tapping (the phone tests)');
+test('the first part on a blank page: why .op and .end were written is shown first in the hint line, and stays until it has been read (words W9)', async ({ page }) => {
+  test.skip(isPhone(page), 'a phone places by tapping (the next test)');
   await openApp(page);
   await newCircuit(page);
   await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
   await clickAt(page, 2, 2);
+  const why = `${starterWords()} ${t('drawingWritten')}`;
+  await expect(hintLine(page)).toHaveText(why);
+  const placed = Date.now();
+  // The pointer moves on over empty paper 2 s later: the why stays (it went at the first move after 1.5 s).
+  await page.waitForTimeout(2000);
+  const empty = await gridPoint(page, 12, 9);
+  await page.mouse.move(empty.x, empty.y, { steps: 4 });
+  await page.mouse.move(empty.x + 40, empty.y + 25, { steps: 4 });
+  await expect(hintLine(page)).toHaveText(why);
+  // Escape closes the card that opened on R1: the why stays.
+  const card = page.getByRole('dialog', { name: /^R1 / });
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+  await expect(hintLine(page)).toHaveText(why);
+  // Past the 6 s it used to have at most, and the pointer moving again: still there (60 ms a character).
+  await page.waitForTimeout(Math.max(0, 7000 - (Date.now() - placed)));
+  await page.mouse.move(empty.x, empty.y, { steps: 4 });
+  await expect(hintLine(page)).toHaveText(why);
+  // The next thing, a tool chosen: the hint line says what the tool does.
+  await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
+  await expect(hintLine(page)).not.toHaveText(why);
+});
+
+test('on a phone the why for .op and .end shows once the first part’s card sheet closes, however long it was open (words W9)', async ({ page }) => {
+  test.skip(!isPhone(page), 'the phone’s card sheet takes the hint line’s place');
+  await openApp(page);
+  await newCircuit(page);
+  await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).click();
+  await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }).click();
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  await page.touchscreen.tap(paper.x + paper.width * 0.5, paper.y + paper.height * 0.3);
+  await page.getByRole('toolbar', { name: t('handLabel', { part: 'Resistor' }) }).getByRole('button', { name: t('place') }).click();
+  const placed = Date.now();
+  // R1's card opens as a sheet, in the hint line's place.
+  const card = page.getByRole('dialog', { name: /^R1 / });
+  await expect(card).toBeVisible();
+  await expect(hintLine(page)).toHaveCount(0);
+  // A value typed there (a change with nothing to say) does not take the why away unseen.
+  const field = card.getByRole('textbox');
+  await field.click();
+  await field.press('ControlOrMeta+a');
+  await field.pressSequentially('2k', TYPING);
+  await expect.poll(() => savedNetlist(page)).toMatch(/^R1 n1 n2 2k$/m);
+  await card.getByRole('button', { name: t('cardDone') }).click();
+  // The sheet closes 7 s after Place (more than the 6 s the why used to have): the hint line shows it.
+  await page.waitForTimeout(Math.max(0, 7000 - (Date.now() - placed)));
+  await card.getByRole('button', { name: t('cardClose', { name: 'R1' }) }).click();
+  await expect(card).toHaveCount(0);
   await expect(hintLine(page)).toHaveText(`${starterWords()} ${t('drawingWritten')}`);
 });
 

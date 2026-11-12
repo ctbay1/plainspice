@@ -329,9 +329,17 @@ browsers other than Chromium.
 
 ## After the final reviews (12 November 2026)
 
-- **The first part on a blank page shows why .op and .end were written**, first in the hint line and
-  for as long as the drawing note stays there, not only in what is said (words W9; the sentence is
-  `starterAdded`, the words lane's).
+- **The first part on a blank page shows why .op and .end were written**, first in the hint line, not
+  only in what is said (words W9; the sentence is `starterAdded`, the words lane's), and holds it there
+  until it can have been read. (Held as the drawing note, it went at the first pointer move after
+  1.5 s, after 6 s at most, and a phone never showed it: the critic of W9.) The hold is its reading
+  time, 60 ms a character, about 170 words a minute (never less than a refusal's 6 s; about 19 s for
+  the sentence and the drawing note together), counted only while the hint line shows it: on a phone
+  the new part's card opens as a sheet in the hint line's place, so the time starts when the sheet
+  closes (`src/app/hint-note.ts`). Moving the pointer, closing the card (Escape or its close button),
+  typing its value, or another change with nothing to say leaves it in place; a change with a note of
+  its own, a refusal, a tool chosen, Undo or Redo, another circuit opened, or an Escape that does more
+  than close a card takes its place at once.
 - **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
   now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
   every node name in the circuit's undo history: the texts Undo can go back to since the circuit was

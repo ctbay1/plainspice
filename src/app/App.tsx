@@ -167,6 +167,7 @@ import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
 import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, drawnAsInVideo, exampleById, exampleName } from './examples.ts';
 import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedText, stillToChoose } from './fixes.ts';
+import { REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
 import { useKeyboardInset, useMedia, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
 import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
@@ -292,8 +293,6 @@ interface NodeCardState {
 
 const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
 
-/** How long a refused edit's reason stays in the hint line (it is announced as well). */
-const REFUSAL_SHOWN_MS = 6000;
 /** How long a refusal stays in the hint line however the pointer moves (time to read it). */
 const REFUSAL_READ_MS = 1500;
 
@@ -565,8 +564,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [nodeCard, setNodeCard] = useState<NodeCardState | undefined>(undefined);
   /** Why the last edit was refused (the model's words): in the hint line until the next thing happens. */
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
-  /** What PlainSpice also did to the drawing with the last edit (an edit's notes), in the hint line for a moment. */
-  const [noteLine, setNoteLine] = useState<string | undefined>(undefined);
+  /**
+   * What PlainSpice also did to the drawing with the last edit (an edit's notes), in the hint line for
+   * a moment; or, held there until it has been read, why the first part also wrote .op and .end.
+   */
+  const [noteLine, setNoteLine] = useState<HintNote | undefined>(undefined);
+  /** The note's time is up (hint-note.ts): it goes, unless a newer note has taken its place. */
+  const clearNote = useCallback((note: HintNote) => setNoteLine((now) => (now === note ? undefined : now)), []);
   /** When the last refusal was said: a pointer moving on the paper a moment later brings the hint back. */
   const refusedAt = useRef(0);
   /** The node names of the open circuit's undo history, for the store's version they were read at (usedNodeNames, below). */
@@ -755,6 +759,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setMove(undefined);
       setLookAt(undefined);
       setRefusal(undefined);
+      setNoteLine(undefined);
       setTurnedForEditing(false);
       setUnchosen(new Set());
       setNotice(null);
@@ -1790,17 +1795,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   });
   // A refused edit's reason is in the hint line until the next thing happens, or for a few seconds
   // (it was said aloud too): then the hint says again what can be done now.
-  const hint = refusal && !hand && tool !== 'wire' && !move ? refusal : noteLine && !hand && !move ? noteLine : hintNow;
+  const refusalShown = !!refusal && !hand && tool !== 'wire' && !move;
+  const noteInHint = !refusalShown && !!noteLine && !hand && !move;
+  const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
+  // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
+  // netlist being typed puts it aside.
+  const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist));
   useEffect(() => {
     if (!refusal) return undefined;
     const timer = window.setTimeout(() => setRefusal(undefined), REFUSAL_SHOWN_MS);
     return () => window.clearTimeout(timer);
   }, [refusal]);
-  useEffect(() => {
-    if (!noteLine) return undefined;
-    const timer = window.setTimeout(() => setNoteLine(undefined), REFUSAL_SHOWN_MS);
-    return () => window.clearTimeout(timer);
-  }, [noteLine]);
+  // An edit's note goes after a few seconds; the starter's why once it has been in view long enough
+  // to read (after the first part's card sheet closes, on a phone: the critic of words W9).
+  useNoteTimer(noteLine, noteInView, clearNote);
   const plotAvailable = hasSweeps(record);
   /** The netlist's sweep lines (.dc, .tran), by name. */
   const sweepNames = useMemo(() => [...new Set(netlist.analyses.map((i) => netlist.lines[i]?.directive?.name).filter((n): n is string => n === '.dc' || n === '.tran'))], [netlist]);
@@ -2060,13 +2068,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const said = (how.notes ?? []).filter((n) => n.severity === 'warning' || n.kind === 'orphans-dropped').map((n) => n.message);
     announce([`${summary}${wrote}`, ...said].join(' '));
     // The first part on a blank page also wrote .op and .end (needsStarter): why, first in the hint
-    // line, so the new lines in the netlist are explained to the eye too (final reviews, words W9).
+    // line, so the new lines in the netlist are explained to the eye too (final reviews, words W9),
+    // and held there until it has been read (hint-note.ts: the critic of W9).
     const starter = summary.includes(starterWords()) ? starterWords() : '';
     // Seen too, not only heard: in the hint line for a moment, as a refusal's reason is (setRefusal below clears it otherwise).
     if (said.length || wrote || starter) {
       refusedAt.current = performance.now();
-      setNoteLine([...(starter ? [starter] : []), ...(wrote ? [wrote.trim()] : []), ...said].join(' '));
-    } else setNoteLine(undefined);
+      setNoteLine({ words: [...(starter ? [starter] : []), ...(wrote ? [wrote.trim()] : []), ...said].join(' '), ...(starter ? { read: true } : {}) });
+    } else if (!noteLine?.read) setNoteLine(undefined);
+    // (A change with nothing to say leaves a note that must be read, as a value typed on the new part's
+    // card does: it stays for its reading time, on a phone from when the card's sheet closes.)
     setNoteWanted(false);
     if (how.select) {
       setSelected(how.select);
@@ -2075,10 +2086,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       if (how.focus || how.open) pendingFocus.current = { item: how.select, ...(how.open ? { open: how.open } : {}) };
     }
   };
-  /** An edit refused: the model's reason in the hint line and for screen readers. */
+  /** An edit refused: the model's reason in the hint line and for screen readers (in place of an edit's note). */
   const refuse = (reason: string): void => {
     refusedAt.current = performance.now();
     setRefusal(reason);
+    setNoteLine(undefined);
     announce(reason);
   };
   /** A model edit on the drawing as it is now: done (one undo step), or refused with the model's reason. */
@@ -2582,9 +2594,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       // The pointer is in use: the hint gives the pointer's way again (a tool chosen by its key gave the keys' way).
       if (info && toolByKey) setToolByKey(false);
       // A refusal (or an edit's note) has been read (it was said aloud too): the pointer moving on brings back what can be done now.
-      if ((refusal || noteLine) && info && performance.now() - refusedAt.current > REFUSAL_READ_MS && !hand && tool !== 'wire') {
+      // (A note that must be read stays for its reading time, whatever the pointer does: hint-note.ts.)
+      if ((refusal || (noteLine && !noteLine.read)) && info && performance.now() - refusedAt.current > REFUSAL_READ_MS && !hand && tool !== 'wire') {
         setRefusal(undefined);
-        setNoteLine(undefined);
+        if (!noteLine?.read) setNoteLine(undefined);
       }
       const q = info ? quarter(info.at) : undefined;
       setHover((h) => ((h && q && h.x === q.x && h.y === q.y) || (!h && !q) ? h : q));
@@ -2756,15 +2769,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
       let acted = true;
+      /** This Escape closed a card (the one that opened on a new part, say). */
+      let closedCard = false;
       if (move) cancelMove();
       else if (wireDraft) {
         setWireDraft(undefined);
         announce(t('wireCancelled'));
       } else if (partsSheet) setPartsSheet(false);
       else if (moreSheet) setMoreSheet(false);
-      else if (card) closeCard();
-      else if (nodeCard) closeNodeCard();
-      else if (tool !== 'select') chooseTool('select');
+      else if (card) {
+        closeCard();
+        closedCard = true;
+      } else if (nodeCard) {
+        closeNodeCard();
+        closedCard = true;
+      } else if (tool !== 'select') chooseTool('select');
       else if (panel && !inEditor) setPanel(undefined);
       else if (selectedWire && !inEditor) setSelectedWire(undefined);
       else if (selected && !inEditor) setSelected(undefined);
@@ -2772,9 +2791,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       // already (in a browser, React draws that before this listener runs).
       else acted = false;
       // The next thing has happened: the hint line says again what can be done now, not an older refusal
-      // or an edit's note (they were said aloud when they came).
+      // or an edit's note (they were said aloud when they came). A note that must be read stays when
+      // Escape only closed a card: on a phone that brings the hint line, and the note, back into view.
       setRefusal(undefined);
-      setNoteLine(undefined);
+      if (!(closedCard && noteLine?.read)) setNoteLine(undefined);
       if (acted) e.preventDefault();
       return;
     }
