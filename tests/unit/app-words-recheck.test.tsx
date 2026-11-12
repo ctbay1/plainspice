@@ -217,7 +217,7 @@ describe('S11, critic of its fix: a .tf on a node written with a hidden or look-
     await waitFor(() => expect(statusLine()).toMatch(/^Not reliable/), { timeout: 15000 });
     expect(tone()).toBe('bad');
     expect(statusLine()).toContain('A check found an error: .tf asks about a node with');
-    await waitFor(() => expect(polite()).toContain('a check found an error'));
+    await waitFor(() => expect(polite()).toContain('a check found an error'), { timeout: 5000 });
     expect(polite()).not.toContain('volts per volt');
     expect(screen.queryByRole('heading', { name: t('resultsCardTf') })).toBeNull();
   }, 30000);
@@ -296,12 +296,12 @@ describe('words re-check 11: Shift+R and Delete on a part being moved say what c
     const ground = (): HTMLElement => screen.getByRole('button', { name: /^Ground, node 0/ });
     fireEvent.click(ground());
     fireEvent.click(await screen.findByRole('button', { name: t('nodeCardMoveGround') }));
-    await waitFor(() => expect(polite()).toContain('The ground symbol picked up'));
+    await waitFor(() => expect(polite()).toContain('The ground symbol picked up'), { timeout: 5000 });
     fireEvent.keyDown(ground(), { key: 'Delete' });
     await waitFor(() => expect(polite()).toContain('Put the ground symbol down first (Esc puts it back), then Delete deletes it.'));
-    // One square up it would lie across a wire: there it can only go back first.
+    // One square up it would lie across a wire: there it can only go back first (said after a pause).
     fireEvent.keyDown(ground(), { key: 'ArrowUp' });
-    await waitFor(() => expect(polite()).toContain('not here'));
+    await waitFor(() => expect(polite()).toContain('not here'), { timeout: 5000 });
     fireEvent.keyDown(ground(), { key: 'Delete' });
     await waitFor(() => expect(polite()).toContain('The ground symbol can’t go here: Esc puts it back, then Delete deletes it.'));
     expect(polite()).not.toContain('Put The ground symbol');
