@@ -240,3 +240,26 @@ test('a touch screen with a keyboard: Tab from a card’s value goes on to the c
   await page.keyboard.press('Tab');
   await expect(card.getByRole('button', { name: /Turn R1 a quarter turn/ })).toBeFocused();
 });
+
+test('a very short window (a laptop at 400 %): a calm status folds to its dot in the margin, a status to read keeps its words', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 200 });
+  await openApp(page);
+  await expectSolved(page);
+  const status = statusLine(page);
+  // Its words are still there for screen readers, but nothing of it covers the drawing.
+  await expect(status).toContainText(/Finished in \d+ ms/);
+  const main = (await status.locator('.status__main').boundingBox())!;
+  expect(main.width).toBeLessThanOrEqual(1);
+  const dot = (await status.boundingBox())!;
+  const margin = (await page.locator('.margin-line').boundingBox())!;
+  expect(dot.x + dot.width).toBeLessThanOrEqual(margin.x + 4);
+  const covered = await page.evaluate((b) => [...document.querySelectorAll('.nb-canvas svg text')].filter((e) => {
+    const r = e.getBoundingClientRect();
+    return r.width > 0 && r.right > b.x && r.left < b.x + b.width && r.bottom > b.y && r.top < b.y + b.height;
+  }).length, dot);
+  expect(covered).toBe(0);
+  // A status to read (a check found an error) keeps its words.
+  await chooseExample(page, 'Mistake 1: no ground (node 0)');
+  await expect(status).toHaveAttribute('data-tone', 'bad');
+  expect((await status.locator('.status__main').boundingBox())!.width).toBeGreaterThan(20);
+});
