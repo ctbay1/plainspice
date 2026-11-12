@@ -903,3 +903,26 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     for (const line of ['.dc V1 −5 5 1', '.dc V1 0 \u200b5 1', '.dc V1 V1 5 1 -400m', '.dc V1 0 V1 1', '.dc V1 O 5 1', '.dc V1 0 5 1 V2 −1 1 0.5']) expect(title(line), line).toBe('ngspice cannot read this line');
   });
 });
+
+describe('after the critic of the re-check fixes (12 November 2026)', () => {
+  it('a .dc line ngspice 47 stops at is no sweep in the circuit\'s words (CR1-11)', () => {
+    for (const dc of ['.dc V1 −5 5 1', '.dc V1 0 5 0​.5', '.dc V1 0', '.dc V1 0 5 1 2']) {
+      const said = describeCircuit(parseNetlist(`* t\nV1 in 0 1\nR1 in 0 1k\n${dc}\n.end\n`));
+      expect(said, dc).toContain('Analysis: a DC sweep at which ngspice 47 stops ("Bad syntax!"): see Checks.');
+      expect(said, dc).not.toContain('Analysis: DC sweep of');
+    }
+    expect(sp(describeCircuit(parseNetlist('* t\n.param st=1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 {st}\n.end\n')))).toContain('Analysis: DC sweep of V1 from 0 V to 5 V in steps of {st}.');
+  });
+
+  it('a .dc "Bad syntax!" with a number in braces is its step only when that step is in braces; a missing stop is not the step (CR1-4)', () => {
+    const title = (head: string, dc: string): string => {
+      const net = parseNetlist(`* t\n${head}V1 in 0 1\nR1 in 0 1k\n${dc}\n.end\n`);
+      const n = net.lines.findIndex((l) => l.directive?.name === '.dc') + 1;
+      return explainDiagnostic({ severity: 'error', code: 'bad-syntax', text: 'Bad syntax!', line: n }, net).title;
+    };
+    expect(title('.param st=0\n', '.dc V1 0 5 {st}')).toBe('.dc needs a step that is not 0');
+    expect(title('.param lo=0\n', '.dc V1 {lo} 5 0')).toBe('.dc needs a step that is not 0');
+    expect(title('.param lo=0\n', '.dc V1 {lo} 5 x')).toBe('ngspice cannot read this line');
+    expect(title('', '.dc V1 0')).toBe('ngspice cannot read this line');
+  });
+});

@@ -17,7 +17,7 @@ import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../eng
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, dcStopsNgspice, isExpression, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
@@ -267,6 +267,8 @@ export const DESCRIBE_STRINGS = {
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
+  // re-check critic CR1-11: a .dc line ngspice 47 cannot read is never told as a sweep that runs.
+  dcStopsName: 'a DC sweep at which ngspice 47 stops ("Bad syntax!"): see Checks',
   dcSweep: (source: string, start: string, stop: string, step: string): string => `${source} from ${start} to ${stop} in steps of ${step}`,
   points: (n: number): string => ` (${n} ${n === 1 ? 'point' : 'points'})`,
   tranName: (stop: string): string => `transient, from 0 to ${stop}`,
@@ -689,6 +691,7 @@ function analysisPhrase(netlist: Netlist, r: AnalysisReading): string {
     case 'tf':
       return S.tfName(r.output, r.input?.text ?? '?');
     case 'dc': {
+      if (dcStopsNgspice(r)) return S.dcStopsName;
       const sweeps = r.sweeps.map((s) => S.dcSweep(sweepName(s), sweepValue(s, s.startValue, s.start?.text), sweepValue(s, s.stopValue, s.stop?.text), sweepValue(s, s.stepValue, s.step?.text)));
       return S.dcName(sweeps.join(' and '), r.points !== undefined ? S.points(r.points) : '');
     }
@@ -1675,12 +1678,17 @@ function written(netlist: Netlist, name: string, line?: number): string {
 function dcStepIsTheProblem(netlist: Netlist, line: number | undefined): boolean {
   const reading = line === undefined ? undefined : readAnalysis(netlist, line - 1);
   if (reading?.kind !== 'dc') return true;
+  // A word in braces or quotes is a number numparam works out (dc-sweep-problems-17; re-check critic CR1-4):
+  // a step written so can only be the problem when it comes to 0.
+  let expressionStep = false;
   for (const s of reading.sweeps) {
-    if ((s.start && s.startValue === undefined) || (s.stop && s.stopValue === undefined)) return false;
-    if (s.step && s.stepValue === undefined) return lowerAscii(s.step.text) === 'temp' || partNamed(netlist, s.step.text) !== undefined;
+    if (!s.start || !s.stop) return false;
+    if ((s.startValue === undefined && !isExpression(s.start)) || (s.stopValue === undefined && !isExpression(s.stop))) return false;
+    if (s.step && s.stepValue === undefined && !isExpression(s.step)) return lowerAscii(s.step.text) === 'temp' || partNamed(netlist, s.step.text) !== undefined;
     if (!s.step || s.stepValue === 0) return true;
+    if (isExpression(s.step)) expressionStep = true;
   }
-  return false;
+  return expressionStep;
 }
 
 function lineText(netlist: Netlist, line: number | undefined): string {

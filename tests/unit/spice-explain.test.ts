@@ -907,3 +907,67 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     }
   });
 });
+
+describe('after the critic of the re-check fixes (12 November 2026)', () => {
+  const allNotes = (e: LineExplanation): string => e.notes.map(sp).join(' ');
+
+  it('a .dc number in braces or quotes is a number ngspice works out, never "not a number" (CR1-4; dc-sweep-problems-17)', () => {
+    for (const [text, k, label, meaning] of [
+      ['* t\n.param st=1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 {st}\n.end\n', 5, 'step', 'step: 1 V (st, from .param on line 2)'],
+      ['* t\n.param lo=-5\nV1 in 0 1\nR1 in 0 1k\n.dc V1 {lo} 5 1\n.end\n', 5, 'start', `start: ${MINUS}5 V (lo, from .param on line 2)`],
+      ["* t\n.param st=1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 'st'\n.end\n", 5, 'step', 'step: an expression: ngspice works out its value before running'],
+    ] as const) {
+      const e = line(text, k);
+      expect(meaningOf(e, label), text).toBe(meaning);
+      expect(allNotes(e), text).not.toMatch(/Bad syntax|stops/);
+      expect(sp(e.summary), text).toMatch(/^Sweep V1 from /);
+    }
+  });
+
+  it('a .dc line ngspice 47 stops at is said so, never as a sweep that runs (CR1-11)', () => {
+    for (const dc of ['.dc V1 −5 5 1', '.dc V1 0 5 0​.5', '.dc V1 0 5 0', '.dc V1 0 5', '.dc V1 0', '.dc V1 0 5 st', '.dc V1 0 5 1 2']) {
+      const e = line(`* t\nV1 in 0 1\nR1 in 0 1k\n${dc}\n.end\n`, 4);
+      expect(sp(e.summary), dc).toBe('ngspice 47 stops at this line ("Bad syntax!") and sweeps nothing: see Checks.');
+      expect(sp(e.summary), dc).not.toContain('At each point');
+    }
+    // A sweep that runs keeps its words, and words after the second sweep are not a third (dc-sweep-problems-19).
+    expect(sp(line('* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 1\n.end\n', 4).summary)).toMatch(/^Sweep V1 from 0 V to 5 V in steps of 1 V: 6 points\./);
+    const two = line('* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 0 1 0.5 7\n.end\n', 5);
+    expect(labels(two).filter((l) => /source/.test(l))).toEqual(['source', 'second source']);
+  });
+
+  it('the letter O for a zero is named as Checks names it, never "Don\'t type units" (CR1-9; look-alike-letter-10, -15)', () => {
+    for (const [value, read, written] of [['1Ok', '1 Ω', '10k'], ['1OOk', '1 Ω', '100k'], ['1OkΩ', '1 Ω', '10kΩ'], ['1оk', '1 Ω', '10k']] as const) {
+      const e = line(`* t\nV1 in 0 5\nR1 in a ${value}\nR2 a 0 1k\n.op\n.end\n`, 3);
+      expect(allNotes(e), value).toContain(`after the 1 is not the digit 0: SPICE stops reading the number at a letter, so it reads ${read}. Write ${written}.`);
+      expect(allNotes(e), value).not.toContain("Don't type units");
+    }
+    // A unit stays a unit.
+    expect(allNotes(line('* t\nV1 in 0 5\nR1 in a 1Ohm\nR2 a 0 1k\n.op\n.end\n', 3))).toContain("ngspice ignores 'Ohm' after the number. Don't type units after numbers.");
+  });
+
+  it('the note for a stray character ends as Checks does: a model warning on C and L, nothing more on a resistor read as 0 (CR1-10; look-alike-letter-7, -12)', () => {
+    const c = line('* t\nV1 in 0 5\nR1 in a 1k\nC1 a 0 4。7u\n.op\n.end\n', 4);
+    expect(allNotes(c)).toContain("ignores the 7u after it, and only warns that it can't find a model with the word's name.");
+    expect(allNotes(c)).not.toContain('without a message');
+    const l = line('* t\nV1 in 0 5\nR1 in a 1k\nL1 a 0 4。7u\n.op\n.end\n', 4);
+    expect(allNotes(l)).toContain("and only warns that it can't find a model");
+    const zero = line('* t\nV1 in 0 5\nR1 in a 0。47\nR2 a 0 1k\n.op\n.end\n', 3);
+    expect(allNotes(zero)).not.toContain('without a message');
+    expect(allNotes(zero)).toContain('ngspice 47 cannot use 0 Ω');
+    expect(allNotes(line('* t\nV1 in 0 5\nR1 in a 4。7k\nR2 a 0 1k\n.op\n.end\n', 3))).toContain('ignores the 7k after it, without a message.');
+  });
+
+  it('only a top-level .param line\'s names are values, after .end too; a sign with a space on an E line is read as a polynomial natively (CR1-7, CR1-3)', () => {
+    const sub = line('* t\n.subckt foo x y Vs=5\nR1 x y 1k\n.ends\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n', 5);
+    expect(meaningOf(sub, 'value')).toBe('ngspice cannot use this word here and stops: "unknown parameter"');
+    const inner = line('* t\n.subckt foo x y\n.param Vs=5\nR1 x y 1k\n.ends\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n', 6);
+    expect(meaningOf(inner, 'value')).toBe('ngspice cannot use this word here and stops: "unknown parameter"');
+    const after = line('* t\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n.param Vs=5\n', 2);
+    expect(meaningOf(after, 'value')).toBe('5 V (Vs, from .param on line 6)');
+    const e = line('* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 - 2\nR1 b 0 1k\n.op\n.end\n', 4);
+    expect(rows(e).find((r) => r[1] === '-')![2]).toContain('native ngspice 47, with XSPICE, reads extra words on E, F, G and H lines as a polynomial');
+    // A word alone where E's gain goes is ngspice's "unknown parameter" (unknown-word-18).
+    expect(rows(line('* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 Av\nR1 b 0 1k\n.op\n.end\n', 4)).find((r) => r[1] === 'Av')![2]).toBe('ngspice cannot use this word here and stops: "unknown parameter"');
+  });
+});

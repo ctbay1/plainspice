@@ -19,6 +19,7 @@
  */
 
 import { readNumber } from './numbers.ts';
+import type { ElementLetter } from './types.ts';
 
 /**
  * Characters with no width that text copied from web pages and PDFs can carry: the soft hyphen,
@@ -380,4 +381,36 @@ export function isPlainName(name: string): boolean {
     if ((c < 0x20 || c >= 0x7f) && c !== 0xb5) return false;
   }
   return true;
+}
+
+/** The units a part's value may carry after the letter O where a zero belongs (1OkΩ, 1OuF, 1OA): its own. */
+const O_UNITS: Partial<Record<ElementLetter, string>> = { R: '[Oo][Hh][Mm][Ss]?|\u03a9|\u2126', C: '[Ff]', L: '[Hh]', V: '[Vv]', I: '[Aa]' };
+
+/**
+ * A value word with the letter O where the digit 0 belongs, written as SPICE should read it, or
+ * undefined (re-check C4 and its critic, CR1-8, CR1-9; for traps.ts checkLetterO and explain.ts
+ * valueWords). Read on cleanWord's form, so the plain O and o and the Cyrillic, Greek and fullwidth
+ * ones are alike. Only where nothing else can be meant: Os between
+ * digits (1O00, 1OO0); Os after a digit before one scale letter that ends the word, or before the part's
+ * own unit after it (1Ok, 1OOk, 1Omeg, 1OkΩ, 1OuF; m only with the unit after it, as 1OmA: 100Ом is
+ * Russian for 100 Ω, and SPICE reads it so; never a or f, which after a number is a unit, amps or
+ * farads, as checkSpaceBeforeSuffix reads them); Os after a digit before the part's unit alone (1OA,
+ * 1OV), written without the unit, since a lone A or F would be atto or femto for SPICE; and an O at the
+ * start before a decimal point (O.47k). Never before another word: 1Ohm, 100Ом, 1kОм are as meant.
+ */
+export function zeroForLetterO(word: string, letter?: ElementLetter): string | undefined {
+  const { clean } = cleanWord(word, true);
+  if (!/[Oo]/.test(clean)) return undefined;
+  const own = letter ? O_UNITS[letter] : undefined;
+  const unit = own ? `(?:${own})` : '(?!)';
+  const zeros = (o: string): string => '0'.repeat(o.length);
+  const out = clean
+    .replace(/^([+-]?)[Oo](?=\.\d)/, '$10')
+    .replace(/(?<=\d)[Oo]+(?=\d)/g, zeros)
+    .replace(new RegExp(`(?<=\\d)[Oo]+(?=(?:[Mm][Ee][Gg]|[tgkunpTGKUNP\u00b5])${unit}?$|m${unit}$)`), zeros)
+    .replace(new RegExp(`(?<=\\d)([Oo]+)${unit}$`), (_m: string, o: string) => zeros(o));
+  if (out === clean) return undefined;
+  const r = readNumber(out);
+  // No letter O may be left for SPICE to stop at, but the O of the unit ohm (1OkOhm is 10kOhm).
+  return r && !r.rest && (!/[Oo]/.test(r.ignored ?? '') || new RegExp(`^${unit}$`).test(r.ignored ?? '')) ? out : undefined;
 }
