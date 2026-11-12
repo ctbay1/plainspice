@@ -24,7 +24,7 @@
  */
 import { lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Netlist } from '../spice/types.ts';
-import { circuitFromNetlist, GROUND, subCircuit, type Circuit } from './circuit.ts';
+import { circuitFromNetlist, GROUND, labelNode, subCircuit, type Circuit } from './circuit.ts';
 import { checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin } from './connectivity.ts';
 import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type NodeLabel, type PartPlacement } from './drawing.ts';
 import { parseDrawingLines, readDrawing, type DrawingLines, type DrawingProblem, type PositionLine } from './format.ts';
@@ -72,8 +72,8 @@ const BUILD_STRINGS = {
   layoutFailed: 'PlainSpice could not draw this circuit.',
   renamed: (from: string, to: string): string => `The position of ${from} now belongs to ${to}: no part is called ${from}, and ${to} had no position.`,
   unknownPart: (name: string, line: number): string => `No part is called ${name}, so its position on line ${line} is kept but not used.`,
-  unknownLabel: (node: string, line: number): string => `No node is called ${node}, so its label on line ${line} is kept but not used.`,
-  labelRenamed: (from: string, to: string): string => `The label ${from} now names ${to}: no node is called ${from}, and ${to} had no label there.`,
+  unknownLabel: (node: string, line: number): string => `No node is called ${node}, so the name written on line ${line} is kept but not used.`,
+  labelRenamed: (from: string, to: string): string => `The name ${from} on the drawing now names node ${to}: no node is called ${from}, and ${to} had no name there.`,
   placed: (names: readonly string[]): string => `${names.join(', ')} had no position, so PlainSpice placed ${names.length === 1 ? 'it' : 'them'}.`,
 } as const;
 
@@ -134,7 +134,10 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     for (const [k, p] of given) d.parts.set(k, p);
     d.grounds = lines.grounds.map((g) => ({ at: g.at, rot: g.rot }));
     d.wires = lines.wires.map((w) => w.slice());
-    d.labels = lines.labels.map((l) => (l.side ? { node: l.node, at: l.at, side: l.side } : { node: l.node, at: l.at }));
+    d.labels = lines.labels.map((l) => {
+      const node = labelNode(circuit, l.node);
+      return l.side ? { node, at: l.at, side: l.side } : { node, at: l.at };
+    });
     return d;
   };
 
@@ -394,9 +397,9 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
       const near = known ? nearest(copper.get(label.node) ?? [], label.at, 2) : undefined;
       if (near) {
         onCopper.push({ ...cloneLabel(label), at: near });
-        problems.push({ kind: 'label-moved', severity: 'info', message: `The label ${label.node} was moved onto its node's wire.` });
+        problems.push({ kind: 'label-moved', severity: 'info', message: `The name of node ${label.node} was moved onto its node's wire.` });
       } else {
-        problems.push({ kind: 'label-dropped', severity: 'info', message: `The label ${label.node} at ${label.at.x},${label.at.y} was dropped: ${known ? 'it is not on that node' : 'the netlist has no such node'}.` });
+        problems.push({ kind: 'label-dropped', severity: 'info', message: `The name of node ${label.node} at ${label.at.x},${label.at.y} was dropped: ${known ? 'it is not on that node' : 'the netlist has no such node'}.` });
       }
     }
     const named = new Set<string>();
@@ -410,7 +413,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
       }
       if (named.has(key)) {
         if (!keepLabels.some((l) => l.node === label.node && samePoint(l.at, label.at))) {
-          problems.push({ kind: 'label-dropped', severity: 'info', message: `The label ${label.node} at ${label.at.x},${label.at.y} was dropped: ${label.node} is already named on that wire.` });
+          problems.push({ kind: 'label-dropped', severity: 'info', message: `The name of node ${label.node} at ${label.at.x},${label.at.y} was dropped: ${label.node} is already named on that wire.` });
         }
         continue;
       }
@@ -458,7 +461,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
       break;
     }
   }
-  if (named) problems.push({ kind: 'connected-by-name', severity: 'info', message: 'Some pieces of a node could not be joined by a wire, so the node name is written on each piece: pieces with the same name are connected.' });
+  if (named) problems.push({ kind: 'connected-by-name', severity: 'info', message: 'Some pieces of a node could not be connected by a wire, so the node name is written on each piece: pieces with the same name are connected.' });
 
   // 6. Ground: a circuit with ground gets a ground symbol when it has none (after the wiring, so it
   //    goes under the finished ground wire rather than in its way).

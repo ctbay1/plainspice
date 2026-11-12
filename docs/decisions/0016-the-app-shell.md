@@ -132,6 +132,11 @@ the circuit is, one undo, and runs that keep up without piling up.
 
 ## What step B adds
 
+(Written before step B; what step B did is decision [0017](0017-the-schematic-editor.md): wires are
+not dragged, the card gained Turn, Mirror, Reverse, Move, Delete and Connections, Ctrl+K the editing
+commands, and the Checks panel the drawing lines PlainSpice cannot use and the controlled sources
+whose control it chose.)
+
 Placing, moving and wiring parts on the drawing with the toolbar's tools (and the phone's Parts
 sheet), deleting them, and dragging the drawing's parts and wires, each written to the netlist and its
 `*@` lines through the same store, with the same undo and the same live runs. The panels, the card and

@@ -16,11 +16,13 @@ import createNgspice from '../../engine/dist/ngspice.mjs';
 import { App } from '../../src/app/App.tsx';
 import type { Engine } from '../../src/app/engine.ts';
 import { START_HERE_ID } from '../../src/app/examples.ts';
+import { t } from '../../src/i18n/index.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
 import { EngineCancelledError } from '../../src/engine/client.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { encodeShare } from '../../src/share/link.ts';
 import { withDrawingBlock } from '../../src/notebook/schematic.ts';
+import { stripDrawing } from '../../src/schematic/index.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const read = (path: string): string => readFileSync(resolve(root, path), 'utf8');
@@ -186,7 +188,8 @@ describe('<App />', () => {
     expect(polite()).toMatch(/Undone|out/);
     fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true, shiftKey: true });
     await waitFor(() => expect(drawingText()).toMatch(/=\s*3\sV/), { timeout: 15000 });
-    expect((screen.getByRole('button', { name: 'Redo' }) as HTMLButtonElement).disabled).toBe(true);
+    // Run out, Redo keeps the focus it may have (aria-disabled) and says "Nothing to redo." when pressed.
+    expect(screen.getByRole('button', { name: 'Redo' }).getAttribute('aria-disabled')).toBe('true');
   }, 30000);
 
   it('the Netlist panel: the same text, its drawing lines folded; typing redraws the drawing, the checks follow, and the count is announced', async () => {
@@ -565,12 +568,12 @@ describe('<App />', () => {
     // A part goes between two nodes, chosen in words: a 3 kΩ resistor from in to ground.
     fireEvent.change(within(form).getByRole('combobox', { name: 'Part' }), { target: { value: 'R' } });
     fireEvent.change(within(form).getByRole('textbox', { name: 'Value' }), { target: { value: '3k' } });
-    fireEvent.change(within(form).getByRole('combobox', { name: 'Node 1' }), { target: { value: 'in' } });
-    fireEvent.change(within(form).getByRole('combobox', { name: 'Node 2' }), { target: { value: '0' } });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'End 1' }), { target: { value: 'in' } });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'End 2' }), { target: { value: '0' } });
     expect(within(form).getByText('R3 in 0 3k')).toBeTruthy();
     fireEvent.click(within(form).getByRole('button', { name: 'Add R3' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a part' })).toBeNull());
-    await waitFor(() => expect(polite()).toContain('R3 added between in and ground.'));
+    await waitFor(() => expect(polite()).toContain('R3 added between node in and ground.'));
     // The drawing places it; ngspice solves it with the rest: 6 V across 3 kΩ is 2 mA.
     await waitFor(() => expect(part('R3')).toBeTruthy());
     await waitFor(() => expect(engine.runs.at(-1)).toContain('R3 in 0 3k'), { timeout: 15000 });
@@ -579,7 +582,7 @@ describe('<App />', () => {
     // One undo takes it away again, and says what it undid.
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: /^R3, / })).toBeNull());
-    await waitFor(() => expect(polite()).toContain('Undone: R3 added between in and ground.'));
+    await waitFor(() => expect(polite()).toContain('Undone: R3 added between node in and ground.'));
   }, 30000);
 
   it('turns, reverses, moves and deletes the selected part with the keys, each one undo step with its words', async () => {
@@ -626,12 +629,12 @@ describe('<App />', () => {
     await waitFor(() => expect(within(card).getByText(/PlainSpice keeps node names to letters, digits and _/)).toBeTruthy());
     fireEvent.change(name, { target: { value: 'vout' } });
     fireEvent.submit(name.closest('form')!);
-    await waitFor(() => expect(polite()).toContain('out renamed to vout.'));
+    await waitFor(() => expect(polite()).toContain('Node out renamed to vout.'));
     await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 in vout 1k'));
     expect(screen.getByRole('button', { name: 'Node vout' })).toBeTruthy();
     // Ground's card says why it keeps its name.
     fireEvent.click(screen.getByRole('button', { name: 'Ground, node 0' }));
-    expect(within(screen.getByRole('dialog', { name: /^Ground/ })).getByText('Ground (node 0) keeps its name.')).toBeTruthy();
+    expect(within(screen.getByRole('dialog', { name: /^Ground/ })).getByText('Ground (node 0) keeps its name: in SPICE, the name 0 is what makes a node ground, the node every voltage is measured from.')).toBeTruthy();
   }, 30000);
 
   it('Undo and Redo across circuits opened from the Examples never save an example over the student’s netlist', async () => {
@@ -703,5 +706,210 @@ describe('<App />', () => {
     // Undo: the whole card's change, back to 1k.
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 in out 1k'));
+  }, 30000);
+});
+
+describe('<App /> after the words re-check of step B', () => {
+  const hint = (): string => document.querySelector('.hint')?.textContent ?? '';
+  const node = (name: string): HTMLElement => screen.getByRole('button', { name: `Node ${name}` });
+
+  it('keys that do nothing say why in the hint line; Undo with nothing left replaces an older refusal there (new-6, new-10, new-30)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    act(() => node('in').focus());
+    // Shift+Up: the name of node in goes only on its own copper (the model's reason, in "name" words).
+    fireEvent.keyDown(node('in'), { key: 'ArrowUp', shiftKey: true });
+    await waitFor(() => expect(hint()).toBe('The name of node in goes only on its own wires and pins: move it along them.'));
+    // Undo and Redo with nothing left: said, and in the hint line in place of the old refusal.
+    fireEvent.keyDown(node('in'), { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(hint()).toBe('Nothing to undo.'));
+    await waitFor(() => expect(polite()).toContain('Nothing to undo.'));
+    fireEvent.keyDown(node('in'), { key: 'z', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(hint()).toBe('Nothing to redo.'));
+    // Delete on a node: why a node is not deleted by itself, and what to do instead (new-9).
+    fireEvent.keyDown(node('in'), { key: 'Delete' });
+    await waitFor(() =>
+      expect(hint()).toBe(
+        'A node can’t be deleted by itself: it is there as long as a part is connected to it. Delete those parts, or disconnect their ends with Connections on their cards (deleting a piece of wire can cut the node in two, but does not remove it).',
+      ),
+    );
+    // T on a node, and on the ground symbol: only a part turns (one answer, which says why).
+    fireEvent.keyDown(node('in'), { key: 't' });
+    await waitFor(() => expect(hint()).toBe(t('turnOnlyParts')));
+    const ground = screen.getByRole('button', { name: 'Ground, node 0' });
+    act(() => ground.focus());
+    fireEvent.keyDown(ground, { key: 't' });
+    await waitFor(() => expect(polite()).toContain(t('turnOnlyParts')));
+    expect(t('turnOnlyParts')).toBe('Only a part turns, mirrors or reverses (and a ground symbol turns while it is in hand): a placed ground symbol, a node’s name and a piece of wire stay as they are.');
+    // Esc lets go: T and Delete then say how to choose something.
+    fireEvent.keyDown(ground, { key: 'Escape' });
+    fireEvent.keyDown(ground, { key: 't' });
+    await waitFor(() => expect(hint()).toBe('T, M and Shift+R act on the selected part, and none is selected now: click a part, or move to one with the arrow keys.'));
+    fireEvent.keyDown(ground, { key: 'Delete' });
+    await waitFor(() => expect(hint()).toBe('Nothing is selected to delete: click a part, a ground symbol or a piece of wire, or move to one with the arrow keys.'));
+  }, 30000);
+
+  it('Esc clears an older refusal or an edit’s note from the hint line at once, even with nothing left to let go of (the words critic)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    // An edit's note (the drawing lines written), then Esc: the hint says what can be done now.
+    act(() => part('R2').focus());
+    fireEvent.keyDown(part('R2'), { key: 't' });
+    await waitFor(() => expect(hint()).toBe(t('drawingWritten')));
+    fireEvent.keyDown(part('R2'), { key: 'Escape' });
+    await waitFor(() => expect(hint()).not.toBe(t('drawingWritten')));
+    const now = hint();
+    // Nothing is selected now: Delete says why; Esc has nothing to stop or let go of, and still clears it
+    // (well before the refusal's own few seconds).
+    fireEvent.keyDown(part('R2'), { key: 'Delete' });
+    await waitFor(() => expect(hint()).toBe(t('deleteNothing')));
+    fireEvent.keyDown(part('R2'), { key: 'Escape' });
+    await waitFor(() => expect(hint()).toBe(now), { timeout: 1000 });
+  }, 30000);
+
+  it('T, M and Shift+R on the part in hand are said; an F with no source to read says why at once, without "Not here" (new-35, new-8)', async () => {
+    render(<App startup={start('* no V\nI1 0 a 1m\nR1 a 0 1k\n.op\n.end\n')} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const tools = screen.getByRole('toolbar', { name: 'Parts and tools' });
+    const resistor = within(tools).getByRole('button', { name: /^Resistor/ });
+    fireEvent.click(resistor);
+    act(() => resistor.focus());
+    fireEvent.keyDown(resistor, { key: 't' });
+    await waitFor(() => expect(polite()).toContain('A resistor in hand, turned a quarter turn.'));
+    fireEvent.keyDown(resistor, { key: 'm' });
+    await waitFor(() => expect(polite()).toContain('A resistor in hand, mirrored.'));
+    fireEvent.keyDown(resistor, { key: 'R', shiftKey: true });
+    await waitFor(() => expect(polite()).toContain('A resistor in hand, turned round (its two ends swapped).'));
+    // The ground symbol looks the same mirrored: said, not silent.
+    fireEvent.keyDown(resistor, { key: '0' });
+    fireEvent.keyDown(resistor, { key: 'm' });
+    await waitFor(() => expect(polite()).toContain('A ground symbol looks the same mirrored or reversed: T turns it.'));
+    // F with no voltage source to read: the reason and the way out, before the pointer is on the paper.
+    fireEvent.keyDown(resistor, { key: 'f' });
+    const why = 'A current-controlled current source (F) reads the current through a voltage source, and this circuit has none yet: add a voltage source first';
+    await waitFor(() => expect(hint()).toBe(`${why} · Esc goes back to Select`));
+    await waitFor(() => expect(polite()).toContain(`A current-controlled current source in hand. ${why} · Esc goes back to Select`));
+  }, 30000);
+
+  it('the first edit made on the drawing says it wrote the drawing lines; sentences say "node"; Ctrl+K moves a node’s name and the ground symbol (new-15, new-33, new-22, new-29)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    act(() => part('R2').focus());
+    fireEvent.keyDown(part('R2'), { key: 't' });
+    await waitFor(() => expect(polite()).toContain(`R2 turned. ${t('drawingWritten')}`));
+    expect(t('drawingWritten')).toBe('The netlist now also says where each part is drawn, in lines starting with *@ that ngspice skips, so the drawing stays as it is.');
+    // Seen too, in the hint line for a moment.
+    expect(hint()).toBe(t('drawingWritten'));
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('*@ R2'));
+    // Once only: the lines are there now.
+    fireEvent.keyDown(part('R2'), { key: 'm' });
+    await waitFor(() => expect(polite()).toContain('R2 mirrored.'));
+    expect(polite()).not.toContain(`R2 mirrored. ${t('drawingWritten')}`);
+    // The Wire tool from the keys, Enter on a node: "node out", since a name may be an ordinary word.
+    act(() => node('out').focus());
+    fireEvent.keyDown(node('out'), { key: 'w' });
+    fireEvent.click(node('out'));
+    await waitFor(() => expect(polite()).toContain('Wire started at node out.'));
+    fireEvent.keyDown(node('out'), { key: 'Escape' });
+    fireEvent.keyDown(node('out'), { key: 'Escape' });
+    // Ctrl+K has the node card's Move by name: the name of node out, picked up.
+    act(() => node('out').focus());
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    let palette = screen.getByRole('dialog', { name: 'Commands' });
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'move the name' } });
+    expect(within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent)).toContain('Move the name of node out');
+    fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Enter' });
+    await waitFor(() => expect(polite()).toContain('The name of node out picked up: click where the name of node out goes · arrow keys move it · Enter puts it down · Esc puts it back'));
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(polite()).toContain('The name of node out put back.'));
+    // And the ground symbol's.
+    const ground = screen.getByRole('button', { name: 'Ground, node 0' });
+    act(() => ground.focus());
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    palette = screen.getByRole('dialog', { name: 'Commands' });
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'move the ground' } });
+    expect(within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent)).toContain('Move the ground symbol');
+    // Its keys are spelled as Help spells them.
+    expect(within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__key')?.textContent)).toContain('Shift+arrow keys');
+    // Delete too, as Help and the hints spell it (not "Del").
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'delete the ground' } });
+    const deleteGround = within(palette)
+      .getAllByRole('option')
+      .find((o) => o.querySelector('.palette__label')?.textContent === 'Delete the ground symbol');
+    expect(deleteGround?.querySelector('.palette__key')?.textContent).toBe('Delete');
+    fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Escape' });
+  }, 30000);
+
+  it('a value typed on a card that would move a part writes the drawing lines, and says so the first time (new-15)', async () => {
+    // A 0 V ammeter given a voltage is drawn as a source: the drawing is kept where it was, in *@ lines.
+    const text = stripDrawing(read('examples/sp01/sp01-2-ammeter.cir'));
+    render(<App startup={start(text)} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(part('Vm'));
+    const field = within(screen.getByRole('dialog', { name: /^Vm / })).getByRole('textbox');
+    fireEvent.change(field, { target: { value: '5' } });
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist') ?? '').toMatch(/^\*@ /m));
+    await waitFor(() => expect(polite()).toContain(t('drawingWritten')));
+  }, 30000);
+
+  it('a card’s Connections name a part’s ends as ends, and the hint says what can be done there (new-13, new-31)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(part('R2'));
+    const card = screen.getByRole('dialog', { name: /^R2 resistor/ });
+    fireEvent.click(within(card).getByRole('button', { name: 'Connections' }));
+    await waitFor(() => expect(hint()).toBe('Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers · Esc closes the card'));
+    expect(within(card).getByRole('button', { name: 'Connect to another node: the end 1 of R2' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: 'Disconnect the end 2 of R2 from ground (node 0)' })).toBeTruthy();
+    expect(card.textContent).not.toMatch(/node 1|node 2/);
+  }, 30000);
+
+  it('the Add a part form says what SPICE reads its value as, or why SPICE cannot use it and the fix, as a card does (new-14)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Parts and tools' })).getByRole('button', { name: 'Add a part' }));
+    const form = await screen.findByRole('dialog', { name: 'Add a part' }, { timeout: 5000 });
+    const value = within(form).getByRole('textbox', { name: 'Value' }) as HTMLInputElement;
+    fireEvent.change(value, { target: { value: '4,7k' } });
+    expect(form.textContent).toContain('4,7k: SPICE reads the comma as a space');
+    expect(value.getAttribute('aria-invalid')).toBe('true');
+    // Add pressed: the reason is seen once (under Value, with its fix), not again above the buttons;
+    // the Add button's description and the words said on Add still have it.
+    fireEvent.click(within(form).getByRole('button', { name: 'Add a part' }));
+    const why = '4,7k: SPICE reads the comma as a space';
+    const seen = [...form.querySelectorAll('p')].filter((p) => !p.closest('.visually-hidden') && (p.textContent ?? '').includes(why));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.id).toMatch(/-value-reads$/);
+    const addButton = within(form).getByRole('button', { name: 'Add a part' });
+    expect(document.getElementById(addButton.getAttribute('aria-describedby') ?? '')?.textContent).toContain(why);
+    expect(form.querySelector('.form-line__said')?.textContent).toContain(why);
+    fireEvent.click(within(form).getByRole('button', { name: 'Write 4.7k' }));
+    expect(value.value).toBe('4.7k');
+    expect(form.textContent).toMatch(/SPICE reads it as 4\.7\skΩ/);
+    fireEvent.change(value, { target: { value: '1 k' } });
+    expect(form.textContent).toContain('1 k: the space splits the value in two');
+    // 1M is read, as a milliohm: said, with the check and its fix.
+    fireEvent.change(value, { target: { value: '1M' } });
+    expect(form.textContent).toMatch(/SPICE reads it as 1\smΩ\s\(milli!\)/);
+    expect(form.textContent).toContain('1M means 1 milliohm');
+    expect(within(form).getByRole('button', { name: /^Make it 1meg/ })).toBeTruthy();
+    // The ends are "End 1" and "End 2" (a part's ends are on nodes).
+    expect(within(form).getByRole('combobox', { name: 'End 1' })).toBeTruthy();
+  }, 30000);
+
+  it('Help lists every editing key in the margin’s words, spells Esc one way, and says the screen-reader behaviour is not yet tried (new-21, new-22, new-23, new-24, new-34)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(screen.getByRole('button', { name: 'Help' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Help' }, { timeout: 5000 });
+    const keys = within(dialog).getByRole('table', { name: 'Keyboard shortcuts' });
+    const editing = within(dialog).getByRole('table', { name: 'Editing the drawing (on the drawing or in the margin)' });
+    const rows = within(editing).getAllByRole('row').map((r) => r.querySelector('th')?.textContent ?? '');
+    for (const want of ['T, M, Shift+R (on a card); Delete (on its buttons)', '0–9, ., +, − (on a card’s buttons or title)', 'Arrow keys, Enter, Esc (with something picked up by Move)', 'Shift+arrow keys']) expect(rows).toContain(want);
+    expect(editing.textContent).toContain('in the value field it erases the value');
+    expect(keys.textContent).toContain('R, C, L, V, I, E–H, W, 0 (on the drawing or in the margin)');
+    expect(keys.textContent).toContain('W chooses the Wire tool');
+    expect(`${keys.textContent}${editing.textContent}`).not.toMatch(/Escape|the parts\)/);
+    expect(dialog.textContent).toContain('This is not yet tried with a real screen reader.');
   }, 30000);
 });

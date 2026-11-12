@@ -68,7 +68,7 @@ function ActionButton({
       <span className="card-action__words" aria-hidden="true">
         <span className="card-action__word">
           {word}
-          {keys ? <kbd className="card-action__key">{keyWord ?? keys.replace('Shift+', '⇧')}</kbd> : null}
+          {keys ? <kbd className={`card-action__key${keys === 'Delete' ? ' card-action__key--delete' : ''}`}>{keyWord ?? keys.replace('Shift+', '⇧')}</kbd> : null}
         </span>
         {what ? <span className="card-action__what">{what}</span> : null}
       </span>
@@ -161,7 +161,9 @@ export function Connections({ e }: { e: PartEditing }): ReactNode {
   // Opened (the card's Connections button, or Ctrl+K), the list takes the focus: it is drawn above
   // the button that opened it, so the next Tab would otherwise leave the card (WCAG 2.4.3).
   useEffect(() => {
+    // Kept from scrolling the page, but brought into view inside the card's own scroll (a small window, WCAG 2.4.11).
     toggles.current[0]?.focus({ preventScroll: true });
+    toggles.current[0]?.scrollIntoView?.({ block: 'nearest' });
   }, []);
   // After a connection is made (or the list closed), the focus goes back to that end's Connect to.
   useEffect(() => {
@@ -169,6 +171,7 @@ export function Connections({ e }: { e: PartEditing }): ReactNode {
     const pin = back.current;
     back.current = undefined;
     toggles.current[pin]?.focus({ preventScroll: true });
+    toggles.current[pin]?.scrollIntoView?.({ block: 'nearest' });
   });
   return (
     <section className="card-conn" aria-label={t('connTitle')}>

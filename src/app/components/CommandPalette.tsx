@@ -25,13 +25,34 @@ export interface Command {
  * Commands whose label, group or keywords have a word starting with each typed word (any order, any
  * case): "plain" finds "the plain font", not "explain"; "net" finds "netlist".
  */
+/**
+ * The commands whose words start with every typed word, best first: a command whose name starts with
+ * what was typed, then one whose name has every typed word, then one found by its group or keywords
+ * ("open the help" finds Open the help first, not Open the settings in "Settings and help"). Within
+ * each rank the list keeps its order, and each group stays in one piece.
+ */
 export function filterCommands(commands: readonly Command[], query: string): Command[] {
   const typed = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!typed.length) return commands.slice();
-  return commands.filter((c) => {
-    const words = `${c.label} ${c.group} ${c.keywords ?? ''}`.toLowerCase().split(/[^\p{L}\p{N}_.]+/u);
-    return typed.every((w) => words.some((x) => x.startsWith(w)));
+  const split = (text: string): string[] => text.toLowerCase().split(/[^\p{L}\p{N}_.]+/u).filter(Boolean);
+  const phrase = typed.join(' ');
+  const ranked: { c: Command; rank: number; i: number }[] = [];
+  commands.forEach((c, i) => {
+    const name = split(c.label);
+    const all = [...name, ...split(c.group), ...split(c.keywords ?? '')];
+    if (!typed.every((w) => all.some((x) => x.startsWith(w)))) return;
+    const rank = name.join(' ').startsWith(phrase) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
+    ranked.push({ c, rank, i });
   });
+  // Groups stay whole (the list shows each group once, under its heading): a group goes where its best
+  // command ranks, and its commands keep their rank and order inside it.
+  const best = new Map<string, { rank: number; i: number }>();
+  for (const r of ranked) {
+    const g = best.get(r.c.group);
+    if (!g || r.rank < g.rank || (r.rank === g.rank && r.i < g.i)) best.set(r.c.group, { rank: r.rank, i: r.i });
+  }
+  const groupOf = (r: (typeof ranked)[number]): { rank: number; i: number } => best.get(r.c.group)!;
+  return ranked.sort((a, b) => groupOf(a).rank - groupOf(b).rank || groupOf(a).i - groupOf(b).i || a.rank - b.rank || a.i - b.i).map((r) => r.c);
 }
 
 export function CommandPalette({ commands, onRun, onClose }: { commands: readonly Command[]; onRun: (id: string) => void; onClose: () => void }): ReactNode {

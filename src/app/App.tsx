@@ -128,6 +128,7 @@ import {
   grabAt,
   grabOf,
   handFor,
+  hasDrawingLines,
   hitTest,
   joinsWords,
   mirrorHand,
@@ -135,8 +136,10 @@ import {
   moveOp,
   nodeChoices,
   nodeEnd,
+  nodeSaid,
   nodeWords,
   placeEdit,
+  refusedAnywhere,
   placePreview,
   reverseHand,
   sourceChoices,
@@ -172,7 +175,7 @@ import { clearShareFragment, type StartupDecision } from './startup.ts';
 import { STORAGE_KEYS, writeStored } from './storage.ts';
 import { createNetlistStore, type Change, type NetlistStore } from './store.ts';
 import { useDebounced, whenIdle } from './timing.ts';
-import { analysisName, hintWords, offsetWords, pressRun, statusWords, type EngineStatus } from './words.ts';
+import { afterColon, analysisName, hintWords, offsetWords, pressRun, statusWords, type EngineStatus } from './words.ts';
 
 export interface AppProps {
   startup: StartupDecision;
@@ -288,6 +291,8 @@ const cap = (words: string): string => words.charAt(0).toUpperCase() + words.sli
 
 /** How long a refused edit's reason stays in the hint line (it is announced as well). */
 const REFUSAL_SHOWN_MS = 6000;
+/** How long a refusal stays in the hint line however the pointer moves (time to read it). */
+const REFUSAL_READ_MS = 1500;
 
 /** The first sentence of an edit's summary: what Undo and Redo say they undid or redid. */
 const firstSentence = (summary: string): string => summary.split(/(?<=\.)\s/)[0] ?? summary;
@@ -483,6 +488,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   useEffect(() => {
     if (record && answers(record)) setLastGood((g) => (g?.record === record && g.key === circuitKey ? g : { key: circuitKey, record }));
   }, [record, circuitKey]);
+  // Only this circuit's answers, kept through a run of changes made on the drawing: any other change
+  // (an undo or redo past an opened example, typing, a fix, a circuit opened) lets them go, so pencil
+  // numbers are never another circuit's.
+  useEffect(() => {
+    if (snap.last.source !== 'drawing') setLastGood(undefined);
+  }, [snap.version, snap.last.source]);
   const building = snap.last.source === 'drawing';
   const stale = !answers(record) && building && lastGood?.key === circuitKey ? lastGood.record : undefined;
   const results = useMemo(() => (shown ? placeResults(shown.scene, answers(record) ?? answers(stale)) : NO_RESULTS), [shown, record, stale]);
@@ -494,6 +505,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [selected, setSelected] = useState<NavItem | undefined>(undefined);
   const [selectedLine, setSelectedLine] = useState<number | undefined>(undefined);
   const [card, setCard] = useState<CardState | undefined>(undefined);
+  /** The card's field makes T, M and Shift+R letters of the value now (IndexCard's onTyping): the hint says to close the card first. */
+  const [cardTyping, setCardTyping] = useState(false);
   const cardSession = useRef(0);
   const [panel, setPanel] = useState<PanelId | undefined>(undefined);
   /** The next panel opens without taking the focus (one opened along with an example). */
@@ -543,6 +556,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [nodeCard, setNodeCard] = useState<NodeCardState | undefined>(undefined);
   /** Why the last edit was refused (the model's words): in the hint line until the next thing happens. */
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  /** What PlainSpice also did to the drawing with the last edit (an edit's notes), in the hint line for a moment. */
+  const [noteLine, setNoteLine] = useState<string | undefined>(undefined);
+  /** When the last refusal was said: a pointer moving on the paper a moment later brings the hint back. */
+  const refusedAt = useRef(0);
   /** The part's card shows its connections. */
   const [connOpen, setConnOpen] = useState(false);
   /** The Add a part form, as it opens. */
@@ -602,6 +619,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     return wireStartOf(hitTest(schematic, hover, tol, 'wire')) ?? symbolEnd(schematic, hover, tol) ?? gridPoint(hover);
   }, [tool, schematic, asDrawn, hover, viewInfo?.unit]);
   const wirePath = useMemo(() => (wireDraft && schematic && wireHover ? wirePreview(schematic, wireDraft, wireHover) : undefined), [wireDraft, schematic, wireHover]);
+  /** The two nodes a click on the end under the pointer would make one (said in the hint line before the click). */
+  const wireMerge = ((): { a: string; b: string } | undefined => {
+    if (!wireDraft || !schematic || !wireHover || !wirePath || !('end' in wireHover)) return undefined;
+    const a = wireDraft.start.node;
+    const b = wireHover.node;
+    return a !== undefined && b !== undefined && a !== b ? { a: nodeSaid(schematic, a), b: nodeSaid(schematic, b) } : undefined;
+  })();
   const targets = useMemo(() => (tool === 'wire' && schematic && asDrawn ? wireTargets(schematic) : undefined), [tool, schematic, asDrawn]);
 
   const selectedPart = selected?.kind === 'part' && shown ? shown.scene.parts.find((p) => p.key === selected.key) : undefined;
@@ -609,7 +633,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const checks = current ? record.checks : traps;
   /** What is wrong with the drawing lines (a *@ line PlainSpice cannot read or use): in the Checks panel, counted with the checks. */
   const drawingWarnings = useMemo(() => (schematic?.problems ?? []).filter((p) => p.severity === 'warning'), [schematic]);
-  const checkCount = checks.length + drawingWarnings.length;
+  /** The controlled sources placed on the drawing that still read what PlainSpice chose for them (in the Checks panel too). */
+  const unchosenNow = useMemo(() => {
+    if (!schematic) return [];
+    return [...unchosen].flatMap((key) => {
+      const part = schematic.circuit.parts.find((p) => p.key === key);
+      const control = part ? controlWords(part) : undefined;
+      return part && control ? [{ key, name: part.name, control }] : [];
+    });
+  }, [schematic, unchosen]);
+  const checkCount = checks.length + drawingWarnings.length + unchosenNow.length;
   /** Checks on part lines (not notes): each part's first, which its symbol shows in red pen. */
   const partTraps = useMemo(() => {
     const out = new Map<string, Trap>();
@@ -779,29 +812,39 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     setSelectedWire(undefined);
     setLookAt(undefined);
     setRefusal(undefined);
+    setNoteLine(undefined);
   }, []);
+  /** Undo or Redo with nothing left: said, and shown in the hint line in place of an older refusal (as a refusal is). */
+  const nothingLeft = useCallback(
+    (words: string) => {
+      refusedAt.current = performance.now();
+      setRefusal(words);
+      announce(words);
+    },
+    [announce],
+  );
   const undo = useCallback(() => {
     const what = store.snapshot().undoLabel;
     if (!store.undo()) {
-      announce(t('nothingToUndo'));
+      nothingLeft(t('nothingToUndo'));
       return;
     }
     settleAfterHistory();
     canvas.current?.keep();
     focusCheck.current = true;
-    announce(what ? t('undoneWhat', { what }) : t('undone'));
-  }, [store, announce, settleAfterHistory]);
+    announce(what ? t('undoneWhat', { what: afterColon(what) }) : t('undone'));
+  }, [store, announce, settleAfterHistory, nothingLeft]);
   const redo = useCallback(() => {
     const what = store.snapshot().redoLabel;
     if (!store.redo()) {
-      announce(t('nothingToRedo'));
+      nothingLeft(t('nothingToRedo'));
       return;
     }
     settleAfterHistory();
     canvas.current?.keep();
     focusCheck.current = true;
-    announce(what ? t('redoneWhat', { what }) : t('redone'));
-  }, [store, announce, settleAfterHistory]);
+    announce(what ? t('redoneWhat', { what: afterColon(what) }) : t('redone'));
+  }, [store, announce, settleAfterHistory, nothingLeft]);
 
   const runNow = useCallback(() => {
     const now = store.get();
@@ -1003,7 +1046,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const onSelect = useCallback(
     (item: NavItem | undefined) => {
       setSelected(item);
-      setSelectedWire(undefined);
+      // The node of a piece of wire chosen again from the keys (Enter on it): the piece stays selected, as
+      // the hint says. A click on the node's name is the pointer choosing the node: the piece is let go.
+      if (!(item && selected && itemKey(item) === itemKey(selected) && lastInput.current === 'key')) setSelectedWire(undefined);
       setRefusal(undefined);
       moveRun.current += 1;
       if (item?.kind === 'node' && item.name !== GROUND) setSelectedGround(undefined);
@@ -1021,7 +1066,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         if (nodeCard) setNodeCard(undefined);
       }
     },
-    [schematic, card, nodeCard, openCard, closeCard, openNodeCard],
+    [schematic, selected, card, nodeCard, openCard, closeCard, openNodeCard],
   );
 
 
@@ -1044,13 +1089,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         const now = store.get();
         edit.written = next;
         const name = schematic?.circuit.parts.find((x) => x.key === card.key)?.name ?? card.key;
-        if (next !== now) store.set(next, { source: 'drawing', group: `card:${card.session}`, label: t('valueLabel', { name, value: value.trim() }) });
+        if (next !== now) {
+          store.set(next, { source: 'drawing', group: `card:${card.session}`, label: t('valueLabel', { name, value: value.trim() }) });
+          // A value that would move a part pins the drawing in *@ lines (keepDrawing): said the first time, never unseen.
+          if (!hasDrawingLines(now) && hasDrawingLines(next)) announce(t('drawingWritten'));
+        }
         kept = value.trim();
       }
       const refused = r.kind === 'refused' ? { reason: r.reason, ...(r.fix ? { fix: r.fix } : {}) } : how === 'put-back' && value ? refusedOf(edit.spot, value, letter) : undefined;
       setCard({ ...rest, input: value, kept, ...(refused ? { refused } : {}) });
     },
-    [card, editOf, schematic, store, refusedOf],
+    [card, editOf, schematic, store, refusedOf, announce],
   );
   const onValue = useCallback((value: string): void => cardWrite(value, 'typed'), [cardWrite]);
 
@@ -1154,12 +1203,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setWireDraft(undefined);
       setLookAt(undefined);
       setRefusal(undefined);
+      setNoteLine(undefined);
       setMove(undefined);
       setPartsSheet(false);
       if (next === 'select') {
         // The phone's turned view was put aside for editing: offered back (the status line's Turn to fit).
         if (turnedForEditing) {
+          // Back to the view the student was reading before editing: turned to fit again (else the as-drawn
+          // view at reading size would show one part, the rest off the screen).
           setTurnedForEditing(false);
+          setTurnWanted(true);
           announce(t('turnBack'));
         }
         return;
@@ -1174,10 +1227,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         setTurnWanted(false);
         setTurnedForEditing(true);
       }
-      const hint = hintWords({ phone, tool: next, selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: true, keys: byKey });
+      const anywhere = schematic && isPartKind(next) ? refusedAnywhere(schematic, next) : undefined;
+      const hint = hintWords({ phone, tool: next, selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: true, keys: byKey, ...(anywhere ? { place: { refused: anywhere, anywhere: true } } : {}) });
       announce(next === 'wire' ? hint : t('toolInHand', { part: cap(toolPhrase(next)), hint }));
     },
-    [announce, phone, turned, turnWanted, turnedForEditing],
+    [announce, phone, turned, turnWanted, turnedForEditing, schematic],
   );
 
   const fit = useCallback(() => {
@@ -1300,9 +1354,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const list: Command[] = [];
     const gRun = t('paletteGroupRun');
     if (liveState.running?.slow) list.push({ id: 'stop', group: gRun, label: t('paletteStop'), keywords: 'stop cancel' });
-    list.push({ id: 'run', group: gRun, label: t('paletteRun'), keywords: 'simulate solve ngspice', shortcut: 'Ctrl ↵' });
-    if (snap.canUndo) list.push({ id: 'undo', group: gRun, label: t('undo'), shortcut: 'Ctrl Z' });
-    if (snap.canRedo) list.push({ id: 'redo', group: gRun, label: t('redo'), shortcut: 'Ctrl Shift Z' });
+    list.push({ id: 'run', group: gRun, label: t('paletteRun'), keywords: 'simulate solve ngspice', shortcut: 'Ctrl+Enter' });
+    if (snap.canUndo) list.push({ id: 'undo', group: gRun, label: t('undo'), shortcut: 'Ctrl+Z' });
+    if (snap.canRedo) list.push({ id: 'redo', group: gRun, label: t('redo'), shortcut: 'Ctrl+Shift+Z' });
     for (const id of PANELS) {
       const name = panelTitle(id);
       list.push({ id: `panel:${id}`, group: t('paletteGroupPanels'), label: panel === id ? t('paletteClosePanel', { panel: name }) : t('paletteOpenPanel', { panel: name }), keywords: id });
@@ -1313,7 +1367,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'export:ltspice', group: gCircuit, label: t('exportLtspice'), keywords: 'export save download file net' });
     list.push({ id: 'new', group: gCircuit, label: t('newCircuit'), keywords: 'new blank empty clear start fresh circuit' });
     const gDrawing = t('paletteGroupDrawing');
-    list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'zoom screen whole', shortcut: 'Shift 1' });
+    list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'zoom screen whole', shortcut: 'Shift+1' });
     list.push({ id: 'zoom-in', group: gDrawing, label: t('zoomIn'), keywords: 'bigger', shortcut: '+' });
     list.push({ id: 'zoom-out', group: gDrawing, label: t('zoomOut'), keywords: 'smaller', shortcut: '−' });
     if (phone && turned) list.push({ id: 'turn', group: gDrawing, label: turnWanted ? t(video ? 'paletteAsInVideo' : 'paletteAsDrawn') : t('paletteTurnToFit'), keywords: 'turn rotate upright phone video' });
@@ -1330,14 +1384,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         const name = sel.name;
         list.push({ id: `turn:${sel.key}`, group: gEdit, label: t('paletteTurn', { name }), keywords: 'turn rotate quarter', shortcut: 'T' });
         list.push({ id: `mirror:${sel.key}`, group: gEdit, label: t('paletteMirror', { name }), keywords: 'mirror flip', shortcut: 'M' });
-        list.push({ id: `reverse:${sel.key}`, group: gEdit, label: t('paletteReverse', { name }), keywords: 'reverse swap ends nodes polarity', shortcut: 'Shift R' });
-        list.push({ id: `move:${sel.key}`, group: gEdit, label: t('paletteMove', { name }), keywords: 'move drag pick place', shortcut: 'Shift ←↑→↓' });
+        list.push({ id: `reverse:${sel.key}`, group: gEdit, label: t('paletteReverse', { name }), keywords: 'reverse swap ends nodes polarity', shortcut: 'Shift+R' });
+        list.push({ id: `move:${sel.key}`, group: gEdit, label: t('paletteMove', { name }), keywords: 'move drag pick place', shortcut: 'Shift+arrow keys' });
         list.push({ id: `conn:${sel.key}`, group: gEdit, label: t('paletteConnections', { name }), keywords: 'connect disconnect wire node ends connections' });
-        list.push({ id: `delete:${sel.key}`, group: gEdit, label: t('paletteDelete', { name }), keywords: 'delete remove erase', shortcut: 'Del' });
+        list.push({ id: `delete:${sel.key}`, group: gEdit, label: t('paletteDelete', { name }), keywords: 'delete remove erase', shortcut: 'Delete' });
       }
-      if (selectedWire) list.push({ id: 'delete-wire', group: gEdit, label: t('paletteDeleteWire'), keywords: 'delete remove wire', shortcut: 'Del' });
+      if (selectedWire) list.push({ id: 'delete-wire', group: gEdit, label: t('paletteDeleteWire'), keywords: 'delete remove wire', shortcut: 'Delete' });
       if (selected?.kind === 'node' && selected.name !== GROUND) list.push({ id: `rename:${selected.name}`, group: gEdit, label: t('paletteRename', { name: nodeWords(schematic, selected.name) }), keywords: 'rename node name label' });
-      if (selected?.kind === 'node' && selected.name === GROUND && schematic.drawing.grounds.length) list.push({ id: 'delete-ground', group: gEdit, label: t('paletteDeleteGround'), keywords: 'delete remove ground', shortcut: 'Del' });
+      // The node cards' Move, by name too (decision 0017: Ctrl+K has every editing command): the ground symbol, a node's name on the drawing.
+      if (selected?.kind === 'node' && !selectedWire && grabOf(schematic, selected)) {
+        const g = grabOf(schematic, selected, selectedGround)!;
+        if (g.kind === 'ground') list.push({ id: `move-ground:${g.ground}`, group: gEdit, label: t('nodeCardMoveGround'), keywords: 'move drag pick place ground symbol', shortcut: 'Shift+arrow keys' });
+        else if (g.kind === 'label') list.push({ id: `move-name:${g.node}`, group: gEdit, label: t('paletteMoveName', { name: nodeWords(schematic, g.node) }), keywords: 'move drag pick place name label node', shortcut: 'Shift+arrow keys' });
+      }
+      if (selected?.kind === 'node' && selected.name === GROUND && schematic.drawing.grounds.length) list.push({ id: 'delete-ground', group: gEdit, label: t('paletteDeleteGround'), keywords: 'delete remove ground', shortcut: 'Delete' });
     }
     for (const p of shown?.scene.parts ?? []) {
       list.push({ id: `part:${p.key}`, group: t('paletteGroupParts'), label: t('paletteChangePart', { name: p.name, kind: elementInfo(p.letter)?.name ?? p.letter }), keywords: `select open card ${p.letter} value` });
@@ -1355,7 +1415,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video ${plainWords(`${video ?? ''} ${e.name}`)}` });
     }
     return list;
-  }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, video, shown, plain, exampleId, schematic, tooBig, selected, selectedWire]);
+  }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, video, shown, plain, exampleId, schematic, tooBig, selected, selectedWire, selectedGround]);
 
   const runCommand = (id: string): void => {
     const [kind, arg] = id.split(/:(.*)/s) as [string, string | undefined];
@@ -1375,6 +1435,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     else if (kind === 'tool' && arg) chooseTool(arg as Tool);
     else if ((kind === 'turn' || kind === 'mirror' || kind === 'reverse') && arg) turnPart(kind, arg);
     else if (kind === 'move' && arg) startMove({ kind: 'part', key: arg }, 'pick');
+    else if (kind === 'move-ground' && arg) startMove({ kind: 'ground', ground: Number(arg) }, 'pick');
+    else if (kind === 'move-name' && arg) startMove({ kind: 'label', node: arg }, 'pick');
     else if (kind === 'delete' && arg) deleteNow({ part: arg });
     else if (kind === 'delete-wire' || kind === 'delete-ground') deleteNow();
     else if (kind === 'rename' && arg) openNodeCard(arg);
@@ -1591,16 +1653,22 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     // Checks panel lists them all). Else up to two checks and the node with no single answer.
     const sel = selected?.kind === 'part' ? selected.key : undefined;
     const most = building ? 1 : 3;
-    const add = (about: Box | undefined, text: string): void => {
-      if (!about || notes.length >= most) return;
+    const add = (about: Box | undefined, text: string, lasting = false): void => {
+      if (!about || (!lasting && notes.length >= most)) return;
       const note = placeNote(sc, about, text, { area: within, avoid: [...avoid, ...notes.map((n) => n.box)] });
       if (note) notes.push(note);
     };
-    // A controlled source just placed reads what PlainSpice chose for it: said first while it is selected.
+    // A controlled source placed on the drawing reads what PlainSpice chose for it until the student
+    // chooses on its card: its note stays, selected or not, while building too (the circuit solved is
+    // otherwise not the one the student means), the selected one first, two at most.
+    let lasting = 0;
     for (const key of [...unchosen].sort((a, b) => Number(b === sel) - Number(a === sel))) {
       const part = schematic.circuit.parts.find((p) => p.key === key);
       const control = part ? controlWords(part) : undefined;
-      if (part && control && (!building || key === sel)) add(partBox(sc, key), t('controlNote', { name: part.name, control }));
+      if (part && control && lasting < 2) {
+        lasting += 1;
+        add(partBox(sc, key), t('controlNote', { name: part.name, control }), true);
+      }
     }
     const ordered = [...partTraps].sort((a, b) => Number(b[0] === sel) - Number(a[0] === sel));
     for (const [key, trap] of ordered.slice(0, 2)) {
@@ -1646,12 +1714,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const noteNoRoom = noteShown && noteRect.width > 0 && !!viewInfo && !notePlace;
 
   // ------------------------------------------------------------------ words for the frame
-  const status = statusWords(engineStatus, liveState, text, phone, hasParts(netlist));
+  const statusNow = statusWords(engineStatus, liveState, text, phone, hasParts(netlist));
+  // The last answers kept in pencil while building: said in words on the status line, not only by their grey (WCAG 1.4.1).
+  const status = stale ? { ...statusNow, detail: `${statusNow.detail ? `${statusNow.detail} ` : ''}${t('statusOldPencil')}` } : statusNow;
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
   const cardProps = cardPart && card && schematic ? cardContent(cardPart, card, schematic, record, text, cardRun) : undefined;
   const empty = !tooBig && !!schematic && schematic.scene.parts.length === 0;
+  /** The part in hand cannot go anywhere yet (an F with no source to read, ground on a page with no parts): said at once, not only over the paper. */
+  const placeAnywhere = hand && schematic ? refusedAnywhere(schematic, hand.kind) : undefined;
   const movingName = move && schematic ? (move.grab.kind === 'part' ? (schematic.circuit.parts.find((p) => p.key === (move.grab as { key: string }).key)?.name ?? '') : move.grab.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(schematic, move.grab.node) })) : '';
   const hintNow = hintWords({
     phone,
@@ -1659,9 +1731,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     selectedName: selectedPart?.name,
     selectedNode: selected?.kind === 'node' && selected.name !== GROUND && schematic ? nodeWords(schematic, selected.name) : undefined,
     selectedGround: selected?.kind === 'node' && selected.name === GROUND && !selectedWire,
-    selectedWire: selectedWire && schematic ? nodeWords(schematic, schematic.scene.wires[selectedWire.wire]?.node ?? GROUND) : undefined,
+    selectedWire: selectedWire && schematic ? nodeSaid(schematic, schematic.scene.wires[selectedWire.wire]?.node ?? GROUND) : undefined,
     typeHint: cardProps?.label ? cardProps.typeHint : undefined,
-    typed: !!card && card.input.trim() !== card.start.trim(),
+    // The same rule as the card's keys and badges (IndexCard): T types, or T turns.
+    typed: !!card && cardTyping,
     nodeCard: nodeCard && schematic ? { name: nodeCard.node === GROUND ? t('groundName') : nodeWords(schematic, nodeCard.node), ground: nodeCard.node === GROUND } : undefined,
     paused: status.tone === 'paused',
     whole: viewInfo?.whole ?? true,
@@ -1671,20 +1744,34 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     invite: ((phone && noteWanted) || noteNoRoom) && firstScreenInvite ? firstScreenInvite.name : undefined,
     undrawn: tooBig,
     empty,
-    place: placeView && schematic ? (placeView.ok ? { joins: joinsWords(schematic, placeView) } : { refused: placeView.reason ?? '' }) : refusal && hand ? { refused: refusal } : undefined,
-    wire: tool === 'wire' ? { started: !!wireDraft, ...(refusal ? { refused: refusal } : {}) } : undefined,
+    place: placeAnywhere
+      ? { refused: placeAnywhere, anywhere: true }
+      : placeView && schematic
+        ? placeView.ok
+          ? { joins: joinsWords(schematic, placeView) }
+          : { refused: placeView.reason ?? '' }
+        : refusal && hand
+          ? { refused: refusal }
+          : undefined,
+    wire: tool === 'wire' ? { started: !!wireDraft, ...(refusal ? { refused: refusal } : {}), ...(wireMerge ? { merge: wireMerge } : {}) } : undefined,
     keys: toolByKey,
     moving: move ? { name: movingName, how: move.how, part: move.grab.kind === 'part', ...(move.preview && !move.preview.ok ? { refused: move.preview.reason ?? '' } : {}) } : undefined,
     editingAsDrawn: phone && turnedForEditing && (tool !== 'select' || !!move),
+    connections: !!card && connOpen && !strip,
   });
   // A refused edit's reason is in the hint line until the next thing happens, or for a few seconds
   // (it was said aloud too): then the hint says again what can be done now.
-  const hint = refusal && !hand && tool !== 'wire' && !move ? refusal : hintNow;
+  const hint = refusal && !hand && tool !== 'wire' && !move ? refusal : noteLine && !hand && !move ? noteLine : hintNow;
   useEffect(() => {
     if (!refusal) return undefined;
     const timer = window.setTimeout(() => setRefusal(undefined), REFUSAL_SHOWN_MS);
     return () => window.clearTimeout(timer);
   }, [refusal]);
+  useEffect(() => {
+    if (!noteLine) return undefined;
+    const timer = window.setTimeout(() => setNoteLine(undefined), REFUSAL_SHOWN_MS);
+    return () => window.clearTimeout(timer);
+  }, [noteLine]);
   const plotAvailable = hasSweeps(record);
   /** The netlist's sweep lines (.dc, .tran), by name. */
   const sweepNames = useMemo(() => [...new Set(netlist.analyses.map((i) => netlist.lines[i]?.directive?.name).filter((n): n is string => n === '.dc' || n === '.tran'))], [netlist]);
@@ -1694,6 +1781,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
 
   const cardHandlers = {
     onValue,
+    onTyping: setCardTyping,
     onPutBack: () => card && cardWrite(card.start, 'put-back'),
     onUseFix: (value: string) => cardWrite(value, 'typed'),
     onNumbers: () => openPanel('numbers'),
@@ -1903,15 +1991,24 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const commit = (text: string, summary: string, how: { group?: string; select?: NavItem; focus?: boolean; open?: 'card' | 'value'; fit?: boolean; notes?: readonly DrawingProblem[] } = {}): void => {
     setRefusal(undefined);
     focusCheck.current = true;
-    if (text !== store.get()) {
+    const before = store.get();
+    if (text !== before) {
       if (how.fit) setFitCount((n) => n + 1);
       else canvas.current?.keep();
       store.set(text, { source: 'drawing', label: firstSentence(summary), ...(how.group ? { group: how.group } : {}) });
     }
+    // The first edit made on the drawing of a netlist without drawing lines writes them (where each
+    // part is, decision 0013): said, never behind the student's back (drawing-1: ngspice skips them).
+    const wrote = text !== before && !hasDrawingLines(before) && hasDrawingLines(text) ? ` ${t('drawingWritten')}` : '';
     // What PlainSpice also did to the drawing that the student should know (lines of parts the netlist
     // no longer has removed, a line it could not use): said after the summary.
     const said = (how.notes ?? []).filter((n) => n.severity === 'warning' || n.kind === 'orphans-dropped').map((n) => n.message);
-    announce([summary, ...said].join(' '));
+    announce([`${summary}${wrote}`, ...said].join(' '));
+    // Seen too, not only heard: in the hint line for a moment, as a refusal's reason is (setRefusal below clears it otherwise).
+    if (said.length || wrote) {
+      refusedAt.current = performance.now();
+      setNoteLine([...(wrote ? [wrote.trim()] : []), ...said].join(' '));
+    } else setNoteLine(undefined);
     setNoteWanted(false);
     if (how.select) {
       setSelected(how.select);
@@ -1922,6 +2019,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   };
   /** An edit refused: the model's reason in the hint line and for screen readers. */
   const refuse = (reason: string): void => {
+    refusedAt.current = performance.now();
     setRefusal(reason);
     announce(reason);
   };
@@ -1946,7 +2044,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   /** Turn, Mirror or Reverse: the part in hand, the part being moved, else the selected part (or the one named). */
   const turnPart = (kind: 'turn' | 'mirror' | 'reverse', key?: string): void => {
     if (key === undefined && hand) {
+      // Drawn turned at once, and said (a screen reader has no picture of the part in hand).
+      if (hand.kind === 'ground' && kind !== 'turn') return announce(t('handGroundSame'));
       setHand(kind === 'turn' ? turnHand(hand) : kind === 'mirror' ? mirrorHand(hand) : reverseHand(hand));
+      announce(t(kind === 'turn' ? 'handTurned' : kind === 'mirror' ? 'handMirrored' : 'handReversed', { part: cap(toolPhrase(hand.kind)) }));
       return;
     }
     const m = moveRef.current;
@@ -2028,7 +2129,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       if (!end) return refuse(t('wireStartHere'));
       setWireDraft({ start: end, corners: [] });
       setRefusal(undefined);
-      announce(t('wireStarted', { node: end.node === undefined ? t('joinsNew') : nodeWords(s, end.node) }));
+      announce(t('wireStarted', { node: end.node === undefined ? t('joinsNew') : nodeSaid(s, end.node) }));
       return;
     }
     if (end) {
@@ -2090,6 +2191,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     setRefusal(undefined);
     setSelectedWire(undefined);
     const m: MoveState = { grab: g, how, offset: pointer ? { x: pointer.x - at.x, y: pointer.y - at.y } : { x: 0, y: 0 }, preview: { grab: g, to: at, base: s.netlist.text, ok: true, schematic: s } };
+    // The view holds still while something is moved: fitting to the preview as it grows would move the
+    // grid under the pointer (a drag outwards zoomed out and dropped the part far away).
+    canvas.current?.keep();
     moveRef.current = m;
     moveWanted.current = at;
     setMove(m);
@@ -2099,7 +2203,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       // On the drawing at once (the arrow keys move it from the very next key), and again once the card has gone.
       canvas.current?.focusItem(item);
       requestAnimationFrame(() => canvas.current?.focusItem(item));
-      announce(t('pickedUp', { name: cap(grabName(s, g)), hint: hintWords({ phone, tool: 'select', selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: true, moving: { name: grabName(s, g), how: 'pick', part: g.kind === 'part' } }) }));
+      // "R2 picked up: click where R2 goes · …": the hint goes on after the colon in lower case.
+      const hint = hintWords({ phone, tool: 'select', selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: true, moving: { name: grabName(s, g), how: 'pick', part: g.kind === 'part' } });
+      announce(t('pickedUp', { name: cap(grabName(s, g)), hint: afterColon(hint) }));
     }
   };
   /** The moving thing wanted at a point: previewed once a frame (the model's move, the drawing it gives). */
@@ -2157,7 +2263,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const item = grabItem(m.grab);
     if (!preview || !preview.ok) {
       setSelected(item);
-      return refuse(preview?.reason ?? EDIT_STRINGS.failed);
+      // It went back: said with why, once; the hint goes back to what can be done on the next move.
+      return refuse(t('dropRefused', { name: cap(grabName(s, m.grab)), reason: afterColon(preview?.reason ?? EDIT_STRINGS.failed) }));
     }
     if (m.grab.kind === 'ground') setSelectedGround(m.grab.ground);
     if (!preview.result) {
@@ -2201,6 +2308,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const c = nodeCard;
     const s = currentDrawing();
     if (!c || !s) return;
+    // The name it already has (as written): nothing to do, and it says so, not "renamed".
+    const written = s.circuit.nodes.get(c.node)?.text ?? c.node;
+    if (c.input.trim() === written) {
+      announce(t('renameSame', { name: written }));
+      return;
+    }
     const r = applyEdit(s, { kind: 'rename-node', node: c.node, name: c.input });
     if (!r.ok) {
       setNodeCard({ ...c, refused: r.reason ?? EDIT_STRINGS.failed });
@@ -2373,6 +2486,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       </div>
     ) : null;
 
+  /** Why Shift+arrow keys or Enter do nothing to the piece of wire selected (they would act on its node), and what they do once it is let go. */
+  const pieceWhy = (what: 'move' | 'card'): string => {
+    const s = currentDrawing();
+    const node = (selectedWire && s?.scene.wires[selectedWire.wire]?.node) ?? GROUND;
+    if (!s) return t('pieceNoMoveAlone');
+    if (what === 'card') return t('pieceNoCard', { node: nodeSaid(s, node) });
+    const g = grabOf(s, { kind: 'node', name: node });
+    return g ? t('pieceNoMove', { what: g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(s, node) }) }) : t('pieceNoMoveAlone');
+  };
+
   /** Enter (or a click without a pointer) on an item: its card; with a part in hand, the Add a part form; with the Wire tool, a wire's end at a node. */
   const onOpen = (item: NavItem): void => {
     if (tool === 'wire') {
@@ -2388,6 +2511,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       return;
     }
     if (move?.how === 'pick') return dropMove();
+    // A piece of wire selected (its node has the focus for the keys): Enter finds no card for it, and says
+    // so. A click on its node's name chose the node (onSelect let go of the piece): the node's card opens.
+    if (selectedWire && lastInput.current === 'key' && item.kind === 'node' && selected?.kind === 'node' && selected.name === item.name) return refuse(pieceWhy('card'));
     if (item.kind === 'part') openCard(item.key);
     else openNodeCard(item.name);
   };
@@ -2395,6 +2521,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // The canvas's side: what a press, a drag, a tap, the pointer over the paper and a double click mean now.
   editingRef.current = {
     hover: (info) => {
+      // The pointer is in use: the hint gives the pointer's way again (a tool chosen by its key gave the keys' way).
+      if (info && toolByKey) setToolByKey(false);
+      // A refusal (or an edit's note) has been read (it was said aloud too): the pointer moving on brings back what can be done now.
+      if ((refusal || noteLine) && info && performance.now() - refusedAt.current > REFUSAL_READ_MS && !hand && tool !== 'wire') {
+        setRefusal(undefined);
+        setNoteLine(undefined);
+      }
       const q = info ? quarter(info.at) : undefined;
       setHover((h) => ((h && q && h.x === q.x && h.y === q.y) || (!h && !q) ? h : q));
       const m = moveRef.current;
@@ -2455,7 +2588,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       if (tool === 'wire') {
         const tol = nearness(info.unit) * (info.pointer === 'touch' ? 1.6 : 1);
         // A click on a part's symbol (or a ground symbol) means that part: its nearer pin, never a corner inside it.
-        wireAt(wireStartOf(hitTest(s, info.at, tol, 'wire')) ?? symbolEnd(s, info.at, tol), info.at);
+        const clicked = wireStartOf(hitTest(s, info.at, tol, 'wire')) ?? symbolEnd(s, info.at, tol);
+        // The end the preview showed, when the click is on the same part's symbol: at its middle the two pins
+        // are equally near, and the pointer's last move (not the press, a fraction of a square away) chose.
+        const shown = wireHover && 'end' in wireHover ? wireHover : undefined;
+        const same = !!clicked && !!shown && 'part' in clicked.end && 'part' in shown.end && clicked.end.part === shown.end.part;
+        wireAt(same ? shown : clicked, info.at);
         return;
       }
       // Select: what has no button of its own (a part's words, a second ground symbol, a piece of wire).
@@ -2491,18 +2629,23 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       case 'turn':
       case 'mirror':
       case 'reverse':
-        if (hand || move || (onDrawing && selected?.kind === 'part')) {
+        if (hand || move || (onDrawing && selected?.kind === 'part' && !selectedWire)) {
           turnPart(k.kind);
           return true;
         }
-        // On a node, or nothing selected: say why nothing happens.
+        // On a node, the ground symbol or a piece of wire, or nothing selected: say why nothing happens.
         if (onDrawing) {
-          refuse(t('turnPartFirst'));
+          refuse(t(selected ? 'turnOnlyParts' : 'turnPartFirst'));
           return true;
         }
         return false;
       case 'move':
         if (!onDrawing || !selected || move) return false;
+        // A piece of wire selected: Shift+arrow keys would move its node's name (or the ground symbol), which the hint does not say.
+        if (selectedWire) {
+          refuse(pieceWhy('move'));
+          return true;
+        }
         stepSelected(k.dir);
         return true;
       case 'delete':
@@ -2545,10 +2688,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (paletteOpen || inOverlay) return;
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
+      let acted = true;
       if (move) cancelMove();
       else if (wireDraft) {
         setWireDraft(undefined);
-        setRefusal(undefined);
         announce(t('wireCancelled'));
       } else if (partsSheet) setPartsSheet(false);
       else if (moreSheet) setMoreSheet(false);
@@ -2558,8 +2701,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else if (panel && !inEditor) setPanel(undefined);
       else if (selectedWire && !inEditor) setSelectedWire(undefined);
       else if (selected && !inEditor) setSelected(undefined);
-      else return;
-      e.preventDefault();
+      // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
+      // already (in a browser, React draws that before this listener runs).
+      else acted = false;
+      // The next thing has happened: the hint line says again what can be done now, not an older refusal
+      // or an edit's note (they were said aloud when they came).
+      setRefusal(undefined);
+      setNoteLine(undefined);
+      if (acted) e.preventDefault();
       return;
     }
     if (typing) return;
@@ -2582,13 +2731,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (onCard) {
       const k = editKey(e);
       if (!k || (k.kind !== 'turn' && k.kind !== 'mirror' && k.kind !== 'reverse' && k.kind !== 'delete')) return;
-      // Only the Delete key deletes from a card (its button says Del): Backspace there is too easily pressed.
-      if (k.kind === 'delete' && e.key !== 'Delete') return;
+      // Only the Delete key deletes from a card (its button says Del): Backspace there is too easily pressed, and says so.
+      if (k.kind === 'delete' && e.key !== 'Delete') {
+        if (card) {
+          e.preventDefault();
+          refuse(t('deleteWithDeleteKey', { name: schematic?.circuit.parts.find((x) => x.key === card.key)?.name ?? card.key }));
+        }
+        return;
+      }
       e.preventDefault();
       if (card && k.kind === 'delete') deleteNow({ part: card.key });
       else if (card && k.kind !== 'delete') turnPart(k.kind, card.key);
       else if (nodeCard?.node === GROUND && k.kind === 'delete' && schematic?.drawing.grounds.length) deleteNow({ ground: Math.min(nodeCard.ground ?? 0, schematic.drawing.grounds.length - 1) });
-      else refuse(k.kind === 'delete' ? t('deleteNodeWhy') : t('turnPartFirst'));
+      // A node's card (or ground's): a node is not deleted by itself, and only a part turns.
+      else refuse(k.kind === 'delete' ? t('deleteNodeWhy') : t('turnOnlyParts'));
       return;
     }
     // The drawing: its parts' and nodes' buttons, or the paper itself (a click on a piece of wire or on
@@ -2683,7 +2839,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       item.kind === 'part'
         ? (() => {
             const p = sc.parts.find((x) => x.key === item.key);
-            return p ? unionBoxes([p.box, p.labelBox]) : undefined;
+            // The part, its words, and the names of the nodes on its pins (what the student reads with it).
+            const names = p ? sc.nodeLabels.filter((l) => p.pins.some((q) => q.node === l.node)).map((l) => l.box) : [];
+            return p ? unionBoxes([p.box, p.labelBox, ...names]) : undefined;
           })()
         : item.name === GROUND
           ? sc.grounds[0]?.box
@@ -2743,6 +2901,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           <ChecksPanel
             traps={traps}
             drawing={drawingWarnings}
+            unchosen={unchosenNow}
+            onOpenCard={(key) => {
+              // On a phone the panel is a sheet over the drawing: the card's sheet takes its place.
+              if (phone) setPanel(undefined);
+              setSelected({ kind: 'part', key });
+              openCard(key, true, true);
+            }}
             partOfLine={(line) => schematic?.circuit.parts.find((p) => p.line + 1 === line)?.name}
             onGoToLine={(trap) => goToLine(trap.line)}
             onGoToDrawingLine={(line) => {
@@ -2851,6 +3016,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       phone={phone}
       {...(!phone ? { zoom: { percent: zoomPercent, onIn: () => canvas.current?.zoomBy(1.2), onOut: () => canvas.current?.zoomBy(1 / 1.2), onFit: fit } } : {})}
       {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: () => setTurnWanted((w) => !w) } } : {})}
+      // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
+      {...(phone && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line.
       {...(phone && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
     />
@@ -2887,8 +3054,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         href="#drawing"
         onClick={(e) => {
           e.preventDefault();
+          const link = e.currentTarget;
           if (selected) canvas.current?.focusItem(selected);
-          else (document.querySelector<HTMLElement>('.nb-hit[tabindex="0"]') ?? document.querySelector<HTMLElement>('.empty-card .button--primary'))?.focus();
+          // The selection may be of a drawing that is gone (a new circuit): then the drawing's first item, or the blank page's Add a part.
+          if (document.activeElement === link || !selected) (document.querySelector<HTMLElement>('.nb-hit[tabindex="0"]') ?? document.querySelector<HTMLElement>('.empty-card .button--primary'))?.focus();
         }}
       >
         {t('skipToDrawing')}
@@ -2957,6 +3126,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             schematic={shown}
             results={results}
             pending={(!!record && !current) || !!stale}
+            {...(stale ? { pendingWords: t('staleBefore') } : {})}
             plain={plain}
             colours={colours}
             label={NOTEBOOK_STRINGS.drawingLabel(title)}
@@ -2971,8 +3141,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             onSelect={onSelect}
             onOpen={(item) => onOpen(item)}
             onEscape={() => {
-              // The page's own Escape (in the keys above) handles a move, a wire, a tool or a card.
-              if (move || wireDraft || tool !== 'select' || card || nodeCard) return;
+              // The page's own Escape (in the keys above) handles a move, a wire, a tool, a card, and a
+              // piece of wire (let go of first: its node stays selected, as the piece's words say); it also
+              // clears an older refusal from the hint line, after this has let go of the selection.
+              if (move || wireDraft || tool !== 'select' || card || nodeCard || selectedWire) return;
               setSelected(undefined);
             }}
             editing={schematic && !tooBig ? canvasEditing : undefined}

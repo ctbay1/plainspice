@@ -93,7 +93,7 @@ describe('adding parts and ground', () => {
     const s = buildSchematic(DIVIDER);
     const { r, next } = edit(s, { kind: 'add-part', letter: 'R', at: { x: 30, y: 3 } });
     expect(circuitText(r.text)).toBe('* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\nR3 n1 n2 1k\n.op\n.end\n');
-    expect(r.summary).toBe('R3 added between n1 and n2.');
+    expect(r.summary).toBe('R3 added between node n1 and node n2.');
     expect(placedPart(next, 'R3')!.at).toEqual({ x: 30, y: 3 });
     // Its pins touch nothing: two open terminals.
     expect(next.scene.terminals.map((t) => t.node).sort()).toEqual(['n1', 'n2']);
@@ -123,7 +123,9 @@ describe('adding parts and ground', () => {
   it('refuses a place taken by another symbol or crossed by a wire', () => {
     const s = buildSchematic(DIVIDER);
     expect(applyEdit(s, { kind: 'add-part', letter: 'R', at: { x: 7, y: 3 } }).reason).toBe('That place is taken by R2.');
-    expect(applyEdit(s, { kind: 'add-part', letter: 'R', at: { x: 4, y: 6 }, rot: 90 }).reason).toBe('A wire runs there.');
+    expect(applyEdit(s, { kind: 'add-part', letter: 'R', at: { x: 4, y: 6 }, rot: 90 }).reason).toBe(
+      "A wire runs there, and nothing can lie across a wire. To put a part in its place, select that piece of wire and delete it, then wire the part's ends.",
+    );
   });
 
   it('puts a line before .end when there is no analysis, and at the end when there is no .end', () => {
@@ -137,7 +139,7 @@ describe('adding parts and ground', () => {
     const s = buildSchematic(DIVIDER);
     const { r } = edit(s, { kind: 'add-ground', at: { x: 7, y: 0 }, rot: 180 });
     expect(circuitText(r.text)).toBe('* divider\nV1 in 0 6\nR1 in 0 1k\nR2 0 0 2k\n.op\n.end\n');
-    expect(r.summary).toBe('Ground symbol added. out is now ground (node 0).');
+    expect(r.summary).toBe('Ground symbol added. Node out is now ground (node 0).');
   });
 });
 
@@ -173,15 +175,15 @@ describe('moving, turning, mirroring', () => {
     const s = buildSchematic(DIVIDER);
     const { next } = edit(s, { kind: 'move-ground', ground: 0, to: { x: 4, y: 6 } });
     expect(next.drawing.grounds).toEqual([{ at: { x: 4, y: 6 }, rot: 0 }]);
-    // On the wire of out: the symbol would sit on that wire.
-    expect(applyEdit(s, { kind: 'move-ground', ground: 0, to: { x: 7, y: 0 } }).reason).toBe('A wire runs there.');
+    // On the wire of out: the symbol would sit on that wire (a ground symbol's own words: only its pin may touch one).
+    expect(applyEdit(s, { kind: 'move-ground', ground: 0, to: { x: 7, y: 0 } }).reason).toBe(EDIT_STRINGS.onWireGround);
     // R2's ground pin landing on the in wire.
-    expect(applyEdit(s, { kind: 'move-part', part: 'R2', to: { x: 1, y: -2 } }).reason).toBe('A pin would touch in, another node.');
+    expect(applyEdit(s, { kind: 'move-part', part: 'R2', to: { x: 1, y: -2 } }).reason).toBe('A pin would touch another node, in.');
     // I1's pin on n2 landing on the ground wire between V1 and R2 (which stays when I1 leaves).
     const p = buildSchematic('* t\nV1 n1 0 6\nR1 n1 n2 2\nR2 n2 0 4\nI1 0 n2 3\n.op\n.end\n');
     const railY = p.drawing.grounds[0]!.at.y;
     const x = Math.round((placedPart(p, 'V1')!.at.x + placedPart(p, 'R2')!.at.x) / 2);
-    expect(applyEdit(p, { kind: 'move-part', part: 'I1', to: { x, y: railY + 2 } }).reason).toBe('A pin would touch ground, another node.');
+    expect(applyEdit(p, { kind: 'move-part', part: 'I1', to: { x, y: railY + 2 } }).reason).toBe('A pin would touch another node, ground.');
   });
 });
 
@@ -191,7 +193,7 @@ describe('deleting', () => {
     const s = buildSchematic(text);
     const { r } = edit(s, { kind: 'delete-part', part: 'R3' });
     expect(circuitText(r.text)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n* the value:\n.op\n.end\n');
-    expect(r.summary).toBe('R3 deleted. No part connects to x any more.');
+    expect(r.summary).toBe('R3 deleted. No part connects to node x any more.');
   });
 
   it('deletes a wire and splits its node: the piece without the label gets a new name', () => {
@@ -199,7 +201,7 @@ describe('deleting', () => {
     const index = s.drawing.wires.findIndex((w) => w.some((p) => p.x === 7 && p.y === 1));
     const { r } = edit(s, { kind: 'delete-wire', wire: index });
     expect(circuitText(r.text)).toBe('* divider\nV1 in 0 6\nR1 in out 1k\nR2 n1 0 2k\n.op\n.end\n');
-    expect(r.summary).toBe('Wire deleted. Part of out is now a separate node, n1.');
+    expect(r.summary).toBe('Wire deleted. R2 no longer connects to node out: that end is now on a node of its own, n1.');
   });
 
   it('deletes the ground symbol: its piece is no longer ground', () => {
@@ -215,7 +217,7 @@ describe('wires and node names', () => {
     const { next: s } = edit(s0, { kind: 'add-part', letter: 'R', at: { x: 30, y: 3 } });
     const { r } = edit(s, { kind: 'add-wire', from: { part: 'R3', pin: 1 }, to: { ground: 0 } });
     expect(circuitText(r.text)).toContain('R3 n1 0 1k\n');
-    expect(r.summary).toBe('Wire added. n2 and ground are now one node, ground.');
+    expect(r.summary).toBe('Wire added. Node n2 and ground are now one node, ground.');
   });
 
   it('keeps the name a dot command uses, else the first one', () => {
@@ -242,7 +244,7 @@ describe('wires and node names', () => {
     const s = buildSchematic('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(out) V1\n.end\n');
     const { r } = edit(s, { kind: 'rename-node', node: 'out', name: 'vout' });
     expect(circuitText(r.text)).toBe('* t\nV1 in 0 6\nR1 in vout 1k\nR2 vout 0 2k\n.tf v(vout) V1\n.end\n');
-    expect(r.summary).toBe('out renamed to vout.');
+    expect(r.summary).toBe('Node out renamed to vout.');
   });
 
   it('joins two nodes by name when the new name exists, writing it on each piece', () => {
@@ -250,13 +252,13 @@ describe('wires and node names', () => {
     const { r, next } = edit(s, { kind: 'rename-node', node: 'b', name: 'a' });
     expect(circuitText(r.text)).toBe('* t\nV1 a 0 1\nR1 a 0 1\nV2 a 0 2\nR2 a 0 1\n.op\n.end\n');
     expect(next.drawing.labels.filter((l) => l.node === 'a').length).toBe(2);
-    expect(r.summary).toBe('b renamed to a. The pieces named a are one node.');
+    expect(r.summary).toBe('Node b renamed to a. A node called a was already there, so the two are now one node, a.');
   });
 
   it('refuses a name PlainSpice does not write, and renaming ground', () => {
     const s = buildSchematic(DIVIDER);
     expect(applyEdit(s, { kind: 'rename-node', node: 'out', name: 'v out' }).reason).toBe('PlainSpice keeps node names to letters, digits and _ (32 at most), so it can\'t use "v out".');
-    expect(applyEdit(s, { kind: 'rename-node', node: '0', name: 'gnd2' }).reason).toBe('Ground (node 0) keeps its name.');
+    expect(applyEdit(s, { kind: 'rename-node', node: '0', name: 'gnd2' }).reason).toBe('Ground (node 0) keeps its name: in SPICE, the name 0 is what makes a node ground, the node every voltage is measured from.');
   });
 
   it('moves a label along its node, and refuses one onto another node', () => {
@@ -333,7 +335,11 @@ describe('lines that still name what an edit removed', () => {
 
   it('says which lines still name a deleted part, and selects the first', () => {
     const { r } = edit(buildSchematic(P3), { kind: 'delete-part', part: 'Vsense' });
-    expect(r.summary).toBe('Vsense deleted. H1 (line 8), .tf (line 10) and .control (line 13) still name Vsense.');
+    // Numbered in the text after the delete: Vsense's line 6 is gone, so each line below it is one up.
+    expect(r.summary).toBe('Vsense deleted. H1 (line 7), .tf (line 9) and .control (line 12) still name Vsense.');
+    expect(r.text.split('\n')[7 - 1]).toBe('H1 n2 n3 Vsense 5');
+    expect(r.text.split('\n')[9 - 1]).toBe('.tf v(n3) Vsense');
+    expect(r.text.split('\n')[12 - 1]).toBe('print i(vsense) v(n3)');
     expect(r.select).toEqual({ part: 'h1' });
     // The student's lines stay as written: they decide what to change.
     expect(circuitText(r.text)).toContain('H1 n2 n3 Vsense 5\n');
@@ -343,13 +349,14 @@ describe('lines that still name what an edit removed', () => {
   it('says which lines still name a node that no part connects to any more', () => {
     const s = buildSchematic('* E controls\nV1 a 0 1\nR1 a c 1\nE1 o 0 c 0 2\nRo o 0 1\n.op\n.tf v(c) V1\n.end\n');
     const { r } = edit(s, { kind: 'delete-part', part: 'R1' });
-    expect(r.summary).toBe('R1 deleted. No part connects to c any more. E1 (line 4) and .tf (line 7) still name c.');
+    expect(r.summary).toBe('R1 deleted. No part connects to node c any more. E1 (line 3) and .tf (line 6) still name node c.');
     expect(r.select).toEqual({ part: 'e1' });
     const t = edit(buildSchematic('* t\nV1 a 0 1\nR1 a b 1\n.op\n.print dc v(b)\n.end\n'), { kind: 'delete-part', part: 'R1' }).r;
-    expect(t.select).toEqual({ line: 5 });
+    expect(t.select).toEqual({ line: 4 });
+    expect(t.text.split('\n')[4 - 1]).toBe('.print dc v(b)');
     // A source named on a dot command's continuation line counts too.
     const c = edit(buildSchematic('* t\nV1 a 0 1\nR1 a 0 1\n.tf v(a)\n+ V1\n.end\n'), { kind: 'delete-part', part: 'V1' }).r;
-    expect(c.summary).toBe('V1 deleted. .tf (line 4) still names V1.');
+    expect(c.summary).toBe('V1 deleted. .tf (line 3) still names V1.');
   });
 
   it('renames a node in .control lines too', () => {
@@ -414,7 +421,7 @@ describe('turning round and reversing', () => {
   it('refuses an F or H when there is no source for it to read', () => {
     const s = buildSchematic('* t\nI1 0 a 1\nR1 a 0 1\n.op\n.end\n');
     expect(applyEdit(s, { kind: 'add-part', letter: 'H', at: { x: 30, y: 3 } }).reason).toBe(
-      'H reads the current in a voltage source, and this circuit has none yet: add a V source first.',
+      'A current-controlled voltage source (H) reads the current through a voltage source, and this circuit has none yet: add a voltage source first.',
     );
   });
 });
@@ -488,3 +495,107 @@ describe('never throws', () => {
     }
   });
 });
+
+describe('the words of the re-check of step B (each says what the netlist now has)', () => {
+  it('numbers a line that still names a deleted part in the text after the delete, drawing lines written included (new-1)', () => {
+    // The drawing block above .tf grows (wires and names written): .tf was line 9, and is line 13 after.
+    const text = '* t\nV1 a 0 1\nR1 a b 1k\nR2 b 0 1k\n* plainspice-drawing v1\n*@ V1 0 3 0\n*@ R1 4 0 270\n*@ R2 8 3 0\n.tf v(b) V1\n.end\n';
+    const { r } = edit(buildSchematic(text), { kind: 'delete-part', part: 'V1' });
+    const line = r.text.split('\n').indexOf('.tf v(b) V1') + 1;
+    expect(line).toBe(13);
+    expect(r.summary).toBe('V1 deleted. .tf (line 13) still names V1.');
+    expect(r.select).toEqual({ line: 13 });
+    // Start here with a .tf line: V1's line 2 goes, so .tf is line 4, not 5.
+    const start = edit(buildSchematic('* edit me\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(out) V1\n.end\n'), { kind: 'delete-part', part: 'V1' }).r;
+    expect(start.summary).toBe('V1 deleted. .tf (line 4) still names V1.');
+    expect(start.select).toEqual({ line: 4 });
+    expect(start.text.split('\n')[4 - 1]).toBe('.tf v(out) V1');
+  });
+
+  it('a piece cut off a node names the parts whose ends moved; the last ground symbol gone says the circuit has no ground (new-2)', () => {
+    const START = '* Start here\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
+    const s = buildSchematic(START);
+    const { r } = edit(s, { kind: 'delete-ground', ground: 0 });
+    expect(circuitText(r.text)).toBe('* Start here\nV1 in n1 6\nR1 in out 1k\nR2 out n1 2k\n.op\n.end\n');
+    expect(r.summary).toBe(
+      'Ground symbol deleted. No ground symbol is left on ground\'s wires, so V1 and R2 no longer connect to ground: those ends are now on a node of their own, n1, and the circuit has no ground (node 0) until a ground symbol goes back on it.',
+    );
+    expect(r.summary).not.toMatch(/\bPart of\b/);
+    // A piece of ground's wire between the junction and R2's foot: only R2 leaves ground, and ground stays.
+    const bottom = s.drawing.wires.findIndex((w) => w.every((p) => p.y >= 5));
+    const segment = segmentIndex(s, bottom, (a, b) => a.y === b.y);
+    const end = s.drawing.wires[bottom]![segment + 1]!;
+    const { r: piece } = edit(s, { kind: 'delete-wire', wire: bottom, segment, piece: { from: { x: end.x - 3, y: end.y }, to: end } });
+    expect(piece.summary).toBe('Piece of wire deleted. R2 no longer connects to ground: that end is now on a node of its own, n1.');
+    expect(circuitText(piece.text)).toContain('V1 in 0 6\n');
+  });
+
+  it('the ground symbol still drawn but cut off from every part: the sentence says no part connects to it, not that none is left (the words critic, new-2)', () => {
+    const START = '* Start here\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
+    const s = buildSchematic(START);
+    const symbol = s.drawing.grounds[0]!.at;
+    // 1. V1's foot cut off ground: the piece from V1's pin down to the ground symbol.
+    const rail = s.drawing.wires.findIndex((w) => w.some((p) => p.x === symbol.x && p.y === symbol.y));
+    const foot = segmentIndex(s, rail, (a, b) => a.x === b.x && (samePoint(a, symbol) || samePoint(b, symbol)));
+    const { r: first, next: s1 } = edit(s, { kind: 'delete-wire', wire: rail, segment: foot });
+    expect(first.summary).toBe('Piece of wire deleted. V1 no longer connects to ground: that end is now on a node of its own, n1.');
+    // 2. The rail between the symbol and R2: the symbol stays on the drawing with no part on its wires.
+    const rail1 = s1.drawing.wires.findIndex((w) => w.some((p) => samePoint(p, symbol)));
+    const along = segmentIndex(s1, rail1, (a, b) => a.y === b.y && a.y === symbol.y);
+    const { r: second, next: s2 } = edit(s1, { kind: 'delete-wire', wire: rail1, segment: along });
+    expect(s2.drawing.grounds).toEqual([{ at: symbol, rot: 0 }]);
+    expect(circuitText(second.text)).toBe('* Start here\nV1 in n1 6\nR1 in out 1k\nR2 out n2 2k\n.op\n.end\n');
+    expect(second.summary).toBe(
+      'Piece of wire deleted. No part connects to a ground symbol any more, so R2 no longer connects to ground: that end is now on a node of its own, n2, and the circuit has no ground (node 0) until a part connects to a ground symbol again.',
+    );
+    expect(second.summary).not.toContain('No ground symbol is left');
+  });
+
+  it('a ground symbol on a wire says it may touch a wire only with its pin, placed or moved; a part keeps its own words (the words critic, new-7)', () => {
+    const s = buildSchematic(DIVIDER);
+    const rail = s.drawing.grounds[0]!.at.y;
+    expect(EDIT_STRINGS.onWireGround).toBe(
+      'A wire runs there, and nothing can lie across a wire. A ground symbol may touch a wire only with its pin: move it until just its pin is on the wire, or until it misses the wire.',
+    );
+    // One square above ground's wire, the symbol's lines lie across it.
+    expect(applyEdit(s, { kind: 'add-ground', at: { x: 4, y: rail - 1 } }).reason).toBe(EDIT_STRINGS.onWireGround);
+    expect(applyEdit(s, { kind: 'move-ground', ground: 0, to: { x: 4, y: rail - 1 } }).reason).toBe(EDIT_STRINGS.onWireGround);
+    // The two ways it offers: just its pin on the wire, or clear of it.
+    expect(applyEdit(s, { kind: 'add-ground', at: { x: 4, y: rail } }).ok).toBe(true);
+    expect(applyEdit(s, { kind: 'add-ground', at: { x: 4, y: rail - 2 } }).ok).toBe(true);
+    // A part across a wire still says how to put a part in its place.
+    expect(applyEdit(s, { kind: 'add-part', letter: 'R', at: { x: 4, y: rail }, rot: 270 }).reason).toBe(EDIT_STRINGS.onWire);
+  });
+
+  it('a place refused: a wire there says how to put a part in its place; the ground symbol is named; F and H say what they read (new-7, new-8, new-36)', () => {
+    const s = buildSchematic(DIVIDER);
+    expect(EDIT_STRINGS.onWire).toMatch(/^A wire runs there, and nothing can lie across a wire\. To put a part in its place, select that piece of wire and delete it, then wire the part's ends\.$/);
+    expect(applyEdit(s, { kind: 'add-ground', at: s.drawing.grounds[0]!.at }).reason).toBe('That place is taken by the ground symbol.');
+    expect(EDIT_STRINGS.noSource('F')).toBe('A current-controlled current source (F) reads the current through a voltage source, and this circuit has none yet: add a voltage source first.');
+  });
+
+  it('a controlled source chosen on its card says what it reads in words, as its Connections do (new-32, fact P6)', () => {
+    const s = buildSchematic('* t\nV1 in 0 1\nR1 in out 1k\nR2 out 0 1k\nG1 0 out in 0 1m\nF1 0 out V1 2\n.op\n.end\n');
+    expect(edit(s, { kind: 'set-control', part: 'G1', plus: 'out' }).r.summary).toBe('G1 now reads the voltage between node out and ground.');
+    expect(edit(s, { kind: 'set-control', part: 'F1', source: 'V1' }).r.summary).toBe('F1 now reads the current through V1.');
+  });
+
+  it('Reverse on a part whose line ends with gnd says it in one sense of "end" (new-38, facts W8, W9)', () => {
+    const s = buildSchematic('* t\nV1 in 0 6\nR1 in mid 1k\nVam mid gnd\n.op\n.end\n');
+    expect(applyEdit(s, { kind: 'reverse-part', part: 'Vam' }).reason).toBe(
+      "Vam's line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename gnd first: the Checks panel says why and offers to write 0.",
+    );
+  });
+});
+
+/** True when two grid points are the same. */
+function samePoint(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+/** The index of the first segment of a wire that `test` accepts. */
+function segmentIndex(s: Schematic, wire: number, test: (a: { x: number; y: number }, b: { x: number; y: number }) => boolean): number {
+  const w = s.drawing.wires[wire]!;
+  for (let i = 0; i + 1 < w.length; i++) if (test(w[i]!, w[i + 1]!)) return i;
+  return -1;
+}

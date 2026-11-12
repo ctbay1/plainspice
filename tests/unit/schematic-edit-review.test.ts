@@ -11,11 +11,13 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
+import { describeNode } from '../../src/schematic/navigate.ts';
 import {
   EDIT_STRINGS,
   applyEdit,
   buildSchematic,
   checkConnectivity,
+  findOverlaps,
   drawnPins,
   findIslands,
   pinDrawing,
@@ -82,6 +84,22 @@ describe('reversing', () => {
   });
 });
 
+describe('a node called gnd that is not ground (gnd as the last word of a line, fact W9)', () => {
+  const AMMETER = '* ammeter\nV1 a 0 6\nR1 a b 2\nVx b gnd\n.op\n.end\n';
+  it('is its own node to the drawing: its name reads back as its own, renames, moves, and is described as itself', () => {
+    const s = buildSchematic(AMMETER, NOTEBOOK_OPTIONS);
+    expect(s.circuit.nodes.has('gnd')).toBe(true);
+    expect(describeNode(s, 'gnd')).toMatch(/^Node gnd connects Vx/);
+    const label = s.drawing.labels.find((l) => l.node === 'gnd')!;
+    const moved = done(s, { kind: 'move-label', node: 'gnd', to: label.at, side: 'right' });
+    // Its own *@ label line reads back as gnd's, not as ground's (no "label 0 ... dropped").
+    expect(moved.next.problems).toEqual([]);
+    expect(moved.next.drawing.labels.some((l) => l.node === 'gnd')).toBe(true);
+    const renamed = done(s, { kind: 'rename-node', node: 'gnd', name: 'ret' });
+    expect(renamed.r.text).toContain('Vx b ret\n');
+  });
+});
+
 describe('a part moved and turned on the way', () => {
   it('lands turned (or mirrored) in one edit, its line untouched', () => {
     const s = buildSchematic(DIVIDER);
@@ -106,7 +124,7 @@ describe('placing end to end', () => {
       { x: top.x - 2, y: top.y },
     ]) {
       const { r } = done(s0, { kind: 'add-part', letter: 'R', at, rot: 270 });
-      expect(r.summary).toMatch(/^R1 added between (a and n\d|n\d and a)\.$/);
+      expect(r.summary).toMatch(/^R1 added between (node a and node n\d|node n\d and node a)\.$/);
     }
     // Overlapping the source is refused, and says what is in the way.
     expect([EDIT_STRINGS.taken('V1'), EDIT_STRINGS.onWire]).toContain(applyEdit(s0, { kind: 'add-part', letter: 'R', at: { x: top.x + 1, y: top.y }, rot: 270 }).reason);
@@ -127,7 +145,8 @@ describe('a piece of wire', () => {
     const junction = { x: r3.x, y: a.y };
     // Between R3's junction and G1: G1 alone splits off; R3 keeps its ground.
     const { r } = done(s, { kind: 'delete-wire', wire, segment, piece: { from: junction, to: b } });
-    expect(r.summary).toBe(`${EDIT_STRINGS.pieceDeleted} ${EDIT_STRINGS.split('ground', 'n2')}`);
+    expect(r.summary).toBe(`${EDIT_STRINGS.pieceDeleted} ${EDIT_STRINGS.split(['G1'], 1, 'ground', 'n2')}`);
+    expect(r.summary).toBe('Piece of wire deleted. G1 no longer connects to ground: that end is now on a node of its own, n2.');
     expect(stripDrawing(r.text)).toContain('R3 n1 0 6');
     expect(stripDrawing(r.text)).toContain('G1 n2 a n1 0 0.25');
     // A piece that is not on that segment is no piece of it.
@@ -194,9 +213,99 @@ describe('which name stays when two nodes become one', () => {
   it('keeps the name the student chose over one PlainSpice gave, and the lower of two given names', () => {
     const s = buildSchematic('* t\nV1 n3 0 1\nR1 n3 n5 1\nR2 n5 out 1\nR3 out 0 1\n.op\n.end\n');
     const r1 = applyEdit(s, { kind: 'add-wire', from: { part: 'R1', pin: 0 }, to: { part: 'R2', pin: 0 } });
-    expect(r1.summary).toBe(`${EDIT_STRINGS.wired} ${EDIT_STRINGS.merged('n5', 'n3')}`);
+    expect(r1.summary).toBe(`${EDIT_STRINGS.wired} ${EDIT_STRINGS.merged('node n5', 'node n3', 'n3')}`);
+    expect(r1.summary).toBe('Wire added. Node n5 and node n3 are now one node, n3.');
     const r2 = applyEdit(s, { kind: 'add-wire', from: { part: 'R2', pin: 0 }, to: { part: 'R3', pin: 0 } });
-    expect(r2.summary).toBe(`${EDIT_STRINGS.wired} ${EDIT_STRINGS.merged('n5', 'out')}`);
+    expect(r2.summary).toBe(`${EDIT_STRINGS.wired} ${EDIT_STRINGS.merged('node n5', 'node out', 'out')}`);
+  });
+});
+
+describe('a node’s name', () => {
+  // in's wire runs from V1 to R1 along the top; a ground wire from R2's foot to a second ground symbol crosses it at (1, 0).
+  const CROSSED = `* a ground wire crossing in's wire
+V1 in 0 6
+R1 in out 1k
+R2 out 0 2k
+.op
+* plainspice-drawing v1
+*@ V1 0 3 0
+*@ R1 4 0 270
+*@ R2 8 3 0
+*@ ground 0 7 0
+*@ ground 1 -2 180
+*@ wire 0,1 0,0 2,0
+*@ wire 6,0 8,0 8,1
+*@ wire 0,5 0,7
+*@ wire 8,5 8,6 1,6 1,-2
+*@ label in 0 0
+.end
+`;
+  it('cannot go where another node’s wire crosses its own, where it could be read as either node’s (a video drawing showed it)', () => {
+    const s = buildSchematic(CROSSED, NOTEBOOK_OPTIONS);
+    expect(s.problems).toEqual([]);
+    const r = applyEdit(s, { kind: 'move-label', node: 'in', to: { x: 1, y: 0 } });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe(EDIT_STRINGS.labelCrossing('node in', 'ground'));
+    expect(r.reason).toBe("Here a wire of ground crosses a wire of node in: the name could be read as either node's.");
+    // On ground's wire alone it is not on its node at all; along its own wire, clear of the crossing, it moves.
+    expect(applyEdit(s, { kind: 'move-label', node: 'in', to: { x: 1, y: 3 } }).reason).toBe(EDIT_STRINGS.labelOff('in'));
+    done(s, { kind: 'move-label', node: 'in', to: { x: 2, y: 0 } });
+  });
+});
+
+describe('wires between two pins on one line', () => {
+  it('are the straight rail between them, not a U below or a rail a row above (two resistors in parallel, drawn by hand)', () => {
+    let s = buildSchematic('* parallel\n.op\n.end\n', NOTEBOOK_OPTIONS);
+    const run = (op: EditOp): void => {
+      s = done(s, op).next;
+    };
+    run({ kind: 'add-part', letter: 'I', at: { x: 0, y: 3 }, rot: 180 });
+    run({ kind: 'add-part', letter: 'R', at: { x: 4, y: 3 }, rot: 0 });
+    run({ kind: 'add-part', letter: 'R', at: { x: 8, y: 3 }, rot: 0 });
+    // I1's arrow up: its pin 1 is at the top (0, 1), pin 0 at the foot (0, 5); each resistor's pin 0 at its top.
+    run({ kind: 'add-ground', at: { x: 0, y: 5 } });
+    run({ kind: 'add-wire', from: { part: 'i1', pin: 1 }, to: { part: 'r1', pin: 0 } });
+    run({ kind: 'add-wire', from: { part: 'r1', pin: 0 }, to: { part: 'r2', pin: 0 } });
+    run({ kind: 'add-wire', from: { ground: 0 }, to: { part: 'r1', pin: 1 } });
+    run({ kind: 'add-wire', from: { part: 'r1', pin: 1 }, to: { part: 'r2', pin: 1 } });
+    expect(wiresOf(s)).toEqual(['0,1 8,1', '0,5 8,5']);
+  });
+});
+
+describe('words where an edit leaves them', () => {
+  const dir = new URL('../../examples/', import.meta.url);
+  const videos = ['sp01', 'p01', 'p02', 'e04'].flatMap((d) => readdirSync(new URL(`${d}/`, dir)).filter((f) => f.endsWith('.cir')).map((f) => readFileSync(new URL(`${d}/${f}`, dir), 'utf8')));
+  /** How many single turns of every part of these drawings add an overlap (the model's own check). */
+  const turnsAddingOverlaps = (texts: readonly string[]): number => {
+    let n = 0;
+    for (const text of texts) {
+      const s = buildSchematic(text, NOTEBOOK_OPTIONS);
+      const before = findOverlaps(s.scene).length;
+      for (const p of s.scene.parts) {
+        const r = applyEdit(s, { kind: 'rotate-part', part: p.key });
+        if (r.ok && findOverlaps(buildSchematic(r.text, NOTEBOOK_OPTIONS).scene).length > before) n += 1;
+      }
+    }
+    return n;
+  };
+
+  it('a part turned lets go of the side its words had (side=, as it lay), and the scene chooses again', () => {
+    const p024 = videos.find((t) => t.includes('Thévenin, example 3: open circuit'))!;
+    const s = buildSchematic(p024, NOTEBOOK_OPTIONS);
+    expect(s.drawing.parts.get('r1')!.side).toBe('above');
+    const { r } = done(s, { kind: 'rotate-part', part: 'r1' });
+    expect(r.lines.find((l) => l.startsWith('*@ R1 '))).not.toMatch(/side=/);
+  });
+
+  it('a side the student chooses stays, even where it overlaps (only a side an edit blocked goes back to automatic)', () => {
+    const s = buildSchematic(DIVIDER, NOTEBOOK_OPTIONS);
+    const { next } = done(s, { kind: 'move-label', node: 'out', side: 'above-left' });
+    expect(next.drawing.labels.find((l) => l.node === 'out')!.side).toBe('above-left');
+  });
+
+  it('turning parts of the videos’ drawings rarely puts words on something (22 of 108 turns, every one before), nor of the automatic layouts (50, 78 before)', () => {
+    expect(turnsAddingOverlaps(videos)).toBeLessThanOrEqual(25);
+    expect(turnsAddingOverlaps(videos.map(stripDrawing))).toBeLessThanOrEqual(55);
   });
 });
 

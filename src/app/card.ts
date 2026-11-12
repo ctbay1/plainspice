@@ -9,7 +9,7 @@
  * line's words instead of waiting for ever.
  */
 import { t, type MessageKey } from '../i18n/index.ts';
-import { formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { formatSI, speakSI } from '../format/si.ts';
 import { acrossWords, answers, isAmmeter, nodeWord, withoutResultsPointer, type Solution } from '../notebook/index.ts';
 import { GROUND, describePart, type CircuitPart, type NavItem, type PartLetter, type Schematic } from '../schematic/index.ts';
 import { DESCRIBE_STRINGS } from '../spice/describe.ts';
@@ -17,6 +17,7 @@ import { elementInfo } from '../spice/elements.ts';
 import { lowerAscii } from '../spice/parse.ts';
 import type { Netlist, Trap } from '../spice/types.ts';
 import type { CardContent, CardNote, Readout } from './components/IndexCard.tsx';
+import { readsOf } from './card-edit.ts';
 import { explainLine } from './model.ts';
 
 /** A card that is open: the part, the value as typed, and what it started from (for Put back and the crossed-out numbers). */
@@ -48,7 +49,6 @@ export interface CardRun {
   stalled?: string;
 }
 
-const CONTROLLED: ReadonlySet<string> = new Set(['E', 'F', 'G', 'H']);
 const TYPE_HINT: Readonly<Record<PartLetter, MessageKey>> = {
   R: 'typeHintR',
   C: 'typeHintC',
@@ -175,16 +175,18 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   }
   // What the card says besides (or instead of) numbers.
   let note: CardNote | undefined;
-  if (current && !words) note = { text: noNumbersReason(sol), tone: 'bad' };
-  else if (current && !readouts.length) note = { text: t('cardNoValues'), tone: 'info', numbers: true };
+  const trap = current ? sol.checks.find((x) => x.line === part.line + 1 && x.severity !== 'info') : undefined;
+  if (current && !words) {
+    // The check that stops the numbers: this part's own is in its own row below (said once, not twice);
+    // another part's is said as another line's, never as if it were this part's.
+    const error = sol.status === 'check' ? sol.checks.find((c) => c.severity === 'error') : undefined;
+    const text = error && error === trap ? t('cardNoNumbersOwn') : error && error.line !== part.line + 1 ? t('cardNoNumbersElsewhere', { line: error.line, title: error.title.replace(/[.!?:]$/, '') }) : noNumbersReason(sol);
+    note = { text, tone: 'bad' };
+  } else if (current && !readouts.length) note = { text: t('cardNoValues'), tone: 'info', numbers: true };
   else if (!current && run.stalled) note = { text: run.stalled, tone: 'paused' };
   else if (!current && (run.waiting || !sol)) note = { text: t('cardSolving'), tone: 'busy' };
-  const trap = current ? sol.checks.find((x) => x.line === part.line + 1 && x.severity !== 'info') : undefined;
   const suffix = controlSuffix(part) ?? (unitOf(part.letter) || undefined);
-  // What SPICE reads the value as: the explanation's own words for R, V and I ("3 Ω"); for a gain,
-  // the number SPICE reads, as it reads it ("0.25", not "250 mA").
-  const gain = CONTROLLED.has(part.letter);
-  const reads = valueField ? (gain && part.value !== undefined ? formatNumber(part.value) : valueField.meaning) : undefined;
+  const read = readsOf(s.netlist, part.line, part.letter, part.value);
   return {
     name: part.name,
     kind: info?.name ?? part.letter,
@@ -200,8 +202,10 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
     ...(suffix ? { suffix } : {}),
     ...(card.refused
       ? { refused: { reason: card.refused.reason, kept: card.kept, ...(card.refused.fix ? { fix: card.refused.fix } : {}) } }
-      : reads
-        ? { reads, readsTrap: !!valueField && /!/.test(valueField.meaning) }
+      : valueField && card.input.trim() === ''
+        ? { empty: { kept: card.kept } }
+      : read
+        ? { reads: read.reads, readsTrap: read.trap }
         : {}),
     ...(trap ? { trap: trap.title } : {}),
     ...(note ? { note } : {}),

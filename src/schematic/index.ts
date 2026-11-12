@@ -6,7 +6,7 @@
 export { GROUND, circuitFromNetlist, nodeText, partByKey } from './circuit.ts';
 export type { Circuit, CircuitNode, CircuitPart, CurrentControl, DotLine, HiddenRef, NotDrawnLine, NotDrawnReason, PartControl, PinRef, VoltageControl } from './circuit.ts';
 
-export { DEFAULT_VALUES, EDIT_STRINGS, applyEdit, freshNodeName, freshPartName, insertLine, mergeChanges, pinDrawing, wireRoute } from './edit.ts';
+export { DEFAULT_VALUES, EDIT_STRINGS, applyEdit, freshNodeName, freshPartName, insertLine, mergeChanges, pinDrawing, readsWords, wireRoute } from './edit.ts';
 export type { EditOp, EditOptions, EditResult, WireEnd } from './edit.ts';
 
 export { checkConnectivity, danglingEnds, drawnPins, findIslands, junctionPoints } from './connectivity.ts';

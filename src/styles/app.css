@@ -508,11 +508,12 @@ pre {
   flex: none;
   transition: background-color var(--nb-t-fast) var(--nb-ease-out);
 }
-.icon-button:hover:not(:disabled) {
+.icon-button:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--nb-paper-sunk);
   color: var(--nb-ink);
 }
-.icon-button:disabled {
+.icon-button:disabled,
+.icon-button[aria-disabled='true'] {
   color: #767a84;
   cursor: default;
   opacity: 0.55;
@@ -2482,10 +2483,12 @@ html[data-contrast='more'] .note__text {
   line-height: 1.4;
   color: var(--nb-pencil);
 }
-/* A value being typed: T, M, Shift+R and Del are letters of it until Esc closes the card (the hint line says so). */
-.index-card.is-typing .card-action__key {
+/* A value being typed (or the caret placed in it): T, M and Shift+R are letters of it until Esc closes the
+   card (the hint line says so); in the field, Delete always edits the text. */
+/* The line through says it; the pencil colour keeps its contrast (no fading). */
+.index-card.is-typing .card-action__key,
+.index-card.is-in-field .card-action__key--delete {
   text-decoration: line-through;
-  opacity: 0.55;
 }
 /* A touch screen has no keys to show (the phone's layout on a laptop with large text keeps them). */
 @media (pointer: coarse) {
@@ -3317,6 +3320,19 @@ html[data-contrast='more'] .lines .hint {
 }
 .is-phone .status__detail::before {
   margin-right: 0.5rem;
+}
+/* A phone: a reason to read gets a line of its own under the status, the buttons stay on the first
+   line at its end (else a narrow column of words between them grows the pill over the drawing). */
+.is-phone .lines.is-bad .status__reason {
+  flex: 1 1 100%;
+  order: 3;
+  padding-left: 1.0625rem;
+}
+.is-phone .lines.is-bad .status__reason::before {
+  content: none;
+}
+.is-phone .status .turn-button:first-of-type {
+  margin-left: auto;
 }
 
 /* The one bar along the bottom: Select · Parts · Netlist · Checks · Explain · More. */

@@ -22,7 +22,8 @@ describe('disconnect-pin', () => {
     const s = buildSchematic(DIVIDER);
     const r = applyEdit(s, { kind: 'disconnect-pin', part: 'R2', pin: 0 });
     expect(r.ok).toBe(true);
-    expect(r.summary).toBe(EDIT_STRINGS.disconnected('R2', 'out', 'n1'));
+    expect(r.summary).toBe(EDIT_STRINGS.disconnected('R2', 'node out', 'n1'));
+    expect(r.summary).toBe('R2 no longer connects to node out: that end is now on a node of its own, n1.');
     expect(r.text).toContain('R2 n1 0 2k');
     expect(r.text).toContain('R1 in out 1k');
     const next = clean(r.text);
@@ -85,7 +86,7 @@ describe('wireRoute', () => {
     expect(path.some((p) => p.x === corner.x && p.y === corner.y)).toBe(true);
     const r = applyEdit(s, { kind: 'add-wire', from: { part: 'r1', pin: 0 }, to: { part: 'r1', pin: 1 }, via: path.slice(1, -1) });
     expect(r.ok).toBe(true);
-    expect(r.summary).toBe(`${EDIT_STRINGS.wired} ${EDIT_STRINGS.merged('out', 'in')}`);
+    expect(r.summary).toBe(`${EDIT_STRINGS.wired} ${EDIT_STRINGS.merged('node out', 'node in', 'in')}`);
     clean(r.text);
   });
 

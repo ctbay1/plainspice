@@ -69,9 +69,14 @@ interface FoldState {
   decorations: DecorationSet;
 }
 
-/** The selection is inside the block (not just at its edges, where the cursor steps over the fold). */
+/**
+ * The selection is in the block or at either of its edges: the block is shown then, so what is typed
+ * there (at the end of the fold's line, or a new line that starts with "*@") is never typed into hidden
+ * lines, and Backspace or Delete next to it takes one character, not the whole block (the re-check of
+ * step B). Moving on past it folds it again.
+ */
 function selectionInside(selection: EditorSelection, block: { from: number; to: number }): boolean {
-  return selection.ranges.some((r) => (r.head > block.from && r.head < block.to) || (r.anchor > block.from && r.anchor < block.to));
+  return selection.ranges.some((r) => (r.head >= block.from && r.head <= block.to) || (r.anchor >= block.from && r.anchor <= block.to));
 }
 
 function build(doc: Text, folded: boolean, selection?: EditorSelection): DecorationSet {

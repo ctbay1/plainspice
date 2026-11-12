@@ -6,13 +6,17 @@
 - Date: 2026-11-11
 - Code: `src/app/editing.ts` (the editing controller: what a press, a drag or a key would do, in plain
   TypeScript), `src/app/tools.ts`, `src/app/words.ts` (the hint line), `src/app/App.tsx` (wiring it to
-  the store), `src/app/components/CardEdit.tsx` (the card's actions and Connections), `NodeCard.tsx`,
+  the store), `src/app/card-edit.ts` (a value checked as SPICE reads it, for the card and the form),
+  `src/app/components/CardEdit.tsx` (the card's actions and Connections), `NodeCard.tsx`,
   `src/app/overlays/AddPartDialog.tsx` (the Add a part form), `src/notebook/EditLayer.tsx` (what is in
   hand, a wire on its way, the points a wire can end on), `src/notebook/NotebookCanvas.tsx` (presses,
-  drags, taps); in the model, `disconnect-pin`, `wireRoute`, `freshNodeName` and `insertLine`
+  drags, taps); in the model, `disconnect-pin`, `wireRoute`, `freshNodeName`, `insertLine`,
+  `pinDrawing`, `readsWords`, `move-part`'s `rot` and `mirror` and `delete-wire`'s `piece`
   (`src/schematic/edit.ts`, [docs/schematic.md](../schematic.md)); tests in
   `tests/unit/app-editing.test.ts`, `app-words.test.ts`, `app-store.test.ts`, `app-smoke.test.tsx`,
-  `schematic-edit-disconnect.test.ts`, `notebook-canvas.test.tsx` and `tests/e2e/editor.spec.ts`
+  `app-card-edit.test.ts`, `schematic-edit.test.ts`, `schematic-edit-disconnect.test.ts`,
+  `schematic-edit-review.test.ts`, `editor-api.test.ts`, `notebook-canvas.test.tsx`,
+  `tests/e2e/editor.spec.ts` and `tests/e2e/editor-review.spec.ts`
 
 ## Context
 
@@ -31,15 +35,16 @@ hears what they did.
   change from the drawing with a label ("R2 moved"), so it is one undo step, runs live, and is what
   Undo and Redo announce ("Undone: R2 moved."). A refused edit changes nothing and the hint line and
   the live region say the model's reason ("That place is taken by R1."). The model's summary of what
-  happened to the nodes is announced after each edit ("Wire added. n1 and ground are now one node,
-  ground.").
+  happened to the nodes is announced after each edit ("Wire added. Node n1 and ground are now one
+  node, ground.").
 - **Seen before it is done.** A part in hand follows the pointer snapped to the grid, its pins marked
-  where they land (filled where they would join a node, open where a new node starts), and the hint
-  line says which nodes it would join or why it cannot go there, before the click. A wire on its way is
-  drawn along the route the model would take, the points it can end on are marked and the one under the
-  pointer ringed. A part being dragged is drawn where it would land with its wires re-routed and its
-  results kept (previews at most once per animation frame); where it cannot go it is drawn in red and
-  the hint says why.
+  where they land (filled where they would connect to a node, open where a new node starts), and the
+  hint line says which nodes it would connect to or why it cannot go there, before the click (or at
+  once, when it can go nowhere yet: an F or H with no voltage source to read, ground on a page with
+  no parts). A wire on its way is drawn along the route the model would take, the points it can end
+  on are marked and the one under the pointer ringed. A part being dragged is drawn where it would
+  land with its wires re-routed and its results kept (previews at most once per animation frame);
+  where it cannot go it is drawn in red and the hint says why.
 - **Placing** (R, C, L, V, I, E, F, G, H, 0 for ground, from the toolbar, its keys, the phone's Parts
   sheet or Ctrl+K): a click places the part with its default value (`DEFAULT_VALUES`) and the next free
   name. Then the tool goes back to Select, the new part is selected and its card opens with its value
@@ -47,9 +52,12 @@ hears what they did.
   several of the same. A controlled source chooses what it reads on its card (two nodes for E and G, a
   voltage source for F and H: the model's `set-control`). Ground goes on a pin (its node becomes 0);
   on a page with no parts it is refused with why.
-- **A blank page comes out solvable.** The first part placed on a page with no parts and no analysis
+- **A blank page gets `.op` and `.end`.** The first part placed on a page with no parts and no analysis
   also writes `.op` (before the drawing lines) and `.end`, and the announcement says so in one
-  sentence: ".op asks ngspice for the DC voltages and currents, so the circuit runs as you build it."
+  sentence: "PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the
+  operating point), so the circuit runs as you build it, and .end, which marks where the netlist
+  stops." (facts A1, no-analysis-1, missing-end-1). It does not make the circuit solvable: until a
+  ground symbol is placed, the checks say there is no ground (no-ground-1).
   The model writes the title line (`* circuit`) a SPICE file needs first. Start here built from a blank
   page by mouse, and again by keyboard, is solved by ngspice to out = 4 V (`editor.spec.ts`).
 - **Turn, Mirror, Reverse**: T turns a quarter turn, M mirrors, Shift+R reverses, on the part in hand
@@ -58,34 +66,46 @@ hears what they did.
   Ctrl+K. A half turn in place, which the model refuses, is said as the model says it.
 - **Moving**: drag a part, a ground symbol or a node's name; a press that moves less than 4 px (8 px
   for a finger) is a click; dragging the paper pans it. The drop is one undo step; a refused drop goes
-  back and says why. From the keyboard, Shift+arrows move the selected item one grid step, and moves
+  back and says why. From the keyboard, Shift+arrow keys move the selected item one grid step, and moves
   in a row are one undo step. Without dragging (WCAG 2.5.7), the card's Move picks the part up: a click
   or a tap puts it down (on a phone, Place), the arrow keys move it, Enter puts it down, Esc puts it
   back.
 - **Wires**: the Wire tool (W): click a pin, a wire or a node's name, then another; clicks on the
   paper in between make corners; Esc drops the wire on its way, a second Esc goes back to Select.
   A piece of wire is selected with a click and deleted with Delete or Backspace (or its own Delete
-  button, which a phone needs); the model says when a node splits ("Part of ground is now a separate
-  node, n1.").
+  button, which a phone needs); the model says when a node splits, naming the parts whose ends moved
+  ("R2 no longer connects to ground: that end is now on a node of its own, n1."), and when no part is
+  left on a ground symbol (the last one deleted, or the wires to it cut), that the circuit has no
+  ground until one is connected again. While a piece is selected, Shift+arrow keys and Enter say why
+  they do nothing to it (they would act on its node); a click on the node's name chooses the node and
+  opens its card.
 - **Without a pointer** (WCAG 2.1.1): the Add a part form (A, the toolbar's last button, Ctrl+K)
   takes a kind, a value and two nodes chosen from the circuit's nodes or "a new node" (named in the
   form), shows the line the netlist will get, and adds it (the model's `insertLine`: before the
   analyses, the drawing lines and `.end`); a card's Connections list each end with its node, and
   Connect to… (the other nodes, as buttons) and Disconnect (the model's new `disconnect-pin`) rewire
-  it. A node's card (Enter on a node) renames it, and renaming it to a name another node has joins
-  the two, as SPICE does; ground's card keeps its name and offers to delete its symbol.
+  it. A node's card (Enter on a node) renames it, and renaming it to a name another node has makes
+  the two one node, as SPICE does; ground's card says why it keeps its name and offers to move or
+  delete its symbol. The form checks its value as a part's card does: what SPICE reads it as, or why
+  SPICE cannot use it, with the checks' fix ("4,7k: SPICE reads the comma as a space", Write 4.7k).
 - **Deleting**: Delete or Backspace, the card's Delete, or Ctrl+K. When a line still names what was
-  deleted (a `.tf` naming V1, an F reading V2), the notice says which line and offers to open the
-  Netlist panel at it. The focus goes to the node the part was on.
+  deleted (a `.tf` naming V1, an F reading V2), the notice says which line (its number in the netlist
+  after the delete) and offers to open the Netlist panel at it. The focus goes to the node the part
+  was on. A node is not deleted by itself: Delete on one says why and what to do instead.
 - **The keys work only while the drawing or the parts toolbar has the focus** (WCAG 2.1.4); a click
   on the paper gives the drawing the focus, so Delete works on a piece of wire just clicked. Each key
   is shown on its button, in the hint line, in Help (a table of the editing keys) and in Ctrl+K, which
   has every editing command by name.
-- **One word for one idea**: Turn, Mirror, Reverse, Wire, Delete, Move, Connect, and "in hand" for a
-  part about to be placed; the hint line always ends with the way out ("Esc goes back to Select").
+- **One word for one idea**: Turn, Mirror, Reverse, Wire, Delete, Move, Connect (an end connects to a
+  node), a part's "end", a node's "name", "in hand" for a part about to be placed, and "node out" in
+  sentences (a name may be an ordinary word: "Wire started at node s."); keys spelled one way (Ctrl+K,
+  Shift+R, Esc, Shift+arrow keys). While a part is in hand or a wire on its way, the hint line ends
+  with the way out, after a refusal too: on a computer "Esc goes back to Select" (or "Esc cancels this
+  wire"), on a phone "Select goes back".
 - **On a phone**: the Parts sheet puts a part in hand; with no hover, the first tap shows where it
-  would go and what it would join, and Place (or a second tap on it) places it. A finger on a part
-  drags it, on the paper pans, two fingers zoom; a wire is drawn by taps; every action is a button on
+  would go and what it would connect to, and Place (or a second tap on it) places it. A finger that
+  holds still on a part's symbol for a moment (350 ms) lifts it and drags it; a finger that moves at
+  once pans the paper; two fingers zoom; a wire is drawn by taps; every action is a button on
   the card (at least 24 px). A drawing turned to fit the phone (decision 0015) is shown as drawn while
   editing, the hint says so, and "Turn to fit" is offered again.
 
@@ -101,9 +121,11 @@ hears what they did.
 | T | Turn a quarter turn | R is Resistor, and Ctrl+R reloads the page; T is Turn's first letter |
 | M | Mirror | the word; no part uses M |
 | Shift+R | Reverse (swap the two ends) | "R" for Reverse, with Shift so it is not Resistor |
-| Shift+arrows | Move one grid step | plain arrows already walk the drawing (decision 0013); Alt+arrows go back and forward in browsers |
+| Shift+arrow keys | Move one grid step | plain arrows already walk the drawing (decision 0013); Alt+arrows go back and forward in browsers |
+| Arrow keys, Enter, Esc with something picked up by Move | move it a grid step, put it down, put it back | a card's Move (or Ctrl+K's) picks a part, the ground symbol or a node's name up without dragging (WCAG 2.5.7); Enter and Esc as everywhere |
 | Delete, Backspace | Delete | a Mac's delete key sends Backspace; on a card only Delete (Backspace there is too easily pressed) |
-| T, M, Shift+R, Delete on a card | act on the card's part, as its buttons say | the card's value opens selected: no value starts with those letters, so they act until a value is typed; then Esc closes the card and they act on the drawing |
+| T, M, Shift+R on a card; Delete on its buttons | act on the card's part, as its buttons say | the card's value opens selected: no value starts with those letters, so they act until a value is typed (then they are letters: Esc closes the card first); in the value field Delete erases the value, so only the card's buttons take it |
+| A digit, ., + or − on a card's buttons or title | start a new value in its field | as in a spreadsheet |
 | T, M while moving | turn or mirror the part being dragged or picked up | it lands that way, in one step with the move (Shift+R waits: it changes the netlist) |
 | Enter | open the selected part's or node's card | as in step A |
 
@@ -119,22 +141,30 @@ hears what they did.
   phone and would need another way anyway (WCAG 2.5.7); click to choose, then click (or tap and
   Place) to put down works everywhere.
 - **Alt+arrows or Ctrl+arrows to move.** Alt+Left and Alt+Right go back and forward in browsers, and
-  Ctrl+arrows move by word or paragraph in text and in screen readers' reading modes. Shift+arrows.
+  Ctrl+arrows move by word or paragraph in text and in screen readers' reading modes. Shift+arrow keys.
 - **A free-text node field in the Add a part form.** Typos would make new nodes silently; the form
   lists the circuit's nodes, ground first, and "a new node" with its name checked as it is typed.
 - **Our own edits in the app.** Every edit stays the model's (`applyEdit`); the app only adds what a
-  person needs around it (a preview, the starter lines, the words). The model got four additions,
-  each tested (`disconnect-pin`, `wireRoute`, `freshNodeName`, `insertLine`); its existing behaviour
-  and tests are unchanged.
+  person needs around it (a preview, the starter lines, the words). The model got additions
+  (`disconnect-pin`, `wireRoute`, `freshNodeName`, `insertLine`, then `pinDrawing`, `move-part` with
+  `rot` and `mirror`, `delete-wire` with a `piece`, `readsWords`), and after the reviews some of its
+  behaviour changed on purpose (below, and docs/schematic.md); its earlier tests pass, and where a
+  test pinned a sentence or a line number the change corrected, it says so.
 
 ## Consequences
 
-- The netlist gets `*@` lines (decision 0013) as soon as something is placed or moved by hand; a
-  part added with the form, or typed, is laid out automatically until then. Share links and exports
-  carry the netlist exactly as it is, `*@` lines included, and a link opens the same drawing
-  (`editor.spec.ts`).
-- The drawing no longer jumps after an edit: the view is kept where it was until Fit (or another
-  circuit), and a card opened by an edit is placed without panning.
+- The netlist gets `*@` lines (decision 0013) at the first edit made on the drawing or with a card's
+  buttons (place, move, turn, mirror, reverse, wire, delete, rename, connect, choose what a controlled
+  source reads), and the announcement says so, as the hint line does for a moment: "The netlist now
+  also says where each part is drawn, in lines starting with *@ that ngspice skips, so the drawing
+  stays as it is." (fact drawing-1). A part added with the form or typed keeps the automatic layout
+  until then; a value typed on a card writes them only when the new value would move a part
+  (decision 0016), and says so then. Share links and exports carry the netlist exactly as it is, `*@`
+  lines included, and a link opens the same drawing (`editor.spec.ts`).
+- The drawing does not jump after an edit: the view stays where it was, except that what was made or
+  moved is brought into view clear of the bars, and a part added with the Add a part form (placed
+  where the drawing finds room) is shown by fitting the drawing again; a card opened by an edit is
+  placed without panning.
 - A part's card keeps its place while it grows (a refused value's words, its Connections shown) as
   long as it still fits there covering nothing, else it finds a new place.
 - The view no longer pulls a selected item back into sight while the reader pans or zooms (it used
@@ -162,13 +192,14 @@ Three reviews (interaction, accessibility, the netlist kept in step) tried step 
   would connect other than the netlist, and writes exactly the drawing it shows (no stub of wire the
   rebuild prunes).
 - **Hand-drawn circuits stay square.** A new wire, and the wires the rebuild re-routes, keep clear
-  of other nodes' words but not of the words of the nodes they join (the scene places those again);
+  of other nodes' words but not of the words of the nodes they connect (the scene places those again);
   a later leg of a wire keeps off its earlier legs. A part may meet another end to end at a right
-  angle. A click on a wire selects the piece between the places something joins it (junctions,
+  angle. A click on a wire selects the piece between the places something meets it (junctions,
   corners, pins), outlined in ink, and Delete takes only that. With the Wire tool a click on a part
   means its nearer pin; a corner goes only where the wire can reach, and a way that cannot be drawn
   shows in red pen. A current source starts with its arrow up. When two nodes become one, a name
-  the student chose stays over n1, n2 ..., and of two such names the lower.
+  the student chose stays over PlainSpice's (n1, n2 ...), and of two of PlainSpice's names the lower
+  number.
 - **Focus and keys.** One rule after every edit, undo, redo, closed palette and new circuit: once
   the drawing has caught up, the focus is where it was if that is still there, else on the selected
   item, else the first, else (a blank page) its Add a part, where A works too. A renamed node's card
@@ -180,7 +211,8 @@ Three reviews (interaction, accessibility, the netlist kept in step) tried step 
   the hint (Enter on a node). A part moved with the arrow keys stays in view above the bar of what
   is in hand, and where it is ("2 squares right and 1 square down from where it was: it can go
   here") is said once the keys pause. Keys that do nothing say why. The drawing is an application to
-  screen readers (`role="application"`, "circuit drawing"), so NVDA and JAWS pass it its keys.
+  screen readers (`role="application"`, "circuit drawing"), so NVDA and JAWS should pass it its keys
+  (not yet tried with them).
 - **A finger pans unless it holds still** for 350 ms on a part's symbol (the part lifts, a phone that
   can buzzes); a part's words are no handle for a finger. A phone that turned the drawing to fit
   shows the whole drawing as drawn while editing. The phone's strip above the keyboard is for touch
@@ -188,7 +220,7 @@ Three reviews (interaction, accessibility, the netlist kept in step) tried step 
 - **Calmer while building.** A run with no answers (a part not connected yet) keeps the circuit's
   last answers in pencil, "before your last change", as while ngspice runs; the red pen writes one
   note, about the part being worked on. A controlled source just placed says what it reads for now
-  and is marked until the student chooses (its lists say which parts each node joins). Drawing-line
+  and is marked until the student chooses (its lists say which parts each node connects). Drawing-line
   problems (a `*@` line PlainSpice cannot use) are in the Checks panel with their line, and edits'
   notes ("the drawing lines of R2 ... were removed") are said.
 
@@ -204,9 +236,10 @@ Where the reviews were not followed, and why:
   click keeps the first click's place, so a double click on a value still opens that part's card.
 - **No name on a pin connected to nothing** (interaction 13). Every node's name is its handle: its
   button for the keyboard and screen readers, an end for the Wire tool and Connect to. The name the
-  student chose now stays over PlainSpice's, and of two given names the lower, so fewer gaps.
+  student chose now stays over PlainSpice's, and of two of PlainSpice's names the lower number, so
+  fewer gaps.
 - **Choose what a controlled source reads by tapping the drawing** (interaction 9): not yet; it is
-  said, marked in red pen until chosen, and its lists say which parts each node joins.
+  said, marked in red pen until chosen, and its lists say which parts each node connects.
 - **Drag a wire to tidy it** (interaction 15): not yet (a piece can be deleted and drawn again with
   corners; moving a part re-routes its wires). On the plan.
 - **A new circuit's title** (`* circuit`, accessibility 15): a name for Tarık to choose.
@@ -217,4 +250,71 @@ symbol where there were none before (174 before the routing change; the measure 
 Turning a part in a crowded drawing is most of them (80 of 111 turns): the scene finds no free side
 for its words. The wires themselves no longer snake (`schematic-edit-review.test.ts`), and random
 edits on the examples keep the lines written exactly what the drawing shows and the drawing
-connecting what the netlist connects (about 1500 edits checked while fixing; a seeded run in the tests).
+connecting what the netlist connects (more were run while fixing; the tests keep a seeded run: 144
+edits made of 168 tried, on the 14 e04, p02 and p01 netlists).
+
+## After the re-check of step B
+
+The three reviews' findings were checked again on a clean build, item by item, with a fourth look for
+what the fixes themselves broke and a fifth at the words and these documents. What was still wrong,
+and what changed (each with a test that fails without it):
+
+- **Nothing typed or kept out of sight.** The `*@` block shows while the cursor is at either edge of
+  its folded line, so typing there, or Backspace or Delete next to it, acts on lines the student sees
+  (it took a whole block, or hid the typing in its last line). The pencil numbers kept while building
+  are only this circuit's: any change not made on the drawing (an undo past an opened example, typing,
+  a fix) lets them go, and the status line says in words that the numbers in pencil are from before
+  the last changes (not by their grey alone, WCAG 1.4.1).
+- **The card: one rule for its keys, its badges and the hint.** In the value field, T, M and Shift+R
+  act on the part only while the value is as it opened and all selected; once the caret is placed in
+  it they are letters of the value (6m is 6 milliohms), the badges are struck through and the hint
+  says to close the card first. Delete in the field edits the text (its badge is struck there), and an
+  empty field says the netlist still has the old value. A click on the card's own paper keeps the
+  focus on the card. A card says its own check once, and another part's as another line's.
+- **What is drawn.** A turned part chooses its words' side again; a side stored for a part's words or
+  a node's name (the video's or the student's) stays while it is free, and where an edit put
+  something on it, goes back to automatic when that is freer, so the `*@` lines still store what is
+  shown; words with no free side slide to the nearest free place. Turning a part of the videos'
+  drawings now puts words on something in 22 of 108 turns (before: every turn); on the automatic
+  layouts 50 (78 before). A wire between two pins on one line is the straight rail between them.
+  A node's name cannot be moved where another node's wire crosses its own (random edits on the
+  videos' drawings found it), and a node called gnd that is not ground (fact W9) keeps its own name.
+- **Seen before it is done, and said after.** The Wire tool ends where its preview showed (a symbol's
+  middle was a tie), and the hint names the two nodes a click makes one. A controlled source placed on
+  the drawing stays marked in red pen, and listed in the Checks panel, until the student chooses what
+  it reads. A refused drop says the part went back and why. An edit's notes are shown in the hint line,
+  not only said. The view holds still while a part is moved (it zoomed out under a drag outwards).
+- **Keyboard and screen reader.** Undo and Redo stay focusable when there is nothing left
+  (aria-disabled) and say so. Connections scroll into view on a small window. A rename to the name a
+  node has, and Backspace on a card, say why nothing happens. The skip link finds the blank page after
+  a new circuit. Enter on the tool in hand keeps it. Ctrl+K ranks a command whose name starts with
+  the words typed first. Struck badges keep full contrast; old current arrows are drawn in pencil.
+- **Phone.** Undo is on the status line after a change made on the drawing; a status reason has a
+  line of its own; the whole as-drawn view while editing says two fingers zoom in, and the turned view
+  comes back when editing ends.
+- **Words, and these documents.** Each sentence says what the netlist now has, one word for one idea.
+  A line that still names a deleted part is given, and offered, by its number after the delete (it
+  was the number before). A piece cut off a node names the parts whose ends moved, and when no part
+  is left on a ground symbol (the last one deleted, or the wires to it cut) the sentence says the
+  circuit has no ground until one is connected again (no-ground-1). "Connect" (not join, in the 0 Ω
+  explanation too: "To make two nodes one, give them the same name"); a part's "end" in Connections
+  and the form ("+ end", "end 1", where "node 1" meant an end); a node's "name" (not label); "node out"
+  in sentences ("Node out renamed to in. A node called in was already there, so the two are now one
+  node, in."). Every refusal says why and what to do: a place on a wire (for a ground symbol: only its
+  pin may touch one), an F or H with no voltage source to read (said at once, without "Not here"),
+  Delete on a node, T on the ground symbol (one answer for T in hand and placed), keys after Esc,
+  Shift+arrow keys and Enter on a piece of wire (they would have acted on its node; a click on the
+  node's name still opens its card), Reverse on a line ending with gnd (W8, W9), renaming ground (W8).
+  The Add a part form checks its value as the card does, and shows the reason once. The first edit
+  made on the drawing of a netlist without `*@` lines says it wrote them (drawing-1). T, M and
+  Shift+R on the part in hand are said; a controlled source just placed says what it reads in its
+  Connections' words. Help has every editing key and says the screen-reader behaviour is not yet
+  tried; Ctrl+K moves the ground symbol and a node's name; key names are spelled one way (Ctrl+K's
+  Delete too). With Connections open the hint says what can be done there; Undo with nothing left,
+  and Esc (even with nothing left to let go of), replace an older refusal or an edit's note in the
+  hint line; a refused wire end ends with the way out, on a phone "Select goes back".
+
+Still open, on the plan: dragging a piece of wire; choosing what a controlled source reads by tapping
+the drawing; the phone's layout used with a keyboard and a mouse (large text on a laptop) gives touch
+words; automatic node names keep their numbers (n1, n4) when nodes merge; real screen readers and
+browsers other than Chromium.

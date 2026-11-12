@@ -323,7 +323,8 @@ describe('values in plain units, with the traps in their spelling', () => {
     ['1µF', 'C', "1 µF ('F' is ignored)", "ngspice ignores 'F' after the number."],
     ['10V', 'V', "10 V ('V' is ignored)", "ngspice ignores 'V' after the number."],
     ['-2', 'R', `${MINUS}2 Ω`, 'ngspice accepts a negative resistance without a message.'],
-    ['0', 'R', '0 Ω', 'ngspice 47 cannot use 0 Ω'],
+    // The editor's words for one idea: two nodes made one by a name (not "joined").
+    ['0', 'R', '0 Ω', 'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name'],
     ['3a', 'R', '3 aΩ (atto!)', 'ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω'],
   ])('%s on %s reads as %s', (text, letter, meaning, note) => {
     const e = value(text, letter);

@@ -14,9 +14,9 @@ export const EDITOR_STRINGS = {
   keys: [
     { keys: 'Ctrl+Enter (Cmd+Enter on a Mac)', action: 'Run ngspice now' },
     { keys: 'Tab, Shift+Tab', action: 'Leave the editor (Tab never types a tab here)' },
-    { keys: 'F8', action: 'Select the next trap and show what it means (Tab reaches its fix button, Escape closes it)' },
+    { keys: 'F8', action: 'Select the next trap and show what it means (Tab reaches its fix button, Esc closes it)' },
     { keys: 'Ctrl+Shift+M (Cmd+Shift+M on a Mac)', action: 'Open the list of traps' },
-    { keys: 'In the trap list: arrow keys, a letter, Enter, Escape', action: 'Move between traps, apply the fix with that letter, go back to the netlist, close the list' },
+    { keys: 'In the trap list: arrow keys, a letter, Enter, Esc', action: 'Move between traps, apply the fix with that letter, go back to the netlist, close the list' },
     { keys: 'Shift+F8', action: 'Select the previous trap' },
     { keys: 'Ctrl+/ (Cmd+/ on a Mac)', action: 'Turn the selected lines into comments, or back' },
     { keys: 'Ctrl+Z, Ctrl+Shift+Z', action: 'Undo, redo' },

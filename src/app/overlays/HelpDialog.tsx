@@ -32,6 +32,8 @@ export default function HelpDialog({ onOpenChange, offlineReady }: { onOpenChang
     { keys: t('helpKeyMove'), action: t('helpKeyMoveAction') },
     { keys: t('helpKeyDelete'), action: t('helpKeyDeleteAction') },
     { keys: t('helpKeyCard'), action: t('helpKeyCardAction') },
+    { keys: t('helpKeyDigit'), action: t('helpKeyDigitAction') },
+    { keys: t('helpKeyPicked'), action: t('helpKeyPickedAction') },
     { keys: t('helpKeyMoving'), action: t('helpKeyMovingAction') },
     { keys: t('helpKeyAdd'), action: t('helpKeyAddAction') },
     { keys: t('helpKeyWireNodes'), action: t('helpKeyWireNodesAction') },

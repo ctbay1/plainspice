@@ -8,8 +8,8 @@
  *
  * Writes docs/screenshot.png (a 1280 × 800 window at 2× pixels), docs/screenshot-phone.png (a
  * 390 × 844 phone at 3× pixels, the card as a sheet along the bottom) and docs/screenshot-editing.png
- * (the editor, decision 0017: a third resistor in hand on Start here, where its left end would join
- * ground, the hint line saying so before the click). Builds the app first if there is no build. Uses
+ * (the editor, decision 0017: a third resistor in hand on Start here, where its left end would connect
+ * to ground, the hint line saying so before the click). Builds the app first if there is no build. Uses
  * Playwright's Chromium (preinstalled in Claude's cloud sessions; elsewhere
  * `npx playwright install chromium`).
  */

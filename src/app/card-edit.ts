@@ -18,10 +18,12 @@
  * text exactly as written. Plain TypeScript.
  */
 import { NOTEBOOK_OPTIONS } from '../notebook/schematic.ts';
-import { applyChanges, buildSchematic, drawingBlockChanges, serializeDrawing, type Schematic } from '../schematic/index.ts';
+import { applyChanges, buildSchematic, drawingBlockChanges, serializeDrawing, type PartLetter, type Schematic } from '../schematic/index.ts';
 import { lowerAscii } from '../spice/parse.ts';
-import type { Element, Field, FieldRole } from '../spice/types.ts';
-import { readNetlist } from './model.ts';
+import type { Element, Field, FieldRole, Netlist, Trap } from '../spice/types.ts';
+import { formatNumber } from '../format/si.ts';
+import { elementInfo } from '../spice/elements.ts';
+import { explainLine, readNetlist } from './model.ts';
 
 /** Where a part's value is written in a text. */
 export interface ValueSpot {
@@ -109,14 +111,68 @@ export function writeValue(spot: ValueSpot, value: string, fallback: string): Ca
   const onLine = traps.filter((t) => t.line === spot.line + 1 && t.severity !== 'info');
   const trap = onLine.find((t) => t.span.from < to && from < t.span.to) ?? onLine[0];
   if (!trap) return { kind: 'refused', reason: fallback };
-  // A fix that writes a value in the field's place ("Write 4.7k"), and that SPICE then reads as one number.
+  const fix = valueFix(trap, spot, v, from, to);
+  return { kind: 'refused', reason: trap.title, ...(fix ? { fix } : {}) };
+}
+
+/** A check's fix that writes a value in the field's place ("Write 4.7k", "Make it 1meg (1 MΩ)"), and that SPICE then reads as one number. */
+function valueFix(trap: Trap, spot: ValueSpot, v: string, from: number, to: number): { label: string; value: string } | undefined {
   for (const f of trap.fixes) {
     const c = f.changes[0];
     if (f.changes.length !== 1 || !c || c.from < from || c.to > to || !c.insert || /\s/.test(c.insert)) continue;
     const fixed = `${v.slice(0, c.from - from)}${c.insert}${v.slice(c.to - from)}`;
-    if (readsAsOneNumber(withValue(spot, fixed), spot, fixed)) return { kind: 'refused', reason: trap.title, fix: { label: f.label, value: fixed } };
+    if (readsAsOneNumber(withValue(spot, fixed), spot, fixed)) return { label: f.label, value: fixed };
   }
-  return { kind: 'refused', reason: trap.title };
+  return undefined;
+}
+
+/**
+ * What SPICE reads a part's value as (the card's "SPICE reads it as", and the Add a part form's): the
+ * explanation's own words for R, V and I ("3 Ω", "1 mΩ (milli!)"); for a gain, the number SPICE reads,
+ * as it reads it ("0.25", not "250 mA"). `trap` when the explanation marks it with "!".
+ */
+export function readsOf(netlist: Netlist, line: number, letter: PartLetter, value: number | undefined): { reads: string; trap: boolean } | undefined {
+  const info = elementInfo(letter);
+  const field = explainLine(netlist, line)?.fields.find((f) => f.label === info?.valueLabel);
+  if (!field) return undefined;
+  const gain = letter === 'E' || letter === 'F' || letter === 'G' || letter === 'H';
+  return { reads: gain && value !== undefined ? formatNumber(value) : field.meaning, trap: /!/.test(field.meaning) };
+}
+
+/** What SPICE makes of a value typed for a part's line, in the card's words. */
+export type ValueCheck =
+  | { kind: 'empty' }
+  /** One number SPICE reads ("SPICE reads it as 1 mΩ (milli!)"), with the check about the value, if any, and its fix. */
+  | { kind: 'reads'; reads: string; readsTrap: boolean; trap?: { reason: string; fix?: { label: string; value: string } } }
+  /** Not one number SPICE reads there: why, in the checks' words, and their fix ("Write 4.7k"). */
+  | { kind: 'refused'; reason: string; fix?: { label: string; value: string } };
+
+/**
+ * A value for a part's line checked as the card checks it (the Add a part form): `text` holds the
+ * part's line with `value` in its place. SPICE reads it as one number there, said in the card's words
+ * ("1 mΩ (milli!)", with the check about it: "1M means 1 milliohm …", and its fix "Make it 1meg"), or
+ * it does not, and the checks say why and how to write it ("4,7k: SPICE reads the comma as a space",
+ * "Write 4.7k"; facts decimal-comma-1, space-before-suffix-1, mega-as-milli-1). `fallback` is the
+ * sentence for a value no check explains.
+ */
+export function checkValue(text: string, key: string, value: string, fallback: string): ValueCheck {
+  const v = value.trim();
+  if (!v) return { kind: 'empty' };
+  const spot = valueSpot(text, key);
+  if (!spot) return { kind: 'refused', reason: fallback };
+  const r = writeValue(spot, v, fallback);
+  if (r.kind === 'empty') return r;
+  if (r.kind === 'refused') return { kind: 'refused', reason: r.reason, ...(r.fix ? { fix: r.fix } : {}) };
+  const { netlist, traps } = readNetlist(r.text);
+  const el = netlist.lines[spot.line]?.element;
+  const read = el ? readsOf(netlist, spot.line, el.letter as PartLetter, el.value?.number?.value) : undefined;
+  if (!read) return { kind: 'refused', reason: fallback };
+  // A check about the value itself (its span inside the value's word): 1M, 3A ...
+  const from = spot.from + (spot.from === spot.to ? spot.pad.length : 0);
+  const to = from + v.length;
+  const trap = traps.find((t) => t.line === spot.line + 1 && t.severity !== 'info' && t.span.from >= from && t.span.to <= to);
+  const fix = trap ? valueFix(trap, spot, v, from, to) : undefined;
+  return { kind: 'reads', reads: read.reads, readsTrap: read.trap, ...(trap ? { trap: { reason: trap.title, ...(fix ? { fix } : {}) } } : {}) };
 }
 
 /** True when the part's value in `text` is exactly `v`, one word that SPICE reads as a number. */

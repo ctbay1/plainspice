@@ -67,6 +67,8 @@ export interface CardContent {
    * why, in the checks' words; the value the netlist still has; a fix that is a value ("Write 4.7k").
    */
   refused?: { reason: string; kept: string; fix?: { label: string; value: string } };
+  /** The field is empty: nothing is written, the netlist keeps this value until one is typed. */
+  empty?: { kept: string };
   /** What to type, with examples that fit the field ("Type a gain, such as 0.5 or 2"). */
   typeHint: string;
   /** A check's title on this line (red pen). */
@@ -104,6 +106,13 @@ export interface CardProps extends CardContent {
   onFieldBlur?: (next: Element | null) => void;
   /** 'strip': done typing (the keyboard closes, the sheet comes back). */
   onDone?: () => void;
+  /**
+   * The field holds the focus in a way that makes T, M and Shift+R letters of the value (something
+   * typed, or the caret placed in it): the hint line says to close the card first. False while the
+   * value is as it opened and all selected, or the focus is elsewhere on the card: then those keys act
+   * on the part, as the buttons say.
+   */
+  onTyping?: (typing: boolean) => void;
   onFix?: () => void;
   /** Put a fix's value in the field ("Write 4.7k"). */
   onUseFix?: (value: string) => void;
@@ -130,6 +139,7 @@ export function IndexCard(p: CardProps): ReactNode {
     if (intoField) {
       input.current?.focus({ preventScroll: true });
       if (p.selectValue) input.current?.select();
+      measureWhole();
     } else if (p.variant !== 'strip') titleRef.current?.focus({ preventScroll: true });
     // The value is selected once, as the card opens on it.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
@@ -139,10 +149,45 @@ export function IndexCard(p: CardProps): ReactNode {
   const strip = p.variant === 'strip';
   /** The value field has the focus: once a value is typed there, the buttons' keys are letters of it. */
   const [inField, setInField] = useState(false);
+  /** The field's whole text is selected (as the card opens on it). */
+  const [whole, setWhole] = useState(false);
+  const measureWhole = (): void => {
+    const el = input.current;
+    setWhole(!!el && el.value.length > 0 && el.selectionStart === 0 && el.selectionEnd === el.value.length);
+  };
+  /**
+   * One rule for the keys, the badges and the hint: in the field, T, M and Shift+R act on the part only
+   * while the value is as it opened and all selected (no value starts with those letters); once the
+   * caret is placed in it or a value is typed, they are letters of the value (6m is 6 milliohms). Delete
+   * in the field always edits the text.
+   */
+  const typing = inField && !(whole && !changed);
+  // A selection made by the page (the card opening on its value, a digit typed on its buttons) fires no
+  // key or mouse event: the field's own select event and the document's selectionchange catch it too.
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return undefined;
+    const update = (): void => {
+      const now = input.current;
+      setWhole(!!now && now.value.length > 0 && now.selectionStart === 0 && now.selectionEnd === now.value.length);
+    };
+    el.addEventListener('select', update);
+    document.addEventListener('selectionchange', update);
+    return () => {
+      el.removeEventListener('select', update);
+      document.removeEventListener('selectionchange', update);
+    };
+  }, [p.label]);
+  const onTyping = p.onTyping;
+  useEffect(() => {
+    onTyping?.(typing);
+  }, [typing, onTyping]);
+  useEffect(() => () => onTyping?.(false), [onTyping]);
   /** Into the value field, its text selected: typing replaces it (a digit typed on the card, Enter on its title). */
   const editValue = (): void => {
     input.current?.focus({ preventScroll: true });
     input.current?.select();
+    measureWhole();
   };
   /** The part in words, under the numbers: not on a pinned card with the drawing side (its actions take that line). */
   const sentenceShown = !strip && !(p.variant === 'pinned' && p.edit);
@@ -184,8 +229,13 @@ export function IndexCard(p: CardProps): ReactNode {
           aria-label={`${t('cardFieldPart', { name: p.name })}${p.label ?? ''}`}
           aria-describedby={`${id}-reads${changed ? ` ${id}-was` : ''}`}
           onChange={(e) => p.onValue(e.target.value)}
+          // Where the caret is decides what T, M and Shift+R do (typing, above).
+          onSelect={measureWhole}
+          onKeyUp={measureWhole}
+          onMouseUp={measureWhole}
           onFocus={() => {
             setInField(true);
+            measureWhole();
             p.onFieldFocus?.();
           }}
           onBlur={(e) => {
@@ -231,8 +281,10 @@ export function IndexCard(p: CardProps): ReactNode {
     // Its keys: a digit typed anywhere on it starts a new value in its field (as in a spreadsheet).
     // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-interactions
     <section role="dialog"
-      className={`index-card index-card--${p.variant}${p.side ? ` index-card--${p.side}` : ''}${p.edit ? ' has-edit' : ''}${inField && changed ? ' is-typing' : ''}`}
+      className={`index-card index-card--${p.variant}${p.side ? ` index-card--${p.side}` : ''}${p.edit ? ' has-edit' : ''}${typing ? ' is-typing' : ''}${inField ? ' is-in-field' : ''}`}
       style={style}
+      // A click on the card's own paper keeps the focus on the card (its keys stay the card's), not on the drawing under it.
+      tabIndex={-1}
       aria-modal="false"
       aria-labelledby={`${id}-title`}
       {...(sentenceShown ? {} : { 'aria-describedby': `${id}-sentence` })}
@@ -296,6 +348,8 @@ export function IndexCard(p: CardProps): ReactNode {
                     </>
                   ) : null}
                 </>
+              ) : p.empty ? (
+                t('cardEmpty', { value: p.empty.kept })
               ) : p.reads && !p.refused ? (
                 <>
                   {t('cardReads')} <span className={`reads__value${p.reads.length > 16 ? ' reads__value--words' : ''}`}>{p.reads}</span>

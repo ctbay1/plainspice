@@ -90,7 +90,7 @@ test('builds Start here on a blank page with the mouse: place, values, turn, gro
   await page.keyboard.press('Enter');
   // The first part on a blank page also wrote .op and .end, so ngspice has something to run.
   await expect.poll(() => savedNetlist(page)).toMatch(/^\* circuit\nV1 n1 n2 6\n\.op\n[\s\S]*\.end\n$/);
-  await expectAnnounced(page, /V1 added between n1 and n2\. PlainSpice also wrote \.op \(operating point\)/);
+  await expectAnnounced(page, /V1 added between node n1 and node n2\. PlainSpice also wrote \.op, which asks ngspice for the DC voltages and currents \(the operating point\)/);
   // R1 across at (4, 0): pins (2, 0) and (6, 0); it keeps 1k.
   await place(/^Resistor/, 4, 0);
   await expect(page.getByRole('dialog', { name: /^R1 / })).toBeVisible();
@@ -102,7 +102,7 @@ test('builds Start here on a blank page with the mouse: place, values, turn, gro
   await page.keyboard.press('Enter');
   // Ground on V1's − pin: that node becomes ground.
   await place(/^Ground/, 0, 5);
-  await expectAnnounced(page, /n2 is now ground \(node 0\)/);
+  await expectAnnounced(page, /Node n2 is now ground \(node 0\)/);
   // Three wires, pin to pin.
   await tools.getByRole('button', { name: t('toolWire') }).click();
   await expect(hintLine(page)).toHaveText(t('hintWire'));
@@ -123,7 +123,7 @@ test('builds Start here on a blank page with the mouse: place, values, turn, gro
   const card = page.getByRole('dialog', { name: /^Node n4/ });
   await card.getByRole('textbox', { name: t('nodeCardName') }).fill('out');
   await card.getByRole('textbox', { name: t('nodeCardName') }).press('Enter');
-  await expectAnnounced(page, 'n4 renamed to out.');
+  await expectAnnounced(page, 'Node n4 renamed to out.');
   await expectSolved(page);
   await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription(/out is 4 volts/, { timeout: RUN_TIMEOUT });
   expect(await drawnText(page)).toMatch(/=\s4\sV/);
@@ -170,7 +170,7 @@ test('builds Start here again with the keyboard only (no pointer at all), throug
     await expect(form).toHaveCount(0);
   };
   await add('Voltage', '6', [{ pick: 'a new', name: 'in' }, { pick: 'ground' }]);
-  await expectAnnounced(page, 'V1 added between in and ground. PlainSpice also wrote .op (operating point), so ngspice runs the circuit as you build it, and .end (end of the netlist).');
+  await expectAnnounced(page, 'V1 added between node in and ground. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it, and .end, which marks where the netlist stops.');
   await add('Resistor', '1k', [{ pick: 'in' }, { pick: 'a new', name: 'out' }]);
   await add('Resistor', '2k', [{ pick: 'out' }, { pick: 'ground' }]);
   await expect.poll(() => savedNetlist(page)).toBe('* circuit\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
@@ -194,7 +194,8 @@ test('drag, a refused move, turn, mirror, reverse, a wire deleted, rename and jo
   await clickAt(page, 4, 6);
   await expect(hintLine(page)).toHaveText(t('hintWireSelected', { node: t('groundWords') }));
   await page.keyboard.press('Delete');
-  await expectAnnounced(page, 'Piece of wire deleted. Part of ground is now a separate node, n1.');
+  // The piece cut off ground is R2's end; the first edit made on the drawing also says it wrote the drawing lines.
+  await expectAnnounced(page, `Piece of wire deleted. R2 no longer connects to ground: that end is now on a node of its own, n1. ${t('drawingWritten')}`);
   steps.push('wire');
   // Drag R2 two grid steps to the right: its wires follow; one undo step.
   await dragFromTo(page, { x: 8, y: 3 }, { x: 10, y: 3 });
@@ -203,9 +204,9 @@ test('drag, a refused move, turn, mirror, reverse, a wire deleted, rename and jo
   steps.push('drag');
   // A refused move: R2 onto R1. While dragging the hint says why; dropped, it goes back.
   await dragFromTo(page, { x: 10, y: 3 }, { x: 4, y: 0 }, false);
-  await expect(hintLine(page)).toContainText('R2 can’t go here: That place is taken by R1');
+  await expect(hintLine(page)).toContainText('R2 can’t go here: that place is taken by R1');
   await page.mouse.up();
-  await expectAnnounced(page, 'That place is taken by R1.');
+  await expectAnnounced(page, 'R2 went back: that place is taken by R1.');
   await expect.poll(() => savedNetlist(page)).toContain('*@ R2 10 3 0');
   // Turn and Mirror (the drawing only), Reverse (the netlist), with the keys on the selected part.
   await focusPart(page, 'R2');
@@ -224,22 +225,35 @@ test('drag, a refused move, turn, mirror, reverse, a wire deleted, rename and jo
   let card = page.getByRole('dialog', { name: /^Node out/ });
   await card.getByRole('textbox', { name: t('nodeCardName') }).fill('vout');
   await card.getByRole('button', { name: t('nodeCardRename') }).click();
-  await expectAnnounced(page, 'out renamed to vout.');
+  await expectAnnounced(page, 'Node out renamed to vout.');
   card = page.getByRole('dialog', { name: /^Node vout/ });
   await card.getByRole('textbox', { name: t('nodeCardName') }).fill('in');
   await card.getByRole('button', { name: t('nodeCardRename') }).click();
-  await expectAnnounced(page, 'vout renamed to in. The pieces named in are one node.');
+  await expectAnnounced(page, 'Node vout renamed to in. A node called in was already there, so the two are now one node, in.');
   steps.push('rename', 'join');
   await page.keyboard.press('Escape');
   // Delete V1: the .tf line still names it; the page offers that line in the Netlist panel.
   await focusPart(page, 'V1');
   await page.keyboard.press('Delete');
-  await expectAnnounced(page, 'V1 deleted. .tf (line 5) still names V1.');
+  // V1's line is gone: .tf is line 4 now, and the button takes the cursor there (not to the drawing lines' header).
+  await expectAnnounced(page, 'V1 deleted. .tf (line 4) still names V1.');
   steps.push('delete');
-  const show = page.getByRole('button', { name: t('goToLine', { line: 5 }) });
+  const show = page.getByRole('button', { name: t('goToLine', { line: 4 }) });
   await expect(show).toBeVisible();
   await show.click();
   await expect(panel(page, 'netlist')).toBeVisible();
+  await expect(panel(page, 'netlist')).toContainText(/Line 4: \.tf\b/);
+  // The cursor's line (the editor's active line, without the results shown at its end) is the .tf line,
+  // once the editor (loaded when the panel first opens) has taken it there.
+  const activeLine = (): Promise<string> =>
+    panel(page, 'netlist')
+      .locator('.cm-activeLine')
+      .evaluate((line) => {
+        const copy = line.cloneNode(true) as HTMLElement;
+        for (const extra of copy.querySelectorAll('[aria-hidden="true"], [contenteditable="false"], img')) extra.remove();
+        return copy.textContent ?? '';
+      });
+  await expect.poll(activeLine).toBe('.tf v(in) V1');
   await closePanel(page, 'netlist');
   // The autosave writes a moment after each change: the deletion is in the saved netlist once it has.
   await expect.poll(() => savedNetlist(page)).not.toMatch(/^V1 /m);
@@ -249,11 +263,12 @@ test('drag, a refused move, turn, mirror, reverse, a wire deleted, rename and jo
   const undo = page.getByRole('button', { name: t('undo') });
   for (let i = 0; i < steps.length; i++) await undo.click();
   await expect.poll(() => savedNetlist(page)).toBe(TEXT);
-  await expectAnnounced(page, 'Undone: Piece of wire deleted.');
+  await expectAnnounced(page, 'Undone: piece of wire deleted.');
   const redo = page.getByRole('button', { name: t('redo') });
   for (let i = 0; i < steps.length; i++) await redo.click();
   await expect.poll(() => savedNetlist(page)).toBe(final);
-  await expect(redo).toBeDisabled();
+  // Run out, it stays a button with the focus (aria-disabled), and says so when pressed.
+  await expect(redo).toHaveAttribute('aria-disabled', 'true');
   // The netlist carries the drawing (the *@ lines), and a link opens the same drawing.
   expect((await fullNetlistText(page)).trim()).toBe(final.trim());
   const share = await openShare(page);
@@ -291,22 +306,25 @@ test('a double click on a part’s value opens its card with the value selected;
   expect(await savedNetlist(page)).toBe(other);
 });
 
-test('a phone: a wide drawing turned to fit is shown as drawn while editing, and offered turned again after', async ({ page }) => {
+test('a phone: a wide drawing turned to fit is shown as drawn while editing, and turned again after', async ({ page }) => {
   test.skip(!isPhone(page), 'the phone’s turned view');
   await openApp(page);
   await page.getByRole('banner').getByRole('button', { name: /^Examples/ }).click();
   await page.getByRole('menu', { name: t('examplesMenu') }).getByRole('menuitem', { name: 'Example 3: open circuit (V_Th)', exact: true }).click();
   await expectSolved(page);
-  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  // Turned to fit (drawn as in its video, p02-4 turned still needs a drag to see it all).
+  await expect(hintLine(page)).toHaveText(/^Turned to fit/);
   const bar = page.getByRole('navigation', { name: t('barLabel') });
   await bar.getByRole('button', { name: t('barParts') }).click();
   await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Capacitor/ }).click();
-  await expect(hintLine(page)).toHaveText(`${t('hintAsDrawnEditing')} · ${t('hintPlacePhone', { part: 'a capacitor' })}`);
+  // After the lead, the hint goes on in lower case.
+  await expect(hintLine(page)).toHaveText(`${t('hintAsDrawnEditing')} · tap the paper where a capacitor goes · Select goes back`);
   await expect(page.getByRole('button', { name: t('turnToFit'), exact: true })).toBeVisible();
   await bar.getByRole('button', { name: t('toolSelect') }).click();
+  // Back to the view the student was reading: turned to fit, the video's drawing one tap away.
   await expectAnnounced(page, t('turnBack'));
-  await page.getByRole('button', { name: t('turnToFit'), exact: true }).click();
-  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  await expect(hintLine(page)).toHaveText(/^Turned to fit/);
+  await expect(page.getByRole('button', { name: t('asInVideo'), exact: true })).toBeVisible();
 });
 
 test('a phone: a finger drags a part to move it and the paper to pan, two fingers zoom; a piece of wire deleted and drawn again by taps', async ({ page }) => {
@@ -333,21 +351,27 @@ test('a phone: a finger drags a part to move it and the paper to pan, two finger
   await swipe([await gridPoint(page, 8, 3)], [await gridPoint(page, 10, 3)], 500);
   await expectAnnounced(page, 'R2 moved.');
   await expect.poll(() => savedNetlist(page)).toContain('*@ R2 10 3 0');
-  // A piece of wire: a tap selects it, Delete (below) deletes it, and the node splits.
+  // A piece of wire: a tap selects it, its Delete button (named in the hint, which is below it) deletes it, and the node splits.
   const piece = await gridPoint(page, 4, 6);
   await page.touchscreen.tap(piece.x, piece.y);
-  await expect(hintLine(page)).toHaveText(t('hintWireSelectedPhone', { node: t('groundWords') }));
+  await expect(hintLine(page)).toHaveText('A piece of the wire of ground (node 0) selected · tap “Delete the selected piece of wire” to delete it');
   await page.getByRole('toolbar', { name: t('pieceLabel') }).getByRole('button', { name: t('paletteDeleteWire') }).click();
-  await expectAnnounced(page, 'Piece of wire deleted. Part of ground is now a separate node, n1.');
+  await expectAnnounced(page, 'Piece of wire deleted. R2 no longer connects to ground: that end is now on a node of its own, n1.');
   await expect.poll(() => savedNetlist(page)).toContain('R2 out n1 2k');
   // Drawn again by taps: Wire (the Parts sheet), a pin, then the other pin.
   await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).click();
   await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Wire/ }).click();
   await expect(hintLine(page)).toHaveText(t('hintWirePhone'));
-  for (const [x, y] of [[10, 5], [0, 5]] as const) {
-    const p = await gridPoint(page, x, y);
-    await page.touchscreen.tap(p.x, p.y);
-  }
+  const first = await gridPoint(page, 10, 5);
+  await page.touchscreen.tap(first.x, first.y);
+  await expect(hintLine(page)).toHaveText(t('hintWireOnPhone'));
+  // The same pin again: refused, and the way out is the phone's own (it has no Esc key; the words critic, new-20).
+  await page.waitForTimeout(400);
+  await page.touchscreen.tap(first.x, first.y);
+  await expect(hintLine(page)).toHaveText(t('hintWireRefusedPhone', { reason: t('wireSamePoint').replace(/\.$/, '') }));
+  await expect(hintLine(page)).not.toContainText('Esc');
+  const other = await gridPoint(page, 0, 5);
+  await page.touchscreen.tap(other.x, other.y);
   await expectAnnounced(page, 'Wire added.');
   await expect.poll(() => savedNetlist(page)).toContain('R2 out 0 2k');
   // A finger on the paper pans it; two fingers apart zoom in.

@@ -18,9 +18,11 @@ import {
   disconnectEdit,
   dragTarget,
   editKey,
+  endRoles,
   endsOf,
   formLine,
   formStart,
+  formValue,
   grabAt,
   grabOf,
   handFor,
@@ -36,6 +38,7 @@ import {
   placeEdit,
   pieceAt,
   placePreview,
+  refusedAnywhere,
   reverseHand,
   sourceChoices,
   stepFrom,
@@ -49,6 +52,7 @@ import {
   type PartForm,
 } from '../../src/app/editing.ts';
 import { readNetlist } from '../../src/app/model.ts';
+import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { EDIT_STRINGS, applyEdit, buildSchematic, schematicConnectivity, stripDrawing, type Schematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -124,17 +128,21 @@ describe('a part in hand', () => {
     const joins = placePreview(s0, handFor('R'), { x: 10, y: 0 });
     expect(joins.ok).toBe(true);
     expect(joins.pins.map((p) => p.node)).toEqual(['out', undefined]);
-    expect(joinsWords(s0, joins)).toBe('its ends connect to out and a new node');
+    expect(joinsWords(s0, joins)).toBe('its ends connect to node out and a new node');
     const taken = placePreview(s0, handFor('R'), { x: 8, y: 3 });
     expect(taken).toMatchObject({ ok: false, reason: EDIT_STRINGS.taken('R2') });
     // F and H read the current in a V source: none yet, and the model says so.
     const noV = build('* t\nR1 a 0 1k\n.op\n.end\n');
-    expect(placePreview(noV, handFor('F'), { x: 10, y: 3 })).toMatchObject({ ok: false, reason: EDIT_STRINGS.noSource('F') });
+    // Nowhere yet, not only here: the hint says it without "Not here" (new-8).
+    expect(placePreview(noV, handFor('F'), { x: 10, y: 3 })).toMatchObject({ ok: false, reason: EDIT_STRINGS.noSource('F'), anywhere: true });
+    expect(refusedAnywhere(noV, 'F')).toBe(EDIT_STRINGS.noSource('F'));
+    expect(refusedAnywhere(s0, 'F')).toBeUndefined();
+    expect(refusedAnywhere(build(''), 'ground')).toBe(t('placeGroundFirst'));
     // A ground symbol on a page with nothing to join yet.
-    expect(placePreview(build(''), handFor('ground'), { x: 0, y: 0 })).toMatchObject({ ok: false, reason: 'Place a part first: a ground symbol joins the node its pin touches, and there is none yet.' });
+    expect(placePreview(build(''), handFor('ground'), { x: 0, y: 0 })).toMatchObject({ ok: false, reason: 'Place a part first: a ground symbol connects to the node its pin touches, and there is no node yet.', anywhere: true });
     // A ground symbol on a node's pin makes it ground, and says so.
     const g = placePreview(s0, handFor('ground'), { x: 8, y: 1 });
-    expect(joinsWords(s0, { ...g, ok: true })).toBe('out becomes ground (node 0)');
+    expect(joinsWords(s0, { ...g, ok: true })).toBe('node out becomes ground (node 0)');
   });
 });
 
@@ -157,14 +165,16 @@ describe('a blank page: the first part also writes .op and .end', () => {
   it('places the first part with .op and .end, its line before .op and the drawing lines before .end', () => {
     const r = placeEdit(build(''), handFor('V'), { x: 0, y: 3 });
     expect(r.ok).toBe(true);
-    expect(r.summary).toBe('V1 added between n1 and n2. PlainSpice also wrote .op (operating point), so ngspice runs the circuit as you build it, and .end (end of the netlist).');
+    expect(r.summary).toBe(
+      'V1 added between node n1 and node n2. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it, and .end, which marks where the netlist stops.',
+    );
     expect(r.text).toBe('* circuit\nV1 n1 n2 5\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0\n*@ label n1 0 1\n*@ label n2 0 5\n.end\n');
     expect(traps(r.text)).not.toContain('no-analysis');
     expect(traps(r.text)).not.toContain('missing-end');
     // The next part goes before .op, above the drawing lines.
     const r2 = placeEdit(after(r.text), handFor('R'), { x: 4, y: 0 });
     expect(r2.text.split('\n').slice(0, 4)).toEqual(['* circuit', 'V1 n1 n2 5', 'R1 n3 n4 1k', '.op']);
-    expect(r2.summary).toBe('R1 added between n3 and n4.');
+    expect(r2.summary).toBe('R1 added between node n3 and node n4.');
     // A ground symbol first is refused (there is nothing to join), with the reason.
     expect(placeEdit(build(''), handFor('ground'), { x: 0, y: 0 })).toMatchObject({ ok: false });
   });
@@ -218,7 +228,7 @@ describe('wires', () => {
     const end = wireStartOf(hitTest(s, { x: 8, y: 0 }, 0.45, 'wire'))!;
     const r = wireEdit(s, { start, corners: [] }, end);
     expect(r.ok).toBe(true);
-    expect(r.summary).toMatch(/^Wire added\. n\d and out are now one node, out\.$/);
+    expect(r.summary).toMatch(/^Wire added\. Node n\d and node out are now one node, out\.$/);
     expect(r.text).toContain('R3 out ');
     after(r.text);
     // With a corner chosen on the paper, the wire goes round by it (here along y = −2, above R1's words).
@@ -247,10 +257,14 @@ describe('deleting', () => {
 
 describe('Connections: an end connected to a node, or let go', () => {
   it('names each end in the catalog\'s words, with its node', () => {
-    expect(endsOf(s0, 'v1').map((e) => `${e.role}: ${e.words}`)).toEqual(['+ node: in', '− node: ground (node 0)']);
-    expect(endsOf(s0, 'r1').map((e) => `${e.role}: ${e.words}`)).toEqual(['node 1: in', 'node 2: out']);
+    // A part's ends are "ends" in the editor (an end is on a node, it is not one); the field table keeps "+ node" (new-13).
+    expect(endsOf(s0, 'v1').map((e) => `${e.role}: ${e.words}`)).toEqual(['+ end: in', '− end: ground (node 0)']);
+    expect(endsOf(s0, 'r1').map((e) => `${e.role}: ${e.words}`)).toEqual(['end 1: in', 'end 2: out']);
     const i = build('* t\nI1 0 a 1m\nR1 a 0 1k\n.op\n.end\n');
-    expect(endsOf(i, 'i1').map((e) => e.role)).toEqual(['from node', 'to node']);
+    expect(endsOf(i, 'i1').map((e) => e.role)).toEqual(['from end', 'to end']);
+    expect(t('connConnectLabel', { role: endRoles('V')[0], name: 'V1' })).toBe('Connect to another node: the + end of V1');
+    expect(t('connDisconnectLabel', { role: endRoles('V')[0], name: 'V1', node: 'in' })).toBe('Disconnect the + end of V1 from in');
+    expect(`${t('formNewName')} ${t('formNewNameAt', { role: endRoles('R')[0] })}`).toBe('Name of the new node (end 1)');
     expect(nodeChoices(s0).map((n) => n.words)).toEqual(['ground (node 0)', 'in', 'out']);
   });
 
@@ -262,10 +276,10 @@ describe('Connections: an end connected to a node, or let go', () => {
     const s1 = after(off.text);
     const on = connectEdit(s1, 'r2', 1, '0');
     expect(on.ok).toBe(true);
-    expect(on.summary).toBe('Wire added. n1 and ground are now one node, ground.');
+    expect(on.summary).toBe('Wire added. Node n1 and ground are now one node, ground.');
     expect(on.text).toContain('R2 out 0 2k');
     after(on.text);
-    expect(connectEdit(s0, 'r2', 0, 'out')).toMatchObject({ ok: false, reason: 'That end is already on out.' });
+    expect(connectEdit(s0, 'r2', 0, 'out')).toMatchObject({ ok: false, reason: 'That end is already on node out.' });
     // An end alone already: the model says so.
     expect(disconnectEdit(s1, 'r2', 1)).toMatchObject({ ok: false, reason: 'That end of R2 is already on a node of its own, n1.' });
   });
@@ -296,7 +310,7 @@ describe('the Add a part form', () => {
   });
 
   it('writes the line as the Netlist panel would, or says which field is wrong and why', () => {
-    expect(formLine(s0, { letter: 'R', value: '4.7k', ends: [{ node: 'out' }, { node: '0' }] })).toEqual({ ok: true, line: 'R3 out 0 4.7k', name: 'R3', summary: 'R3 added between out and ground.' });
+    expect(formLine(s0, { letter: 'R', value: '4.7k', ends: [{ node: 'out' }, { node: '0' }] })).toMatchObject({ ok: true, line: 'R3 out 0 4.7k', name: 'R3', summary: 'R3 added between node out and ground.' });
     expect(formLine(s0, { letter: 'G', value: '0.25', ends: [{ node: '0' }, { node: 'out' }], plus: 'in', minus: '0' })).toMatchObject({ line: 'G1 0 out in 0 0.25' });
     expect(formLine(s0, { letter: 'F', value: '2', ends: [{ node: '0' }, { node: 'out' }], source: 'v1' })).toMatchObject({ line: 'F1 0 out V1 2' });
     expect(formLine(s0, { letter: 'R', value: '4,7k', ends: [{ node: 'out' }, { node: '0' }] })).toMatchObject({ ok: false, field: 'value' });
@@ -304,6 +318,25 @@ describe('the Add a part form', () => {
     expect(formLine(s0, { letter: 'R', value: '1k', ends: [{ fresh: 'my node' }, { node: '0' }] })).toMatchObject({ ok: false, field: 'end0', reason: EDIT_STRINGS.badName('my node') });
     const noV = build('* t\nR1 a 0 1k\n.op\n.end\n');
     expect(formLine(noV, { letter: 'H', value: '1k', ends: [{ node: 'a' }, { node: '0' }] })).toMatchObject({ ok: false, field: 'control', reason: EDIT_STRINGS.noSource('H') });
+  });
+
+  it('checks the value as a part’s card does: what SPICE reads it as, or why not and how to write it (new-14; facts decimal-comma-1, space-before-suffix-1, mega-as-milli-1)', () => {
+    const form = (value: string): PartForm => ({ letter: 'R', value, ends: [{ node: 'out' }, { fresh: 'n1' }] });
+    expect(formLine(s0, form('2k'))).toMatchObject({ ok: true, value: { kind: 'reads', reads: expect.stringMatching(/^2\skΩ$/), readsTrap: false } });
+    // 1M is one number to SPICE, a milliohm: added as written, with the check and its fix said under the value.
+    expect(formLine(s0, form('1M'))).toMatchObject({
+      ok: true,
+      line: 'R3 out n1 1M',
+      value: { kind: 'reads', reads: expect.stringMatching(/^1\smΩ\s\(milli!\)$/), readsTrap: true, trap: { reason: expect.stringMatching(/^1M means 1 milliohm \(1\smΩ\), not 1 megaohm \(1\sMΩ\)$/), fix: { label: expect.stringMatching(/^Make it 1meg \(1\sMΩ\)$/), value: '1meg' } } },
+    });
+    // A comma and a space: not one number; the checks' reason and their fix, not "Type one number".
+    expect(formLine(s0, form('4,7k'))).toMatchObject({ ok: false, field: 'value', reason: '4,7k: SPICE reads the comma as a space', fix: { label: 'Write 4.7k', value: '4.7k' } });
+    expect(formLine(s0, form('1 k'))).toMatchObject({ ok: false, field: 'value', reason: '1 k: the space splits the value in two', fix: { label: 'Write 1k', value: '1k' } });
+    expect(formLine(s0, form(''))).toMatchObject({ ok: false, field: 'value', reason: t('formBadValue'), value: { kind: 'empty' } });
+    // The same words as the card's (one rule): writeValue on R2's own value.
+    expect(formValue(s0, form('4,7k'))).toEqual({ kind: 'refused', reason: '4,7k: SPICE reads the comma as a space', fix: { label: 'Write 4.7k', value: '4.7k' } });
+    // A gain reads as the number SPICE reads.
+    expect(formValue(s0, { letter: 'G', value: '250m', ends: [{ node: '0' }, { node: 'out' }], plus: 'in', minus: '0' })).toMatchObject({ kind: 'reads', reads: '0.25' });
   });
 
   it('builds Start here on a blank page, part by part, as the netlist names them', () => {
@@ -377,7 +410,7 @@ describe('after the reviews of step B', () => {
     expect(pieceAt(s, hit.wire, hit.segment, { x: r3.pins[1].at.x - 1, y })!.to).toEqual({ x: r3.pins[1].at.x, y });
     const op = deleteOp(s, undefined, { wire: hit.wire, segment: hit.segment, piece: hit.piece }, undefined)!;
     const r = applyEdit(s, op);
-    expect(r.summary).toBe('Piece of wire deleted. Part of ground is now a separate node, n2.');
+    expect(r.summary).toBe('Piece of wire deleted. G1 no longer connects to ground: that end is now on a node of its own, n2.');
     after(r.text);
   });
 
@@ -415,15 +448,17 @@ describe('after the reviews of step B', () => {
   it('a list of nodes can say which parts each joins; a controlled source says what it reads', () => {
     expect(nodeChoices(s0, true).map((n) => n.words)).toEqual(['ground (node 0)', 'in: V1, R1', 'out: R1, R2']);
     const g = build('* t\nV1 a 0 6\nG1 0 b a 0 0.25\nH1 c 0 V1 2\n.op\n.end\n');
-    expect(controlWords(g.circuit.parts.find((p) => p.key === 'g1')!)).toBe('V(a, 0)');
-    expect(controlWords(g.circuit.parts.find((p) => p.key === 'h1')!)).toBe('I(V1)');
+    // In the words of the card's Connections, not the V(a, 0) of a formula (new-32, facts P6, P8).
+    expect(controlWords(g.circuit.parts.find((p) => p.key === 'g1')!)).toBe('the voltage between node a and ground');
+    expect(controlWords(g.circuit.parts.find((p) => p.key === 'h1')!)).toBe('the current through V1');
+    expect(t('controlPlaced', { name: 'G1', control: controlWords(g.circuit.parts.find((p) => p.key === 'g1')!)! })).toBe('G1 reads the voltage between node a and ground for now: choose what it reads on its card.');
     expect(controlWords(g.circuit.parts.find((p) => p.key === 'v1')!)).toBeUndefined();
   });
 
   it('a wire between two points already joined is refused, not "added" with nothing to add', () => {
     const start = wireStartOf(hitTest(s0, { x: 0, y: 1 }, 0.45, 'wire'))!;
     const end = wireStartOf(hitTest(s0, { x: 2, y: 0 }, 0.45, 'wire'))!;
-    expect(wireEdit(s0, { start, corners: [] }, end)).toMatchObject({ ok: false, reason: 'Those two points are already joined by wire, on in: there is no wire to add.' });
+    expect(wireEdit(s0, { start, corners: [] }, end)).toMatchObject({ ok: false, reason: 'Those two points are already connected by wire, on node in: there is no wire to add.' });
   });
 
   it('a current source in hand says which way its arrow pushes', () => {

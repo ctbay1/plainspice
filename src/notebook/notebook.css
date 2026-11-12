@@ -328,11 +328,13 @@
 .nb-canvas.is-pending .nb-result__text {
   fill: var(--nb-pencil);
 }
+/* Old arrows in pencil too, at the pencil's contrast (3:1 at least for a graphic, WCAG 1.4.11); the
+   status line says in words that these numbers are old (1.4.1). */
 .nb-canvas.is-pending .nb-flow__shaft {
-  stroke: var(--nb-pencil-faint);
+  stroke: var(--nb-pencil);
 }
 .nb-canvas.is-pending .nb-flow__head {
-  fill: var(--nb-pencil-faint);
+  fill: var(--nb-pencil);
 }
 /* A new number settles in place; it never blanks out. */
 .nb-settle {

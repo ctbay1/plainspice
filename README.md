@@ -8,7 +8,7 @@ in a circuit simulator.
 **Try it: <https://plainspice.com/>** · [Engine check](https://plainspice.com/spike/) ·
 [Licences and source](https://plainspice.com/licenses/)
 
-![PlainSpice on its first screen: a 6 V source and two resistors drawn on notebook paper, solved by ngspice, with R1 changed to 2 kΩ on its card: the new node voltages and currents are handwritten on the drawing and the old ones crossed out](docs/screenshot.png)
+![PlainSpice on its first screen: a 6 V source and two resistors drawn on notebook paper, solved by ngspice, with R1's card open and 2k typed: the drawing now reads out = 3 V with the old 4 V crossed out and 1.5 mA through each part; the card shows 1.5 mA through R1 and 3 V across it, the old 2 mA and 2 V crossed out, and buttons to turn, mirror, reverse, move, connect and delete R1; the parts to place are in the margin on the left](docs/screenshot.png)
 
 ## What it does
 
@@ -25,12 +25,13 @@ Everything around it is for beginners:
   the card, with why and a fix, before it reaches the netlist. The first screen invites you to try it.
 - **Build the circuit on the drawing.** Choose a part in the margin (or press its letter: R, C, L,
   V, I, E, F, G, H, 0 for ground) and click where it goes: before the click you see where its ends
-  land and which nodes they join. Wire pins together (W), drag parts (their wires follow), turn (T),
+  land and which nodes they connect to. Wire pins together (W), drag parts (their wires follow), turn (T),
   mirror (M) and reverse (Shift+R) them, rename nodes, delete; every change is written to the netlist,
-  ngspice runs it again, and screen readers hear what changed. A blank page comes out solvable: the first part
-  also writes `.op` and `.end`. Without a mouse, Add a part (A) takes a kind, a value and two nodes from
-  lists, and each part's card connects and disconnects its ends; on a phone, tap to place, and hold
-  a part a moment to drag it with a finger.
+  ngspice runs it again, and screen readers hear what changed. On a blank page the first part also
+  writes `.op` and `.end`, so ngspice runs the circuit as you build it. Without a mouse, Add a part (A)
+  takes a kind, a value (checked as the card checks it) and two nodes from lists, and each part's card
+  connects and disconnects its ends; on a phone, tap to place, and hold a part a moment to drag it
+  with a finger.
 - **One netlist, two ways in.** The Netlist panel shows the same circuit as SPICE reads it, on a
   dark "simulator screen"; type there and the drawing follows, change the drawing and the netlist
   follows (the positions go into `*@` comment lines that ngspice ignores). One undo covers both.
@@ -50,7 +51,9 @@ Everything around it is for beginners:
   offline and on a phone (a wide drawing turns to fit the screen, "As in the video" one tap away),
   and exports netlists for ngspice and LTspice.
 
-![Placing a part: Start here with a third resistor in hand, drawn in pencil where the pointer holds it; its left end lands on the ground wire at R2's foot and is marked as joining it, its right end is open (a new node), and the hint line says so before the click: "Click to place a resistor here: it joins ground and a new node · T turns it · M mirrors it · Esc goes back to Select"](docs/screenshot-editing.png)
+![Placing a part: Start here with a third resistor in hand, drawn in pencil where the pointer holds it; its left end lands on the ground wire at R2's foot and is marked as connecting to it, its right end is open (a new node), and the hint line says so before the click: "Click to place a resistor here: its ends connect to ground and a new node · T turns it · M mirrors it · Esc goes back to Select"](docs/screenshot-editing.png)
+
+<img src="docs/screenshot-phone.png" width="300" alt="PlainSpice on a phone: Start here drawn at the top with out = 3 V (the old 4 V crossed out); R1's card is a sheet along the bottom with 2k typed, SPICE reads it as 2 kΩ, was 1k with Put back 1k, 1.5 mA through it and 3 V across it (the old 2 mA and 2 V crossed out), and buttons to turn, mirror, reverse, move, connect and delete R1">
 
 How it differs from [EEcircuit](https://github.com/eelab-dev/EEcircuit), the closest existing
 tool: [docs/eecircuit-comparison.md](docs/eecircuit-comparison.md).
@@ -68,8 +71,8 @@ Milestone 2, step A: the app in the Notebook look Tarık chose ([0014](docs/deci
 drawing first, solved live as you edit, with every feature of the first app in panels. Step B: the
 schematic editor ([0017](docs/decisions/0017-the-schematic-editor.md)): place, wire, move, turn, mirror,
 reverse and delete parts on the drawing, by mouse, finger or keyboard, then reviewed for how it
-feels, for keyboards and screen readers, and for keeping the netlist in step, and the findings
-fixed. Step C: the examples of the four videos drawn as in the videos, recorded from the channel's
+feels, for keyboards and screen readers, and for keeping the netlist in step, and most findings
+fixed (0017 says which were not, and why). Step C: the examples of the four videos drawn as in the videos, recorded from the channel's
 own drawing code ([0018](docs/decisions/0018-the-examples-drawn-as-in-the-videos.md); each example
 next to its video: [docs/design/video/](docs/design/video/README.md)). What's next and the open
 questions: [docs/plan.md](docs/plan.md).

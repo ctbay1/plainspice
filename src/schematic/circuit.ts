@@ -325,3 +325,12 @@ export function subCircuit(circuit: Circuit, keys: ReadonlySet<string>): Circuit
   }
   return { netlist: circuit.netlist, parts, nodes, hasGround: nodes.has(GROUND), notDrawn: [], dotLines: [] };
 }
+
+/**
+ * The node a name in the drawing means: "gnd" is ground (node 0), except where the netlist has an
+ * ordinary node called gnd (gnd as the last word of a line, fact W9), which keeps its own name.
+ */
+export function labelNode(circuit: Circuit, name: string): string {
+  const n = lowerAscii(name);
+  return n === 'gnd' && !circuit.nodes.has('gnd') ? GROUND : n;
+}

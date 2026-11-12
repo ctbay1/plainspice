@@ -192,13 +192,22 @@ What the reviews of step B pinned down (`tests/unit/schematic-edit-review.test.t
   are placed again around it), and never passes through the point another node's name is written
   at (the name would sit on a crossing of two nodes' wires; the rebuild's joining wires likewise).
   `wireRoute`'s later legs keep off the earlier ones, so a wire never doubles back at a corner.
-- **Reverse swaps what the ends mean, not their words**: ground is written `0` (gnd at the end of
+- **Reverse swaps the two node names in the part's line**; ground is written `0` (gnd at the end of
   a line is an ordinary node to ngspice, fact W9); a part on a node called gnd that is not ground is
-  refused (`gndNode`), since swapped, gnd would become ground.
+  refused (`gndNode`), since swapped, gnd would no longer be last and would become ground (W8).
 - **Which name stays when nodes become one**: ground, then a node a dot command names, then a name
-  the student chose over one PlainSpice gave (n1, n2 ...), then the lower of two given names, then
-  the first in the netlist; a node called gnd that is not ground never stays (it could not be
-  written elsewhere).
+  the student chose over one PlainSpice gave (n1, n2 ...), then, of two of PlainSpice's names, the
+  lower number, then the first in the netlist; a node called gnd that is not ground never stays (it
+  could not be written elsewhere).
+- **What a summary says** (the re-check of the words): a node as "node out" (ground: "ground"), since
+  a name may be an ordinary word; a piece cut off a node by the parts whose ends moved ("R2 no longer
+  connects to ground: that end is now on a node of its own, n1."), and no part left on a ground
+  symbol as "the circuit has no ground (node 0) until a ground symbol goes back on it" (`groundCut`:
+  the last symbol gone) or "until a part connects to a ground symbol again" (`groundCutOff`: a symbol
+  still drawn, with no part on its wires); a line that still names a deleted part by its number in
+  the text after the delete (the part's own lines gone, drawing lines written), which `select.line`
+  gives too; what a controlled source reads as its card's Connections say it (`readsWords`: "the
+  voltage between node in and ground", "the current through V1"). `schematic-edit.test.ts` pins each.
 - **`pinDrawing(text, options)`**: the text with its drawing lines written for the drawing it shows,
   read back until they agree. The Add a part form uses it when the circuit is drawn by hand, so a
   part it adds is placed in the same step and never moves when other lines are typed.

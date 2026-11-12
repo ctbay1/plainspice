@@ -15,14 +15,15 @@
  * - a new part's pins join the nodes they touch; a pin touching nothing gets a new node (n1, n2 ...);
  * - a wire between two nodes, or a ground symbol on a node, makes them one node: ground wins, then a
  *   node named in a dot command or a .control line (.tf v(out) ...), then a name the student chose
- *   over one PlainSpice gave (n1, n2 ...), then the lower of two given names, then the node that
- *   comes first in the netlist; every mention of the other name changes, in .control lines too;
+ *   over one PlainSpice gave (n1, n2 ...), then, of two of PlainSpice's names, the lower number, then
+ *   the node that comes first in the netlist; every mention of the other name changes, in .control lines too;
  * - removing a wire or a ground symbol can leave a node in two pieces: the piece with the node's
  *   label (or ground symbol, or else its first pin) keeps the name, the other piece's pins get a new
  *   name;
  * - deleting a part deletes its lines; a node left with no pins is gone from the netlist. Lines that
  *   still name the part or such a node (an F reading its current, a .tf line, a .control line ...)
- *   are left as the student wrote them, and the summary says which, so they can be changed;
+ *   are left as the student wrote them, and the summary says which, by their numbers in the text
+ *   after the delete, so they can be changed;
  * - renaming a node to a name that exists joins them by name (the label is written on each piece);
  * - reversing a part swaps its two node names in the text and turns its symbol round, so the wires
  *   stay where they are (a source's + and − sides swap);
@@ -36,9 +37,10 @@
  * drawing lines, only edits that change part lines are done: changing the drawing would leave that
  * version's lines behind, out of step.
  */
+import { elementInfo } from '../spice/elements.ts';
 import { lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange, Token } from '../spice/types.ts';
-import { GROUND, circuitFromNetlist, type Circuit, type CircuitPart } from './circuit.ts';
+import { GROUND, circuitFromNetlist, labelNode, type Circuit, type CircuitPart } from './circuit.ts';
 import { checkConnectivity, drawnPins, findIslands } from './connectivity.ts';
 import { cloneDrawing, cloneLabel, groundGeometry, partGeometry, symbolGeometry, type Drawing, type LabelSide, type NodeSpot } from './drawing.ts';
 import { LABEL_SIDES, NODE_SPOTS } from './drawing.ts';
@@ -60,7 +62,7 @@ import { ROTATIONS, boxContains, boxesOverlap, inflate, isOrthogonal, nextRotati
 import type { LayoutOptions } from './layout.ts';
 import { describePart } from './navigate.ts';
 import { ROUTE_COSTS, findRoute, type RouteEnd } from './route.ts';
-import { buildScene } from './scene.ts';
+import { buildScene, findOverlaps } from './scene.ts';
 import { buildSchematic, type Schematic } from './schematic.ts';
 import { PART_LETTERS, type PartLetter } from './symbols.ts';
 import { normalizeWires, pruneDangling, toSegments } from './wires.ts';
@@ -112,12 +114,27 @@ export interface EditResult {
   select?: { part: string } | { node: string } | { line: number };
 }
 
-/** Every sentence the editor says, in one object so a Turkish UI can replace it later. */
+/** The first letter in capitals: a sentence that starts with a node said as "node out". */
+const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+/** "R1", "R1 and R2", "R1, R2 and R3". */
+const listOf = (items: readonly string[]): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
+/** Parts whose ends left a node: "R2 no longer connects to ground: that end is now on a node of its own, n1". */
+const leftNode = (parts: readonly string[], ends: number, node: string, piece: string): string =>
+  `${listOf(parts)} no longer ${parts.length > 1 ? 'connect' : 'connects'} to ${node}: ${ends > 1 ? 'those ends are' : 'that end is'} now on a node of ${ends > 1 ? 'their' : 'its'} own, ${piece}`;
+
+/**
+ * Every sentence the editor says, in one object so a Turkish UI can replace it later. A node is said
+ * with the word "node" before its name ("R3 added between node in and node n1."), since a name may be
+ * an ordinary word (in, out, s); ground is "ground". A bare name only follows "one node," or "called".
+ */
 export const EDIT_STRINGS = {
   ground: 'ground',
+  theGround: 'the ground symbol',
+  /** A node in a sentence (not ground): "node out". */
+  node: (name: string): string => `node ${name}`,
   added: (name: string, a: string, b: string): string => `${name} added between ${a} and ${b}.`,
   groundAdded: 'Ground symbol added.',
-  nowGround: (node: string): string => `${node} is now ground (node 0).`,
+  nowGround: (node: string): string => `${cap(node)} is now ground (node 0).`,
   moved: (name: string): string => `${name} moved.`,
   groundMoved: 'Ground symbol moved.',
   turned: (name: string): string => `${name} turned.`,
@@ -129,31 +146,45 @@ export const EDIT_STRINGS = {
   stillNamed: (list: string, many: boolean, name: string): string => `${list} still ${many ? 'name' : 'names'} ${name}.`,
   onLine: (what: string, line: number): string => `${what} (line ${line})`,
   wired: 'Wire added.',
-  merged: (gone: string, kept: string): string => `${gone} and ${kept} are now one node, ${kept}.`,
+  /** `gone` and `kept` as said ("node n1", "ground"), `name` as the kept node is called ("out", "ground"). */
+  merged: (gone: string, kept: string, name: string): string => `${cap(gone)} and ${kept} are now one node, ${name}.`,
   wireDeleted: 'Wire deleted.',
   pieceDeleted: 'Piece of wire deleted.',
-  split: (node: string, piece: string): string => `Part of ${node} is now a separate node, ${piece}.`,
-  renamed: (old: string, name: string): string => `${old} renamed to ${name}.`,
-  joinedByName: (name: string): string => `The pieces named ${name} are one node.`,
-  labelMoved: (node: string): string => `The name ${node} moved.`,
+  /** A piece of a node cut off (a wire or a ground symbol gone): the parts whose ends were on it, how many ends, the node as said, the piece's new name. */
+  split: (parts: readonly string[], ends: number, node: string, piece: string): string => `${leftNode(parts, ends, node, piece)}.`,
+  /** The last ground symbol on ground's copper gone: what was on ground is a new node, and nothing is on node 0 any more (no-ground-1). */
+  groundCut: (parts: readonly string[], ends: number, piece: string): string =>
+    `No ground symbol is left on ground's wires, so ${leftNode(parts, ends, 'ground', piece)}, and the circuit has no ground (node 0) until a ground symbol goes back on it.`,
+  /** The same when a ground symbol is still drawn, cut off from every part (no-ground-1). */
+  groundCutOff: (parts: readonly string[], ends: number, piece: string): string =>
+    `No part connects to a ground symbol any more, so ${leftNode(parts, ends, 'ground', piece)}, and the circuit has no ground (node 0) until a part connects to a ground symbol again.`,
+  renamed: (old: string, name: string): string => `Node ${old} renamed to ${name}.`,
+  joinedByName: (name: string): string => `A node called ${name} was already there, so the two are now one node, ${name}.`,
+  labelMoved: (node: string): string => `The name of node ${node} moved.`,
   wordsMoved: (name: string): string => `${name}'s words moved.`,
   valueSet: (name: string, value: string): string => `${name} is now ${value}.`,
   controlSet: (name: string, control: string): string => `${name} now reads ${control}.`,
+  /** What a controlled source reads, in the words of its card's Connections (facts P6, P7, P8). */
+  readsVoltage: (plus: string, minus: string): string => `the voltage between ${plus} and ${minus}`,
+  readsCurrent: (source: string): string => `the current through ${source}`,
   disconnected: (name: string, node: string, fresh: string): string => `${name} no longer connects to ${node}: that end is now on a node of its own, ${fresh}.`,
   orphansDropped: (names: string): string => `The drawing lines of ${names}, which the netlist no longer has, were removed.`,
   failedDropped: 'The drawing lines PlainSpice could not use were replaced.',
-  and: (items: readonly string[]): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`),
+  and: listOf,
   // Why an edit cannot be done.
   noPart: (name: string): string => `There is no part ${name} in the drawing.`,
   noGround: 'There is no such ground symbol.',
   noWire: 'There is no such wire.',
   noNode: (name: string): string => `There is no node ${name} in the drawing.`,
   taken: (what: string): string => `That place is taken by ${what}.`,
-  onWire: 'A wire runs there.',
-  foreign: (node: string): string => `A pin would touch ${node}, another node.`,
+  onWire: "A wire runs there, and nothing can lie across a wire. To put a part in its place, select that piece of wire and delete it, then wire the part's ends.",
+  /** The same for a ground symbol, placed or moved: it connects by its pin, so only its pin may meet a wire. */
+  onWireGround: 'A wire runs there, and nothing can lie across a wire. A ground symbol may touch a wire only with its pin: move it until just its pin is on the wire, or until it misses the wire.',
+  /** `node` as it is called ("out", "ground"): a pin there would join a node it is not on. */
+  foreign: (node: string): string => `A pin would touch another node, ${node}.`,
   wireEnds: 'A wire needs a pin or a wire at each end.',
   noRoute: 'There is no way for a wire between those two points.',
-  noWay: (name: string): string => `${name}'s wires would find no way there. Try a place with more room.`,
+  noWay: (name: string): string => `${cap(name)}'s wires would find no way there. Try a place with more room.`,
   noTurn: (name: string): string => `${name} can't turn there: its wires would find no way. Move it to a place with more room first, or use Reverse to swap its ends.`,
   noHalfTurn: (name: string): string => `Turning ${name} round where it stands would loop its wires round it. To swap its two ends instead, use Reverse.`,
   slanted: 'A wire runs only across and up or down.',
@@ -164,20 +195,26 @@ export const EDIT_STRINGS = {
   groundThere: 'The ground symbol is already there.',
   badName: (name: string): string => (name ? `PlainSpice keeps node names to letters, digits and _ (32 at most), so it can't use "${name}".` : 'A node needs a name.'),
   badSource: (name: string): string => `PlainSpice keeps part names to a letter followed by letters, digits and _, so it can't use "${name}".`,
-  groundName: 'Ground (node 0) keeps its name.',
+  // W8: 0 (and gnd) is what makes a node ground; every voltage is measured from it (the Help's results).
+  groundName: 'Ground (node 0) keeps its name: in SPICE, the name 0 is what makes a node ground, the node every voltage is measured from.',
   badValue: 'A value must be one line of text.',
   badSide: 'Words go right, left, above or below a part; a node name goes at one of its spots.',
   notControlled: (name: string): string => `${name} is not a dependent source.`,
-  noSource: (letter: string): string => `${letter} reads the current in a voltage source, and this circuit has none yet: add a V source first.`,
+  // P7, P8: F and H read the current through a voltage source; P10b: an E or H works too (both are voltage sources).
+  noSource: (letter: string): string => `A ${elementInfo(letter)?.name ?? letter} (${letter}) reads the current through a voltage source, and this circuit has none yet: add a voltage source first.`,
   notDrawable: (letter: string): string => `The drawing has no symbol for ${letter}: it draws R, C, L, V, I, E, F, G and H.`,
-  labelOff: (node: string): string => `A label for ${node} must be on ${node}'s wires or pins.`,
+  labelOff: (node: string): string => `The name of node ${node} goes only on its own wires and pins: move it along them.`,
+  /** `node` and `other` as said ("node out", "ground"). */
+  labelCrossing: (node: string, other: string): string => `Here a wire of ${other} crosses a wire of ${node}: the name could be read as either node's.`,
   noPin: 'A part has two ends: 0 and 1.',
   alone: (name: string, node: string): string => `That end of ${name} is already on a node of its own, ${node}.`,
   otherVersion: (header: string): string =>
     `This drawing was saved by another version of PlainSpice (${header}), so this one can't change it; reloading the page gets the newest PlainSpice. Values and node names can still be changed, and parts reversed or deleted; the Netlist panel changes anything.`,
   failed: 'PlainSpice could not make that change.',
-  outOfStep: 'PlainSpice could not draw that change with wires that join exactly what the netlist joins, so it left the circuit as it was.',
-  gndNode: (name: string): string => `${name} ends on a node called gnd at the end of its line, which ngspice keeps apart from ground; swapped to the other end, gnd would become ground. Rename that node first (the Checks panel says why).`,
+  outOfStep: 'PlainSpice could not draw that change with wires that connect exactly what the netlist connects, so it left the circuit as it was. You can make it in the Netlist panel.',
+  // W9: gnd as the last word of a line is an ordinary node; W8: anywhere else it is ground (0).
+  gndNode: (name: string): string =>
+    `${name}'s line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename gnd first: the Checks panel says why and offers to write 0.`,
 } as const;
 
 const S = EDIT_STRINGS;
@@ -207,9 +244,23 @@ export function mergeChanges(text: string, changes: readonly TextChange[]): Text
   return out.filter((c) => c.from !== c.to || c.insert !== '');
 }
 
-/** How a node is said in a summary: its name as written, "ground" for node 0. */
+/** A node's name as written, "ground" for node 0 (after "one node," or "another node,"). */
 function said(circuit: Circuit, node: string): string {
   return node === GROUND ? S.ground : (circuit.nodes.get(node)?.text ?? node);
+}
+
+/** How a node is said in a sentence: "node out", "ground" for node 0. */
+function nodeIn(circuit: Circuit, node: string): string {
+  return node === GROUND ? S.ground : S.node(circuit.nodes.get(node)?.text ?? node);
+}
+
+/** What a controlled source reads, in words: "the voltage between node in and ground", "the current through V1" (undefined for other parts). */
+export function readsWords(part: CircuitPart): string | undefined {
+  const c = part.control;
+  if (!c) return undefined;
+  if (c.kind === 'current') return S.readsCurrent(c.sourceText || '?');
+  const end = (node: string, text: string): string => (node === GROUND ? S.ground : S.node(text || '?'));
+  return S.readsVoltage(end(c.plus, c.plusText), end(c.minus, c.minusText));
 }
 
 /** A point an edit may use: whole numbers within the drawing's limits. */
@@ -388,9 +439,9 @@ function nodeMentions(s: Schematic, node: string, except: ReadonlySet<number>): 
   return [...lines].sort((a, b) => a - b).map((i) => mentionOf(s, i));
 }
 
-/** "F1 (line 6) and .tf (line 9) still name Vsense." */
-function stillNamed(mentions: readonly Mention[], name: string): string {
-  return S.stillNamed(S.and(mentions.map((m) => S.onLine(m.what, m.lineNumber))), mentions.length > 1, name);
+/** "F1 (line 6) and .tf (line 9) still name Vsense.", each line numbered as `number` says. */
+function stillNamed(mentions: readonly Mention[], name: string, number: (m: Mention) => number = (m) => m.lineNumber): string {
+  return S.stillNamed(S.and(mentions.map((m) => S.onLine(m.what, number(m)))), mentions.length > 1, name);
 }
 
 /** The changes that remove a part's line and its continuation lines (comments between them stay). */
@@ -460,6 +511,51 @@ interface Finish {
   noNaming?: string;
   /** The summary after the rebuild (for words that need the new circuit). */
   after?: (rebuilt: Schematic) => string;
+  /** A side this edit set on purpose (the student chose it): kept even where it overlaps. */
+  chosen?: { part?: string; node?: string };
+}
+
+/**
+ * A side the drawing stores for a part's words, or a spot for a node's name (side=: the video's, or the
+ * student's), stays while it is free. Where an edit put a wire, a part or other words on it, it goes
+ * back to automatic when that is freer, so the lines then store what the page shows (the scene always
+ * keeps a stored side). Only what the edit made overlap is let go, a few at most.
+ */
+function relaxStored(before: Schematic, after: Schematic, rebuild: (d: Drawing) => Schematic, chosen: Finish['chosen'] = {}): Schematic {
+  const id = (o: ReturnType<typeof findOverlaps>[number]): string => `${o.a.kind} ${o.a.id}|${o.b.kind} ${o.b.id}`;
+  const old = new Set(findOverlaps(before.scene).map(id));
+  let cur = after;
+  let count = findOverlaps(cur.scene).length;
+  for (let round = 0; round < 4; round++) {
+    const fresh = findOverlaps(cur.scene).filter((o) => !old.has(id(o)));
+    let better: Schematic | undefined;
+    for (const o of fresh) {
+      for (const it of [o.a, o.b]) {
+        const d = cloneDrawing(cur.drawing);
+        if (it.kind === 'part-label') {
+          const p = d.parts.get(it.id);
+          if (!p?.side || it.id === chosen.part) continue;
+          d.parts.set(it.id, { at: p.at, rot: p.rot, mirror: p.mirror });
+        } else if (it.kind === 'node-label') {
+          const i = Number(it.id.slice(it.id.lastIndexOf('#') + 1));
+          const l = d.labels[i];
+          if (!l?.side || l.node === chosen.node) continue;
+          d.labels[i] = { node: l.node, at: l.at };
+        } else continue;
+        const tried = rebuild(d);
+        const n = findOverlaps(tried.scene).length;
+        if (n < count) {
+          better = tried;
+          count = n;
+          break;
+        }
+      }
+      if (better) break;
+    }
+    if (!better) return cur;
+    cur = better;
+  }
+  return cur;
 }
 
 /** Rebuilds the schematic from the changed part lines and the intended drawing, and writes the result. */
@@ -480,7 +576,7 @@ function finish(s: Schematic, lineChanges: TextChange[], next: Drawing, f: Finis
   }
   for (const key of next.parts.keys()) if (!circuit2.parts.some((p) => p.key === key)) next.parts.delete(key);
   next.labels = next.labels.filter((l) => circuit2.nodes.has(l.node));
-  const rebuilt = buildSchematic(netlist2, { ...layout, lines: linesOf(circuit2, next) });
+  const rebuilt = relaxStored(s, buildSchematic(netlist2, { ...layout, lines: linesOf(circuit2, next) }), (d) => buildSchematic(netlist2, { ...layout, lines: linesOf(circuit2, d) }), f.chosen);
   if (f.noNaming && rebuilt.problems.some((p) => p.kind === 'connected-by-name')) return refuse(s, f.noNaming);
   // What the lines say is what the page shows: the drawing is read back from the lines written, and
   // when that reading repairs it again (a wire's dead end where a wire doubled back on itself, which
@@ -537,6 +633,8 @@ function finish(s: Schematic, lineChanges: TextChange[], next: Drawing, f: Finis
 interface Copper {
   /** The island at a point, if any. */
   island(p: Point): number | undefined;
+  /** Every island at a point (two where two nodes' wires cross there without joining). */
+  islandsAt(p: Point): number[];
   /** The node of an island (from its pins, ground symbols or labels). */
   nodeOf(island: number): string | undefined;
   /** Copper points of other islands than these, for routing. */
@@ -554,6 +652,7 @@ function copper(s: Schematic, drawing: Drawing = s.drawing): Copper {
   }
   return {
     island: (p) => islands.at(p),
+    islandsAt: (p) => islands.allAt(p),
     nodeOf: (i) => node.get(i),
     foreign(except) {
       return {
@@ -614,7 +713,7 @@ function placeProblem(s: Schematic, geom: ReturnType<typeof symbolGeometry>, pin
   for (const w of drawing.wires) {
     for (const [a, b] of segmentsOf(w)) {
       if (ownPins.has(pointKey(a)) && ownPins.has(pointKey(b))) continue;
-      if (segmentCrossesBox(a, b, inflate(geom.body, 0.05)) || mine.leads.some((l) => segmentCrossesBox(a, b, l))) return S.onWire;
+      if (segmentCrossesBox(a, b, inflate(geom.body, 0.05)) || mine.leads.some((l) => segmentCrossesBox(a, b, l))) return geom.kind === 'ground' ? S.onWireGround : S.onWire;
     }
   }
   for (const p of scene.parts) {
@@ -623,7 +722,7 @@ function placeProblem(s: Schematic, geom: ReturnType<typeof symbolGeometry>, pin
   }
   for (const g of scene.grounds) {
     if (g.index === ignore.ground) continue;
-    if (clash(groundGeometry(drawing.grounds[g.index]!).pins, g.body)) return S.taken(S.ground);
+    if (clash(groundGeometry(drawing.grounds[g.index]!).pins, g.body)) return S.taken(S.theGround);
   }
   const pins = drawnPins(s.circuit, drawing).filter(
     (p) => (ignore.part === undefined || p.part !== ignore.part) && (ignore.ground === undefined || p.ground !== ignore.ground),
@@ -735,7 +834,7 @@ function addPart(s: Schematic, op: Extract<EditOp, { kind: 'add-part' }>, option
   const line = `${name} ${text(nodes[0])} ${text(nodes[1])}${control} ${value}`;
   const next = cloneDrawing(s.drawing);
   next.parts.set(lowerAscii(name), { at: op.at, rot, mirror: op.mirror ?? false });
-  const summary = S.added(name, nodes[0] === GROUND ? S.ground : text(nodes[0]), nodes[1] === GROUND ? S.ground : text(nodes[1]));
+  const summary = S.added(name, nodes[0] === GROUND ? S.ground : S.node(text(nodes[0])), nodes[1] === GROUND ? S.ground : S.node(text(nodes[1])));
   return finish(s, [insertLine(s.netlist, line)], next, { summary, select: { part: lowerAscii(name) }, added: lowerAscii(name) }, options);
 }
 
@@ -755,7 +854,7 @@ function addGround(s: Schematic, op: Extract<EditOp, { kind: 'add-ground' }>, op
   // The node it touches becomes ground.
   const changes = renameRefs(s.netlist, node, '0');
   next.labels = next.labels.filter((l) => l.node !== node);
-  return finish(s, changes, next, { summary: `${S.groundAdded} ${S.nowGround(said(s.circuit, node))}`, select: { node: GROUND } }, options);
+  return finish(s, changes, next, { summary: `${S.groundAdded} ${S.nowGround(nodeIn(s.circuit, node))}`, select: { node: GROUND } }, options);
 }
 
 function movePart(s: Schematic, op: Extract<EditOp, { kind: 'move-part' | 'rotate-part' | 'mirror-part' }>, options: EditOptions): EditResult {
@@ -787,6 +886,9 @@ function movePart(s: Schematic, op: Extract<EditOp, { kind: 'move-part' | 'rotat
     summary = S.mirrored(part.name);
     noNaming = S.noTurn(part.name);
   }
+  // Turned, its words' stored side (side=, above or left of the part as it lay) no longer means the
+  // same place: the scene chooses again for the part as it lies now.
+  if (moved.rot !== placed.rot && moved.side !== undefined) delete moved.side;
   const geom = partGeometry(part, moved);
   const old = partGeometry(part, placed);
   // A half turn where it stands swaps its pins' places: its wires could only loop round it. Reverse
@@ -864,7 +966,7 @@ function moveGround(s: Schematic, op: Extract<EditOp, { kind: 'move-ground' }>, 
   // A move never changes the netlist: the rebuild wires the symbol to ground's copper, as it re-routes
   // a moved part's wires, and a place no wire reaches is refused (pieces of ground joined only by a
   // second symbol would be a change the student did not ask for).
-  return finish(s, [], next, { summary: S.groundMoved, select: { node: GROUND }, noNaming: S.noWay(S.ground) }, options);
+  return finish(s, [], next, { summary: S.groundMoved, select: { node: GROUND }, noNaming: S.noWay(S.theGround) }, options);
 }
 
 function deletePart(s: Schematic, name: string, options: EditOptions): EditResult {
@@ -880,22 +982,36 @@ function deletePart(s: Schematic, name: string, options: EditOptions): EditResul
     const node = s.circuit.nodes.get(n);
     return n !== GROUND && part.nodes.indexOf(n) === i && node !== undefined && node.pins.every((p) => p.part === part.key) && node.hidden.length === 0;
   });
-  const notes: string[] = [];
-  if (gone.length) notes.push(S.unused(S.and(gone.map((n) => said(s.circuit, n)))));
   // Lines that still name the part, or a node it leaves behind.
   const own = new Set([part.line]);
   const mentions = partMentions(s, part);
-  if (mentions.length) notes.push(stillNamed(mentions, part.name));
-  const nodeLines: Mention[] = [];
-  for (const n of gone) {
-    const m = nodeMentions(s, n, own);
-    if (m.length) notes.push(stillNamed(m, said(s.circuit, n)));
-    nodeLines.push(...m);
-  }
-  const first = [...mentions, ...nodeLines].sort((a, b) => a.line - b.line)[0];
-  const f: Finish = { summary: [S.deleted(part.name), ...notes].join(' ') };
-  if (first) f.select = first.part ? { part: first.part } : { line: first.lineNumber };
-  return finish(s, changes, next, f, options);
+  const nodeLines = gone.map((n) => ({ node: n, lines: nodeMentions(s, n, own) }));
+  const first = [...mentions, ...nodeLines.flatMap((x) => x.lines)].sort((a, b) => a.line - b.line)[0];
+  /** The summary, each line numbered as `number` says. */
+  const say = (number: (m: Mention) => number): string => {
+    const notes: string[] = [];
+    if (gone.length) notes.push(S.unused(S.and(gone.map((n) => nodeIn(s.circuit, n)))));
+    if (mentions.length) notes.push(stillNamed(mentions, part.name, number));
+    for (const x of nodeLines) if (x.lines.length) notes.push(stillNamed(x.lines, nodeIn(s.circuit, x.node), number));
+    return [S.deleted(part.name), ...notes].join(' ');
+  };
+  const r = finish(s, changes, next, { summary: say((m) => m.lineNumber) }, options);
+  if (!r.ok) return r;
+  // The part's own lines are gone (and drawing lines may have been written): each line that still
+  // names it is said, and offered, by its number in the text as it is now.
+  const now = (m: Mention): number => lineAfter(r.changes, r.text, s.netlist.lines[m.line]!.span.from);
+  r.summary = say(now);
+  if (first) r.select = first.part ? { part: first.part } : { line: now(first) };
+  return r;
+}
+
+/** The 1-based number, in `text` (the text after `changes`), of the line that started at `offset` before them (a line the changes left in place). */
+function lineAfter(changes: readonly TextChange[], text: string, offset: number): number {
+  let at = offset;
+  for (const c of changes) if (c.to <= offset) at += c.insert.length - (c.to - c.from);
+  let line = 1;
+  for (let i = 0; i < at && i < text.length; i++) if (text.charCodeAt(i) === 10) line += 1;
+  return line;
 }
 
 function deleteGround(s: Schematic, index: number, options: EditOptions): EditResult {
@@ -928,10 +1044,24 @@ function endPoint(s: Schematic, end: WireEnd): RouteEnd | undefined {
   return pin ? { at: pin.at, outward: pin.outward, sideCost: ROUTE_COSTS.bareSide } : undefined;
 }
 
+/**
+ * Two pins on one line, both facing across it (two parts standing on a rail): the straight wire between
+ * them is the rail, so meeting them from the side costs a bend, not a detour (else every such wire is a U).
+ */
+function railEnds(a: RouteEnd, b: RouteEnd): void {
+  const across = (e: RouteEnd, horizontal: boolean): boolean => e.outward !== undefined && (horizontal ? e.outward === 'up' || e.outward === 'down' : e.outward === 'left' || e.outward === 'right');
+  const horizontal = a.at.y === b.at.y && across(a, true) && across(b, true);
+  const vertical = a.at.x === b.at.x && across(a, false) && across(b, false);
+  if (!horizontal && !vertical) return;
+  a.sideCost = Math.min(a.sideCost ?? ROUTE_COSTS.pinSide, ROUTE_COSTS.pinSide);
+  b.sideCost = Math.min(b.sideCost ?? ROUTE_COSTS.pinSide, ROUTE_COSTS.pinSide);
+}
+
 function addWire(s: Schematic, op: Extract<EditOp, { kind: 'add-wire' }>, options: EditOptions): EditResult {
   const a = endPoint(s, op.from);
   const b = endPoint(s, op.to);
   if (!a || !b) return refuse(s, S.wireEnds);
+  if (!op.via?.length) railEnds(a, b);
   const cu = copper(s);
   const ia = cu.island(a.at);
   const ib = cu.island(b.at);
@@ -976,7 +1106,7 @@ function addWire(s: Schematic, op: Extract<EditOp, { kind: 'add-wire' }>, option
     if (keep === GROUND) return [];
     return [{ ...cloneLabel(l), node: keep }];
   });
-  return finish(s, changes, next, { summary: `${S.wired} ${S.merged(said(s.circuit, gone), said(s.circuit, keep))}`, select: { node: keep } }, options);
+  return finish(s, changes, next, { summary: `${S.wired} ${S.merged(nodeIn(s.circuit, gone), nodeIn(s.circuit, keep), said(s.circuit, keep))}`, select: { node: keep } }, options);
 }
 
 /**
@@ -1037,22 +1167,30 @@ function splitNodes(s: Schematic, drawing: Drawing): { changes: TextChange[]; no
     // Ground stays ground only where a ground symbol is; another node splits only when in pieces.
     if (!node.ground && pieces.size <= 1) continue;
     const keepKey = pieces.has('named') ? 'named' : node.ground ? undefined : [...pieces.keys()][0];
+    // No piece of ground keeps a ground symbol, and no line the drawing does not show is on ground:
+    // nothing is on node 0 any more, which the first piece's sentence says (no-ground-1). A symbol may
+    // still be drawn, with no part on its wires: then the sentence says that, not that none is left.
+    let groundGone = node.ground && keepKey === undefined && node.hidden.length === 0;
+    const symbolLeft = drawing.grounds.length > 0;
     for (const [key, list] of pieces) {
       if (key === keepKey) continue;
       const fresh = freshNodeName(s, taken);
+      const names: string[] = [];
       for (const p of list) {
         const part = s.circuit.parts.find((q) => q.key === p.part)!;
         const token = s.netlist.lines[part.line]!.element!.nodes[p.pin]!.token;
         changes.push(replaceToken(token, fresh));
+        if (!names.includes(part.name)) names.push(part.name);
       }
-      notes.push(S.split(said(s.circuit, node.name), fresh));
+      notes.push(groundGone ? (symbolLeft ? S.groundCutOff : S.groundCut)(names, list.length, fresh) : S.split(names, list.length, nodeIn(s.circuit, node.name), fresh));
+      groundGone = false;
     }
   }
   return { changes, notes };
 }
 
 function renameNode(s: Schematic, nodeName: string, wanted: string, options: EditOptions): EditResult {
-  const node = lowerAscii(nodeName) === 'gnd' ? GROUND : lowerAscii(nodeName);
+  const node = labelNode(s.circuit, nodeName);
   const info = s.circuit.nodes.get(node);
   if (!info) return refuse(s, S.noNode(nodeName));
   if (node === GROUND) return refuse(s, S.groundName);
@@ -1087,7 +1225,7 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
       else next.labels.push({ node: target, at: p.at });
     });
     if (target === GROUND) next.labels = next.labels.filter((l) => l.node !== GROUND);
-    const summary = target === GROUND ? `${S.renamed(info.text, name)} ${S.nowGround(info.text)}` : `${S.renamed(info.text, name)} ${S.joinedByName(name)}`;
+    const summary = target === GROUND ? `${S.renamed(info.text, name)} ${S.nowGround(S.node(info.text))}` : `${S.renamed(info.text, name)} ${S.joinedByName(name)}`;
     return finish(s, changes, next, { summary, select: { node: target } }, options);
   }
   return finish(s, changes, next, { summary: S.renamed(info.text, name), select: { node: target } }, options);
@@ -1101,7 +1239,7 @@ function groundRotFor(s: Schematic, part: string | undefined, pin: number): Rota
 }
 
 function moveLabel(s: Schematic, op: Extract<EditOp, { kind: 'move-label' }>, options: EditOptions): EditResult {
-  const node = lowerAscii(op.node) === 'gnd' ? GROUND : lowerAscii(op.node);
+  const node = labelNode(s.circuit, op.node);
   const index = s.drawing.labels.findIndex((l) => l.node === node);
   if (index < 0) return refuse(s, S.noNode(op.node));
   const label = s.drawing.labels[index]!;
@@ -1109,12 +1247,15 @@ function moveLabel(s: Schematic, op: Extract<EditOp, { kind: 'move-label' }>, op
   if (!onGrid(to)) return refuse(s, S.offGrid);
   if (op.side !== undefined && op.side !== 'auto' && !NODE_SPOTS.includes(op.side)) return refuse(s, S.badSide);
   const cu = copper(s);
-  const island = cu.island(to);
-  if (island === undefined || cu.nodeOf(island) !== node) return refuse(s, S.labelOff(said(s.circuit, node)));
+  const here = cu.islandsAt(to);
+  if (!here.some((i) => cu.nodeOf(i) === node)) return refuse(s, S.labelOff(said(s.circuit, node)));
+  // Where another node's wire crosses this node's, the name would read as either node's.
+  const other = here.map((i) => cu.nodeOf(i)).find((n) => n !== undefined && n !== node);
+  if (other !== undefined) return refuse(s, S.labelCrossing(nodeIn(s.circuit, node), nodeIn(s.circuit, other)));
   const next = cloneDrawing(s.drawing);
   const side = op.side === undefined ? label.side : op.side === 'auto' ? undefined : op.side;
   next.labels[index] = side ? { node, at: to, side } : { node, at: to };
-  return finish(s, [], next, { summary: S.labelMoved(said(s.circuit, node)), select: { node } }, options);
+  return finish(s, [], next, { summary: S.labelMoved(said(s.circuit, node)), select: { node }, ...(op.side !== undefined && op.side !== 'auto' ? { chosen: { node } } : {}) }, options);
 }
 
 function setSide(s: Schematic, op: Extract<EditOp, { kind: 'set-side' }>, options: EditOptions): EditResult {
@@ -1124,7 +1265,7 @@ function setSide(s: Schematic, op: Extract<EditOp, { kind: 'set-side' }>, option
   if (op.side !== 'auto' && !LABEL_SIDES.includes(op.side)) return refuse(s, S.badSide);
   const next = cloneDrawing(s.drawing);
   next.parts.set(part.key, op.side === 'auto' ? { at: placed.at, rot: placed.rot, mirror: placed.mirror } : { at: placed.at, rot: placed.rot, mirror: placed.mirror, side: op.side });
-  return finish(s, [], next, { summary: S.wordsMoved(part.name), select: { part: part.key } }, options);
+  return finish(s, [], next, { summary: S.wordsMoved(part.name), select: { part: part.key }, ...(op.side !== 'auto' ? { chosen: { part: part.key } } : {}) }, options);
 }
 
 function setValue(s: Schematic, name: string, value: string, options: EditOptions): EditResult {
@@ -1175,7 +1316,7 @@ function setControl(s: Schematic, op: Extract<EditOp, { kind: 'set-control' }>, 
   } else return refuse(s, S.notControlled(part.name));
   const text = applyChanges(s.netlist.text, mergeChanges(s.netlist.text, changes));
   const after = circuitFromNetlist(parseNetlist(text)).parts.find((p) => p.key === part.key);
-  const control = after?.control?.kind === 'current' ? `I(${after.control.sourceText})` : after?.control ? `V(${after.control.plusText}, ${after.control.minusText})` : '';
+  const control = after ? (readsWords(after) ?? '') : '';
   return finish(s, changes, cloneDrawing(s.drawing), { summary: S.controlSet(part.name, control), select: { part: part.key } }, options);
 }
 
@@ -1206,7 +1347,7 @@ function disconnectPin(s: Schematic, op: Extract<EditOp, { kind: 'disconnect-pin
     if (otherPins.some((p) => p.part !== undefined)) next.parts.delete(part.key);
     else if (!wired) next.grounds = next.grounds.filter((g) => !samePoint(g.at, at));
   }
-  return finish(s, [replaceToken(token, fresh)], next, { summary: S.disconnected(part.name, said(s.circuit, node), fresh), select: { part: part.key } }, options);
+  return finish(s, [replaceToken(token, fresh)], next, { summary: S.disconnected(part.name, nodeIn(s.circuit, node), fresh), select: { part: part.key } }, options);
 }
 
 /**
@@ -1239,6 +1380,8 @@ export function wireRoute(s: Schematic, from: WireEnd, to: WireEnd | { free: Poi
   const a = endPoint(s, from);
   const b = 'free' in to ? (onGrid(to.free) ? { at: to.free } : undefined) : endPoint(s, to);
   if (!a || !b || !corners.every(onGrid)) return undefined;
+  // The same rail rule as the wire it previews (addWire).
+  if (!('free' in to) && !corners.length) railEnds(a, b);
   const cu = copper(s);
   const scene = s.scene;
   const walls = [...scene.parts.map((p) => p.box), ...scene.grounds.map((g) => g.box)];

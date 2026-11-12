@@ -5,11 +5,15 @@
  * ("ground (0)", "in", "out") or a new node with a name; a dependent source also what it reads. The
  * line it will add is shown as it is chosen ("R3 in out 1k"), the page adds it (src/app/editing.ts,
  * addPartEdit: before the analysis lines, .op and .end too on a blank page) and the drawing places
- * the part where it fits and wires it. Native fields throughout, labelled by the catalog's words.
+ * the part where it fits and wires it. The value is checked as a part's card checks it (card-edit.ts):
+ * what SPICE reads it as ("1 mΩ (milli!)", with the check about it and its fix), or why SPICE cannot
+ * use it and how to write it ("4,7k: SPICE reads the comma as a space", Write 4.7k). Native fields
+ * throughout, labelled by the catalog's words.
  */
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { Button, Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components';
 import { t } from '../../i18n/index.ts';
+import { WarningIcon } from '../components/Icons.tsx';
 import { GROUND, PART_LETTERS, type PartLetter, type Schematic } from '../../schematic/index.ts';
 import { elementInfo } from '../../spice/elements.ts';
 import { typeHint } from '../card.ts';
@@ -41,6 +45,11 @@ export default function AddPartDialog({
   const nodes = useMemo(() => nodeChoices(schematic), [schematic]);
   const sources = useMemo(() => sourceChoices(schematic), [schematic]);
   const line = formLine(schematic, form);
+  const value = line.value;
+  /** The fix a check offers for the value ("Write 4.7k", "Make it 1meg (1 MΩ)"): it goes into the field. */
+  const fix = value.kind === 'refused' ? value.fix : value.kind === 'reads' ? value.trap?.fix : undefined;
+  /** Why SPICE cannot use the value, or what the check about it says ("1M means 1 milliohm …"). */
+  const why = value.kind === 'refused' ? value.reason : value.kind === 'reads' ? value.trap?.reason : undefined;
   const roles = endRoles(form.letter);
   const info = elementInfo(form.letter);
 
@@ -155,8 +164,8 @@ export default function AddPartDialog({
                     autoCapitalize="off"
                     spellCheck={false}
                     value={form.value}
-                    aria-describedby={`${id}-value-hint`}
-                    aria-invalid={tried && !line.ok && line.field === 'value' ? true : undefined}
+                    aria-describedby={`${id}-value-hint ${id}-value-reads`}
+                    aria-invalid={value.kind === 'refused' || (tried && !line.ok && line.field === 'value') ? true : undefined}
                     onChange={(e) => {
                       setForm({ ...form, value: e.target.value });
                       setRefused(undefined);
@@ -164,6 +173,28 @@ export default function AddPartDialog({
                   />
                   <p className="hint" id={`${id}-value-hint`}>
                     {typeHint(form.letter)}
+                  </p>
+                  {/* As on a part's card: what SPICE reads the value as, or why it cannot use it, with the check's fix. */}
+                  <p className={`reads${why ? ' is-trap' : value.kind === 'reads' && value.readsTrap ? ' is-trap' : ''}`} id={`${id}-value-reads`} aria-live="polite">
+                    {value.kind === 'reads' ? (
+                      <>
+                        {t('cardReads')} <span className={`reads__value${value.reads.length > 16 ? ' reads__value--words' : ''}`}>{value.reads}</span>
+                        {why ? ' · ' : null}
+                      </>
+                    ) : null}
+                    {why ? (
+                      <>
+                        <WarningIcon /> <span className="reads__why">{why}</span>
+                      </>
+                    ) : null}
+                    {fix ? (
+                      <>
+                        {' '}
+                        <button type="button" className="link-button reads__fix" onClick={() => setForm({ ...form, value: fix.value })}>
+                          {fix.label}
+                        </button>
+                      </>
+                    ) : null}
                   </p>
                 </div>
                 <div className="form-ends">
@@ -219,7 +250,9 @@ export default function AddPartDialog({
                       <code className="form-line__code">{line.line}</code>
                     </>
                   ) : tried || line.field === 'control' ? (
-                    <p className="form-line__why">{line.reason}</p>
+                    // A value SPICE cannot use is shown under Value already, with its fix: seen once, and
+                    // still part of the Add button's description (aria-describedby).
+                    <p className={`form-line__why${line.field === 'value' && value.kind === 'refused' ? ' visually-hidden' : ''}`}>{line.reason}</p>
                   ) : null}
                 </div>
                 <div className="form-line__said" aria-live="polite">

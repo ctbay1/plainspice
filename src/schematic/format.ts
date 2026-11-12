@@ -257,7 +257,9 @@ function readLine(l: { text: string; line: number }, out: DrawingLines, budget: 
     const y = int(plain[2]);
     if (!node || x === undefined || y === undefined || plain.length > 3) return { ok: false, why: 'unreadable' };
     if (!inRange(x, y)) return { ok: false, why: 'range' };
-    const label: LabelLine = { node: lowerAscii(node) === 'gnd' ? '0' : lowerAscii(node), at: pt(x, y), line: l.line, text: l.text };
+    // "gnd" is ground, except where the netlist has an ordinary node called gnd (fact W9): the schematic
+    // decides, knowing the circuit (schematic.ts, labelNode).
+    const label: LabelLine = { node: lowerAscii(node), at: pt(x, y), line: l.line, text: l.text };
     unknownFields(fields, {
       side: (v) => {
         const s = lowerAscii(v) as NodeSpot;

@@ -454,6 +454,12 @@ describe('explainDiagnostic: every code in plain words', () => {
     expect(w.why.length).toBeGreaterThan(20);
   });
 
+  it('a resistor too small for ngspice: two nodes are made one by a name, in the editor’s words (the words critic, new-4)', () => {
+    const w = explainDiagnostic(diag('resistor-too-small', '', { severity: 'warning', subject: 'r1' }), net);
+    expect(sp(w.why)).toContain('To make two nodes one, give them the same name; to measure the current there, use a 0 V source.');
+    expect(w.why).not.toMatch(/\bjoin/);
+  });
+
   it('tailors the singular matrix to the node ngspice names (M1, M2, M2b, M2c, M3c, M9)', () => {
     const s = (text: string, subject: string): string => explainDiagnostic(diag('singular-matrix', '', { severity: 'warning', subject }), parseNetlist(text)).title;
     expect(s('* t\nV1 a b 6\nR1 a b 2\n', 'b')).toBe('No ground (node 0)');

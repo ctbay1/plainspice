@@ -117,10 +117,11 @@ export function TopBar({ phone, title, open, onOpen, examplesRef, exportRef, can
           <ChevronDown />
         </button>
         <span className="top__sep" aria-hidden="true" />
-        <button type="button" className="icon-button" onClick={onUndo} disabled={!canUndo} aria-label={t('undo')} aria-keyshortcuts="Control+Z Meta+Z">
+        {/* aria-disabled, not disabled: the focus stays on a button that runs out, and pressing it says "Nothing to undo." as Ctrl+Z does. */}
+        <button type="button" className="icon-button" onClick={onUndo} aria-disabled={!canUndo} aria-label={t('undo')} aria-keyshortcuts="Control+Z Meta+Z">
           <LineIcon name="undo" />
         </button>
-        <button type="button" className="icon-button" onClick={onRedo} disabled={!canRedo} aria-label={t('redo')} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z">
+        <button type="button" className="icon-button" onClick={onRedo} aria-disabled={!canRedo} aria-label={t('redo')} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z">
           <LineIcon name="redo" />
         </button>
       </div>
@@ -130,7 +131,7 @@ export function TopBar({ phone, title, open, onOpen, examplesRef, exportRef, can
           {t('palettePlaceholder')}
         </span>{' '}
         <kbd className="top__kbd" aria-hidden="true">
-          Ctrl K
+          Ctrl+K
         </kbd>
       </button>
       <div ref={actions} className="top__actions island" role="toolbar" aria-label={t('actionsLabel')} aria-orientation="horizontal" {...toolbarFocus}>

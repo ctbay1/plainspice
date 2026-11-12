@@ -348,7 +348,7 @@ export const DESCRIBE_STRINGS = {
   noValueWhy: 'This source has no DC value, so ngspice uses 0. An AC value alone is not a DC value.',
   tooSmallTitle: (name: string): string => `${name} is too small for ngspice`,
   tooSmallWhy:
-    'ngspice 47 cannot use 0 Ω (or anything below 10⁻¹² Ω): it uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To join two nodes, give them the same name; to measure the current there, use a 0 V source.',
+    'ngspice 47 cannot use 0 Ω (or anything below 10⁻¹² Ω): it uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name; to measure the current there, use a 0 V source.',
   tfMissingTitle: (name: string): string => `.tf: there is no ${name}`,
   tfMissingWhy: (name: string): string => `The input of .tf must be a voltage or current source of the circuit, and there is no ${name}, so ngspice ran no analysis.`,
   tfTypeTitle: (name: string): string => `.tf: ${name} is not a source`,

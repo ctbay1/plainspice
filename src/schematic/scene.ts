@@ -186,6 +186,10 @@ export function defaultSide(rot: Rotation, mirror: boolean): LabelSide {
 }
 
 const OTHER_SIDE: Readonly<Record<LabelSide, LabelSide>> = { right: 'left', left: 'right', above: 'below', below: 'above' };
+/** Where a part's words may slide when no side is free: along the side, then a little further out, nearest first (grid squares). */
+const SLIDES: readonly (readonly [number, number])[] = [
+  [0.5, 0], [-0.5, 0], [1, 0], [-1, 0], [0, 0.5], [0.5, 0.5], [-0.5, 0.5], [1.5, 0], [-1.5, 0], [1, 0.5], [-1, 0.5], [0, 1], [2, 0], [-2, 0], [1, 1], [-1, 1],
+];
 const ACROSS: Readonly<Record<LabelSide, readonly LabelSide[]>> = { right: ['above', 'below'], left: ['above', 'below'], above: ['right', 'left'], below: ['right', 'left'] };
 
 /** A part's lines: its name, its value lines, and the result lines (`room`: SceneOptions.resultRoom's samples; default one line). */
@@ -425,25 +429,53 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const first = stored ?? defaultSide(geom.rot, geom.mirror);
     // The part's own symbol is not in the way of its words.
     const own = obstacles.boxes.indexOf(geom.box);
-    const costOf = (side: LabelSide): { lines: TextLine[]; cost: number } => {
-      const lines = partLabelLines(geom, specs, side, measure);
+    const costLines = (lines: TextLine[]): number => {
       const box = boxOfLines(lines);
       let cost = 0;
       obstacles.boxes.forEach((b, i) => {
         if (i !== own && boxesOverlap(box, b)) cost += 1 + overlapArea(box, b);
       });
       for (const [a, b] of obstacles.segments) if (segmentCrossesBox(a, b, box)) cost += 1;
-      return { lines, cost };
+      return cost;
+    };
+    const costOf = (side: LabelSide): { lines: TextLine[]; cost: number } => {
+      const lines = partLabelLines(geom, specs, side, measure);
+      return { lines, cost: costLines(lines) };
     };
     let side = first;
     let chosen = costOf(first);
-    // In the way: the opposite side, then the two sides across.
+    // In the way: the opposite side, then the two sides across. A side the drawing stores (side=) is
+    // kept: the lines say what the page shows (an edit that puts something on it lets it go, edit.ts).
     if (chosen.cost > 0 && !stored) {
       for (const next of [OTHER_SIDE[first], ...ACROSS[first]]) {
         const other = costOf(next);
         if (other.cost < chosen.cost) {
           side = next;
           chosen = other;
+        }
+        if (chosen.cost === 0) break;
+      }
+    }
+    // No side free (a crowded drawing, a part just turned or moved): the words slide along a side, or
+    // step out from it a little, to the nearest place where they touch nothing (never more than two
+    // squares), rather than sit on a wire or on other words; else the least-bad place found.
+    if (chosen.cost > 0 && !stored) {
+      for (const next of [side, ...[first, OTHER_SIDE[first], ...ACROSS[first]].filter((x) => x !== side)]) {
+        const lines = partLabelLines(geom, specs, next, measure);
+        const across = next === 'above' || next === 'below';
+        const out = next === 'right' || next === 'below' ? 1 : -1;
+        for (const [along, away] of SLIDES) {
+          const dx = across ? along : out * away;
+          const dy = across ? out * away : along;
+          const moved = lines.map((l) => ({ ...l, x: l.x + dx, y: l.y + dy, box: { x0: l.box.x0 + dx, y0: l.box.y0 + dy, x1: l.box.x1 + dx, y1: l.box.y1 + dy } }));
+          // Never onto its own symbol (which the cost leaves out, as the words start beside it).
+          if (boxesOverlap(boxOfLines(moved), geom.box)) continue;
+          const cost = costLines(moved);
+          if (cost < chosen.cost) {
+            side = next;
+            chosen = { lines: moved, cost };
+          }
+          if (chosen.cost === 0) break;
         }
         if (chosen.cost === 0) break;
       }

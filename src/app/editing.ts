@@ -2,7 +2,7 @@
  * The schematic editor's interaction layer (decision 0017): what the pointer and the keys mean on
  * the drawing, as the schematic model's own edits (src/schematic, applyEdit), and what to show while
  * an edit is being chosen: where a part in hand would land and which node each of its pins would
- * join, why a place is refused (the model's reason), the way a new wire would go, a part following
+ * connect to, why a place is refused (the model's reason), the way a new wire would go, a part following
  * the pointer with its wires re-routed. Plain TypeScript (decision 0002): React renders what this
  * decides. Every change goes through applyEdit and then the store (source 'drawing'), so undo and
  * redo, live runs, the Netlist panel, the autosave, share links and export follow by themselves.
@@ -38,6 +38,7 @@ import {
   segmentsOf,
   symbolGeometry,
   pinDrawing,
+  readsWords,
   wireRoute,
   type Box,
   type CircuitPart,
@@ -55,6 +56,7 @@ import { elementInfo } from '../spice/elements.ts';
 import { EXPLAIN_STRINGS } from '../spice/explain.ts';
 import { parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange } from '../spice/types.ts';
+import { checkValue, type ValueCheck } from './card-edit.ts';
 import { toolForKey, type PartKind, type Tool } from './tools.ts';
 
 const S = EDIT_STRINGS;
@@ -278,7 +280,20 @@ export interface PlacePreview {
   ok: boolean;
   /** Why it cannot go here, in the model's words. */
   reason?: string;
+  /** The reason holds wherever it goes (refusedAnywhere): the hint says it without "Not here". */
+  anywhere?: boolean;
   pins: PinMark[];
+}
+
+/**
+ * Why the part in hand cannot be placed anywhere on this drawing yet, if so: a ground symbol on a page
+ * with no parts (it connects to the node its pin touches), an F or H in a circuit with no voltage
+ * source to read the current through (P7, P8; an E or H works too, P10b: sourceChoices).
+ */
+export function refusedAnywhere(s: Schematic, kind: PartKind): string | undefined {
+  if (kind === 'ground' && s.scene.parts.length === 0) return t('placeGroundFirst');
+  if ((kind === 'F' || kind === 'H') && !sourceChoices(s).length) return S.noSource(kind);
+  return undefined;
 }
 
 /** The model's edit for placing a hand at a point. */
@@ -289,19 +304,20 @@ export function placeOp(hand: Hand, at: Point): EditOp {
 /** Where its pins land and which nodes they would join; refused (and why) when the model would refuse it here. */
 export function placePreview(s: Schematic, hand: Hand, at: Point): PlacePreview {
   const pins = symbolGeometry(hand.kind, at, hand.rot, hand.mirror).pins.map((p) => ({ at: p, node: nodeAt(s, p) }));
-  if (hand.kind === 'ground' && s.scene.parts.length === 0) return { hand, at, ok: false, reason: t('placeGroundFirst'), pins };
+  const anywhere = refusedAnywhere(s, hand.kind);
+  if (anywhere) return { hand, at, ok: false, reason: anywhere, anywhere: true, pins };
   const r = applyEdit(s, placeOp(hand, at));
   return r.ok ? { hand, at, ok: true, pins } : { hand, at, ok: false, reason: r.reason ?? S.failed, pins };
 }
 
-/** Which nodes the part in hand would join where it is now, in words: "it joins in and a new node", "out becomes ground (node 0)". */
+/** Which nodes the part in hand would connect to where it is now, in words: "its ends connect to node in and a new node", "node out becomes ground (node 0)". */
 export function joinsWords(s: Schematic, p: PlacePreview): string {
   if (p.hand.kind === 'ground') {
     const node = p.pins[0]?.node;
     if (node === undefined) return t('groundAlone');
-    return node === GROUND ? t('groundJoinsGround') : t('groundJoins', { node: nodeWords(s, node) });
+    return node === GROUND ? t('groundJoinsGround') : t('groundJoins', { node: nodeSaid(s, node) });
   }
-  const [a, b] = p.pins.map((pin) => (pin.node === undefined ? undefined : pin.node === GROUND ? S.ground : nodeWords(s, pin.node)));
+  const [a, b] = p.pins.map((pin) => (pin.node === undefined ? undefined : pin.node === GROUND ? S.ground : nodeSaid(s, pin.node)));
   // A current source: which way its arrow pushes the current, in the words of explain.ts (iPushes).
   if (p.hand.kind === 'I' || p.hand.kind === 'F' || p.hand.kind === 'G') return t('joinsCurrent', { a: a ?? t('joinsNew'), b: b ?? t('joinsNew') });
   if (a === undefined && b === undefined) return t('joinsTwoNew');
@@ -319,8 +335,8 @@ export function needsStarter(netlist: Netlist): boolean {
   return !netlist.lines.some((l) => l.kind === 'element') && netlist.analyses.length === 0 && !netlist.lines.some((l) => l.kind === 'control');
 }
 
-/** What the first part's summary adds about .op and .end: their names in the words of explain.ts ("operating point", "end of the netlist"). */
-export const starterWords = (): string => t('starterAdded', { op: EXPLAIN_STRINGS.opWhat, end: EXPLAIN_STRINGS.endWhat });
+/** What the first part's summary adds about .op and .end: what each is for, .op named in the words of explain.ts ("operating point"). */
+export const starterWords = (): string => t('starterAdded', { op: EXPLAIN_STRINGS.opWhat });
 
 /** The text with .op (and .end, when it has none) added for a first part, or undefined when it needs neither. */
 export function withStarter(netlist: Netlist): string | undefined {
@@ -352,6 +368,12 @@ export function placeEdit(s: Schematic, hand: Hand, at: Point): EditResult {
   const base = starter === undefined ? s : buildSchematic(starter, s.options);
   const r = applyEdit(base, placeOp(hand, at));
   return r.ok && starter !== undefined ? { ...r, summary: `${r.summary} ${starterWords()}` } : r;
+}
+
+/** True when a netlist has drawing lines (decision 0013: its `*@` block, or another version's). */
+export function hasDrawingLines(text: string): boolean {
+  const lines = readDrawing(parseNetlist(text));
+  return lines.lineIndexes.length > 0 || lines.foreign.length > 0;
 }
 
 // ------------------------------------------------------------------ moving
@@ -507,7 +529,7 @@ export function wireEdit(s: Schematic, d: WireDraft, end: WireStart): EditResult
   if (samePoint(d.start.at, end.at) && !d.corners.length) return refused(s, t('wireSamePoint'));
   if (!d.corners.length) {
     // Already on one piece of copper: there is no wire to draw (it would say "Wire added." and add nothing).
-    if (sameCopper(s, d.start.at, end.at)) return refused(s, t('wireSameNode', { node: end.node === undefined ? t('joinsNew') : nodeWords(s, end.node) }));
+    if (sameCopper(s, d.start.at, end.at)) return refused(s, t('wireSameNode', { node: end.node === undefined ? t('joinsNew') : nodeSaid(s, end.node) }));
     return applyEdit(s, { kind: 'add-wire', from: d.start.end, to: end.end });
   }
   const path = wireRoute(s, d.start.end, end.end, d.corners);
@@ -541,9 +563,14 @@ export function deleteOp(s: Schematic, item: NavItem | undefined, wire: PieceOfW
 
 // ------------------------------------------------------------------ connections (the card, without a pointer)
 
-/** A node in words, as the lists say it: "ground (0)", or its name as written. */
+/** A node in words, as the lists and cards say it: "ground (node 0)", or its name as written. */
 export function nodeWords(s: Schematic, node: string): string {
   return node === GROUND ? t('groundWords') : (s.circuit.nodes.get(node)?.text ?? node);
+}
+
+/** A node in a sentence: "node out" (a name may be an ordinary word: "Wire started at node s."), "ground (node 0)". */
+export function nodeSaid(s: Schematic, node: string): string {
+  return node === GROUND ? t('groundWords') : t('nodeNamed', { name: s.circuit.nodes.get(node)?.text ?? node });
 }
 
 /**
@@ -560,11 +587,9 @@ export function nodeChoices(s: Schematic, parts = false): { node: string; words:
   return [{ node: GROUND, words: t('groundWords') }, ...others.map((n) => ({ node: n, words: on(n) }))];
 }
 
-/** What a controlled source reads, as the model's summary writes it: "V(n1, 0)", "I(V1)". */
+/** What a controlled source reads, in the words of its card's Connections and the model's summary: "the voltage between node in and ground", "the current through V1". */
 export function controlWords(part: CircuitPart): string | undefined {
-  const c = part.control;
-  if (!c) return undefined;
-  return c.kind === 'current' ? `I(${c.sourceText})` : `V(${c.plusText}, ${c.minusText})`;
+  return readsWords(part);
 }
 
 /** The sources an F or H can read the current of: V sources first, then E and H (P10b), as the model picks. */
@@ -573,7 +598,7 @@ export function sourceChoices(s: Schematic, except?: string): { key: string; nam
   return [...of('V'), ...of('EH')];
 }
 
-/** One end of a part: which pin, its name in the catalog's words ("+ node", "from node"), and its node. */
+/** One end of a part: which pin, its name ("+ end", "from end", "end 1"), and its node. */
 export interface PartEnd {
   pin: 0 | 1;
   role: string;
@@ -581,10 +606,14 @@ export interface PartEnd {
   words: string;
 }
 
-/** What a part's two ends are called, in the element catalog's words (src/spice/elements.ts): "+ node" and "− node", "from node" and "to node", "node 1" and "node 2". */
+/**
+ * What a part's two ends are called in the editor, from the element catalog's words (src/spice/elements.ts)
+ * with "end" for "node", since an end is on a node and is not one: "+ end" and "− end", "from end" and
+ * "to end", "end 1" and "end 2". The field table keeps the catalog's own words ("+ node").
+ */
 export function endRoles(letter: PartLetter): [string, string] {
-  const labels = elementInfo(letter)?.nodeLabels ?? [];
-  const a = labels[0] ?? 'node';
+  const labels = (elementInfo(letter)?.nodeLabels ?? []).map((l) => l.replace(/\bnode\b/, t('endWord')));
+  const a = labels[0] ?? t('endWord');
   const b = labels[1] ?? a;
   return a === b ? [t('endNumbered', { label: a, n: 1 }), t('endNumbered', { label: b, n: 2 })] : [a, b];
 }
@@ -612,7 +641,7 @@ export function connectEdit(s: Schematic, key: string, pin: 0 | 1, node: string)
   const part = s.scene.parts.find((p) => p.key === key);
   const end = part?.pins[pin];
   if (!part || !end) return refused(s, S.noPart(key));
-  if (end.node === node) return refused(s, t('connAlready', { node: nodeWords(s, node) }));
+  if (end.node === node) return refused(s, t('connAlready', { node: nodeSaid(s, node) }));
   const from: WireEnd = { part: key, pin };
   const targets: { end: WireEnd; at: Point }[] = [];
   for (const p of s.scene.parts) {
@@ -689,46 +718,62 @@ export const defaultValue = (letter: PartLetter): string => DEFAULT_VALUES[lette
 /** A field of the form a refusal is about. */
 export type FormField = 'value' | 'end0' | 'end1' | 'control';
 
-export type FormLine = { ok: true; line: string; name: string; summary: string } | { ok: false; reason: string; field: FormField };
+export type FormLine =
+  | { ok: true; line: string; name: string; summary: string; value: ValueCheck }
+  | { ok: false; reason: string; field: FormField; value: ValueCheck; fix?: { label: string; value: string } };
+
+/**
+ * The value as the form would write it, checked as a part's card checks it (card-edit.ts): the line
+ * with this value goes into the netlist as it is now, and SPICE reads it as one number there or not.
+ * The other words of the line only need to be there (new nodes, a control the circuit has).
+ */
+export function formValue(s: Schematic, f: PartForm): ValueCheck {
+  const name = freshPartName(s, f.letter);
+  const taken = new Set<string>();
+  const control = f.letter === 'E' || f.letter === 'G' ? ' 0 0' : f.letter === 'F' || f.letter === 'H' ? ` ${s.circuit.parts.find((p) => p.key === f.source)?.name ?? sourceChoices(s)[0]?.name ?? 'V1'}` : '';
+  const line = `${name} ${freshNodeName(s, taken)} ${freshNodeName(s, taken)}${control} ${f.value.trim()}`;
+  const text = applyChanges(s.netlist.text, [insertLine(s.netlist, line)]);
+  return checkValue(text, name.toLowerCase(), f.value, t('formBadValue'));
+}
 
 /** The line the form would add, as the Netlist panel would hold it ("R3 in out 1k"), or which field is wrong and why. */
 export function formLine(s: Schematic, f: PartForm): FormLine {
   const name = freshPartName(s, f.letter);
+  const value = formValue(s, f);
   const written: string[] = [];
   const words: string[] = [];
   for (const [i, pick] of f.ends.entries()) {
     const field = i === 0 ? 'end0' : 'end1';
     if ('node' in pick) {
-      if (pick.node !== GROUND && !s.circuit.nodes.has(pick.node)) return { ok: false, reason: S.noNode(pick.node), field };
+      if (pick.node !== GROUND && !s.circuit.nodes.has(pick.node)) return { ok: false, reason: S.noNode(pick.node), field, value };
       written.push(pick.node === GROUND ? '0' : (s.circuit.nodes.get(pick.node)?.text ?? pick.node));
-      words.push(pick.node === GROUND ? S.ground : nodeWords(s, pick.node));
+      words.push(pick.node === GROUND ? S.ground : S.node(nodeWords(s, pick.node)));
       continue;
     }
     const n = pick.fresh.trim();
-    if (!NODE_NAME.test(n)) return { ok: false, reason: S.badName(n), field };
+    if (!NODE_NAME.test(n)) return { ok: false, reason: S.badName(n), field, value };
     const ground = n === '0' || n.toLowerCase() === 'gnd';
     written.push(ground ? '0' : n);
-    words.push(ground ? S.ground : n);
+    words.push(ground ? S.ground : S.node(n));
   }
   let control = '';
   if (f.letter === 'E' || f.letter === 'G') {
     const nodeText = (n: string | undefined): string | undefined => (n === undefined ? undefined : n === GROUND ? '0' : s.circuit.nodes.get(n)?.text);
     const plus = nodeText(f.plus);
     const minus = nodeText(f.minus);
-    if (plus === undefined || minus === undefined) return { ok: false, reason: t('formNoControl'), field: 'control' };
+    if (plus === undefined || minus === undefined) return { ok: false, reason: t('formNoControl'), field: 'control', value };
     control = ` ${plus} ${minus}`;
   } else if (f.letter === 'F' || f.letter === 'H') {
     const source = s.circuit.parts.find((p) => p.key === f.source);
-    if (!source) return { ok: false, reason: sourceChoices(s).length ? t('formNoSource') : S.noSource(f.letter), field: 'control' };
+    if (!source) return { ok: false, reason: sourceChoices(s).length ? t('formNoSource') : S.noSource(f.letter), field: 'control', value };
     control = ` ${source.name}`;
   }
-  const v = f.value.trim();
-  if (!v || /\s/.test(v)) return { ok: false, reason: t('formBadValue'), field: 'value' };
-  const line = `${name} ${written[0]} ${written[1]}${control} ${v}`;
-  // The value goes in only when SPICE reads it as one number there, as on a part's card.
-  const el = parseNetlist(`* check\n${line}\n`).lines[1]?.element;
-  if (!el?.value || el.value.token.text !== v || el.value.number === undefined) return { ok: false, reason: t('formBadValue'), field: 'value' };
-  return { ok: true, line, name, summary: S.added(name, words[0]!, words[1]!) };
+  // The value goes in only when SPICE reads it as one number there, as on a part's card; else the
+  // checks' reason, and their fix when it is a value ("Write 4.7k").
+  if (value.kind === 'empty') return { ok: false, reason: t('formBadValue'), field: 'value', value };
+  if (value.kind === 'refused') return { ok: false, reason: value.reason, field: 'value', value, ...(value.fix ? { fix: value.fix } : {}) };
+  const line = `${name} ${written[0]} ${written[1]}${control} ${f.value.trim()}`;
+  return { ok: true, line, name, summary: S.added(name, words[0]!, words[1]!), value };
 }
 
 /**

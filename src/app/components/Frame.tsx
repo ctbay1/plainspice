@@ -246,6 +246,7 @@ export function StatusLines({
   zoom,
   turn,
   invite,
+  undo,
 }: {
   hint: string;
   status: StatusWords;
@@ -256,6 +257,8 @@ export function StatusLines({
   turn?: { turned: boolean; video: boolean; onToggle: () => void };
   /** The first screen on a phone: the sticky note's button ("Change R1"), after the hint. */
   invite?: { label: string; onClick: () => void };
+  /** A phone just after a change made on the drawing: Undo at hand (else it is under More). */
+  undo?: () => void;
 }): ReactNode {
   const bad = status.tone === 'bad' || status.tone === 'paused';
   return (
@@ -281,6 +284,11 @@ export function StatusLines({
         {/* A reason to read comes first: the rest makes room for it. */}
         {analysis && !phone && status.tone === 'ok' ? <span className="status__detail status__analysis">{analysis}</span> : null}
         {!phone && status.tone === 'ok' ? <span className="status__detail status__engine">{t('statusEngine')}</span> : null}
+        {undo ? (
+          <button type="button" className="turn-button" onClick={undo}>
+            {t('undo')}
+          </button>
+        ) : null}
         {turn ? (
           // An action, named for what it does (not a toggle whose name changes too, which would say the wrong state).
           <button type="button" className="turn-button" onClick={turn.onToggle}>

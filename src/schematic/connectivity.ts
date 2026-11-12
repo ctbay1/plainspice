@@ -66,6 +66,8 @@ export interface Islands {
   count: number;
   /** The island at a point (on a wire or a pin), if any. */
   at(p: Point): number | undefined;
+  /** Every island at a point: two where wires of two islands cross there without joining. */
+  allAt(p: Point): number[];
 }
 
 /**
@@ -111,6 +113,12 @@ export function findIslands(wires: readonly (readonly Point[])[], anchors: reado
       if (s) return wireIslands[s.wire];
       const a = byPoint.get(pointKey(p));
       return a === undefined ? undefined : anchorIslands[a];
+    },
+    allAt(p: Point): number[] {
+      const out = new Set(index.at(p).map((s) => wireIslands[s.wire]!));
+      const a = byPoint.get(pointKey(p));
+      if (a !== undefined) out.add(anchorIslands[a]!);
+      return [...out];
     },
   };
 }

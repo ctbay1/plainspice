@@ -134,13 +134,16 @@ export function PartsToolbar({ tool, onTool, onAdd }: ToolbarProps): ReactNode {
                 {...(ctrl ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menu } : { 'aria-pressed': on })}
                 onFocus={() => setFocusIndex(i)}
                 onKeyDown={(e) => onKeyDown(e, i)}
-                onClick={() => {
+                onClick={(e) => {
                   if (ctrl) {
                     if (menu) closeMenu(false);
                     else openControlled(false);
                     return;
                   }
-                  onTool(d.id === tool && d.id !== 'select' ? 'select' : (d.id as Tool));
+                  // A click on the tool in hand puts it back (Select); Enter or Space on it (no pointer: detail 0)
+                  // keeps it, and the hint is said again: the keys' way to use it is Enter on a node, or A.
+                  const again = d.id === tool && d.id !== 'select';
+                  onTool(again && e.detail !== 0 ? 'select' : (d.id as Tool));
                 }}
               >
                 <span className="tool__icon">

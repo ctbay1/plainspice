@@ -179,7 +179,7 @@ export const EXPLAIN_STRINGS = {
   expressionParam: (name: string, value: string, line: number): string => `${value} (${name}, from .param on line ${line})`,
   negativeR: 'ngspice accepts a negative resistance without a message.',
   zeroR:
-    'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To join two nodes, give them the same name; to measure the current, use a 0 V source (the ammeter trick).',
+    'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name; to measure the current, use a 0 V source (the ammeter trick).',
   tinyR: 'ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω, with a warning ("Value of resistor … is too small").',
   missingValueRCL: (what: string): string =>
     `This ${what} has no value, so ngspice leaves it out of the circuit, with a warning ("… is not a valid ${what} instance line, ignored!").`,

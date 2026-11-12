@@ -25,7 +25,7 @@ export const NOTEBOOK_STRINGS = {
   /** Read after a part's or a node's description when results are shown. */
   noNumbers: 'No numbers yet.',
   /** How to use the drawing from the keyboard (aria-description of the drawing group). */
-  keys: 'Arrow keys move along the wires; Enter opens the selected part; Escape lets go.',
+  keys: 'Arrow keys move along the wires; Enter opens the selected part; Esc lets go.',
   /** The arrow before a current, said in words. */
   direction: { up: 'up', down: 'down', left: 'to the left', right: 'to the right' },
 } as const;

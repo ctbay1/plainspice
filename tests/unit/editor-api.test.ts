@@ -516,11 +516,10 @@ describe('in the app (decision 0016): one undo history, the store’s text, the 
     deleteCharForward(view);
     expect(editor.getDoc()).toBe(DRAWN);
     expect(editor.drawingFolded()).toBe(false);
-    // Typing over a selection that runs into the fold.
+    // A selection that reaches the block shows it (the re-check of step B): what is typed over it is seen.
     editor.setDrawingFolded(true);
     view.dispatch({ selection: EditorSelection.range(block.from - 2, block.from), userEvent: 'select' });
-    view.dispatch(view.state.replaceSelection('X'));
-    expect(editor.getDoc()).toBe(DRAWN);
+    expect(editor.view.dom.querySelector('.ps-fold')).toBeNull();
     // Deleting the whole block with the lines around it is the student's to do.
     editor.setDrawingFolded(true);
     view.dispatch({ changes: { from: block.from - 1, to: block.to } });
@@ -538,6 +537,33 @@ describe('in the app (decision 0016): one undo history, the store’s text, the 
     expect(parent.querySelector('.ps-fold')).toBeNull();
     expect(editor.drawingFolded()).toBe(true);
     // The cursor leaves the block: folded again.
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(parent.querySelector('.ps-fold')).not.toBeNull();
+  });
+
+  it('shows the block while the cursor is at either of its edges: typed there, or Backspace and Delete there, act on lines the student sees (re-check of step B)', async () => {
+    const { deleteCharBackward, deleteCharForward } = await import('@codemirror/commands');
+    const { drawingBlock } = await import('../../src/editor/drawing-fold.ts');
+    const { editor, parent } = make({ doc: DRAWN, foldDrawing: true });
+    const view = editor.view;
+    const block = drawingBlock(view.state.doc)!;
+    // The end of the fold's line (End on it, or ArrowLeft from .end): shown, so typing is seen where it goes.
+    view.dispatch({ selection: EditorSelection.cursor(block.to) });
+    expect(parent.querySelector('.ps-fold')).toBeNull();
+    view.dispatch(view.state.replaceSelection('X'));
+    expect(parent.querySelector('.cm-content')!.textContent).toContain('X');
+    view.dispatch({ changes: { from: block.to, to: block.to + 1 }, selection: EditorSelection.cursor(block.to) });
+    expect(editor.getDoc()).toBe(DRAWN);
+    // Backspace there takes one character, never the whole block; Delete at its start the same.
+    deleteCharBackward(view);
+    expect(editor.getDoc().length).toBe(DRAWN.length - 1);
+    expect(editor.getDoc()).toContain('* plainspice-drawing v1');
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: DRAWN } });
+    view.dispatch({ selection: EditorSelection.cursor(block.from) });
+    deleteCharForward(view);
+    expect(editor.getDoc().length).toBe(DRAWN.length - 1);
+    expect(editor.getDoc()).toContain('*@ R1');
+    // Moving on past the block folds it again.
     view.dispatch({ selection: EditorSelection.cursor(0) });
     expect(parent.querySelector('.ps-fold')).not.toBeNull();
   });

@@ -120,6 +120,8 @@ export interface NotebookCanvasProps {
   results: DrawingResults;
   /** The numbers are from an earlier text: written in pencil until ngspice answers. */
   pending?: boolean;
+  /** What screen readers hear before such numbers (default "Before your last change:"; several changes while building say so). */
+  pendingWords?: string;
   /** Results in the plain font instead of handwriting (settings.ts). */
   plain: boolean;
   /**
@@ -652,10 +654,12 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   };
   const resultsOf = (item: NavItem): string => {
     // Numbers from before the last change say so: a screen reader must not take them for answers.
-    const before = props.pending ? `${NOTEBOOK_STRINGS.beforeChange} ` : '';
+    const before = props.pending ? `${props.pendingWords ?? NOTEBOOK_STRINGS.beforeChange} ` : '';
     if (item.kind === 'part') {
       const pm = results.parts.get(item.key);
-      return pm ? `${before}${pm.speech}.` : '';
+      // Its own sentence, so it starts with a capital ("No current flows through R2."); after "Before your last change:" it goes on as it is.
+      const speech = pm && !before ? pm.speech.charAt(0).toUpperCase() + pm.speech.slice(1) : pm?.speech;
+      return pm ? `${before}${speech}.` : '';
     }
     const n = results.nodes.find((x) => x.node === item.name);
     if (!n) return '';

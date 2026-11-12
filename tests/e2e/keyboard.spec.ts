@@ -161,8 +161,15 @@ test('keyboard only on a computer: the drawing, a card, Ctrl+K, panels, a fix, t
   // then the actions: one Tab stop, arrow keys between Share, Export, Help, Settings and Run.
   await press('Tab');
   await expect(page.getByRole('button', { name: t('undo') })).toBeFocused();
-  // Redo is not: the fix was the last change, so there is nothing to redo (a disabled button is no Tab stop).
-  await expect(page.getByRole('button', { name: t('redo') })).toBeDisabled();
+  // Redo too, though the fix was the last change: it says it has nothing to redo (aria-disabled, so
+  // the focus is never lost when one runs out).
+  await press('Tab');
+  const redo = page.getByRole('button', { name: t('redo') });
+  await expect(redo).toBeFocused();
+  await expect(redo).toHaveAttribute('aria-disabled', 'true');
+  await press('Enter');
+  await expectAnnounced(page, t('nothingToRedo'));
+  await expect(redo).toBeFocused();
   await press('Tab');
   // (Its words hide on a narrower screen; its name stays.)
   await expect(page.getByRole('banner').getByRole('button', { name: t('paletteButton') })).toBeFocused();

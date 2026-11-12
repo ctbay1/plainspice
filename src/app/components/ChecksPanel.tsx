@@ -44,6 +44,8 @@ export function SeverityLabel({ severity }: { severity: Trap['severity'] }): Rea
 export function ChecksPanel({
   traps,
   drawing = [],
+  unchosen = [],
+  onOpenCard,
   partOfLine,
   onGoToLine,
   onGoToDrawingLine,
@@ -54,6 +56,9 @@ export function ChecksPanel({
   /** What is wrong with the drawing lines (*@): a line PlainSpice cannot read or use, said with its line. */
   drawing?: readonly { message: string; line?: number | undefined }[];
   onGoToDrawingLine?: (line: number) => void;
+  /** Controlled sources placed on the drawing that read what PlainSpice chose for them until the student chooses. */
+  unchosen?: readonly { key: string; name: string; control: string }[];
+  onOpenCard?: (key: string) => void;
   /** The name of the part on a line ("R1"), for the "Line 3" buttons' words. */
   partOfLine?: (line: number) => string | undefined;
   onGoToLine: (trap: Trap) => void;
@@ -105,9 +110,34 @@ export function ChecksPanel({
       </ul>
     </section>
   ) : null;
+  const unchosenSection = unchosen.length ? (
+    <section className="trap-group" aria-labelledby="traps-unchosen">
+      <h3 id="traps-unchosen" className="trap-group__title">
+        {t('checksUnchosenTitle')}
+      </h3>
+      <p className="muted">{t('checksUnchosenIntro')}</p>
+      <ul className="trap-list">
+        {unchosen.map((u) => (
+          <li key={u.key} className="trap trap--warning">
+            <h4 className="trap__title" tabIndex={-1}>
+              <SeverityLabel severity="warning" />
+              <span className="visually-hidden">:</span> <span className="trap__text">{t('checksUnchosen', { name: u.name, control: u.control })}</span>
+            </h4>
+            {onOpenCard ? (
+              <p className="trap__line">
+                <button type="button" className="link-button" onClick={() => onOpenCard(u.key)}>
+                  {t('checksUnchosenOpen', { name: u.name })}
+                </button>
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : null;
   return (
     <div className="checks" ref={panel}>
-      {traps.length === 0 && !drawing.length ? (
+      {traps.length === 0 && !drawing.length && !unchosen.length ? (
         <div className="checks-ok">
           <svg className="checks-ok__tick" viewBox="0 0 44 44" aria-hidden="true" focusable="false">
             <path d="M7 24.5c3.2 2.4 6.4 5.6 9.4 10.2C21.8 23 28.6 14.4 38 7.5" />
@@ -170,6 +200,7 @@ export function ChecksPanel({
               {g.traps.length > SHOWN_PER_GROUP && <p className="muted">{tn('checksMore', g.traps.length - SHOWN_PER_GROUP)}</p>}
             </section>
           ))}
+          {unchosenSection}
           {drawingSection}
         </>
       )}

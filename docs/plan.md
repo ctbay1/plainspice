@@ -120,17 +120,18 @@ Done so far:
 - **Step B: the schematic editor** (item 4, decision 0017): parts are placed, wired, moved,
   turned, mirrored, reversed and deleted on the drawing, with a mouse, a finger or only the keyboard,
   each change one undo step in the netlist (its `*@` lines), run live and said aloud. What a click
-  would do is shown before it: the part in hand with the nodes it would join (or why it cannot go
-  there), a wire's route, a part dragged with its wires following. After placing, the new part's card
-  opens on its value; the first part on a blank page also writes `.op` and `.end`, and says so. T
-  turns, M mirrors, Shift+R reverses, Shift+arrows move, Delete deletes, W wires, A opens the Add a
-  part form; the keys are on the buttons, in the hint line, in Help and in Ctrl+K. Without a pointer,
-  the form (a kind, a value, two nodes from lists) and each card's Connections (Connect to…,
-  Disconnect) build and rewire a circuit; a node's card renames it, and a name another node has joins
-  the two. On a phone: the Parts sheet, a tap to see where a part goes and Place, a finger to drag,
-  two to zoom, wires by taps, and a turned drawing shown as drawn while editing. Start here was built
-  on a blank page with the mouse and again with the keys only, and ngspice gives out = 4 V both times
-  (end-to-end tests on a computer and a phone, axe in every editing state).
+  would do is shown before it: the part in hand with the nodes it would connect to (or why it cannot
+  go there), a wire's route, a part dragged with its wires following. After placing, the new part's
+  card opens on its value; the first part on a blank page also writes `.op` and `.end`, and says so.
+  T turns, M mirrors, Shift+R reverses, Shift+arrow keys move, Delete deletes, W wires, A opens the
+  Add a part form; the keys are on the buttons, in the hint line, in Help and in Ctrl+K. Without a
+  pointer, the form (a kind, a value, two nodes from lists) and each card's Connections (Connect to…,
+  Disconnect) build and rewire a circuit; a node's card renames it, and a name another node has
+  makes the two one node. On a phone: the Parts sheet, a tap to see where a part goes and Place, a
+  finger held still on a part to drag it, two to zoom, wires by taps, and a turned drawing shown as
+  drawn while editing. Start here was built on a blank page with the mouse and again with the keys
+  only, and ngspice gives out = 4 V both times (end-to-end tests on a computer and a phone, axe in
+  seven editing states).
   Three reviews (interaction, accessibility, the netlist kept in step) then tried it hard, and their
   findings were fixed the same day (decision 0017, "After the reviews of step B"): no edit loses or
   changes the student's text behind their back (a move during typing, moving the ground symbol, the
@@ -140,7 +141,22 @@ Done so far:
   a finger pans unless it holds still on a part; the drawing is an application to screen readers;
   a part moved with the keys stays in view and is said; calmer red pen and pencil numbers while
   building. New tests: `schematic-edit-review.test.ts` (with a seeded run of random edits on every
-  example) and `tests/e2e/editor-review.spec.ts`.
+  e04, p02 and p01 example) and `tests/e2e/editor-review.spec.ts`. A re-check of all three reviews
+  on a clean build then found what was still wrong, and that was fixed too (decision 0017, "After
+  the re-check"):
+  nothing typed or deleted at the edges of the folded `*@` lines goes unseen; pencil numbers are only
+  this circuit's and are named on the status line; one rule for the card's keys, badges and hint;
+  words after a turn or a move find a free place (22 of 108 turns of the videos' drawings put words
+  on something, every turn did before); straight rails; the Wire tool ends where its preview showed;
+  a placed controlled source stays marked until chosen; Undo on a phone's status line. A last look at
+  the words and these documents (12 Nov) made each sentence say what the netlist now has, in one word
+  for one idea: a line that still names a deleted part is given by its number after the delete; a
+  piece cut off a node names the parts whose ends moved, and deleting the last ground symbol says the
+  circuit has no ground; "connect", a part's "end", a node's "name", and "node out" in sentences;
+  every refusal says why and what to do (a place on a wire, an F with nothing to read, Delete on a
+  node, keys on a piece of wire); the Add a part form checks its value as the card does; the first
+  edit made on the drawing says it wrote the `*@` lines; Help and Ctrl+K have every editing key and
+  command; key names spelled one way (decision 0017, "After the re-check").
 - **Step C: the examples drawn as in the videos** (item 2, decision 0018): all 20 examples open
   drawn the way their videos draw them, with the node names the videos write, and a link made from
   one carries its drawing. The drawings are recorded from the channel's own drawing code
@@ -176,11 +192,12 @@ Done so far:
   overrides (WCAG 1.4.12) can make a result touch its arrow on the drawing. Netlist and another
   panel side by side on wide screens. The Plot panel is drawn again each time it opens.
 - **Step B's known gaps**: a piece of wire can be deleted but not dragged; what a controlled source
-  reads is chosen from lists, not by tapping the drawing; turning a part in a crowded drawing can put
-  its words on a wire (the scene finds no free side), and a node's name keeps room for its result,
-  so before there is one it can look far from its pin; a new circuit's title line is `* circuit`
-  (a name for Tarık to choose). The drawing is an application to screen readers, which NVDA and JAWS
-  should take as focus mode: to be tried with them (above), as are browsers other than Chromium.
+  reads is chosen from lists, not by tapping the drawing; turning a part in a crowded drawing can
+  still put its words on something (22 of 108 turns of the videos' drawings); automatic node names
+  keep their numbers when nodes merge (n1, n4); the phone's layout used with a mouse and keys (large
+  text on a laptop) gives touch words; a new circuit's title line is `* circuit` (a name for Tarık to
+  choose). The drawing is an application to screen readers, which NVDA and JAWS should take as focus
+  mode: to be tried with them (above), as are browsers other than Chromium.
 - **Small known gaps**: the editor colours a word after an R, C or L value as a model name even
   when no `.model` defines it (the check underlines it as an error and explains it; the colour
   would need the netlist's model names inside CodeMirror's line-by-line highlighter); a

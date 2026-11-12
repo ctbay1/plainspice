@@ -125,46 +125,75 @@ export interface HintInput {
   undrawn?: boolean;
   /** Nothing to draw: the netlist has no parts. */
   empty?: boolean;
-  /** The part in hand, where it would go now: which nodes it would join there, or why it cannot go there. */
-  place?: { joins?: string; refused?: string } | undefined;
-  /** A wire on its way (its first end chosen), or why the last click could not end it. */
-  wire?: { started: boolean; refused?: string } | undefined;
+  /** The part in hand, where it would go now: which nodes it would connect to there, or why it cannot go there (`anywhere`: nor anywhere else yet). */
+  place?: { joins?: string; refused?: string; anywhere?: boolean } | undefined;
+  /** A wire on its way (its first end chosen), or why the last click could not end it; the two nodes a click here would make one, in words. */
+  wire?: { started: boolean; refused?: string; merge?: { a: string; b: string } } | undefined;
   /** Something being moved: its name, by dragging or picked up (the card's Move), whether it is a part (it can turn), and why it cannot go where it is now. */
   moving?: { name: string; how: 'drag' | 'pick'; part?: boolean; refused?: string } | undefined;
   /** A phone shows the drawing as drawn while an editing tool is chosen (it was turned to fit). */
   editingAsDrawn?: boolean;
   /** The tool was chosen with the keys: say the keyboard's way to use it. */
   keys?: boolean;
+  /** The open part's card shows its Connections (its value and numbers are put aside). */
+  connections?: boolean;
 }
 
 const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+
+/**
+ * A sentence that goes on after a colon ("R2 can't go here: that place is taken by R1"): its first word
+ * in lower case when it is an ordinary word, never when it is a name (R2, Vin, n1 keep their letters).
+ */
+const STARTERS = new Set([
+  'a', 'an', 'the', 'that', 'this', 'there', 'these', 'those', 'it', 'its', 'no', 'not', 'nothing', 'here', 'every', 'each', 'only', 'some', 'one', 'two', 'both', 'all', 'when', 'where', 'without', 'with', 'from', 'to', 'on', 'in', 'at',
+  'part', 'parts', 'piece', 'wire', 'wires', 'ground', 'drawing', 'name', 'node', 'nodes',
+  // The hint's own verbs ("R2 picked up: click where R2 goes", "Shown whole … · tap the paper"); never a key's name (Enter, Esc, Delete).
+  'click', 'tap', 'drop', 'lift', 'drag', 'hold', 'type', 'choose', 'open', 'shown', 'turned',
+]);
+export function afterColon(sentence: string): string {
+  const first = /^[A-Z][a-z]*\b/.exec(sentence)?.[0];
+  return first && STARTERS.has(first.toLowerCase()) ? sentence.charAt(0).toLowerCase() + sentence.slice(1) : sentence;
+}
 
 /** A model's sentence inside the hint line: its last full stop goes, the "·" separates. */
 const clause = (sentence: string): string => sentence.trim().replace(/\.$/, '');
 
 /** The hint line: what you can do now, in plain words. */
 export function hintWords(p: HintInput): string {
-  const lead = p.editingAsDrawn ? `${t('hintAsDrawnEditing')} · ` : '';
+  // The phone's whole as-drawn view while editing is said first; what follows goes on in lower case.
+  const led = (words: string): string => (p.editingAsDrawn ? `${t('hintAsDrawnEditing')} · ${afterColon(words)}` : words);
   if (p.moving) {
     const name = p.moving.name;
-    if (p.moving.refused) return t(p.phone ? 'hintDragRefusedPhone' : 'hintDragRefused', { name: cap(name), reason: clause(p.moving.refused) });
+    if (p.moving.refused) return t(p.phone ? 'hintDragRefusedPhone' : 'hintDragRefused', { name: cap(name), reason: afterColon(clause(p.moving.refused)) });
     const turn = p.moving.part ? t('hintMovingTurn') : '';
-    if (p.moving.how === 'pick') return `${lead}${p.phone ? t('hintPickPhone', { name }) : t('hintPick', { name, turn })}`;
+    if (p.moving.how === 'pick') return led(p.phone ? t('hintPickPhone', { name }) : t('hintPick', { name, turn }));
     return p.phone ? t('hintDragPhone', { name }) : t('hintDrag', { name, turn });
   }
   if (p.tool === 'wire') {
-    if (p.wire?.refused) return t('hintWireRefused', { reason: clause(p.wire.refused) });
-    if (p.wire?.started) return `${lead}${p.phone ? t('hintWireOnPhone') : p.keys ? t('hintWireOnKeys') : t('hintWireOn')}`;
-    return `${lead}${p.phone ? t('hintWirePhone') : p.keys ? t('hintWireKeys') : t('hintWire')}`;
+    // The way out after the reason: a phone has no Esc key (Select drops a wire on its way), and with no
+    // wire on its way yet Esc goes back to Select.
+    if (p.wire?.refused) return t(p.phone ? 'hintWireRefusedPhone' : p.wire.started ? 'hintWireRefused' : 'hintWireStartRefused', { reason: clause(p.wire.refused) });
+    // Seen before it is done: where the pointer is, which two nodes the click would make one.
+    if (p.wire?.started && p.wire.merge && !p.phone && !p.keys) return led(t('hintWireEndHere', p.wire.merge));
+    if (p.wire?.started) return led(p.phone ? t('hintWireOnPhone') : p.keys ? t('hintWireOnKeys') : t('hintWireOn'));
+    return led(p.phone ? t('hintWirePhone') : p.keys ? t('hintWireKeys') : t('hintWire'));
   }
   if (p.tool !== 'select') {
     const part = toolPhrase(p.tool);
-    if (p.place?.refused) return p.phone ? t('hintPlacePhoneRefused', { reason: clause(p.place.refused) }) : t('hintPlaceRefused', { reason: clause(p.place.refused) });
+    if (p.place?.refused) {
+      const reason = clause(p.place.refused);
+      // Not this place but any place (no source for an F to read, no part for ground yet): no "Not here", no T; the reason and the way out.
+      if (p.place.anywhere) return t(p.phone ? 'hintPlacePhoneAnywhere' : 'hintPlaceAnywhere', { reason });
+      return t(p.phone ? 'hintPlacePhoneRefused' : 'hintPlaceRefused', { reason: afterColon(reason) });
+    }
     // A ground symbol looks the same mirrored: no M for it.
     const mirror = p.tool === 'ground' ? '' : t('hintMirrorIt');
     if (p.place?.joins) return p.phone ? t('hintPlacePhoneHere', { joins: cap(p.place.joins) }) : t('hintPlaceHere', { part, joins: p.place.joins, mirror });
-    return `${lead}${p.phone ? t('hintPlacePhone', { part }) : p.keys && p.tool !== 'ground' ? t('hintPlaceKeys', { part }) : t('hintPlace', { part, mirror })}`;
+    return led(p.phone ? t('hintPlacePhone', { part }) : p.keys && p.tool !== 'ground' ? t('hintPlaceKeys', { part }) : t('hintPlace', { part, mirror }));
   }
+  // A card showing its Connections has no value field then: what can be done there.
+  if (p.connections) return t(p.phone ? 'hintConnectionsPhone' : 'hintConnections');
   if (p.typeHint) {
     if (p.paused) return p.phone ? `${p.typeHint} · ${t('statusPaused')}: ${pressRun(true)}` : t('hintTypingPaused', { hint: p.typeHint, run: pressRun(false) });
     if (p.phone) return p.typeHint;
@@ -173,7 +202,7 @@ export function hintWords(p: HintInput): string {
   if (p.nodeCard) return p.nodeCard.ground ? t('hintGroundCard') : t('hintNodeCard', { name: p.nodeCard.name });
   if (p.undrawn) return t('hintUndrawn');
   if (p.empty) return p.phone ? t('hintEmptyPhone') : t('hintEmpty');
-  if (p.selectedWire !== undefined) return p.phone ? t('hintWireSelectedPhone', { node: p.selectedWire }) : t('hintWireSelected', { node: p.selectedWire });
+  if (p.selectedWire !== undefined) return p.phone ? t('hintWireSelectedPhone', { node: p.selectedWire, button: t('paletteDeleteWire') }) : t('hintWireSelected', { node: p.selectedWire });
   if (p.selectedGround) return p.phone ? t('hintSelectedPhone', { name: t('groundName') }) : t('hintGroundSelected');
   if (p.selectedNode !== undefined) return p.phone ? t('hintNodeSelectedPhone', { name: p.selectedNode }) : t('hintNodeSelected', { name: p.selectedNode });
   if (p.selectedName) return p.phone ? t('hintSelectedPhone', { name: p.selectedName }) : t('hintSelected', { name: p.selectedName });

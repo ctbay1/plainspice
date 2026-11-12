@@ -115,6 +115,10 @@ test('the bottom bar: the Parts sheet puts a part in hand; a tap shows where it 
   await page.keyboard.press('Escape');
   await expect(bar.getByRole('button', { name: t('toolSelect') })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('plainspice:netlist'))).toMatch(/\nR3 n1 n2 1k\n/);
+  // A change made on the drawing: Undo is at hand on the status line (not only under More), and takes it back.
+  const undo = page.locator('.status').getByRole('button', { name: t('undo'), exact: true });
+  await undo.click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('plainspice:netlist'))).not.toMatch(/\nR3 /);
 });
 
 test('a part’s card is a sheet; typing its value makes it a strip, with the part and its numbers in view', async ({ page }) => {

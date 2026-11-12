@@ -13,7 +13,7 @@ import { formatNumber, formatSI } from '../format/si.ts';
 import { DESCRIBE_STRINGS, describeCircuit } from '../spice/describe.ts';
 import { sweptBy } from '../spice/explain.ts';
 import { lowerAscii } from '../spice/parse.ts';
-import { GROUND, type CircuitPart } from './circuit.ts';
+import { GROUND, labelNode, type CircuitPart } from './circuit.ts';
 import { DIRECTION_VECTORS, OPPOSITE, type Direction, type Point } from './geometry.ts';
 import type { Schematic } from './schematic.ts';
 
@@ -172,7 +172,7 @@ export function describePart(s: Schematic, name: string): string {
  * that the drawing does not show: "It also connects D1 (line 4), which the drawing does not show."
  */
 export function describeNode(s: Schematic, name: string): string {
-  const node = lowerAscii(name) === 'gnd' ? GROUND : lowerAscii(name);
+  const node = labelNode(s.circuit, name);
   const parts = s.scene.parts.filter((p) => p.pins.some((pin) => pin.node === node)).map((p) => p.name);
   const hidden = s.circuit.nodes.get(node)?.hidden ?? [];
   const also = hidden.length ? ` ${N.hidden(N.and(hidden.map((h) => N.hiddenItem(h.name, h.lineNumber))))}` : '';
