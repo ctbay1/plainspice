@@ -247,6 +247,10 @@ const FACTS: Fact[] = [
   { code: 'missing-value-8', netlist: "* a resistor with a setting but no value\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 m=2\n.op\n.end\n", vectors: {"v(a)":0.000499999750000125}, prints: ["r1: resistance too low or not given, set to 1 mOhm"], traps: ['missing-value'] },
   { code: 'missing-value-9', netlist: "* a capacitor with ic= but no value\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 ic=0.5\n.tran 1u 5u\n.end\n", last: { "v(out)": 1 }, traps: ['missing-value'] },
   { code: 'missing-value-10', netlist: "* an inductor with ic= but no value\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nL1 out 0 ic=1m\n.tran 1u 5u\n.end\n", last: { "v(out)": 0 }, traps: ['missing-value'] },
+  // Added after the final reviews of 12 Nov 2026: names ngspice spells with underscores (W16-W18).
+  { code: 'non-ascii-node-1', netlist: "* node names with Turkish letters\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n", vectors: { "v(giri__)": 12, "v(____k____)": 8, "i(v1)": -0.004 }, traps: ['non-ascii-node', 'non-ascii-node'] },
+  { code: 'non-ascii-node-2', netlist: "* two node names that become one\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n", vectors: { "v(__)": 12, "i(v1)": -0.006 }, traps: ['non-ascii-node'] },
+  { code: 'duplicate-name-3', netlist: "* two part names that become one\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists"], fails: true, traps: ['duplicate-name'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');

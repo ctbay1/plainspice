@@ -18,7 +18,7 @@ import createNgspice from '../../engine/dist/ngspice.mjs';
 import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import type { RunResult } from '../../src/engine/types.ts';
 import { elementInfo } from '../../src/spice/elements.ts';
-import { parseNetlist } from '../../src/spice/parse.ts';
+import { ngspiceSpelling, parseNetlist } from '../../src/spice/parse.ts';
 import type { Element, Netlist } from '../../src/spice/types.ts';
 
 interface Fact {
@@ -108,6 +108,10 @@ const FACTS: Fact[] = [
   { code: 'W13', id: 'syn-ground-word', title: "ground is an ordinary node name", netlist: "* ground is an ordinary name\nV1 a ground 6\nR1 a ground 2\n.op\n.end\n", vectors: { "v(a)": 9.00033307426206, "v(ground)": 3.0003330742710626 }, prints: ["singular matrix:  check node ground"], unreliable: true },
   { code: 'W14', id: 'syn-double-zero', title: "00 is an ordinary node name", netlist: "* 00 is an ordinary name\nV1 a 00 6\nR1 a 00 2\n.op\n.end\n", vectors: { "v(a)": 9.00033307426206, "v(00)": 3.0003330742710626 }, prints: ["singular matrix:  check node 00"], unreliable: true },
   { code: 'W15', id: 'syn-micro-first', title: "A micro sign as the first character makes a U line", netlist: "* a micro sign as the first letter\nRref a 0 1\n\u00b51 a 0 5\n.op\n.end\n", prints: ["Unable to find definition of model"], fails: true },
+  // After the final reviews (12 November 2026): names with letters outside ASCII.
+  { code: 'W16', id: 'syn-non-ascii-names', title: "Each byte of a letter outside ASCII in a name becomes _: giri\u015f is the node giri__", netlist: "* names with letters outside ASCII\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\nV2 \u00b5in 0 6\nR3 \u00b5in 0 2\nV3 a\ud83d\ude00 0 3\nR4 a\ud83d\ude00 0 1\n.op\n.end\n", vectors: { "v(giri__)": 12, "v(____k____)": 8, "v(uin)": 6, "v(a____)": 3, "i(v1)": -0.004, "i(v2)": -3, "i(v3)": -3 } },
+  { code: 'W17', id: 'syn-non-ascii-one-node', title: "So two names can be one node: \u015f and \u00e7 are both __", netlist: "* two node names that become one\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n", vectors: { "v(__)": 12, "i(v1)": -0.006 } },
+  { code: 'W18', id: 'syn-non-ascii-part', title: "Part names too: R\u015f is the part r__", netlist: "* a part name with a Turkish letter\nV1 a 0 6\nR\u015f a 0 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 6, "i(v1)": -3, "i(@r__[i])": 3 } },
   { code: 'V1', id: 'syn-lead-wins', title: "On a source line a plain number beats dc, and the last dc beats an earlier one", netlist: "* a plain number and dc on one source line\nV1 n1 0 5 dc 6\nV2 n2 0 dc 6 dc 7\n.op\n.end\n", vectors: { "v(n1)": 5, "v(n2)": 7 } },
   { code: 'V2', id: 'syn-two-numbers', title: "On a resistor line a second number replaces the first", netlist: "* two numbers on a resistor line\nI1 0 n1 1\nR1 n1 0 1 2\n.op\n.end\n", vectors: { "v(n1)": 2 } },
   { code: 'V3', id: 'syn-keyword-values', title: "The value can be given by name: resistance=5, r=2, c=3 on a current source", netlist: "* the value given by name\nI1 0 n1 1\nR1 n1 0 resistance=5\nI2 0 n2 1\nR2 n2 0 1 r=2\nI3 0 n3 c=3\nR3 n3 0 1\n.op\n.end\n", vectors: { "v(n1)": 5, "v(n2)": 2, "v(n3)": 3 } },
@@ -360,6 +364,20 @@ const PARSER: Record<string, (n: Netlist, r: RunResult) => void> = {
   W13: (n) => expect([nodeNames(el(n, 'v1')), n.nodes.has('0')]).toEqual([['a', 'ground'], false]),
   W14: (n) => expect([nodeNames(el(n, 'v1')), n.nodes.has('0')]).toEqual([['a', '00'], false]),
   W15: (n) => expect([el(n, 'u1').letter, el(n, 'u1').name.text]).toEqual(['U', '\u00b51']),
+  // ngspiceSpelling gives exactly the names the engine wrote, so results map back to the netlist's names.
+  W16: (n, r) => {
+    const spelled = [...n.nodes.keys()].filter((k) => k !== '0').map(ngspiceSpelling);
+    expect(spelled).toEqual(['giri__', '____k____', 'uin', 'a____']);
+    for (const name of spelled) expect(vector(r, `v(${name})`), name).toBeDefined();
+  },
+  W17: (n) => {
+    expect([...n.nodes.keys()]).toEqual(['\u015f', '0', '\u00e7']);
+    expect(new Set(['\u015f', '\u00e7'].map(ngspiceSpelling))).toEqual(new Set(['__']));
+  },
+  W18: (n, r) => {
+    expect(ngspiceSpelling(el(n, 'r\u015f').key)).toBe('r__');
+    expect(vector(r, 'i(@r__[i])')).toEqual([3]);
+  },
   V1: (n, r) => expect([val(n, 'v1'), val(n, 'v2')]).toEqual([v(r, 'v(n1)'), v(r, 'v(n2)')]),
   V2: r1,
   V3: (n, r) => {

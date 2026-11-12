@@ -17,10 +17,11 @@
  * skips the DC operating point).
  */
 import { formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { hasInvisible, isPlainName, plainLetters } from './characters.ts';
 import { isKnownDotCommand, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, parseNetlist } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -76,6 +77,7 @@ export const TRAP_IDS = [
   'lost-continuation',
   'unknown-word',
   'unknown-dot-command',
+  'non-ascii-node',
 ] as const;
 
 export type TrapId = (typeof TRAP_IDS)[number];
@@ -1163,23 +1165,105 @@ function checkDuplicates(c: Ctx): void {
     const e = l.element;
     if (!e) continue;
     const scope = scopes[scopes.length - 1]!;
-    const first = scope.get(e.key);
+    // ngspice compares names as it spells them: capital letters aside, each letter outside a to z is
+    // underscores, so Rş and Rç are both r__ (duplicate-name-3, W18).
+    const spelled = ngspiceSpelling(e.key);
+    const first = scope.get(spelled);
     if (!first) {
-      scope.set(e.key, e);
+      scope.set(spelled, e);
       continue;
     }
-    const renamed = freshName(c, e.name.text);
+    const byLetters = first.key !== e.key;
+    const plain = byLetters ? plainLetters(e.name.text) : undefined;
+    const renamed = freshName(c, plain && !c.names.has(lowerAscii(plain)) && !scope.has(ngspiceSpelling(lowerAscii(plain))) ? plain : e.name.text);
     c.names.add(lowerAscii(renamed));
     add(
       c,
       'duplicate-name',
       'error',
       e.name,
-      first.name.text === e.name.text ? `Two parts are called ${e.name.text}` : `${first.name.text} and ${e.name.text} are the same name`,
-      'Every part needs its own name, and SPICE ignores capital letters, so R1 and r1 count as the same name.',
-      "ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-1, duplicate-name-2]",
+      first.name.text === e.name.text ? `Two parts are called ${e.name.text}` : byLetters ? `${first.name.text} and ${e.name.text} are the same name for ngspice` : `${first.name.text} and ${e.name.text} are the same name`,
+      byLetters
+        ? `Every part needs its own name. ngspice writes each letter other than a to z (or A to Z) in a name as underscores, so ${first.name.text} and ${e.name.text} are both ${spelled}.`
+        : 'Every part needs its own name, and SPICE ignores capital letters, so R1 and r1 count as the same name.',
+      byLetters
+        ? `ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-3]`
+        : "ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-1, duplicate-name-2]",
       [fix(`Rename it ${renamed}`, replace(e.name, renamed))],
     );
+  }
+}
+
+// ------------------------------------------------------------------ names ngspice spells with underscores
+
+/**
+ * The drawing's line for a node's name (`*@ label <node> x y`, src/schematic/format.ts), renamed with
+ * the node, so a fix that renames a node keeps its name on the drawing.
+ */
+function labelChanges(c: Ctx, key: string, to: string): TextChange[] {
+  const out: TextChange[] = [];
+  for (const l of c.n.lines) {
+    if (l.kind !== 'comment') continue;
+    const m = /^(\s*\*@\s*label\s+)(\S+)/i.exec(l.text);
+    if (!m || lowerAscii(m[2]!) !== key) continue;
+    const from = l.span.from + m[1]!.length;
+    out.push(change(from, from + m[2]!.length, to));
+  }
+  return out;
+}
+
+/** A new name for a node: `wanted` when ngspice spells it like no other node, else wanted2, wanted3 ... */
+function freeNodeName(taken: Set<string>, wanted: string): string {
+  const base = wanted || 'n';
+  let name = base;
+  for (let k = 2; taken.has(ngspiceSpelling(name)); k++) name = `${base}${k}`;
+  taken.add(ngspiceSpelling(name));
+  return name;
+}
+
+/**
+ * Node names ngspice spells with underscores (W16, W17). It reads only printable ASCII in a name and
+ * writes every byte of any other character as '_', so giriş is giri__ in its printout and results
+ * (non-ascii-node-1), and names it spells the same are one node: ş and ç are both __
+ * (non-ascii-node-2). A name on its own: a warning, with a fix to plain letters. Names that become
+ * one: an error, because ngspice then simulates another circuit; the fix gives each its plain letters.
+ * A name with an invisible character is the invisible-character check's; µ is fine (ngspice reads u).
+ * The fixes never give a name ngspice already uses: that would join two nodes.
+ */
+function checkNodeNames(c: Ctx): void {
+  const groups = new Map<string, NodeInfo[]>();
+  for (const info of c.n.nodes.values()) {
+    if (info.ground || info.refs.length === 0) continue;
+    const spelled = ngspiceSpelling(info.name);
+    const g = groups.get(spelled);
+    if (g) g.push(info);
+    else groups.set(spelled, [info]);
+  }
+  const taken = new Set(groups.keys());
+  const plainFor = (info: NodeInfo): string => freeNodeName(taken, plainLetters(info.refs[0]!.text, true) || 'n1');
+  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to)];
+  for (const [spelled, infos] of groups) {
+    if (infos.length > 1) {
+      const odd = infos.filter((i) => !isPlainName(i.name));
+      const names = infos.map((i) => i.refs[0]!.text);
+      const to = odd.map((i) => [i, plainFor(i)] as const);
+      const at = (odd[odd.length - 1] ?? infos[infos.length - 1]!).refs[0]!;
+      add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
+        `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
+        `ngspice spells ${list(names)} as ${spelled} and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]`,
+        to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${i.refs[0]!.text}`))}`, ...to.flatMap(([i, n]) => renaming(i, n)))] : []);
+      continue;
+    }
+    const info = infos[0]!;
+    // A no-break space and the invisible characters have checks of their own (nbsp, invisible-character).
+    if (isPlainName(info.name) || hasInvisible(info.name) || info.name.includes('\u00a0')) continue;
+    const written = info.refs[0]!.text;
+    const letter = [...written].find((ch) => !isPlainName(ch))!;
+    const to = plainFor(info);
+    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice calls the node ${written} ${spelled}`,
+      `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
+      `ngspice runs it and spells the node ${spelled}, without a message. [non-ascii-node-1]`,
+      [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
   }
 }
 
@@ -1953,6 +2037,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   c.analysisTypo = checkUnknownDots(c).size > 0;
   // Then the circuit as a whole.
   checkGround(c);
+  checkNodeNames(c);
   checkDangling(c);
   checkFloating(c);
   checkLoops(c);

@@ -91,3 +91,36 @@ describe('the checkpoint’s circuits show the channel’s values', () => {
     expect(voltage('p02-3-dependent-only', 'n1')).toBe(formatSI(expected('p02-3-dependent-only', 'v(n1)'), 'V'));
   });
 });
+
+describe('after the final reviews (12 November 2026)', () => {
+  // The Turkish link of tests/unit/share.test.ts: ngspice spells giriş "giri__" and çıkış "____k____" (W16).
+  const TURKISH = '* Gerilim bölücü: 12 V, 1 kΩ ve 2 kΩ (çıkış İ ğ ş ö ü) µ 😀\nV1 giriş 0 12\nR1 giriş çıkış 1k\nR2 çıkış 0 2k\n.op\n.end\n';
+
+  it('writes the voltages of nodes named with Turkish letters on the drawing, under the netlist\'s names (kept F3, W16)', async () => {
+    const sol = await solve(withDrawingBlock(TURKISH), engine);
+    expect(sol.status).toBe('ok');
+    expect(sol.checks.map((c) => [c.id, c.severity])).toEqual([
+      ['non-ascii-node', 'warning'],
+      ['non-ascii-node', 'warning'],
+    ]);
+    const words = answers(sol)!;
+    expect(words.nodes.map((n) => [n.node, n.ngspice, nb(n.text)])).toEqual([
+      ['giriş', 'giri__', '12 V'],
+      ['çıkış', '____k____', '8 V'],
+    ]);
+    expect(words.summarySpeech).toContain('node giriş is 12 volts, node çıkış is 8 volts');
+    expect(nb(words.currents.find((c) => c.name === 'V1')!.power!.text)).toBe('V1 delivers 48 mW');
+    const drawn = placeResults(notebookSchematic(withDrawingBlock(TURKISH)).scene, words);
+    expect(drawn.nodes.map((n) => [n.node, n.mark ? nb(n.mark.text) : undefined])).toEqual([
+      ['giriş', inlineValue(nb('12 V'))],
+      ['çıkış', inlineValue(nb('8 V'))],
+    ]);
+  });
+
+  it('shows no answers when two names become one node for ngspice: a check says so (kept F3, W17)', async () => {
+    const sol = await solve(withDrawingBlock('* t\nV1 ş 0 12\nR1 ş ç 1k\nR2 ç 0 2k\n.op\n.end\n'), engine);
+    expect(sol.status).toBe('check');
+    expect(answers(sol)).toBeUndefined();
+    expect(sol.checks.map((c) => [c.id, c.severity, c.title])).toEqual([['non-ascii-node', 'error', 'ş and ç are one node for ngspice']]);
+  });
+});

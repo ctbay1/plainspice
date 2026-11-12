@@ -140,8 +140,8 @@ function compare(text: string): string[] {
 describe('the editor highlighter reads netlists as the verified parser does', () => {
   const cases = [...factNetlists(), ...fixtureNetlists()];
 
-  it('finds every netlist of the facts test (74 facts, 26 letters) and the fixtures', () => {
-    expect(cases.filter((c) => c.name.startsWith('fact')).length).toBe(74);
+  it('finds every netlist of the facts test (77 facts, 26 letters) and the fixtures', () => {
+    expect(cases.filter((c) => c.name.startsWith('fact')).length).toBe(77);
     expect(cases.filter((c) => c.name.startsWith('letter')).length).toBe(26);
     expect(cases.filter((c) => c.name.startsWith('fixture')).length).toBeGreaterThanOrEqual(10);
   });

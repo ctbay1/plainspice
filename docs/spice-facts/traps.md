@@ -65,7 +65,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [floating-dc](#floating-dc) | a node only capacitors, control inputs or a gate reach | error | singular matrix; numbers that can't be trusted, or no results |
 | [current-source-no-path](#current-source-no-path) | a current source into a node with no DC path | error | singular matrix, or silently as if 1 Ω |
 | [voltage-loop](#voltage-loop) | voltage sources in parallel, an inductor across a source | error | V loops: stops; with L: numbers that can't be trusted |
-| [duplicate-name](#duplicate-name) | two parts called R1 (or R1 and r1) | error | stops |
+| [duplicate-name](#duplicate-name) | two parts called R1 (or R1 and r1, or Rş and Rç) | error | stops |
 | [unknown-letter](#unknown-letter) | a line starting with a digit, `@`, A, N, or a W, S, T, U, Y, Z, P, K that lacks what it needs | error | stops, or stops reading (`@`) |
 | [missing-model](#missing-model) | D, Q, J, M without a .model line | error | stops |
 | [missing-subcircuit](#missing-subcircuit) | X without a .subckt | error | stops |
@@ -82,6 +82,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [lost-continuation](#lost-continuation) | a `+` line that ngspice loses | warning | loses it, silently |
 | [unknown-word](#unknown-word) | a word after a part's value that is no setting of the part: `R1 a 0 1k load`, `V1 a 0 5 battery`, `1d-3` on a source | error | stops ("unknown parameter") |
 | [unknown-dot-command](#unknown-dot-command) | a dot command ngspice does not know: `.tarn`, `.pss` | error | stops before anything runs |
+| [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
 
 ## mega-as-milli
 
@@ -4123,6 +4124,56 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `duplicate-name`.
 
+### duplicate-name-3. Rş and Rç are the same name too: ngspice spells both r__
+
+Added after the final reviews of 12 November 2026. ngspice writes each byte of a letter outside ASCII
+as `_` (W18 in numbers-and-syntax.md), so `Rş` and `Rç` are both `r__`, and it stops at the second.
+
+What PlainSpice shows for duplicate-name-3 (error, line 4):
+
+> **Rş and Rç are the same name for ngspice.** Every part needs its own name. ngspice writes each letter other than a to z (or A to Z) in a name as underscores, so Rş and Rç are both r__.
+>
+> *ngspice:* ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-3]
+>
+> *Fixes:* "Rename it Rc"
+
+```spice
+* two part names that become one
+V1 a 0 6
+Rş a 0 2
+Rç a 0 3
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      r__ a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      r__ a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `duplicate-name`.
+
 ## unknown-letter
 
 Lines ngspice cannot read as the part the student meant: a first character that is no part letter; a line starting with `@` (ngspice silently stops reading there); A and N lines, which PlainSpice's engine leaves out; and letters beginners use for something else, when what the letter needs is missing: W (a current-controlled switch, not a wire), S, T (a transmission line, not a transformer), U, Y, Z, P, K. Error. Fixes: make the line a comment; for `W1 a b`, a 0 V source as the wire (unknown-letter-9).
@@ -7549,3 +7600,85 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `unknown-dot-command`.
+
+## non-ascii-node
+
+Added after the final reviews of 12 November 2026 (kept review F3). A node name with a letter outside
+a to z (or A to Z), the micro sign aside: ngspice writes each byte of such a letter as `_` (W16 in
+numbers-and-syntax.md), so its printout and results call `giriş` `giri__`. Warning, with a fix to the
+nearest plain letters (`giris`; the letters that have no plain form are left out, and a name another
+node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
+ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
+letters. The fixes rename the node everywhere it is named, and on the drawing's `*@ label` line, and
+never give a name another node has (that would join two nodes). A name with a no-break space is left
+to the nbsp check. PlainSpice matches ngspice's
+results back to the netlist's names (`src/spice/describe.ts`), so the drawing, the Numbers panel and
+the announcement say `giriş`.
+
+What PlainSpice shows for non-ascii-node-1 (warning, line 2):
+
+> **ngspice calls the node giriş giri__.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ş as __), so its printout and results call this node giri__, and two names can become one node. A name in plain letters avoids both.
+>
+> *ngspice:* ngspice runs it and spells the node giri__, without a message. [non-ascii-node-1]
+>
+> *Fixes:* "Rename giriş to giris"
+
+What PlainSpice shows for non-ascii-node-2 (error, line 3):
+
+> **ş and ç are one node for ngspice.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so ş and ç both become __: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.
+>
+> *ngspice:* ngspice spells ş and ç as __ and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]
+>
+> *Fixes:* "Write s for ş and c for ç"
+
+### non-ascii-node-1. giriş is the node giri__: the circuit runs, with ngspice's own names
+
+```spice
+* node names with Turkish letters
+V1 giriş 0 12
+R1 giriş çıkış 1k
+R2 çıkış 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        8.000000e+00
+        giri__                           1.200000e+01
+        v1#branch                        -4.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giri__) = 12, v(____k____) = 8, i(v1) = -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giri__) = 12, v(____k____) = 8, i(v1) = -0.004
+```
+
+PlainSpice's checks: `non-ascii-node` (twice).
+
+### non-ascii-node-2. ş and ç are both __: one node, and R1 carries nothing
+
+The drawing shows a divider; ngspice puts both ends of R1 on `__`, so R1 carries no current and V1's
+6 mA all flow through R2.
+
+```spice
+* two node names that become one
+V1 ş 0 12
+R1 ş ç 1k
+R2 ç 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        __                               1.200000e+01
+        v1#branch                        -6.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(__) = 12, i(v1) = -0.006
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(__) = 12, i(v1) = -0.006
+```
+
+PlainSpice's checks: `non-ascii-node`.

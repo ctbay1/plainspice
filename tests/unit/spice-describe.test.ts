@@ -587,6 +587,37 @@ describe('a very long netlist', () => {
 });
 
 describe('after the final reviews (12 November 2026)', () => {
+  it('names nodes and parts as the netlist writes them, not as ngspice spells them (kept F3; W16, W18)', () => {
+    const n = parseNetlist('* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR\u015f \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n');
+    const w = describeResults(n, op({ giri__: 12, ____k____: 8 }, [['v1', -0.004, 'branch'], ['r1', 0.004, 'device'], ['r__', 0.004, 'device']]), run());
+    expect(w.nodes.map((x) => [x.node, x.ngspice, x.colourIndex])).toEqual([
+      ['giri\u015f', 'giri__', 0],
+      ['\u00e7\u0131k\u0131\u015f', '____k____', 1],
+    ]);
+    expect(w.summarySpeech).toBe('Simulation finished: node giri\u015f is 12 volts, node \u00e7\u0131k\u0131\u015f is 8 volts; 3 currents. Open the results for details.');
+    expect(w.currents.map((c) => [c.element, c.vector, sp(c.text)])).toEqual([
+      ['v1', 'i(v1)', '4 mA from ground to node giri\u015f through V1'],
+      ['r1', 'i(@r1[i])', '4 mA from node giri\u015f to node \u00e7\u0131k\u0131\u015f through R1'],
+      ['r\u015f', 'i(@r__[i])', '4 mA from node \u00e7\u0131k\u0131\u015f to ground through R\u015f'],
+    ]);
+    // The power needs both node voltages, which are found under the netlist's names.
+    expect(sp(w.currents[0]!.power!.text)).toBe('V1 delivers 48 mW');
+  });
+
+  it('leaves names ngspice made one as ngspice spells them (W17)', () => {
+    const n = parseNetlist('* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n');
+    const w = describeResults(n, op({ __: 12 }, [['v1', -0.006, 'branch']]), run());
+    expect(w.nodes.map((x) => [x.node, x.ngspice])).toEqual([['__', undefined]]);
+  });
+
+  it('names sweep results with the netlist\'s names too (W16)', () => {
+    const n = parseNetlist('* t\nV1 giri\u015f 0 0\nR1 giri\u015f 0 1k\n.dc V1 0 2 1\n.end\n');
+    const dc = { scale: { name: 'v(v-sweep)', values: Float64Array.from([0, 1, 2]), unit: 'V' as const }, series: [{ name: 'v(giri__)', values: Float64Array.from([0, 1, 2]), unit: 'V' as const }] };
+    const s = describeResults(n, { dc, other: [] }, run()).sweeps[0]!;
+    expect(sp(s.final[0]!.text)).toBe('v(giri\u015f) = 2 V');
+    expect(s.speech).toContain('the voltage at node giri\u015f is 2 volts');
+  });
+
   it('says 0 A for rounding noise: below abstol and a million million times below the circuit\'s currents (student review; C9)', () => {
     const n = parseNetlist('* bridge\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.op\n.end\n');
     const r = op({ top: 9, a: 4.499999999999999, b: 4.5 }, [['v1', -0.0014074468085106386, 'branch'], ['r1', 4.5e-4, 'device'], ['r5', -8.881784197001253e-19, 'device']]);

@@ -650,7 +650,7 @@ describe('after the final reviews (12 November 2026)', () => {
     drawn.plots.forEach((p, k) => p.real.forEach((v, i) => expect(Array.from(v), p.variables[i]!.name).toEqual(Array.from(plain.plots[k]!.real[i]!))));
     expect(drawn.diagnostics).toEqual(plain.diagnostics);
     const entries = explainNetlist(parseNetlist(text));
-    expect(entries.filter((e) => /^Drawing line/.test(e.heading))).toEqual([
+    expect(entries.filter((e) => e.heading.startsWith('Drawing line'))).toEqual([
       {
         line: 11,
         lastLine: 32,

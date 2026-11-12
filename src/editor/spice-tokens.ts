@@ -51,6 +51,7 @@
  * trap checks' job (src/spice/traps.ts).
  */
 import { numberWordEnd, readNumber } from '../spice/numbers.ts';
+import { ngspiceName } from '../spice/parse.ts';
 
 export type SpiceTokenType =
   | 'title' // line 1
@@ -710,8 +711,9 @@ function classifyStatement(st: Statement, inSubckt: boolean): Classified[] {
   return out;
 }
 
+/** A node as the parser names it (ngspiceName): ASCII letters in lower case, µ as u, so "Ü1" and "ü1" stay two nodes (W6, W16). */
 function nodeType(text: string): Classified {
-  const lower = text.toLowerCase();
+  const lower = ngspiceName(text);
   return lower === '0' || lower === 'gnd' ? { type: 'ground', node: '0' } : { type: 'node', node: lower };
 }
 

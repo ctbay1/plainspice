@@ -68,7 +68,8 @@ current source, a resistor and a capacitor, in ngspice 42 and 47).
 - Commas and `=` separate words (W1, W2); parentheses around source functions are optional (W3); a
   no-break space does not separate words (W4); a node name can contain `(` (W5).
 - Node and part names ignore capital letters (W6, W7). A micro sign as the first character makes a U
-  line, because ngspice reads it as `u` (W15).
+  line, because ngspice reads it as `u` (W15). Each byte of a letter outside ASCII in a name becomes
+  `_` (`giriş` is `giri__`), so two names can become one node or one part (W16–W18).
 - `0` and `gnd` in any case are ground, except `gnd` as the last word of a line, which is an ordinary node
   (W8–W12). `ground` and `00` are ordinary nodes (W13, W14).
 
@@ -2102,6 +2103,95 @@ our engine (wasm), as ngspice -b -r (exit 1):
         Simulation interrupted due to error!
     Error: circuit not parsed.
   vectors: (none: nothing ran)
+```
+
+### W16. Each byte of a letter outside ASCII in a name becomes `_`: `giriş` is the node `giri__`
+
+Added after the final reviews of 12 November 2026 (kept review F3, security review F2). ngspice reads
+the netlist byte by byte: it turns the micro sign µ into `u` (W15, N5), then writes every byte that is
+not a printable ASCII character as `_` (`inp_casefix` in ngspice's `src/frontend/inpcom.c`). A letter
+outside ASCII takes two to four bytes in the file (UTF-8: ş, ç and ı two, an emoji four), so `giriş`
+is the node `giri__`, `çıkış` is `____k____`, `a😀` is `a____`, while `µin` is `uin`. The numbers are
+right; the names in the printout and the results file are not the netlist's. PlainSpice spells names
+the same way (`ngspiceSpelling` in `src/spice/parse.ts`) to match ngspice's results to the netlist's
+names, and its non-ascii-node check says so (traps.md).
+
+```spice
+* names with letters outside ASCII
+V1 giriş 0 12
+R1 giriş çıkış 1k
+R2 çıkış 0 2k
+V2 µin 0 6
+R3 µin 0 2
+V3 a😀 0 3
+R4 a😀 0 1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        a____                            3.000000e+00
+        uin                              6.000000e+00
+        ____k____                        8.000000e+00
+        giri__                           1.200000e+01
+        v1#branch                        -4.00000e-03
+        v2#branch                        -3.00000e+00
+        v3#branch                        -3.00000e+00
+  rawfile from ngspice -b -r (exit 0): v(giri__) = 12, v(____k____) = 8, v(uin) = 6, v(a____) = 3, i(v3) = -3, i(v2) = -3, i(v1) = -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(giri__) = 12, v(____k____) = 8, v(uin) = 6, v(a____) = 3, i(v3) = -3, i(v2) = -3, i(v1) = -0.004
+```
+
+### W17. So two names can be one node: `ş` and `ç` are both `__`
+
+`ş` and `ç` are two bytes each, so ngspice writes both as `__` and joins them: R1 has both ends on that
+one node and carries nothing, so all 6 mA of V1 flow through R2, where the drawing shows a divider
+(non-ascii-node-2 in traps.md is the check).
+
+```spice
+* two node names that become one
+V1 ş 0 12
+R1 ş ç 1k
+R2 ç 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        __                               1.200000e+01
+        v1#branch                        -6.00000e-03
+  rawfile from ngspice -b -r (exit 0): v(__) = 12, i(v1) = -0.006
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(__) = 12, i(v1) = -0.006
+```
+
+### W18. Part names too: `Rş` is the part `r__`
+
+So its current is `@r__[i]` in the results. Two part names ngspice spells the same are one name, and
+ngspice stops at the second (duplicate-name-3 in traps.md).
+
+```spice
+* a part name with a Turkish letter
+V1 a 0 6
+Rş a 0 2
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        a                                6.000000e+00
+        @r__[i]                          3.000000e+00
+        v1#branch                        -3.00000e+00
+  rawfile from ngspice -b -r (exit 0): v(a) = 6, i(v1) = -3, i(@r__[i]) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 6, i(v1) = -3, i(@r__[i]) = 3
 ```
 
 ## 4. Which number a part line uses

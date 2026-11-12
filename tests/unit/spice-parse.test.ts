@@ -7,7 +7,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ELEMENTS, EXPLAINED_LETTERS, elementInfo, fieldLabel } from '../../src/spice/elements.ts';
-import { lowerAscii, parseNetlist, partParameter } from '../../src/spice/parse.ts';
+import { lowerAscii, ngspiceSpelling, parseNetlist, partParameter } from '../../src/spice/parse.ts';
 import type { Element, FieldRole, LineKind, Netlist } from '../../src/spice/types.ts';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -692,5 +692,20 @@ describe('element catalog', () => {
     expect(table('H1 out4 0 Vs 4')).toEqual(['name', '+ node', '\u2212 node', 'control source', 'volts per amp']);
     expect(table('Q1 c b e qm')).toEqual(['name', 'collector', 'base', 'emitter', 'model']);
     expect(table('X1 a b sub')).toEqual(['name', 'node', 'node', 'subcircuit']);
+  });
+});
+
+describe('after the final reviews (12 November 2026)', () => {
+  it('spells a name the way ngspice writes it: each byte of a character outside ASCII as _ , µ as u (W16-W18)', () => {
+    expect(['giri\u015f', '\u00e7\u0131k\u0131\u015f', '\u015f', 'ou\u200bt', '\u00b5in', 'a\u{1F600}', 'N1', 'R\u015f'].map(ngspiceSpelling)).toEqual([
+      'giri__',
+      '____k____',
+      '__',
+      'ou___t',
+      'uin',
+      'a____',
+      'n1',
+      'r__',
+    ]);
   });
 });

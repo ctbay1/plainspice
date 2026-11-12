@@ -159,6 +159,10 @@ const CASES: Case[] = [
   { name: "a number after a gain", id: 'unknown-word', severity: 'error', line: 4, at: "3", all: ["unknown-word"], fixes: [], netlist: "* t\nV1 a 0 1\nR0 a 0 1\nE1 b 0 a 0 2 3\nR1 b 0 1\n.op\n.end\n" },
   { name: "a misspelt .tran", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".tarn", all: ["unknown-dot-command"], fixes: ["Use .tran", "Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.tarn 1u 1m\n.op\n.end\n" },
   { name: ".pss, unknown to ngspice 47 as built", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".pss", all: ["unknown-dot-command"], fixes: ["Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n" },
+  // After the final reviews (12 November 2026): names ngspice spells with underscores (kept review F3).
+  { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
+  { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
+  { name: "two part names ngspice spells the same", id: 'duplicate-name', severity: 'error', line: 4, at: "R\u00e7", all: ["duplicate-name"], fixes: ["Rename it Rc"], netlist: "* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n" },
 ];
 
 describe('each trap fires on a minimal netlist', () => {
@@ -541,7 +545,7 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       const lineOf = (offset: number): number => n.lines.filter((l) => l.span.from <= offset).length;
       for (const l of n.lines) for (const t of l.tokens) expect(text.slice(t.from, t.to)).toBe(t.text);
       const found = checkTraps(n);
-      expect(found.map((t) => t.id)).toEqual(['decimal-comma', 'unknown-word', 'rkm-notation', 'space-before-suffix', 'unknown-dot-command']);
+      expect(found.map((t) => t.id)).toEqual(['non-ascii-node', 'non-ascii-node', 'decimal-comma', 'non-ascii-node', 'unknown-word', 'rkm-notation', 'non-ascii-node', 'space-before-suffix', 'unknown-dot-command']);
       for (const t of found) {
         expect(lineOf(t.span.from), t.id).toBe(t.line);
         for (const f of t.fixes) {
@@ -789,6 +793,31 @@ describe('the evidence', () => {
 
 describe('after the final reviews (12 November 2026)', () => {
   const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+
+  it('renames a node with a Turkish letter everywhere, on the drawing\'s label line too, and never onto a name ngspice already has (kept F3)', () => {
+    const text = '* t\nV1 giri\u015f 0 12\nR1 giri\u015f giris 1k\nR2 giris 0 2k\n.tf v(giri\u015f) V1\n.end\n* plainspice-drawing v1\n*@ label giri\u015f 0 0\n*@ label giris 4 0\n';
+    const t = first(text, 'non-ascii-node');
+    // "giris" is another node: the fix must not join the two.
+    expect(t.fixes.map((f) => f.label)).toEqual(['Rename giri\u015f to giris2']);
+    const fixed = applyFix(text, t.fixes[0]!);
+    expect(fixed).toBe('* t\nV1 giris2 0 12\nR1 giris2 giris 1k\nR2 giris 0 2k\n.tf v(giris2) V1\n.end\n* plainspice-drawing v1\n*@ label giris2 0 0\n*@ label giris 4 0\n');
+    expect(ids(fixed)).toEqual([]);
+  });
+
+  it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {
+    const merged = first('* t\nV1 \u0130 0 6\nR1 \u0130 \u015f 1k\nR2 \u015f 0 1k\n.op\n.end\n', 'non-ascii-node');
+    expect(merged).toMatchObject({ severity: 'error', title: '\u0130 and \u015f are one node for ngspice' });
+    expect(merged.fixes.map((f) => f.label)).toEqual(['Write I for \u0130 and s for \u015f']);
+    expect(first('* t\nV1 \u03b1 0 6\nR1 \u03b1 0 1k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename \u03b1 to n1']);
+    // The micro sign is fine: ngspice reads it as u (W16).
+    expect(ids('* t\nV1 \u00b5in 0 6\nR1 \u00b5in 0 2\n.op\n.end\n')).toEqual([]);
+  });
+
+  it('finds two part names that ngspice spells the same (duplicate-name-3)', () => {
+    const t = first('* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n', 'duplicate-name');
+    expect(t.title).toBe('R\u015f and R\u00e7 are the same name for ngspice');
+    expect(t.why).toContain('are both r__');
+  });
 
   it('the missing-end note says where new lines go, not that .end stops ngspice (words review W1; missing-end-1, after-end-1, S25)', () => {
     const t = first('* t\nV1 n1 0 6\nR1 n1 0 2\n.op\n', 'missing-end');
