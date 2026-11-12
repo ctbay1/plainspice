@@ -319,7 +319,10 @@ export function freshNodeName(s: Schematic, taken: Set<string> = new Set(), opti
 
 /**
  * Nodes named in .control lines, as v(...), vm(...), vp(...), vr(...), vi(...) or vdb(...), the way
- * the parser finds them in dot commands (parse.ts, nodeRefsInDirective).
+ * the parser finds them in dot commands (parse.ts, nodeRefsInDirective): each word once, by the first
+ * bracket that holds it, and each ) looked for once, within the line. Looked for again from every v(,
+ * one long .control line of v( with no ) gave references by the square of its length, and every
+ * edit reads them (freshNodeName, partMentions).
  */
 function controlNodeRefs(netlist: Netlist): { token: Token; name: string; line: number }[] {
   const out: { token: Token; name: string; line: number }[] = [];
@@ -327,14 +330,21 @@ function controlNodeRefs(netlist: Netlist): { token: Token; name: string; line: 
   for (const line of netlist.lines) {
     if (line.kind !== 'control') continue;
     const tokens = line.tokens;
+    const end = line.span.to;
+    let next = 0; // the first word no bracket has named yet
+    let stop = -1; // the first ) after the last ( looked from, or the line's end
     for (let k = 0; k < tokens.length; k++) {
       const t = tokens[k]!;
       if (!/^v(m|p|r|i|db)?$/i.test(t.text)) continue;
-      const open = /^\s*\(/.exec(text.slice(t.to, line.span.to));
-      if (!open) continue;
-      const close = text.indexOf(')', t.to + open[0].length);
-      const stop = close < 0 || close > line.span.to ? line.span.to : close;
-      for (let j = k + 1; j < tokens.length && tokens[j]!.from < stop; j++) {
+      let p = t.to;
+      while (p < end && /\s/.test(text[p]!)) p += 1;
+      if (p >= end || text[p] !== '(') continue;
+      if (stop < p) {
+        stop = p + 1;
+        while (stop < end && text[stop] !== ')') stop += 1;
+      }
+      for (let j = Math.max(k + 1, next); j < tokens.length && tokens[j]!.from < stop; j++) {
+        next = j + 1;
         const name = lowerAscii(tokens[j]!.text);
         out.push({ token: tokens[j]!, name, line: line.index });
       }

@@ -187,3 +187,21 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   takes 71 ms with no long task (7.2 s, 6.5 s and 6.0 s before). A test of its own times the line
   (`tests/unit/spice-traps.test.ts`, "reads one long .control line of v( with no ) …"; the old code:
   799 ms once, 88 ms for ten small ones), with 20 ms of room, since the work is a few milliseconds.
+- The parser's own reading of a directive had the same shape (found by the names lane, fixed by the
+  integrator): `nodeRefsInDirective` (`src/spice/parse.ts`) made each `v(` name every word after it
+  up to the first `)`, or to the end of the line when there was none, so a `.print` line of `v(` with
+  no `)` gave references by the square of its length: 2000 `v(` (4 kB) gave 2 million references and
+  0.7 s, and 8000 used up the 2 GB a Node process has, which in a tab means a crash, from a link of
+  a few hundred characters. Each word is now named once, by the first bracket that holds it, and each
+  `)` is looked for once: 32 000 `v(` (64 kB) take 50 ms and give 32 000 references. Every netlist
+  in the repository (147 files) names exactly the same words as before; on 87 hand-made directive
+  lines with open and nested brackets the only change is that a word named several times (by each
+  bracket around it) is now named once. The test (`tests/unit/spice-parse.test.ts`, "names each word
+  of a directive once …") counts the references, which does not depend on the machine's load; the old
+  code gave 500 504 where it expects 1004.
+  The editor's reading of the `.control` lines (`controlNodeRefs` in `src/schematic/edit.ts`, which
+  every edit that names a node reads, and a delete) had the same shape and is read the same way now:
+  one line of 4000 `v(` gave 8 million names and 1.5 s on each such edit, now 4000 names in 5 ms,
+  the same names, first to last, as before on 71 hand-made `.control` lines (the old code only named
+  some words more than once). Its test ("reads a long .control line of v( once …",
+  `tests/unit/schematic-edit-disconnect.test.ts`) runs the old code out of memory.

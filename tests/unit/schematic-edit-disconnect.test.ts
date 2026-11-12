@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { EDIT_STRINGS, applyEdit, buildSchematic, freshNodeName, insertLine, schematicConnectivity, wireRoute, type Schematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const DIVIDER = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
 
@@ -105,4 +106,20 @@ describe('the helpers the editor shares with the model', () => {
     const n = parseNetlist(DIVIDER);
     expect(insertLine(n, 'R3 out 0 1k')).toEqual({ from: DIVIDER.indexOf('.op'), to: DIVIDER.indexOf('.op'), insert: 'R3 out 0 1k\n' });
   });
+
+  it('skips a name a .control line writes in v( ), however its brackets are left open', () => {
+    const control = (line: string): Schematic => buildSchematic(DIVIDER.replace('.end\n', `.control\nrun\n${line}\n.endc\n.end\n`));
+    expect(freshNodeName(control('print v(n1) v(n2'))).toBe('n3');
+    expect(freshNodeName(control('print v(v(n1)) vm( n2 , n3 )'))).toBe('n4');
+  });
+
+  // Every edit that makes a node reads the .control lines' node names (freshNodeName, and partMentions on
+  // a delete). They were read again from every v(: one line of 4000 v( with no ) gave 8 million names
+  // and took 1.5 s, on each edit, from a link of a few hundred characters; now 4000, in 5 ms. Timed as
+  // the work it is (work-time.ts); the old code would take seconds here, and run out of memory at 16 000.
+  it('reads a long .control line of v( once, on every edit that names a node', () => {
+    const s = buildSchematic(DIVIDER.replace('.end\n', `.control\nprint ${'v('.repeat(16_000)}n1\n.endc\n.end\n`));
+    const [work] = leastWorkMs([() => expect(freshNodeName(s, new Set())).toBe('n2')], 3);
+    expect(work).toBeLessThan(500);
+  }, 30_000);
 });
