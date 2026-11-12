@@ -103,16 +103,29 @@ that a phone left no room to watch the numbers move; this record says what the c
 
 ## After the final reviews (12 November 2026)
 
-- **The first numbers are handwritten from the start** (phone review F6). A browser asks for a font
-  only when text needs it, and no text needs Caveat 700 before ngspice's first results: on a first
-  visit on a slow phone (a Pixel 7 on Slow 4G with its CPU slowed four times) they were drawn in a
-  fallback face for about 0.8 s, then changed to Caveat (nothing moved: the room is Caveat's). The page
-  now loads that face once its own CSS and scripts are in (DOMContentLoaded, a line in its head that
-  `vite.config.ts` writes from the family and weight the CSS declares) and before the engine's Worker
-  asks for ngspice.wasm: the face is there seconds before the first numbers. Measured on that phone,
-  six first visits each against the build before: the first paint, the first drawing and the first
-  results came no later, within the runs' spread (about 0.1 s on a busy machine). The review's
+- **The first numbers are handwritten from the start on an ordinary visit** (phone review F6). A
+  browser asks for a font only when text needs it, and no text needs Caveat 700 before ngspice's
+  first results: on a first visit on a slow phone (a Pixel 7 on Slow 4G with its CPU slowed four
+  times) they were drawn in a fallback face for about 0.8 s, then changed to Caveat (nothing moved:
+  the room is Caveat's). The page now loads that face once its own CSS and scripts are in
+  (DOMContentLoaded, a line in its head that `vite.config.ts` writes from the family and weight the
+  CSS declares) and before the engine's Worker asks for ngspice.wasm: the face is there seconds
+  before the first numbers. Measured on that phone, first visits taken in turn with the build before
+  (six, then four more after the change below): the first paint, the first drawing and the first
+  results came no later, within the runs' spread (about 0.1 s on a busy machine; the results at
+  11.52 to 11.62 s against 11.48 to 11.59 s), and the face was there at about 3.0 s. The review's
   `<link rel="preload">` brought the font as early but shared the first second's bandwidth with the
   page's CSS and scripts, and the first paint came about 0.15 s later, with low priority too. With
   the plain font chosen the face is loaded all the same (49 kB; from the service worker's cache after
   the first visit).
+- **On a run=1 link the numbers come first** (the critic of F6). There the page's head preloads
+  ngspice.wasm from the start (perf review 3), and the font, loaded at DOMContentLoaded too at first,
+  downloaded beside it: the first numbers came about 0.24 s later (the font's 49 kB at 1.6 Mbps),
+  in Caveat. Bringing the numbers early is what the preload is for, so on those links the font now
+  waits until the preload has ended (its load or error event), then is asked for at once, about
+  0.04 s after ngspice.wasm is in, while ngspice compiles and runs. Five first visits of the
+  published F1a link on that phone, taken in turn with the build before: the first numbers came no
+  later (10.86 to 10.89 s against 10.86 to 10.95 s; each pair within 0.06 s), drawn in the fallback
+  face for 0.53 to 0.65 s (0.73 to 0.82 s before) while the font arrives behind them, sharing the
+  connection with the parts of the app it downloads once the first run is done (menus, dialogs, the
+  Netlist panel's editor). Nothing moves when the face changes.

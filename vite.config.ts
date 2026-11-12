@@ -138,8 +138,13 @@ function shipDependencyLicences(): Plugin {
  *   numbers, so on a first visit they were drawn in a fallback face and changed to Caveat about 0.8 s
  *   later (phone review F6). Not a <link rel="preload">: that shares the first second's bandwidth with
  *   the page's own CSS and scripts, and on a slow phone it put the first paint about 0.15 s later, at
- *   low priority too; after DOMContentLoaded the network is quiet until the Worker asks for
- *   ngspice.wasm, and the first paint, the drawing and the results came no later (decision 0015).
+ *   low priority too. On an ordinary visit the network is quiet after DOMContentLoaded until the
+ *   Worker asks for ngspice.wasm: the face is there seconds before the first numbers, and the first
+ *   paint, the drawing and the results came no later. On a run=1 link ngspice.wasm is on its way from
+ *   the start, and the font downloaded beside it brought the first numbers about 0.24 s later (the
+ *   critic of F6): there the font waits until the engine's preload has ended (its load or error), so
+ *   the numbers come as early as before, in the fallback face for about 0.6 s (0.8 s before) while
+ *   the font arrives (decision 0015).
  * - A Content-Security-Policy (security review m1), as a <meta> because GitHub Pages sets no
  *   headers. Defence in depth: nothing from a link is ever put into the page as HTML. Styles need
  *   'unsafe-inline' (CodeMirror and React Aria add style elements and attributes), images data:
@@ -183,16 +188,7 @@ function pageHead(): Plugin {
         const files = Object.keys(ctx.bundle ?? {});
         const wasm = files.find((f) => /^engine\/ngspice-[\w-]+\.wasm$/.test(f));
         const worker = files.find((f) => /^assets\/worker-[\w-]+\.js$/.test(f));
-        const lines: string[] = [];
-        if (wasm && worker) {
-          lines.push(
-            `if(/(?:^#|&)run=1(?:&|$)/.test(location.hash)){` +
-              `for(const[r,h,a]of[["preload","./${wasm}","fetch"],["prefetch","./${worker}",""]]){` +
-              `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"}document.head.append(l)}}`,
-          );
-        } else {
-          this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
-        }
+        if (!wasm || !worker) this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
         // The results' handwriting, as the page's own CSS declares it (src/notebook/fonts.css: the face
         // whose file is caveat-700-<hash>.woff2), loaded by family and weight through the CSS Font Loading API.
         const css = [...(ctx.chunk?.viteMetadata?.importedCss ?? [])]
@@ -202,13 +198,25 @@ function pageHead(): Plugin {
         const face = /@font-face\s*\{[^}]*caveat-700-[\w-]+\.woff2[^}]*\}/i.exec(css)?.[0] ?? '';
         const family = /font-family:\s*([^;}]+)/i.exec(face)?.[1]?.trim().replace(/^(['"])(.*)\1$/, '$2');
         const weight = /font-weight:\s*(\d+)/i.exec(face)?.[1];
-        if (family && weight) {
-          const font = JSON.stringify(`${weight} 1em "${family}"`);
-          lines.push(`document.addEventListener("DOMContentLoaded",()=>{try{document.fonts.load(${font}).catch(()=>{})}catch{}})`);
-        } else {
-          this.warn('the results font is not loaded early: the app page\'s CSS declares no Caveat 700 face');
+        const font = family && weight ? JSON.stringify(`${weight} 1em "${family}"`) : undefined;
+        if (!font) this.warn('the results font is not loaded early: the app page\'s CSS declares no Caveat 700 face');
+        // In a block, so its names (w: the engine is on its way; d: DOMContentLoaded has come; f: load
+        // the font) are no page-wide names. The font loads after DOMContentLoaded, and on a run=1 link
+        // only once the engine has come too (its preload's load or error), so it never shares the
+        // connection with ngspice.wasm.
+        let script = '';
+        if (wasm && worker) {
+          script +=
+            `if(/(?:^#|&)run=1(?:&|$)/.test(location.hash)){` +
+            `for(const[r,h,a]of[["preload","./${wasm}","fetch"],["prefetch","./${worker}",""]]){` +
+            `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"` +
+            `${font ? ';w=1;l.onload=l.onerror=()=>{w=0;d&&f()}' : ''}}document.head.append(l)}}`;
         }
-        const script = lines.join(';');
+        if (font) {
+          script =
+            `{let w=0,d=0;const f=()=>{try{document.fonts.load(${font}).catch(()=>{})}catch{}};` +
+            `${script}document.addEventListener("DOMContentLoaded",()=>{d=1;w||f()})}`;
+        }
         const hash = script ? ` 'sha256-${createHash('sha256').update(script).digest('base64')}'` : '';
         const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy(hash)}" />`];
         if (script) tags.push(`<script>${script}</script>`);

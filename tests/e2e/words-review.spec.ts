@@ -7,12 +7,16 @@
  * - Connections say that Connect to makes two nodes one, with every part on them, and that Disconnect
  *   first, then Connect to, moves one end alone, which is true (W2).
  * - The card says "node in is higher", on the card and to screen readers (W8).
- * - The first numbers of a first visit are drawn in Caveat, not in a fallback face (F6).
+ * - The first numbers of a first visit are drawn in Caveat, not in a fallback face; on a run=1 link
+ *   the font waits until ngspice.wasm has come, so the first numbers come no later (F6).
  * - The engine check, the licences and the design pages carry the app's policy and work under it (F3).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { encodeShare } from '../../src/share/link.ts';
 import {
   RUN_TIMEOUT,
+  START_HERE,
+  drawing,
   expectAnnounced,
   expectSolved,
   gridPoint,
@@ -113,6 +117,54 @@ test('a first visit has the results’ handwriting loaded before ngspice’s fir
   await expectSolved(page);
   expect(await page.evaluate(() => (window as unknown as { caveatAtFirstNumbers?: string }).caveatAtFirstNumbers)).toBe('loaded');
   // Downloaded once: the early load is the same request the drawing's text uses.
+  expect(await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /\/caveat-700-[\w-]+\.woff2$/.test(e.name)).length)).toBe(1);
+});
+
+test('on a run=1 link the handwriting waits for ngspice.wasm, then loads before the first numbers (F6)', async ({ page }) => {
+  // A run=1 link preloads ngspice.wasm from the page's head. The font must not share the connection
+  // with it (on a slow phone that brought the first numbers about 0.24 s later): ngspice.wasm is held
+  // back here, and until it has come nothing may ask for Caveat 700.
+  let release = (): void => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let asked = 0;
+  await page.route(/\/engine\/ngspice-[\w-]+\.wasm$/, async (route) => {
+    asked += 1;
+    await held;
+    await route.continue();
+  });
+  await page.addInitScript(() => {
+    const w = window as unknown as { contentLoaded?: boolean; caveatAtFirstNumbers?: string };
+    document.addEventListener('DOMContentLoaded', () => {
+      w.contentLoaded = true;
+    });
+    const caveat = (): string => {
+      for (const f of document.fonts) if (f.family.replace(/['"]/g, '') === 'Caveat' && f.weight === '700') return f.status;
+      return 'not declared';
+    };
+    new MutationObserver((_, observer) => {
+      if (!/Finished in \d+ ms/.test(document.querySelector('.status')?.textContent ?? '')) return;
+      w.caveatAtFirstNumbers = caveat();
+      observer.disconnect();
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  const caveat = (): Promise<string> =>
+    page.evaluate(() => {
+      for (const f of document.fonts) if (f.family.replace(/['"]/g, '') === 'Caveat' && f.weight === '700') return f.status;
+      return 'not declared';
+    });
+  await page.goto(`./#${await encodeShare(START_HERE, { run: true })}`);
+  // The page is up and drawn, DOMContentLoaded has come, and the engine is still on its way.
+  await expect.poll(() => asked).toBeGreaterThan(0);
+  await page.waitForFunction(() => (window as unknown as { contentLoaded?: boolean }).contentLoaded === true);
+  await expect(drawing(page)).toBeAttached();
+  expect(await caveat()).toBe('unloaded');
+  release();
+  await expectSolved(page);
+  // Asked for once ngspice.wasm had come, before the first numbers: by then it was on its way, or there.
+  expect(await page.evaluate(() => (window as unknown as { caveatAtFirstNumbers?: string }).caveatAtFirstNumbers)).toMatch(/^(loading|loaded)$/);
+  await expect.poll(caveat).toBe('loaded');
   expect(await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /\/caveat-700-[\w-]+\.woff2$/.test(e.name)).length)).toBe(1);
 });
 
