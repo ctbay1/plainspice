@@ -37,9 +37,11 @@
  * drawing lines, only edits that change part lines are done: changing the drawing would leave that
  * version's lines behind, out of step.
  */
+import { describeCharacter, hasInvisible, hasSpaceLike, lookAlikeOf, plainLetters } from '../spice/characters.ts';
 import { elementInfo } from '../spice/elements.ts';
+import { nodeNameInWords } from '../spice/explain.ts';
 import { atSentenceStart, nameSaysNode } from '../spice/node-words.ts';
-import { lowerAscii, parseNetlist } from '../spice/parse.ts';
+import { lowerAscii, ngspiceSpelling, parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange, Token } from '../spice/types.ts';
 import { GROUND, circuitFromNetlist, labelNode, type Circuit, type CircuitPart } from './circuit.ts';
 import { checkConnectivity, drawnPins, findIslands } from './connectivity.ts';
@@ -213,7 +215,21 @@ export const EDIT_STRINGS = {
   sameTurn: (name: string): string => `${name} is already turned that way.`,
   samePlace: (name: string): string => `${name} is already there.`,
   groundThere: 'The ground symbol is already there.',
-  badName: (name: string): string => (name ? `PlainSpice keeps node names to letters, digits and _ (32 at most), so it can't use "${name}".` : 'A node needs a name.'),
+  // "Letters a to z (or A to Z)", as the non-ascii-node check says it: ç, ı and ş are letters too (words re-check 9).
+  badName: (name: string): string =>
+    name ? `PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can't use "${name}".` : 'A node needs a name.',
+  /** The same for a name with a character in it that can't be seen or looks like a space, named, never shown in quotes (decision 0012). */
+  badNameWords: (words: string): string => `PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can't use ${words}.`,
+  /**
+   * A name with a letter outside a to z: why, in the non-ascii-node check's words (W16: ngspice writes
+   * each byte of such a letter as '_'), and the name in plain letters (words re-check 9). `letter` as
+   * the check names it ("ç", "the Cyrillic letter о, which looks like o").
+   */
+  badLetter: (name: string, letter: string, letterSpelled: string, spelled: string, plain: string): string =>
+    `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter}${letter.includes(', which') ? ',' : ''} as ${letterSpelled}), so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
+  /** The micro sign, which ngspice reads as u (W16), so a name with it is another name to ngspice. */
+  badMicro: (name: string, spelled: string, plain: string): string =>
+    `ngspice reads the micro sign µ in a node name as u, so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
   badSource: (name: string): string => `PlainSpice keeps part names to a letter followed by letters, digits and _, so it can't use "${name}".`,
   // W8: 0 (and gnd) is what makes a node ground; every voltage is measured from it (the Help's results).
   groundName: 'Ground (node 0) keeps its name: in SPICE, the name 0 is what makes a node ground, the node every voltage is measured from.',
@@ -245,6 +261,28 @@ export const DEFAULT_VALUES: Readonly<Record<PartLetter, string>> = { R: '1k', C
 
 const NODE_NAME = /^[A-Za-z0-9_]{1,32}$/;
 const PART_NAME = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
+
+/**
+ * Why PlainSpice can't use a node name it refuses (NODE_NAME): for a letter outside a to z, why, in the
+ * non-ascii-node check's words, and the name in plain letters (plainLetters), never one another node
+ * or ground already has: 0, gnd, and ground and 00, which the ground-misnamed check would flag, are
+ * taken, and a name taken gets a number after it (words re-check 9). `own`: the node being renamed,
+ * whose own name is free.
+ */
+export function badNodeName(s: Schematic, name: string, own?: string): string {
+  if (hasInvisible(name) || hasSpaceLike(name)) return S.badNameWords(nodeNameInWords(name));
+  const odd = [...name].find((ch) => ch.codePointAt(0)! > 0x7e);
+  const plain = odd && /\p{L}/u.test(odd) ? plainLetters(name) : undefined;
+  if (!odd || plain === undefined || !NODE_NAME.test(plain)) return S.badName(name);
+  const taken = new Set(['0', 'gnd', 'ground', '00', ...[...s.circuit.nodes.keys()].filter((k) => k !== own), ...[...s.netlist.nodes.keys()].filter((k) => k !== own)]);
+  let free = plain;
+  for (let k = 2; taken.has(lowerAscii(free)); k++) free = `${plain}${k}`;
+  if (!NODE_NAME.test(free)) return S.badName(name);
+  const spelled = ngspiceSpelling(name);
+  if (odd === MICRO) return S.badMicro(name, spelled, free);
+  return S.badLetter(name, lookAlikeOf(odd) !== undefined ? describeCharacter(odd) : odd, ngspiceSpelling(odd), spelled, free);
+}
+const MICRO = '\u00b5';
 
 // ------------------------------------------------------------------ helpers
 
@@ -1232,7 +1270,7 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
   if (!info) return refuse(s, S.noNode(nodeName));
   if (node === GROUND) return refuse(s, S.groundName);
   const name = wanted.trim();
-  if (!NODE_NAME.test(name)) return refuse(s, S.badName(name));
+  if (!NODE_NAME.test(name)) return refuse(s, badNodeName(s, name, node));
   const target = lowerAscii(name) === 'gnd' ? GROUND : lowerAscii(name);
   // A name that differs from another node's only in capital letters is that node (W6): it is written
   // as that node is, so the netlist (and what describes it) never has the two spellings.
@@ -1361,7 +1399,7 @@ function setControl(s: Schematic, op: Extract<EditOp, { kind: 'set-control' }>, 
     ] as const) {
       if (wanted === undefined) continue;
       const n = wanted.trim();
-      if (!NODE_NAME.test(n)) return refuse(s, S.badName(n));
+      if (!NODE_NAME.test(n)) return refuse(s, badNodeName(s, n));
       const token = el.nodes[i]?.token;
       if (token) changes.push(replaceToken(token, n));
       else {

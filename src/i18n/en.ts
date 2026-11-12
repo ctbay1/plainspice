@@ -335,7 +335,8 @@ export const en = {
   /** {node} as a sentence says it: "node out", 'node "ground"', "node1" (nodeInSentence). */
   nodeCardNameOf: 'Name of {node}',
   nodeCardRename: 'Rename',
-  nodeCardRenameHint: 'Letters, digits and _. A name another node already has makes the two one node.',
+  /** The letters a to z, as the non-ascii-node check and the refusal (EDIT_STRINGS.badName) say: ç, ı and ş are letters too (words re-check 9). */
+  nodeCardRenameHint: 'Letters a to z (or A to Z), digits and _. A name another node already has makes the two one node.',
   nodeCardVoltage: 'Voltage',
   nodeCardNoVoltage: 'No voltage yet: ngspice runs the circuit in a moment.',
   nodeCardMoveName: 'Move its name',

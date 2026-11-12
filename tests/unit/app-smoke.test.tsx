@@ -632,7 +632,7 @@ describe('<App />', () => {
     expect(document.activeElement).toBe(name);
     fireEvent.change(name, { target: { value: 'my out' } });
     fireEvent.click(within(card).getByRole('button', { name: 'Rename' }));
-    await waitFor(() => expect(within(card).getByText(/PlainSpice keeps node names to letters, digits and _/)).toBeTruthy());
+    await waitFor(() => expect(within(card).getByText(/PlainSpice keeps node names to the letters a to z \(or A to Z\), digits and _/)).toBeTruthy());
     fireEvent.change(name, { target: { value: 'vout' } });
     fireEvent.submit(name.closest('form')!);
     await waitFor(() => expect(polite()).toContain('Node out renamed to vout.'));

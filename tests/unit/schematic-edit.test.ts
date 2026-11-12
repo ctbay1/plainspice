@@ -257,7 +257,7 @@ describe('wires and node names', () => {
 
   it('refuses a name PlainSpice does not write, and renaming ground', () => {
     const s = buildSchematic(DIVIDER);
-    expect(applyEdit(s, { kind: 'rename-node', node: 'out', name: 'v out' }).reason).toBe('PlainSpice keeps node names to letters, digits and _ (32 at most), so it can\'t use "v out".');
+    expect(applyEdit(s, { kind: 'rename-node', node: 'out', name: 'v out' }).reason).toBe('PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can\'t use "v out".');
     expect(applyEdit(s, { kind: 'rename-node', node: '0', name: 'gnd2' }).reason).toBe('Ground (node 0) keeps its name: in SPICE, the name 0 is what makes a node ground, the node every voltage is measured from.');
   });
 

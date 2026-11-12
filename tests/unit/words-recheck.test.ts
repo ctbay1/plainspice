@@ -12,7 +12,7 @@ import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { cardContent, type CardState } from '../../src/app/card.ts';
-import { endsOf, nodeSaid } from '../../src/app/editing.ts';
+import { endsOf, formLine, formStart, nodeSaid } from '../../src/app/editing.ts';
 import { hintWords, nodeInSentence, type HintInput } from '../../src/app/words.ts';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
@@ -395,5 +395,54 @@ describe('S11: a character in a node name that is not what it looks like is name
     const none = checkTraps(parseNetlist(`* zw no node\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(xy${ZW}z) V1\n.end\n`)).find((c) => c.id === 'tf-problems')!;
     expect(none.title).toBe('.tf asks about node xyz (written with a zero-width space in it), which is not in the circuit');
     expect(none.why).toBe('There is no node called xyz (written with a zero-width space in it): no part connects to it. .tf v(xyz) needs a node of the circuit.');
+  });
+});
+
+describe('words re-check 9: a node name with a letter outside a to z is refused with why, and a plain spelling no node has', () => {
+  const START = '* start\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
+  const rename = (text: string, node: string, name: string): string => {
+    const r = applyEdit(buildSchematic(text, NOTEBOOK_OPTIONS), { kind: 'rename-node', node, name });
+    return r.ok ? `renamed: ${r.summary}` : (r.reason ?? '');
+  };
+
+  it('çıkış: ngspice would write ç, ı and ş as underscores (W16), so the refusal says so and offers cikis', () => {
+    // Native ngspice 47 and 42: çıkış is the node ____k____ (W16), ÇIKIŞ the node __iki__.
+    expect(rename(START, 'out', 'çıkış')).toBe('ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so PlainSpice can\'t use "çıkış": ngspice would call it ____k____. Write cikis.');
+    expect(rename(START, 'out', 'ÇIKIŞ')).toBe('ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (Ç as __), so PlainSpice can\'t use "ÇIKIŞ": ngspice would call it __iki__. Write CIKIS.');
+    // The plain spelling is what the card then takes.
+    expect(rename(START, 'out', 'cikis')).toBe('renamed: Node out renamed to cikis.');
+  });
+
+  it('never offers a name another node, ground or a name like ground already has', () => {
+    expect(rename('* taken\nV1 cikis 0 6\nR1 cikis out 1k\nR2 out 0 2k\n.op\n.end\n', 'out', 'çıkış')).toMatch(/Write cikis2\.$/);
+    expect(rename('* taken twice\nV1 cikis 0 6\nR1 cikis CIKIS2 1k\nR2 CIKIS2 out 1k\nR3 out 0 2k\n.op\n.end\n', 'out', 'çıkış')).toMatch(/Write cikis3\.$/);
+    // gñd in plain letters is gnd, which is ground (W8): never offered.
+    expect(rename(START, 'out', 'gñd')).toMatch(/Write gnd2\.$/);
+    expect(rename(START, 'out', 'gröund')).toMatch(/Write ground2\.$/);
+    // The node's own name is free: renaming cikis to çıkış offers cikis back.
+    expect(rename('* own\nV1 in 0 6\nR1 in cikis 1k\nR2 cikis 0 2k\n.op\n.end\n', 'cikis', 'çıkış')).toMatch(/Write cikis\.$/);
+  });
+
+  it('the micro sign: ngspice reads it as u (W16), so aµ is the node au', () => {
+    expect(rename(START, 'out', 'aµ')).toBe('ngspice reads the micro sign µ in a node name as u, so PlainSpice can\'t use "aµ": ngspice would call it au. Write au.');
+  });
+
+  it('a look-alike letter is named as the checks name it; a hidden character is named, never shown in quotes', () => {
+    expect(rename(START, 'out', '\u043eut')).toBe('ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (the Cyrillic letter \u043e, which looks like o, as __), so PlainSpice can\'t use "\u043eut": ngspice would call it __ut. Write out.');
+    expect(rename(START, 'out', 'ou\u200bt')).toBe('PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can\'t use out (written with a zero-width space in it).');
+  });
+
+  it('other names keep the general refusal, which names the letters a to z as the check does; so does the hint', () => {
+    expect(rename(START, 'out', 'v out')).toBe('PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can\'t use "v out".');
+    expect(rename(START, 'out', '\u03b1\u03b2')).toBe('PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can\'t use "\u03b1\u03b2".');
+    expect(t('nodeCardRenameHint')).toBe('Letters a to z (or A to Z), digits and _. A name another node already has makes the two one node.');
+  });
+
+  it('the Add a part form\'s new node says the same', () => {
+    const s = buildSchematic(START, NOTEBOOK_OPTIONS);
+    const f = formStart(s, 'R');
+    const line = formLine(s, { ...f, ends: [{ node: 'in' }, { fresh: 'çıkış' }] });
+    expect(line.ok).toBe(false);
+    expect(!line.ok && line.reason).toBe('ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so PlainSpice can\'t use "çıkış": ngspice would call it ____k____. Write cikis.');
   });
 });

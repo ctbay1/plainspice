@@ -24,6 +24,7 @@ import {
   NEW_TITLE,
   applyChanges,
   applyEdit,
+  badNodeName,
   buildSchematic,
   drawnPins,
   findIslands,
@@ -52,15 +53,15 @@ import {
   type Schematic,
   type WireEnd,
 } from '../schematic/index.ts';
-import { elementInfo } from '../spice/elements.ts';
 import { sentenceNode } from '../spice/describe.ts';
+import { elementInfo } from '../spice/elements.ts';
 import { EXPLAIN_STRINGS } from '../spice/explain.ts';
 import { parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange } from '../spice/types.ts';
 import { checkValue, type ValueCheck } from './card-edit.ts';
 import { toolForKey, type PartKind, type Tool } from './tools.ts';
-
 import { nodeInSentence } from './words.ts';
+
 const S = EDIT_STRINGS;
 
 /** A point on the grid (whole numbers). */
@@ -788,7 +789,7 @@ export function formLine(s: Schematic, f: PartForm): FormLine {
       continue;
     }
     const n = pick.fresh.trim();
-    if (!NODE_NAME.test(n)) return { ok: false, reason: S.badName(n), field, value };
+    if (!NODE_NAME.test(n)) return { ok: false, reason: badNodeName(s, n), field, value };
     const ground = n === '0' || n.toLowerCase() === 'gnd';
     written.push(ground ? '0' : n);
     words.push(ground ? S.ground : S.node(n));
