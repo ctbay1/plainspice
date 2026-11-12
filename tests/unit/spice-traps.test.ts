@@ -1032,9 +1032,9 @@ describe('after the final reviews (12 November 2026)', () => {
     const unseenSave = 'In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").';
     const kept = (spelled: string): string => `ngspice keeps the character in the name, as underscores (${spelled}), and makes a separate node`;
     const cases: [id: string, name: string, first: string, print: string, save: string, facts: [string, string, string]][] = [
-      ['invisible-character', 'ou​t', kept('ou___t'), unseenPrint, unseenSave, ['invisible-character-3', 'invisible-character-7', 'invisible-character-8']],
-      ['space-character', 'o ut', kept('o___ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
-      ['nbsp', 'o ut', kept('o__ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['invisible-character', 'ou\u200bt', kept('ou___t'), unseenPrint, unseenSave, ['invisible-character-3', 'invisible-character-7', 'invisible-character-8']],
+      ['space-character', 'o\u2009ut', kept('o___ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['nbsp', 'o\u00a0ut', kept('o__ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
       ['look-alike-letter', 'оut', 'ngspice writes the letter\'s bytes as underscores (__ut) and makes a separate node',
         `On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${left}`,
         'In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").',
@@ -1047,7 +1047,7 @@ describe('after the final reviews (12 November 2026)', () => {
       expect(first(print(name), id).ngspice, id).toBe(`${said}${noted} ${printed} [${base}, ${onPrint}]`);
       const t = first(save(name), id);
       expect(t.ngspice, id).toBe(`${said}${noted} ${saved} [${base}, ${onSave}]`);
-      if (id !== 'look-alike-letter') expect(t.ngspice, id).not.toMatch(/[​  ]/);
+      if (id !== 'look-alike-letter') expect(t.ngspice, id).not.toMatch(/[\u200b\u2009\u00a0]/);
       // The fix writes the plain name on the .control line too: before, the fixed netlist still saved nothing.
       expect(applyFix(save(name), t.fixes[0]!), id).toBe(save('out'));
       expect(applyFix(print(name), first(print(name), id).fixes[0]!), id).toBe(print('out'));
@@ -1133,7 +1133,7 @@ describe('after the final reviews (12 November 2026)', () => {
     const drawing = (name: string): string => `.op\n.end\n* plainspice-drawing v1\n*@ label ${name} 0 0\n`;
     const cases: [id: string, name: string, to: string][] = [
       ['non-ascii-node', 'µş', 'us'],
-      ['invisible-character', 'µou​t', 'µout'],
+      ['invisible-character', 'µou\u200bt', 'µout'],
       ['look-alike-letter', 'µоut', 'µout'],
     ];
     for (const [id, name, to] of cases) {
@@ -1288,6 +1288,38 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(first('* t\nV1 \u00b5\u015f 0 12\nR1 \u00b5\u015f u\u00e7 1k\nR2 u\u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').why).toContain(
       'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores, so \u00b5\u015f and u\u00e7 both become u__',
     );
+  });
+
+  it('says a part across aµ and au carries no current only for a resistor, a capacitor or a diode, and for any other part only which ends are joined (names lane critic, 2; non-ascii-node-5, -10, -11)', () => {
+    const why = (joined: string): string => `ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins ${joined}. Give aµ a name of its own in plain letters.`;
+    const merged = 'ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]';
+    // Native ngspice 47 and 42 (non-ascii-node-11): E1 still delivers 666.7 µA, I1 its 1 mA, G1 its 1 mA, Q1 4.15 mA
+    // into its collector; V2 stops ngspice ("shorted VSRC") and L1 makes its matrix singular. None "carries no current".
+    const cases: [netlist: string, joined: string][] = [
+      ['V1 in 0 1\nE1 aµ 0 in au 2\nR1 au 0 1k\n.op', 'two ends of E1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nV2 aµ au 5\nR2 au 0 2k\n.op', 'both ends of V2'],
+      ['V1 in 0 12\nR1 in aµ 1k\nI1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of I1'],
+      ['V1 in 0 5\nR1 in aµ 1k\nQ1 aµ au 0 qn\nR2 au 0 1meg\n.model qn npn\n.op', 'two ends of Q1'],
+      ['V1 in 0 1\nR0 in 0 1k\nG1 aµ au in 0 1m\nR1 aµ 0 1k\nR2 au 0 1k\n.op', 'two ends of G1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nL1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of L1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nE1 aµ au aµ au 2\nR2 au 0 2k\n.op', 'all four ends of E1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nR3 aµ au 1k\nI1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of R3 and both ends of I1'],
+    ];
+    for (const [lines, joined] of cases) {
+      const t = first(`* t\n${lines}\n.end\n`, 'non-ascii-node');
+      expect([t.severity, t.why, t.ngspice], lines).toEqual(['warning', why(joined), merged]);
+      // The fix still gives the µ spelling a name of its own: the two nodes the netlist reads as.
+      expect(t.fixes.map((f) => f.label), lines).toEqual(['Rename aµ to au2']);
+    }
+    // A resistor, a capacitor or a diode with an end on each has no voltage across it: it carries no current (non-ascii-node-5, -10).
+    const still = (names: string, many: boolean): string =>
+      `ngspice reads the micro sign µ as u, so aµ and au are the same node: ${names} ${many ? 'have both ends on it and carry' : 'has both ends on it and carries'} no current. Give aµ a name of its own in plain letters.`;
+    const cd = first('* t\nV1 in 0 PULSE(0 12 0 10u 10u 1 2)\nR1 in aµ 1k\nC1 aµ au 1u\nD1 aµ au dd\nR2 au 0 2k\n.model dd D\n.tran 10u 50u\n.end\n', 'non-ascii-node');
+    expect([cd.why, cd.ngspice]).toEqual([
+      still('C1 and D1', true),
+      'ngspice reads µ as u and makes aµ and au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]',
+    ]);
+    expect(first('* t\nV1 in 0 12\nR1 in aµ 1k\nD1 aµ au dd\nR2 au 0 2k\n.model dd D\n.op\n.end\n', 'non-ascii-node').why).toBe(still('D1', false));
   });
 
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {

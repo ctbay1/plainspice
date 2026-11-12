@@ -83,9 +83,13 @@ the analysis, in PlainSpice's run too), non-ascii-node-5 (ngspice reads the micr
 duplicate-name-4 (`Rµ` and `Ru` are the same name); in explanations.md M4b and M4c (the Numbers panel's
 words for `Rş` and `Rç`, `Rµ` and `Ru`).
 
-After the critic of the names lane, the same day: non-ascii-node-7 to -9 (a save that also names
-something ngspice finds, `save all`, or the currents PlainSpice saves for .op keep the analysis running)
-in traps.md.
+After the critic of the names lane, the same day: in traps.md non-ascii-node-7 to -9 (a save that also
+names something ngspice finds, `save all`, or the currents PlainSpice saves for .op keep the analysis
+running), non-ascii-node-10 and -11 (a capacitor or a diode across `aµ` and `au` carries no current, as
+a resistor does; a current source, a dependent source or a transistor still works, a voltage source
+stops ngspice), and invisible-character-7, -8, look-alike-letter-7, -8, space-character-12, -13 (a
+.print line or a .control block reads a node name with such a character as written, as for a Turkish
+letter).
 
 ## Where the evidence came from
 

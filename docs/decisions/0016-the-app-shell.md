@@ -339,3 +339,13 @@ Ctrl+K stay as they are.
   non-ASCII check, and say "without a message" only when no such line names the node; for an invisible
   character or a space-like one the sentences say "the name" and never show it. Their fixes now rename
   the node on the .control line too: before, the fixed netlist still saved nothing.
+- **"Carries no current" only for a resistor, a capacitor or a diode** (names lane critic, 2). The aµ/au
+  warning said "<part> has both ends on it and carries no current" for any part with an end on each
+  spelling, which a dependent source (E1 delivered 666.7 µA beside the card), a current source, a
+  transistor, a voltage source (ngspice stops: "shorted VSRC") and an inductor (singular matrix) all
+  belie (non-ascii-node-11). Only a resistor, a capacitor or a diode with an end on each has no voltage
+  across it and carries no current at any point (non-ascii-node-5, -10), so only for those does the
+  check still say so; for any other part it says which ends the one node joins ("which joins two ends
+  of E1", "both ends of V2") and that ngspice makes the two spellings one node, and still warns, with
+  the fix that gives the µ spelling a name of its own. For V2 and L1 the voltage-loop check says the
+  rest, as before.

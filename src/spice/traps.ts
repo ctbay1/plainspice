@@ -173,6 +173,8 @@ const GROUND = '0';
 const MINUS = '\u2212';
 /** The micro sign, which ngspice reads as u (W15). */
 const MICRO = '\u00b5';
+/** Small counts in words. */
+const COUNT_WORDS: Readonly<Record<number, string>> = { 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six' };
 const MAIN_ROLES: ReadonlySet<FieldRole> = new Set(['value', 'gain', 'transconductance', 'transresistance']);
 const NODE_ROLES: ReadonlySet<FieldRole> = new Set(['node', 'plus', 'minus', 'from', 'to', 'control-plus', 'control-minus']);
 const VALUE_LETTERS: ReadonlySet<string> = new Set(['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H']);
@@ -1748,10 +1750,15 @@ function checkNodeNames(c: Ctx): void {
  * One node written with the micro sign in one place and u in another (aµ and au, words re-check 8):
  * ngspice reads µ as u (W15), and so does PlainSpice's parser, so they are one node, and the drawing
  * shows them joined, but nothing said why. Only spellings on part lines count: a directive that writes
- * the node the other way still names the node meant. A part with an end on each spelling has both ends
- * on the one node and carries no current (non-ascii-node-5): a warning, whose fix gives the µ spelling a
- * plain name of its own, as the netlist reads to a person. Else a note, whose fix writes the node one
- * way, as ngspice reads it. A name with other letters outside a to z is the check above's.
+ * the node the other way still names the node meant. A part with an end on each spelling has those ends
+ * joined: a warning, whose fix gives the µ spelling a plain name of its own, as the netlist reads to a
+ * person. Only a resistor, a capacitor or a diode then carries no current for sure, with no voltage
+ * across it (non-ascii-node-5, -10); what the joined ends do to another part depends on the part: a
+ * current source still drives its current, a dependent source or a transistor still works, a voltage
+ * source stops ngspice and an inductor makes its matrix singular (non-ascii-node-11; the voltage-loop
+ * check says so for those two), so for them the words say only which ends are joined. With no part
+ * across, a note, whose fix writes the node one way, as ngspice reads it. A name with other letters
+ * outside a to z is the check above's.
  */
 function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => string): void {
   if (info.ground || info.refs.length < 2 || !isPlainName(info.name)) return;
@@ -1788,9 +1795,22 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
     const names = across.map(nameOf);
     const at = across[0]!.nodes.find((r) => r.name === info.name && lowerAscii(r.token.text) !== kept[0])!.token;
     const to = others.map(([form, refs]) => [form, refs[0]!.text, freeName(plainLetters(refs[0]!.text, true) || 'n1')] as const);
+    // A resistor, a capacitor or a diode with an end on each spelling has no voltage across it.
+    const still = across.every((e) => (e.letter === 'R' || e.letter === 'C' || e.letter === 'D') && e.nodes.length === 2);
+    const joined = across.map((e) => {
+      const k = e.nodes.filter((r) => r.name === info.name).length;
+      const many = COUNT_WORDS[k] ?? String(k);
+      return k < e.nodes.length ? `${many} ends of ${nameOf(e)}` : k === 2 ? `both ends of ${nameOf(e)}` : `all ${many} ends of ${nameOf(e)}`;
+    });
     add(c, 'non-ascii-node', 'warning', at, `${list(shown)} are one node for ngspice`,
-      `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro)} a name of its own in plain letters.`,
-      `${ngspice}: in one test a resistor with an end on each carried no current. [non-ascii-node-5]`,
+      still
+        ? `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro)} a name of its own in plain letters.`
+        : `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node, which joins ${list(joined)}. Give ${list(micro)} a name of its own in plain letters.`,
+      still
+        ? across.every((e) => e.letter === 'R')
+          ? `${ngspice}: in one test a resistor with an end on each carried no current. [non-ascii-node-5]`
+          : `${ngspice}: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]`
+        : `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}. [non-ascii-node-5, non-ascii-node-11]`,
       [fix(to.length === 1 ? `Rename ${to[0]![1]} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
     return;
   }

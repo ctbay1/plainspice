@@ -8129,7 +8129,9 @@ error. Its fix gives the µ spelling a plain name of its own, as the netlist rea
 netlist is a divider (native 47 and 42, and our engine: v(au2) = 12, v(au) = 8, i(@r1[i]) = 0.004).
 Only the spellings on part lines count. When no part has an end on each, the two spellings are one node
 written two ways (`V1 aµ 0 12` with `R1 au 0 2k`: v(au) = 12, i(v1) = -0.006, native 47 and 42): a note,
-whose fix writes the node one way ("Write au for aµ").
+whose fix writes the node one way ("Write au for aµ"). "Carries no current" is said only for a resistor,
+a capacitor or a diode with an end on each (non-ascii-node-10); for any other part the check says which
+of its ends are joined (non-ascii-node-11).
 
 What PlainSpice shows for non-ascii-node-5 (warning, line 3):
 
@@ -8338,6 +8340,125 @@ without .options savecurrents, ngspice -b -r (exit 1), native 47 and 42 and our 
 ```
 
 PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-10. A capacitor or a diode with an end on aµ and one on au carries no current either
+
+Added after the critic of the names lane, 12 November 2026 (2). As for the resistor of non-ascii-node-5,
+both ends of C1 and of D1 are on the one node au, so neither has a voltage across it, and neither
+carries a current at any point of the run, while R1 and R2 carry the source's. So the check says "has
+both ends on it and carries no current" for a resistor, a capacitor or a diode with an end on each
+spelling, and for no other part (non-ascii-node-11).
+
+What PlainSpice shows for non-ascii-node-10 (warning, line 4):
+
+> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node: C1 and D1 have both ends on it and carry no current. Give aµ a name of its own in plain letters.
+>
+> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]
+>
+> *Fixes:* "Rename aµ to au2"
+
+```spice
+* a capacitor and a diode with an end on aµ and one on au
+V1 in 0 PULSE(0 12 0 10u 10u 1 2)
+R1 in aµ 1k
+C1 aµ au 1u
+D1 aµ au dd
+R2 au 0 2k
+.model dd D
+.options savecurrents
+.tran 10u 50u
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1), as for any .tran with no .print line:
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0), 62 points:
+    i(@c1[i]) = 0 and i(@d1[id]) = 0 at every point
+    last point: v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@r2[i]) = 0.004
+ngspice 42, ngspice -b (exit 1): Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0): 62 points on a slightly different time grid, the same last point,
+    i(@c1[i]) = 0 and i(@d1[id]) = 0 at every point
+our engine (wasm), as ngspice -b -r (exit 0): the same as ngspice 47, 62 points, i(@c1[i]) and
+  i(@d1[id]) 0 at every point
+D1 alone, in .op (D1 aµ au dd between R1 and R2), native 47 and 42 and our engine, -b -r (exit 0):
+    rawfile: v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@d1[id]) = 0, i(@r2[i]) = 0.004
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-11. Another part with ends on aµ and au still works: a current source carries its current
+
+Added after the critic of the names lane, 12 November 2026 (2), which found "E1 has both ends on it and
+carries no current" next to E1 delivering 666.7 µA. Ends of any part on aµ and au are joined, but what
+that does depends on the part: I1 here still drives its 1 mA, from the node back into the node; a
+dependent source and a transistor still work; a voltage source with both ends there stops ngspice, and an
+inductor makes the matrix singular (the voltage-loop check says so for those two: voltage-loop-8 to -11).
+So for any part other than a resistor, a capacitor or a diode, the check says only which ends are joined
+("which joins both ends of I1", "two ends of E1") and that ngspice makes the two spellings one node.
+
+What PlainSpice shows for non-ascii-node-11 (warning, line 4):
+
+> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins both ends of I1. Give aµ a name of its own in plain letters.
+>
+> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]
+>
+> *Fixes:* "Rename aµ to au2"
+
+```spice
+* a current source with an end on aµ and one on au
+V1 in 0 12
+R1 in aµ 1k
+I1 aµ au 1m
+R2 au 0 2k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        au                               8.000000e+00
+        in                               1.200000e+01
+        @r2[i]                           4.000000e-03
+        @i1[current]                     1.000000e-03
+        @r1[i]                           4.000000e-03
+        v1#branch                        -4.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@i1[current]) = 0.001, i(@r2[i]) = 0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@i1[current]) = 0.001, i(@r2[i]) = 0.004
+```
+
+Other parts in place of I1, native 47 and 42 alike and our engine, `ngspice -b -r`, each with `.options
+savecurrents` and `.op`:
+
+```text
+E1 aµ 0 in au 2, with V1 in 0 1 and R1 au 0 1k (exit 0): E1 still works
+    rawfile: v(in) = 1, v(au) = 0.6666666666666666, i(e1) = -0.0006666666666666666, i(v1) = 0, i(@r1[i]) = 0.0006666666666666666
+G1 aµ au in 0 1m, with V1 in 0 1, R0 in 0 1k, R1 aµ 0 1k, R2 au 0 1k (exit 0): G1 drives its 1 mA
+    rawfile: v(in) = 1, v(au) = 0, i(v1) = -0.001, i(@r0[i]) = 0.001, i(@g1[i]) = 0.001, i(@r1[i]) = 0, i(@r2[i]) = 0
+Q1 aµ au 0 qn, collector on aµ and base on au, V1 in 0 5, R1 in aµ 1k, R2 au 0 1meg, .model qn npn (exit 0)
+    rawfile: v(in) = 5, v(au) = 0.8110227811525323, i(v1) = -0.004188977218847468, i(@r1[i]) = 0.004188977218847468,
+      i(@q1[ic]) = 0.004147427496806713, i(@q1[ie]) = -0.004188901773396827, i(@q1[ib]) = 4.147427577908991e-05, ...
+V2 aµ au 5, in place of I1, without savecurrents (exit 1, no results):
+    Fatal error: instance v2 is a shorted VSRC
+    doAnalyses: operation not supported
+    run simulation(s) aborted
+L1 aµ au 1m, in place of I1 (exit 0, with warnings):
+    Warning: singular matrix:  check node l1#branch
+    ...
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+    rawfile: v(in) = 11.999999999987999, v(au) = 7.999999994658666, i(l1) = 0, i(v1) = -0.004000000005325332,
+      i(@r1[i]) = 0.0040000000053293325, i(@l1[i]) = 0, i(@r2[i]) = 0.0039999999973293334
+```
+
+PlainSpice's checks: `non-ascii-node` (and for V2 and L1 `voltage-loop` too).
 
 ## invisible-character
 
