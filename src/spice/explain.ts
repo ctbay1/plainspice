@@ -187,6 +187,8 @@ export const EXPLAIN_STRINGS = {
     `${what}, a character you cannot see, ends the number here, so ngspice ignores it and everything after it. Delete it: write ${clean}.`,
   lookAlikeNote: (what: string, clean: string): string => `${what}, is a different character for SPICE, so ngspice ignores it and everything after it. Write ${clean}.`,
   invisibleHarmless: (what: string): string => `There is ${what} in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.`,
+  strayNote: (what: string, after: string): string =>
+    `${what} is no part of a number for SPICE, so ngspice stops reading the number at it and ignores the ${after} after it, without a message.`,
   nodeWithInvisible: (clean: string, what: string): string => `${clean} (written with ${what} in it)`,
   // Critic of the final-review fixes: a character that looks like a space is named, never shown in
   // quotes as if it were a space (space-character-1 to -4, nbsp-1, nbsp-2).
@@ -683,8 +685,8 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     }
   } else if (reading.ignored && (INVISIBLE.test(odd) || lookAlikeOf(odd) !== undefined)) {
     // The number stops at a character that is not what it looks like: name it, and say what was meant.
-    const after = cleanWord([...reading.ignored].slice(1).join('')).clean;
-    const clean = cleanWord(token.text).clean;
+    const after = cleanWord([...reading.ignored].slice(1).join(''), true).clean;
+    const clean = cleanWord(token.text, true).clean;
     const meant = readNumber(clean);
     marks.push(S.oddIgnored(describeCharacter(odd), after));
     if (meant && meant.value !== reading.value) {
@@ -710,6 +712,10 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     } else if (reading.ignored.includes('μ')) {
       // N5: the Greek letter mu is not the micro sign.
       notes.push(S.greekMuNote(token.text));
+      trap = true;
+    } else if (odd.codePointAt(0)! >= 0x80 && odd !== '\u00b5' && /^\d/.test([...reading.ignored][1] ?? '')) {
+      // A character outside plain ASCII inside the number (4。7k): no unit, and not ignored on purpose (re-check C5, look-alike-letter-12).
+      notes.push(S.strayNote(capitalized(describeCharacter(odd)), [...reading.ignored].slice(1).join('')));
       trap = true;
     } else if (!trap && letters) {
       notes.push(S.unitsIgnoredNote(letters));

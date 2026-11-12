@@ -63,7 +63,7 @@ const CASES: Case[] = [
   { name: "1 k on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 k", all: ["space-before-suffix"], fixes: ["Write 1k"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 k\n.op\n.end\n" },
   { name: "5 V on a voltage source", id: 'space-before-suffix', severity: 'error', line: 2, at: "5 V", all: ["space-before-suffix"], fixes: ["Write 5"], netlist: "* t\nV1 n1 0 5 V\nR1 n1 0 1\n.op\n.end\n" },
   { name: "3 A on a current source", id: 'space-before-suffix', severity: 'error', line: 2, at: "3 A", all: ["space-before-suffix"], fixes: ["Write 3"], netlist: "* t\nI1 0 n1 3 A\nR1 n1 0 2\n.op\n.end\n" },
-  { name: "1 M on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 M", all: ["space-before-suffix"], fixes: ["Make it 1meg","Keep milli: write 1m"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 M\n.op\n.end\n" },
+  { name: "1 M on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 M", all: ["space-before-suffix"], fixes: ["Make it 1meg (1\u00a0M\u03a9)","Make it 1m (1\u00a0m\u03a9)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 M\n.op\n.end\n" },
   { name: "10 kOhm on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "10 kOhm", all: ["space-before-suffix"], fixes: ["Write 10k"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 10 kOhm\n.op\n.end\n" },
   { name: "1 m on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 m", all: ["space-before-suffix"], fixes: ["Write 1m"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 m\nR2 n1 0 1\n.op\n.end\n" },
   { name: "* after a value", id: 'midline-comment', severity: 'error', line: 3, at: "*", all: ["midline-comment"], fixes: ["Use ; for the comment"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 2 * load\n.op\n.end\n" },
@@ -169,7 +169,7 @@ const CASES: Case[] = [
   { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
   { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
   { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
-  { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Keep milli: write 10m"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
+  { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Make it 10m (10\u00a0m\u03a9)"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
   { name: "a Cyrillic o in a node name", id: 'look-alike-letter', severity: 'warning', line: 4, at: "\u043eut", all: ["look-alike-letter"], fixes: ["Connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n" },
   { name: "a zero-width space right after a minus sign", id: 'invisible-character', severity: 'error', line: 2, at: "-\u200b5", all: ["invisible-character"], fixes: ["Write -5 (\u22125\u00a0V)"], netlist: "* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n" },
   { name: "a thin space between a value and its unit", id: 'space-character', severity: 'warning', line: 3, at: "4.7\u2009k\u03a9", all: ["space-character"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
@@ -880,9 +880,9 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(groups.why).toContain('as documents group digits');
     // A capital M after the space is mega in a document: never "Write 1M", which is milli (mega-as-milli).
     const mega = first('* t\nV1 in 0 10\nR1 in out 1\u2009M\u03a9\nR2 out 0 1meg\n.op\n.end\n', 'space-character');
-    expect(mega.fixes.map((f) => f.label)).toEqual(['Make it 1meg (1\u00a0M\u03a9)', 'Keep milli: write 1m']);
+    expect(mega.fixes.map((f) => f.label)).toEqual(['Make it 1meg (1\u00a0M\u03a9)', 'Make it 1m (1\u00a0m\u03a9)']);
     expect(mega.why).toContain('a capital M is milli in SPICE: for mega, write meg: 1meg.');
-    expect(first('* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    expect(first('* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Make it 5m (5\u00a0mV)', 'Make it 5meg (5\u00a0MV)']);
     // A no-break space in a value: the same reading, under the no-break space's own check.
     expect(first('* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 'nbsp').ngspice).toContain('[nbsp-2]');
     // Harmless, no trap: after the scale letter; a unit alone (2 A means 2 amps, and SPICE reads 2); at the end of the word.
@@ -917,7 +917,7 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(fixes('1\u2009000k')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
     expect(fixes('1\u2009000\u2009k\u03a9')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
     expect(fixes('2\u202f200\u202f000')).toEqual(['Write 2200000 (2.2\u00a0M\u03a9)']);
-    expect(fixes('1\u2009000\u2009M\u03a9')).toEqual(['Make it 1000meg (1\u00a0G\u03a9)', 'Keep milli: write 1000m']);
+    expect(fixes('1\u2009000\u2009M\u03a9')).toEqual(['Make it 1000meg (1\u00a0G\u03a9)', 'Make it 1000m (1\u00a0\u03a9)']);
     // On a capacitor ngspice also looks the word up as a model, and says so (space-character-8).
     const cap = first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1\nC1 out 0 1\u2009000\u2009\u00b5F\n.tran 0.1m 1m\n.end\n', 'space-character');
     expect([cap.title, cap.ngspice, cap.fixes.map((f) => f.label)]).toEqual([
@@ -997,7 +997,7 @@ describe('after the final reviews (12 November 2026)', () => {
     // Neither fix leads into the mega-as-milli check.
     for (const f of t.fixes) expect(ids(applyFix('* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n', f))).toEqual([]);
     // On a source, milli first, as mega-as-milli orders them; a small Cyrillic м stays milli.
-    expect(first('* t\nV1 a 0 5\u041c\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    expect(first('* t\nV1 a 0 5\u041c\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Make it 5m (5\u00a0mV)', 'Make it 5meg (5\u00a0MV)']);
     expect(first('* t\nI1 0 n4 1\nR4 n4 0 2\u043c\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Write 2m (2\u00a0m\u03a9)']);
   });
 
@@ -1068,5 +1068,153 @@ describe('after the final reviews (12 November 2026)', () => {
     // ngspice reads past .end (after-end-1), and no fact here says what other SPICE programs need.
     expect(`${t.title} ${t.why} ${t.ngspice}`).not.toMatch(/stops|other SPICE programs|marks/);
     expect(t.ngspice).toContain('[missing-end-1, after-end-1]');
+  });
+});
+
+describe('after the re-check of the fixes (12 November 2026)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+  const texts = (t: Trap): string[] => [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)];
+
+  it('no trap on an analysis line quotes "unknown parameter", and places no run shows are left alone (S2 guard)', () => {
+    const rc = '* t\nV1 in 0 DC 0 AC 1 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    const lines = ['.tran {w} 2m', '.tran 0.1m {w}', '.tran 0.1m 2m {w}', '.tran 0.1m 2m 0 {w}', '.dc V1 {w} 5 1', '.dc V1 0 {w} 1', '.dc V1 0 5 {w}',
+      '.dc temp 0 {w} 10', '.ac dec {w} 1 1k', '.ac lin 10 {w} 1k', '.ac oct 10 1 {w}', '.noise v(out) V1 dec 10 1 {w}', '.noise v(out,0) V1 dec {w} 1 1k',
+      '.four {w} v(out)', '.disto dec 10 1 {w}', '.sp dec 10 1 {w}', '.sens v(out) ac dec 10 1 {w}', '.noise v(out) V1 dec 10 1 1k {w}'];
+    const words = ['\u200b5', '−5', '\u20095', '\u00a05', '５', '-\u200b5', '-\u20095', '\u2028' + '5', '·5', '5\u200b0', '5к', '5\u2009m'];
+    let checked = 0;
+    for (const line of lines) {
+      for (const w of words) {
+        const text = `${rc}${line.replace('{w}', w)}\n.tran 1m 2m\n.end\n`;
+        const n = parseNetlist(text);
+        for (const t of traps(text)) {
+          if (!n.lines[t.line - 1]!.directive) continue;
+          expect(t.ngspice, text).not.toContain('unknown parameter (');
+          checked += 1;
+        }
+        // .four (ignored by a run with a results file), .disto, .sp, .sens and a .noise's points per summary have no recorded run.
+        if (/^\.(four|disto|sp|sens)|1k \{w\}$/.test(line)) expect(traps(text).filter((t) => t.line === 5 && /not a number|is read as/.test(t.title)).map((t) => t.id), text).toEqual([]);
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it('on a capacitor or an inductor says ngspice warns about a model, never "without a message"; on the other parts, no message (S4; invisible-character-7, look-alike-letter-7)', () => {
+    const value = (letter: string, word: string, id: string): Trap => first(`* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR0 in a 1\n${letter}1 a 0 ${word}\n.tran 0.1m 1m\n.end\n`, id);
+    for (const [word, id] of [['2\u200bu', 'invisible-character'], ['2кk', 'look-alike-letter'], ['10Μ', 'look-alike-letter'], ['4·7u', 'look-alike-letter'], ['1On', 'look-alike-letter']] as const) {
+      for (const letter of ['C', 'L']) {
+        const t = value(letter, word, id);
+        expect(t.ngspice, `${letter} ${word}`).toContain("and only warns that it can't find a model with the word's name.");
+        expect(t.ngspice, `${letter} ${word}`).not.toContain('without a message');
+      }
+      for (const letter of ['R', 'V', 'I']) expect(value(letter, word, id).ngspice, `${letter} ${word}`).toContain('without a message');
+    }
+    expect(value('C', '2\u200bu', 'invisible-character').ngspice).toContain('[invisible-character-1, invisible-character-2, invisible-character-7]');
+  });
+
+  it('a capital M from another alphabet or after a space-like character: the milli fix says what it writes, and only mega-as-milli keeps milli (words-recheck-6)', () => {
+    const cases = ['* t\nI1 0 a 1u\nR1 a 0 10Μ\n.op\n.end\n', '* t\nV1 in 0 5\nR1 in 0 10\u2009MΩ\n.op\n.end\n', '* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n',
+      '* t\nV1 a 0 5М\nR1 a 0 1\n.op\n.end\n', '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in a 1\nC1 a 0 10Ｍ\n.tran 1m 2m\n.end\n', '* t\nI1 0 n1 1\nR1 n1 0 10 M\n.op\n.end\n'];
+    for (const text of cases) {
+      const labels = traps(text).flatMap((t) => t.fixes.map((f) => f.label));
+      expect(labels.some((l) => l.startsWith('Keep')), text).toBe(false);
+      expect(labels.some((l) => /^Make it \d+m \(/.test(l)), text).toBe(true);
+    }
+    expect(first('* t\nI1 0 a 1u\nR1 a 0 10Μ\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Make it 10meg (10\u00a0MΩ)', 'Make it 10m (10\u00a0mΩ)']);
+    // ngspice reads 10M as milli, so there milli is kept.
+    expect(first('* t\nI1 0 a 1u\nR1 a 0 10M\n.op\n.end\n', 'mega-as-milli').fixes.map((f) => f.label)).toEqual(['Make it 10meg (10\u00a0MΩ)', 'Keep milli: write 10m']);
+  });
+
+  it('a sign then a character that looks like a space: one error whose fix writes the value, no glue warning, no comment fix (C2; space-character-12 to -14, nbsp-3)', () => {
+    const spaces = ['\u00a0', '\u1680', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009', '\u200a', '\u202f', '\u205f', '\u3000'];
+    for (const ch of spaces) {
+      for (const [line, written] of [['V1 a 0 {s}5', '-5'], ['I1 0 a {s}1m', '-1m'], ['R1 a 0 {s}2k', '-2k']] as const) {
+        for (const sign of ['-', '+']) {
+          const text = `* t\n${line.replace('{s}', `${sign}${ch}`)}\nR0 a 0 1k\n.op\n.end\n`;
+          const found = traps(text);
+          expect(found.map((t) => t.id), text).toEqual([ch === '\u00a0' ? 'nbsp' : 'space-character']);
+          const t = found[0]!;
+          expect(t.severity).toBe('error');
+          expect(t.why, text).toMatch(new RegExp(`^Right after the \\${sign}, it has `));
+          const want = sign === '-' ? written : written.replace('-', '+');
+          expect(t.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), text).toEqual([`Write ${want}`]);
+          expect(applyFix(text, t.fixes[0]!)).toContain(` ${want}\n`);
+          for (const x of texts(t)) expect(x).not.toMatch(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000](?!(k|m|M|V|A|Ω|µ)?[A-Za-zΩ]*\)$)/);
+        }
+      }
+    }
+    // A minus sign from a document, then a thin space; and -<thin space>5<thin space>V read as a document writes it.
+    const minus = first('* t\nV1 a 0 −\u20095\nR1 a 0 1k\n.op\n.end\n', 'space-character');
+    expect([minus.why.startsWith('It starts with a minus sign (U+2212), which looks like -, then a thin space (U+2009)'), minus.fixes.map((f) => f.label)]).toEqual([true, ['Write -5 (−5\u00a0V)']]);
+    expect(first('* t\nV1 a 0 -\u20095\u2009V\nR1 a 0 1k\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Write -5 (−5\u00a0V)']);
+  });
+
+  it('the letter O where a zero belongs is flagged narrowly, and a unit after a number never is (C4; look-alike-letter-10, -11)', () => {
+    const r1 = (value: string): Trap[] => traps(`* t\nV1 in 0 10\nR1 in out ${value}\nR2 out 0 10k\n.op\n.end\n`);
+    for (const [value, written] of [['1Ok', '10k'], ['1оk', '10k'], ['1Оk', '10k'], ['1οk', '10k'], ['1Οk', '10k'], ['1ｏk', '10k'], ['1Ｏk', '10k'], ['1о000', '10000'], ['1O00', '1000'], ['10Ok', '100k'], ['1o0k', '100k']] as const) {
+      const found = r1(value);
+      expect(found.map((t) => [t.id, t.severity]), value).toEqual([['look-alike-letter', 'warning']]);
+      expect(found[0]!.why, value).toContain('not the digit 0');
+      expect(found[0]!.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), value).toEqual([`Write ${written}`]);
+    }
+    for (const value of ['O.47k', 'О.47k', 'o.5']) {
+      const found = r1(value);
+      expect(found.map((t) => [t.id, t.title]), value).toEqual([['look-alike-letter', "R1's value starts with the letter O, not the digit 0"]]);
+      expect(found[0]!.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), value).toEqual([`Write ${value.replace(/^./, '0')}`]);
+    }
+    // Units and words are left alone: 100Ом and 1kОм are read as meant; 10кОм keeps its к warning only.
+    for (const value of ['100Ом', '1kОм', '1Ohm', '10ohm', '2Ohms', '1Ом']) expect(r1(value).map((t) => t.id), value).toEqual([]);
+    expect(r1('10кОм').map((t) => [t.id, t.title])).toEqual([['look-alike-letter', "R1's value is read as 10\u00a0Ω, not 10\u00a0kΩ"]]);
+    expect(r1('10кОм')[0]!.why).toContain('the Cyrillic letter к');
+  });
+
+  it('every invisible character is named, never shown, and nothing throws (C5; invisible-character-23 to -25)', () => {
+    const codes: number[] = [0x85, 0x2028, 0x2029, 0x1bca0, 0x1d173, 0xe0001, 0xe0020, 0xe0041, 0xe0100, 0xe0fff];
+    for (let c = 0; c <= 0xffff; c++) if (/\p{Default_Ignorable_Code_Point}/u.test(String.fromCharCode(c))) codes.push(c);
+    expect(codes.length).toBeGreaterThan(70);
+    for (const code of codes) {
+      const ch = String.fromCodePoint(code);
+      for (const text of [`* t\nV1 in 0 10\nR1 in out 4${ch}.7k\nR2 out 0 10k\n.op\n.end\n`, `* t\nV1 in 0 10\nR1 in out ${ch}4.7k\nR2 out 0 10k\n.op\n.end\n`,
+        `* t\nV1 in 0 10\nR1 in out 2k\nR2 o${ch}ut 0 2k\n.op\n.end\n`]) {
+        const found = traps(text);
+        expect(found.length, `U+${code.toString(16)}`).toBeGreaterThan(0);
+        for (const t of found) for (const x of texts(t)) expect(x.includes(ch), `U+${code.toString(16)}: ${x}`).toBe(false);
+        expect(() => explainNetlist(parseNetlist(text))).not.toThrow();
+        for (const e of explainNetlist(parseNetlist(text))) for (const x of [e.summary, ...e.notes, ...e.fields.map((f) => f.meaning)]) expect(x.includes(ch), `U+${code.toString(16)}: ${x}`).toBe(false);
+      }
+      // Inside the value: read as 4 Ω, fixed to 4.7k; at the start: an error; in a node name: joined to out.
+      const inside = first(`* t\nV1 in 0 10\nR1 in out 4${ch}.7k\nR2 out 0 10k\n.op\n.end\n`, 'invisible-character');
+      expect([inside.title, inside.fixes.map((f) => f.label)], `U+${code.toString(16)}`).toEqual(["R1's value is read as 4\u00a0Ω, not 4.7\u00a0kΩ", ['Write 4.7k (4.7\u00a0kΩ)']]);
+      expect(first(`* t\nV1 in 0 10\nR1 in out 2k\nR2 o${ch}ut 0 2k\n.op\n.end\n`, 'invisible-character').fixes.map((f) => f.label), `U+${code.toString(16)}`).toEqual(['Take it out: connect to out']);
+    }
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 4\u2028.7k\n.op\n.end\n', 'invisible-character').why).toMatch(/^A line separator \(U\+2028\) sits between 4 and \.7k/);
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 4\u{e0001}.7k\n.op\n.end\n', 'invisible-character').why).toMatch(/^A language tag \(U\+E0001\) sits/);
+  });
+
+  it('a document\'s decimal point is named truly and written as a point; another character outside ASCII inside a number is said without a fix (C5; look-alike-letter-9, -12, -13, space-before-suffix-18)', () => {
+    const r1 = (value: string): Trap[] => traps(`* t\nV1 in 0 10\nR1 in out ${value}\nR2 out 0 10k\n.op\n.end\n`);
+    for (const [ch, name] of [['·', 'a middle dot (U+00B7), which some documents use as a decimal point'], ['․', 'a one-dot leader (U+2024), which looks like a decimal point'],
+      ['﹒', 'a small full stop (U+FE52), which looks like a decimal point'], ['٫', 'an Arabic decimal separator (U+066B), which is the decimal point of Arabic numbers']] as const) {
+      const t = r1(`4${ch}7k`)[0]!;
+      expect([t.id, t.title, t.fixes.map((f) => f.label)], ch).toEqual(['look-alike-letter', "R1's value is read as 4\u00a0Ω, not 4.7\u00a0kΩ", ['Write 4.7k (4.7\u00a0kΩ)']]);
+      expect(t.why, ch).toContain(`The value has ${name}.`);
+      expect(t.why, ch).not.toContain('a dash');
+      expect(t.ngspice, ch).toContain('[look-alike-letter-9]');
+    }
+    expect(r1('·47k')[0]!.ngspice).toContain('[look-alike-letter-13]');
+    // In a node name a middle dot stays the non-ascii-node check's: never "Rename a·b to a.b".
+    expect(traps('* t\nV1 a·b 0 1\nR1 a·b 0 1k\n.op\n.end\n').flatMap((t) => t.fixes.map((f) => f.label)).join(' ')).not.toContain('a.b');
+    // 4·7 kΩ as a British document writes it: one error, the space before the unit, and its fix writes 4.7k.
+    const british = r1('4·7 kΩ');
+    expect(british.map((t) => [t.id, t.fixes.map((f) => f.label)])).toEqual([['space-before-suffix', ['Write 4.7k']]]);
+    expect(british[0]!.ngspice).toContain('space-before-suffix-18]');
+    expect(r1('4·7\u2009kΩ').map((t) => [t.id, t.fixes.map((f) => f.label)])).toEqual([['look-alike-letter', ['Write 4.7k (4.7\u00a0kΩ)']]]);
+    // An ideographic full stop, a bullet, the Greek ano teleia: what ngspice reads, and no fix.
+    for (const ch of ['。', '•', '·']) {
+      const t = r1(`4${ch}7k`)[0]!;
+      expect([t.id, t.title, t.fixes], ch).toEqual(['look-alike-letter', "R1's value is read as 4\u00a0Ω", []]);
+      expect(t.ngspice, ch).toContain('[look-alike-letter-12]');
+    }
+    // A unit with a letter outside ASCII after a number is no stray character: 100Ω, 1µF.
+    expect(r1('100Ω').map((t) => t.id)).toEqual([]);
   });
 });

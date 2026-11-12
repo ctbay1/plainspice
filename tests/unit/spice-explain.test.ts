@@ -832,3 +832,22 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(covered).toEqual(n.lines.map((l) => l.number));
   });
 });
+
+describe('after the re-check of the fixes (12 November 2026)', () => {
+  const allNotes = (e: LineExplanation): string => e.notes.map(sp).join(' ');
+
+  it('a character outside ASCII inside a number is named, never "Don\'t type units" (C5; look-alike-letter-9, -12)', () => {
+    for (const ch of ['。', '•', '·']) {
+      const e = line(`* t\nI1 0 n1 1\nR1 n1 0 4${ch}7k\n.op\n.end\n`, 3);
+      expect(allNotes(e), ch).not.toContain("Don't type units");
+      expect(allNotes(e), ch).toContain('is no part of a number for SPICE, so ngspice stops reading the number at it and ignores the 7k after it, without a message.');
+    }
+    const dot = line('* t\nI1 0 n1 1\nR1 n1 0 4·7k\n.op\n.end\n', 3);
+    expect(allNotes(dot)).toContain('A middle dot (U+00B7), which some documents use as a decimal point, is a different character for SPICE, so ngspice ignores it and everything after it. Write 4.7k.');
+    for (const ch of ['\u2028', '\u3164', '\u180e']) {
+      const e = line(`* t\nI1 0 n1 1\nR1 n1 0 4.7${ch}k\n.op\n.end\n`, 3);
+      expect(allNotes(e), ch).not.toContain("Don't type units");
+      for (const f of e.fields) expect(f.meaning.includes(ch), ch).toBe(false);
+    }
+  });
+});

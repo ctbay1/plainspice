@@ -490,6 +490,53 @@ function checkValueSpelling(c: Ctx, i: number): void {
   }
 }
 
+/**
+ * What ngspice does with a word it cannot read as a number at one place of an analysis line, given
+ * the word as ngspice spells it (W16). Never "unknown parameter", which ngspice prints only on part
+ * lines: each place has its own message, from its own run (re-check S2; invisible-character-8 to -21).
+ */
+type Place = (spelled: string) => string;
+
+const AC_DEFAULTS = "ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation'";
+
+/**
+ * The place of word k of an analysis line, when a run shows what ngspice does with a word it cannot
+ * read there: the four numbers of .tran, the numbers of each .dc sweep, and the points, start and stop
+ * of .ac and .noise. Any other place has no recorded run (.disto, .pz, .sens, .sp, a .noise's points
+ * per summary ...), or nothing in it counts (.four, which a run with a results file skips:
+ * invisible-character-27), so the character checks leave its words alone.
+ */
+function analysisPlace(d: NonNullable<NetlistLine['directive']>, k: number): Place | undefined {
+  const args = d.args;
+  if (d.name === '.tran') {
+    if (k === 0) return () => "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-8]";
+    if (k === 1) return () => "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [invisible-character-9]";
+    if (k === 2 || k === 3) return () => `ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-${k === 2 ? 10 : 11}]`;
+    return undefined;
+  }
+  if (d.name === '.dc') {
+    if (k % 4 === 0 || k >= 8) return undefined;
+    // ngspice 42 reads a one-sweep line on: the word becomes the name of a second sweep (recorded for one sweep only).
+    const one = k < 4 && args.length <= 4;
+    return (spelled) =>
+      `ngspice 47 stops: 'Bad syntax!'.${one ? ` ngspice 42 takes the word for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "${spelled}" is not in the circuit'.` : ''} [invisible-character-${k >= 4 ? 15 : 11 + k}]`;
+  }
+  if (d.name === '.ac') {
+    if (k === 1 || k === 2) return () => `${AC_DEFAULTS}, then stops: 'AC startfreq <= 0'. [invisible-character-${15 + k}]`;
+    if (k === 3) {
+      const start = num(args[2]);
+      return () => `${AC_DEFAULTS}, and runs anyway, up to 1000 times the start frequency${start !== undefined && start > 0 ? ` (${formatSI(1000 * start, 'Hz')})` : ''} instead of the stop written here. [invisible-character-18]`;
+    }
+    return undefined;
+  }
+  if (d.name === '.noise') {
+    const j = args.findIndex((x) => /^(dec|oct|lin)$/i.test(x.text));
+    const n = k - j;
+    if (j >= 0 && n >= 1 && n <= 3) return () => `ngspice stops: 'Frequency of 0 is invalid'. [invisible-character-${18 + n}]`;
+  }
+  return undefined;
+}
+
 /** "A zero-width space" from "a zero-width space (U+200B)": the start of a sentence. */
 const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -505,17 +552,30 @@ const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
  * the no-break space have checks of their own. The words never show an invisible character: they
  * name it. Runs before checkUnknownWord, which leaves the words it covers alone.
  */
-function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined): void {
-  if (hasSpaceLike(t.text)) {
-    checkSpaceInValue(c, t, unit, letter, name);
+function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined, place?: Place): void {
+  // A character that looks like a space is that check's, unless a character that is not what it looks
+  // like comes first, inside the number (4·7<thin space>kΩ): ngspice stops reading there first (re-check C5).
+  const chars = [...t.text];
+  const space = chars.findIndex((x) => SPACE_LIKE.test(x));
+  const first = chars.findIndex((x) => INVISIBLE.test(x) || lookAlikeOf(x) !== undefined);
+  if (space >= 0 && !(first > 0 && first < space && /\d/.test(chars[first - 1]!))) {
+    checkSpaceInValue(c, t, unit, letter, name, place);
     return;
   }
-  const { clean, odd } = cleanWord(t.text);
-  if (!odd.length) return;
+  if (letter && unit !== undefined && name && checkLetterO(c, t, letter, name)) return;
+  const { clean: cleaned, odd } = cleanWord(t.text, true);
+  if (!odd.length) {
+    checkStrayCharacter(c, t, unit, letter, name);
+    return;
+  }
+  // The rest read the way documents write values when a space-like character follows (4·7<thin space>kΩ is 4.7k).
+  const clean = space >= 0 ? spacedValue(cleaned)?.spice : cleaned;
+  if (clean === undefined) return;
   const meant = readNumber(clean);
   if (!meant || meant.rest) return;
   const read = readNumber(t.text);
   if (read && read.value === meant.value) return;
+  if (space >= 0) c.spaced.add(t.from);
   const hidden = odd.find((ch) => INVISIBLE.test(ch));
   const ch = hidden ?? odd[0]!;
   const what = describeCharacter(ch);
@@ -525,49 +585,139 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const fixes = [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(meant.value, letter)})` : ''}`, replace(t, clean))];
   if (!read) {
     // Where it is, from the text before it, said first: "Right after the -, it has ..." for
-    // -<zero-width space>5 and -５ (invisible-character-6, look-alike-letter-6).
-    const lead = withoutInvisible([...t.text].slice(0, [...t.text].indexOf(ch)).join(''));
+    // -<zero-width space>5 and -５ (invisible-character-6, look-alike-letter-6). On an analysis line
+    // ngspice says something else, by the place of the word (re-check S2).
+    const lead = withoutInvisible(chars.slice(0, chars.indexOf(ch)).join(''));
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
       `${lead ? `Right after the ${lead}, it has ${what}` : `It starts with ${what}`}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
-      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : 'invisible-character-5') : lead ? 'look-alike-letter-6' : 'look-alike-letter-2'}]`,
+      place ? place(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-5' : 'invisible-character-5, invisible-character-24') : lead ? 'look-alike-letter-6' : lookAlikeOf(ch) === '.' && ch !== '\uff0e' ? 'look-alike-letter-13' : 'look-alike-letter-2'}]`,
       fixes);
     return;
   }
+  // A capacitor's or an inductor's value word is also looked up as a model name, so ngspice warns that it
+  // can't find one (invisible-character-7, look-alike-letter-7, as greek-mu-2 and space-character-8).
+  const model = letter === 'C' || letter === 'L';
+  const reads = (also: string): string =>
+    model ? `: it reads ${shown(read.value)}, and only warns that it can't find a model with the word's name. [${also}, ${hidden ? 'invisible-character-7' : 'look-alike-letter-7'}]`
+      : `, without a message: it reads ${shown(read.value)}. [${also}${place ? ', invisible-character-22' : ''}]`;
   // A capital M from another alphabet (the M key of a Greek keyboard): the student means mega, and a
   // plain M is milli in SPICE, so the fixes are mega-as-milli's, never "Write 10M" (look-alike-letter-4).
+  // Neither keeps anything: ngspice reads neither mega nor milli, so the milli fix says what it writes.
   if (!hidden && lookAlikeOf(ch) === 'M' && meant.scale?.name === 'milli' && letter && unit !== undefined) {
     const digits = numberPart(meant);
-    const megaValue = (readNumber(digits)?.value ?? 0) * 1e6;
+    const base = readNumber(digits)?.value ?? 0;
     const big = letter === 'R' || 'EFGH'.includes(letter);
-    const mega = fix(`Make it ${digits}meg (${amount(megaValue, letter)})`, replace(t, `${digits}meg`));
-    const milli = fix(`Keep milli: write ${digits}m`, replace(t, `${digits}m`));
+    const mega = fix(`Make it ${digits}meg (${amount(base * 1e6, letter)})`, replace(t, `${digits}meg`));
+    const milli = fix(`Make it ${digits}m (${amount(base * 1e-3, letter)})`, replace(t, `${digits}m`));
     add(c, id, 'warning', t,
-      big ? `${subject} is read as ${shown(read.value)}, not ${shown(megaValue)}` : `${subject} is read as ${shown(read.value)}`,
+      big ? `${subject} is read as ${shown(read.value)}, not ${shown(base * 1e6)}` : `${subject} is read as ${shown(read.value)}`,
       `The value has ${what}. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): ${digits}meg.`,
-      `ngspice stops reading the number at ${what.replace(/, which looks like .*$/, '')}, without a message: it reads ${shown(read.value)}. [look-alike-letter-4, mega-as-milli-1]`,
+      `ngspice stops reading the number at ${what.replace(/, which .*$/, '')}${reads('look-alike-letter-4, mega-as-milli-1')}`,
       big ? [mega, milli] : [milli, mega]);
     return;
   }
   // Where the character sits: what is read before it, and what it hides after it.
-  const at = [...t.text].indexOf(ch);
-  const before = withoutInvisible([...t.text].slice(0, at).join(''));
-  const after = cleanWord([...t.text].slice(at + 1).join('')).clean;
+  const at = chars.indexOf(ch);
+  const before = withoutInvisible(chars.slice(0, at).join(''));
+  const after = withSpaces(cleanWord(chars.slice(at + 1).join(''), true).clean);
    // A look-alike: what it looks like ("the plain letter k", "the plain - sign"), the character as
   // "the ..." ("the minus sign (U+2212)"), and the claim: letters from other alphabets are
-  // look-alike-letter-1; the Kelvin sign, fullwidth digits and signs, minus signs and dashes, -3.
+  // look-alike-letter-1; the Kelvin sign, fullwidth digits and signs, minus signs and dashes, -3; the
+  // decimal points of documents, -9.
   const like = lookAlikeOf(ch) ?? '';
   const isLetter = /[A-Za-z]/.test(like);
   const plain = /\d/.test(like) ? `the plain digit ${like}` : isLetter ? `the plain letter ${like}` : like === '.' ? 'the plain decimal point' : `the plain ${like} sign`;
-  const the = what.replace(/, which looks like .*$/, '').replace(/^an? /, 'the ');
-  const claim = isLetter && /[\u0370-\u04ff\uff21-\uff3a\uff41-\uff5a]/.test(ch) ? 'look-alike-letter-1' : 'look-alike-letter-3';
+  const the = what.replace(/, which .*$/, '').replace(/^an? /, 'the ');
+  const claim = isLetter && /[Ͱ-ӿＡ-Ｚａ-ｚ]/.test(ch) ? 'look-alike-letter-1' : like === '.' && ch !== '．' ? 'look-alike-letter-9' : 'look-alike-letter-3';
   add(c, id, 'warning', t, `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
     hidden
       ? `${capital(what)} sits between ${before} and ${after}: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the ${after} after it does not count. Write ${clean}.`
       : `The value has ${what}. SPICE knows only ${plain}, so it ignores this one like a unit${after ? `, and the ${after} after it` : ''}. Write ${clean}.`,
     hidden
-      ? `ngspice stops reading the number at the ${nameOfCharacter(ch)!.replace(/^an? /, '').replace(/ \(U\+[0-9A-F]+\)$/, '')} and ignores the rest of the word, without a message: it reads ${shown(read.value)}. [invisible-character-1, invisible-character-2]`
-      : `ngspice stops reading the number at ${the}, without a message: it reads ${shown(read.value)}. [${claim}]`,
+      ? `ngspice stops reading the number at the ${nameOfCharacter(ch)!.replace(/^an? /, '').replace(/ \(U\+[0-9A-F]+\)$/, '')} and ignores the rest of the word${reads(INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-1, invisible-character-2' : 'invisible-character-1, invisible-character-23')}`
+      : `ngspice stops reading the number at ${the}${reads(claim)}`,
     fixes);
+}
+
+/**
+ * A value word with the letter O where the digit 0 belongs, written as SPICE should read it, or
+ * undefined (re-check C4). Read on cleanWord's form, so the plain O and o and the Cyrillic, Greek and
+ * fullwidth ones are alike. Only where nothing else can be meant: an O between digits (1O00), an O
+ * after a digit followed by one scale letter that ends the word (1Ok, 1On; not m: 100Ом is Russian for
+ * 100 Ω, and SPICE reads it so), and an O at the start before a decimal point (O.47k). Never before a
+ * unit: 1Ohm, 100Ом, 1kОм are as meant.
+ */
+export function zeroForLetterO(word: string): string | undefined {
+  const { clean } = cleanWord(word, true);
+  if (!/[Oo]/.test(clean)) return undefined;
+  const out = clean
+    .replace(/^([+-]?)[Oo](?=\.\d)/, '$10')
+    .replace(/(?<=\d)[Oo](?=\d)/g, '0')
+    .replace(/(?<=\d)[Oo](?=[tgkunpfaµ]$)/i, '0');
+  if (out === clean) return undefined;
+  const r = readNumber(out);
+  return r && !r.rest && !r.ignored?.match(/[Oo]/) ? out : undefined;
+}
+
+/**
+ * A part's value with the letter O where a zero belongs (zeroForLetterO): 1Ok is 1 Ω and 1О00 is 1 Ω,
+ * without a message, and O.47k is no number at all, so ngspice stops (look-alike-letter-10, -11).
+ * The fix writes the zero, never a comment that would leave the part with no value. True when found.
+ */
+function checkLetterO(c: Ctx, t: Token, letter: ElementLetter, name: string): boolean {
+  const meantText = zeroForLetterO(t.text);
+  const meant = meantText === undefined ? undefined : readNumber(meantText);
+  if (!meantText || !meant) return false;
+  const read = readNumber(t.text);
+  if (read && read.value === meant.value) return false;
+  // The first O that is read as a letter, as the student sees it.
+  const chars = [...t.text];
+  const at = chars.findIndex((ch) => /[Oo]/.test(cleanWord(ch, true).clean));
+  const ch = chars[at]!;
+  const the = /[Oo]/.test(ch) ? `the letter ${ch}` : describeCharacter(ch).replace(/, which .*$/, '');
+  const fixes = [fix(`Write ${meantText} (${amount(meant.value, letter)})`, replace(t, meantText))];
+  if (!read) {
+    add(c, 'look-alike-letter', 'error', t, `${name}'s value starts with the letter O, not the digit 0`,
+      `It starts with ${the}, which looks like the digit 0, so SPICE does not read the word as a number. Write ${meantText}.`,
+      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [look-alike-letter-11]`,
+      fixes);
+    return true;
+  }
+  const before = withoutInvisible(chars.slice(0, at).join(''));
+  const after = cleanWord(chars.slice(at + 1).join(''), true).clean;
+  const model = letter === 'C' || letter === 'L';
+  add(c, 'look-alike-letter', 'warning', t, `${name}'s value is read as ${amount(read.value, letter)}, not ${amount(meant.value, letter)}`,
+    `The value has ${the} after the ${before}, not the digit 0. SPICE stops reading the number at a letter, so it ignores it${after ? ` and the ${after} after it` : ''}. Write ${meantText}.`,
+    model
+      ? `ngspice stops reading the number at ${the}: it reads ${amount(read.value, letter)}, and only warns that it can't find a model with the word's name. [look-alike-letter-10]`
+      : `ngspice stops reading the number at ${the}, without a message: it reads ${amount(read.value, letter)}. [look-alike-letter-10]`,
+    fixes);
+  return true;
+}
+
+/** The invisible characters of the first runs (invisible-character-1, -2); the others are invisible-character-23's. */
+const INVISIBLE_CLAIMS = new Set(['\u00ad', '\u200b', '\u200c', '\u200d', '\u200e', '\u200f', '\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2060', '\u2061', '\u2062', '\u2063', '\u2064', '\u2066', '\u2067', '\u2068', '\u2069', '\ufeff']);
+
+/**
+ * A part's number that stops at a character outside plain ASCII that no check above knows, with a
+ * digit right after it, as a separator inside the number would be (4。7k, 4•7k): ngspice writes each
+ * such byte as _ and stops reading the number there, without a message (W16; look-alike-letter-12),
+ * so the value is read short. What was meant is not clear, so there is no fix; the words name the
+ * character. The Greek mu and the micro sign have their own checks.
+ */
+function checkStrayCharacter(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined): void {
+  if (!letter || unit === undefined || !name) return;
+  const read = readNumber(t.text);
+  if (!read?.ignored) return;
+  const [ch, next] = [...read.ignored];
+  const code = ch!.codePointAt(0)!;
+  if (code < 0x80 || ch === 'μ' || next === undefined || !/^\d/.test(next) || lookAlikeOf(ch!) !== undefined) return;
+  const what = describeCharacter(ch!);
+  const after = [...read.ignored].slice(1).join('');
+  const model = letter === 'C' || letter === 'L';
+  add(c, 'look-alike-letter', 'warning', t, `${name}'s value is read as ${amount(read.value, letter)}`,
+    `The value has ${what}, which is no part of a number for SPICE: it stops reading the number there, so the ${after} after it does not count.`,
+    `ngspice stops reading the number at ${what}${model ? `: it reads ${amount(read.value, letter)}, and only warns that it can't find a model with the word's name. [look-alike-letter-12, look-alike-letter-7]` : `, without a message: it reads ${amount(read.value, letter)}. [look-alike-letter-12]`}`);
 }
 
 /**
@@ -585,7 +735,7 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
  * PULSE(0<thin space>1 ..., an analysis line) not written as a value is two numbers glued, and a word
  * that is no number at all is left to checkSpaces. The words name the character, never show it.
  */
-function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined): void {
+function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined, place?: Place): void {
   const chars = [...t.text];
   const ch = chars.find((x) => SPACE_LIKE.test(x))!;
   const id: TrapId = ch === '\u00a0' ? 'nbsp' : 'space-character';
@@ -600,8 +750,30 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
     c.spaced.add(t.from);
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
       `It starts with ${what}, which looks like a space but is none for SPICE (it often comes with text copied from a document or a web page), so SPICE does not read the word as a number. Write ${clean}.`,
-      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [space-character-5]`,
+      place ? place(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [space-character-5]`,
       [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(r.value, letter)})` : ''}`, replace(t, clean))]);
+    return;
+  }
+  // A sign, then characters that look like a space (-<thin space>5): the word is no number either, and
+  // ngspice stops. Said as for an invisible character there, the place first, and the fix writes the
+  // sign and the number together, the rest read as documents write values (-<thin space>5<thin space>V
+  // is -5). Never "Replace it with a normal space": - 5 stops ngspice too, at the - (re-check C2;
+  // space-character-12, -13, -14, nbsp-3).
+  const sign = chars[0] === '-' || chars[0] === '+' ? chars[0] : lookAlikeOf(chars[0]!);
+  if ((sign === '-' || sign === '+') && SPACE_LIKE.test(chars[1] ?? '')) {
+    let k = 1;
+    while (k < chars.length && SPACE_LIKE.test(chars[k]!)) k += 1;
+    const body = chars.slice(k).join('');
+    const spaced = hasSpaceLike(body) ? spacedValue(body) : undefined;
+    const written = `${sign}${spaced ? spaced.spice : body}`;
+    const r = readNumber(written);
+    if (!r || r.rest || (hasSpaceLike(body) && !spaced)) return;
+    c.spaced.add(t.from);
+    const ascii = chars[0] === sign;
+    add(c, id, 'error', t, `${subject} is not a number for SPICE`,
+      `${ascii ? `Right after the ${sign}, it has ${what}` : `It starts with ${describeCharacter(chars[0]!)}, then ${what}`}, which looks like a space but is none for SPICE (it often comes with text copied from a document or a web page), so SPICE does not read the word as a number. Write ${written}.`,
+      place ? place(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${!ascii ? 'space-character-14' : id === 'nbsp' ? 'nbsp-3' : 'space-character-12'}]`,
+      [fix(`Write ${written}${letter && unit !== undefined ? ` (${amount(r.value, letter)})` : ''}`, replace(t, written))]);
     return;
   }
   const meant = spacedValue(t.text);
@@ -646,7 +818,7 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
   const fixes: Fix[] = [];
   if (meant.milli) {
     const mega = fix(`Make it ${meant.spice} (${shown(meant.value)})`, replace(t, meant.spice));
-    const milli = fix(`Keep milli: write ${meant.milli.spice}`, replace(t, meant.milli.spice));
+    const milli = fix(`Make it ${meant.milli.spice} (${shown(meant.milli.value)})`, replace(t, meant.milli.spice));
     fixes.push(...(big ? [mega, milli] : [milli, mega]));
   } else fixes.push(fix(`Write ${meant.spice}${letter && unit !== undefined ? ` (${shown(meant.value)})` : ''}`, replace(t, meant.spice)));
   const write = meant.unit
@@ -655,7 +827,7 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
   add(c, id, 'warning', t,
     meant.milli && !big ? `${subject} is read as ${shown(read.value)}` : `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
     `${capital(what)} sits between ${meant.before} and ${meant.next}, as documents ${digits ? 'group digits' : 'write a number and its unit'}. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${meant.after} after it does not count. ${write}`,
-    `${stops} [${claim}]`,
+    `${stops} [${claim}${place ? ', invisible-character-22' : ''}]`,
     fixes);
 }
 
@@ -664,6 +836,8 @@ function checkOddValues(c: Ctx, i: number): void {
   const e = el(c, i);
   for (const f of e.fields) {
     if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role)) continue;
+    // A word a check before this one already explains (4·7 kΩ: the space before the unit) is left to it.
+    if ((c.byLine.get(lineAt(c.n, f.token.from).number) ?? []).some((t) => t.span.from <= f.token.from && f.token.to <= t.span.to)) continue;
     const main = e.value?.token === f.token || (!e.value && f.role === 'other' && e.fields.indexOf(f) === e.fields.findIndex((x) => x.role === 'other'));
     checkOddValue(c, f.token, main && e.letter ? (UNIT[e.letter] ?? '') : undefined, main ? e.letter : undefined, main ? nameOf(e) : undefined);
   }
@@ -816,7 +990,10 @@ function checkSpaceBeforeSuffix(c: Ctx, i: number): void {
   const e = el(c, i);
   if (!e.letter || !VALUE_LETTERS.has(e.letter)) return;
   const f1 = mainFields(e).find((f) => readNumber(f.token.text));
-  const r = f1 ? readNumber(f1.token.text) : undefined;
+  // The number as a document wrote it: 4·7 kΩ from a British document is 4.7 and kΩ (re-check C5).
+  const n0 = f1?.token.text ?? '';
+  const odd = cleanWord(n0, true).odd[0];
+  const r = f1 ? readNumber(cleanWord(n0, true).clean) : undefined;
   if (!f1 || !r || r.scale || r.ignored || r.rest) return;
   const f2 = fieldAfter(e, f1);
   if (!f2 || f2.role === 'model' || NODE_ROLES.has(f2.role)) return;
@@ -826,12 +1003,13 @@ function checkSpaceBeforeSuffix(c: Ctx, i: number): void {
   let scale = m[1] ?? '';
   // A lone a/A or f/F after a number is a unit (amps, farads), not atto or femto.
   if (!m[2] && /^[af]$/i.test(scale)) scale = '';
-  const n = f1.token.text;
+  const n = cleanWord(n0, true).clean;
   const span = { from: f1.token.from, to: f2.token.to };
   const written = c.text.slice(span.from, span.to);
   const fixes: Fix[] = [];
   if (scale === 'M') {
-    fixes.push(fix(`Make it ${n}meg`, replace(span, `${n}meg`)), fix(`Keep milli: write ${n}m`, replace(span, `${n}m`)));
+    // ngspice reads neither: the M is a word of its own (a setting, or unknown). So the milli fix says what it writes.
+    fixes.push(fix(`Make it ${n}meg (${amount(r.value * 1e6, e.letter)})`, replace(span, `${n}meg`)), fix(`Make it ${n}m (${amount(r.value * 1e-3, e.letter)})`, replace(span, `${n}m`)));
   } else {
     const joined = `${n}${scale === '\u00b5' ? 'u' : scale.toLowerCase()}`;
     fixes.push(fix(`Write ${joined}`, replace(span, joined)));
@@ -842,10 +1020,12 @@ function checkSpaceBeforeSuffix(c: Ctx, i: number): void {
     'error',
     span,
     `${written}: the space splits the value in two`,
-    scale
-      ? `SPICE reads ${written} as two words: the number ${n}, then ${f2.token.text} as a separate word. Write the letter right after the number.`
-      : `SPICE reads ${written} as two words: the number ${n}, then ${f2.token.text} as a separate word. SPICE needs no units: write the number alone.`,
-    suffixVerdict(e.letter, f2.token.text, nameOf(e)),
+    odd
+      ? `SPICE reads ${written} as two words, ${n0} and ${f2.token.text}, and stops reading ${n0} at ${describeCharacter(odd).replace(/, which .*$/, '').replace(/^an? /, 'the ')}. Write ${fixes[0]!.changes[0]!.insert}.`
+      : scale
+        ? `SPICE reads ${written} as two words: the number ${n}, then ${f2.token.text} as a separate word. Write the letter right after the number.`
+        : `SPICE reads ${written} as two words: the number ${n}, then ${f2.token.text} as a separate word. SPICE needs no units: write the number alone.`,
+    odd ? suffixVerdict(e.letter, f2.token.text, nameOf(e)).replace(/\]$/, ', space-before-suffix-18]') : suffixVerdict(e.letter, f2.token.text, nameOf(e)),
     fixes,
   );
 }
@@ -2343,7 +2523,13 @@ export function checkTraps(netlist: Netlist): Trap[] {
   checkModels(c);
   checkSyntax(c);
   checkGreekMu(c);
-  for (const i of netlist.analyses) for (const t of netlist.lines[i]!.directive!.args) checkOddValue(c, t, undefined, undefined, undefined);
+  for (const i of netlist.analyses) {
+    const d = netlist.lines[i]!.directive!;
+    d.args.forEach((t, k) => {
+      const place = analysisPlace(d, k);
+      if (place) checkOddValue(c, t, undefined, undefined, undefined, place);
+    });
+  }
   checkSpaceNodes(c);
   checkSpaces(c);
   checkTitle(c);
