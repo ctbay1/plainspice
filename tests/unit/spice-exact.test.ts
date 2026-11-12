@@ -9,6 +9,10 @@ import type { AnalysisResults } from '../../src/engine/results.ts';
 import { roundingNoise } from '../../src/spice/describe.ts';
 import {
   agrees,
+  ANSWER_GAP,
+  answersAgree,
+  answersGap,
+  currentDouble,
   exactModel,
   exactValue,
   fraction,
@@ -16,6 +20,7 @@ import {
   isZero,
   MAX_UNKNOWNS,
   operatingPoint,
+  overCommon,
   partCurrent,
   READ_ULPS,
   readExact,
@@ -252,5 +257,61 @@ describe('agrees: ngspice simulated this same circuit, and its rounding explains
 
   it('fromDouble and toDouble are exact both ways', () => {
     for (const v of [0, 1, -0.1, 4.499999999999999, 2 ** -1074, 1.7976931348623157e308, -8.881784197001253e-19]) expect(toDouble(fromDouble(v))).toBe(v);
+  });
+});
+
+describe('answersAgree: ngspice\'s answers are the exact ones to the page\'s digits (the critic of the re-check\'s fixes)', () => {
+  const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nV2 s 0 1n\nRs s 0 1k\n.op\n.end\n';
+  const ng = (nodes: Record<string, number>, branch: Record<string, number>, device: Record<string, number> = {}) => ({ voltage: (n: string) => nodes[n], branch: (k: string) => branch[k], device: (k: string) => device[k] });
+  const good = { top: 9, a: 4.499999999999999, b: 4.5, s: 1e-9 };
+  const currents = { v1: -0.0014074468085106386, v2: -1e-12 };
+
+  it('ngspice\'s own answers agree; a node voltage or a source\'s current 1e-4 off does not', () => {
+    const m = model(text) as ExactModel;
+    const x = solve(m);
+    expect(answersGap(m, x, ng(good, currents))!).toBeLessThan(1e-15);
+    expect(answersAgree(m, x, ng(good, currents))).toBe(true);
+    expect(answersAgree(m, x, ng({ ...good, a: 4.5 * (1 + 1e-4) }, currents))).toBe(false);
+    expect(answersAgree(m, x, ng(good, { ...currents, v1: currents.v1 * (1 + 1e-4) }))).toBe(false);
+    // Just within ANSWER_GAP (5e-5 of the value) still agrees.
+    expect(answersAgree(m, x, ng({ ...good, a: 4.5 * (1 + 0.9 * ANSWER_GAP) }, currents))).toBe(true);
+  });
+
+  it('a value tiny beside the others of its kind is not compared (1 nV beside 9 V, 1 pA beside 1.4 mA); neither is a resistor\'s current, a product of the node voltages', () => {
+    const m = model(text) as ExactModel;
+    const x = solve(m);
+    expect(answersAgree(m, x, ng({ ...good, s: 2e-9 }, { ...currents, v2: -2e-12 }))).toBe(true);
+    expect(answersAgree(m, x, ng(good, currents, { r1: 1 }))).toBe(true);
+    // A value ngspice did not give for an answer it must give: no agreement.
+    expect(answersGap(m, x, ng({ a: 4.5, b: 4.5, s: 1e-9 }, currents))).toBeUndefined();
+  });
+});
+
+describe('whole numbers over one denominator, so that no common factor is searched for in thousands of bits', () => {
+  it('overCommon gives the unknowns over the determinant, and currentDouble a part\'s current from them, as partCurrent does', () => {
+    const m = model('* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nG1 0 g a top 1m\nRg g 0 1k\nR6 a z -2k\nR7 z 0 3k\n.op\n.end\n') as ExactModel;
+    const x = solve(m);
+    const { num, den } = overCommon(x);
+    expect(den > 0n).toBe(true);
+    m.nodes.forEach((_, k) => expect(fraction(num[k]!, den)).toEqual(fraction(x[k]!.n, x[k]!.d)));
+    m.parts.forEach((p, k) => expect(currentDouble(m, num, den, k), p.key).toBe(toDouble(partCurrent(m, x, k))));
+  });
+
+  it('the solve stops at a counted amount of work, the same on every computer: a 12 × 12 grid of 7-digit values (about a second of work) is left to the other rule', () => {
+    let seed = 3;
+    const rnd = (): number => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const value = (): string => `${(1 + rnd() * 8.999999).toFixed(6)}${['', 'k', 'meg'][Math.floor(rnd() * 3)]}`;
+    const grid = (side: number): string => {
+      const l = ['V1 g0_0 0 10'];
+      for (let i = 0; i < side; i++) for (let j = 0; j < side; j++) {
+        if (i + 1 < side) l.push(`Rv${i}_${j} g${i}_${j} g${i + 1}_${j} ${value()}`);
+        if (j + 1 < side) l.push(`Rh${i}_${j} g${i}_${j} g${i}_${j + 1} ${value()}`);
+      }
+      return `* grid\n${l.join('\n')}\nRg g${side - 1}_${side - 1} 0 ${value()}\n.op\n.end\n`;
+    };
+    const big = model(grid(12)) as ExactModel;
+    expect(solveExact(big, [operatingPoint(big)])).toBeUndefined();
+    const small = model(grid(5)) as ExactModel;
+    expect(solveExact(small, [operatingPoint(small)])).toBeDefined();
   });
 });

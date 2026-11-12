@@ -568,14 +568,26 @@ function rightHandSide(model: ExactModel, level: (p: ExactPart) => Fraction): Fr
 }
 
 /**
- * The work an exact solve may take before PlainSpice leaves the decision to the other rule (measured:
- * decision 0015): how many rows are combined, how many of their entries, and how long a whole number
- * may grow. All three are counted the same way on every computer, so a circuit is solved exactly, or
- * not, everywhere.
+ * The work an exact solve may take before PlainSpice leaves the decision to the other rule, counted the
+ * same way on every computer, so a circuit is solved exactly, or not, everywhere (decision 0015). Each
+ * combination of two rows counts ROW_WORK; each entry it writes counts ENTRY_WORK plus the square of its
+ * size in 64-bit words (the pivot's, measured once a step), since multiplying and dividing whole numbers
+ * of 4,096 bits takes thousands of times as long as small ones; the back substitution counts the same
+ * way, with the determinant's size, before it starts. Measured over 174 grids, meshes, ladders and
+ * networks of E and G sources of up to 146 unknowns, with values of 1, 3 and 7 digits, on a machine
+ * shared with other builds: from 2.6e-6 to 9.1e-6 ms of processor time a unit, so MAX_WORK keeps a
+ * solve, or the work until it stops, under about 75 ms. A whole number past MAX_BITS stops it too.
  */
+export const MAX_WORK = 8_000_000;
+const ROW_WORK = 2000;
+const ENTRY_WORK = 16;
 export const MAX_BITS = 4096;
-export const MAX_ROW_STEPS = 600;
-export const MAX_ENTRY_STEPS = 12_000;
+
+/** What one entry written with numbers the size of x counts (MAX_WORK). */
+function entryWork(x: bigint): number {
+  const words = (x < 0n ? -x : x).toString(16).length / 16;
+  return ENTRY_WORK + Math.max(1, words) ** 2;
+}
 
 class OverBudget extends Error {}
 
@@ -596,7 +608,7 @@ function exactly(a: bigint, b: bigint): bigint {
  * factor is remembered (P_k / P_l, applied when the row is next used). The unknowns come out as whole
  * numbers over one common denominator, the determinant, by fraction-free back substitution: every
  * division is exact. Undefined when the equations have no single answer (a singular matrix), or when
- * the work grows past MAX_BITS, MAX_ROW_STEPS or MAX_ENTRY_STEPS.
+ * the work grows past MAX_WORK or a number past MAX_BITS.
  */
 export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][] | undefined {
   const n = model.size;
@@ -611,8 +623,7 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
     rhs.push(sides.map((side) => side[r]!.n * (l / side[r]!.d)));
   }
   const limit = 1n << BigInt(MAX_BITS);
-  let rowSteps = 0;
-  let entrySteps = 0;
+  let work = 0;
   const inColumn: Set<number>[] = Array.from({ length: n }, () => new Set());
   rows.forEach((row, r) => {
     for (const k of row.keys()) inColumn[k]!.add(r);
@@ -620,6 +631,8 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
   const done = new Uint8Array(n);
   /** The pivots in order; pivot[0] is 1. A row last made true at step l is made true at step k by × pivot[k] / pivot[l]. */
   const pivot: bigint[] = [1n];
+  /** What an entry written with each pivot counts (entryWork). */
+  const pivotWork: number[] = [entryWork(1n)];
   const epoch = new Int32Array(n);
   /** Brings row q's numbers to what they are after `step` steps. */
   const lift = (q: number, step: number): void => {
@@ -630,7 +643,7 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
     for (const [k, v] of row) row.set(k, exactly(v * up, down));
     const side = rhs[q]!;
     for (let s = 0; s < side.length; s++) side[s] = exactly(side[s]! * up, down);
-    entrySteps += row.size + side.length;
+    work += (row.size + side.length) * pivotWork[step]!;
     epoch[q] = step;
   };
   const order: { col: number; row: number }[] = [];
@@ -654,9 +667,9 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
       const from = rhs[r]!;
       const p = pivotRow.get(col)!;
       const before = pivot[step - 1]!;
+      const each = entryWork(p);
       for (const q of Array.from(inColumn[col]!)) {
         if (q === r) continue;
-        rowSteps += 1;
         lift(q, step - 1);
         const row = rows[q]!;
         const side = rhs[q]!;
@@ -676,13 +689,14 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
           }
         }
         for (let s = 0; s < side.length; s++) side[s] = exactly(p * side[s]! - a * from[s]!, before);
-        entrySteps += row.size + pivotRow.size + side.length;
+        work += ROW_WORK + (row.size + pivotRow.size + side.length) * each;
         epoch[q] = step;
-        if (rowSteps > MAX_ROW_STEPS || entrySteps > MAX_ENTRY_STEPS) throw new OverBudget();
+        if (work > MAX_WORK) throw new OverBudget();
       }
       for (const k of pivotRow.keys()) inColumn[k]!.delete(r);
       done[col] = 1;
       pivot.push(p);
+      pivotWork.push(each);
       order.push({ col, row: r });
     }
   } catch (e) {
@@ -691,6 +705,9 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
   }
   // Fraction-free back substitution: X = det × x is whole, and det × (pivot row's equation) gives it exactly.
   const det = pivot[n]!;
+  const backEach = entryWork(det);
+  for (const { row: r } of order) work += rows[r]!.size * sides.length * backEach;
+  if (work > MAX_WORK) return undefined;
   const X: bigint[][] = sides.map(() => Array.from({ length: n }, () => 0n));
   try {
     for (let i = order.length - 1; i >= 0; i--) {
@@ -710,6 +727,59 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
   // One common denominator, positive: x = X / det, not reduced (equal ones have equal X).
   const sign = det < 0n ? -1n : 1n;
   return X.map((side) => side.map((v) => (v === 0n ? ZERO : { n: v * sign, d: det * sign })));
+}
+
+/**
+ * The unknowns of one solveExact solution as whole numbers over its one positive common denominator
+ * (the determinant), so that sums and products of them need no common factor searched for: Euclid's
+ * algorithm on numbers of thousands of bits is what made a long sweep and a 150-unknown grid slow.
+ */
+export function overCommon(x: readonly Fraction[]): { num: bigint[]; den: bigint } {
+  let den = 1n;
+  for (const v of x) {
+    if (v.n !== 0n) {
+      den = v.d;
+      break;
+    }
+  }
+  return {
+    num: x.map((v) => {
+      if (v.n !== 0n && v.d !== den) throw new RangeError('not one common denominator');
+      return v.n;
+    }),
+    den,
+  };
+}
+
+/**
+ * A part's current, with SPICE's sign, as a double, from unknowns given as whole numbers over one
+ * denominator (overCommon); rounded once, with no common factor searched for. `sourceLevel` is an I's
+ * value in that solution (its own value when not given).
+ */
+export function currentDouble(model: ExactModel, num: readonly bigint[], den: bigint, k: number, sourceLevel?: Fraction): number {
+  const p = model.parts[k]!;
+  const at = (n: number): bigint => (n < 0 ? 0n : num[n]!);
+  /** (top / den) × (fn / fd), with fd ≠ 0 of either sign. */
+  const times = (top: bigint, fn: bigint, fd: bigint): number => {
+    if (top === 0n || fn === 0n) return 0;
+    const [n, d] = [top * fn, den * fd];
+    return toDouble(d < 0n ? { n: -n, d: -d } : { n, d });
+  };
+  switch (p.kind) {
+    case 'R':
+      // (v(a) − v(b)) / R, R of either sign.
+      return times(at(p.a) - at(p.b), p.value.d, p.value.n);
+    case 'C':
+      return 0;
+    case 'I':
+      return toDouble(sourceLevel ?? p.value);
+    case 'G':
+      return times(at(p.c) - at(p.d), p.value.n, p.value.d);
+    case 'F':
+      return times(at(model.parts[p.control]!.branch), p.value.n, p.value.d);
+    default:
+      return times(at(p.branch), 1n, 1n);
+  }
 }
 
 /** The least common multiple of two positive whole numbers. */
@@ -814,12 +884,14 @@ class Sum {
 /** How closely ngspice's values solve the model's equations (`shares`). */
 export interface Shares {
   /**
-   * The largest amount by which ngspice's values leave one of the equations unbalanced (Kirchhoff's
-   * current law at a node; a V, E, H or L's own equation), over the largest sum of the sizes of the
-   * terms of any equation. ngspice solves all the equations together, with one LU factorisation in
-   * doubles, so what its rounding leaves in an equation is a share of the whole system, not of that
-   * equation's own terms: a chain of 0 V sources that carries no current can show 1e-16 A against
-   * 1e-16 A, and a 0 V source next to a 1 mΩ wire 8e-10 V against 9 V (decision 0015).
+   * The largest amount by which ngspice's values leave one of the equations unbalanced, over the largest
+   * sum of the sizes of the terms of any equation of the same kind: Kirchhoff's current law at the
+   * nodes (in amps), and the own equations of the V, E, H and L (in volts). ngspice solves all the
+   * equations together, with one LU factorisation in doubles, so what its rounding leaves in an equation
+   * is a share of the whole system, not of that equation's own terms: a chain of 0 V sources that
+   * carries no current can show 1e-16 A against 1e-16 A, and a 0 V source next to a 1 mΩ wire 8e-10 V
+   * against 9 V (decision 0015). Measured over the 11,645 netlists of the re-check's corpora and the
+   * repository: at most 3.8e-15 for the nodes and 4.4e-11 for the branches.
    */
   equations: Fraction;
   /**
@@ -913,13 +985,18 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
       }
     }
   }
-  let largest = ZERO;
-  let left = ZERO;
-  for (const s of sums) {
-    largest = worse(largest, s.size);
-    left = worse(left, abs(s.value));
-  }
-  return { equations: isZero(left) ? ZERO : isZero(largest) ? ONE : div(left, largest), products };
+  // Each kind of equation against its own kind: Kirchhoff's law at the nodes in amps, the branches' own
+  // equations in volts (a 9 V source's equation made a node's 5 nA of misread current look like nothing).
+  const share = (list: readonly Sum[]): Fraction => {
+    let largest = ZERO;
+    let left = ZERO;
+    for (const s of list) {
+      largest = worse(largest, s.size);
+      left = worse(left, abs(s.value));
+    }
+    return isZero(left) ? ZERO : isZero(largest) ? ONE : div(left, largest);
+  };
+  return { equations: worse(share(sums.slice(0, model.nodes.length)), share(sums.slice(model.nodes.length))), products };
 }
 
 /**
@@ -931,4 +1008,62 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
 export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction): boolean {
   const s = shares(model, ng, level);
   return !!s && compare(s.equations, fromDouble(RESIDUAL_SHARE)) <= 0 && compare(s.products, fromDouble(PRODUCT_SHARE)) <= 0;
+}
+
+// ------------------------------------------------------------------ ngspice's answers beside the exact ones
+
+/**
+ * The answers compared with the exact ones (`answersAgree`): the unknowns ngspice solves for, each node
+ * voltage and the current of each V, E, H and L, whose exact value is not 0 and is at least this share
+ * of the largest exact value of its kind (node voltages; currents). A smaller one is tiny beside the
+ * others, and there ngspice's rounding can be as large as the value itself without any mistake in the
+ * circuit (a 4 aA current beside milliamps). The current of an R, F or G is not compared: ngspice works
+ * it out from these unknowns (a resistor's from the voltages at its ends, which can cancel to a few
+ * digits), and `agrees` holds it to that product.
+ */
+export const ANSWER_SHARE = 1e-3;
+/**
+ * How far ngspice's answer may be from the exact one, as a share of it: 5e-5, less than half a unit in
+ * the last of the 4 significant digits the page shows a value with, whatever its first digits (half a
+ * unit of 9.999 is 5e-5 of it, of 1.000 5e-4). Within it, ngspice's number is drawn with the exact
+ * value's digits, or one unit off in the last where the exact value lies that close to a rounding
+ * boundary, so the 0s and the exact values PlainSpice puts in place of ngspice's rounding agree with
+ * ngspice's own numbers beside them. ngspice solves a well-conditioned circuit to a few units in the
+ * last place of a double (about 1e-16 of a value). A wire far smaller than the resistors around it
+ * makes the equations ill-conditioned, and ngspice's answers can then be far off while what they leave
+ * of the equations stays small (`agrees`): a 1e-12 Ω wire in the middle branch of a balanced bridge
+ * gives its ends as 4.321 V and 4.374 V where the circuit makes both 4.5 V (the critic of the re-check's
+ * fixes). There PlainSpice shows ngspice's numbers, by the rule for other circuits (decision 0015).
+ */
+export const ANSWER_GAP = 5e-5;
+
+/**
+ * The largest gap between ngspice's answers and the exact unknowns `x` of one solution (node voltages,
+ * then branch currents), as a share of the exact value, over the answers ANSWER_SHARE picks; undefined
+ * when ngspice gave no value for one of them. Worked out in doubles from the exact values (each
+ * rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
+ */
+export function answersGap(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): number | undefined {
+  const gapOf = (list: { exact: Fraction; given: number | undefined }[]): number | undefined => {
+    const exact = list.map((e) => (isZero(e.exact) ? 0 : toDouble(e.exact)));
+    const largest = exact.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    let gap = 0;
+    for (let k = 0; k < list.length; k++) {
+      const e = exact[k]!;
+      if (e === 0 || !(Math.abs(e) >= ANSWER_SHARE * largest)) continue;
+      const given = list[k]!.given;
+      if (given === undefined || !Number.isFinite(given)) return undefined;
+      gap = Math.max(gap, Math.abs(given - e) / Math.abs(e));
+    }
+    return gap;
+  };
+  const volts = gapOf(model.nodes.map((n, k) => ({ exact: x[k]!, given: ng.voltage(n) })));
+  const amps = gapOf(model.parts.filter((p) => p.branch >= 0).map((p) => ({ exact: x[p.branch]!, given: ng.branch(p.key) })));
+  return volts === undefined || amps === undefined ? undefined : Math.max(volts, amps);
+}
+
+/** True when ngspice's answers are the exact ones to within ANSWER_GAP (answersGap). */
+export function answersAgree(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): boolean {
+  const gap = answersGap(model, x, ng);
+  return gap !== undefined && gap <= ANSWER_GAP;
 }
