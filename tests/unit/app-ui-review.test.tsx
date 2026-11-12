@@ -195,8 +195,8 @@ describe('the first part on a blank page (words W9)', () => {
     const form = await screen.findByRole('dialog', { name: 'Add a part' }, { timeout: 5000 });
     fireEvent.click(within(form).getByRole('button', { name: /^Add R1/ }));
     await waitFor(() => expect(document.querySelector('.hint')!.textContent).toBe(starterWords()));
-    // The Netlist panel opened to look at the new .op and .end, then closed with Escape (the second critic
-    // of W9: that Escape took the why away unread): it stays, as when the panel's tab closes it.
+    // The Netlist panel opened to look at the new .op and .end, then closed with Escape (that Escape took the
+    // why away unread: found with the second critic of W9): it stays, as when the panel's tab closes it.
     fireEvent.click(tab('Netlist'));
     await waitFor(() => expect(screen.getByRole('region', { name: 'Netlist' })).toBeTruthy());
     // An Escape typed in the netlist editor is the editor's: the why stays, and so does the panel.
