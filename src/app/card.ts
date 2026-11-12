@@ -207,7 +207,8 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
       : read
         ? { reads: read.reads, readsTrap: read.trap }
         : {}),
-    ...(trap ? { trap: trap.title } : {}),
+    // The card's link says "fix" only when the Checks panel offers one for this check (it lists a fix button for each).
+    ...(trap ? { trap: trap.title, trapFix: trap.fixes.length > 0 } : {}),
     ...(note ? { note } : {}),
   };
 }

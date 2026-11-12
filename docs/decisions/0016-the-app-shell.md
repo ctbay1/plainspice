@@ -162,3 +162,13 @@ Ctrl+K stay as they are.
   screen, live runs, every fixture and every video example against native ngspice, traps and fixes,
   share links including a link made for the old address, export, plots, keyboard only, the phone's
   turned drawing and sheets, offline, and axe in every main state).
+
+## After the final reviews (12 November 2026)
+
+- **A card offers the fix only where there is one** (words review W3). A part's card writes a check
+  on its line in red pen, and linked it with "See the fix in Checks" even when the check has no fix
+  (a current source whose current has nowhere to go: no fix can know where it should go; an F or H
+  that reads a source the circuit does not have, when no name in it is close), and the Checks panel
+  then offered none. The link now says "See the fix in Checks" when the Checks panel has a fix for
+  that check, and "See why in Checks" when it has not (`CardContent.trapFix`); both open the Checks
+  panel at the check, whose first line now says it offers a fix "where there is one".

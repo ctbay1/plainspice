@@ -347,7 +347,9 @@ export const en = {
   cardEmpty: 'Type a value: the netlist still has {value}.',
   cardNoValues: 'This analysis gives no single value for each part.',
   cardDone: 'Done',
+  /** The card's link to a check on its line: to its fix when the check has one, else to its why. */
   cardSeeFix: 'See the fix in Checks',
+  cardSeeWhy: 'See why in Checks',
   readoutThrough: 'through it',
   readoutMeasured: 'measured',
   readoutAcross: 'across it',
@@ -594,7 +596,7 @@ export const en = {
   goToLinePart: 'Go to line {line} ({part}) in the netlist',
 
   // ---------------------------------------------------------------- checks
-  checksIntro: 'PlainSpice looks for beginner traps before every run, says why each one matters, and offers a fix.',
+  checksIntro: 'PlainSpice looks for beginner traps before every run, says why each one matters, and offers a fix where there is one.',
   checksNone: 'No traps found',
   severityError: 'Error',
   severityWarning: 'Warning',
