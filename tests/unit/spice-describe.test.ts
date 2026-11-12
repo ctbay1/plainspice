@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import type { EngineDiagnostic, RawPlot, RunResult } from '../../src/engine/types.ts';
-import { DESCRIBE_STRINGS, DESCRIBED_PARTS, annotateLines, describeCircuit, describeResults, explainDiagnostic, sentenceNode } from '../../src/spice/describe.ts';
+import { DESCRIBE_STRINGS, DESCRIBED_PARTS, annotateLines, describeCircuit, describeResults, explainDiagnostic, roundingNoise, sentenceNode } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
 const MINUS = '−';
@@ -847,24 +847,33 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
       currents.push(['vlast', -8.881784197001253e-19, 'branch']);
       return { text: lines.join('\n'), results: op(nodes, currents) };
     };
-    const time = ({ text, results }: { text: string; results: AnalysisResults }): { ms: number; noise: number } => {
+    // Best of 5, the netlist parsed once: roundingNoise is the check that took seconds; describeResults is
+    // all the words of a run, worked out on the main thread after every run (about 25 ms and 10 ms here).
+    const time = ({ text, results }: { text: string; results: AnalysisResults }): { noiseMs: number; wordsMs: number; noise: number } => {
       const netlist = parseNetlist(text);
-      let best = Number.POSITIVE_INFINITY;
-      let noise = 0;
-      for (let k = 0; k < 3; k++) {
-        const t0 = performance.now();
-        noise = describeResults(netlist, structuredClone(results), run()).currents.filter((c) => c.noise !== undefined).length;
-        best = Math.min(best, performance.now() - t0);
+      let [noiseMs, wordsMs, noise] = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, 0];
+      for (let k = 0; k < 5; k++) {
+        let t0 = performance.now();
+        noise = roundingNoise(netlist, results).currents.size;
+        noiseMs = Math.min(noiseMs, performance.now() - t0);
+        // A fresh copy each time: the words of one run are worked out once, and kept with it.
+        const fresh = structuredClone(results);
+        t0 = performance.now();
+        describeResults(netlist, fresh, run());
+        wordsMs = Math.min(wordsMs, performance.now() - t0);
       }
-      return { ms: best, noise };
+      return { noiseMs, wordsMs, noise };
     };
     time(ladder(50));
     const [smallLadder, largeLadder] = [time(ladder(250)), time(ladder(1000))];
     const [smallChain, largeChain] = [time(chain(500)), time(chain(2000))];
     expect([largeLadder.noise, largeChain.noise]).toEqual([0, 2002]);
-    expect(largeLadder.ms).toBeLessThan(200);
-    expect(largeChain.ms).toBeLessThan(200);
-    expect(largeLadder.ms).toBeLessThan(12 * Math.max(smallLadder.ms, 1));
-    expect(largeChain.ms).toBeLessThan(12 * Math.max(smallChain.ms, 1));
+    for (const large of [largeLadder, largeChain]) {
+      expect(large.noiseMs).toBeLessThan(100);
+      expect(large.wordsMs).toBeLessThan(400);
+    }
+    // Four times the parts: about four times the time. Each pass over the whole netlist marked one more part (sixteen times or worse).
+    expect(largeLadder.noiseMs).toBeLessThan(10 * Math.max(smallLadder.noiseMs, 1));
+    expect(largeChain.noiseMs).toBeLessThan(10 * Math.max(smallChain.noiseMs, 1));
   });
 });
