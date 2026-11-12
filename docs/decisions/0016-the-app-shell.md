@@ -271,7 +271,14 @@ Ctrl+K stay as they are.
   ground"): "ÇIKIŞ has no DC path to ground", "Did you mean ÇIKIŞ?", a name like ground quoted, a hidden
   character named; their fixes write the node as first written ("Rename ÇIKIŞS to ÇIKIŞ", "Rdc1 ÇIKIŞ
   0 1g", the same node for ngspice), and ngspice's warning is quoted as it prints it ("singular
-  matrix: check node __iki__", M2d). The key, `node`, stays for every lookup: the
+  matrix: check node __iki__", M2d) only when that node is the only node with no DC path: ngspice
+  names one node, and in a group of two or more, or beside another such group, it may name any of
+  them, not the group's first (node1 and x: "check node x", floating-dc-7; a and b apart: "check node
+  a" only, floating-dc-8, -10), so the check then says it names one of the nodes with no DC path (the
+  second critic of the fix found "check node node1" beside the Numbers panel's "ngspice points at node
+  x"). Control inputs joined by a resistor are no longer said to stop ngspice: its transient op
+  finishes there and prints numbers that mean nothing (floating-dc-9), so the check says it either
+  stops or prints such numbers. The key, `node`, stays for every lookup: the
   Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
   with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
   (g__r____, au). The .tf check's fix offers such a node as first written too ("Use ÇIKIŞ", never

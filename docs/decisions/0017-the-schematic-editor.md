@@ -508,7 +508,15 @@ what they look like):
   amp, which is an ohm", where it said "1 volt per volt"; critic of the fix). The .tf check never offers "Use gnd" for a
   typo of an ordinary node called gnd: written in v( ), gnd is ground (`.tf v(gnd) V1` gives
   output_impedance_at_V(0), A3b), so the fix would measure ground; a name like ground is offered
-  quoted ('Use "ground"').
+  quoted ('Use "ground"'). After the second critic of the fix: a .tf in a subcircuit no X line uses,
+  which ngspice ignores (A3f: it ran the .tf after .ends, whose 0.5 and 500 Ω were labelled
+  "Transfer function v(a,gnd) / V1"), is left out of the .tf words, the check, the missing-node
+  message and the overview's analyses, and Explain says that ngspice ignores it (so for any analysis
+  line there); in a subcircuit an X line uses, ngspice runs the line as the main circuit's, so it is
+  read as before. A .tf after .end is checked as one above it is, and its words take its nodes from
+  that line as written when ngspice spells them otherwise ("node out (written with a zero-width space
+  in it)", never "node ou___t"). The .tf box and the Numbers panel's .tf table say a ratio of 1 in the
+  singular, "1 volt per amp", as the live region does, where they said "1 volts per amp".
 - **A node name with a letter outside a to z** (words re-check 9). The card's rename and the Add a
   part form keep node names to the letters a to z (or A to Z), digits and _, and now say it in those
   words, the non-ascii-node check's ("PlainSpice keeps node names to letters" refused çıkış, whose ç,
@@ -533,7 +541,15 @@ what they look like):
   pushes 3 mA from node a, through the source, into ground (node 0)." (P3 and P4 now run both.) The
   overview and the drawing's description of the part say it the same way, "I1: a −2 mA current
   source: its value is negative, so it pushes 2 mA from ground into node a.", where they said "pushing
-  current from node a into ground" beside Explain's sentence (critic of the fix).
+  current from node a into ground" beside Explain's sentence (critic of the fix). Those sentences are
+  about the source's value, and the second critic of the fix found them where no run uses it: a
+  current source that .dc sweeps is said as a swept voltage source is ("I1: a current source pushing
+  current from node a into ground, swept by .dc."; Explain: "The .dc on line 4 sweeps this source, so
+  in that analysis its value changes.", P4b, where at 5 mA the current flows from a into ground), and a
+  value beside a transient function is said to be .op's, since .tran follows the function from time 0
+  ("In .op the source has that value; in .tran it follows its SIN from time 0 instead."; the overview:
+  "so in .op it pushes 2 mA", P3b, P4c), for a voltage source too ("So node a sits 3 V below node b"
+  was true of .op only); a 0 V source with a SIN is no ammeter there.
 
 Two of the pointer's ways went wrong when the page drew late (end-to-end tests on a busy machine, load
 10 to 20 on 4 cores, and a quick hand). Each has a test now that sends the events in the order a busy

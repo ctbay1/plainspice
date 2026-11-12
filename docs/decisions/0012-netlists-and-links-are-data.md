@@ -189,7 +189,19 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   character and never say "There is no node called out" with a button "Use out": ".tf asks about a
   node with a zero-width space (U+200B) in its name, not the node out", and the fix "Take it out: use
   out" ("Write the plain letter o: out" for a look-alike), as the character's own warning offers it
-  for the whole node. For a name that is no node either, the error names the character too. Known gap:
+  for the whole node. For a name that is no node either, the error names the character too. After
+  the second critic of the fix: that error names the node as the other words do ('not the node
+  "ground"', "not node1", 'Take it out: use "ground"'; none for an ordinary node called gnd, which
+  v( ) reads as ground); a name with characters of more than one kind has each one named, in the
+  error and wherever `nodeNameInWords` names it ("оut (written with the Cyrillic letter о, which
+  looks like o, and a zero-width space)"), where only the first kind was; with the character in the
+  parts' node and not in the .tf, the check says so (".tf asks about node out, but the parts are on
+  another node: out (written with a zero-width space in it)", tf-problems-9), never "There is no node
+  called out", and offers no button, since its "Use out" wrote the character into the .tf (no near
+  name the check offers has such a character); a part's name in i( ) or as the input is named the
+  same way, ngspice's message quoted in its own spelling ("v___1", tf-problems-10); and a .tf after
+  .end, which ngspice runs, is checked as one above it, its words naming the node as written, not as
+  ngspice spells it (tf-problems-11). Known gap:
   the short forms still write such a name as it is written, so the character is there unseen: a
   sweep's "v(out) = 3.5 V", the Plot's legend, the Numbers panel's Node column and the notes at the
   end of netlist lines (the checks warn about the node, and the sentences beside them name the

@@ -85,7 +85,14 @@ space or a look-alike letter is another node with nothing on it: a transfer func
 output impedance of 1 Ω, so the .tf check keeps its error there); and in explanations.md M2d (ngspice
 points at a node in its own spelling, `check node ou___t`, `check node __iki__`, which the words map
 back to the node), A3d and A3e (a `.tf` after `.end` with a current source as the input, and with a
-current output: the same numbers as above `.end`, so the same units and names).
+current output: the same numbers as above `.end`, so the same units and names). After the second
+critic of those fixes: in traps.md floating-dc-7 to -10 (ngspice's "check node" names one node, of a
+larger group or of another group, not always the first; control inputs joined by a resistor get
+numbers, alone they stop ngspice), tf-problems-9 to -11 (the character in the parts' node rather than
+in the `.tf`, in a part's name in `.tf`, and a `.tf` after `.end`, which ngspice runs) and two more
+runs in tf-problems-8 (a second output, which adds 1 Ω, and a name with two kinds of character); in
+explanations.md P3b, P4b and P4c (a source .dc sweeps has no one value there; beside a SIN, .op uses
+the value and .tran the SIN) and A3f (an analysis line in a subcircuit no X line uses is ignored).
 
 ## Where the evidence came from
 

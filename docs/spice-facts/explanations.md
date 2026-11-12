@@ -44,7 +44,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   always the title (S1 in numbers-and-syntax.md).
 - `V1 n1 0 6` means V(n1) − V(0) = 6 V; written `V1 0 n1 6` it makes n1 −6 V; `V6 c d -3` holds c 3 V
   below d (P3). `I1 0 a 3` pushes 3 A from node 0, through the source, into a; `I3 0 c -3` pushes 3 A the
-  other way, from c into node 0 (P4).
+  other way, from c into node 0 (P4). A source .dc sweeps has no one value there (P4b, A7); beside a SIN,
+  .op uses the source's value and .tran follows the SIN from time 0 (P3b, P4c).
 - E: V(+) − V(−) = gain × (V(c+) − V(c−)). G: gain × (V(c+) − V(c−)) amps from its first node into its
   second. F: gain × the current in its control source, the same way. H: V(+) − V(−) = gain × that
   current (P5–P8). The control source of F and H must be a voltage source: V, E, H or a B line
@@ -68,7 +69,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   node called gnd (A3b); a `.tf` written after `.end` runs too, and ngspice names its output in its
   own words, `v(out,mid)` (A3c); the input can be a current source (A4); for a current
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
-  0 without a message (A6).
+  0 without a message (A6). An analysis line in a subcircuit no X line uses is ignored; in one an X
+  line uses, it runs as the main circuit's, once for each X line (A3f).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -4622,11 +4624,11 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 | Code | Claims |
 |---|---|
 | `explain.ts`: R, C, L lines (either way round, open/short in `.op` and `.dc`, 0 Ω, negative values, missing values) | P1, P2, P11–P15b, P24, A31 |
-| `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values) | P3, P4, P9, P16–P20b |
+| `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values, a source .dc sweeps) | P3, P3b, P4, P4b, P4c, P9, P16–P20b |
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
-| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`) | A1–A22b, A31, M10–M15b |
+| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`) | A1–A22b, A3f, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
-| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V | C1–C9g, A3–A6 |
+| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V | C1–C9g, A3–A6 (with A3b–A3f) |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
 Re-running the evidence: the netlists, the scripts that run them through native ngspice 47, 42 and
