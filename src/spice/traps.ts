@@ -1418,7 +1418,7 @@ function gluedOnAnalysis(c: Ctx, l: NetlistLine, t: Token, bare: string): { says
   const chars = [...t.text];
   const before = withoutInvisible(chars.slice(0, chars.findIndex((x) => SPACE_LIKE.test(x))).join(''));
   const shown = readNumber(before)?.value === read.value ? before : formatNumber(read.value);
-  const whole = withoutSpaces(t.text);
+  const whole = withoutInvisible(withoutSpaces(t.text));
   const asOne = readNumber(whole);
   // Whether the line has all the words its analysis takes, so that a normal space would make one too many.
   const kind = d.args.findIndex((x) => /^(dec|oct|lin)$/i.test(x.text));
@@ -1448,7 +1448,7 @@ function checkSpaces(c: Ctx): void {
     const changes: TextChange[] = [];
     for (const x of tokens) for (let k = 0; k < x.text.length; k++) if (SPACE_LIKE.test(x.text[k]!)) changes.push(change(x.from + k, x.from + k + 1, ' '));
     const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
-    const shown = withSpaces(t.text);
+    const shown = shownWord(t.text);
     const bare = nameOfCharacter(ch, false)!.replace(/^an? /, '');
     const glued = gluedOnAnalysis(c, l, t, bare);
     const replaceAll = fix('Replace it with a normal space', ...changes);

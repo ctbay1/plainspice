@@ -1613,6 +1613,10 @@ describe('after the critic of the re-check fixes (12 November 2026)', () => {
       expect(fixed, text).toContain(`\n${line}\n`);
       expect(ids(fixed), text).toEqual([]);
     }
+    // A word with an invisible character as well: neither the title nor the fix shows it.
+    const mixed = first(`${dc}.dc V1 0 5 0\u2009.5\u200b\n.end\n`, 'space-character');
+    for (const x of [mixed.title, ...mixed.fixes.map((f) => f.label)]) expect(x).not.toMatch(/\u200b/);
+    expect(mixed.fixes.map((f) => f.label)).toEqual(['Take it out: write 0.5']);
     // A word with no recorded place makes no claim about what follows; on a part line the glue words stay.
     expect(first(`${dc}.ac dec\u200910 1 1k\n.end\n`, 'space-character').ngspice).toBe('ngspice reads the thin space as part of the word, so the words on either side are one word for it. [space-character-2, space-character-16]');
     expect(first('* t\nV1 in 0 PULSE(0\u20091 0 1n 1n 1 2)\nR1 in 0 1k\n.tran 1u 1m\n.end\n', 'space-character').ngspice).toContain('says nothing about it');

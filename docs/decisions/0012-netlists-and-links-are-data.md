@@ -310,7 +310,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   and `1OuF` read as 1 too (look-alike-letter-15) and are flagged; a lone A or F after the O is the unit,
   as space-before-suffix reads it (`1OA` is meant as 10 A, not 10 aA). Explain names the letter O as
   Checks does ("Write 10k") instead of "Don't type units after numbers", and its note for a stray
-  character ends as Checks does: a model warning on C and L, zero-ohm's words for a resistor read as 0.
+  character ends as Checks does: with the model warning on C and L, and never "without a message" (a
+  resistor read as 0 has Explain's own note on 0 Ω beside it).
 - **Known limits, recorded** (critic of the re-check fixes). A brace expression that comes to 0 (a `.dc`
   step `{st}` with `st=0`) is not flagged by Checks, though the "Bad syntax!" words name the step. Words
   in a function with no recorded run (AM, TRNOISE) are left alone. The letter O at the end of a value
