@@ -419,7 +419,8 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   a line (a unit after a number).
 - **Thévenin** (W12). The basics' F5 is "Thévenin resistance with a dependent source", as the channel
   spells it, in the Examples menu, Ctrl+K and "Opened the example …", so Ctrl+K finds it with the
-  video's examples. Known gap: the title line of its netlist (`tests/fixtures/f5-thevenin-cccs.cir`)
+  video's examples; the .tf words (the output resistance in the results, what is said, and Explain's
+  .tf line) say "the Thévenin resistance" too (done when the lanes were merged). Known gap: the title line of its netlist (`tests/fixtures/f5-thevenin-cccs.cir`)
   still says "Thevenin", and F5 opened from the menu shows that line as the page's heading and the
   drawing's name ("F5: Thevenin resistance with a dependent source (test source method)"). The
   fixture stays as it is (the golden runs record it, and the published F5 link decodes to it); an
