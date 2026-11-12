@@ -183,7 +183,13 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     }
   }
   drawing = reconcile(circuit, drawing, problems, options);
-  const scene = buildScene(circuit, drawing, options);
+  const scene = buildScene(circuit, drawing, options, true);
+  // A name the scene wrote at another point of its copper (it had no room at its own, scene.ts) is
+  // kept there, so the lines written next say what the page shows (the scene stays the same).
+  scene.nodeLabels.forEach((placed, i) => {
+    const label = drawing.labels[i];
+    if (label && !samePoint(label.at, placed.at)) drawing.labels[i] = { ...cloneLabel(label), at: placed.at };
+  });
   return { netlist, circuit, drawing, scene, origin, problems, kept, orphans, foreign: lines.foreign.slice(), options };
 }
 

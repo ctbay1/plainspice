@@ -21,7 +21,7 @@
 import type { Circuit, CircuitPart, HiddenRef } from './circuit.ts';
 import { GROUND } from './circuit.ts';
 import { SegmentIndex, findIslands, wireEnds } from './connectivity.ts';
-import { groundGeometry, isUpright, partGeometry, valueLines, type Drawing, type GroundPlacement, type LabelSide, type NodeSpot, type SymbolGeometry } from './drawing.ts';
+import { groundGeometry, isUpright, partGeometry, valueLines, type Drawing, type GroundPlacement, type LabelSide, type NodeLabel, type NodeSpot, type SymbolGeometry } from './drawing.ts';
 import {
   boxesOverlap,
   inflate,
@@ -245,6 +245,8 @@ function cellsOf(b: Box): number[] | undefined {
  */
 class Obstacles {
   readonly boxes: Box[] = [];
+  /** For each box: soft (a junction's dot, a terminal, a stub's mark) or solid (symbols and words). */
+  private readonly soft: boolean[] = [];
   readonly segments: [Point, Point][] = [];
   /** What each square holds: box i as i, segment i as −1 − i; `big`: what covers too many squares to file. */
   private readonly cells = new Map<number, number[]>();
@@ -263,8 +265,9 @@ class Obstacles {
     }
   }
 
-  addBox(b: Box): number {
+  addBox(b: Box, soft = false): number {
     const i = this.boxes.push(b) - 1;
+    this.soft.push(soft);
     this.file(b, i);
     return i;
   }
@@ -278,10 +281,11 @@ class Obstacles {
 
   /**
    * How much the box collides with what is there (0: free), leaving out box `skip` (a part's own
-   * symbol). Boxes count first, then segments, each in the order they came, as one sum over all of
+   * symbol), and with `solid`, the soft boxes too (what is left is what findOverlaps would call an
+   * overlap). Boxes count first, then segments, each in the order they came, as one sum over all of
    * them would.
    */
-  cost(box: Box, skip = -1): number {
+  cost(box: Box, skip = -1, solid = false): number {
     const near = new Set<number>(this.big);
     const keys = cellsOf(box);
     if (keys) for (const k of keys) for (const id of this.cells.get(k) ?? []) near.add(id);
@@ -297,7 +301,7 @@ class Obstacles {
     let c = 0;
     for (const i of boxes) {
       const b = this.boxes[i]!;
-      if (i !== skip && boxesOverlap(box, b)) c += 1 + overlapArea(box, b);
+      if (i !== skip && !(solid && this.soft[i]) && boxesOverlap(box, b)) c += 1 + overlapArea(box, b);
     }
     for (const id of segments) {
       const [a, b] = this.segments[-1 - id]!;
@@ -315,6 +319,9 @@ function overlapArea(a: Box, b: Box): number {
 
 /** Far enough from a wire to clear the widest symbol on it (a source's circle). */
 const FAR = 1.15;
+
+/** How many points of its own copper a name tries, nearest first, when it has no room at its own. */
+const NAME_MOVES = 40;
 
 /** The space between a node's name and its result on the same line ("s = 12 V"), in grid units. */
 export const INLINE_RESULT_GAP = 0.2;
@@ -474,8 +481,14 @@ export function wireCrossings(wires: readonly (readonly Point[])[], index: Segme
   return [...out.values()].sort((p, q) => p.y - q.y || p.x - q.x);
 }
 
-/** Builds the scene for a circuit and a drawing. Parts without a place in the drawing are left out. */
-export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOptions = {}): Scene {
+/**
+ * Builds the scene for a circuit and a drawing. Parts without a place in the drawing are left out.
+ * With `moveNames` (the scene a schematic keeps, schematic.ts), a node's name with no spot of its
+ * own that touches a symbol, words or a wire at every spot around its point is written at the
+ * nearest point of its own copper where it touches none; the scenes made along the way leave every
+ * name at its point.
+ */
+export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOptions = {}, moveNames = false): Scene {
   const results = options.results ?? true;
   const measure = options.measure ?? defaultMeasure;
   const parts: PlacedPart[] = [];
@@ -619,13 +632,71 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const end = dangling.find((d) => islands.at(d) === island);
     addEnd(node.name, end ?? pin.at);
   }
-  for (const j of junctions) obstacles.addBox(inflate({ x0: j.x, y0: j.y, x1: j.x, y1: j.y }, 0.2));
-  for (const t of terminals) obstacles.addBox(inflate({ x0: t.at.x, y0: t.at.y, x1: t.at.x, y1: t.at.y }, 0.25));
-  for (const t of stubs) obstacles.addBox(inflate(t.box, 0.05));
+  for (const j of junctions) obstacles.addBox(inflate({ x0: j.x, y0: j.y, x1: j.x, y1: j.y }, 0.2), true);
+  for (const t of terminals) obstacles.addBox(inflate({ x0: t.at.x, y0: t.at.y, x1: t.at.x, y1: t.at.y }, 0.25), true);
+  for (const t of stubs) obstacles.addBox(inflate(t.box, 0.05), true);
 
   const nodeLabels: PlacedNodeLabel[] = [];
   const terminalKeys = new Set(terminals.map((t) => pointKey(t.at)));
   const stubKeys = new Set(stubs.map((t) => pointKey(t.at)));
+  type Placing = { lines: TextLine[]; cost: number; spot: NodeSpot };
+  /**
+   * A name's lines at the spots around a point, tried in order: the first that touches nothing, else
+   * the least in the way (`best`); and, with `withClear`, the least in the way of those that touch no
+   * symbol, words or wire, only a junction's dot or a terminal (`clear`), if any.
+   */
+  const placeName = (text: string, at: Point, spots: readonly NodeSpot[], names: readonly string[], withClear: boolean): { best: Placing; clear?: Placing } => {
+    let best: Placing | undefined;
+    let clear: Placing | undefined;
+    for (const spot of spots) {
+      const lines = nodeLabelLines(text, at, spot, results, names, measure, options.nodeResultInline);
+      const box = boxOfLines(lines);
+      const cost = obstacles.cost(box);
+      if (!best || cost < best.cost) best = { lines, cost, spot };
+      if (cost === 0) return { best, clear: best };
+      if (withClear && obstacles.cost(box, -1, true) === 0 && (!clear || cost < clear.cost)) clear = { lines, cost, spot };
+    }
+    return clear ? { best: best!, clear } : { best: best! };
+  };
+  /**
+   * The points a name may move to on its own piece of copper, nearest first (at most NAME_MOVES):
+   * the grid points of the piece's wires and its pins, but not where another piece's wire crosses
+   * (the name would read as that node's) and not at an open end (a terminal or a stub has its own name).
+   */
+  const pointsOfPiece = (label: NodeLabel): Point[] => {
+    const own = islands.allAt(label.at).filter((i) => {
+      const n = islandNode.get(i);
+      return n === undefined || n === label.node;
+    });
+    if (own.length !== 1) return [];
+    const piece = own[0]!;
+    const seen = new Set<string>([pointKey(label.at)]);
+    const out: Point[] = [];
+    const add = (q: Point): void => {
+      const k = pointKey(q);
+      if (seen.has(k) || terminalKeys.has(k) || stubKeys.has(k)) return;
+      seen.add(k);
+      if (islands.allAt(q).some((i) => i !== piece)) return;
+      out.push(q);
+    };
+    drawing.wires.forEach((w, i) => {
+      if (islands.wires[i] !== piece) return;
+      for (const [a, b] of segmentsOf(w)) {
+        if (a.x !== b.x && a.y !== b.y) {
+          add(a);
+          add(b);
+          continue;
+        }
+        const n = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+        for (let k = 0; k <= n; k++) add({ x: a.x + (Math.sign(b.x - a.x) * k), y: a.y + (Math.sign(b.y - a.y) * k) });
+      }
+    });
+    allPins.forEach((p, i) => {
+      if (islands.anchors[i] === piece) add(p.at);
+    });
+    const far = (q: Point): number => Math.abs(q.x - label.at.x) + Math.abs(q.y - label.at.y);
+    return out.sort((p, q) => far(p) - far(q) || p.y - q.y || p.x - q.x).slice(0, NAME_MOVES);
+  };
   for (const label of drawing.labels) {
     const node = circuit.nodes.get(label.node);
     const text = node?.text ?? label.node;
@@ -634,17 +705,26 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const terminal = terminalKeys.has(pointKey(label.at));
     const atEnd = terminal || stubKeys.has(pointKey(label.at));
     const spots = label.side ? [label.side] : spotsFor(directionsAt(label.at, wireIndex, allPins), atEnd);
-    let best: { lines: TextLine[]; cost: number; spot: NodeSpot } | undefined;
-    for (const spot of spots) {
-      const lines = nodeLabelLines(text, label.at, spot, results, names, measure, options.nodeResultInline);
-      const cost = obstacles.cost(boxOfLines(lines));
-      if (!best || cost < best.cost) best = { lines, cost, spot };
-      if (cost === 0) break;
+    const moving = moveNames && !label.side;
+    const here = placeName(text, label.at, spots, names, moving);
+    let at = label.at;
+    let chosen = moving ? (here.clear ?? here.best) : here.best;
+    // A name with no spot of its own (side=) that touches a symbol, words or a wire at every spot
+    // around its point (after a wire joined two nodes, it may sit on a part) moves along its own
+    // piece of copper to the nearest point where it touches none (student:label-on-part); build()
+    // then writes it there. A name at an open end marks that end, so it stays.
+    if (moving && !here.clear && !atEnd) {
+      for (const q of pointsOfPiece(label)) {
+        const there = placeName(text, q, spotsFor(directionsAt(q, wireIndex, allPins), false), names, true);
+        if (!there.clear) continue;
+        at = q;
+        chosen = there.clear;
+        break;
+      }
     }
-    const lines = best!.lines;
-    const box = boxOfLines(lines);
+    const box = boxOfLines(chosen.lines);
     obstacles.addBox(box);
-    nodeLabels.push({ node: label.node, text, at: label.at, spot: best!.spot, lines, box, terminal, hidden });
+    nodeLabels.push({ node: label.node, text, at, spot: chosen.spot, lines: chosen.lines, box, terminal, hidden });
   }
 
   const bounds =
