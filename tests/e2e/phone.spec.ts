@@ -233,6 +233,31 @@ async function unitNow(page: Page): Promise<number> {
   return (await gridPoint(page, 1, 0)).x - (await gridPoint(page, 0, 0)).x;
 }
 
+/** Where everything drawn is on the screen (the picture's strokes and words), once the drawing has slid to where it goes. */
+async function inkOnScreen(page: Page): Promise<{ x0: number; y0: number; x1: number; y1: number }> {
+  await settle(page);
+  return page.evaluate(() => {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const e of document.querySelectorAll('.nb-canvas svg[role="img"] :is(path, line, circle, polyline, text)')) {
+      const r = e.getBoundingClientRect();
+      if (!r.width && !r.height) continue;
+      x0 = Math.min(x0, r.left);
+      y0 = Math.min(y0, r.top);
+      x1 = Math.max(x1, r.right);
+      y1 = Math.max(y1, r.bottom);
+    }
+    return { x0, y0, x1, y1 };
+  });
+}
+
+/** The free paper between the top bar and the stack along the bottom. */
+async function freePaper(page: Page): Promise<{ top: number; bottom: number; width: number }> {
+  return page.evaluate(() => ({ top: document.querySelector('.top-area')!.getBoundingClientRect().bottom, bottom: document.querySelector('.phone-bottom')!.getBoundingClientRect().top, width: innerWidth }));
+}
+
 test('the turned drawing: a finger that starts on a part, a node’s name or the ground pans it, two fingers zoom, a tap opens the card, and “more” marks a cut edge', async ({ page }) => {
   await openApp(page);
   await chooseExample(page, 'Example 3: open circuit (V_Th)');
@@ -259,6 +284,38 @@ test('the turned drawing: a finger that starts on a part, a node’s name or the
   const still = await middleOf(page, /^R3, /);
   await page.touchscreen.tap(still.x, still.y);
   await expect(page.getByRole('dialog', { name: /^R3 / })).toBeVisible();
+});
+
+test('a sheet opened while something is selected leaves the drawing where it was once it closes', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  // A ground placed on the paper: it stays selected, the view is held still.
+  await bar.getByRole('button', { name: t('barParts') }).click();
+  await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Ground/ }).click();
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  await page.touchscreen.tap(paper.x + 60, paper.y + paper.height * 0.6);
+  const hand = page.getByRole('toolbar', { name: t('handLabel', { part: t('toolGround') }) });
+  await hand.getByRole('button', { name: t('place') }).click();
+  await expect(drawing(page).getByRole('button', { name: /^Ground, / })).toHaveAttribute('aria-current', 'true');
+  const transform = (): Promise<string> => page.locator('.nb-world').evaluate((w: HTMLElement) => w.style.transform);
+  const before = await transform();
+  // Parts again: the drawing moves up to keep the ground clear of the sheet...
+  await bar.getByRole('button', { name: t('barParts') }).click();
+  const sheet = page.getByRole('dialog', { name: t('partsSheetTitle') });
+  await expect(sheet).toBeVisible();
+  await expect.poll(transform).not.toBe(before);
+  // ...and comes back when it closes, with ×,
+  await sheet.getByRole('button', { name: t('partsClose') }).click();
+  await expect.poll(transform).toBe(before);
+  // or when a tool is chosen in it: nothing is left under the top bar.
+  await bar.getByRole('button', { name: t('barParts') }).click();
+  await expect.poll(transform).not.toBe(before);
+  await sheet.getByRole('button', { name: /^Wire/ }).click();
+  await expect(hintLine(page)).toHaveText(t('hintWirePhone'));
+  await expect.poll(transform).toBe(before);
+  const free = await freePaper(page);
+  expect((await inkOnScreen(page)).y0, 'the drawing starts below the top bar').toBeGreaterThanOrEqual(free.top - 1);
 });
 
 test('the status line speaks of numbers from before the last change only when there are some', async ({ page }) => {

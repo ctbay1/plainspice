@@ -369,4 +369,27 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
     expect(views.at(-1)!.unit).toBeGreaterThan(unit * 1.5);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
+
+  it('a sheet that moved the drawing to keep the selected item clear of it moves it back when it goes, unless the reader moved it since (F2)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    const props = { ...base(views), selected: { kind: 'part', key: 'r3' } as NavItem };
+    const sheet = { top: 0, right: 0, bottom: 300, left: 0 };
+    const { rerender } = render(<NotebookCanvas ref={ref} {...props} />);
+    // The view held still, as after a part placed on the drawing.
+    act(() => ref.current!.keep());
+    const home = views.at(-1)!.view;
+    // A sheet over the bottom half: R3 is moved up, clear of it...
+    rerender(<NotebookCanvas ref={ref} {...props} insets={sheet} />);
+    expect(views.at(-1)!.view.y).toBeLessThan(home.y - 50);
+    // ...and the drawing is back where it was when the sheet goes.
+    rerender(<NotebookCanvas ref={ref} {...props} />);
+    expect(views.at(-1)!.view).toEqual(home);
+    // Moved by the reader while the sheet was open: it stays where they put it.
+    rerender(<NotebookCanvas ref={ref} {...props} insets={sheet} />);
+    act(() => ref.current!.panBy(30, 0));
+    const panned = views.at(-1)!.view;
+    rerender(<NotebookCanvas ref={ref} {...props} />);
+    expect(views.at(-1)!.view).toEqual(panned);
+  });
 });

@@ -7,7 +7,8 @@
  * - Fit: the whole drawing in the free part of the window (`insets` say what the page covers),
  *   never so small that its words are too small to read (`minUnit`, fit.ts); then the reader can
  *   pan (drag the paper, from a part or a name too, or scroll) and zoom (Ctrl + wheel, pinch,
- *   zoomBy). `fitKey` fits again.
+ *   zoomBy). `fitKey` fits again. A sheet that made the view move (to keep the selected item clear
+ *   of it) moves it back when it goes.
  * - Keyboard and screen readers: every part and node is a real button over the drawing, with one
  *   tab stop for the drawing (roving focus). Arrow keys move along the wires (navigate.ts:
  *   neighbour), Home and End go to the first and last item in reading order, Enter opens the
@@ -221,6 +222,9 @@ export function itemBox(s: Schematic, item: NavItem): Box | undefined {
 
 const grow = (b: Box, d: number): Box => ({ x0: b.x0 - d, y0: b.y0 - d, x1: b.x1 + d, y1: b.y1 + d });
 
+/** Two sets of insets are the same page around the paper, give or take its bars resizing (HOLD_SLACK). */
+const nearInsets = (a: Insets, b: Insets): boolean => Math.max(Math.abs(a.top - b.top), Math.abs(a.right - b.right), Math.abs(a.bottom - b.bottom), Math.abs(a.left - b.left)) <= HOLD_SLACK;
+
 const ARROW_KEYS: Readonly<Record<string, 'up' | 'down' | 'left' | 'right'>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
 const sameView = (a: View | undefined, b: View): boolean => !!a && Math.abs(a.unit - b.unit) < 1e-6 && Math.abs(a.x - b.x) < 0.25 && Math.abs(a.y - b.y) < 0.25;
@@ -234,6 +238,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const [fx0, fy0, fx1, fy1] = f ? [f.x0, f.y0, f.x1, f.y1] : [NaN, NaN, NaN, NaN];
   const focusBox = useMemo((): Box | undefined => (Number.isNaN(fx0) ? undefined : { x0: fx0, y0: fy0, x1: fx1, y1: fy1 }), [fx0, fy0, fx1, fy1]);
   const rootRef = useRef<HTMLDivElement>(null);
+  const worldRef = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const descId = useId();
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
@@ -313,6 +318,17 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   // free part of the window.
   const lastInputs = useRef('');
   const heldInsets = useRef<Insets | undefined>(undefined);
+  /** The view as it is drawn now (for the effect below, which must not run again on every pan). */
+  const viewRef = useRef<View | undefined>(undefined);
+  useLayoutEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  /**
+   * The view was moved to keep the selected item clear of a sheet or panel that arrived: the insets
+   * before it came (`home`), the view then (`from`) and the view this left (`to`). When the insets
+   * are back (the sheet has gone) and nothing else has moved the view since, it goes back.
+   */
+  const sheetShift = useRef<{ home: Insets; from: View; to: View } | undefined>(undefined);
   const hold = !!props.hold;
   const hasView = view !== undefined;
   useLayoutEffect(() => {
@@ -328,16 +344,18 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     const same = inputs === lastInputs.current;
     lastInputs.current = inputs;
     const was = heldInsets.current;
-    const insetsMoved = !was || Math.max(Math.abs(was.top - insets.top), Math.abs(was.right - insets.right), Math.abs(was.bottom - insets.bottom), Math.abs(was.left - insets.left)) > HOLD_SLACK;
+    const insetsMoved = !was || !nearInsets(was, insets);
     if (auto.current) {
+      sheetShift.current = undefined;
       if (hold && same && hasView && !insetsMoved) return;
       heldInsets.current = insets;
       applyFit();
       return;
     }
     heldInsets.current = insets;
-    setView((v) => {
-      if (!v || !selectedBox) return v;
+    /** The view moved just enough to bring the selected item into the free part of the window (the view itself when it is there). */
+    const intoView = (v: View): View => {
+      if (!selectedBox) return v;
       const b = grow(selectedBox, 1);
       const sx0 = v.x + b.x0 * v.unit;
       const sx1 = v.x + b.x1 * v.unit;
@@ -352,7 +370,30 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const dx = sx1 - sx0 > fx1 - fx0 ? 0 : sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
       const dy = sy1 - sy0 > fy1 - fy0 ? 0 : sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
       return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
-    });
+    };
+    const now = viewRef.current;
+    if (!now) return;
+    // A move made since by anything else (the reader's pan or zoom, a part revealed) stays: no going back.
+    let shift = sheetShift.current && sameView(now, sheetShift.current.to) ? sheetShift.current : undefined;
+    let next: View;
+    if (shift && nearInsets(insets, shift.home)) {
+      // The sheet has gone: back to where the drawing was before it came (the selected item still in
+      // view), at once rather than sliding, so a tap made just after (a pin, once Wire is chosen in the
+      // sheet) lands on what is under it.
+      next = intoView(shift.from);
+      shift = undefined;
+      const world = worldRef.current;
+      if (world) {
+        world.style.transition = 'none';
+        requestAnimationFrame(() => requestAnimationFrame(() => world.style.removeProperty('transition')));
+      }
+    } else {
+      next = intoView(now);
+      // A sheet or a panel arrived and the item was moved clear of it (or moved again while it is there): remembered.
+      if (next !== now && (shift || (insetsMoved && was))) shift = { home: shift?.home ?? was!, from: shift?.from ?? now, to: next };
+    }
+    sheetShift.current = shift;
+    if (next !== now) setView((v) => (v && sameView(v, now) ? next : v ? intoView(v) : v));
     // Not on every change of the view: the reader's own pan and zoom are not undone while an item is selected.
   }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, minUnit, maxUnit, padding, hasView]);
 
@@ -766,7 +807,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         if (info) editing?.doubleClick?.(info);
       }}
     >
-      <div className="nb-world" style={worldStyle}>
+      <div ref={worldRef} className="nb-world" style={worldStyle}>
         {/* An SVG picture is read by its title and description only with role="img". */}
         {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
         <svg role="img"
