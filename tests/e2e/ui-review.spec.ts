@@ -2,18 +2,25 @@
  * What the final reviews of milestone 2 found in the page (the ui lane), fixed, in a real browser:
  * Ctrl+K keeps the focus in its field (Tab stays there, a click on a group's name too, Escape closes
  * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); a fix on the video's
- * mistake examples leaves no drawing warning, and the tab and the announcement agree (kept F1).
+ * mistake examples leaves no drawing warning, and the tab and the announcement agree (kept F1); the
+ * starter's why is shown in the hint line (words W9).
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { starterWords } from '../../src/app/editing.ts';
 import {
   checksCount,
   chooseExample,
   expectAnnounced,
   expectSolved,
+  gridPoint,
+  hintLine,
+  isPhone,
+  newCircuit,
   openApp,
   openPanel,
   panel,
+  partsToolbar,
   statusLine,
   RUN_TIMEOUT,
   t,
@@ -21,6 +28,13 @@ import {
 
 const palette = (page: Page) => page.getByRole('dialog', { name: t('paletteTitle') });
 const search = (page: Page) => palette(page).getByRole('combobox', { name: t('paletteLabel') });
+
+/** Click a grid point (a place on the paper) with the mouse. */
+async function clickAt(page: Page, x: number, y: number): Promise<void> {
+  const p = await gridPoint(page, x, y);
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.click(p.x, p.y);
+}
 
 test('Ctrl+K keeps the focus in its field: Tab stays there, Escape closes it, and a click on a group’s name keeps the focus (a11y A1)', async ({ page }) => {
   await openApp(page);
@@ -79,4 +93,13 @@ test('a fix on the video’s mistake examples leaves no drawing warning; the tab
     await expect(panel(page, 'checks')).not.toContainText(t('checksDrawingTitle'));
     await expect(statusLine(page)).toContainText(/Finished in \d+ ms/, { timeout: RUN_TIMEOUT });
   }
+});
+
+test('the first part on a blank page: why .op and .end were written is shown first in the hint line (words W9)', async ({ page }) => {
+  test.skip(isPhone(page), 'a phone places by tapping (the phone tests)');
+  await openApp(page);
+  await newCircuit(page);
+  await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
+  await clickAt(page, 2, 2);
+  await expect(hintLine(page)).toHaveText(`${starterWords()} ${t('drawingWritten')}`);
 });

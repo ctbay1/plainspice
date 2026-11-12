@@ -3,7 +3,7 @@
  * The page after the final reviews of milestone 2 (the ui lane), in jsdom with the real ngspice as
  * in app-smoke.test.tsx: Ctrl+K's real list found by the words it shows (words W4, W5, W12) and its
  * field keeping the focus (a11y A1, A3); a fix on a video's mistake example leaving no drawing
- * warning, and said with the tab's count (kept F1). Focus order and axe in a real browser:
+ * warning, and said with the tab's count (kept F1); the starter's why in the hint line (words W9). Focus order and axe in a real browser:
  * tests/e2e/ui-review.spec.ts.
  */
 import { readFileSync } from 'node:fs';
@@ -12,6 +12,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { App } from '../../src/app/App.tsx';
+import { starterWords } from '../../src/app/editing.ts';
 import type { Engine } from '../../src/app/engine.ts';
 import { START_HERE_ID } from '../../src/app/examples.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
@@ -155,5 +156,18 @@ describe('a fix on a video’s mistake example (kept F1)', () => {
     await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R2 n2 0 4'));
     expect(localStorage.getItem('plainspice:netlist')).not.toContain('*@ label n3');
     expect(localStorage.getItem('plainspice:netlist')).toContain('*@ label n2');
+  }, 30000);
+});
+
+describe('the first part on a blank page (words W9)', () => {
+  it('shows why .op and .end were written, first in the hint line, not only says it', async () => {
+    render(<App startup={saved('')} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Parts and tools' })).getByRole('button', { name: 'Add a part' }));
+    const form = await screen.findByRole('dialog', { name: 'Add a part' }, { timeout: 5000 });
+    fireEvent.click(within(form).getByRole('button', { name: /^Add R1/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a part' })).toBeNull());
+    // (The form's part is placed by the drawing, so no drawing lines are written yet: only the starter's why.)
+    await waitFor(() => expect(document.querySelector('.hint')!.textContent).toBe(starterWords()));
+    await waitFor(() => expect(polite()).toContain(starterWords()));
   }, 30000);
 });

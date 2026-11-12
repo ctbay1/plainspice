@@ -142,6 +142,7 @@ import {
   placePreview,
   reverseHand,
   sourceChoices,
+  starterWords,
   stepFrom,
   symbolEnd,
   turnHand,
@@ -2004,10 +2005,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     // no longer has removed, a line it could not use): said after the summary.
     const said = (how.notes ?? []).filter((n) => n.severity === 'warning' || n.kind === 'orphans-dropped').map((n) => n.message);
     announce([`${summary}${wrote}`, ...said].join(' '));
+    // The first part on a blank page also wrote .op and .end (needsStarter): why, first in the hint
+    // line, so the new lines in the netlist are explained to the eye too (final reviews, words W9).
+    const starter = summary.includes(starterWords()) ? starterWords() : '';
     // Seen too, not only heard: in the hint line for a moment, as a refusal's reason is (setRefusal below clears it otherwise).
-    if (said.length || wrote) {
+    if (said.length || wrote || starter) {
       refusedAt.current = performance.now();
-      setNoteLine([...(wrote ? [wrote.trim()] : []), ...said].join(' '));
+      setNoteLine([...(starter ? [starter] : []), ...(wrote ? [wrote.trim()] : []), ...said].join(' '));
     } else setNoteLine(undefined);
     setNoteWanted(false);
     if (how.select) {

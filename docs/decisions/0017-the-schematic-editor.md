@@ -326,3 +326,9 @@ Still open, on the plan: dragging a piece of wire; choosing what a controlled so
 the drawing; the phone's layout used with a keyboard and a mouse (large text on a laptop) gives touch
 words; automatic node names keep their numbers (n1, n4) when nodes merge; real screen readers and
 browsers other than Chromium.
+
+## After the final reviews (12 November 2026)
+
+- **The first part on a blank page shows why .op and .end were written**, first in the hint line and
+  for as long as the drawing note stays there, not only in what is said (words W9; the sentence is
+  `starterAdded`, the words lane's).
