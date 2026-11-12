@@ -24,7 +24,7 @@ import { interpretPlots, type AnalysisResults } from '../../src/engine/results.t
 import type { RawPlot, RunResult } from '../../src/engine/types.ts';
 import { formatSI } from '../../src/format/si.ts';
 import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
-import { explainLine, explainNetlist, readAnalysis, unusedSubcircuit } from '../../src/spice/explain.ts';
+import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import type { Netlist } from '../../src/spice/types.ts';
 
@@ -321,6 +321,9 @@ describe.each(FACTS)('$code ($id)', (f) => {
 // ------------------------------------------------------------------ 2. predictions
 
 describe('what the explanations predict matches the run', () => {
+  /** A line Explain says ngspice ignores: an analysis in a subcircuit no X line uses (A3f). */
+  const ignoredLine = (n: Netlist, i: number): boolean => /^ngspice ignores this line/.test(explainLine(n, i)?.notes[0] ?? '');
+
   it('counts the .dc points as ngspice does (A7–A15, A31)', () => {
     let checked = 0;
     for (const f of FACTS) {
@@ -329,7 +332,7 @@ describe('what the explanations predict matches the run', () => {
         const a = readAnalysis(n, i);
         if (a?.kind !== 'dc' || a.points === undefined) continue;
         // A3f: in a subcircuit no X line uses, ngspice runs no point of it.
-        if (unusedSubcircuit(n, i)) {
+        if (ignoredLine(n, i)) {
           expect(interpretPlots(runs.get(f.id)!.plots).dc, f.id).toBeUndefined();
           continue;
         }
@@ -349,7 +352,7 @@ describe('what the explanations predict matches the run', () => {
         const a = readAnalysis(n, i);
         if (a?.kind !== 'ac' || a.points === undefined) continue;
         // A3f: in a subcircuit no X line uses, ngspice runs no point of it.
-        if (unusedSubcircuit(n, i)) {
+        if (ignoredLine(n, i)) {
           expect(vectorValues(runs.get(f.id)!.plots, 'frequency'), f.id).toBeUndefined();
           continue;
         }
