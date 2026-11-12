@@ -342,7 +342,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - **Linear in a long PWL** (CR2-2). Working out each word's place walked back over the words before it, so
   a PWL of N numbers took time in N²: 22 s for 16,000 points, 2 s per keystroke at 4,000. The places of a
   part line are now worked out in one pass (`partPlaces`, once per line), and a PWL's times are weighed from
-  a count of their falls made once: 16,000 points take about 0.2 s, a character in every time too. A unit test
+  a count of their falls made once: 16,000 points take 0.1 to 0.3 s, and 0.4 s with a character in every
+  time (measured at load 8 on 4 cores). A unit test
   checks that ten PWLs of 1,000 points take about as long as one of 10,000.
 - **"Without a message" in a function or a setting, only where a run shows it** (CR2-3). A PWL's times must
   rise: a time read short out of order makes ngspice warn that the source "has non-increasing PWL time
