@@ -375,6 +375,17 @@ describe('S11: a character in a node name that is not what it looks like is name
     expect(describeCircuit(parseNetlist('* names\nV1 \u03b1\u03b2 0 1\nR1 \u03b1\u03b2 \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n'))).not.toContain('written with');
   });
 
+  it('the card names it once, as its own sentence does: "node оut (written with the Cyrillic letter о, which looks like o) is higher"', async () => {
+    // Native ngspice 47 and 42: оut is the node __ut, 6 V (look-alike-letter-5).
+    const text = '* cy\nV1 \u043eut 0 6\nR1 \u043eut 0 1k\n.op\n.end\n';
+    const s = buildSchematic(text, NOTEBOOK_OPTIONS);
+    const part = s.circuit.parts.find((p) => p.name === 'R1')!;
+    const state: CardState = { key: part.key, start: part.valueText, input: part.valueText, before: undefined, session: 1, kept: part.valueText };
+    const across = cardContent(part, state, s, await solve(text, await engine), text).readouts.find((r) => r.tone === 'voltage')!;
+    expect(across.sub?.[0]).toBe('node \u043eut (written with the Cyrillic letter \u043e, which looks like o) is higher');
+    expect(across.speech.match(/written with/g)).toHaveLength(1);
+  }, 30000);
+
   it('the overview and the results\' words name it too: "node out (written with a zero-width space in it)"', () => {
     const n = parseNetlist(ZW_BOTH);
     expect(describeCircuit(n)).toContain('3 nodes besides ground (in, out, out (written with a zero-width space in it))');

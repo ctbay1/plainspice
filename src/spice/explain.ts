@@ -767,6 +767,8 @@ function nodeName(ref: NodeRef): string {
  * о, which looks like o)" (look-alike-letter-5). Any other name as written.
  */
 export function nodeNameInWords(text: string): string {
+  // A name has no space in it (SPICE splits words at spaces): words with one were said already.
+  if (text.includes(' ')) return text;
   if (hasInvisible(text)) return S.nodeWithInvisible(withoutInvisible(text), nameOfCharacter([...text].find((ch) => INVISIBLE.test(ch))!, false)!);
   if (hasSpaceLike(text)) return S.nodeWithSpace(withSpaces(text), nameOfCharacter([...text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
   if (lookAlikeName(text) !== undefined) return S.nodeWithLookAlike(text, describeCharacter(cleanWord(text).odd[0]!));
