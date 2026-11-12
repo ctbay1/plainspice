@@ -439,8 +439,12 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   }
 
   // 2. Islands joining different nodes: cut the odd pins loose (the most common node keeps the wires).
+  //    A round that changes nothing (a pin on slanted copper, which a cut cannot free) ends the step:
+  //    each round after it would start from the same drawing and change nothing either (second
+  //    re-check, P3: on a slanted lattice at the format's limits, 50 such rounds took a second).
   let cut = false;
   for (let round = 0; round < 50; round++) {
+    const before = { segs, grounds: drawing.grounds.length };
     const pins = pinsOf();
     const islands = islandsOf(pins.map((p) => p.at));
     const members = new Map<number, DrawnPin[]>();
@@ -467,6 +471,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     }
     if (!changed) break;
     segs = pruneDangling(segs, pinsOf().map((p) => p.at), drawing.labels.map((l) => l.at));
+    if (drawing.grounds.length === before.grounds && sameSegments(segs, before.segs)) break;
   }
 
   // 3. Labels: on their node's copper, else moved onto it (when close) or dropped; then one name per
@@ -549,10 +554,10 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   };
   for (const node of circuit.nodes.keys()) {
     for (let guard = 0; guard < 64; guard++) {
-      const { groups, islands } = groupsOf(drawing, node, islandsNow());
+      const { groups } = groupsOf(drawing, node, islandsNow());
       if (groups.length <= 1) break;
       obstacles ??= obstaclesOf(circuit, drawing, mergedOf(segs), options);
-      const path = budget.left > 0 ? routeBetween(circuit, drawing, segs, node, groups, obstacles, budget, islands) : undefined;
+      const path = budget.left > 0 ? routeBetween(drawing, segs, node, groups, obstacles, budget, islandsNow()) : undefined;
       if (path && path.length < 2) break;
       if (path) {
         for (let i = 1; i < path.length; i++) segs.push([path[i - 1]!, path[i]!]);
@@ -633,6 +638,11 @@ function clashOf(pins: readonly DrawnPin[]): DrawnPin[] | undefined {
   const byPoint = new Map<string, DrawnPin[]>();
   for (const p of pins) (byPoint.get(pointKey(p.at)) ?? byPoint.set(pointKey(p.at), []).get(pointKey(p.at))!).push(p);
   return [...byPoint.values()].find((list) => new Set(list.map((p) => p.node)).size > 1);
+}
+
+/** True when two lists of segments are the same, point for point, in the same order. */
+function sameSegments(a: readonly Segment[], b: readonly Segment[]): boolean {
+  return a === b || (a.length === b.length && a.every(([p, q], i) => samePoint(p, b[i]![0]) && samePoint(q, b[i]![1])));
 }
 
 /** True when two lists of polylines are the same, point for point. */
@@ -784,9 +794,12 @@ function obstaclesOf(circuit: Circuit, drawing: Drawing, wires: Point[][], optio
   };
 }
 
-/** A new wire from the first piece of a node to the nearest other piece, or undefined (`islands`: of these segments and the drawing's pins, as groupsOf found them). */
-function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string, groups: readonly Group[], obstacles: Obstacles, budget: { left: number }, islands: Islands): Point[] | undefined {
-  const pins = drawnPins(circuit, drawing);
+/**
+ * A new wire from the first piece of a node to the nearest other piece, or undefined (`pins` and
+ * `islands`: the drawing's pins and the islands of these segments and those pins, as groupsOf found
+ * them: not found again for each route).
+ */
+function routeBetween(drawing: Drawing, segs: readonly Segment[], node: string, groups: readonly Group[], obstacles: Obstacles, budget: { left: number }, { pins, islands }: { pins: readonly DrawnPin[]; islands: Islands }): Point[] | undefined {
   const pinOutward = new Map<string, RouteEnd>();
   for (const [k, list] of obstacles.outward) {
     const own = list.find((x) => x.node === node);

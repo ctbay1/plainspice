@@ -15,8 +15,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
-import { buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
-import { partsAtOnePoint, piled } from './schematic-hostile.ts';
+import { applyEdit, buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
+import { partsAtOnePoint, piled, slantedLattice } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0 }));
 
@@ -137,6 +137,20 @@ describe('names and ground symbols piled on one point or one square cost what th
     // next to its copper, say), and no more for the second 950 lines than for the first.
     expect(full.checks - base.checks).toBeLessThan(300 * 1900);
     expect(full.checks - half.checks).toBeLessThanOrEqual(Math.max(1000, 1.2 * (half.checks - base.checks)));
+  });
+});
+
+describe('the repairs stop when a round changes nothing (P3)', () => {
+  it('a pin on a slanted lattice at the format’s limits, which a cut cannot free: a few rounds, not fifty', { timeout: 60_000 }, () => {
+    const s = build(slantedLattice(70, true));
+    expect(s.drawing.wires.reduce((n, w) => n + w.length - 1, 0)).toBeGreaterThan(9000);
+    // Disconnecting R2 from ground leaves ground's lattice on R2's pin, on slanted copper that a cut
+    // cannot take off it: the edit is refused (the drawing would not connect what the netlist does).
+    // Each rebuild the edit makes cut dead ends after each round of the repair, 50 rounds each: 150
+    // passes over the 9,666 pieces, a second and a half here.
+    const r = counted(() => applyEdit(s, { kind: 'disconnect-pin', part: 'r2', pin: 1 }, NOTEBOOK_OPTIONS));
+    expect(r.result.ok).toBe(false);
+    expect(r.prunes).toBeLessThan(30);
   });
 });
 
