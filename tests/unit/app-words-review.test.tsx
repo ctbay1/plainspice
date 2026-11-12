@@ -294,6 +294,14 @@ describe('W11: whole lines ngspice does not read', () => {
     expect(checks(plain, 'after-end').filter((x) => /skip|looks/.test(x))).toEqual([]);
     // A command on line 1 is the title: it never runs, as the check's own why says.
     expect(checks(title, 'missing-title')[0]).toBe('Line 1 is the title, so .op never runs');
+    // ngspice reads a .print or .plot line and answers ".print line ignored since rawfile was produced": Explain
+    // and the Checks panel both say it leaves the line out, never that it skips it (names lane critic 2, 6).
+    for (const kind of ['.print', '.plot']) {
+      const printed = `* t\nV1 in 0 12\nR1 in \u00e7 1k\nR2 \u00e7 0 2k\n.dc V1 0 12 6\n${kind} dc v(\u00e7)\n.end\n`;
+      expect(explained(printed, 6), kind).toContain(`and then ngspice leaves the ${kind} line out ("${kind} line ignored since rawfile was produced")`);
+      expect(checks(printed, 'non-ascii-node').join(' '), kind).toContain(`PlainSpice's run leaves .print and .plot lines out (ngspice: "${kind} line ignored since rawfile was produced.")`);
+      expect([explained(printed, 6), ...checks(printed, 'non-ascii-node')].filter((x) => /skip/.test(x)), kind).toEqual([]);
+    }
   });
 });
 

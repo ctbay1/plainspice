@@ -408,3 +408,11 @@ Ctrl+K stay as they are.
   once, listing the names: "it reads each name as written, so it finds no node ş or ç there", "it warns
   "can't parse 'ş'" and "can't parse 'ç'"", and "save v(ş) v(ç) saves nothing" (one save line) or "save
   v(ş) and save ç save nothing" (two).
+- **Explain leaves a .print line out too** (names lane, second critic, 6). The Checks panel says
+  PlainSpice's run "leaves .print and .plot lines out", since ngspice reads such a line and answers
+  ".print line ignored since rawfile was produced" (W11 keeps "skips" for whole lines ngspice does not
+  read), but Explain said for the same line "and then ngspice skips .print". Explain now says "and then
+  ngspice leaves the .print line out" (`src/spice/explain.ts`, the words lane's file: one sentence),
+  and the W11 test checks both panels' words for a .print and a .plot line. Explain's ".meas" sentence
+  ("ngspice skips .meas", with ngspice's own "No .measure possible …") is the same case, left to the
+  words lane.
