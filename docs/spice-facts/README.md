@@ -84,7 +84,8 @@ tf-problems-8 in traps.md (a `.tf` output written with an invisible character, o
 space or a look-alike letter is another node with nothing on it: a transfer function of 0 and an
 output impedance of 1 Ω, so the .tf check keeps its error there) and M2d in explanations.md (ngspice
 points at a node in its own spelling, `check node ou___t`, `check node __iki__`, which the words map
-back to the node).
+back to the node), A3d and A3e (a `.tf` after `.end` with a current source as the input, and with a
+current output: the same numbers as above `.end`, so the same units and names).
 
 ## Where the evidence came from
 

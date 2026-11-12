@@ -1298,17 +1298,22 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const reading = r?.kind === 'tf' ? r : undefined;
-  // A .tf after .end, which ngspice runs (S25, A3c), has no reading: ngspice's names, as the netlist writes them (W16).
-  const output = withoutInvisible(reading?.output ?? (tf.outputImpedance ? netlistVector(netlist, tf.outputImpedance.at) : '?'));
-  const input = reading?.input?.text ?? (tf.inputImpedance ? (partsOf(netlist).byKey.get(netlistPart(netlist, tf.inputImpedance.source))?.element?.name.text ?? tf.inputImpedance.source) : '?');
+  // A .tf after .end, which ngspice runs (S25, A3c, A3d), has no reading: ngspice's names, as the netlist
+  // writes them (W16, W18), its input's kind by the part's letter (a current source: V/A, A4) and a
+  // current output by its part ("i(Vm)", "the current in Vm").
+  const part = (name: string): Element | undefined => partsOf(netlist).byKey.get(netlistPart(netlist, name))?.element;
+  const inPart = reading || !tf.inputImpedance ? undefined : part(tf.inputImpedance.source);
+  const outPart = reading || !tf.outputImpedance?.at.startsWith('i(') ? undefined : part(tf.outputImpedance.at.slice(2, -1));
+  const output = withoutInvisible(reading?.output ?? (outPart ? `i(${outPart.name.text})` : tf.outputImpedance ? netlistVector(netlist, tf.outputImpedance.at) : '?'));
+  const input = reading?.input?.text ?? inPart?.name.text ?? tf.inputImpedance?.source ?? '?';
   const outKind = reading?.outputKind ?? (tf.outputImpedance?.at.startsWith('i(') ? 'current' : 'voltage');
-  const inKind = reading?.inputKind === 'current' ? 'current' : 'voltage';
+  const inKind = (reading ? reading.inputKind === 'current' : inPart?.letter === 'I') ? 'current' : 'voltage';
   const ratio = `${outKind === 'current' ? 'A' : 'V'}/${inKind === 'current' ? 'A' : 'V'}`;
   const words: TransferFunctionWords = { output, input, ratio };
   if (tf.transferFunction !== undefined) {
     const v = formatNumber(tf.transferFunction);
     const [n1, n2] = tfNodes(netlist, reading, tf);
-    const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
+    const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? outPart?.name.text ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
     words.transferFunction = {
       value: tf.transferFunction,
       text: S.transfer(output, input, v, ratio),

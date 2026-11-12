@@ -89,6 +89,8 @@ const FACTS: Fact[] = [
   { code: 'A3b-op', id: 'an-tf-gnd-op', netlist: "* .op beside the .tf of a3b: the ordinary node gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "v(x)": 2.5, "v(gnd)": 2.5, "i(vx)": 0, "i(v1)": -0.004999999999999999 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'A3b-alone', id: 'an-tf-gnd-alone', netlist: "* .tf v(gnd): the voltage at ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(0))": 0 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'A3c', id: 'an-tf-after-end', netlist: "* a .tf written after .end\nV1 in 0 5\nR1 in out 1k\nR2 out mid 1k\nR3 mid 0 1k\n.end\n.tf v(out,mid) V1\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out,mid))": 666.6666666666667 } },
+  { code: 'A3d', id: 'an-tf-isource-after-end', netlist: "* .tf with a current source as the input, written after .end\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.end\n.tf v(b) I1\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
+  { code: 'A3e', id: 'an-tf-current-after-end', netlist: "* .tf from a current source to a current, written after .end\nI1 0 a 1\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.end\n.tf i(Vm) I1\n", vectors: { "v(Transfer_function)": 0.6666666666666667, "v(i1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -480,6 +482,15 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(plain(after.words.tf?.transferFunction?.text)).toBe('v(out,mid)/V1 = 0.3333 (V/V)');
     expect(plain(after.words.tf?.inputResistance?.text)).toBe('input resistance seen by V1: 3 kΩ (ngspice calls it the input impedance)');
     expect(after.words.tf?.outputResistance?.speech).toBe('the output resistance between node out and node mid is 666.7 ohms, the Thévenin resistance');
+    // A4's netlist with its .tf after .end: a current source as the input, V/A as above .end (A3d).
+    const a4 = describeRun(fact('A3d').netlist, runs.get('an-tf-isource-after-end')!).words.tf!;
+    const a4Above = ofFact('A4').words.tf!;
+    expect([a4.ratio, plain(a4.transferFunction?.text), a4.transferFunction?.speech]).toEqual(['V/A', 'v(b)/I1 = 1 (V/A)', 'the transfer function from I1 to the voltage at node b is 1 volt per amp, which is an ohm']);
+    expect([a4.transferFunction?.speech, a4.outputResistance?.text, a4.inputResistance?.text]).toEqual([a4Above.transferFunction?.speech, a4Above.outputResistance?.text, a4Above.inputResistance?.text]);
+    // A current output after .end is the current in its part, named as written (A3e).
+    const a3e = describeRun(fact('A3e').netlist, runs.get('an-tf-current-after-end')!).words.tf!;
+    expect([a3e.output, a3e.ratio, plain(a3e.transferFunction?.text), a3e.transferFunction?.speech]).toEqual(['i(Vm)', 'A/A', 'i(Vm)/I1 = 0.6667 (A/A)', 'the transfer function from I1 to the current in Vm is 0.6667 amps per amp']);
+    expect(plain(a3e.outputResistance?.text)).toBe("ngspice's output impedance for i(Vm): 1e+20 Ω, a stand-in number rather than a resistance of your circuit");
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {

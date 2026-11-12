@@ -1326,6 +1326,70 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out,mid)) = 666.6666666666667
 ```
 
+### A3d. After .end too, a current source as the input makes the transfer function V/A
+
+A4's netlist with its `.tf` written after `.end`: ngspice runs it and gives A4's three numbers, so the
+transfer function is 1 V per ampere, not "1 (V/V)". PlainSpice has no reading of a line after `.end`
+(A3c), so its .tf words take the input's kind from the part ngspice names (`i1#input_impedance` is I1,
+a current source): "1 volt per amp, which is an ohm", as for A4 (critic of the words re-check's fix,
+12 November 2026).
+
+```spice
+* .tf with a current source as the input, written after .end
+I1 0 a 1
+R1 a 0 4
+R2 a b 2
+R3 b 0 2
+.end
+.tf v(b) I1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 1.000000e+00
+    i1#input_impedance = 2.000000e+00
+    output_impedance_at_v(b) = 1.500000e+00
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 1, v(i1#Input_impedance) = 2, v(output_impedance_at_V(b)) = 1.5
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 1, v(i1#Input_impedance) = 2, v(output_impedance_at_V(b)) = 1.5
+```
+
+### A3e. After .end too, a current output is the current in its source: i(Vm), A/A from a current source
+
+A current source drives a current output, with the `.tf` after `.end`. I1 pushes 1 A into a; all of it
+flows through R1 to b, where it splits between R3 (6 Ω) and Vm with R2 (3 Ω): i(Vm) = 1 A × 6/9 = 2/3 A,
+a transfer function of 2/3 A per ampere. I1 sees R1 + (6 Ω ∥ 3 Ω) = 4 Ω, and for a current output
+ngspice's output impedance is 1e20 Ω, as in A5. ngspice names the output by its source (`vm#output_impedance`), so PlainSpice's words name that
+part as the netlist writes it, "i(Vm)" and "the current in Vm", where they said "i(vm)" and "the
+current in i(vm)", and in A/A (critic of the words re-check's fix, 12 November 2026). Written above
+`.end`, the same netlist gives the same three numbers.
+
+```spice
+* .tf from a current source to a current, written after .end
+I1 0 a 1
+R1 a b 2
+Vm b c 0
+R2 c 0 3
+R3 b 0 6
+.end
+.tf i(Vm) I1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 6.666667e-01
+    i1#input_impedance = 4.000000e+00
+    vm#output_impedance = 1.000000e+20
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
+  the same with the .tf above .end, ngspice -b (exit 0): the same printout and rawfile values
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
+```
+
 ### A4. The .tf input can be a current source: the transfer function is then in V/A
 
 I1 pushes 1 A into a; R1 ‖ (R2 + R3) = 2 Ω, so a = 2 V and b = 1 V: v(b)/I1 = 1 V per ampere. I1 sees 2 Ω, and the resistance at b is R3 ‖ (R2 + R1) = 1.5 Ω.

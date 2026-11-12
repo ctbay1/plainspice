@@ -499,7 +499,10 @@ what they look like):
   about node "ground", which is not in the circuit'); and a .tf written after .end, which ngspice runs (S25, A3c) but
   PlainSpice does not read as a dot command, takes its nodes from ngspice's own name for the output,
   as the netlist writes them: "between node out and node mid", "at node çıkış", never "at node
-  v(out,mid)"; its source is named as written ("V1"). The .tf check never offers "Use gnd" for a
+  v(out,mid)"; its source is named as written ("V1"), and so is the part a current output reads
+  ("i(Vm)", "the current in Vm", never "the current in i(vm)": A3e), and the input's kind comes from
+  that part's letter, so a current source gives V/A or A/A after `.end` as above it (A3d: "1 volt per
+  amp, which is an ohm", where it said "1 volt per volt"; critic of the fix). The .tf check never offers "Use gnd" for a
   typo of an ordinary node called gnd: written in v( ), gnd is ground (`.tf v(gnd) V1` gives
   output_impedance_at_V(0), A3b), so the fix would measure ground; a name like ground is offered
   quoted ('Use "ground"').
