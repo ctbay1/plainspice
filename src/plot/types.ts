@@ -16,6 +16,11 @@ export interface PlotSeries {
   unit: PlotUnit;
   /** Usually a Float64Array straight from the engine (it is drawn without copying). */
   values: ArrayLike<number>;
+  /**
+   * The values as ngspice gave them, when PlainSpice shows some of them as 0 because they are rounding
+   * noise of a 0 (decision 0015): the data table and the CSV file give them in a column of their own.
+   */
+  given?: ArrayLike<number>;
 }
 
 export interface PlotSpec {

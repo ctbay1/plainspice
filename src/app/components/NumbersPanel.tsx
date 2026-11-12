@@ -174,6 +174,8 @@ export interface TfRow {
   text: string;
   speech: string;
   value: number;
+  /** ngspice's own value, when PlainSpice shows its rounding noise of a 0 as 0 (decision 0015, C9p). */
+  given?: number;
 }
 
 /** The .tf results as rows: the transfer function, the output resistance and the input resistance, in words (the drawing's card shows them too). */
@@ -186,6 +188,7 @@ export function tfRows(tf: TransferFunctionWords): TfRow[] {
       text: `${formatNumber(v)} ${tf.ratio}`,
       speech: `${formatNumber(v).replace('−', `${t('minusWord')} `)} ${RATIO_WORDS[tf.ratio] ? t(RATIO_WORDS[tf.ratio]!) : tf.ratio}`,
       value: v,
+      ...(tf.transferFunction.noise !== undefined ? { given: tf.transferFunction.noise } : {}),
     });
   }
   if (tf.outputResistance) {
@@ -223,7 +226,7 @@ const TfTable = memo(function TfTable({ tf }: { tf: TransferFunctionWords }): Re
                 <Quantity text={r.text} speech={r.speech} />
               </td>
               <td className="num">
-                <code className="code">{formatLikeNgspice(r.value)}</code>
+                <code className="code">{formatLikeNgspice(r.given ?? r.value)}</code>
               </td>
             </tr>
           ))}

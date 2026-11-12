@@ -9,7 +9,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
+import { plotSpecs } from '../../src/app/components/PlotPanel.tsx';
 import { solveText } from '../../src/app/model.ts';
+import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { roundingNoise, type ResultsInWords } from '../../src/spice/describe.ts';
 
@@ -193,3 +195,52 @@ describe('code-6: the rule for other circuits looks again at a part when two gro
     expect(noise(last.words).sort()).toEqual(['E1', 'R5', 'R6', 'node out']);
   });
 });
+
+describe('S8: .tf and .dc in a circuit solved exactly give 0 where the circuit makes 0, and keep ngspice\'s numbers in their own columns (C9p)', () => {
+  const bridge = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k'];
+  const run = (...l: string[]): Promise<Awaited<ReturnType<typeof solveText>>> => solveText(`* t\n${l.join('\n')}\n.end\n`, ngspice);
+
+  it('.tf v(a,b) V1 of the balanced bridge is 0 V/V, not -5.551e-17, with a note that gives ngspice\'s number', async () => {
+    const { words } = await run(...bridge, 'R5 a b 1k', '.tf v(a,b) V1');
+    expect(words.tf!.transferFunction).toMatchObject({ value: 0, noise: -5.551115123125783e-17, text: 'v(a,b)/V1 = 0 (V/V)' });
+    expect(words.tf!.transferFunction!.speech).toContain('is 0 volts per volt');
+    expect(sp(words.warnings.find((m) => m.code === 'rounding-noise')!.why)).toBe(
+      "ngspice gave v(a,b)/V1 = -5.551115e-17. That is rounding noise, what its arithmetic leaves of a ratio that is 0: the voltage between node a and node b does not change when V1 changes. Solved exactly, with fractions, from the netlist's values, the circuit makes the ratio exactly 0, so PlainSpice shows 0 V/V.",
+    );
+    const i = await run(...bridge, 'R5 a m 1k', 'Vm m b 0', '.tf i(Vm) V1');
+    expect(i.words.tf!.transferFunction).toMatchObject({ value: 0, noise: -2.710505431213761e-20 });
+  });
+
+  it('a real ratio far smaller than that noise is kept: 1 MΩ over 1e-12 Ω gives 1e-18 V/V, with no note', async () => {
+    const { words } = await run('V1 in 0 1', 'R1 in out 1meg', 'R2 out 0 1e-12', '.tf v(out) V1');
+    expect([words.tf!.transferFunction!.value, words.tf!.transferFunction!.noise]).toEqual([9.999999999999999e-19, undefined]);
+    expect(words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+  });
+
+  it('.dc V1 0 9 3: i(vm) is 0 A at every point, in the words, the note and the Plot panel; its table and CSV keep ngspice\'s values beside them', async () => {
+    const r = await run(...bridge, 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9 3');
+    const sweep = r.words.sweeps[0]!;
+    expect(sweep.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0, noise: -2.168404344971009e-19 });
+    expect(sp(sweep.text)).toContain('i(vm) = 0 A');
+    expect(sp(r.words.warnings.find((m) => m.code === 'rounding-noise')!.why)).toContain(
+      'ngspice gave i(vm) -5.421011e-20 A at V1 = 3 V, i(vm) -1.084202e-19 A at V1 = 6 V and i(vm) -2.168404e-19 A at V1 = 9 V.',
+    );
+    const spec = plotSpecs(r.results, r.netlist)[0]!;
+    const vm = spec.series.find((s) => s.label === 'i(vm)')!;
+    expect([...Array.from(vm.values)]).toEqual([0, 0, 0, 0]);
+    expect([...Array.from(vm.given!)]).toEqual([0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19]);
+    const table = tableRows(spec);
+    expect(table.header).toContain('i(vm) as ngspice gave it (A)');
+    expect(csvText(spec)).toContain('-2.168404344971009e-19');
+    // The other lines have no second column: their values are ngspice's.
+    expect(spec.series.filter((s) => s.given).map((s) => s.label)).toEqual(['i(vm)']);
+  });
+
+  it('.dc of a current source: the same for its noise; a sweep of two sources is left as ngspice gave it', async () => {
+    const r = await run('I1 0 top 1m', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', '.dc I1 0 1m 0.25m');
+    expect(r.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0, noise: -4.336808689942018e-19 });
+    const two = await run(...bridge, 'V2 b2 0 1', 'R6 b2 0 1k', 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9 3 V2 0 1 1');
+    expect(two.words.sweeps[0]!.final.every((f) => f.noise === undefined)).toBe(true);
+  });
+});
+

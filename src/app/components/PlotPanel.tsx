@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AnalysisResults, Sweep } from '../../engine/results.ts';
 import { t } from '../../i18n/index.ts';
 import type { PlotHandle, PlotSpec } from '../../plot/types.ts';
-import { netlistVector } from '../../spice/describe.ts';
+import { netlistVector, shownSweep } from '../../spice/describe.ts';
 import type { Netlist } from '../../spice/types.ts';
 
 /**
@@ -29,8 +29,12 @@ export function dcSourceName(netlist: Netlist): string | undefined {
  * A sweep's lines, named with the netlist's names: v(giriş) where ngspice writes v(giri__), as the
  * Numbers panel and the results' words name them (W16, W18).
  */
-function seriesOf(sweep: Sweep, netlist: Netlist): PlotSpec['series'] {
-  return sweep.series.map((s) => ({ label: netlistVector(netlist, s.name), unit: s.unit, values: s.values }));
+function seriesOf(sweep: Sweep, netlist: Netlist, given?: Sweep): PlotSpec['series'] {
+  return sweep.series.map((s, j) => {
+    const raw = given?.series[j]?.values;
+    // Rounding noise of a 0 is drawn and read as 0 (decision 0015); ngspice's own values keep their column.
+    return raw && raw !== s.values ? { label: netlistVector(netlist, s.name), unit: s.unit, values: s.values, given: raw } : { label: netlistVector(netlist, s.name), unit: s.unit, values: s.values };
+  });
 }
 
 const seriesNames = (sweep: Sweep, netlist: Netlist): string => sweep.series.map((s) => netlistVector(netlist, s.name)).join(', ');
@@ -43,7 +47,7 @@ export function plotSpecs(results: AnalysisResults, netlist: Netlist): PlotSpec[
       title: t('plotTitleDc', { series: seriesNames(results.dc, netlist), source }),
       kind: 'dc',
       x: { label: source, unit: results.dc.scale.unit, values: results.dc.scale.values },
-      series: seriesOf(results.dc, netlist),
+      series: seriesOf(shownSweep(netlist, results) ?? results.dc, netlist, results.dc),
     });
   }
   if (results.tran && results.tran.series.length) {
