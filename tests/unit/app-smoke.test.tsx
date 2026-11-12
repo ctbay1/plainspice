@@ -87,6 +87,19 @@ function start(netlist: string, extra: { run?: boolean } = {}): StartupDecision 
 }
 
 const polite = (): string => screen.getByTestId('live-polite').textContent ?? '';
+/**
+ * The paragraphs added to the polite region from now on whose words match: one paragraph is one
+ * announcement. Counted as they come, not read from the region: a paragraph stays there for 10 s, so
+ * the one from before would pass a check of the region's words (the second re-check, AP-3).
+ */
+function heard(re: RegExp): { said: string[]; stop: () => void } {
+  const said: string[] = [];
+  const mo = new MutationObserver((records) => {
+    for (const r of records) for (const n of r.addedNodes) if (re.test(n.textContent ?? '')) said.push(n.textContent ?? '');
+  });
+  mo.observe(screen.getByTestId('live-polite'), { childList: true });
+  return { said, stop: () => mo.disconnect() };
+}
 const statusLine = (): string => document.querySelector('.status')?.textContent ?? '';
 const drawingText = (): string => document.querySelector('.nb-canvas svg')?.textContent ?? '';
 const editorText = (): string => document.querySelector('.cm-content')?.textContent ?? '';
@@ -901,6 +914,55 @@ describe('<App /> after the words re-check of step B', () => {
     expect(within(form).getByRole('button', { name: /^Make it 1meg/ })).toBeTruthy();
     // The ends are "End 1" and "End 2" (a part's ends are on nodes).
     expect(within(form).getByRole('combobox', { name: 'End 1' })).toBeTruthy();
+  }, 30000);
+
+  it('a run the student asks for is always said, the same words or not; a run after a change only when its numbers change, never for a comment (AP-3, WCAG 4.1.3)', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await solved();
+    await waitFor(() => expect(polite()).toMatch(/Simulation finished/), { timeout: 5000 });
+    const finished = heard(/^Simulation finished/);
+    // Run in the top bar, on a circuit that has not changed: the same words, said again.
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Actions' })).getByRole('button', { name: 'Run' }));
+    await waitFor(() => expect(engine.runs).toHaveLength(2), { timeout: 15000 });
+    await waitFor(() => expect(finished.said).toHaveLength(1), { timeout: 5000 });
+    expect(finished.said[0]).toBe('Simulation finished: node in is 6 volts, node out is 4 volts; 3 currents.');
+    // Ctrl+Enter, from anywhere on the page: said once more.
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(engine.runs).toHaveLength(3), { timeout: 15000 });
+    await waitFor(() => expect(finished.said).toHaveLength(2), { timeout: 5000 });
+    // A comment typed in the Netlist panel runs again with the same numbers: nothing is said.
+    fireEvent.click(tab('Netlist'));
+    const view = await editorView();
+    act(() => {
+      view.dispatch({ changes: { from: view.state.doc.toString().indexOf('.op'), insert: '* a note\n' } });
+    });
+    await waitFor(() => expect(engine.runs).toHaveLength(4), { timeout: 15000 });
+    await new Promise((r) => setTimeout(r, 2500));
+    expect(finished.said).toHaveLength(2);
+    finished.stop();
+  }, 30000);
+
+  it('a value changed in a DC sweep is said, with the sweep’s last point as its results card says it, and Run says it again (AP-3)', async () => {
+    const engine = realEngine();
+    render(<App startup={start(read('tests/fixtures/d1-dc-divider-sweep.cir'))} engine={engine} serviceWorker={false} />);
+    await solved();
+    await waitFor(() => expect(polite()).toMatch(/Simulation finished/), { timeout: 5000 });
+    const finished = heard(/^Simulation finished/);
+    // R2 from 2k to 1k on its card: the summary keeps its words ("a DC sweep of 13 points"), the numbers do not.
+    fireEvent.click(part('R2'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R2/ }), { target: { value: '1k' } });
+    await waitFor(() => expect(engine.runs.at(-1)).toContain('R2 out 0 1k'), { timeout: 15000 });
+    await waitFor(() => expect(finished.said).toHaveLength(1), { timeout: 5000 });
+    // Said with the last point, as the results card says it (native ngspice 47: v(out) = 6 V at V1 = 12 V; 8 V before, at load).
+    expect(finished.said[0]).toBe('Simulation finished: a DC sweep of 13 points. When V1 is 12 volts: the voltage at node in is 12 volts, the voltage at node out is 6 volts, the current in V1 is minus 6 milliamps.');
+    expect(polite()).toContain('Simulation finished: a DC sweep of 13 points. When V1 is 12 volts: the voltage at node in is 12 volts, the voltage at node out is 8 volts, the current in V1 is minus 4 milliamps.');
+    fireEvent.keyDown(screen.getByRole('textbox', { name: /R2/ }), { key: 'Escape' });
+    // Run, asked for on the circuit as it is: said again, in the same words.
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Actions' })).getByRole('button', { name: 'Run' }));
+    await waitFor(() => expect(finished.said).toHaveLength(2), { timeout: 15000 });
+    expect(finished.said[1]).toBe(finished.said[0]);
+    finished.stop();
   }, 30000);
 
   it('Help lists every editing key in the margin’s words, spells Esc one way, and says the screen-reader behaviour is not yet tried (new-21, new-22, new-23, new-24, new-34)', async () => {

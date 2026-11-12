@@ -120,6 +120,8 @@ export interface TransferFunctionWords {
 export interface SweepWords {
   kind: 'dc' | 'tran';
   points: number;
+  /** The last point alone, as `speech` ends ("When V1 is 12 volts: the voltage at node out is 8 volts, …"); '' without one. */
+  end?: string;
   /** "DC sweep of V1 from 0 V to 12 V: 13 points. At V1 = 12 V: v(out) = 8 V, …" */
   text: string;
   speech: string;
@@ -1338,9 +1340,9 @@ function sweepsOf(netlist: Netlist, results: AnalysisResults): SweepWords[] {
     const whereSpeech = !one ? S.atLastPoint : one.kind === 'temperature' ? speakSI(last!, sweep.scale.unit) : S.sweepAtSpeech(sweepName(one), speakSI(last!, sweep.scale.unit));
     const head = points ? S.dcSweepText(what, points) : S.dcNoPoints(what);
     const text = points && f.length ? `${head} ${S.atEnd(where, f.map((x) => x.text).join(', '))}` : head;
-    const speech =
-      points && f.length ? `${head} ${(one && one.kind !== 'temperature' ? S.atEndSpeech : S.atEnd)(whereSpeech, f.map((x) => x.speech).join(', '))}` : head;
-    out.push({ kind: 'dc', points, text, speech, final: f });
+    const end = points && f.length ? (one && one.kind !== 'temperature' ? S.atEndSpeech : S.atEnd)(whereSpeech, f.map((x) => x.speech).join(', ')) : '';
+    const speech = end ? `${head} ${end}` : head;
+    out.push({ kind: 'dc', points, end, text, speech, final: f });
   }
   if (results.tran) {
     const sweep = results.tran;
@@ -1351,8 +1353,9 @@ function sweepsOf(netlist: Netlist, results: AnalysisResults): SweepWords[] {
     const to = formatSI(t[points - 1] ?? 0, 's');
     const head = S.tranText(from, to, points);
     const text = points && f.length ? `${head} ${S.atEnd(to, f.map((x) => x.text).join(', '))}` : head;
-    const speech = points && f.length ? `${head} ${S.atEnd(speakSI(t[points - 1] ?? 0, 's'), f.map((x) => x.speech).join(', '))}` : head;
-    out.push({ kind: 'tran', points, text, speech, final: f });
+    const end = points && f.length ? S.atEnd(speakSI(t[points - 1] ?? 0, 's'), f.map((x) => x.speech).join(', ')) : '';
+    const speech = end ? `${head} ${end}` : head;
+    out.push({ kind: 'tran', points, end, text, speech, final: f });
   }
   return out;
 }

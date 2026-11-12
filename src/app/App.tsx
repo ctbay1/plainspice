@@ -342,6 +342,26 @@ interface CardEdit {
   written: string;
 }
 
+/** What the polite region says after a run (decision 0010): the summary, and each sweep's last point. */
+function resultsSaid(record: RunRecord): string {
+  const error = record.checks.find((c) => c.severity === 'error');
+  if (record.status === 'check' && error) return t('announceCheckError', { title: error.title.replace(/[.!?:]$/, '') });
+  if (record.words.summarySpeech) {
+    const ends = record.status === 'ok' ? record.words.sweeps.map((s) => s.end ?? '').filter(Boolean) : [];
+    return [withoutResultsPointer(record.words.summarySpeech), ...ends].join(' ');
+  }
+  if (record.status === 'unreliable') return t('announceUnreliable');
+  if (record.status === 'ok') return t('announceFinished', { summary: '' });
+  return t('announceError', { detail: record.run.diagnostics.find((d) => d.severity === 'error')?.text ?? '' });
+}
+
+/** Every number a run's words give, as they are said: two runs with the same ones need not be said twice. */
+function resultsHeard(record: RunRecord): string {
+  const w = record.words;
+  const tf = w.tf ? [w.tf.transferFunction, w.tf.inputResistance, w.tf.outputResistance].map((q) => q?.speech ?? '') : [];
+  return [...w.nodes.map((n) => `${n.node} ${n.speech}`), ...w.currents.map((c) => c.speech), ...tf, ...w.sweeps.map((s) => s.speech)].join('\n');
+}
+
 function Shell({ startup, engine, createEditor, initialSettings, serviceWorker = true, fontStore: givenFontStore }: AppProps): ReactNode {
   const announce = useAnnounce();
   // The netlist saved on this device is the student's; a link or the first screen's example is not, until changed.
@@ -990,35 +1010,31 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   }, [announce, load]);
 
   // ------------------------------------------------------------------ what a screen reader hears
-  // After a run, once typing pauses: the model's summary (without its pointer to a results view).
-  // The same words are not said twice in a row, and while the netlist is typed they wait for a pause
-  // (a line half typed is not worth reading out).
+  // After a run, once typing pauses: the model's summary (without its pointer to a results view), and a
+  // sweep's last point as its results card says it (a sweep's summary gives only its points: decision
+  // 0010). A run Run asked for (the Run button, Ctrl+Enter, Ctrl+K, a link that runs) is always said
+  // (WCAG 4.1.3: the status line's "Finished" is not read); a run after a change only when its results
+  // differ from the last ones said, numbers and all (a current the summary only counts), so a comment
+  // typed says nothing; the first run of a circuit opened is always said. While the netlist is typed
+  // they wait for a pause (a line half typed is not worth reading out).
   const announcedRecord = useRef<RunRecord | undefined>(undefined);
-  const lastResultWords = useRef('');
+  const lastResults = useRef('');
+  const asked = liveState.outcome.kind === 'done' && !!liveState.outcome.manual;
   useEffect(() => {
     if (!record || !current || announcedRecord.current === record) return undefined;
     const timer = window.setTimeout(
       () => {
         announcedRecord.current = record;
-        const error = record.checks.find((c) => c.severity === 'error');
-        const words =
-          record.status === 'check' && error
-            ? t('announceCheckError', { title: error.title.replace(/[.!?:]$/, '') })
-            : record.words.summarySpeech
-              ? withoutResultsPointer(record.words.summarySpeech)
-              : record.status === 'unreliable'
-                ? t('announceUnreliable')
-                : record.status === 'ok'
-                  ? t('announceFinished', { summary: '' })
-                  : t('announceError', { detail: record.run.diagnostics.find((d) => d.severity === 'error')?.text ?? '' });
-        if (words === lastResultWords.current) return;
-        lastResultWords.current = words;
+        const words = resultsSaid(record);
+        const key = `${circuitKey}|${words}|${resultsHeard(record)}`;
+        if (key === lastResults.current && !asked) return;
+        lastResults.current = key;
         announce(words);
       },
       typingNetlist ? ANNOUNCE_WHILE_TYPING_MS : card ? ANNOUNCE_RESULTS_DELAY_MS : ANNOUNCE_RESULTS_DELAY_MS / 3,
     );
     return () => window.clearTimeout(timer);
-  }, [record, current, card, typingNetlist, announce]);
+  }, [record, current, card, typingNetlist, announce, asked, circuitKey]);
   // Runs that end without results, and pauses, are said once.
   const outcome = liveState.outcome;
   const paused = liveState.paused;
