@@ -169,7 +169,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   it ("the output resistance at node ou<ZWSP>t", which reads as the node out); it never named a
   look-alike letter in a node name; and the circuit overview and the results' words did the same. Now
   one function, `nodeNameInWords` (`src/spice/explain.ts`), names it wherever a sentence names the
-  node: "node out (written with a zero-width space in it)", "node o ut (one word for SPICE: written
+  node (and, after the critic of the fix, the floating-node and dangling-node checks and the
+  no-single-answer message, which wrote "ou<ZWSP>t has no DC path to ground" and "ou___t"): "node out (written with a zero-width space in it)", "node o ut (one word for SPICE: written
   with a thin space, not a space)", "node оut (written with the Cyrillic letter о, which looks like
   o)". On .ic, .save and .print lines such a voltage is said in words ("the voltage at node out
   (written with a zero-width space in it) starts at 1 V"), and the .tf formula leaves the character

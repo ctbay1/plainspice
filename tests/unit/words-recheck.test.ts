@@ -539,6 +539,46 @@ describe('critic of the fix: the no-single-answer message names the node ngspice
   });
 });
 
+describe('critic of the fix: the floating-node and dangling-node checks name a node as the results\' words do', () => {
+  const ZW = '\u200b';
+  const trap = (text: string, id: string) => checkTraps(parseNetlist(text)).find((c) => c.id === id)!;
+  const words = (t: ReturnType<typeof trap>): string[] => [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)];
+
+  it('floating-dc: a hidden character named, ÇIKIŞ as written, a name like ground quoted; ngspice\'s warning as it prints it (M2d)', () => {
+    // Native ngspice 47 and 42 (M2d): "singular matrix: check node ou___t", "__iki__", "ground".
+    const zw = trap(`* t\nV1 in 0 5\nC1 in ou${ZW}t 1u\nC2 ou${ZW}t 0 1u\n.op\n.end\n`, 'floating-dc');
+    expect(zw.title).toBe('out (written with a zero-width space in it) has no DC path to ground');
+    expect(zw.ngspice).toContain("ngspice warns 'singular matrix: check node ou___t'");
+    expect(zw.fixes.map((f) => f.label)).toEqual(['Add a 1 GΩ resistor from out (written with a zero-width space in it) to ground']);
+    expect(words(zw).filter((w) => INVISIBLE.test(w))).toEqual([]);
+    const tr = trap('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', 'floating-dc');
+    expect([tr.title, tr.fixes[0]!.label]).toEqual(['ÇIKIŞ has no DC path to ground', 'Add a 1 GΩ resistor from ÇIKIŞ to ground']);
+    expect(tr.ngspice).toContain("ngspice warns 'singular matrix: check node __iki__'");
+    expect(applyFix('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', tr.fixes[0]!)).toContain('Rdc1 ÇIKIŞ 0 1g');
+    expect(words(tr).filter((w) => /ÇikiŞ|gİrİŞ/.test(w))).toEqual([]);
+    const ground = trap('* t\nV1 in 0 5\nC1 in ground 1u\nC2 ground 0 1u\n.op\n.end\n', 'floating-dc');
+    expect([ground.title, ground.fixes[0]!.label]).toEqual(['"ground" has no DC path to ground', 'Add a 1 GΩ resistor from "ground" to ground']);
+    // A name in plain ASCII keeps its key, as before (W6).
+    expect(trap('* t\nV1 in 0 5\nC1 in OUT 1u\nC2 OUT 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('out has no DC path to ground');
+    // A current source into such a node says it so too.
+    expect(trap('* t\nI1 0 ÇIKIŞ 1m\nC1 ÇIKIŞ 0 1u\n.op\n.end\n', 'current-source-no-path').why).toContain('Here ÇIKIŞ has no DC path back to ground');
+  });
+
+  it('dangling-node: "Did you mean ÇIKIŞ?" and "Rename ÇIKIŞS to ÇIKIŞ", never the key\'s ÇikiŞ; "ground" quoted', () => {
+    const TR = '* t\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\nR3 ÇIKIŞS 0 1k\n.op\n.end\n';
+    const tr = trap(TR, 'dangling-node');
+    expect(tr.why).toContain('Did you mean ÇIKIŞ?');
+    expect(tr.fixes.map((f) => f.label)).toEqual(['Rename ÇIKIŞS to ÇIKIŞ']);
+    expect(applyFix(TR, tr.fixes[0]!)).toContain('R3 ÇIKIŞ 0 1k');
+    const g = trap('* t\nV1 in 0 5\nR1 in ground 1k\nR2 ground 0 1k\nR3 groundd 0 1k\n.op\n.end\n', 'dangling-node');
+    expect([g.why.replace(/^.*(Did you mean)/, '$1'), g.fixes[0]!.label]).toEqual(['Did you mean "ground"?', 'Rename groundd to "ground"']);
+    expect(trap('* t\nV1 in 0 5\nR1 in 0 1k\nR2 ground 0 1k\n.op\n.end\n', 'dangling-node').title).toBe('Only R2 touches "ground"');
+    // As written in plain ASCII, as before: "Only R3 touches OUTT", "Did you mean out?".
+    const caps = trap('* t\nV1 IN 0 5\nR1 IN OUT 1k\nR2 OUT 0 1k\nR3 OUTT 0 1k\n.op\n.end\n', 'dangling-node');
+    expect([caps.title, caps.fixes[0]!.label]).toEqual(['Only R3 touches OUTT', 'Rename OUTT to out']);
+  });
+});
+
 describe('words re-check 9: a node name with a letter outside a to z is refused with why, and a plain spelling no node has', () => {
   const START = '* start\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
   const rename = (text: string, node: string, name: string): string => {

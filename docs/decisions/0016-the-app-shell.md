@@ -266,7 +266,12 @@ Ctrl+K stay as they are.
   spelling ("singular matrix: check node __iki__", M2d), which the message said as it came ("No single
   answer at node __iki__"); it is mapped back to the node (`netlistNode`), which finds it and its
   parts, so the words say "Node ÇIKIŞ has no DC path to ground" and the drawing writes that note at
-  ÇIKIŞ. The key, `node`, stays for every lookup: the
+  ÇIKIŞ. The checks that name a node by its key do the same (floating-dc, current-source-no-path,
+  dangling-node; they belong to no lane, and the critic of the fix found "ÇikiŞ has no DC path to
+  ground"): "ÇIKIŞ has no DC path to ground", "Did you mean ÇIKIŞ?", a name like ground quoted, a hidden
+  character named; their fixes write the node as first written ("Rename ÇIKIŞS to ÇIKIŞ", "Rdc1 ÇIKIŞ
+  0 1g", the same node for ngspice), and ngspice's warning is quoted as it prints it ("singular
+  matrix: check node __iki__", M2d). The key, `node`, stays for every lookup: the
   Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
   with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
   (g__r____, au). The .tf check's fix offers such a node as first written too ("Use ÇIKIŞ", never

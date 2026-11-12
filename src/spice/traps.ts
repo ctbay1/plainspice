@@ -1209,16 +1209,18 @@ function checkDangling(c: Ctx): void {
       .sort((a, b) => Number(a.across) - Number(b.across) || b.y.connections.length - a.y.connections.length || a.order - b.order)
       .map((k) => k.y);
     const name = nameOf(e);
+    // The nodes as the results' words name them: a name like ground quoted, ÇIKIŞ as first written (S7).
+    const here = /^(gnd|ground|00)$/i.test(t.text) ? `"${t.text}"` : t.text;
     if (candidates.length > 0) {
       add(
         c,
         'dangling-node',
         'warning',
         t,
-        `Only ${name} touches ${t.text}`,
-        `A node needs at least two connections for current to flow through it. ${t.text} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => y.name)).replace(' and ', ' or ')}?`,
+        `Only ${name} touches ${here}`,
+        `A node needs at least two connections for current to flow through it. ${here} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => nodeWords(c, y.name))).replace(' and ', ' or ')}?`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1, dangling-node-2]`,
-        candidates.slice(0, 2).map((y) => fix(`Rename ${t.text} to ${y.name}`, replace(t, y.name))),
+        candidates.slice(0, 2).map((y) => fix(`Rename ${here} to ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name)))),
       );
     } else {
       add(
@@ -1226,12 +1228,28 @@ function checkDangling(c: Ctx): void {
         'dangling-node',
         'info',
         t,
-        `Only ${name} touches ${t.text}`,
-        `No current flows in ${name}, so ${t.text} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : other}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
+        `Only ${name} touches ${here}`,
+        `No current flows in ${name}, so ${here} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : nodeWords(c, other)}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1]`,
       );
     }
   }
+}
+
+/** A node's key as the netlist first writes it when it has a character outside ASCII (ÇIKIŞ, never the key's ÇikiŞ: S7), else the key. */
+function writtenNode(c: Ctx, key: string): string {
+  const written = c.n.nodes.get(key)?.refs[0]?.text ?? key;
+  return /^[\x20-\x7e]*$/.test(written) ? key : written;
+}
+
+/**
+ * A node's key in a check's words, as the results' words say it: as first written for a name outside
+ * ASCII, a name like ground quoted (an ordinary node, W13), a character that is not what it looks like
+ * named, never shown hidden (S11; critic of the words re-check's fix).
+ */
+function nodeWords(c: Ctx, key: string): string {
+  const name = writtenNode(c, key);
+  return /^(gnd|ground|00)$/i.test(name) ? `"${name}"` : nodeNameInWords(name);
 }
 
 /** A floating group's first node reference, in netlist order. */
@@ -1254,7 +1272,7 @@ function checkFloating(c: Ctx): void {
     if (g.attachments.length === 0 && g.conductors.length === 0) continue;
     const kinds = new Set(g.attachments.map((a) => a.kind));
     const current = g.attachments.filter((a) => a.kind === 'current');
-    const nodes = list(g.nodes);
+    const nodes = list(g.nodes.map((n) => nodeWords(c, n)));
     const plural = g.nodes.length > 1;
     if (current.length > 0) {
       currentSourceNoPath(c, g, kinds);
@@ -1281,17 +1299,19 @@ function checkFloating(c: Ctx): void {
     }
     const failing = controls.length > 0 && caps.length === 0 && gates.length === 0;
     const mixed = controls.length > 0 && !failing;
+    // ngspice's warning as it prints it: the node in its own spelling ("check node __iki__", M2d).
+    const checked = ngspiceSpelling(g.nodes[0]!);
     const ngspice = failing
-      ? `ngspice warns 'singular matrix: check node ${g.nodes[0]}' and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4]`
+      ? `ngspice warns 'singular matrix: check node ${checked}' and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4]`
       : mixed
         ? `ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4]`
-        : `ngspice warns 'singular matrix: check node ${g.nodes[0]}', falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]`;
+        : `ngspice warns 'singular matrix: check node ${checked}', falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]`;
     const fixes: Fix[] = [];
     if (!failing && !mixed && kinds.size > 0) {
       const target = g.nodes[0]!;
       const name = freshName(c, 'Rdc1');
       const lastTop = c.graph.elements[c.graph.elements.length - 1]!;
-      fixes.push(fix(`Add a 1 GΩ resistor from ${target} to ground`, insertLineAfter(c, lastTop, `${name} ${target} 0 1g`)));
+      fixes.push(fix(`Add a 1 GΩ resistor from ${nodeWords(c, target)} to ground`, insertLineAfter(c, lastTop, `${name} ${writtenNode(c, target)} 0 1g`)));
     }
     add(
       c,
@@ -1312,7 +1332,7 @@ function currentSourceNoPath(c: Ctx, g: DcGroup, kinds: Set<string>): void {
   const sources = [...new Set(current.map((a) => a.line))].map((k) => el(c, k));
   const onlyI = sources.every((s) => s.letter === 'I');
   const other = [...kinds].filter((k) => k !== 'current');
-  const nodes = list(g.nodes);
+  const nodes = list(g.nodes.map((n) => nodeWords(c, n)));
   let ngspice: string;
   if (other.length === 0 && g.conductors.length === 0 && onlyI) {
     ngspice = 'ngspice says nothing and acts as if there were 1 Ω from the node to ground: in one test, 1 A into such a node gave 1 V. [current-source-no-path-2, current-source-no-path-3]';
