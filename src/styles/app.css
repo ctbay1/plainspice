@@ -3335,9 +3335,14 @@ html[data-contrast='more'] .lines .hint {
   margin-left: auto;
 }
 /* "Show the whole drawing" and another button on the pill: a calm status keeps its words for screen
-   readers only (Frame.tsx), so the pill is just its buttons, on one row, evenly padded. */
+   readers only (Frame.tsx), so the pill is just its buttons, on one row, evenly padded; where even
+   they do not fit (320 px, large text), each row of them is centred rather than pushed apart. */
 .is-phone .status.is-crowded {
+  justify-content: center;
   padding-left: 0.25rem;
+}
+.is-phone .status.is-crowded .turn-button {
+  margin-left: 0;
 }
 
 /* The one bar along the bottom: Select · Parts · Netlist · Checks · Explain · More. */
