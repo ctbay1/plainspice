@@ -227,8 +227,10 @@ that a phone left no room to watch the numbers move; this record says what the c
   bits; beyond, the rule decides. Measured with `describeResults` (processor time, best of 5, the
   worst of 5 random circuits of each kind, under load): 3 to 5 ms for 60 parts, 6 to 23 ms for 150,
   at most 39 ms for 400 parts that go past the limits (a random network of resistors); with a .dc
-  sweep of 1001 points 10 to 18 ms for 60 parts and up to 53 ms for 150. cd20fe9 took up to 4 ms. A
-  unit test keeps 60 parts under 50 ms and the limits under 200 ms.
+  sweep of 1001 points 10 to 18 ms for 60 parts and up to 53 ms for 150. cd20fe9 took up to 4 ms. The
+  exact solve alone, over 840 random networks of 40 to 600 resistors of six densities: at most 30 ms
+  where it solves, 45 ms where it stops at the limits. A unit test keeps 60 parts under 50 ms and the
+  limits under 200 ms.
 - **Our own netlists.** The words of all 186 netlists with `.op` we have (the 20 examples, the 7
   fixtures, the trap and letter corpora's 99, and the channel's 60 episode netlists) are the same,
   letter for letter, as at cd20fe9: none of them has rounding noise that cd20fe9 decided wrongly. The
