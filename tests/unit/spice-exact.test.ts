@@ -313,5 +313,17 @@ describe('whole numbers over one denominator, so that no common factor is search
     expect(solveExact(big, [operatingPoint(big)])).toBeUndefined();
     const small = model(grid(5)) as ExactModel;
     expect(solveExact(small, [operatingPoint(small)])).toBeDefined();
+    // A random network of E12 resistors on 80 nodes: its numbers stay near 2,100 bits, below MAX_BITS, and
+    // only the counted work stops it (its whole solve counts 13.7 million, against MAX_WORK's 8 million).
+    const E12 = [1, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2];
+    const e12 = (): string => `${E12[Math.floor(rnd() * 12)]}${['', 'k', 'k', 'meg'][Math.floor(rnd() * 4)]}`;
+    const mesh = ['V1 n1 0 10'];
+    for (let k = 2; k <= 80; k++) mesh.push(`Rt${k} n${k} n${1 + Math.floor(rnd() * (k - 1))} ${e12()}`);
+    for (let r = 0; r < 160; r++) {
+      const [a, b] = [1 + Math.floor(rnd() * 80), Math.floor(rnd() * 81)];
+      if (a !== b) mesh.push(`Rx${r} n${a} ${b === 0 ? '0' : `n${b}`} ${e12()}`);
+    }
+    const network = model(`* mesh\n${mesh.join('\n')}\n.op\n.end\n`) as ExactModel;
+    expect(solveExact(network, [operatingPoint(network)])).toBeUndefined();
   });
 });
