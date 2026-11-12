@@ -885,9 +885,86 @@ test('a sheet on a phone on its side keeps the status line and its Undo above it
     expect(await expectNoTabStopOutOfSight(page, `${sheet.name} open`)).toBeGreaterThan(10);
     await sheet.close();
   }
-  // The Parts sheet scrolls below the status line and keeps its rows: Resistor can be reached.
+  // A change that brings an error with Parts open (its rows stay as they are): the error's long reason
+  // leaves the status line no room above the sheet. Undone, the short status comes back, and with it the
+  // status line: a new status is measured again from the first step (the step taken for the error was
+  // kept until the sheet closed, though the room was the same as before it). So is a status line that
+  // offers Undo again, after the next change made on the drawing (just after an undo, Undo is under More).
   await bar.getByRole('button', { name: t('barParts') }).tap();
+  await settle(page);
+  await expectInSight(statusLine(page), 'Parts open, before the error: the status line');
+  await partOnDrawing(page, 'Ground').focus();
+  await page.keyboard.press('Delete');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  await page.keyboard.press('Control+z');
+  await expect(partOnDrawing(page, 'Ground')).toHaveCount(1);
+  await expectSolved(page);
+  await settle(page);
+  await expectInSight(statusLine(page), 'Parts open, the error undone: the status line');
+  await partOnDrawing(page, 'R2').focus();
+  await page.keyboard.press('t');
+  await expectSolved(page);
+  await settle(page);
+  await expectInSight(statusLine(page), 'Parts open, a change after the undo: the status line');
+  await expectUsable(undo, 'Parts open, a change after the undo: the status line’s Undo');
+  // The Parts sheet scrolls below the status line and keeps its rows: Resistor can be reached.
   await expectUsable(page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }), 'the Parts sheet below the status line: Resistor');
+});
+
+test('an upright phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it on its side (320 × 568, the usual text)', async ({ page }) => {
+  // Upright, an iPhone SE at the usual text size: above More and Parts the hint steps aside and the status
+  // line stays (the first step). On its side, Plot before a sweep has one line of words below its head:
+  // the sheet keeps what it has, not two rows' room, and the status line stays above it too.
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  const sheets = {
+    more: {
+      open: async (): Promise<Locator> => {
+        await bar.getByRole('button', { name: t('barMore') }).tap();
+        return page.getByRole('dialog', { name: t('barMore') });
+      },
+      close: async (): Promise<void> => {
+        await page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('moreClose') }).tap();
+        await expect(page.getByRole('dialog', { name: t('barMore') })).toHaveCount(0);
+      },
+    },
+    parts: {
+      open: async (): Promise<Locator> => {
+        await bar.getByRole('button', { name: t('barParts') }).tap();
+        return page.getByRole('dialog', { name: t('partsSheetTitle') });
+      },
+      close: async (): Promise<void> => {
+        await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: t('partsClose') }).tap();
+        await expect(page.getByRole('dialog', { name: t('partsSheetTitle') })).toHaveCount(0);
+      },
+    },
+    plot: { open: (): Promise<Locator> => openPanel(page, 'plot'), close: (): Promise<void> => closePanel(page, 'plot') },
+  };
+  for (const c of [
+    { size: { width: 320, height: 568 }, open: ['more', 'parts'] as const },
+    { size: { width: 568, height: 320 }, open: ['plot'] as const },
+  ]) {
+    const at = `${c.size.width} × ${c.size.height}`;
+    await page.setViewportSize(c.size);
+    await openApp(page);
+    await expectSolved(page);
+    // A change made on the drawing: the status line offers Undo.
+    await partOnDrawing(page, 'R2').focus();
+    await page.keyboard.press('t');
+    const undo = statusLine(page).getByRole('button', { name: t('undo'), exact: true });
+    await expect(undo).toBeVisible();
+    for (const name of c.open) {
+      const sheet = await sheets[name].open();
+      await expect(sheet).toBeVisible();
+      await settle(page);
+      await expectInSight(statusLine(page), `${at}, ${name} open: the status line`);
+      await expectUsable(undo, `${at}, ${name} open: the status line’s Undo`);
+      const status = (await statusLine(page).boundingBox())!;
+      expect(status.y + status.height, `${at}, ${name} open: the status line is above the sheet`).toBeLessThanOrEqual((await sheet.boundingBox())!.y + 1);
+      const free = await paperLeft(page);
+      expect(free.bottom - free.top, `${at}, ${name} open: some paper shows`).toBeGreaterThanOrEqual(48);
+      await sheets[name].close();
+    }
+  }
 });
 
 test('a sheet that leaves the status line no room puts it out of sight, its words for screen readers and no Tab stop (568 × 320, the largest text)', async ({ page }) => {

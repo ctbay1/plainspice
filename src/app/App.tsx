@@ -229,7 +229,8 @@ const PAPER_KEPT_SHARE = 0.15;
 const PAPER_KEPT_PX = 48;
 /**
  * What a sheet on a phone (Parts, More, a panel) keeps below its head, in rem (it grows with the text):
- * about two of its rows. The status line stays above the sheet while that is left (decision 0018).
+ * about two of its rows, or all of them when it has less. The status line stays above the sheet while
+ * that is left (decision 0018).
  */
 const SHEET_ROWS_KEPT_REM = 6;
 /** The card on a computer: as wide and as tall as its tallest state at the usual text size (it is measured, too). */
@@ -1621,59 +1622,55 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // 1. When the hint and the status do not both fit above the sheet at its full height, the hint steps
   //    out of sight (screen readers keep it), as it does in a short window (whatever the sheet is about,
   //    the hint is about the drawing); the status line stays whole above the sheet, which gives way below
-  //    it and scrolls, down to its head and about two rows (SHEET_ROWS_KEPT_REM).
+  //    it and scrolls, down to its head and about two rows (SHEET_ROWS_KEPT_REM), or all its rows when
+  //    it has fewer.
   // 2. When even the status would leave the sheet less, the lines step out of sight too, until the sheet
-  //    closes or the room changes: their words for screen readers, none of their buttons (Undo, As
-  //    drawn), which would be Tab stops nobody can see (WCAG 2.4.7); More keeps Undo at hand.
+  //    closes, the room changes or the status line says something else (sheetKey): their words for
+  //    screen readers, none of their buttons (Undo, As drawn), which would be Tab stops nobody can see
+  //    (WCAG 2.4.7); More keeps Undo at hand.
   const sheetOpen = phone && phoneSheet && phoneSheet !== 'card' ? (phoneSheet === 'panel' ? panel : phoneSheet) : undefined;
-  // How far down the open sheet its head ends (its grab and head: a long title wraps with large text);
-  // the sheet keeps its rows below that.
+  // How far down the open sheet its head ends (its grab and head: a long title wraps with large text),
+  // and how tall all it has below its head is (its rows, those it scrolls to included): the sheet keeps
+  // its head and about two rows (SHEET_ROWS_KEPT_REM), or all its rows when it has less (Plot before
+  // a sweep, a line of words).
   const [sheetHead, setSheetHead] = useState(0);
+  const [sheetRows, setSheetRows] = useState(0);
   useLayoutEffect(() => {
     if (!sheetOpen) return undefined;
     const sheet = document.querySelector<HTMLElement>('.phone-bottom > .sheet');
     const head = sheet?.querySelector<HTMLElement>(':scope > .card-head');
     if (!sheet || !head) return undefined;
+    const below = (): Element[] => {
+      const all: Element[] = [];
+      for (let el = head.nextElementSibling; el; el = el.nextElementSibling) all.push(el);
+      return all;
+    };
     const measure = (): void => {
       const h = Math.ceil(head.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top);
       setSheetHead((old) => (old === h ? old : h));
+      // A box that scrolls counts all it holds (scrollHeight), whatever room it has now.
+      const rows = Math.ceil(below().reduce((sum, el) => sum + Math.max(el.scrollHeight, el.getBoundingClientRect().height), 0));
+      setSheetRows((old) => (old === rows ? old : rows));
     };
-    measure();
     const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    // Rows that come or go (a sweep's plot arriving, a check found) change what the sheet holds; each
+    // box below the head and what it holds is watched (watching one already watched does nothing).
+    const update = (): void => {
+      measure();
+      for (const el of below()) {
+        ro?.observe(el);
+        for (const child of el.children) ro?.observe(child);
+      }
+    };
     ro?.observe(head);
-    return () => ro?.disconnect();
+    update();
+    const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(update);
+    mo?.observe(sheet, { childList: true, subtree: true });
+    return () => {
+      ro?.disconnect();
+      mo?.disconnect();
+    };
   }, [sheetOpen, vw, vh, textScale]);
-  // A step is kept for this sheet and the room around it: the window, the text size, the stack's
-  // greatest height, the bar and the sheet's head. (Measured while one of them was still out of date, as
-  // just after a phone is turned, a step would be kept that the room does not call for.)
-  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}` : undefined;
-  const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
-  const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
-  const hintAside = linesStep >= 1;
-  const linesAside = linesStep === 2;
-  /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows. */
-  const linesMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - SHEET_ROWS_KEPT_REM * 16 * textScale)) : undefined;
-  const linesBox = useRef<HTMLElement | null>(null);
-  const linesBoxRef = useCallback(
-    (el: HTMLElement | null) => {
-      linesBox.current = el;
-      linesRef(el);
-    },
-    [linesRef],
-  );
-  useLayoutEffect(() => {
-    if (!sheetKey) {
-      setGaveWay(undefined);
-      return;
-    }
-    // Measured here, at this step and with the room it has now (linesMax): what the lines' watchers said
-    // last may be from the step before, when the lines still gave way first.
-    const over = (box: Element | null | undefined): boolean => !!box && box.scrollHeight > box.clientHeight + 1;
-    const box = linesBox.current;
-    if (linesStep === 0 && (over(box) || over(box?.querySelector('.hint-scroll')))) setGaveWay({ key: sheetKey, step: 1 });
-    else if (linesStep === 1 && over(box)) setGaveWay({ key: sheetKey, step: 2 });
-    // Measured again when the watchers see a change (words, sizes) or the room changes.
-  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax]);
   const insets: Insets = phone
     ? // The stack along the bottom, lifted above the keyboard while a value is typed.
       { top: Math.max(topRect.bottom, stackBottom) + 4, right: 4, left: 16, bottom: bottomRect.height ? vh - bottomRect.top + 4 : 0 }
@@ -1893,6 +1890,45 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // The last answers kept in pencil while building, if the drawing still shows some: said in words on
   // the status line, not only by their grey (WCAG 1.4.1).
   const status = stale && marksShown ? { ...statusNow, detail: `${statusNow.detail ? `${statusNow.detail} ` : ''}${t('statusOldPencil')}` } : statusNow;
+
+  // A step above a sheet (see sheetOpen) is kept for this sheet and the room around it: the window, the
+  // text size, the stack's greatest height, the bar, the sheet's head and the rows it keeps. (Measured
+  // while one of them was still out of date, as just after a phone is turned, a step would be kept that
+  // the room does not call for.) And for what the status line says and offers: its tone, its reason and
+  // its buttons (Undo, the turn; not the run's time, which changes with every run), so a new status is
+  // measured again from the first step: a status line that stepped aside for an error's long reason
+  // comes back with the short one its undo brings.
+  const rowsKept = Math.min(SHEET_ROWS_KEPT_REM * 16 * textScale, sheetRows || Number.POSITIVE_INFINITY);
+  const undoAtHand = phone && snap.canUndo && snap.last.source === 'drawing';
+  const statusKey = `${status.tone}|${status.main.replace(/\d+/g, '#')}|${status.detail ?? ''}|${undoAtHand ? 'undo' : ''}|${phone && turned ? 'turn' : ''}`;
+  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}|${Math.round(rowsKept)}|${statusKey}` : undefined;
+  const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
+  const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
+  const hintAside = linesStep >= 1;
+  const linesAside = linesStep === 2;
+  /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows (all its rows, when it has less). */
+  const linesMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - rowsKept)) : undefined;
+  const linesBox = useRef<HTMLElement | null>(null);
+  const linesBoxRef = useCallback(
+    (el: HTMLElement | null) => {
+      linesBox.current = el;
+      linesRef(el);
+    },
+    [linesRef],
+  );
+  useLayoutEffect(() => {
+    if (!sheetKey) {
+      setGaveWay(undefined);
+      return;
+    }
+    // Measured here, at this step and with the room it has now (linesMax): what the lines' watchers said
+    // last may be from the step before, when the lines still gave way first.
+    const over = (box: Element | null | undefined): boolean => !!box && box.scrollHeight > box.clientHeight + 1;
+    const box = linesBox.current;
+    if (linesStep === 0 && (over(box) || over(box?.querySelector('.hint-scroll')))) setGaveWay({ key: sheetKey, step: 1 });
+    else if (linesStep === 1 && over(box)) setGaveWay({ key: sheetKey, step: 2 });
+    // Measured again when the watchers see a change (words, sizes) or the room changes.
+  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax]);
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
