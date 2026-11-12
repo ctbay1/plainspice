@@ -3025,6 +3025,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: () => setTurnWanted((w) => !w) } } : {})}
       // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
       {...(phone && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
+      // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
+      // the way back to all of it (Fit, under More) at hand.
+      {...(phone && !phoneSheet && viewInfo?.moved && !viewInfo.whole ? { whole: fit } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line.
       {...(phone && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
     />

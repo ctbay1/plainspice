@@ -247,6 +247,7 @@ export function StatusLines({
   turn,
   invite,
   undo,
+  whole,
 }: {
   hint: string;
   status: StatusWords;
@@ -259,6 +260,8 @@ export function StatusLines({
   invite?: { label: string; onClick: () => void };
   /** A phone just after a change made on the drawing: Undo at hand (else it is under More). */
   undo?: () => void;
+  /** A phone whose drawing the reader moved partly out of view: the way back to all of it (Fit), at hand. */
+  whole?: () => void;
 }): ReactNode {
   const bad = status.tone === 'bad' || status.tone === 'paused';
   return (
@@ -287,6 +290,11 @@ export function StatusLines({
         {undo ? (
           <button type="button" className="turn-button" onClick={undo}>
             {t('undo')}
+          </button>
+        ) : null}
+        {whole ? (
+          <button type="button" className="turn-button" onClick={whole}>
+            {t('seeWhole')}
           </button>
         ) : null}
         {turn ? (

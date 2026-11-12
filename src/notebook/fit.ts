@@ -7,6 +7,7 @@
  * not fit at that size (a wide circuit on a phone), readability wins: the drawing keeps the size,
  * the part that matters (`focus`: the selected part, say) is kept in view, and the reader pans to
  * the rest.
+ * However the reader pans or zooms, some of the drawing stays in view (keepInView).
  */
 import type { Box } from '../schematic/index.ts';
 import { TYPE } from './measure.ts';
@@ -101,6 +102,32 @@ export function inkInView(view: View, ink: Box, size: Size, insets: Insets, slac
     view.y + ink.y0 * view.unit >= insets.top - slack &&
     view.y + ink.y1 * view.unit <= size.height - insets.bottom + slack
   );
+}
+
+/** How much of the drawing a pan or a zoom always leaves in the free part of the window: a third of it, and at least this many pixels. */
+export const KEEP_IN_VIEW_PX = 48;
+
+/**
+ * The view moved back just enough that some of the drawing (`ink`: what is drawn, in grid units)
+ * stays in the free part of the window on each axis: a third of the free part, at least
+ * KEEP_IN_VIEW_PX, or all of the drawing when it is smaller. A drag, a scroll or a zoom can take
+ * the drawing to the edge of the window, never off it.
+ */
+export function keepInView(view: View, ink: Box, size: Size, insets: Insets): View {
+  const axis = (at: number, i0: number, i1: number, f0: number, f1: number): number => {
+    const free = f1 - f0;
+    if (free < 1) return 0;
+    const s0 = at + i0 * view.unit;
+    const s1 = at + i1 * view.unit;
+    const need = Math.min(s1 - s0, free, Math.max(KEEP_IN_VIEW_PX, free / 3));
+    // Only a drawing (mostly) past one edge is moved, and only back to that edge.
+    if (s1 < f0 + need) return f0 + need - s1;
+    if (s0 > f1 - need) return f1 - need - s0;
+    return 0;
+  };
+  const dx = axis(view.x, ink.x0, ink.x1, insets.left, size.width - insets.right);
+  const dy = axis(view.y, ink.y0, ink.y1, insets.top, size.height - insets.bottom);
+  return dx || dy ? { ...view, x: view.x + dx, y: view.y + dy } : view;
 }
 
 /** The view zoomed by `factor` about a screen point, within the unit limits. */

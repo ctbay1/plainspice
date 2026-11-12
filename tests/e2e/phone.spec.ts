@@ -318,6 +318,32 @@ test('a sheet opened while something is selected leaves the drawing where it was
   expect((await inkOnScreen(page)).y0, 'the drawing starts below the top bar').toBeGreaterThanOrEqual(free.top - 1);
 });
 
+test('the paper cannot be dragged off the screen, and “Show the whole drawing” brings all of it back', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  const empty = { x: paper.x + 30, y: paper.y + paper.height - 260 };
+  // Three long swipes up: the drawing stops at the top of the free paper, all of it still there.
+  for (let i = 0; i < 3; i++) await fingers(page, [empty], [{ x: empty.x, y: empty.y - 250 }]);
+  const free = await freePaper(page);
+  let ink = await inkOnScreen(page);
+  expect(ink.y0).toBeGreaterThanOrEqual(free.top - 6);
+  expect(ink.y1).toBeLessThanOrEqual(free.bottom);
+  const whole = statusLine(page).getByRole('button', { name: t('seeWhole'), exact: true });
+  await expect(whole).toHaveCount(0);
+  // Far to the left: part of it goes off the screen (never all of it), and the way back is on the status line.
+  for (let i = 0; i < 2; i++) await fingers(page, [{ x: paper.x + paper.width - 30, y: empty.y }], [{ x: paper.x + 30, y: empty.y }]);
+  ink = await inkOnScreen(page);
+  expect(ink.x0).toBeLessThan(0);
+  expect(ink.x1).toBeGreaterThan(48);
+  await expect(whole).toBeVisible();
+  await whole.click();
+  await expect(whole).toHaveCount(0);
+  await expect.poll(async () => (await inkOnScreen(page)).x0).toBeGreaterThanOrEqual(0);
+  ink = await inkOnScreen(page);
+  expect(ink.x1).toBeLessThanOrEqual(free.width);
+});
+
 test('a phone 360 px wide: a turned drawing shown whole says so, not “drag the paper”', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await openApp(page);

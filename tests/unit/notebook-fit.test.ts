@@ -1,7 +1,7 @@
 /** src/notebook/fit.ts: the drawing fitted to the window, its words never too small to read. */
 import { describe, expect, it } from 'vitest';
 import { MIN_TEXT_PX, NO_INSETS, TYPE, fitView, minUnitFor, toGrid, toScreen, zoomAt } from '../../src/notebook/index.ts';
-import { inkInView } from '../../src/notebook/fit.ts';
+import { KEEP_IN_VIEW_PX, inkInView, keepInView } from '../../src/notebook/fit.ts';
 
 const box = { x0: -2, y0: -3, x1: 18, y1: 7 }; // 20 × 10 grid units
 const size = { width: 1000, height: 600 };
@@ -95,6 +95,42 @@ describe('fitView, filling the height (a wide drawing on a phone, as in the vide
     const whole = fitView(square, phone, NO_INSETS, { padding: 10, minUnit: 5, maxUnit: 100 });
     expect(whole.unit).toBeCloseTo(37, 6);
     expect(whole.whole).toBe(true);
+  });
+});
+
+describe('keepInView: a pan or a zoom never loses the drawing off the screen (phone review, F3)', () => {
+  // What is drawn: 300 × 150 px at 10 px a unit; the window 1000 × 600, a bar 100 px tall along the bottom.
+  const ink = { x0: 0, y0: 0, x1: 30, y1: 15 };
+  const insets = { top: 0, right: 0, bottom: 100, left: 0 };
+
+  const wide = { x0: 0, y0: 0, x1: 60, y1: 15 }; // 600 px wide: more than a third of the window's width
+
+  it('leaves a view that shows some of the drawing as it is', () => {
+    const v = { unit: 10, x: 400, y: 200 };
+    expect(keepInView(v, ink, size, insets)).toBe(v);
+    // Mostly off the screen to the left, but a third of the free width (1000 / 3 px) still shows: as it is.
+    const edge = { unit: 10, x: 1000 / 3 - 600, y: 200 };
+    expect(keepInView(edge, wide, size, insets)).toBe(edge);
+  });
+
+  it('brings a drawing dragged off the screen back to the edge, on each side', () => {
+    // Dragged far up: back to where all of it (smaller than a third of the free part) touches the top.
+    expect(keepInView({ unit: 10, x: 400, y: -5000 }, ink, size, insets).y).toBeCloseTo(0, 6);
+    // Far down: its top no lower than the bar's top less its height.
+    expect(keepInView({ unit: 10, x: 400, y: 5000 }, ink, size, insets).y).toBeCloseTo(500 - 150, 6);
+    // Far left and right: all of it stays too, as it is narrower than a third of the free width...
+    expect(keepInView({ unit: 10, x: -5000, y: 200 }, ink, size, insets).x).toBeCloseTo(0, 6);
+    expect(keepInView({ unit: 10, x: 5000, y: 200 }, ink, size, insets).x).toBeCloseTo(1000 - 300, 6);
+    // ...while of a wider drawing, a third of the free width stays.
+    expect(keepInView({ unit: 10, x: -5000, y: 200 }, wide, size, insets).x).toBeCloseTo(1000 / 3 - 600, 6);
+    expect(keepInView({ unit: 10, x: 5000, y: 200 }, wide, size, insets).x).toBeCloseTo(1000 - 1000 / 3, 6);
+  });
+
+  it('keeps at least KEEP_IN_VIEW_PX of a large drawing in a small free part (a sheet open)', () => {
+    const big = { x0: 0, y0: 0, x1: 300, y1: 300 };
+    const sheet = { top: 0, right: 0, bottom: 520, left: 0 };
+    const v = keepInView({ unit: 10, x: 0, y: -10000 }, big, size, sheet);
+    expect(v.y + big.y1 * v.unit).toBeCloseTo(KEEP_IN_VIEW_PX, 6);
   });
 });
 

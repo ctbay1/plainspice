@@ -7,8 +7,8 @@
  * - Fit: the whole drawing in the free part of the window (`insets` say what the page covers),
  *   never so small that its words are too small to read (`minUnit`, fit.ts); then the reader can
  *   pan (drag the paper, from a part or a name too, or scroll) and zoom (Ctrl + wheel, pinch,
- *   zoomBy). `fitKey` fits again. A sheet that made the view move (to keep the selected item clear
- *   of it) moves it back when it goes.
+ *   zoomBy), never so far that the drawing leaves the window (keepInView). `fitKey` fits again. A
+ *   sheet that made the view move (to keep the selected item clear of it) moves it back when it goes.
  * - Keyboard and screen readers: every part and node is a real button over the drawing, with one
  *   tab stop for the drawing (roving focus). Arrow keys move along the wires (navigate.ts:
  *   neighbour), Home and End go to the first and last item in reading order, Enter opens the
@@ -35,7 +35,7 @@ import { elementInfo } from '../spice/elements.ts';
 import { assignNodeColours } from '../theme/nodes.ts';
 import { Drawing, UNIT_PX, itemKey, type PenMarks } from './Drawing.tsx';
 import { EditLayer, type EditMarks } from './EditLayer.tsx';
-import { fitView, inkInView, zoomAt, type Insets, type Size, type View } from './fit.ts';
+import { fitView, inkInView, keepInView, zoomAt, type Insets, type Size, type View } from './fit.ts';
 import { TYPE } from './measure.ts';
 import { symbolBoxes } from './place.ts';
 import { inkBoxes, type DrawingResults } from './results.ts';
@@ -415,14 +415,28 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     if (info) onView?.(info);
   }, [info, onView]);
 
-  const moveView = useCallback((next: (v: View) => View): void => {
+  /** What a pan or a zoom must keep in view: the drawing's ink, in the free part of the window as it is now. */
+  const keepRef = useRef<{ ink: Box | undefined; size: Size; insets: Insets }>({ ink: undefined, size, insets });
+  useLayoutEffect(() => {
+    keepRef.current = { ink, size, insets };
+  }, [ink, size, insets]);
+  /**
+   * The reader moves the view (a drag, a scroll, a zoom), or the page does for them (`keep` false: a
+   * part revealed, which may be in hand away from the drawing, is shown wherever it is).
+   */
+  const moveView = useCallback((next: (v: View) => View, keep = true): void => {
+    // However far the reader drags or zooms, some of the drawing stays on the screen (fit.ts: keepInView).
+    const kept = (v: View): View => {
+      const k = keepRef.current;
+      return keep && k.ink && k.size.width && k.size.height ? keepInView(v, k.ink, k.size, k.insets) : v;
+    };
     if (auto.current) {
       // The reader takes over: the page's pan becomes part of the view.
       const o = offsetRef.current;
       auto.current = false;
       setMoved(true);
-      setView((v) => (v ? next({ ...v, x: v.x + o.x, y: v.y + o.y }) : v));
-    } else setView((v) => (v ? next(v) : v));
+      setView((v) => (v ? kept(next({ ...v, x: v.x + o.x, y: v.y + o.y })) : v));
+    } else setView((v) => (v ? kept(next(v)) : v));
   }, []);
 
   const focusItem = useCallback(
@@ -475,7 +489,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
           const dx = sx1 - sx0 > fx1 - fx0 ? 0 : sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
           const dy = sy1 - sy0 > fy1 - fy0 ? 0 : sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
           return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
-        });
+        }, false);
       },
       keep() {
         if (!auto.current) return;

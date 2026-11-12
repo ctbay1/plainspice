@@ -168,6 +168,8 @@ export const en = {
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
   zoomFit: 'Fit the drawing to the window',
+  /** A phone's status line, once the drawing has been moved partly out of view: the same as Fit. */
+  seeWhole: 'Show the whole drawing',
   zoomPercent: '{percent}%: fit the drawing to the window',
 
   // ---------------------------------------------------------------- sticky note, results card, notices

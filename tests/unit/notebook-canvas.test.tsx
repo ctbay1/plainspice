@@ -12,6 +12,8 @@ import { createRef, useState, type ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import { NO_INSETS, NO_RESULTS, NotebookCanvas, notebookSchematic, placeResults, type CanvasHandle, type CanvasViewInfo, type DrawingResults } from '../../src/notebook/index.ts';
+import { KEEP_IN_VIEW_PX } from '../../src/notebook/fit.ts';
+import { inkBox } from '../../src/notebook/NotebookCanvas.tsx';
 import { describeItem, describeSchematic, neighbour, stripDrawing, type NavItem } from '../../src/schematic/index.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -235,9 +237,12 @@ describe('NotebookCanvas', () => {
     const props = { schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: { kind: 'part', key: 'r1' } as NavItem, onSelect: () => undefined, onOpen: () => undefined, insets: { top: 0, right: 0, bottom: 480, left: 0 }, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v) };
     render(<NotebookCanvas ref={ref} {...props} />);
     const first = views.at(-1)!;
-    // A pan that takes R1 out of the free part stays: the page does not pull it back.
-    act(() => ref.current!.panBy(0, -400));
-    expect(views.at(-1)!.view.y).toBeCloseTo(first.view.y - 400, 6);
+    // A pan that takes R1 out of the free part stays: the page does not pull it back. (Not so far that
+    // the drawing leaves the window: some of it always stays, as the next test says.)
+    act(() => ref.current!.panBy(0, -100));
+    expect(views.at(-1)!.view.y).toBeCloseTo(first.view.y - 100, 6);
+    const r1 = s.scene.parts.find((p) => p.key === 'r1')!.box;
+    expect(views.at(-1)!.view.y + r1.y1 * views.at(-1)!.unit, 'R1 is above the free part').toBeLessThan(0);
     // Zoomed in far past R1's size: no tug of war between its two edges (no endless updates).
     for (let i = 0; i < 6; i++) act(() => ref.current!.zoomBy(1.5));
     expect(views.at(-1)!.unit).toBeGreaterThan(first.unit * 4);
@@ -391,6 +396,22 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
     const panned = views.at(-1)!.view;
     rerender(<NotebookCanvas ref={ref} {...props} />);
     expect(views.at(-1)!.view).toEqual(panned);
+  });
+
+  it('a drag never takes the drawing off the window: some of what is drawn always stays in the free part (F3)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    render(<NotebookCanvas ref={ref} {...base(views)} />);
+    const ink = inkBox(s.scene, NO_RESULTS)!;
+    act(() => ref.current!.panBy(0, -5000));
+    let v = views.at(-1)!.view;
+    expect(v.y + ink.y1 * v.unit).toBeGreaterThanOrEqual(KEEP_IN_VIEW_PX - 1e-6);
+    act(() => ref.current!.panBy(-5000, 5000));
+    v = views.at(-1)!.view;
+    expect(v.x + ink.x1 * v.unit).toBeGreaterThanOrEqual(KEEP_IN_VIEW_PX - 1e-6);
+    expect(v.y + ink.y0 * v.unit).toBeLessThanOrEqual(600 - KEEP_IN_VIEW_PX + 1e-6);
+    // Part of it is out of view now: not whole.
+    expect(views.at(-1)!.whole).toBe(false);
   });
 
   it('is whole when everything drawn is in the free part of the window, wherever the reader put it (F4)', () => {
