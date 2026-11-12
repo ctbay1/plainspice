@@ -5,17 +5,21 @@
  *
  * - A card links to "the fix" in Checks only for a check that has one, else to "why" (W3).
  * - Connections say that Connect to makes two nodes one, with every part on them, and that Disconnect
- *   first, then Connect to, moves one end alone, which is true (W2).
+ *   first, then Connect to, moves one end alone, which is true (W2); they promise no wire, which a
+ *   circuit without ground does not get.
  * - The card says "node in is higher", on the card and to screen readers (W8).
  * - The first numbers of a first visit are drawn in Caveat, not in a fallback face; on a run=1 link
  *   the font waits until ngspice.wasm has come, so the first numbers come no later (F6).
  * - The engine check, the licences and the design pages carry the app's policy and work under it (F3).
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { encodeShare } from '../../src/share/link.ts';
 import {
   RUN_TIMEOUT,
   START_HERE,
+  chooseExample,
   drawing,
   expectAnnounced,
   expectSolved,
@@ -84,6 +88,32 @@ test.describe('the words review', () => {
     await card.getByRole('group', { name: t('connTo', { role: 'end 2', name: 'R1' }) }).getByRole('button', { name: t('groundWords') }).click();
     await expect.poll(() => savedNetlist(page)).toMatch(/^R1 in 0 1k$/m);
     expect(await savedNetlist(page)).toMatch(/^R2 out 0 2k$/m);
+  });
+
+  test('Connections promise no wire: on a circuit without ground, Connect to ground gives the node a ground symbol (W2)', async ({ page }) => {
+    await openApp(page);
+    await expectSolved(page);
+    await chooseExample(page, 'Mistake 1: no ground (node 0)');
+    const card = await openCard(page, 'V1');
+    await card.getByRole('button', { name: new RegExp(`^${t('connTitle')}`) }).click();
+    // What the card and the hint line say holds whatever is drawn for it: the two nodes become one.
+    await expect(card.getByText(t('connIntro'))).toBeVisible();
+    await expect(hintLine(page)).toHaveText(t('hintConnections'));
+    expect(t('connIntro')).not.toMatch(/\bwires?\b/);
+    expect(t('hintConnections')).not.toMatch(/\bwires?\b/);
+    const before = readFileSync(resolve(import.meta.dirname, '../../examples/sp01/sp01-4-no-ground.cir'), 'utf8');
+    await card.getByRole('button', { name: 'Connect to another node: the node at the + end of V1', exact: true }).click();
+    await card.getByRole('group', { name: t('connTo', { role: '+ end', name: 'V1' }) }).getByRole('button', { name: t('groundWords') }).click();
+    // Here no wire finds a way to ground (there is none yet): the node is made ground by name, and the
+    // drawing gets a ground symbol for it. V1, R1 and every other part on n1 are on ground now.
+    await expectAnnounced(page, 'Node n1 renamed to 0. Node n1 is now ground (node 0).');
+    await expect.poll(() => savedNetlist(page)).toMatch(/^V1 0 n3 6$/m);
+    const after = (await savedNetlist(page)) ?? '';
+    expect(after).toMatch(/^R1 0 n2 2$/m);
+    const lines = (text: string, kind: string): string[] => text.split(/\r?\n/).filter((l) => l.startsWith(`*@ ${kind} `));
+    expect(lines(before, 'wire')).toHaveLength(5);
+    expect(lines(after, 'wire')).toEqual(lines(before, 'wire'));
+    expect(lines(after, 'ground')).toHaveLength(lines(before, 'ground').length + 1);
   });
 });
 

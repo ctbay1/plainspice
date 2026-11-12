@@ -6,7 +6,7 @@
  * - W1: the sentence for the .op and .end a blank page gets says what .end is without claiming it
  *   stops ngspice (fact S25: ngspice reads past it), as Explain's own note for .end says.
  * - W2: Connections say that Connect to makes two nodes one, with every part on them, and how to move
- *   only one end.
+ *   only one end; they promise no wire, since a circuit without ground gets a ground symbol instead.
  * - W3: a card's red-pen line offers "the fix" only for a check the Checks panel has a fix for.
  * - W4: E, F, G and H as one tool are a "dependent source", the channel's word.
  * - W7: Reverse is "reversed", never "turned round" (a half turn is refused); a turn while moving does
@@ -22,13 +22,13 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { cardContent, type CardState } from '../../src/app/card.ts';
 import { IndexCard } from '../../src/app/components/IndexCard.tsx';
-import { endRoles, nodeChoices, starterWords } from '../../src/app/editing.ts';
+import { connectEdit, endRoles, nodeChoices, starterWords } from '../../src/app/editing.ts';
 import { hintWords, type HintInput } from '../../src/app/words.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { en } from '../../src/i18n/en.ts';
 import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve, type Solution } from '../../src/notebook/index.ts';
-import { buildSchematic, type Schematic } from '../../src/schematic/index.ts';
+import { GROUND, buildSchematic, type Schematic } from '../../src/schematic/index.ts';
 import { EXPLAIN_STRINGS } from '../../src/spice/explain.ts';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -74,13 +74,40 @@ describe('W1: the .op and .end a blank page gets', () => {
 describe('W2: Connections', () => {
   it('say that Connect to makes the end’s node and another one a single node, with every part on them, and how to move one end', () => {
     const intro = t('connIntro');
-    expect(intro).toContain('the end’s node and that node become one, with every part on them');
+    expect(intro).toContain('Connect to… makes an end’s node and another node one node, with every part on them.');
     expect(intro).toContain('To move only one end, Disconnect it first, then Connect to.');
     // The hint line while a card shows its Connections, on a computer and on a phone (no Esc there).
     const card: HintInput = { phone: false, tool: 'select', selectedName: 'R1', typeHint: 'Type a value, such as 3, 4.7k or 1meg', whole: true, turned: false, asDrawn: false, connections: true };
     const desk = hintWords(card);
-    expect(desk).toBe('Connect to… draws a wire from an end to another node, and the two nodes become one · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card');
+    expect(desk).toBe('Connect to… makes an end’s node and another node one node · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card');
     expect(hintWords({ ...card, phone: true })).toBe(desk.replace(' · Esc closes the card', ''));
+  });
+
+  it('promise only what always happens, the two nodes made one: a circuit without ground gets a ground symbol, not a wire', () => {
+    // SPICE for Beginners' mistake 1: no ground. V1's + end connected to ground from its card.
+    const s = buildSchematic(read('examples/sp01/sp01-4-no-ground.cir'), NOTEBOOK_OPTIONS);
+    const v1 = s.circuit.parts.find((p) => p.name === 'V1')!;
+    const on = (sch: Schematic, node: string): string[] => sch.circuit.parts.filter((p) => p.nodes.includes(node)).map((p) => p.name).sort();
+    const was = v1.nodes[0];
+    const parts = on(s, was);
+    const r = connectEdit(s, v1.key, 0, GROUND);
+    expect(r.ok).toBe(true);
+    // No wire is drawn: the node becomes ground by name, and the drawing gets a ground symbol for it.
+    expect(r.summary).toBe('Node n1 renamed to 0. Node n1 is now ground (node 0).');
+    expect(r.drawing.wires).toEqual(s.drawing.wires);
+    expect(r.drawing.grounds).toHaveLength(s.drawing.grounds.length + 1);
+    // What the words promise holds: the end's node and ground are one node, every part on it included.
+    const after = buildSchematic(r.text, NOTEBOOK_OPTIONS);
+    expect(after.circuit.nodes.has(was)).toBe(false);
+    expect(on(after, GROUND)).toEqual(parts);
+    // On Start here the same button draws a wire: the words name neither, only what both do.
+    const start = buildSchematic(START, NOTEBOOK_OPTIONS);
+    const wired = connectEdit(start, 'r1', 1, GROUND);
+    expect(wired.summary).toMatch(/^Wire added\./);
+    for (const key of ['connIntro', 'hintConnections', 'hintConnectionsPhone'] as const) {
+      expect(t(key), key).toContain('Connect to… makes an end’s node and another node one node');
+      expect(t(key), key).not.toMatch(/\bwires?\b/);
+    }
   });
 
   it('name each button for what it changes, starting with the words it shows (WCAG 2.5.3), the node as a node', () => {

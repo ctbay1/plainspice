@@ -30,9 +30,9 @@ Everything around it is for beginners:
   ngspice runs it again, and screen readers hear what changed. On a blank page the first part also
   writes `.op` and `.end`, so ngspice runs the circuit as you build it. Without a mouse, Add a part (A)
   takes a kind, a value (checked as the card checks it) and two nodes from lists, and each part's card
-  shows its Connections: Connect to draws a wire from an end to another node (the two nodes become
-  one, with every part on them), and Disconnect gives an end a node of its own; on a phone, tap to
-  place, and hold a part a moment to drag it with a finger.
+  shows its Connections: Connect to makes an end's node and another node one node, with every part
+  on them, and Disconnect gives an end a node of its own; on a phone, tap to place, and hold a part
+  a moment to drag it with a finger.
 - **One netlist, two ways in.** The Netlist panel shows the same circuit as SPICE reads it, on a
   dark "simulator screen"; type there and the drawing follows, change the drawing and the netlist
   follows (the positions go into `*@` comment lines that ngspice skips). One undo covers both.

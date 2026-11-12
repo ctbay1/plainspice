@@ -216,8 +216,8 @@ describe('the hint line after the re-check of step B', () => {
 
   it('a card showing its Connections says what can be done there, not "type a value" (new-31)', () => {
     const card = { ...base, selectedName: 'R2', typeHint: 'Type a value, such as 3, 4.7k or 1meg' };
-    expect(hintWords({ ...card, connections: true })).toBe('Connect to… draws a wire from an end to another node, and the two nodes become one · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card');
-    expect(hintWords({ ...card, phone: true, connections: true })).toBe('Connect to… draws a wire from an end to another node, and the two nodes become one · Disconnect gives an end a node of its own · Connections again shows the value and the numbers');
+    expect(hintWords({ ...card, connections: true })).toBe('Connect to… makes an end’s node and another node one node · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card');
+    expect(hintWords({ ...card, phone: true, connections: true })).toBe('Connect to… makes an end’s node and another node one node · Disconnect gives an end a node of its own · Connections again shows the value and the numbers');
     expect(hintWords(card)).toBe('Type a value, such as 3, 4.7k or 1meg · T turns it, M mirrors it · Enter or Esc closes the card');
   });
 

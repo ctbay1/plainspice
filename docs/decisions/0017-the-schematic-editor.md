@@ -84,8 +84,11 @@ hears what they did.
   takes a kind, a value and two nodes chosen from the circuit's nodes or "a new node" (named in the
   form), shows the line the netlist will get, and adds it (the model's `insertLine`: before the
   analyses, the drawing lines and `.end`); a card's Connections list each end with its node. Connect
-  to… (the other nodes, as buttons) draws a wire from the end to the node chosen, so the end's node
-  and that node become one, with every part on them; Disconnect (the model's new `disconnect-pin`)
+  to… (the other nodes, as buttons) makes the end's node and the node chosen one node, with every
+  part on them. It draws a wire from the end to the nearest point of that node the router reaches;
+  for ground, when no wire can (a circuit without ground yet), a ground symbol at the end; failing
+  both, it joins the two by name, as a node's card does (a node made ground gets a ground symbol on
+  each of its pieces), and the summary says which. Disconnect (the model's new `disconnect-pin`)
   gives the end a node of its own; to move only one end, Disconnect it, then Connect to. A node's
   card (Enter on a node) renames it, and renaming it to a name another node has makes
   the two one node, as SPICE does; ground's card says why it keeps its name and offers to move or
@@ -350,11 +353,16 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
 - **Connections** (W2). Connect to makes the end's node and the chosen node one, every part on them
   included (on Start here, end 2 of R1 connected to ground shorted R2), while the hint line said it
   "rewires an end". The card's intro, the hint line and the buttons now say what happens and how to
-  move one end alone: "Connect to… draws a wire from an end to another node, so the end’s node and
-  that node become one, with every part on them. To move only one end, Disconnect it first, then
-  Connect to." The button is named "Connect to another node: the node at the end 2 of R1" (its own
-  words first, WCAG 2.5.3) and its list "Connect the node at the end 2 of R1 to …". Not done here:
-  a check for a resistor with both ends on one node (only sources are checked).
+  move one end alone: "Connect to… makes an end’s node and another node one node, with every part
+  on them. To move only one end, Disconnect it first, then Connect to." (the hint line: "Connect to…
+  makes an end’s node and another node one node · Disconnect gives an end a node of its own · …").
+  They say what always holds and not how it is drawn: a first wording, "draws a wire from an end to
+  another node", was untrue for ground in a circuit without one, where no wire can reach and the node
+  is made ground by name, with a ground symbol (Mistake 1: no ground; 8 of 900 Connect to's over the
+  examples and fixtures, all of them that case, drew no wire: the critic of W2). The button is named
+  "Connect to another node: the node at the end 2 of R1" (its own words first, WCAG 2.5.3) and its
+  list "Connect the node at the end 2 of R1 to …". Not done here: a check for a resistor with both
+  ends on one node (only sources are checked).
 - **Dependent source** (W4). E, F, G and H as one tool, its menu, the phone's Parts sheet and the
   Checks panel say "dependent source", the channel's word, as the examples and the model's refusals
   already did; each keeps its catalog name ("voltage-controlled current source").
