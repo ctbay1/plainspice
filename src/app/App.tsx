@@ -213,9 +213,10 @@ const PHONE_QUERY = '(max-width: 899px), (max-height: 520px)';
 const PHONE_WIDTH = 900;
 const PHONE_HEIGHT = 521;
 /**
- * A phone's window short for its text, at the usual text size (scaled with it, as the limits above):
- * below the first the hint line steps out of sight and the bars get compact (a phone on its side, a
- * small phone with large text); below the second a calm status folds to its dot (decision 0018).
+ * A phone's window short for its text, at the usual text size (scaled with it, as the limits above,
+ * for a window wider than tall): below the first the hint line steps out of sight and the bars get
+ * compact (a phone on its side, a laptop window short for its text); below the second a calm status
+ * folds to its dot (decision 0018).
  */
 const SHORT_HEIGHT = 420;
 const SHORTER_HEIGHT = 300;
@@ -360,9 +361,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // The layout follows the room in text sizes, as a browser's zoom does: a 1280 × 800 window with
   // text at 150 % holds what an 853 × 533 one holds at 100 %, and gets the phone's layout too.
   const phone = narrow || win.width < PHONE_WIDTH * textScale || win.height < PHONE_HEIGHT * textScale;
-  // The same for a short window: 568 px of height with text at 150 % holds what 379 px hold at 100 %.
-  const short = phone && win.height < SHORT_HEIGHT * Math.max(1, textScale);
-  const shorter = phone && win.height < SHORTER_HEIGHT * Math.max(1, textScale);
+  // The same for a short window, wider than tall (a phone on its side, a laptop): 360 px of height with
+  // text at 150 % hold what 240 px hold at 100 %. Not an upright phone, whatever its text size: an
+  // iPhone SE upright with the largest text keeps its hint line on the screen (in a box of its own that
+  // keeps its first line and scrolls when the stack is short of room), which it needs more than the room.
+  const tallFor = win.width > win.height ? Math.max(1, textScale) : 1;
+  const short = phone && win.height < SHORT_HEIGHT * tallFor;
+  const shorter = phone && win.height < SHORTER_HEIGHT * tallFor;
 
   // ------------------------------------------------------------------ ngspice and live runs
   const [engineStatus, setEngineStatus] = useState<EngineStatus>({ status: 'loading' });

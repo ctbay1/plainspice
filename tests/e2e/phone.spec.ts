@@ -692,6 +692,39 @@ async function expectUsable(target: Locator, what: string): Promise<void> {
   expect(seen.over, `${what}: nothing over its middle`).toBe('');
 }
 
+/**
+ * How much of some words shows: nothing around them may put them out of sight (clipped to nothing for
+ * screen readers only, not shown: `why` says so), and the part of them that shows, inside whatever
+ * scrolls around them, on the screen below the top bar (`shown`, in pixels), not under the hand bar.
+ */
+async function sight(target: Locator): Promise<{ shown: number; why: string }> {
+  return target.evaluate((el) => {
+    for (let p: Element | null = el; p; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if (s.clipPath === 'inset(50%)' || s.display === 'none' || s.visibility === 'hidden') return { shown: 0, why: `out of sight (${String((p as HTMLElement).className).split(' ')[0]})` };
+    }
+    const r = el.getBoundingClientRect();
+    let top = Math.max(r.top, document.querySelector('.top-area header')!.getBoundingClientRect().bottom);
+    let bottom = Math.min(r.bottom, innerHeight);
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      if (/auto|scroll|hidden|clip/.test(getComputedStyle(p).overflowY)) {
+        const c = p.getBoundingClientRect();
+        top = Math.max(top, c.top);
+        bottom = Math.min(bottom, c.bottom);
+      }
+    }
+    const hand = document.querySelector('.hand-bar')?.getBoundingClientRect();
+    return { shown: Math.round(bottom - top), why: hand && hand.height > 0 && hand.bottom > top && hand.top < bottom ? 'under the hand bar' : '' };
+  });
+}
+
+/** Words in sight: at least a line of them shows (sight). */
+async function expectInSight(target: Locator, what: string): Promise<void> {
+  const seen = await sight(target);
+  expect(seen.why, `${what} is in sight`).toBe('');
+  expect(seen.shown, `${what}: at least a line of it shows`).toBeGreaterThanOrEqual(10);
+}
+
 /** The free paper: below the top bar, above the stack along the bottom and the hand bar. */
 async function paperLeft(page: Page): Promise<{ top: number; bottom: number }> {
   return page.evaluate(() => ({
@@ -706,9 +739,20 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
   await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
   for (const size of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
     const at = `${size.width} × ${size.height}`;
+    // Upright, the hint line stays on the screen (a phone on its side, short for its text, keeps it
+    // for screen readers only, as every phone on its side does): what to do next is what a beginner
+    // reads first. The first screen's button with it.
+    const upright = size.height > size.width;
     await page.setViewportSize(size);
     await openApp(page);
+    if (upright) {
+      await expectSolved(page);
+      await settle(page);
+      await expectInSight(hintLine(page), `${at}: the first screen's hint line`);
+      await expectUsable(page.getByRole('button', { name: t('noteButton', { name: 'R1' }), exact: true }), `${at}: the first screen's button`);
+    }
     await newCircuit(page);
+    if (upright) await expectInSight(hintLine(page), `${at}: the blank page's hint line`);
     const bar = page.getByRole('navigation', { name: t('barLabel') });
     await expectUsable(bar.getByRole('button', { name: t('barParts') }), `${at}: Parts`);
     await bar.getByRole('button', { name: t('barParts') }).tap();
@@ -727,12 +771,21 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
     const handButtons = [[place, 'Place'], [hand.getByRole('button', { name: t('handTurn') }), 'Turn'], [hand.getByRole('button', { name: t('handMirror') }), 'Mirror'], [hand.getByRole('button', { name: t('cancel') }), 'Cancel']] as const;
     await settle(page);
     for (const [button, name] of handButtons) await expectUsable(button, `${at}: the hand bar's ${name}`);
+    // What to do with the resistor in hand (Place waits for a tap on the paper): its first line at least.
+    if (upright) {
+      await expect(hintLine(page)).toHaveText(t('hintPlacePhone', { part: 'a resistor' }));
+      await expectInSight(hintLine(page), `${at}: the hint line, a resistor in hand`);
+    }
     let free = await paperLeft(page);
     expect(free.bottom - free.top, `${at}: some paper shows above the hand bar`).toBeGreaterThanOrEqual(48);
     await page.touchscreen.tap(size.width / 2, free.top + (free.bottom - free.top) * 0.4);
     await expect(place).toBeEnabled();
     await settle(page);
     for (const [button, name] of handButtons) await expectUsable(button, `${at}: the hand bar's ${name}, a place chosen`);
+    if (upright) {
+      await expect(hintLine(page)).toContainText(/tap Place/);
+      await expectInSight(hintLine(page), `${at}: the hint line, a place chosen`);
+    }
     await place.tap();
     // The card's sheet, its value tapped: the strip, and Done.
     const card = page.getByRole('dialog', { name: /^R1 / });
@@ -751,8 +804,10 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
     await expect(done).toHaveCount(0);
     await card.getByRole('button', { name: t('cardClose', { name: 'R1' }) }).tap();
     await expect(card).toHaveCount(0);
-    // The status line's Undo (a change made on the drawing), the part on the paper, and the paper itself.
+    // The status line's Undo (a change made on the drawing), the part on the paper, and the paper itself;
+    // upright, the hint line too (its note on what PlainSpice wrote for the student).
     await settle(page);
+    if (upright) await expectInSight(hintLine(page), `${at}: the hint line, the part placed`);
     await expectUsable(statusLine(page).getByRole('button', { name: t('undo'), exact: true }), `${at}: the status line's Undo`);
     await expectUsable(partOnDrawing(page, 'R1'), `${at}: R1 on the drawing`);
     free = await paperLeft(page);
