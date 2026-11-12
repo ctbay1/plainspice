@@ -793,6 +793,16 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     expect(bridge.currents.find((c) => c.name === 'R5')!.noise).toBe(-8.881784197001253e-19);
   });
 
+  it('the rule never calls a resistor noise for being the only current left at a node: only its own two ends can show that (C9n; the critic of the re-check\'s fixes)', () => {
+    // Doctored numbers: I1's 0 stands for a 0 ngspice gives for a real current (C9n's wire), which the
+    // rule cannot tell from a true 0. R1's own ends are 300 nV apart, so its 300 fA stays.
+    const text = '* t\nV1 y 0 1\nD1 y 0 dmod\nI1 0 x 0\nR1 x 0 1meg\n.model dmod d\n.op\n.end\n';
+    const w = describeResults(parseNetlist(text), op({ y: 1, x: 3e-7 }, [['v1', -1e-14, 'branch'], ['i1', 0, 'device'], ['r1', 3e-13, 'device']]), run());
+    expect(roundingNoise(parseNetlist(text), op({ y: 1, x: 3e-7 }, [['v1', -1e-14, 'branch'], ['i1', 0, 'device'], ['r1', 3e-13, 'device']])).by).toBe('rule');
+    expect(sp(w.currents.find((c) => c.name === 'R1')!.text)).toBe('300 fA from node x to ground through R1');
+    expect(w.currents.find((c) => c.name === 'R1')!.noise).toBeUndefined();
+  });
+
   it('a diode to ground does not make every part at ground real: the noise of C9b stays noise (the rule for other circuits)', () => {
     // A diode makes the circuit one PlainSpice does not solve exactly. Ground takes every current; only the
     // diode's other node is one where its current flows through a named part, so V1 and F1 at ground stay noise.

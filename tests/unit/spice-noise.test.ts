@@ -453,4 +453,15 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     big.tf!.transferFunction = 1e-3;
     expect(ratio(big)).toBeUndefined();
   });
+
+  it('the rule for other circuits never writes a node as 0 V next to a real current: the H of 1 GΩ with a diode keeps out at −193.5 nV beside Rl\'s 193.5 pA, and out has no level', async () => {
+    const { words, by } = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k', 'D1 0 top dmod', '.model dmod d'));
+    expect(by).toBe('rule');
+    expect(node(words, 'out')).toBe('−193.5 nV');
+    expect(current(words, 'Rl')).toBe('193.5 pA from ground to node out through Rl');
+    expect(words.nodes.find((n) => n.node === 'out')!.level).toBeUndefined();
+    // a, b and m are still one level: the bridge's middle branch carries 0 A.
+    const level = (n: string): number | undefined => words.nodes.find((x) => x.node === n)!.level;
+    expect([level('a') === level('m'), level('m') === level('b'), level('a') !== undefined]).toEqual([true, true, true]);
+  });
 });

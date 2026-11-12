@@ -1635,17 +1635,16 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const left = new Map<string, number>();
   for (const [node, list] of at) if (counted(node)) left.set(node, list.filter((el) => !zero(el.key)).length);
   const tiedE = new Set<string>();
-  // A resistor or a capacitor is 0 only when its own ends are the same: being the only current left at a
-  // node would claim that the voltage across it is noise (C9n).
-  const lastAt = (node: string): Element | undefined => {
-    const el = at.get(node)!.find((x) => !zero(x.key));
-    return el && el.letter !== 'R' && el.letter !== 'C' ? el : undefined;
-  };
+  // The one part at a node whose current is not yet known to be 0 (whyZero decides whether that makes it 0).
+  const lastAt = (node: string): Element | undefined => at.get(node)!.find((x) => !zero(x.key));
   const whyZero = (el: Element): NoiseWhy | undefined => {
     const [p, n, c, d] = el.nodes;
     if ((el.letter === 'R' || el.letter === 'C') && p && n && equal(p, n)) return { kind: 'same', a: nodeName(p), b: nodeName(n) };
     if (el.letter === 'F' && zero(controlOf(el))) return { kind: 'copies', control: byKey.get(controlOf(el)!)?.name.text ?? el.controlSource!.text };
     if (el.letter === 'G' && c && d && equal(c, d)) return { kind: 'reads', c: nodeName(c), d: nodeName(d) };
+    // A resistor or a capacitor is 0 only when its own ends are the same: being the only current left at a
+    // node would claim that the voltage across it is noise, and another part's 0 there can be ngspice's
+    // rounding of a real current (C9n).
     if (el.letter !== 'R' && el.letter !== 'C') for (const node of ends.get(el.key) ?? []) if (counted(node) && left.get(node) === 1) return { kind: 'node', node };
     return undefined;
   };
@@ -1705,10 +1704,22 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
       out.grounded.add(node);
     }
   }
-  // Levels: one for each group of nodes joined by parts with no voltage across them; ground's is 0.
+  // Levels: one for each group of nodes joined by parts with no voltage across them; ground's is 0. A
+  // level is a claim the page makes (0 V across a part between two of its nodes, no power), so it must
+  // agree with the numbers it shows (the critic of the re-check's fixes): a node of ground's group has
+  // ground's level only when it is shown as 0 V, and a group with a resistor between two of its nodes
+  // whose current is shown as real has no level at all (an H of 1 GΩ joins out to ground while Rl
+  // shows its 193.5 pA, and out its −193.5 nV). Nodes with no level are compared by ngspice's values.
+  const broken = new Set<string>();
+  for (const el of parts) {
+    const pair = el.letter === 'R' ? ends.get(el.key) : undefined;
+    const amp = amps.get(el.key);
+    if (pair && amp !== undefined && amp !== 0 && !out.currents.has(el.key) && group.find(pair[0]) === group.find(pair[1])) broken.add(group.find(pair[0]));
+  }
   const levelOf = new Map<string, number>([[ground, 0]]);
-  for (const node of volts.keys()) {
+  for (const [node, value] of volts) {
     const root = group.find(node);
+    if (broken.has(root) || (root === ground && node !== '0' && value !== 0 && !out.nodes.has(node))) continue;
     let level = levelOf.get(root);
     if (level === undefined) levelOf.set(root, (level = levelOf.size));
     out.levels.set(node, level);
