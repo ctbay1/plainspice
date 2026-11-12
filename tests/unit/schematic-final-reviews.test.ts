@@ -1,14 +1,16 @@
 /**
  * The schematic model after the final reviews of milestone 2 (12 November 2026), each finding pinned
- * down: a node's name is never written on a part (student:label-on-part); a ground symbol is never
- * put where a wire runs through it, so a ladder built with the mouse turns for a phone held upright
- * (student:phone-link-unturned); and three sentences of the editor say what happens and why
- * (words:W6, W7, W10).
+ * down: a node's name goes where it is read clear of the parts wherever its copper or its open end
+ * leaves room, and a name the student moves stays where it was put (student:label-on-part); a ground
+ * symbol is never put where a wire runs through it, so a ladder built with the mouse turns for a
+ * phone held upright (student:phone-link-unturned); and three sentences of the editor say what
+ * happens and why (words:W6, W7, W10).
  */
 import { describe, expect, it } from 'vitest';
+import { nameShift } from '../../src/notebook/results.ts';
 import { notebookSchematic } from '../../src/notebook/schematic.ts';
 import { isWide, turnedQuarter, wireBends } from '../../src/notebook/turn.ts';
-import { EDIT_STRINGS, applyEdit, buildSchematic, checkConnectivity, findOverlaps, segmentCrossesBox, segmentsOf, serializeDrawing, stripDrawing, type EditOp, type Schematic } from '../../src/schematic/index.ts';
+import { EDIT_STRINGS, applyEdit, boxesOverlap, buildSchematic, checkConnectivity, findOverlaps, segmentCrossesBox, segmentsOf, serializeDrawing, stripDrawing, type Box, type EditOp, type Schematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { checkTraps } from '../../src/spice/traps.ts';
 
@@ -54,7 +56,60 @@ const nameOnPart = (s: Schematic): string[] =>
 /** The netlist read back from the lines its schematic writes. */
 const readBack = (text: string, s: Schematic): Schematic => notebookSchematic(stripDrawing(text).replace(/\.end\s*$/, `${serializeDrawing(s.circuit, s.drawing, s.kept).join('\n')}\n.end\n`));
 
-describe('a node\'s name is never written on a part (student:label-on-part)', () => {
+/** The reviewer's ladder built with the editor, pin to pin, as far as its first `wires` wires (of six). */
+function reviewerLadder(wires: number): Schematic {
+  let s = notebookSchematic('');
+  const step = (op: EditOp): void => {
+    const r = applyEdit(s, op);
+    expect(r.ok, r.reason).toBe(true);
+    s = notebookSchematic(r.text);
+  };
+  step({ kind: 'add-part', letter: 'V', at: { x: 0, y: 3 } });
+  step({ kind: 'set-value', part: 'V1', value: '12' });
+  step({ kind: 'add-part', letter: 'R', at: { x: 4, y: 0 }, rot: 270 });
+  step({ kind: 'add-part', letter: 'R', at: { x: 8, y: 3 } });
+  step({ kind: 'set-value', part: 'R2', value: '2k' });
+  step({ kind: 'add-part', letter: 'R', at: { x: 12, y: 0 }, rot: 270 });
+  step({ kind: 'set-value', part: 'R3', value: '3k' });
+  step({ kind: 'add-ground', at: { x: 0, y: 5 } });
+  step({ kind: 'add-part', letter: 'F', at: { x: 16, y: 3 }, rot: 180 });
+  const all = [
+    [0, 1, 2, 0],
+    [6, 0, 8, 1],
+    [8, 1, 10, 0],
+    [14, 0, 16, 1],
+    [16, 5, 8, 5],
+    [8, 5, 0, 5],
+  ] as const;
+  for (const [a, b, c, d] of all.slice(0, wires)) step({ kind: 'add-wire', from: { at: { x: a, y: b } }, to: { at: { x: c, y: d } } });
+  return s;
+}
+
+/**
+ * What the drawing shows before a run that a name lies on: a symbol, a part's name or value, or
+ * another name, each name taken where the Notebook writes it before it has a value (results.ts,
+ * nameShift: a name with its value on its left is written up against its point).
+ */
+function namesOnWords(s: Schematic): string[] {
+  const written: Box[] = s.scene.nodeLabels.map((l) => {
+    const b = l.lines.find((x) => x.role === 'node')!.box;
+    const dx = nameShift(l, undefined);
+    return { x0: b.x0 + dx, y0: b.y0, x1: b.x1 + dx, y1: b.y1 };
+  });
+  const out: string[] = [];
+  s.scene.nodeLabels.forEach((l, i) => {
+    const b = written[i]!;
+    for (const p of s.scene.parts) {
+      if (boxesOverlap(b, p.box)) out.push(`${l.node} on ${p.name}`);
+      for (const line of p.labels) if (line.role !== 'result' && boxesOverlap(b, line.box)) out.push(`${l.node} on ${p.name}'s ${line.role}`);
+    }
+    for (const g of s.scene.grounds) if (boxesOverlap(b, g.box)) out.push(`${l.node} on a ground symbol`);
+    written.forEach((o, j) => j !== i && boxesOverlap(b, o) && out.push(`${l.node} on ${s.scene.nodeLabels[j]!.node}`));
+  });
+  return out;
+}
+
+describe('where a node\'s name is written (student:label-on-part)', () => {
   it.each([
     ['the ladder built with the mouse', MOUSE_LADDER, 'n4'],
     ['the ladder of resistors', LADDER4, 'n2'],
@@ -109,33 +164,64 @@ describe('a node\'s name is never written on a part (student:label-on-part)', ()
   });
 
   it('built with the editor, pin to pin as the reviewer did, ends with no name on a part or its words', () => {
-    let s = notebookSchematic('');
-    const step = (op: EditOp): void => {
-      const r = applyEdit(s, op);
-      expect(r.ok, r.reason).toBe(true);
-      s = notebookSchematic(r.text);
-    };
-    step({ kind: 'add-part', letter: 'V', at: { x: 0, y: 3 } });
-    step({ kind: 'set-value', part: 'V1', value: '12' });
-    step({ kind: 'add-part', letter: 'R', at: { x: 4, y: 0 }, rot: 270 });
-    step({ kind: 'add-part', letter: 'R', at: { x: 8, y: 3 } });
-    step({ kind: 'set-value', part: 'R2', value: '2k' });
-    step({ kind: 'add-part', letter: 'R', at: { x: 12, y: 0 }, rot: 270 });
-    step({ kind: 'set-value', part: 'R3', value: '3k' });
-    step({ kind: 'add-ground', at: { x: 0, y: 5 } });
-    step({ kind: 'add-part', letter: 'F', at: { x: 16, y: 3 }, rot: 180 });
-    for (const [a, b, c, d] of [
-      [0, 1, 2, 0],
-      [6, 0, 8, 1],
-      [8, 1, 10, 0],
-      [14, 0, 16, 1],
-      [16, 5, 8, 5],
-      [8, 5, 0, 5],
-    ] as const) {
-      step({ kind: 'add-wire', from: { at: { x: a, y: b } }, to: { at: { x: c, y: d } } });
-    }
+    const s = reviewerLadder(6);
     expect(s.circuit.parts.map((p) => p.name)).toEqual(['V1', 'R1', 'R2', 'R3', 'F1']);
     expect(nameOnPart(s)).toEqual([]);
+  });
+
+  it('a name at an open end (a pin not wired yet) stays at its end and is written clear of the parts near it: the reviewer\'s ladder after its first wire', () => {
+    const s = reviewerLadder(1);
+    const name = (node: string) => s.scene.nodeLabels.find((l) => l.node === node)!;
+    const part = (key: string) => s.scene.parts.find((p) => p.key === key)!;
+    // Before, n7 (R3's left end) was written across R3's zigzag, and n9 (F1's top end) over F1's
+    // name, just as the red note asks the student to choose what F1 reads (critic of the fix round).
+    expect(boxesOverlap(name('n7').box, part('r3').box)).toBe(false);
+    expect(boxesOverlap(name('n9').box, part('f1').labelBox)).toBe(false);
+    // Each still names its end: no spot at F1's top pin is clear, so n9 is written two units further
+    // out, the way a wire would leave the pin; R1 and R3 leave no room between them, so n7 and n4
+    // take the spots where, as written, they lie on no part.
+    expect(s.scene.terminals.map((t) => `${t.node} ${t.at.x},${t.at.y}`)).toEqual(expect.arrayContaining(['n7 10,0', 'n9 16,1', 'n4 6,0']));
+    expect([name('n7').at, name('n9').at, name('n4').at]).toEqual([
+      { x: 10, y: 0 },
+      { x: 16, y: 1 },
+      { x: 6, y: 0 },
+    ]);
+    expect(name('n9').box.y1).toBeLessThanOrEqual(-1);
+    expect(namesOnWords(s)).toEqual([]);
+    // Wired on, every step reads clean too.
+    for (let wires = 2; wires <= 6; wires++) expect(namesOnWords(reviewerLadder(wires)), `after wire ${wires}`).toEqual([]);
+  });
+
+  it('60 mouse-like builds (parts dropped on a grid, then pin-to-pin wires): no name, as written before it has a value, lies on a symbol, a part\'s words or another name', () => {
+    // The critic's seeded random builds (randbuild.ts, seed 7). Before, 7 names lay on a symbol and 12
+    // on a part's name or value, all at open ends; the rooms kept for the values may still touch.
+    let seed = 7;
+    const rnd = (n: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const found: string[] = [];
+    for (let c = 0; c < 60; c++) {
+      let s = notebookSchematic('');
+      const step = (op: EditOp): void => {
+        const r = applyEdit(s, op);
+        if (r.ok) s = notebookSchematic(r.text);
+      };
+      const letters = ['R', 'R', 'R', 'V', 'C', 'I'] as const;
+      const k = 3 + rnd(4);
+      for (let i = 0; i < k; i++) step({ kind: 'add-part', letter: letters[rnd(letters.length)]!, at: { x: 4 * rnd(6), y: 4 * rnd(3) + (rnd(2) ? 0 : 3) }, rot: rnd(2) ? 0 : 270 });
+      if (rnd(2)) step({ kind: 'add-ground', at: s.scene.parts[0]?.pins[1]?.at ?? { x: 0, y: 5 } });
+      for (let w = 0; w < k + 1; w++) {
+        const pins = s.scene.parts.flatMap((p) => p.pins);
+        if (pins.length < 2) break;
+        const a = pins[rnd(pins.length)]!.at;
+        const b = pins[rnd(pins.length)]!.at;
+        if (a.x === b.x && a.y === b.y) continue;
+        step({ kind: 'add-wire', from: { at: a }, to: { at: b } });
+      }
+      found.push(...namesOnWords(s).map((x) => `build ${c}: ${x}`));
+    }
+    expect(found).toEqual([]);
   });
 });
 

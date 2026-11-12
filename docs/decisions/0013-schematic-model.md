@@ -182,15 +182,32 @@ and compared; anything they need that v1 cannot say becomes a new field (read pa
 - Every example, fixture and corpus netlist builds to exactly the same drawing and scene as
   before, and a 300-part ladder and a dense mesh build faster.
 
-**A node's name never sits on a part** (student:label-on-part). A name with no spot of its own
-(no `side=`) that touches a symbol, words or a wire at every spot around its point moves along its
-own piece of copper to the nearest point where it touches none (the 40 nearest are tried; never off
-its piece, never onto a point where another node's wire crosses, never away from an open end it
-marks). Junction dots and terminals still steer where a name goes but no longer count as something
-it sits on. This is done only in the scene a schematic keeps, and `buildSchematic` writes the new
-point into the drawing, so the lines written by the next change in the drawing say what the page
-shows; the scenes made along the way (layout, routing, the turned phone view) leave every name
-where it is. A spot chosen on purpose (`side=`) never moves.
+**A node's name goes where it is read clear of the parts, wherever its copper or its end leaves
+room** (student:label-on-part). A name with no spot of its own (no `side=`) that touches a symbol,
+words or a wire at every spot around its point moves along its own piece of copper to the nearest
+point where it touches none (the 40 nearest are tried; never off its piece, never onto a point where
+another node's wire crosses). Junction dots and terminals still steer where a name goes but no
+longer count as something it sits on. This is done only in the scene a schematic keeps, and
+`buildSchematic` writes the new point into the drawing, so the lines written by the next change in
+the drawing say what the page shows; the scenes made along the way (layout, routing, the turned
+phone view) leave every name where it is. A spot chosen on purpose (`side=`) never moves.
+
+A name at an open end (a pin not wired yet, an output terminal, a stub) is that end's name, so its
+point stays at the end. When no spot there is clear, the same spots are tried one and then two grid
+units further out, the way a wire would leave the end, and the first clear one is taken (the critic
+of the fix round found names at open ends still written on parts while a circuit is built: n7 across
+R3's zigzag, n9 over F1's name). When none is clear either (parts dropped a few squares apart leave
+no room for a name and the room kept for its value), the least bad of those places is taken in this
+order: where the name, as it is written before it has a value (on the left of its point the Notebook
+writes the pair up against the point, `results.ts` nameShift), lies least on a symbol; then where the
+room kept for its value does; then the least in the way. In 600 seeded mouse-like builds (parts on a
+grid, then pin-to-pin wires) no name, as written before it has a value, now lies on a symbol, a
+part's name or value, or another name (before: 57 names on a symbol and 85 on a part's words, all at
+open ends). The boxes that include the room kept for a value still overlap a part or a part's words
+548 times in those builds (513 before), since that room is what does not fit. So "never on a part"
+holds for what is written while a circuit is built, and wherever there is room for a name and its
+value; where there is none, a value written after a run may still touch a part. The repository's
+netlists draw exactly as before.
 
 A name the student moves (dragged, Shift+arrow keys, or "Move its name" on the node card) lands
 where it was put, even on a crowded point: there it keeps the spot it has (else the one the scene
