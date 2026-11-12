@@ -1278,10 +1278,22 @@ ngspice 47, ngspice -b (exit 0):
     v1#input_impedance = 1.000000e+03
   rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500
   the same netlist with .op for .tf, ngspice -b (exit 0): gnd 2.500000e+00, x 2.500000e+00, out 2.500000e+00, in 5.000000e+00; rawfile v(gnd) = 2.5
+  the same netlist with .tf v(gnd) V1, ngspice -b (exit 0):
+    Note: vx: has no value, DC 0 assumed
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(0) = 0.000000e+00
+    v1#input_impedance = 1.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(0)) = 0
 ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0, the note "vx: has no value, DC 0 assumed"):
-  vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500; with .op: v(gnd) = 2.5
+  vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500; with .op: v(gnd) = 2.5;
+  with .tf v(gnd) V1: v(Transfer_function) = 0, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(0)) = 0
 ```
+
+`.tf v(gnd) V1` alone is the voltage at ground, 0 (ngspice names it `v(0)`), not that of the ordinary
+node gnd, whose transfer function would be 0.5. So the .tf check never offers "Use gnd" for a typo of
+such a node: written in `v( )`, the name would measure ground (12 November 2026).
 
 ### A3c. A .tf written after .end runs too, and ngspice names its output in its own words
 

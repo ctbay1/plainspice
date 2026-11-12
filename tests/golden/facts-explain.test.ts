@@ -87,6 +87,7 @@ const FACTS: Fact[] = [
   { code: 'A3', id: 'an-tf', netlist: "* F4: output impedance at v(a) with .tf\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n.end\n", vectors: { "v(Transfer_function)": 0.33333333333333337, "v(v1#Input_impedance)": 9, "v(output_impedance_at_V(a))": 4 } },
   { code: 'A3b', id: 'an-tf-gnd', netlist: "* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(out,gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(out,0))": 500 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'A3b-op', id: 'an-tf-gnd-op', netlist: "* .op beside the .tf of a3b: the ordinary node gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "v(x)": 2.5, "v(gnd)": 2.5, "i(vx)": 0, "i(v1)": -0.004999999999999999 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'A3b-alone', id: 'an-tf-gnd-alone', netlist: "* .tf v(gnd): the voltage at ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(0))": 0 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'A3c', id: 'an-tf-after-end', netlist: "* a .tf written after .end\nV1 in 0 5\nR1 in out 1k\nR2 out mid 1k\nR3 mid 0 1k\n.end\n.tf v(out,mid) V1\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out,mid))": 666.6666666666667 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
@@ -464,6 +465,11 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(explainLine(gnd.netlist, 7)!.fields.find((f) => f.label === 'output')?.meaning).toBe('the output: the voltage at node out, measured from ground');
     // The .op of the same circuit: the ordinary node gnd the .tf's gnd is not.
     expect(describeRun(fact('A3b-op').netlist, runs.get('an-tf-gnd-op')!).words.nodes.find((n) => n.node === 'gnd')?.value).toBe(2.5);
+    // v(gnd) alone is the voltage at ground (ngspice: output_impedance_at_V(0)), so the .tf check never
+    // offers "Use gnd" for a typo of that ordinary node: it would measure ground.
+    const alone = describeRun(fact('A3b-alone').netlist, runs.get('an-tf-gnd-alone')!);
+    expect(alone.words.tf?.at).toBe('at ground');
+    expect(alone.words.tf?.transferFunction?.speech).toBe('the transfer function from V1 to the voltage at ground is 0 volts per volt');
     const after = describeRun(fact('A3c').netlist, runs.get('an-tf-after-end')!);
     expect(after.words.tf?.at).toBe('between node out and node mid');
     expect(plain(after.words.tf?.transferFunction?.text)).toBe('v(out,mid)/V1 = 0.3333 (V/V)');

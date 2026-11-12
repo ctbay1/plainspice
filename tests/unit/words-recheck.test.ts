@@ -25,7 +25,7 @@ import { INVISIBLE } from '../../src/spice/characters.ts';
 import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
 import { nameSaysNode } from '../../src/spice/node-words.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
-import { checkTraps } from '../../src/spice/traps.ts';
+import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 /** formatSI writes a no-break space between number and unit; expectations here use a plain space. */
@@ -255,6 +255,19 @@ describe('S7 and words re-check 8: a node name outside ASCII is said as first wr
     expect(netlistVector(n, 'v(au)')).toBe('v(aµ)');
   });
 
+  it('the .tf check offers a node by its name as written: "Use ÇIKIŞ", never the key\'s "Use ÇikiŞ"', () => {
+    const text = '* tf typo\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\n.tf v(ÇIKIŞS) V1\n.end\n';
+    const check = checkTraps(parseNetlist(text)).find((c) => c.id === 'tf-problems')!;
+    expect(check.fixes.map((f) => f.label)).toEqual(['Use ÇIKIŞ']);
+    // It writes the name as written: the same node, __iki__ for ngspice (W16), and the .tf check is gone.
+    const fixed = applyFix(text, check.fixes[0]!);
+    expect(fixed).toContain('.tf v(ÇIKIŞ) V1');
+    expect(checkTraps(parseNetlist(fixed)).filter((c) => c.id === 'tf-problems')).toEqual([]);
+    // A name in plain ASCII keeps the key, as the words do (W6).
+    const ascii = checkTraps(parseNetlist('* tf typo\nV1 in 0 6\nR1 in Vout 1k\nR2 Vout 0 2k\n.tf v(Voutt) V1\n.end\n')).find((c) => c.id === 'tf-problems')!;
+    expect(ascii.fixes.map((f) => f.label)).toEqual(['Use vout']);
+  });
+
   it('a name in plain ASCII keeps ngspice\'s own spelling, in lower case (W6): IN is "in"', () => {
     const n = parseNetlist('* capitals\nV1 IN 0 6\nR1 IN Out 1k\nR2 Out 0 2k\n.op\n.end\n');
     const w = describeResults(n, op({ in: 6, out: 4 }, [['v1', -0.002, 'branch']]), run());
@@ -299,6 +312,18 @@ describe('code review 1, 4 and 5, words re-check 3: the .tf words name each outp
     const at = tfWords('* tf at gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.tf v(gnd) V1\n.end\n', tf(0, 'v(0)', 0, 'v1', 2000));
     expect(at.at).toBe('at ground');
     expect(at.speech).toContain('the transfer function from V1 to the voltage at ground is 0 volts per volt');
+  });
+
+  it('the .tf check never offers an ordinary node called gnd: written in v( ), gnd is ground (A3b)', () => {
+    // gnd as the last word of Vx's line is an ordinary node (W9), but "Use gnd" would write v(gnd), which
+    // ngspice reads as v(0): the voltage at ground, 0, not the voltage at that node (A3b).
+    const text = '* tf typo near gnd\nV1 in 0 5\nR1 in x 1k\nVx x gnd\nR4 gnd 0 1k\n.tf v(gdn) V1\n.end\n';
+    const check = checkTraps(parseNetlist(text)).find((c) => c.id === 'tf-problems')!;
+    expect(check.title).toBe('.tf asks about node gdn, which is not in the circuit');
+    expect(check.fixes.map((f) => f.label)).toEqual([]);
+    // A name like ground that is an ordinary node is offered quoted, as the words say it.
+    const named = checkTraps(parseNetlist('* tf typo near ground\nV1 in 0 5\nR1 in ground 1k\nR2 ground 0 1k\n.tf v(groud) V1\n.end\n')).find((c) => c.id === 'tf-problems')!;
+    expect(named.fixes.map((f) => f.label)).toEqual(['Use "ground"']);
   });
 
   it('ground in a .tf output is never "not a node of the circuit", even in a circuit with nothing on ground', () => {

@@ -499,7 +499,10 @@ what they look like):
   about node "ground", which is not in the circuit'); and a .tf written after .end, which ngspice runs (S25, A3c) but
   PlainSpice does not read as a dot command, takes its nodes from ngspice's own name for the output,
   as the netlist writes them: "between node out and node mid", "at node çıkış", never "at node
-  v(out,mid)"; its source is named as written ("V1").
+  v(out,mid)"; its source is named as written ("V1"). The .tf check never offers "Use gnd" for a
+  typo of an ordinary node called gnd: written in v( ), gnd is ground (`.tf v(gnd) V1` gives
+  output_impedance_at_V(0), A3b), so the fix would measure ground; a name like ground is offered
+  quoted ('Use "ground"').
 - **A node name with a letter outside a to z** (words re-check 9). The card's rename and the Add a
   part form keep node names to the letters a to z (or A to Z), digits and _, and now say it in those
   words, the non-ascii-node check's ("PlainSpice keeps node names to letters" refused çıkış, whose ç,

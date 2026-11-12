@@ -262,7 +262,8 @@ Ctrl+K stay as they are.
   character outside printable ASCII, else the key. The key, `node`, stays for every lookup: the
   Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
   with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
-  (g__r____, au). Chosen for this release: a name in plain ASCII keeps ngspice's own spelling, in
+  (g__r____, au). The .tf check's fix offers such a node as first written too ("Use ÇIKIŞ", never
+  "Use ÇikiŞ"), and writes it so: the same node for ngspice. Chosen for this release: a name in plain ASCII keeps ngspice's own spelling, in
   lower case ("in" for IN, as W6 says SPICE reads it), as these words always said it; every name as
   written, which would make the words agree with the drawing for capitals too, changes the words of
   every circuit written in capitals, and is left for after the release. Nothing is lower-cased with

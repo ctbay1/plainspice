@@ -1953,11 +1953,18 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
     k = 3;
   } else k = 2;
   const src = args[k];
+  // A node is offered as first written when it has a character outside ASCII ("Use ÇIKIŞ", never the
+  // key's "Use ÇikiŞ": S7, decision 0016), a name like ground quoted and such a character named. Never an
+  // ordinary node called gnd: written in v( ), gnd is ground (A3b).
   const nodeCandidates = (t: Token): Fix[] =>
     [...c.n.nodes.values()]
-      .filter((y) => y.connections.length > 0 && looksLikeTypo(lowerAscii(t.text), y.name))
+      .filter((y) => y.connections.length > 0 && y.name !== 'gnd' && looksLikeTypo(lowerAscii(t.text), y.name))
       .slice(0, 2)
-      .map((y) => fix(`Use ${y.name}`, replace(t, y.name)));
+      .map((y) => {
+        const written = y.refs[0]?.text ?? y.name;
+        const name = /^[\x20-\x7e]*$/.test(written) ? y.name : written;
+        return fix(`Use ${y.name === 'ground' || y.name === '00' ? `"${name}"` : nodeNameInWords(name)}`, replace(t, name));
+      });
   if (kind === 'v') {
     outputs.forEach((t, idx) => {
       const name = lowerAscii(t.text);
