@@ -273,8 +273,9 @@ Ctrl+K stay as they are.
   warns "can't parse 'çıkış'" and prints nothing for it, and runs no .dc or .tran when that was all it
   had to print (non-ascii-node-3). A command for ngspice (a .control line, a `*#` line) reads the name
   as written too, so a `save v(çıkış)` there that leaves nothing else saved stops the analysis, in
-  PlainSpice's own run as well (non-ascii-node-4; narrowed below). Now the sentence says only "ngspice spells the node ____k____ in its printout and
-  results" (and "without a message" when nothing else names the node), and adds a sentence for each
+  PlainSpice's own run as well (non-ascii-node-4; narrowed below). Now the sentence says only "ngspice
+  spells the node ____k____ in its printout and results" (and "without a message" when nothing else
+  names the node), and adds a sentence for each
   kind of line only when such a line names the node; .save, .tf, .ic and .meas lines are read like part
   lines and work, so they get none. The rename fix also writes the plain name inside `v(...)` on the
   .control lines (it already did on .print lines): without that, the fixed netlist still stopped.
