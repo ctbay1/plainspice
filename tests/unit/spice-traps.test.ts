@@ -655,11 +655,6 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
           [200, 4000],
         ],
       ),
-      // One long .control line of v( with no ) after them: the sentences and the rename read the line's names
-      // once, not the rest of the line again for each v( (names lane critic 2, 2: a 326-character link froze
-      // the page for 6.5 s).
-      ['one .control line of v( with no )', (opens) =>
-        ['* one line', 'V1 a 0 1', 'R1 a xş 1k', 'R2 xş 0 1k', '.dc V1 0 1 1', '.control', `print ${'v('.repeat(opens)}`, 'save v(xş)', 'run', '.endc', '.end'].join('\n'), [2000, 0]],
       // Names whose plain letters are all "x", with no comment lines: the new names x2, x3 ... were counted
       // up from 2 for each of them.
       ['names with the same plain letters', (nodes, comments) =>
@@ -680,6 +675,29 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       );
       expect(once, `${what}: ${once.toFixed(0)} ms once, ${tenSmall.toFixed(0)} ms for ten small ones`).toBeLessThan(3 * tenSmall);
     }
+  }, 60_000);
+
+  // One long .control line of v( with no ) after them, and a node the checks name: the sentences and the
+  // rename read the line's names once, where a regex read the rest of the line again from every v( (names
+  // lane critic 2, 2: a 326-character link froze the page for 6.5 s on opening and 6 s after each key).
+  // Ten times the line must take about as long as ten of the short ones; the work is a few milliseconds,
+  // below the timer's steps, hence the 20 ms (the old code: 831 ms once, 84 ms for ten small ones).
+  it('reads one long .control line of v( with no ) in time that grows with the line, not its square (names lane critic 2, 2)', () => {
+    const netlist = (opens: number): string =>
+      ['* one line', 'V1 a 0 1', 'R1 a x\u015f 1k', 'R2 x\u015f 0 1k', '.dc V1 0 1 1', '.control', `print ${'v('.repeat(opens)}`, 'save v(x\u015f)', 'run', '.endc', '.end'].join('\n');
+    const small = parseNetlist(netlist(2000));
+    const large = parseNetlist(netlist(20000));
+    expect(checkTraps(large).map((t) => t.id)).toEqual(['non-ascii-node']);
+    const [tenSmall, once] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) checkTraps(small);
+        },
+        () => checkTraps(large),
+      ],
+      3,
+    );
+    expect(once, `${once.toFixed(0)} ms once, ${tenSmall.toFixed(0)} ms for ten small ones`).toBeLessThan(3 * tenSmall + 20);
   }, 60_000);
 });
 
