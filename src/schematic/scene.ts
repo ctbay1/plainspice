@@ -234,6 +234,29 @@ const CELL = 4;
 /** A box covering more squares than this (a very long word, say) is checked by every look instead. */
 const MAX_CELLS = 256;
 
+const NO_IDS: readonly number[] = [];
+
+/** A copy of `marks` with room for at least `n` (twice that, so it grows a few times at most). */
+const grown = (marks: Uint32Array, n: number): Uint32Array<ArrayBuffer> => {
+  const out = new Uint32Array(2 * n);
+  out.set(marks);
+  return out;
+};
+
+/**
+ * Puts the ids a look took (marked `look` in `seen`, out of `count`) in order, in place: by reading the
+ * marks in order when sorting them would be more work.
+ */
+function ordered(ids: number[], seen: Uint32Array, look: number, count: number): void {
+  if (ids.length < 2) return;
+  if (ids.length * Math.log2(ids.length) < count) {
+    ids.sort((i, j) => i - j);
+    return;
+  }
+  let n = 0;
+  for (let i = 0; i < count; i++) if (seen[i] === look) ids[n++] = i;
+}
+
 /** The squares a box covers, or undefined when it covers more than MAX_CELLS (or is not finite). */
 function cellsOf(b: Box): number[] | undefined {
   const x0 = Math.floor(b.x0 / CELL);
@@ -262,6 +285,10 @@ class Obstacles {
   /** What each square holds: box i as i, segment i as −1 − i; `big`: what covers too many squares to file. */
   private readonly cells = new Map<number, number[]>();
   private readonly big: number[] = [];
+  /** The look that last took each box and each segment (`looks` counts the looks): each is taken once per look, with no Set. */
+  private boxSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private segmentSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private looks = 0;
 
   private file(b: Box, id: number): void {
     const keys = cellsOf(b);
@@ -290,20 +317,51 @@ class Obstacles {
     }
   }
 
-  /** What is filed in the squares a box covers (and what covers too many squares to file), each once, in order. */
-  private near(box: Box): { boxes: number[]; segments: number[] } {
-    const near = new Set<number>(this.big);
+  /**
+   * What is filed in the squares a box covers (and what covers too many squares to file), each once,
+   * in order: box indexes, then segment indexes. Undefined means everything, in order: when the box
+   * covers too many squares to look them up, and when its squares hold as many entries as there are
+   * boxes and segments at all (a crowded place: a name written over a hundred others), where looking
+   * at everything in order is less work than gathering the entries. Each look marks what it took with
+   * its own number, and puts several squares' entries in order by reading the marks in order when
+   * that is less work than sorting (second re-check, P3: a Set and two sorts of every entry, on every
+   * look, made each look in a crowded square cost more than looking at everything).
+   */
+  private near(box: Box): { boxes: number[]; segments: number[] } | undefined {
     const keys = cellsOf(box);
-    if (keys) for (const k of keys) for (const id of this.cells.get(k) ?? []) near.add(id);
-    else {
-      this.boxes.forEach((_, i) => near.add(i));
-      this.segments.forEach((_, i) => near.add(-1 - i));
-    }
+    if (!keys) return undefined;
+    let filed = this.big.length;
+    for (const k of keys) filed += this.cells.get(k)?.length ?? 0;
+    if (filed >= this.boxes.length + this.segments.length) return undefined;
+    if (this.boxSeen.length < this.boxes.length) this.boxSeen = grown(this.boxSeen, this.boxes.length);
+    if (this.segmentSeen.length < this.segments.length) this.segmentSeen = grown(this.segmentSeen, this.segments.length);
+    const look = ++this.looks;
     const boxes: number[] = [];
     const segments: number[] = [];
-    for (const id of near) (id >= 0 ? boxes : segments).push(id);
-    boxes.sort((i, j) => i - j);
-    segments.sort((i, j) => j - i);
+    let lists = 0;
+    const take = (list: readonly number[]): void => {
+      if (!list.length) return;
+      lists++;
+      for (const id of list) {
+        if (id >= 0) {
+          if (this.boxSeen[id] !== look) {
+            this.boxSeen[id] = look;
+            boxes.push(id);
+          }
+        } else if (this.segmentSeen[-1 - id] !== look) {
+          this.segmentSeen[-1 - id] = look;
+          segments.push(-1 - id);
+        }
+      }
+    };
+    take(this.big);
+    for (const k of keys) take(this.cells.get(k) ?? NO_IDS);
+    // Each list is in order already (things are filed as they come): one needs no ordering. Several
+    // are put in order by reading the marks in order when that is less work than sorting.
+    if (lists > 1) {
+      ordered(boxes, this.boxSeen, look, this.boxes.length);
+      ordered(segments, this.segmentSeen, look, this.segments.length);
+    }
     return { boxes, segments };
   }
 
@@ -314,14 +372,16 @@ class Obstacles {
    * them would.
    */
   cost(box: Box, skip = -1, solid = false): number {
-    const { boxes, segments } = this.near(box);
+    const near = this.near(box);
     let c = 0;
-    for (const i of boxes) {
+    const count = this.boxes.length;
+    for (let k = 0, n = near ? near.boxes.length : count; k < n; k++) {
+      const i = near ? near.boxes[k]! : k;
       const b = this.boxes[i]!;
       if (i !== skip && !(solid && this.kinds[i] === 'soft') && boxesOverlap(box, b)) c += 1 + overlapArea(box, b);
     }
-    for (const id of segments) {
-      const [a, b] = this.segments[-1 - id]!;
+    for (let k = 0, n = near ? near.segments.length : this.segments.length; k < n; k++) {
+      const [a, b] = this.segments[near ? near.segments[k]! : k]!;
       if (segmentCrossesBox(a, b, box)) c += 1;
     }
     return c;
@@ -329,8 +389,12 @@ class Obstacles {
 
   /** How much of the box lies on boxes of one kind (symbols, or nodes' names), in square grid units. */
   areaOn(box: Box, kind: ObstacleKind): number {
+    const near = this.near(box);
     let area = 0;
-    for (const i of this.near(box).boxes) if (this.kinds[i] === kind) area += overlapArea(box, this.boxes[i]!);
+    for (let k = 0, n = near ? near.boxes.length : this.boxes.length; k < n; k++) {
+      const i = near ? near.boxes[k]! : k;
+      if (this.kinds[i] === kind) area += overlapArea(box, this.boxes[i]!);
+    }
     return area;
   }
 }
