@@ -586,9 +586,9 @@ function partsOf(netlist: Netlist): Parts {
 /** A node in written results: ngspice's name; ground is "0". */
 const nodeName = (ref: NodeRef): string => (ref.ground ? '0' : ref.name);
 /**
- * A node in the circuit overview, as written; ground is "ground". The part sentences are the drawing's
- * too (src/schematic/navigate.ts builds the same ones), so a node named like ground is not quoted
- * here until both quote it (sentenceNode).
+ * A node in the circuit overview, as written; ground is "ground", and an ordinary node named like
+ * ground is quoted (said). The drawing's part descriptions are these same sentences
+ * (src/schematic/navigate.ts calls partSentenceFor).
  */
 const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.ground ? S.ground : said(ref.token.text));
 /** A node in a short note at the end of a line: its bare name, "0" for ground, quoted when it is named like ground. */

@@ -172,3 +172,24 @@ describe('words re-check 3: an ordinary node named like ground is quoted where t
     expect(EDIT_STRINGS.added('R3', EDIT_STRINGS.node('in'), EDIT_STRINGS.node('ground'))).toBe('R3 added between node in and node "ground".');
   });
 });
+
+describe('words re-check 5: a label that already says node gives a name like ground alone, quoted', () => {
+  // Native ngspice 47 and 42: "ground", "00" and a gnd at the end of a line are ordinary nodes (W13, W14, W9).
+  const MODELS = '.model dm D\n.model qm npn\n.model sw1 SW\n.subckt sub a b\nR9 a b 1k\n.ends\n';
+  const summaries = (parts: string): string[] => explainNetlist(parseNetlist(`* labels\nV1 a 0 1\nR1 a 0 1k\n${parts}${MODELS}.op\n.end\n`)).map((e) => e.summary);
+
+  it('"+ node "00"", never "+ node the node "00"", as the overview says it', () => {
+    const lines = summaries('D1 00 0 dm\nX1 ground 0 sub\nD2 out ground dm\nD3 a gnd\n');
+    expect(lines).toContain('D1 is a diode: + node "00" and − node ground (node 0). PlainSpice explains R, C, L, V, I, E, F, G, H and K lines field by field; for this part it shows the fields and what ngspice needs.');
+    expect(lines.find((l) => l.startsWith('X1'))).toContain('X1 is a subcircuit: node "ground" and node ground (node 0).');
+    expect(lines.find((l) => l.startsWith('D2'))).toContain('D2 is a diode: + node out and − node "ground".');
+    expect(lines.find((l) => l.startsWith('D3'))).toContain('D3 is a diode: + node a and − node "gnd".');
+    expect(describeCircuit(parseNetlist(`* o\nD1 00 0 dm\n${MODELS}.op\n.end\n`))).toContain('D1: a diode (+ node "00", − side at ground, model dm).');
+  });
+
+  it('never "node the node" on any part whose label ends in node; "at" labels keep "the node"', () => {
+    const lines = summaries('S1 ground 0 00 0 sw1\nX2 00 ground sub\nD4 ground 00 dm\nQ1 c b ground qm\n');
+    expect(lines.filter((l) => /node (the )?node\b/.test(l))).toEqual([]);
+    expect(lines.find((l) => l.startsWith('Q1'))).toContain('emitter at the node "ground"');
+  });
+});

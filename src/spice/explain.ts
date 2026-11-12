@@ -137,6 +137,8 @@ export const EXPLAIN_STRINGS = {
   groundWordNode: (n: string): string => `the node "${n}", which is not ground: only 0 and gnd are ground (node 0)`,
   quotedNode: (n: string): string => `the node "${n}"`,
   gndIsGround: 'ground: gnd is another name for node 0',
+  /** A name like ground on its own, after a label that already says node: '+ node "ground"'. */
+  quotedName: (n: string): string => `"${n}"`,
   gndLastWordNote: (name: string): string =>
     `ngspice reads gnd as ground except as the last word of a line, so here ${name} goes to an ordinary node called gnd, not to ground. Write 0 instead.`,
   groundWordNote: (n: string): string =>
@@ -735,11 +737,15 @@ function numberPart(text: string): string {
 /** Names that look like ground but are ordinary nodes (W9, W13, W14). */
 const groundLike = (ref: NodeRef): boolean => ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00';
 
-/** A node's name alone, where a label already says "node" ("+ node c"): "in", "ground (node 0)". */
+/**
+ * A node's name alone, where a label already says "node" ("+ node c"): "in", "ground (node 0)", and a
+ * name like ground quoted on its own ('+ node "ground"', never '+ node the node "ground"': words
+ * re-check 5).
+ */
 function nodeName(ref: NodeRef): string {
   if (ref.ground) return S.ground;
   // W9, W13, W14: names that look like ground but are ordinary nodes are quoted, so "ground" never reads as ground.
-  if (groundLike(ref)) return S.quotedNode(ref.token.text);
+  if (groundLike(ref)) return S.quotedName(ref.token.text);
   // invisible-character-3: the character is named, not hidden in the sentence.
   if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
   // space-character-4, nbsp-1: one word for SPICE, though it reads as two.
@@ -753,7 +759,9 @@ function nodeName(ref: NodeRef): string {
  * 0)", and a name like ground is quoted: the node "ground".
  */
 function nodeText(ref: NodeRef): string {
-  return ref.ground || groundLike(ref) ? nodeName(ref) : S.nodeWord(nodeName(ref));
+  if (ref.ground) return nodeName(ref);
+  if (groundLike(ref)) return S.quotedNode(ref.token.text);
+  return S.nodeWord(nodeName(ref));
 }
 
 /** How a node of a part reads in a sentence: "node n1", "ground (node 0)". */
