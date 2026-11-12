@@ -456,7 +456,7 @@ export const en = {
   exampleF3a: 'The 1M trap',
   exampleF3b: 'The 1M trap, fixed: 1meg',
   exampleF4: '.tf: output resistance at a node',
-  exampleF5: 'Thevenin resistance with a dependent source',
+  exampleF5: 'Thévenin resistance with a dependent source',
   exampleD1: 'DC sweep of a divider',
   exampleT1: 'RC charging (.tran)',
   exampleLoaded: 'Opened the example “{name}”.',

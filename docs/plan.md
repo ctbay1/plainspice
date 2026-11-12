@@ -1,6 +1,6 @@
 # Plan
 
-*Updated 11 November 2026: milestone 1 is done; milestone 2 (drawing circuits): steps A, B and C are done; its final reviews are next.*
+*Updated 12 November 2026: milestone 1 is done; milestone 2 (drawing circuits): steps A, B and C are done; its final reviews are next.*
 
 ## Done: the first milestone
 

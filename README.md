@@ -8,7 +8,7 @@ in a circuit simulator.
 **Try it: <https://plainspice.com/>** · [Engine check](https://plainspice.com/spike/) ·
 [Licences and source](https://plainspice.com/licenses/)
 
-![PlainSpice on its first screen: a 6 V source and two resistors drawn on notebook paper, solved by ngspice, with R1's card open and 2k typed: the drawing now reads out = 3 V with the old 4 V crossed out and 1.5 mA through each part; the card shows 1.5 mA through R1 and 3 V across it, the old 2 mA and 2 V crossed out, and buttons to turn, mirror, reverse, move, connect and delete R1; the parts to place are in the margin on the left](docs/screenshot.png)
+![PlainSpice on its first screen: a 6 V source and two resistors drawn on notebook paper, solved by ngspice, with R1's card open and 2k typed: the drawing now reads out = 3 V with the old 4 V crossed out and 1.5 mA through each part; the card shows 1.5 mA through R1 and 3 V across it, the old 2 mA and 2 V crossed out, and buttons to turn, mirror, reverse, move and delete R1 and to show its Connections; the parts to place are in the margin on the left](docs/screenshot.png)
 
 ## What it does
 
@@ -54,7 +54,7 @@ Everything around it is for beginners:
 
 ![Placing a part: Start here with a third resistor in hand, drawn in pencil where the pointer holds it; its left end lands on the ground wire at R2's foot and is marked as connecting to it, its right end is open (a new node), and the hint line says so before the click: "Click to place a resistor here: its ends connect to ground and a new node · T turns it · M mirrors it · Esc goes back to Select"](docs/screenshot-editing.png)
 
-<img src="docs/screenshot-phone.png" width="300" alt="PlainSpice on a phone: Start here drawn at the top with out = 3 V (the old 4 V crossed out); R1's card is a sheet along the bottom with 2k typed, SPICE reads it as 2 kΩ, was 1k with Put back 1k, 1.5 mA through it and 3 V across it (the old 2 mA and 2 V crossed out), and buttons to turn, mirror, reverse, move, connect and delete R1">
+<img src="docs/screenshot-phone.png" width="300" alt="PlainSpice on a phone: Start here drawn at the top with out = 3 V (the old 4 V crossed out); R1's card is a sheet along the bottom with 2k typed, SPICE reads it as 2 kΩ, was 1k with Put back 1k, 1.5 mA through it and 3 V across it (the old 2 mA and 2 V crossed out), and buttons to turn, mirror, reverse, move and delete R1 and to show its Connections">
 
 How it differs from [EEcircuit](https://github.com/eelab-dev/EEcircuit), the closest existing
 tool: [docs/eecircuit-comparison.md](docs/eecircuit-comparison.md).
