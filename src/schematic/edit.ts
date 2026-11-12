@@ -1263,16 +1263,21 @@ function moveLabel(s: Schematic, op: Extract<EditOp, { kind: 'move-label' }>, op
   const other = here.map((i) => cu.nodeOf(i)).find((n) => n !== undefined && n !== node);
   if (other !== undefined) return refuse(s, S.labelCrossing(nodeIn(s.circuit, node), nodeIn(s.circuit, other)));
   const next = cloneDrawing(s.drawing);
-  const side = op.side === undefined ? label.side : op.side === 'auto' ? undefined : op.side;
+  // A spot the drawing stores (side=: the video's, or the one the scene picked at the name's last
+  // point) belongs to that point: moved to another point, the name gets the spot that fits there,
+  // as a part turned lets its words' side go (second critic of the fix round: a name stepped on with
+  // Shift+arrows kept the spot of its first stop). Only a spot the edit names is kept.
+  const side = op.side === undefined ? (samePoint(to, label.at) ? label.side : undefined) : op.side === 'auto' ? undefined : op.side;
   next.labels[index] = side ? { node, at: to, side } : { node, at: to };
   const summary = S.labelMoved(said(s.circuit, node));
   const moved = finish(s, [], next, { summary, select: { node }, ...(op.side !== undefined && op.side !== 'auto' ? { chosen: { node } } : {}) }, options);
   // A name with no spot of its own (side=) that has no room at a point is written at the nearest
   // point of its copper where it has (scene.ts); a stored spot an edit puts something on may be let
   // go (relaxStored), and then the same. But the student put this name at `to`: it stays there, at
-  // the spot it has there (else the one the scene picks there), kept as chosen, as a part's side the
-  // student chose is kept. So the name is where the preview showed it and the summary says, never
-  // somewhere else (student:label-on-part, critic of the fix round). Only 'auto' lets the scene choose.
+  // the spot the scene picks there (the least in the way) unless the edit names one, kept as chosen,
+  // as a part's side the student chose is kept. So the name is where the preview showed it and the
+  // summary says, never somewhere else (student:label-on-part, critic of the fix round). Only 'auto'
+  // lets the scene choose.
   if (!moved.ok || op.side === 'auto' || landed(moved.drawing, node, to)) return moved;
   const free = cloneDrawing(next);
   free.labels[index] = { node, at: to };

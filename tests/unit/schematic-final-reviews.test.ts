@@ -221,6 +221,45 @@ describe('where a node\'s name is written (student:label-on-part)', () => {
     expect(findOverlaps(roomy.scene)).toEqual([]);
   });
 
+  it('a name moved on gets the spot that fits its new point, not the one it had: stepped there or moved there at once, it is written the same', () => {
+    // Shift+Up, Shift+Left, Shift+Left took n4 to (8,0), (7,0) and (6,0), and the spot the scene had
+    // picked at (8,0), below-right, went along to (6,0), where its value ran across R2's lead; one
+    // move to (6,0) writes it above-left (second critic of the fix round).
+    const s = notebookSchematic(MOUSE_LADDER);
+    let stepped = '';
+    let at = s;
+    for (const to of [
+      { x: 8, y: 0 },
+      { x: 7, y: 0 },
+      { x: 6, y: 0 },
+    ]) {
+      const r = applyEdit(at, { kind: 'move-label', node: 'n4', to });
+      expect(r.ok, r.reason).toBe(true);
+      stepped = r.text;
+      at = notebookSchematic(r.text);
+    }
+    expect(stepped).toBe(applyEdit(s, { kind: 'move-label', node: 'n4', to: { x: 6, y: 0 } }).text);
+    // Any two moves among the points n4's name can go end as one move to the second point (5 of these
+    // 30 kept a worse spot before).
+    const points = [
+      { x: 6, y: 0 },
+      { x: 7, y: 0 },
+      { x: 8, y: 0 },
+      { x: 8, y: 1 },
+      { x: 9, y: 0 },
+      { x: 10, y: 0 },
+    ];
+    for (const a of points) {
+      const there = notebookSchematic(applyEdit(s, { kind: 'move-label', node: 'n4', to: a }).text);
+      for (const b of points) {
+        if (b !== a) expect(applyEdit(there, { kind: 'move-label', node: 'n4', to: b }).text, `${a.x},${a.y} then ${b.x},${b.y}`).toBe(applyEdit(s, { kind: 'move-label', node: 'n4', to: b }).text);
+      }
+    }
+    // A spot the edit names is kept wherever the name goes.
+    const named = notebookSchematic(applyEdit(s, { kind: 'move-label', node: 'n4', to: { x: 8, y: 0 }, side: 'above-left' }).text);
+    expect(named.drawing.labels.find((l) => l.node === 'n4')).toEqual({ node: 'n4', at: { x: 8, y: 0 }, side: 'above-left' });
+  });
+
   it('built with the editor, pin to pin as the reviewer did, ends with no name on a part or its words', () => {
     const s = reviewerLadder(6);
     expect(s.circuit.parts.map((p) => p.name)).toEqual(['V1', 'R1', 'R2', 'R3', 'F1']);
