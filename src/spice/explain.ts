@@ -20,7 +20,7 @@ import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -332,6 +332,9 @@ export const EXPLAIN_STRINGS = {
     items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`,
   insideSubcircuit: (name: string, line: number): string =>
     `This part belongs to the subcircuit ${name} (from line ${line}): its nodes are the subcircuit's own.`,
+  /** A3f: an analysis line in a subcircuit no X line uses does not run (critic of the words re-check's fix, round 2). */
+  analysisInUnusedSubcircuit: (name: string, line: number): string =>
+    `ngspice ignores this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
 
   // ---- dot commands
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
@@ -1160,6 +1163,39 @@ export function sweptBy(netlist: Netlist, key: string): number | undefined {
   return contextOf(netlist).swept.get(key);
 }
 
+/** The analyses A3f ran inside a subcircuit no X line uses: ngspice ignores each of them there. */
+const RUN_ANALYSES: ReadonlySet<string> = new Set(['.op', '.tf', '.dc', '.tran', '.ac']);
+
+const usedCache = new WeakMap<Netlist, Set<string>>();
+
+/** The subcircuits an X line uses, by lower-case name: X lines anywhere, those after a plain .end too (S25). */
+function usedSubcircuits(netlist: Netlist): Set<string> {
+  const cached = usedCache.get(netlist);
+  if (cached) return cached;
+  const used = new Set<string>();
+  const add = (el: Element | undefined): void => {
+    const model = el?.letter === 'X' ? el.fields.find((f) => f.role === 'model') : undefined;
+    if (model) used.add(lowerAscii(model.token.text));
+  };
+  for (const l of netlist.lines) add(l.element);
+  for (const l of readAfterEnd(netlist)) add(parseNetlist(`*\n${l.text}`).lines[1]?.element);
+  usedCache.set(netlist, used);
+  return used;
+}
+
+/**
+ * The subcircuit a line is in (its name as written and its .subckt line, 0-based) when no X line uses
+ * that subcircuit; undefined for any other line. ngspice ignores such a subcircuit, an analysis line in
+ * it too (A3f: .op, .tf, .dc, .tran and .ac run nothing there); in a subcircuit an X line uses, it runs
+ * an analysis line as if the main circuit had it, once for each such X line.
+ */
+export function unusedSubcircuit(netlist: Netlist, index: number): { name: string; line: number } | undefined {
+  const at = contextOf(netlist).insideSubckt.get(index);
+  const name = at === undefined ? undefined : netlist.lines[at]?.directive?.args[0];
+  if (at === undefined || !name || usedSubcircuits(netlist).has(lowerAscii(name.text))) return undefined;
+  return { name: name.text, line: at };
+}
+
 function partKind(netlist: Netlist, name: string): { line?: number; letter?: ElementLetter } {
   const line = contextOf(netlist).elements.get(lowerAscii(name));
   if (line === undefined) return {};
@@ -1789,12 +1825,15 @@ function commandRow(token: Token, what: string): FieldExplanation {
 function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation {
   const d = line.directive!;
   const name = d.name;
+  // A3f: ngspice ignores an analysis line in a subcircuit no X line uses, so what the line would make
+  // ngspice do (a missing node's 0, a stop) is not said: only that it is ignored.
+  const unused = RUN_ANALYSES.has(name) ? unusedSubcircuit(netlist, line.index) : undefined;
   const out = (what: string, summary: string, fields: FieldExplanation[] = [], notes: string[] = []): LineExplanation => ({
     line: line.number,
     heading: S.dotHeading(d.token.text, what),
     summary,
     fields: [commandRow(d.token, what), ...fields],
-    notes,
+    notes: unused ? [S.analysisInUnusedSubcircuit(unused.name, unused.line + 1)] : notes,
   });
   const ctx = contextOf(netlist);
   switch (name) {

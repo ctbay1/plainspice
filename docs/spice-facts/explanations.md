@@ -1528,6 +1528,61 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
 ```
 
+### A3f. An analysis line in a subcircuit no X line uses is ignored; in one an X line uses, it runs as the main circuit's
+
+Added after the second critic of the words re-check's fix (12 November 2026). A `.tf` between `.subckt`
+and `.ends` is not the circuit's `.tf` when no X line uses that subcircuit: ngspice ignores it, and runs
+the `.tf v(out)` after `.ends` (0.5 and 500 Ω), which the words named "Transfer function v(a,gnd) / V1"
+until then, with an error that said ngspice makes a new node for a. With nothing else, nothing runs:
+the same for `.op`, `.dc`, `.tran` and `.ac` there. So the words, the checks and the overview leave
+such a line out, and Explain says that ngspice ignores it. When an X line uses the subcircuit, ngspice
+runs the line as if the main circuit had it, once for each such X line, with the main circuit's node
+names: `.tf v(out)` there is the main circuit's out, and `.tf v(a)` a new node a with nothing on it (0
+and 1 Ω, as tf-problems-1), not the subcircuit's a; so such a line is read and checked as one in the
+main circuit.
+
+```spice
+* a .tf inside a subcircuit, and one in the main circuit
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt s a b
+R9 a b 1k
+.tf v(a,gnd) V1
+.ends
+.tf v(out) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(out) = 5.000000e+02
+    v1#input_impedance = 2.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(out)) = 500
+  without the .tf v(out) line, and .op in its place: v(in) = 5, v(out) = 2.5, and no transfer function
+  with no other analysis line, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0): no rawfile; the same with .op, .dc V1 0 5 1, .tran 1m 5m or
+    .ac dec 1 1k 10k (V1 in 0 AC 1) in the subcircuit instead of the .tf
+  with X1 out 0 s (the subcircuit used), .tf v(out) V1 inside it and .op after .ends, ngspice -b (exit 0):
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out) = 3.333333e+02
+    v1#input_impedance = 1.500000e+03
+  the same with .tf v(a) V1 inside it: transfer_function = 0.000000e+00, output_impedance_at_v(a) = 1.000000e+00
+  the same as the first with X2 in 0 s too: two "Transfer function information" blocks, each 1/3 and 333.3 Ω
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47, except "Note: No ".plot",
+  ".print", or ".fourier" lines; no simulations run" in -b mode, and an exit code of 1 in -b mode for the
+  used subcircuit ("no data saved for D.C. Operating point analysis"), whose rawfile is the same
+our engine (wasm), as ngspice -b -r:
+  exit 0, vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(out)) = 500;
+  no results for the others with no analysis outside the subcircuit; with X1: 0.3333333333333333 and 333.3333333333333;
+  with v(a): 0 and 1; with X1 and X2: two Transfer Function plots
+```
+
 ### A4. The .tf input can be a current source: the transfer function is then in V/A
 
 I1 pushes 1 A into a; R1 ‖ (R2 + R3) = 2 Ω, so a = 2 V and b = 1 V: v(b)/I1 = 1 V per ampere. I1 sees 2 Ω, and the resistance at b is R3 ‖ (R2 + R1) = 1.5 Ω.

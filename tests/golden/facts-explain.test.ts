@@ -24,7 +24,7 @@ import { interpretPlots, type AnalysisResults } from '../../src/engine/results.t
 import type { RawPlot, RunResult } from '../../src/engine/types.ts';
 import { formatSI } from '../../src/format/si.ts';
 import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
-import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
+import { explainLine, explainNetlist, readAnalysis, unusedSubcircuit } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import type { Netlist } from '../../src/spice/types.ts';
 
@@ -96,6 +96,16 @@ const FACTS: Fact[] = [
   { code: 'A3c', id: 'an-tf-after-end', netlist: "* a .tf written after .end\nV1 in 0 5\nR1 in out 1k\nR2 out mid 1k\nR3 mid 0 1k\n.end\n.tf v(out,mid) V1\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out,mid))": 666.6666666666667 } },
   { code: 'A3d', id: 'an-tf-isource-after-end', netlist: "* .tf with a current source as the input, written after .end\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.end\n.tf v(b) I1\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A3e', id: 'an-tf-current-after-end', netlist: "* .tf from a current source to a current, written after .end\nI1 0 a 1\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.end\n.tf i(Vm) I1\n", vectors: { "v(Transfer_function)": 0.6666666666666667, "v(i1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
+  { code: 'A3f', id: 'an-tf-subckt', netlist: "* a .tf inside a subcircuit, and one in the main circuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.tf v(out) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 2000, "v(output_impedance_at_V(out))": 500 } },
+  { code: 'A3f', id: 'an-tf-subckt-op', netlist: "* a .tf only inside a subcircuit, with .op in the main circuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3f', id: 'an-tf-subckt-alone', netlist: "* a .tf only inside a subcircuit, and no other analysis\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-op-subckt', netlist: "* .op only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-dc-subckt', netlist: "* .dc only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.dc V1 0 5 1\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-tran-subckt', netlist: "* .tran only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 1m 5m\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-ac-subckt', netlist: "* .ac only inside a subcircuit\nV1 in 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.ac dec 1 1k 10k\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-tf-subckt-used', netlist: "* a .tf inside a used subcircuit naming a top node\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.op\n.end\n", vectors: { "v(out)": 1.6666666666666665, "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out))": 333.3333333333333 } },
+  { code: 'A3f', id: 'an-tf-subckt-port', netlist: "* a .tf on a port node inside a used subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(a) V1\n.ends\n.op\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a))": 1 } },
+  { code: 'A3f', id: 'an-tf-subckt-twice', netlist: "* a .tf inside a subcircuit used twice\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\nX2 in 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.op\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 600, "v(output_impedance_at_V(out))": 333.3333333333333 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -317,6 +327,11 @@ describe('what the explanations predict matches the run', () => {
       for (const i of n.analyses) {
         const a = readAnalysis(n, i);
         if (a?.kind !== 'dc' || a.points === undefined) continue;
+        // A3f: in a subcircuit no X line uses, ngspice runs no point of it.
+        if (unusedSubcircuit(n, i)) {
+          expect(interpretPlots(runs.get(f.id)!.plots).dc, f.id).toBeUndefined();
+          continue;
+        }
         const dc = interpretPlots(runs.get(f.id)!.plots).dc;
         expect(dc?.scale.values.length ?? 0, f.code).toBe(a.points);
         checked += 1;
@@ -332,6 +347,11 @@ describe('what the explanations predict matches the run', () => {
       for (const i of n.analyses) {
         const a = readAnalysis(n, i);
         if (a?.kind !== 'ac' || a.points === undefined) continue;
+        // A3f: in a subcircuit no X line uses, ngspice runs no point of it.
+        if (unusedSubcircuit(n, i)) {
+          expect(vectorValues(runs.get(f.id)!.plots, 'frequency'), f.id).toBeUndefined();
+          continue;
+        }
         expect(vectorValues(runs.get(f.id)!.plots, 'frequency')?.length, f.code).toBe(a.points);
         checked += 1;
       }
@@ -520,6 +540,30 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const a3e = describeRun(fact('A3e').netlist, runs.get('an-tf-current-after-end')!).words.tf!;
     expect([a3e.output, a3e.ratio, plain(a3e.transferFunction?.text), a3e.transferFunction?.speech]).toEqual(['i(Vm)', 'A/A', 'i(Vm)/I1 = 0.6667 (A/A)', 'the transfer function from I1 to the current in Vm is 0.6667 amps per amp']);
     expect(plain(a3e.outputResistance?.text)).toBe("ngspice's output impedance for i(Vm): 1e+20 Ω, a stand-in number rather than a resistance of your circuit");
+  });
+
+  it('a .tf in a subcircuit no X line uses is left out, as ngspice leaves it out; one an X line uses is the main circuit\'s (A3f)', () => {
+    // Only the .tf v(out) after .ends runs: its numbers are v(out)'s, never named v(a,gnd).
+    const sub = describeRun(fact('A3f').netlist, runs.get('an-tf-subckt')!);
+    expect(plain(sub.words.tf?.transferFunction?.text)).toBe('v(out)/V1 = 0.5 (V/V)');
+    expect(sub.words.tf?.at).toBe('at node out');
+    expect(sub.words.warnings.map((w) => w.code)).not.toContain('tf-node-missing');
+    expect(describeCircuit(sub.netlist)).toContain('Analysis: transfer function from V1 to v(out).');
+    expect(explainLine(sub.netlist, 6)!.notes).toEqual(['ngspice ignores this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.']);
+    // With nothing else, nothing runs, whatever the analysis.
+    for (const id of ['an-tf-subckt-alone', 'an-op-subckt', 'an-dc-subckt', 'an-tran-subckt', 'an-ac-subckt']) {
+      const f = FACTS.find((x) => x.id === id)!;
+      expect(runs.get(id)!.plots, id).toEqual([]);
+      expect(describeCircuit(parseNetlist(f.netlist)), id).toContain('Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.');
+      const line = parseNetlist(f.netlist).lines.findIndex((l) => l.directive && ['.tf', '.op', '.dc', '.tran', '.ac'].includes(l.directive.name));
+      expect(explainLine(parseNetlist(f.netlist), line)!.notes[0], id).toMatch(/^ngspice ignores this line/);
+    }
+    // Used by an X line, the .tf is the main circuit's: v(out) is the main circuit's out (1/3, 333.3 Ω).
+    const used = describeRun(FACTS.find((x) => x.id === 'an-tf-subckt-used')!.netlist, runs.get('an-tf-subckt-used')!);
+    expect(plain(used.words.tf?.transferFunction?.text)).toBe('v(out)/V1 = 0.3333 (V/V)');
+    expect(explainLine(used.netlist, 7)!.notes.join(' ')).not.toContain('ngspice ignores this line');
+    // Once for each X line that uses it.
+    expect(runs.get('an-tf-subckt-twice')!.plots.filter((p) => /transfer function/i.test(p.plotname)).length).toBe(2);
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {

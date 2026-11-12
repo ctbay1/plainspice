@@ -18,7 +18,7 @@ import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { withoutInvisible } from './characters.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
@@ -299,6 +299,8 @@ export const DESCRIBE_STRINGS = {
   noAnalysis: 'No analysis line (.op, .dc, .tran, .tf or .ac), so ngspice will run nothing.',
   noAnalysisControl: 'No analysis line (.op, .dc, .tran, .tf or .ac): ngspice runs the commands in the .control block instead.',
   analysisAfterEnd: 'The analysis is written after .end, where ngspice still reads it.',
+  /** A3f: the only analysis lines are in a subcircuit no X line uses. */
+  analysisIgnored: 'Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.',
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
@@ -778,11 +780,15 @@ export function describeCircuit(netlist: Netlist): string {
   for (const line of parts.lines.slice(0, DESCRIBED_PARTS)) out.push(partSentence(netlist, line));
   if (parts.lines.length > DESCRIBED_PARTS) out.push(S.moreParts(parts.lines.length - DESCRIBED_PARTS));
   if (parts.subckts.length) out.push(S.subcircuits(parts.subckts.length, parts.subckts.join(', ')));
-  const analyses = netlist.analyses.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
+  // A3f: an analysis line in a subcircuit no X line uses is ignored, so it is not among the analyses.
+  const run = netlist.analyses.filter((i) => !unusedSubcircuit(netlist, i));
+  const analyses = run.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
   if (analyses.length === 0) {
     // M20; A36: a .control block runs; S25: so does an analysis written after a plain .end.
+    const control = netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text));
     if (readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) out.push(S.analysisAfterEnd);
-    else out.push(netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text)) ? S.noAnalysisControl : S.noAnalysis);
+    else if (run.length < netlist.analyses.length && !control) out.push(S.analysisIgnored);
+    else out.push(control ? S.noAnalysisControl : S.noAnalysis);
   } else {
     const list = analyses.map((r) => analysisPhrase(netlist, r)).join('; ');
     out.push(analyses.length === 1 ? S.analysis(list) : S.analyses(list));
@@ -1301,7 +1307,8 @@ function nodesOf(netlist: Netlist, results: AnalysisResults): NodeVoltageWords[]
 function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords | undefined {
   const tf = results.tf;
   if (!tf) return undefined;
-  const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
+  // Not a .tf in a subcircuit no X line uses, which ngspice ignores (A3f: its words named v(out)'s numbers v(a,gnd)).
+  const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf' && !unusedSubcircuit(netlist, i));
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const reading = r?.kind === 'tf' ? r : undefined;
   // A .tf after .end, which ngspice runs (S25, A3c, A3d), has no reading: ngspice's names, as the netlist
@@ -1536,7 +1543,8 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
   if (results.tf) {
     for (const i of netlist.analyses) {
       const r = readAnalysis(netlist, i);
-      if (r?.kind !== 'tf' || r.outputKind !== 'voltage') continue;
+      // A3f: ngspice ignores a .tf in a subcircuit no X line uses, so its nodes are no message's.
+      if (r?.kind !== 'tf' || r.outputKind !== 'voltage' || unusedSubcircuit(netlist, i)) continue;
       // The nodes as the parser reads them (a gnd ngspice makes 0 is ground: A3b), named as said.
       for (const n of r.outputNodes) {
         // Ground is always a node; a circuit with nothing on it gets ngspice's own message (M1).

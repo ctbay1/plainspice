@@ -34,7 +34,7 @@ import {
   withoutSpaces,
   withSpaces,
 } from './characters.ts';
-import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd } from './explain.ts';
+import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -2208,7 +2208,9 @@ function oddTfPart(c: Ctx, t: Token, part: Element, role: 'output' | 'input'): v
 function checkAnalyses(c: Ctx): void {
   for (const l of c.n.lines) {
     const d = l.directive;
-    if (!d || l.kind !== 'directive' || c.graph.inSubcircuit.has(l.index)) continue;
+    // ngspice ignores an analysis line in a subcircuit no X line uses (A3f); in one an X line uses, it
+    // runs the line as the main circuit's (graph.inSubcircuit holds part lines only).
+    if (!d || l.kind !== 'directive' || unusedSubcircuit(c.n, l.index)) continue;
     if (d.name === '.dc') checkDc(c, d);
     else if (d.name === '.tran') checkTran(c, d);
     else if (d.name === '.tf') checkTf(c, d, l);
