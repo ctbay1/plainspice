@@ -113,7 +113,10 @@ export interface QuantityWords {
 }
 
 export interface TransferFunctionWords {
-  /** The .tf output and input as written ("v(a)", "V1"). */
+  /**
+   * The .tf output and input as written ("v(a)", "V1"), every label's formula: never with an invisible
+   * character in it, which reads as another name (S11: "v(ou<ZWSP>t)" is "v(out)"; the words name it).
+   */
   output: string;
   input: string;
   /** "V/V", "V/A", "A/V" or "A/A". */
@@ -1285,7 +1288,7 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const reading = r?.kind === 'tf' ? r : undefined;
   // A .tf after .end, which ngspice runs (S25, A3c), has no reading: ngspice's names, as the netlist writes them (W16).
-  const output = reading?.output ?? (tf.outputImpedance ? netlistVector(netlist, tf.outputImpedance.at) : '?');
+  const output = withoutInvisible(reading?.output ?? (tf.outputImpedance ? netlistVector(netlist, tf.outputImpedance.at) : '?'));
   const input = reading?.input?.text ?? (tf.inputImpedance ? (partsOf(netlist).byKey.get(netlistPart(netlist, tf.inputImpedance.source))?.element?.name.text ?? tf.inputImpedance.source) : '?');
   const outKind = reading?.outputKind ?? (tf.outputImpedance?.at.startsWith('i(') ? 'current' : 'voltage');
   const inKind = reading?.inputKind === 'current' ? 'current' : 'voltage';
@@ -1297,8 +1300,7 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
     const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
     words.transferFunction = {
       value: tf.transferFunction,
-      // The formula as written, but never with a character hidden in it (S11): the words after it name it.
-      text: S.transfer(withoutInvisible(output), input, v, ratio),
+      text: S.transfer(output, input, v, ratio),
       speech: S.transferSpeech(outSpeech, input, v.replace(MINUS, 'minus '), (v === '1' ? S.ratioWordsOne[ratio] : S.ratioWords[ratio]) ?? ratio),
     };
   }

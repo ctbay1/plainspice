@@ -19,13 +19,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { App } from '../../src/app/App.tsx';
-import { NumbersPanel } from '../../src/app/components/NumbersPanel.tsx';
+import { NumbersPanel, tfRows } from '../../src/app/components/NumbersPanel.tsx';
 import type { Engine } from '../../src/app/engine.ts';
 import { START_HERE_ID } from '../../src/app/examples.ts';
 import { solveText } from '../../src/app/model.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { t } from '../../src/i18n/index.ts';
+import { INVISIBLE } from '../../src/spice/characters.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const START = readFileSync(resolve(root, 'examples/start-here.cir'), 'utf8');
@@ -203,6 +204,20 @@ describe('S11, critic of its fix: a .tf on a node written with a hidden or look-
     await solved();
     expect(tone()).toBe('ok');
     expect(await screen.findByRole('heading', { name: t('resultsCardTf') })).toBeTruthy();
+  }, 30000);
+});
+
+describe('S11, critic of its fix: the .tf box and the Numbers panel\'s .tf table write the formula without a hidden character', () => {
+  // Native ngspice 47 and 42 run both (a .tf after .end too, A3c) on the node ou___t: a transfer function of
+  // 0 and 2 kΩ above (R2 alone is on it), 2/3 and 666.7 Ω after .end (the divider's middle).
+  it.each([
+    ['above .end', '* zw both\nV1 in 0 6\nR1 in out 1k\nR2 ou\u200bt 0 2k\n.tf v(ou\u200bt) V1\n.end\n'],
+    ['after .end', '* zw after end\nV1 in 0 6\nR1 in ou\u200bt 1k\nR2 ou\u200bt 0 2k\n.end\n.tf v(ou\u200bt) V1\n'],
+  ])('%s: "Transfer function v(out) / V1", the character named in the words beside it', async (_, text) => {
+    const rows = tfRows((await solveText(text, await ngspice)).words.tf!);
+    expect(rows[0]!.label).toBe('Transfer function v(out) / V1');
+    expect(rows.map((r) => r.label).filter((l) => INVISIBLE.test(l))).toEqual([]);
+    expect(rows.map((r) => r.label)).toContain('Output resistance at node out (written with a zero-width space in it)');
   }, 30000);
 });
 
