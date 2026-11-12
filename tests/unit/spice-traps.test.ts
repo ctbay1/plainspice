@@ -786,3 +786,15 @@ describe('the evidence', () => {
     for (const id of TRAP_IDS) expect(doc).toContain(`## ${id}`);
   });
 });
+
+describe('after the final reviews (12 November 2026)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+
+  it('the missing-end note says where new lines go, not that .end stops ngspice (words review W1; missing-end-1, after-end-1, S25)', () => {
+    const t = first('* t\nV1 n1 0 6\nR1 n1 0 2\n.op\n', 'missing-end');
+    expect(t.why).toContain('keep new lines above it, because ngspice still reads lines written after .end');
+    // ngspice reads past .end (after-end-1), and no fact here says what other SPICE programs need.
+    expect(`${t.title} ${t.why} ${t.ngspice}`).not.toMatch(/stops|other SPICE programs|marks/);
+    expect(t.ngspice).toContain('[missing-end-1, after-end-1]');
+  });
+});

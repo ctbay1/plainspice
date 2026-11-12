@@ -6071,9 +6071,9 @@ No `.end` line. Info. Fix: add it at the bottom.
 
 What PlainSpice shows for missing-end-1 (info, line 4):
 
-> **No .end line.** A netlist ends with .end. ngspice manages without it when it reads a file, but .end marks clearly where the circuit stops, and other SPICE programs need it.
+> **No .end line.** A netlist ends with .end, its last line. ngspice runs this one without it, so this is only a note: add .end at the bottom, and keep new lines above it, because ngspice still reads lines written after .end.
 >
-> *ngspice:* ngspice reads the file to its last line and runs it normally, without a message. [missing-end-1]
+> *ngspice:* ngspice reads the file to its last line and runs it normally, without a message; with a .end, it still reads the lines after it. [missing-end-1, after-end-1]
 >
 > *Fixes:* "Add .end at the bottom"
 

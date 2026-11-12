@@ -1638,9 +1638,12 @@ function checkEnd(c: Ctx): void {
     const last = [...c.n.lines].reverse().find((l) => l.kind !== 'blank');
     if (!last) return;
     const tail = c.text.endsWith('\n') ? '' : '\n';
+    // .end is the netlist's last line, but ngspice does not stop reading there (S25, after-end-1),
+    // so the words say where new lines go, not that .end stops anything; and nothing about other
+    // SPICE programs, which no fact here backs.
     add(c, 'missing-end', 'info', last.span.to > last.span.from ? last.span : { from: last.span.from, to: last.span.from }, 'No .end line',
-      'A netlist ends with .end. ngspice manages without it when it reads a file, but .end marks clearly where the circuit stops, and other SPICE programs need it.',
-      'ngspice reads the file to its last line and runs it normally, without a message. [missing-end-1]',
+      "A netlist ends with .end, its last line. ngspice runs this one without it, so this is only a note: add .end at the bottom, and keep new lines above it, because ngspice still reads lines written after .end.",
+      'ngspice reads the file to its last line and runs it normally, without a message; with a .end, it still reads the lines after it. [missing-end-1, after-end-1]',
       [fix('Add .end at the bottom', change(c.text.length, c.text.length, `${tail}.end\n`))]);
     return;
   }
