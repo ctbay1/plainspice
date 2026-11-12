@@ -183,5 +183,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   that read the rest of the line again from every `v(` with no `)` after it, so one long `.control`
   line of `v(` (a 326-character link) froze the page for 6.5 s on opening and 6 s after each key.
   Each `v(` and the first `)` after it are now found once: the checks take 4 ms on that 120 kB line
-  (7.4 s before), and the same test has the line among its cases (the old code: 831 ms once, 84 ms
-  for ten small ones).
+  (7.4 s before), and in Chromium the link opens in 0.54 s with a longest task of 0.15 s, and a key
+  takes 71 ms with no long task (7.2 s, 6.5 s and 6.0 s before). A test of its own times the line
+  (`tests/unit/spice-traps.test.ts`, "reads one long .control line of v( with no ) …"; the old code:
+  799 ms once, 88 ms for ten small ones), with 20 ms of room, since the work is a few milliseconds.
