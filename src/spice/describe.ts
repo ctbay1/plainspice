@@ -19,8 +19,8 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { readNumber } from './numbers.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
+import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
 
@@ -31,10 +31,16 @@ const ARROW = '→';
 
 export interface NodeVoltageWords {
   /**
-   * The node's name as the netlist writes it, lower-case ASCII letters ("giriş"), and as ngspice
-   * reports it for every other name; ngspice writes each byte of a letter outside ASCII as '_' (W16).
+   * The node's key, for every lookup: the netlist's name with its ASCII letters in lower case
+   * ("giriş", "gİrİŞ" for GİRİŞ), µ as u ("au" for aµ), which is ngspice's own spelling for every name
+   * in plain ASCII; ngspice writes each byte of a letter outside ASCII as '_' (W16).
    */
   node: string;
+  /**
+   * The node's name in words (S7): as first written when it has a character outside ASCII ("GİRİŞ",
+   * "aµ"), else the key, ngspice's own spelling ("in" for IN, W6). Never lower-cased by hand.
+   */
+  name: string;
   /** ngspice's own spelling, when it is not `node` ("giri__" for "giriş", W16). */
   ngspice?: string;
   /** ngspice's value; 0 when it is rounding noise (C9d), which `noise` keeps. */
@@ -734,7 +740,8 @@ export function describeCircuit(netlist: Netlist): string {
   const parts = partsOf(netlist);
   const out: string[] = [];
   const nodes = [...netlist.nodes.values()].filter((n) => !n.ground && n.connections.length > 0);
-  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => bare(n.name)).join(', ');
+  // The names as the results' words say them (S7), a name like ground quoted.
+  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => said(shownNode(netlist, n.name))).join(', ');
   const grounded = netlist.nodes.get('0')?.connections.length ?? 0;
   if (parts.lines.length === 0) out.push(S.noParts);
   else out.push(grounded > 0 ? S.counts(parts.lines.length, nodes.length, names) : S.countsNoGround(parts.lines.length, nodes.length, names));
@@ -1114,6 +1121,19 @@ function spellingsOf(netlist: Netlist): Spellings {
   return out;
 }
 
+/**
+ * A node's name in the results' words (S7, words re-check 8): as first written when it has a character
+ * outside ASCII ("GİRİŞ", "aµ", which ngspice spells g__r____ and au, and the key keeps half lower-cased
+ * or as au), else its key, which is ngspice's own spelling ("in" for IN, W6); ground is "0". Keys stay
+ * for every lookup.
+ */
+function shownNode(netlist: Netlist, key: string): string {
+  if (key === '0') return key;
+  const written = netlist.nodes.get(key)?.refs[0]?.text;
+  return written !== undefined && !PRINTABLE_ASCII.test(written) ? written : key;
+}
+const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
+
 /** A node ngspice names in its results, as the netlist writes it (W16). */
 function netlistNode(netlist: Netlist, name: string): string {
   const key = lowerAscii(name);
@@ -1173,15 +1193,18 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   const as = speakSI(Math.abs(v), 'A');
   let text: string;
   let speech: string;
+  // The nodes as the results' words name them (S7): GİRİŞ as written, never half lower-cased.
+  const f = said(shownNode(netlist, from));
+  const t = said(shownNode(netlist, to));
   if (ammeter) {
-    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, said(from), said(to));
-    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, said(from), said(to));
+    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, f, t);
+    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, f, t);
   } else if (v === 0) {
     text = S.noCurrent(name);
     speech = S.noCurrentSpeech(name);
   } else {
-    text = S.amps(a, said(from), said(to), name);
-    speech = S.ampsSpeech(as, flows(as), said(from), said(to), name);
+    text = S.amps(a, f, t, name);
+    speech = S.ampsSpeech(as, flows(as), f, t, name);
   }
   const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, ammeter, text, speech };
   if (noise) words.noise = c.value;
@@ -1235,7 +1258,7 @@ function nodesOf(netlist: Netlist, results: AnalysisResults): NodeVoltageWords[]
   return list.map(({ n, node }) => {
     // C9d: rounding noise of a 0 is 0 V; `noise` keeps what ngspice gave.
     const value = noisy.has(node) ? 0 : n.value;
-    const w: NodeVoltageWords = { node: node === lowerAscii(n.node) ? n.node : node, value, text: formatSI(value, 'V'), speech: speakSI(value, 'V') };
+    const w: NodeVoltageWords = { node: node === lowerAscii(n.node) ? n.node : node, name: shownNode(netlist, node), value, text: formatSI(value, 'V'), speech: speakSI(value, 'V') };
     if (value !== n.value) w.noise = n.value;
     if (node !== lowerAscii(n.node)) w.ngspice = n.node;
     const c = colour.get(node);
@@ -1290,8 +1313,8 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   const m = /^([vi])\((.*)\)$/i.exec(s.name);
   if (!m) return s.name;
   if (m[1]!.toLowerCase() === 'v') {
-    const [a, b] = m[2]!.split(',').map((x) => netlistNode(netlist, x));
-    return b === undefined ? S.voltageOf(said(a!)) : S.voltageBetween(said(a!), said(b));
+    const [a, b] = m[2]!.split(',').map((x) => said(shownNode(netlist, netlistNode(netlist, x))));
+    return b === undefined ? S.voltageOf(a!) : S.voltageBetween(a!, b);
   }
   // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents.
   const inner = /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
@@ -1301,12 +1324,12 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
 
 /**
  * A results vector's name with the netlist's names in it: "v(giriş)" for ngspice's "v(giri__)" (W16,
- * W18). The Plot panel names its lines with it too.
+ * W18), "v(GİRİŞ)" and "v(aµ)" as written (S7). The Plot panel names its lines with it too.
  */
 export function netlistVector(netlist: Netlist, name: string): string {
   const m = /^([vi])\((.*)\)$/i.exec(name);
   if (!m) return name;
-  if (m[1]!.toLowerCase() === 'v') return `${m[1]}(${m[2]!.split(',').map((x) => netlistNode(netlist, x)).join(',')})`;
+  if (m[1]!.toLowerCase() === 'v') return `${m[1]}(${m[2]!.split(',').map((x) => shownNode(netlist, netlistNode(netlist, x))).join(',')})`;
   const device = /^@([^[\]]+)(\[.*)$/.exec(m[2]!);
   return device ? `${m[1]}(@${netlistPart(netlist, device[1]!)}${device[2]})` : `${m[1]}(${netlistPart(netlist, m[2]!)})`;
 }
@@ -1482,7 +1505,7 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   const parts: string[] = [];
   if (words.nodes.length) {
     // "node in is 6 volts": a node's name may be an ordinary word (W8, decision 0017).
-    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(said(n.node)), n.speech) : S.valueIs(S.node(said(n.node)), n.text)));
+    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(said(n.name)), n.speech) : S.valueIs(S.node(said(n.name)), n.text)));
     parts.push(S.summaryNodes(shown.join(', '), words.nodes.length - shown.length));
   }
   if (words.currents.length) parts.push(S.summaryCurrents(words.currents.length));
@@ -1602,7 +1625,7 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
     if (!isBuilt(el)) continue;
     const c = byKey.get(el.key);
     if (c) {
-      out.push(sourceOrPartNote(line, el, c));
+      out.push(sourceOrPartNote(line, el, c, (key) => shownNode(netlist, key)));
       continue;
     }
     const [p, n] = el.nodes;
@@ -1616,14 +1639,16 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
   return out;
 }
 
-function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): LineAnnotation {
+/** `shown`: a node's key as the results' words name it (S7). */
+function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords, shown: (key: string) => string): LineAnnotation {
   const a = formatSI(Math.abs(c.value), 'A');
   const as = speakSI(Math.abs(c.value), 'A');
+  const [from, to] = [shown(c.from), shown(c.to)];
   if (c.ammeter) {
     return {
       line: line.number,
-      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, bare(c.from), bare(c.to)),
-      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, said(c.from), said(c.to)),
+      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, bare(from), bare(to)),
+      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, said(from), said(to)),
     };
   }
   const voltageType = el.letter === 'V' || el.letter === 'E' || el.letter === 'H';
@@ -1639,8 +1664,8 @@ function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): Line
     };
   }
   if (c.value === 0) return { line: line.number, text: S.noteNoCurrent, speech: S.noteNoCurrentSpeech };
-  const base = S.noteAmps(a, bare(c.from), bare(c.to));
-  const baseSpeech = S.noteAmpsSpeech(as, flows(as), said(c.from), said(c.to));
+  const base = S.noteAmps(a, bare(from), bare(to));
+  const baseSpeech = S.noteAmpsSpeech(as, flows(as), said(from), said(to));
   if (c.power) {
     const w = formatSI(c.power.watts, 'W');
     const ws = speakSI(c.power.watts, 'W');

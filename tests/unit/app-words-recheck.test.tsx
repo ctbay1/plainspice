@@ -8,6 +8,8 @@
  *   an ordinary node named like ground, as the sentences next to them do: its description on the
  *   drawing ("Node in connects V1 and R1. Node in is 6 volts."), its card ("node in is 6 volts") and
  *   the card's close button; ground (node 0) stays "ground".
+ * - S7 and words re-check 8: the Numbers panel names a node outside ASCII as first written (GİRİŞ, aµ),
+ *   never half lower-cased, and keeps ngspice's own spelling in its ngspice column.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -15,8 +17,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { App } from '../../src/app/App.tsx';
+import { NumbersPanel } from '../../src/app/components/NumbersPanel.tsx';
 import type { Engine } from '../../src/app/engine.ts';
 import { START_HERE_ID } from '../../src/app/examples.ts';
+import { solveText } from '../../src/app/model.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 
@@ -119,5 +123,52 @@ describe('words re-check 2: a node\'s own sentences say "node in"', () => {
     const card = screen.getByRole('dialog', { name: /^Node node1/ });
     expect(voltageSaid(card)).toBe('node1 is 6 volts');
     expect(within(card).getByRole('button', { name: 'Close the card of node1' })).toBeTruthy();
+  }, 30000);
+});
+
+/** A cell as seen: its code, or the number shown (not the words read out), or its text; no-break spaces as spaces. */
+const seen = (c: Element): string => (c.querySelector('code') ?? c.querySelector('span[aria-hidden="true"]:not(:empty)') ?? c).textContent!.replace(/\u00a0/g, ' ').trim();
+
+/** The Numbers panel's rows of the table whose caption matches, each row's cells as seen. */
+async function panelRows(text: string, caption: RegExp): Promise<string[][]> {
+  const result = await solveText(text, await ngspice);
+  render(
+    <NumbersPanel
+      outcome={{ kind: 'done', text, result }}
+      text={text}
+      running={false}
+      paused={false}
+      colours={new Map()}
+      plotAvailable={false}
+      onGoToLine={() => {}}
+      onShowChecks={() => {}}
+      onShowPlot={() => {}}
+    />,
+  );
+  const table = screen.getAllByRole('table').find((t) => caption.test(t.querySelector('caption')?.textContent ?? ''))!;
+  return within(table)
+    .getAllByRole('row')
+    .slice(1)
+    .map((r) => [...r.querySelectorAll('th, td')].map(seen));
+}
+
+describe('S7: the Numbers panel names a node outside ASCII as first written', () => {
+  it('GİRİŞ and ÇIKIŞ in the node and current tables, g__r____ and __iki__ in ngspice\'s column', async () => {
+    // Native ngspice 47 and 42: v(g__r____) = 12, v(__iki__) = 8 (W16).
+    const CAPS = '* Turkish capitals\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\n.op\n.end\n';
+    expect((await panelRows(CAPS, /node/i)).map((r) => [r[0], r[2]])).toEqual([
+      ['GİRİŞ', 'v(g__r____) = 1.200000e+01'],
+      ['ÇIKIŞ', 'v(__iki__) = 8.000000e+00'],
+    ]);
+    cleanup();
+    expect((await panelRows(CAPS, /current/i)).map((r) => [r[0], r[2]])).toEqual([
+      ['V1', 'from ground to GİRİŞ'],
+      ['R1', 'from GİRİŞ to ÇIKIŞ'],
+      ['R2', 'from ÇIKIŞ to ground'],
+    ]);
+  }, 30000);
+
+  it('aµ as written, au in ngspice\'s column (W16: ngspice reads µ as u)', async () => {
+    expect((await panelRows('* micro\nV1 aµ 0 5\nR1 aµ 0 1k\n.op\n.end\n', /node/i)).map((r) => [r[0], r[2]])).toEqual([['aµ', 'v(au) = 5.000000e+00']]);
   }, 30000);
 });

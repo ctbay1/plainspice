@@ -71,7 +71,7 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   const fallback: ResultsDescription = {
     status: run.unreliable ? 'unreliable' : run.ok ? 'ok' : 'failed',
     ngspiceError: run.exitCode !== 0 || run.diagnostics.some((d) => d.severity === 'error'),
-    nodes: (results.op?.nodes ?? []).map((n) => ({ node: n.node, value: n.value, text: formatSI(n.value, 'V'), speech: speakSI(n.value, 'V') })),
+    nodes: (results.op?.nodes ?? []).map((n) => ({ node: n.node, name: n.node, value: n.value, text: formatSI(n.value, 'V'), speech: speakSI(n.value, 'V') })),
     currents: [],
     sweeps: [],
     warnings: [],

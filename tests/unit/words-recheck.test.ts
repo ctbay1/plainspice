@@ -20,7 +20,7 @@ import type { RunResult } from '../../src/engine/types.ts';
 import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve } from '../../src/notebook/index.ts';
 import { EDIT_STRINGS, applyEdit, buildSchematic } from '../../src/schematic/index.ts';
-import { DESCRIBE_STRINGS, describeCircuit, describeResults } from '../../src/spice/describe.ts';
+import { DESCRIBE_STRINGS, annotateLines, describeCircuit, describeResults, netlistVector } from '../../src/spice/describe.ts';
 import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
 import { nameSaysNode } from '../../src/spice/node-words.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -60,6 +60,11 @@ function everyWord(text: string, results: AnalysisResults): string[] {
     ...w.currents.flatMap((c) => [c.text, c.speech]),
     ...explainNetlist(n).flatMap((e) => [e.summary, ...e.fields.map((f) => f.meaning), ...e.notes]),
   ];
+}
+
+/** A sweep's results: the scale, then each vector (name, unit, values). */
+function sweep(scale: string, unit: 'V' | 'A', values: number[], series: [string, 'V' | 'A', number[]][]): NonNullable<AnalysisResults['dc']> {
+  return { scale: { name: scale, unit, values: new Float64Array(values) }, series: series.map(([name, u, v]) => ({ name, unit: u, values: new Float64Array(v) })) };
 }
 
 /** "node node1", "Node node_A": the word before a name that says it already. */
@@ -191,5 +196,60 @@ describe('words re-check 5: a label that already says node gives a name like gro
     const lines = summaries('S1 ground 0 00 0 sw1\nX2 00 ground sub\nD4 ground 00 dm\nQ1 c b ground qm\n');
     expect(lines.filter((l) => /node (the )?node\b/.test(l))).toEqual([]);
     expect(lines.find((l) => l.startsWith('Q1'))).toContain('emitter at the node "ground"');
+  });
+});
+
+describe('S7 and words re-check 8: a node name outside ASCII is said as first written, never half lower-cased', () => {
+  // Native ngspice 47 and 42 (-b -r): v(g__r____) = 12, v(__iki__) = 8, v1#branch = −4 mA (W16).
+  const CAPS = '* Turkish capitals\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\n.op\n.end\n';
+  const CAPS_RESULTS = op({ g__r____: 12, __iki__: 8 }, [
+    ['v1', -0.004, 'branch'],
+    ['r1', 0.004, 'device'],
+    ['r2', 0.004, 'device'],
+  ]);
+
+  it('the node rows, the summary, the currents and the line notes: GİRİŞ and ÇIKIŞ, with keys and ngspice\'s spelling kept', () => {
+    const n = parseNetlist(CAPS);
+    const w = describeResults(n, CAPS_RESULTS, run());
+    expect(w.nodes.map((x) => [x.node, x.name, x.ngspice])).toEqual([
+      ['gİrİŞ', 'GİRİŞ', 'g__r____'],
+      ['ÇikiŞ', 'ÇIKIŞ', '__iki__'],
+    ]);
+    expect(sp(w.summary)).toBe('Simulation finished: node GİRİŞ = 12 V, node ÇIKIŞ = 8 V; 3 currents. Open the results for details.');
+    expect(w.summarySpeech).toContain('node GİRİŞ is 12 volts, node ÇIKIŞ is 8 volts');
+    expect(w.currents.map((c) => sp(c.text))).toEqual(['4 mA from ground to node GİRİŞ through V1', '4 mA from node GİRİŞ to node ÇIKIŞ through R1', '4 mA from node ÇIKIŞ to ground through R2']);
+    expect(annotateLines(n, CAPS_RESULTS).map((a) => sp(a.text))).toEqual(['delivers 48 mW, 4 mA out of +', '4 mA, GİRİŞ → ÇIKIŞ', '4 mA, ÇIKIŞ → 0']);
+    // The overview's list says them as its part sentences do.
+    expect(sp(describeCircuit(n))).toContain('3 parts and 2 nodes besides ground (GİRİŞ, ÇIKIŞ). V1: a 12 V source with its + side at node GİRİŞ');
+    // Words only, never the keys' half lower-cased forms, nor toLowerCase's ('GİRİŞ'.toLowerCase() has combining dots).
+    const words = [w.summary, w.summarySpeech, ...w.nodes.map((x) => x.name), ...w.currents.flatMap((c) => [c.text, c.speech]), describeCircuit(n)];
+    expect(words.filter((x) => /gİrİŞ|ÇikiŞ|\u0307/.test(x))).toEqual([]);
+  });
+
+  it('a sweep\'s words and the Plot\'s names: v(GİRİŞ), "the voltage at node GİRİŞ"', () => {
+    const n = parseNetlist(CAPS.replace('.op', '.dc V1 0 12 6'));
+    const results: AnalysisResults = { dc: sweep('v(v-sweep)', 'V', [0, 6, 12], [['v(g__r____)', 'V', [0, 6, 12]], ['v(__iki__)', 'V', [0, 4, 8]], ['i(v1)', 'A', [0, -0.002, -0.004]]]), other: [] };
+    const s = describeResults(n, results, run()).sweeps[0]!;
+    expect(sp(s.text)).toContain('At V1 = 12 V: v(GİRİŞ) = 12 V, v(ÇIKIŞ) = 8 V, i(v1) = −4 mA.');
+    expect(s.speech).toContain('the voltage at node GİRİŞ is 12 volts, the voltage at node ÇIKIŞ is 8 volts');
+    expect(netlistVector(n, 'v(g__r____)')).toBe('v(GİRİŞ)');
+    expect(netlistVector(n, 'v(__iki__,0)')).toBe('v(ÇIKIŞ,0)');
+  });
+
+  it('a node written with the micro sign is aµ, as written, not ngspice\'s au; ngspice\'s column keeps au', () => {
+    // Native ngspice 47 and 42: v(au) = 5, i(v1) = −5 mA (W16: ngspice reads µ as u).
+    const n = parseNetlist('* micro\nV1 aµ 0 5\nR1 aµ 0 1k\n.op\n.end\n');
+    const w = describeResults(n, op({ au: 5 }, [['v1', -0.005, 'branch']]), run());
+    expect(w.nodes.map((x) => [x.node, x.name, x.ngspice])).toEqual([['au', 'aµ', undefined]]);
+    expect(w.summarySpeech).toContain('node aµ is 5 volts');
+    expect(describeCircuit(n)).toContain('besides ground (aµ)');
+    expect(netlistVector(n, 'v(au)')).toBe('v(aµ)');
+  });
+
+  it('a name in plain ASCII keeps ngspice\'s own spelling, in lower case (W6): IN is "in"', () => {
+    const n = parseNetlist('* capitals\nV1 IN 0 6\nR1 IN Out 1k\nR2 Out 0 2k\n.op\n.end\n');
+    const w = describeResults(n, op({ in: 6, out: 4 }, [['v1', -0.002, 'branch']]), run());
+    expect(w.nodes.map((x) => [x.node, x.name])).toEqual([['in', 'in'], ['out', 'out']]);
+    expect(sp(w.summary)).toContain('node in = 6 V, node out = 4 V');
   });
 });

@@ -84,7 +84,8 @@ const NodeTable = memo(
                 <tr key={n.node}>
                   <th scope="row" className="node-name">
                     <span className={`swatch${colour ? '' : ' swatch--none'}`} style={colour ? { background: colour } : undefined} aria-hidden="true" />
-                    <code className="code">{n.node}</code>
+                    {/* As first written for a name outside ASCII (GİRİŞ, aµ: S7); the key, n.node, finds its colour. */}
+                    <code className="code">{n.name}</code>
                   </th>
                   <td className="num">
                     <Quantity text={n.text} speech={n.speech} />
@@ -110,6 +111,9 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
   if (!description.currents.length) return null;
   const showPower = description.currents.some((c) => c.power !== undefined);
   const vectorOf = (element: string): string => results.op?.currents.find((c) => c.element === element)?.vector ?? `i(${element})`;
+  // A node by its key, named as the node table names it (S7: GİRİŞ as written).
+  const names = new Map(description.nodes.map((n) => [n.node, n.name]));
+  const named = (node: string): string => names.get(node) ?? node;
   return (
     <TableWrap label={t('currentsCaption')}>
       <table className="table table--results">
@@ -133,7 +137,7 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
                 <Quantity text={formatSI(Math.abs(c.value), 'A')} speech={speakSI(Math.abs(c.value), 'A')} />
               </td>
               {/* Ground called "ground", as on the drawing and the card. */}
-              <td>{c.value === 0 ? t('flowsNone') : t('flowsFromTo', { from: nodeWord(c.from), to: nodeWord(c.to) })}</td>
+              <td>{c.value === 0 ? t('flowsNone') : t('flowsFromTo', { from: nodeWord(c.from, named), to: nodeWord(c.to, named) })}</td>
               {showPower && (
                 <td>
                   {c.power && (
