@@ -132,15 +132,47 @@ function shipDependencyLicences(): Plugin {
  *   "run=1" link (the channel's "Open this circuit" links): otherwise the 0.6 MB engine waits for
  *   the scripts, the first render and the Worker, and on a slow phone the results came about 2 s
  *   later (perf review 3). Only for run=1, so an ordinary visit's first screen is not slowed.
+ * - On the app page, a line that loads the handwriting the results are written in (Caveat 700, as
+ *   the page's own CSS declares it) once the page's scripts have run (DOMContentLoaded). A browser
+ *   asks for a font only when text needs it, and no text needs this one before ngspice's first
+ *   numbers, so on a first visit they were drawn in a fallback face and changed to Caveat about 0.8 s
+ *   later (phone review F6). Not a <link rel="preload">: that shares the first second's bandwidth with
+ *   the page's own CSS and scripts, and on a slow phone it put the first paint about 0.15 s later, at
+ *   low priority too. On an ordinary visit the network is quiet after DOMContentLoaded until the
+ *   Worker asks for ngspice.wasm: the face is there seconds before the first numbers, and the first
+ *   paint, the drawing and the results came no later. On a run=1 link ngspice.wasm is on its way from
+ *   the start, and the font downloaded beside it brought the first numbers about 0.24 s later (the
+ *   critic of F6): there the font waits until the engine's preload has ended (its load or error), so
+ *   the numbers come as early as before, in the fallback face for about 0.6 s (0.8 s before) while
+ *   the font arrives (decision 0015).
  * - A Content-Security-Policy (security review m1), as a <meta> because GitHub Pages sets no
  *   headers. Defence in depth: nothing from a link is ever put into the page as HTML. Styles need
  *   'unsafe-inline' (CodeMirror and React Aria add style elements and attributes), images data:
  *   (CodeMirror's underline), and WebAssembly 'wasm-unsafe-eval'; the inline script above is
- *   allowed by its hash.
+ *   allowed by its hash. The other pages on the site (the engine check, the licences, and the design
+ *   pages Tarık clicks, which write HTML with innerHTML) get the same policy without that hash: they
+ *   share the app's origin, so its saved netlist and settings (security review F3).
  * - The spike and licences pages are not part of the installable app: vite-plugin-pwa's manifest
- *   link (relative, so a 404 there) is removed from them (security review m7).
+ *   link (relative, so a 404 there) is removed from them (security review m7), and from the design
+ *   pages.
  */
 function pageHead(): Plugin {
+  /** The policy of every built page; `scriptHash` allows the app page's one inline script. */
+  const policy = (scriptHash = ''): string =>
+    [
+      "default-src 'none'",
+      `script-src 'self' 'wasm-unsafe-eval'${scriptHash}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "connect-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "base-uri 'none'",
+      "form-action 'none'",
+    ].join('; ');
+  /** The tags right after the charset (which must come first), before anything the policy covers. */
+  const afterCharset = (html: string, tags: readonly string[]): string => html.replace(/(<meta charset="utf-8"\s*\/?>)/i, `$1\n    ${tags.join('\n    ')}`);
   return {
     name: 'plainspice-page-head',
     apply: 'build',
@@ -150,37 +182,45 @@ function pageHead(): Plugin {
       handler(html, ctx) {
         const page = ctx.filename.replace(/\\/g, '/');
         if (/\/(spike|licenses)\/index\.html$/.test(page) || /\/design\//.test(page)) {
-          return html.replace(/\s*<link rel="manifest"[^>]*>/, '');
+          const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy()}" />`];
+          return afterCharset(html, tags).replace(/\s*<link rel="manifest"[^>]*>/, '');
         }
         const files = Object.keys(ctx.bundle ?? {});
         const wasm = files.find((f) => /^engine\/ngspice-[\w-]+\.wasm$/.test(f));
         const worker = files.find((f) => /^assets\/worker-[\w-]+\.js$/.test(f));
+        if (!wasm || !worker) this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
+        // The results' handwriting, as the page's own CSS declares it (src/notebook/fonts.css: the face
+        // whose file is caveat-700-<hash>.woff2), loaded by family and weight through the CSS Font Loading API.
+        const css = [...(ctx.chunk?.viteMetadata?.importedCss ?? [])]
+          .map((f) => ctx.bundle?.[f])
+          .map((a) => (a?.type !== 'asset' ? '' : typeof a.source === 'string' ? a.source : new TextDecoder().decode(a.source)))
+          .join('\n');
+        const face = /@font-face\s*\{[^}]*caveat-700-[\w-]+\.woff2[^}]*\}/i.exec(css)?.[0] ?? '';
+        const family = /font-family:\s*([^;}]+)/i.exec(face)?.[1]?.trim().replace(/^(['"])(.*)\1$/, '$2');
+        const weight = /font-weight:\s*(\d+)/i.exec(face)?.[1];
+        const font = family && weight ? JSON.stringify(`${weight} 1em "${family}"`) : undefined;
+        if (!font) this.warn('the results font is not loaded early: the app page\'s CSS declares no Caveat 700 face');
+        // In a block, so its names (w: the engine is on its way; d: DOMContentLoaded has come; f: load
+        // the font) are no page-wide names. The font loads after DOMContentLoaded, and on a run=1 link
+        // only once the engine has come too (its preload's load or error), so it never shares the
+        // connection with ngspice.wasm.
         let script = '';
         if (wasm && worker) {
-          script =
+          script +=
             `if(/(?:^#|&)run=1(?:&|$)/.test(location.hash)){` +
             `for(const[r,h,a]of[["preload","./${wasm}","fetch"],["prefetch","./${worker}",""]]){` +
-            `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"}document.head.append(l)}}`;
-        } else {
-          this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
+            `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"` +
+            `${font ? ';w=1;l.onload=l.onerror=()=>{w=0;d&&f()}' : ''}}document.head.append(l)}}`;
+        }
+        if (font) {
+          script =
+            `{let w=0,d=0;const f=()=>{try{document.fonts.load(${font}).catch(()=>{})}catch{}};` +
+            `${script}document.addEventListener("DOMContentLoaded",()=>{d=1;w||f()})}`;
         }
         const hash = script ? ` 'sha256-${createHash('sha256').update(script).digest('base64')}'` : '';
-        const policy = [
-          "default-src 'none'",
-          `script-src 'self' 'wasm-unsafe-eval'${hash}`,
-          "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data:",
-          "font-src 'self'",
-          "connect-src 'self'",
-          "worker-src 'self'",
-          "manifest-src 'self'",
-          "base-uri 'none'",
-          "form-action 'none'",
-        ].join('; ');
-        const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy}" />`];
+        const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy(hash)}" />`];
         if (script) tags.push(`<script>${script}</script>`);
-        // Right after the charset (which must come first), before anything the policy covers.
-        return html.replace(/(<meta charset="utf-8"\s*\/?>)/i, `$1\n    ${tags.join('\n    ')}`);
+        return afterCharset(html, tags);
       },
     },
   };
@@ -298,6 +338,10 @@ export default defineConfig({
   ],
   build: {
     target: 'es2022',
+    // A font is always its own file, never a data: URL in the CSS (Vite inlines files under 4 kB): the
+    // pages' policy allows fonts only from the site itself ("font-src 'self'", pageHead above), and a
+    // design prototype's small symbol fonts were blocked as data: URLs (security review F3).
+    assetsInlineLimit: (file) => (/\.woff2?$/i.test(file) ? false : undefined),
     rollupOptions: {
       input: {
         main: resolve(root, 'index.html'),

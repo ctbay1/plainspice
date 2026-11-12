@@ -53,11 +53,13 @@ hears what they did.
   voltage source for F and H: the model's `set-control`). Ground goes on a pin (its node becomes 0);
   on a page with no parts it is refused with why.
 - **A blank page gets `.op` and `.end`.** The first part placed on a page with no parts and no analysis
-  also writes `.op` (before the drawing lines) and `.end`, and the announcement says so in one
-  sentence: "PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the
-  operating point), so the circuit runs as you build it, and .end, which marks where the netlist
-  stops." (facts A1, no-analysis-1, missing-end-1). It does not make the circuit solvable: until a
-  ground symbol is placed, the checks say there is no ground (no-ground-1).
+  also writes `.op` (before the drawing lines) and, when the netlist has none, `.end`, and the
+  announcement says why: "PlainSpice also wrote .op, which asks ngspice for the DC voltages and
+  currents (the operating point), so the circuit runs as you build it. Keep .end as the netlist’s
+  last line, with new lines above it: ngspice still reads lines after .end." (facts A1,
+  no-analysis-1, missing-end-1, S25 and after-end-1: `.end` stops nothing). It never says who wrote
+  `.end`, so it is true whether PlainSpice wrote it or the student had typed it. It does not make the
+  circuit solvable: until a ground symbol is placed, the checks say there is no ground (no-ground-1).
   The model writes the title line (`* circuit`) a SPICE file needs first. Start here built from a blank
   page by mouse, and again by keyboard, is solved by ngspice to out = 4 V (`editor.spec.ts`).
 - **Turn, Mirror, Reverse**: T turns a quarter turn, M mirrors, Shift+R reverses, on the part in hand
@@ -82,9 +84,14 @@ hears what they did.
 - **Without a pointer** (WCAG 2.1.1): the Add a part form (A, the toolbar's last button, Ctrl+K)
   takes a kind, a value and two nodes chosen from the circuit's nodes or "a new node" (named in the
   form), shows the line the netlist will get, and adds it (the model's `insertLine`: before the
-  analyses, the drawing lines and `.end`); a card's Connections list each end with its node, and
-  Connect to… (the other nodes, as buttons) and Disconnect (the model's new `disconnect-pin`) rewire
-  it. A node's card (Enter on a node) renames it, and renaming it to a name another node has makes
+  analyses, the drawing lines and `.end`); a card's Connections list each end with its node. Connect
+  to… (the other nodes, as buttons) makes the end's node and the node chosen one node, with every
+  part on them. It draws a wire from the end to the nearest point of that node the router reaches;
+  for ground, when no wire can (a circuit without ground yet), a ground symbol at the end; failing
+  both, it joins the two by name, as a node's card does (a node made ground gets a ground symbol on
+  each of its pieces), and the summary says which. Disconnect (the model's new `disconnect-pin`)
+  gives the end a node of its own; to move only one end, Disconnect it, then Connect to. A node's
+  card (Enter on a node) renames it, and renaming it to a name another node has makes
   the two one node, as SPICE does; ground's card says why it keeps its name and offers to move or
   delete its symbol. The form checks its value as a part's card does: what SPICE reads it as, or why
   SPICE cannot use it, with the checks' fix ("4,7k: SPICE reads the comma as a space", Write 4.7k).
@@ -96,10 +103,15 @@ hears what they did.
   on the paper gives the drawing the focus, so Delete works on a piece of wire just clicked. Each key
   is shown on its button, in the hint line, in Help (a table of the editing keys) and in Ctrl+K, which
   has every editing command by name.
-- **One word for one idea**: Turn, Mirror, Reverse, Wire, Delete, Move, Connect (an end connects to a
-  node), a part's "end", a node's "name", "in hand" for a part about to be placed, and "node out" in
-  sentences (a name may be an ordinary word: "Wire started at node s."); keys spelled one way (Ctrl+K,
-  Shift+R, Esc, Shift+arrow keys). While a part is in hand or a wire on its way, the hint line ends
+- **One word for one idea**: Turn, Mirror, Reverse (a part "reversed", its two ends swapped; never
+  "turned round", which would also name the half turn the model refuses), Wire, Delete, Move, Connect
+  (an end connects to a node), a part's "end", a node's "name", "in hand" for a part about to be
+  placed, "dependent source" for E, F, G and H as one tool and one group (the channel's word, as in
+  "Thévenin Equivalent with Dependent Sources"; each keeps its catalog name, "voltage-controlled
+  voltage source" ...), "skips" for whole lines ngspice does not read (the `*@` lines, after fact
+  drawing-1; "ignores" is kept for characters inside a line), and "node out" in sentences (a name
+  may be an ordinary word: "Wire started at node s."); keys spelled one way (Ctrl+K, Shift+R, Esc,
+  Shift+arrow keys). While a part is in hand or a wire on its way, the hint line ends
   with the way out, after a refusal too: on a computer "Esc goes back to Select" (or "Esc cancels this
   wire"), on a phone "Select goes back".
 - **On a phone**: the Parts sheet puts a part in hand; with no hover, the first tap shows where it
@@ -354,3 +366,60 @@ browsers other than Chromium.
   steps Redo would bring back: after undoing a part, the next one takes the names it had. The model's
   `freshNodeName` reads these names from the drawing's options (`usedNodeNames`); the app passes them
   with every drawing it edits.
+
+The words review of the final reviews found sentences that said something other than what happens.
+What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
+`tests/e2e/words-review.spec.ts` check each):
+
+- **.end in the blank page's sentence** (W1). It said .end "marks where the netlist stops", but
+  ngspice still reads the lines after .end (S25, after-end-1; native ngspice 47 and 42 give V1
+  −12 mA with a 1 kΩ resistor written after .end, −6 mA without it). It also said PlainSpice wrote
+  .end when the student had typed it (a page with a title and .end only gets .op alone: the critic
+  of W1). Now: "PlainSpice also wrote .op, … so the circuit runs as you build it. Keep .end as the
+  netlist’s last line, with new lines above it: ngspice still reads lines after .end.", as Explain's
+  .end line ("Keep .end as the last line.") and the missing-end check say it, and true whoever wrote
+  .end. One sentence for both: telling them apart would take `starterWords` in `editing.ts`, which
+  the hint line of words W9 also shows, not the words alone. Nothing about other SPICE programs: no
+  fact here backs a claim about them.
+- **Connections** (W2). Connect to makes the end's node and the chosen node one, every part on them
+  included (on Start here, end 2 of R1 connected to ground shorted R2), while the hint line said it
+  "rewires an end". The card's intro, the hint line and the buttons now say what happens and how to
+  move one end alone: "Connect to… makes an end’s node and another node one node, with every part
+  on them. To move only one end, Disconnect it first, then Connect to." (the hint line: "Connect to…
+  makes an end’s node and another node one node · Disconnect gives an end a node of its own · …").
+  They say what always holds and not how it is drawn: a first wording, "draws a wire from an end to
+  another node", was untrue for ground in a circuit without one, where no wire can reach and the node
+  is made ground by name, with a ground symbol (Mistake 1: no ground; 8 of 900 Connect to's over the
+  examples and fixtures, all of them that case, drew no wire: the critic of W2). The button is named
+  "Connect to another node: the node at the end 2 of R1" (its own words first, WCAG 2.5.3) and its
+  list "Connect the node at the end 2 of R1 to …". Not done here: a check for a resistor with both
+  ends on one node (only sources are checked).
+- **Dependent source** (W4). E, F, G and H as one tool, its menu, the phone's Parts sheet and the
+  Checks panel say "dependent source", the channel's word, as the examples and the model's refusals
+  already did; each keeps its catalog name ("voltage-controlled current source").
+- **Reverse, and turning while moving** (W7). Shift+R on the part in hand is "A resistor in hand,
+  reversed: its two ends swapped." ("turned round" also named the half turn the model refuses); M or
+  Shift+R on the ground symbol in hand, "A ground symbol has one end and looks the same mirrored: T
+  turns it."; T or M on a part being moved says "R1 turned." or "R1 mirrored." and the sentence after
+  it says whether it can go there (it said "it lands that way" before a refusal); the ground
+  symbol's hint over empty paper keeps one colon: "it touches nothing yet (draw a wire to it)".
+- **"node in" on the card** (W8). The card's "in is higher", and its spoken "2 volts across R1, in is
+  higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
+  stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button was
+  "Disconnect the end 1 of R1 from in", then "…from its node, in": either ends on a bare name, heard
+  as "from (its node) in…". It is now "Disconnect the end 1 of R1 from its node", naming no node: the
+  card passes the node as its list writes it ("in", "ground (node 0)"), and the end's row says it
+  just before the button. "…from node in" and "…from ground (node 0)" need the card
+  (`CardEdit.tsx`, not the words' file) to pass the node as a sentence says it (`nodeSaid`), with
+  the words "Disconnect the {role} of {name} from {node}".
+- **"skips"** (W11). Whole lines ngspice does not read are lines it "skips", in the Netlist panel's
+  foot and the README as in the hint line and the Checks panel; "ignores" stays for characters inside
+  a line (a unit after a number).
+- **Thévenin** (W12). The basics' F5 is "Thévenin resistance with a dependent source", as the channel
+  spells it, in the Examples menu, Ctrl+K and "Opened the example …", so Ctrl+K finds it with the
+  video's examples. Known gap: the title line of its netlist (`tests/fixtures/f5-thevenin-cccs.cir`)
+  still says "Thevenin", and F5 opened from the menu shows that line as the page's heading and the
+  drawing's name ("F5: Thevenin resistance with a dependent source (test source method)"). The
+  fixture stays as it is (the golden runs record it, and the published F5 link decodes to it); an
+  accented title line for F5 opened as an example belongs to `src/app/examples.ts`, not done this
+  round.

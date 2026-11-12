@@ -134,7 +134,7 @@ describe('<App />', () => {
       'Inductor',
       'Voltage source',
       'Current source',
-      'Controlled source',
+      'Dependent source',
       'Ground',
       'Add a part',
     ]);
@@ -779,11 +779,11 @@ describe('<App /> after the words re-check of step B', () => {
     fireEvent.keyDown(resistor, { key: 'm' });
     await waitFor(() => expect(polite()).toContain('A resistor in hand, mirrored.'));
     fireEvent.keyDown(resistor, { key: 'R', shiftKey: true });
-    await waitFor(() => expect(polite()).toContain('A resistor in hand, turned round (its two ends swapped).'));
-    // The ground symbol looks the same mirrored: said, not silent.
+    await waitFor(() => expect(polite()).toContain('A resistor in hand, reversed: its two ends swapped.'));
+    // The ground symbol has one end and looks the same mirrored: said, not silent.
     fireEvent.keyDown(resistor, { key: '0' });
     fireEvent.keyDown(resistor, { key: 'm' });
-    await waitFor(() => expect(polite()).toContain('A ground symbol looks the same mirrored or reversed: T turns it.'));
+    await waitFor(() => expect(polite()).toContain('A ground symbol has one end and looks the same mirrored: T turns it.'));
     // F with no voltage source to read: the reason and the way out, before the pointer is on the paper.
     fireEvent.keyDown(resistor, { key: 'f' });
     const why = 'A current-controlled current source (F) reads the current through a voltage source, and this circuit has none yet: add a voltage source first';
@@ -858,9 +858,9 @@ describe('<App /> after the words re-check of step B', () => {
     fireEvent.click(part('R2'));
     const card = screen.getByRole('dialog', { name: /^R2 resistor/ });
     fireEvent.click(within(card).getByRole('button', { name: 'Connections' }));
-    await waitFor(() => expect(hint()).toBe('Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers · Esc closes the card'));
-    expect(within(card).getByRole('button', { name: 'Connect to another node: the end 1 of R2' })).toBeTruthy();
-    expect(within(card).getByRole('button', { name: 'Disconnect the end 2 of R2 from ground (node 0)' })).toBeTruthy();
+    await waitFor(() => expect(hint()).toBe('Connect to… makes an end’s node and another node one node · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card'));
+    expect(within(card).getByRole('button', { name: 'Connect to another node: the node at the end 1 of R2' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: 'Disconnect the end 2 of R2 from its node' })).toBeTruthy();
     expect(card.textContent).not.toMatch(/node 1|node 2/);
   }, 30000);
 

@@ -73,6 +73,8 @@ export interface CardContent {
   typeHint: string;
   /** A check's title on this line (red pen). */
   trap?: string;
+  /** That check has a fix in the Checks panel: the link says "See the fix", else "See why". */
+  trapFix?: boolean;
   readouts: readonly Readout[];
   /** The numbers are from before the last change (shown dimmed until ngspice answers). */
   readoutsPending?: boolean;
@@ -427,7 +429,7 @@ export function IndexCard(p: CardProps): ReactNode {
           {p.trap && p.onFix ? (
             <p className="index-card__more">
               <button type="button" className="link-button link-button--red" onClick={p.onFix}>
-                {t('cardSeeFix')}
+                {t(p.trapFix ? 'cardSeeFix' : 'cardSeeWhy')}
               </button>
             </p>
           ) : p.variant === 'pinned' ? null : (

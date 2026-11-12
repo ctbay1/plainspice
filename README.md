@@ -8,7 +8,7 @@ in a circuit simulator.
 **Try it: <https://plainspice.com/>** · [Engine check](https://plainspice.com/spike/) ·
 [Licences and source](https://plainspice.com/licenses/)
 
-![PlainSpice on its first screen: a 6 V source and two resistors drawn on notebook paper, solved by ngspice, with R1's card open and 2k typed: the drawing now reads out = 3 V with the old 4 V crossed out and 1.5 mA through each part; the card shows 1.5 mA through R1 and 3 V across it, the old 2 mA and 2 V crossed out, and buttons to turn, mirror, reverse, move, connect and delete R1; the parts to place are in the margin on the left](docs/screenshot.png)
+![PlainSpice on its first screen: a 6 V source and two resistors drawn on notebook paper, solved by ngspice, with R1's card open and 2k typed: the drawing now reads out = 3 V with the old 4 V crossed out and 1.5 mA through each part; the card shows 1.5 mA through R1 and 3 V across it, the old 2 mA and 2 V crossed out, and buttons to turn, mirror, reverse, move and delete R1 and to show its Connections; the parts to place are in the margin on the left](docs/screenshot.png)
 
 ## What it does
 
@@ -30,11 +30,12 @@ Everything around it is for beginners:
   ngspice runs it again, and screen readers hear what changed. On a blank page the first part also
   writes `.op` and `.end`, so ngspice runs the circuit as you build it. Without a mouse, Add a part (A)
   takes a kind, a value (checked as the card checks it) and two nodes from lists, and each part's card
-  connects and disconnects its ends; on a phone, tap to place, and hold a part a moment to drag it
-  with a finger.
+  shows its Connections: Connect to makes an end's node and another node one node, with every part
+  on them, and Disconnect gives an end a node of its own; on a phone, tap to place, and hold a part
+  a moment to drag it with a finger.
 - **One netlist, two ways in.** The Netlist panel shows the same circuit as SPICE reads it, on a
   dark "simulator screen"; type there and the drawing follows, change the drawing and the netlist
-  follows (the positions go into `*@` comment lines that ngspice ignores). One undo covers both.
+  follows (the positions go into `*@` comment lines that ngspice skips). One undo covers both.
 - **It explains as it simulates.** Each netlist line is shown as a field table in plain words
   (name, + node, − node, value; for a current source: from node, to node, current). Every result is
   also in the Numbers panel's tables, in plain units: `1.200000e+01` becomes **12 V**, and every
@@ -53,7 +54,7 @@ Everything around it is for beginners:
 
 ![Placing a part: Start here with a third resistor in hand, drawn in pencil where the pointer holds it; its left end lands on the ground wire at R2's foot and is marked as connecting to it, its right end is open (a new node), and the hint line says so before the click: "Click to place a resistor here: its ends connect to ground and a new node · T turns it · M mirrors it · Esc goes back to Select"](docs/screenshot-editing.png)
 
-<img src="docs/screenshot-phone.png" width="300" alt="PlainSpice on a phone: Start here drawn at the top with out = 3 V (the old 4 V crossed out); R1's card is a sheet along the bottom with 2k typed, SPICE reads it as 2 kΩ, was 1k with Put back 1k, 1.5 mA through it and 3 V across it (the old 2 mA and 2 V crossed out), and buttons to turn, mirror, reverse, move, connect and delete R1">
+<img src="docs/screenshot-phone.png" width="300" alt="PlainSpice on a phone: Start here drawn at the top with out = 3 V (the old 4 V crossed out); R1's card is a sheet along the bottom with 2k typed, SPICE reads it as 2 kΩ, was 1k with Put back 1k, 1.5 mA through it and 3 V across it (the old 2 mA and 2 V crossed out), and buttons to turn, mirror, reverse, move and delete R1 and to show its Connections">
 
 How it differs from [EEcircuit](https://github.com/eelab-dev/EEcircuit), the closest existing
 tool: [docs/eecircuit-comparison.md](docs/eecircuit-comparison.md).

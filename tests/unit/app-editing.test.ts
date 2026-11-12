@@ -177,7 +177,7 @@ describe('a blank page: the first part also writes .op and .end', () => {
     const r = placeEdit(build(''), handFor('V'), { x: 0, y: 3 });
     expect(r.ok).toBe(true);
     expect(r.summary).toBe(
-      'V1 added between node n1 and node n2. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it, and .end, which marks where the netlist stops.',
+      'V1 added between node n1 and node n2. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it. Keep .end as the netlist’s last line, with new lines above it: ngspice still reads lines after .end.',
     );
     expect(r.text).toBe('* circuit\nV1 n1 n2 5\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0\n*@ label n1 0 1\n*@ label n2 0 5\n.end\n');
     expect(traps(r.text)).not.toContain('no-analysis');
@@ -273,8 +273,8 @@ describe('Connections: an end connected to a node, or let go', () => {
     expect(endsOf(s0, 'r1').map((e) => `${e.role}: ${e.words}`)).toEqual(['end 1: in', 'end 2: out']);
     const i = build('* t\nI1 0 a 1m\nR1 a 0 1k\n.op\n.end\n');
     expect(endsOf(i, 'i1').map((e) => e.role)).toEqual(['from end', 'to end']);
-    expect(t('connConnectLabel', { role: endRoles('V')[0], name: 'V1' })).toBe('Connect to another node: the + end of V1');
-    expect(t('connDisconnectLabel', { role: endRoles('V')[0], name: 'V1', node: 'in' })).toBe('Disconnect the + end of V1 from in');
+    expect(t('connConnectLabel', { role: endRoles('V')[0], name: 'V1' })).toBe('Connect to another node: the node at the + end of V1');
+    expect(t('connDisconnectLabel', { role: endRoles('V')[0], name: 'V1', node: 'in' })).toBe('Disconnect the + end of V1 from its node');
     expect(`${t('formNewName')} ${t('formNewNameAt', { role: endRoles('R')[0] })}`).toBe('Name of the new node (end 1)');
     expect(nodeChoices(s0).map((n) => n.words)).toEqual(['ground (node 0)', 'in', 'out']);
   });

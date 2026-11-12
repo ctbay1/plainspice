@@ -138,6 +138,9 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   const voltsBefore = new Map<string, number>([[GROUND, 0], ...(beforeWords?.nodes ?? []).map((n): [string, number] => [lowerAscii(n.node), n.value])]);
   const written = (i: 0 | 1): string => (part.nodes[i] === GROUND ? '0' : part.nodeText[i]);
   const nodeText = (n: string): string => s.circuit.nodes.get(n)?.text ?? n;
+  // A node in a sentence is named as a node ("node in is higher"), as the editor says it (decision
+  // 0017); nodeWord keeps ground "ground". The short lines under a number stay bare ("from in to out").
+  const nodeSaid = (n: string): string => t('nodeNamed', { name: nodeText(n) });
   const readouts: Readout[] = [];
   // Numbers from before the last change say so to screen readers.
   const said = (speech: string): string => (pending ? `${t('cardBefore')} ${speech}` : speech);
@@ -158,7 +161,7 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   const vb = volts.get(part.nodes[1]);
   if (words && va !== undefined && vb !== undefined && !isAmmeter(part)) {
     // Its size and which end is higher, SPICE's signed difference underneath.
-    const across = acrossWords({ name: part.name, v: [va, vb], nodes: part.nodes, written: [written(0), written(1)], text: nodeText });
+    const across = acrossWords({ name: part.name, v: [va, vb], nodes: part.nodes, written: [written(0), written(1)], text: nodeSaid });
     const pa = voltsBefore.get(part.nodes[0]);
     const pb = voltsBefore.get(part.nodes[1]);
     const prev = beforeWords && pa !== undefined && pb !== undefined ? formatSI(Math.abs(pa - pb), 'V') : undefined;
@@ -207,7 +210,8 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
       : read
         ? { reads: read.reads, readsTrap: read.trap }
         : {}),
-    ...(trap ? { trap: trap.title } : {}),
+    // The card's link says "fix" only when the Checks panel offers one for this check (it lists a fix button for each).
+    ...(trap ? { trap: trap.title, trapFix: trap.fixes.length > 0 } : {}),
     ...(note ? { note } : {}),
   };
 }

@@ -41,10 +41,11 @@ export const en = {
   partsLabel: 'Parts and tools',
   toolSelect: 'Select',
   toolWire: 'Wire',
-  toolControlled: 'Controlled source',
-  toolControlledWith: 'Controlled source ({letter})',
+  /** E, F, G and H as one tool and group: the channel's word, "dependent source" (each keeps its catalog name, "voltage-controlled voltage source" ...). */
+  toolControlled: 'Dependent source',
+  toolControlledWith: 'Dependent source ({letter})',
   toolGround: 'Ground',
-  controlledMenu: 'Controlled sources',
+  controlledMenu: 'Dependent sources',
   controlledMakes: 'makes a {makes}: {gain} × {follows}',
   wordVoltage: 'voltage',
   wordCurrent: 'current',
@@ -64,7 +65,7 @@ export const en = {
   partsSheetAdd: 'Add a part between two nodes',
   partsSheetAddLine: 'Choose its nodes from a list; PlainSpice draws it',
   partsClose: 'Close the parts',
-  partsGroupControlled: 'Controlled sources',
+  partsGroupControlled: 'Dependent sources',
   partsGroupBasic: 'Parts and wires',
 
   // ---------------------------------------------------------------- hint line
@@ -88,9 +89,14 @@ export const en = {
   hintWireSelectedPhone: 'A piece of the wire of {node} selected · tap “{button}” to delete it',
   hintTyping: '{hint}: ngspice runs again as you type · Enter or Esc closes the card (then T turns it)',
   hintCardOpen: '{hint} · T turns it, M mirrors it · Enter or Esc closes the card',
-  /** A part's card showing its Connections (no value field then). */
-  hintConnections: 'Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers · Esc closes the card',
-  hintConnectionsPhone: 'Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers',
+  /**
+   * A part's card showing its Connections (no value field then). Connect to makes the end's node and
+   * the node chosen one node, every part on them included, whatever the drawing gets for it (a wire;
+   * for ground with no wire to it, a ground symbol; failing both, the two joined by name: connectEdit
+   * in editing.ts, whose summary says which). Disconnect gives the end a node of its own (decision 0017).
+   */
+  hintConnections: 'Connect to… makes an end’s node and another node one node · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card',
+  hintConnectionsPhone: 'Connect to… makes an end’s node and another node one node · Disconnect gives an end a node of its own · Connections again shows the value and the numbers',
   hintTypingPaused: '{hint} · live runs are paused, so {run} to see the new numbers · Enter or Esc closes the card',
   hintPlace: 'Click the paper to place {part} · T turns it{mirror} · Shift+click places more than one · Esc goes back to Select',
   hintMirrorIt: ' · M mirrors it',
@@ -109,7 +115,7 @@ export const en = {
   joinsCurrent: 'its arrow pushes current from {a}, through it, into {b}',
   groundJoins: '{node} becomes ground (node 0)',
   groundJoinsGround: 'it connects to ground',
-  groundAlone: 'it touches nothing yet: draw a wire to it',
+  groundAlone: 'it touches nothing yet (draw a wire to it)',
   hintWire: 'Click a pin, a wire or a node’s name to start a wire · Esc goes back to Select',
   hintWireOn: 'Click another pin, wire or node’s name to end the wire · click the paper to make a corner · Esc cancels this wire',
   hintWireEndHere: 'Click to end the wire here: {a} and {b} become one node · Esc cancels this wire',
@@ -194,8 +200,11 @@ export const en = {
 
   // ---------------------------------------------------------------- editing the drawing (decision 0017)
   placeGroundFirst: 'Place a part first: a ground symbol connects to the node its pin touches, and there is no node yet.',
-  // A1: .op gives the DC voltages and currents; no-analysis-1: without it nothing runs; missing-end-1: .end marks the end (ngspice reads a file without it).
-  starterAdded: 'PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the {op}), so the circuit runs as you build it, and .end, which marks where the netlist stops.',
+  // A1: .op gives the DC voltages and currents; no-analysis-1: without it nothing runs. .end is the
+  // netlist's last line, but it stops nothing: ngspice still reads the lines after it (S25,
+  // after-end-1), so new lines go above it (and runs a file without it, missing-end-1). Said the same
+  // whether PlainSpice wrote .end too (a netlist without it) or the student had: it never says who wrote .end.
+  starterAdded: 'PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the {op}), so the circuit runs as you build it. Keep .end as the netlist’s last line, with new lines above it: ngspice still reads lines after .end.',
   /** An edit made on the drawing wrote the drawing lines into a netlist that had none (drawing-1: ngspice skips them). */
   drawingWritten: 'The netlist now also says where each part is drawn, in lines starting with *@ that ngspice skips, so the drawing stays as it is.',
   wireSamePoint: 'The wire would start and end at the same point.',
@@ -205,7 +214,7 @@ export const en = {
   nodeNamed: 'node {name}',
   nodeWithParts: '{node}: {parts}',
   checksUnchosenTitle: 'Chosen by PlainSpice for now',
-  checksUnchosenIntro: 'A controlled source reads a voltage or a current elsewhere in the circuit. These were placed on the drawing, and PlainSpice chose what they read so the circuit runs; until you choose, ngspice solves that circuit:',
+  checksUnchosenIntro: 'A dependent source reads a voltage or a current elsewhere in the circuit. These were placed on the drawing, and PlainSpice chose what they read so the circuit runs; until you choose, ngspice solves that circuit:',
   checksUnchosen: '{name} reads {control}',
   checksUnchosenOpen: 'Choose on {name}’s card',
   checksDrawingTitle: 'The drawing lines',
@@ -255,16 +264,18 @@ export const en = {
   squaresDown_other: '{count} squares down',
   turnOnlyParts: 'Only a part turns, mirrors or reverses (and a ground symbol turns while it is in hand): a placed ground symbol, a node’s name and a piece of wire stay as they are.',
   reverseWhileMoving: 'Put {name} down first: Reverse swaps its two ends in the netlist.',
-  turnedMoving: '{name} turned: it lands that way.',
-  mirroredMoving: '{name} mirrored: it lands that way.',
+  /** T and M on a part being moved: the next sentence (moveSayHere, moveSayNot) says whether it can land there. */
+  turnedMoving: '{name} turned.',
+  mirroredMoving: '{name} mirrored.',
   deleteWhileMoving: 'Put {name} down first (Esc puts it back), then Delete deletes it.',
   putBack: '{name} put back.',
   toolInHand: '{part} in hand. {hint}',
   /** T, M and Shift+R on the part in hand (it is drawn turned; said too). */
   handTurned: '{part} in hand, turned a quarter turn.',
   handMirrored: '{part} in hand, mirrored.',
-  handReversed: '{part} in hand, turned round (its two ends swapped).',
-  handGroundSame: 'A ground symbol looks the same mirrored or reversed: T turns it.',
+  handReversed: '{part} in hand, reversed: its two ends swapped.',
+  /** M or Shift+R on the ground symbol in hand: it has one end (nothing to swap) and is symmetrical. */
+  handGroundSame: 'A ground symbol has one end and looks the same mirrored: T turns it.',
   wireStarted: 'Wire started at {node}.',
   wireCancelled: 'Wire cancelled.',
   wireCorner: 'Corner added.',
@@ -292,13 +303,19 @@ export const en = {
   editDrawingOnly: 'drawing only',
   editInNetlist: 'in the netlist',
   connTitle: 'Connections',
-  connIntro: 'Each end and the node it is on. A wire from an end to another node makes the two one node.',
+  connIntro: 'Each end and the node it is on. Connect to… makes an end’s node and another node one node, with every part on them. To move only one end, Disconnect it first, then Connect to.',
   connConnect: 'Connect to…',
-  connConnectLabel: 'Connect to another node: the {role} of {name}',
-  connTo: 'Connect the {role} of {name} to',
+  /** Starts with the button's own words (WCAG 2.5.3); what it connects is the end's node, with every part on it. */
+  connConnectLabel: 'Connect to another node: the node at the {role} of {name}',
+  connTo: 'Connect the node at the {role} of {name} to',
   connNone: 'There is no other node yet.',
   connDisconnect: 'Disconnect',
-  connDisconnectLabel: 'Disconnect the {role} of {name} from {node}',
+  /**
+   * The node is not named: the card passes it as its list writes it, a bare name ("in") or "ground
+   * (node 0)", and a sentence ending "from in" or "from its node, in" can be heard as "from in…" (a
+   * node in a sentence is "node in", decision 0017). The end's row says the node just before this button.
+   */
+  connDisconnectLabel: 'Disconnect the {role} of {name} from its node',
   connAlready: 'That end is already on {node}.',
   connReadsVoltage: 'It reads the voltage between',
   connReadsCurrent: 'It reads the current through',
@@ -344,11 +361,14 @@ export const en = {
   cardEmpty: 'Type a value: the netlist still has {value}.',
   cardNoValues: 'This analysis gives no single value for each part.',
   cardDone: 'Done',
+  /** The card's link to a check on its line: to its fix when the check has one, else to its why. */
   cardSeeFix: 'See the fix in Checks',
+  cardSeeWhy: 'See why in Checks',
   readoutThrough: 'through it',
   readoutMeasured: 'measured',
   readoutAcross: 'across it',
   readoutFromTo: 'from {from} to {to}',
+  /** {node}: "node in", or "ground" (src/app/card.ts), as a node is named in sentences. */
   readoutHigher: '{node} is higher',
   typeHintR: 'Type a value, such as 3, 4.7k or 1meg',
   typeHintC: 'Type a value, such as 10u or 100n',
@@ -447,7 +467,7 @@ export const en = {
   exampleF3a: 'The 1M trap',
   exampleF3b: 'The 1M trap, fixed: 1meg',
   exampleF4: '.tf: output resistance at a node',
-  exampleF5: 'Thevenin resistance with a dependent source',
+  exampleF5: 'Thévenin resistance with a dependent source',
   exampleD1: 'DC sweep of a divider',
   exampleT1: 'RC charging (.tran)',
   exampleLoaded: 'Opened the example “{name}”.',
@@ -564,7 +584,7 @@ export const en = {
   netlistCopyLabel: 'Copy the netlist',
   netlistHintPhone: 'Type here and the drawing follows; ngspice runs the netlist a moment after each change.',
   netlistFoot:
-    'Type here and the drawing follows; change a value on the drawing and its line changes here. Lines that start with *@ say where parts are drawn: ngspice ignores them.',
+    'Type here and the drawing follows; change a value on the drawing and its line changes here. Lines that start with *@ say where parts are drawn: ngspice skips them.',
   drawingShow_one: 'Show the {count} drawing line',
   drawingShow_other: 'Show the {count} drawing lines',
   drawingHide: 'Hide the drawing lines',
@@ -591,7 +611,7 @@ export const en = {
   goToLinePart: 'Go to line {line} ({part}) in the netlist',
 
   // ---------------------------------------------------------------- checks
-  checksIntro: 'PlainSpice looks for beginner traps before every run, says why each one matters, and offers a fix.',
+  checksIntro: 'PlainSpice looks for beginner traps before every run, says why each one matters, and offers a fix where there is one.',
   checksNone: 'No traps found',
   severityError: 'Error',
   severityWarning: 'Warning',
