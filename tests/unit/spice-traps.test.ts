@@ -655,6 +655,11 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
           [200, 4000],
         ],
       ),
+      // One long .control line of v( with no ) after them: the sentences and the rename read the line's names
+      // once, not the rest of the line again for each v( (names lane critic 2, 2: a 326-character link froze
+      // the page for 6.5 s).
+      ['one .control line of v( with no )', (opens) =>
+        ['* one line', 'V1 a 0 1', 'R1 a xş 1k', 'R2 xş 0 1k', '.dc V1 0 1 1', '.control', `print ${'v('.repeat(opens)}`, 'save v(xş)', 'run', '.endc', '.end'].join('\n'), [2000, 0]],
       // Names whose plain letters are all "x", with no comment lines: the new names x2, x3 ... were counted
       // up from 2 for each of them.
       ['names with the same plain letters', (nodes, comments) =>

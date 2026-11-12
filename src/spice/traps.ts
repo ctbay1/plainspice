@@ -1527,9 +1527,16 @@ function controlNodes(c: Ctx): Map<string, CommandRef[]> {
     if (l.kind !== 'control') continue;
     const { code, from } = commandCode(l);
     const command = lowerAscii(/^[ \t]*([^ \t(]*)/.exec(code)![1]!);
-    for (const m of code.matchAll(/\bv(?:m|p|r|i|db)?[ \t]*\(([^)]*)\)/gi)) {
-      const inside = from + m.index + m[0].indexOf('(') + 1;
-      for (const w of m[1]!.matchAll(/[^ \t,]+/g)) put(inside + w.index, w[0], command, false);
+    // Each v( and the first ) after it, found once; with no ) left, no later v( closes either. A regex
+    // that looked for the ) from every v( read the rest of the line again each time: one long line of
+    // v( froze the page for seconds (names lane critic 2, 2).
+    const open = /\bv(?:m|p|r|i|db)?[ \t]*\(/gi;
+    for (let m = open.exec(code); m; m = open.exec(code)) {
+      const inside = m.index + m[0].length;
+      const close = code.indexOf(')', inside);
+      if (close < 0) break;
+      for (const w of code.slice(inside, close).matchAll(/[^ \t,]+/g)) put(from + inside + w.index, w[0], command, false);
+      open.lastIndex = close + 1;
     }
     if (command !== 'save') continue;
     // The words outside brackets after save, other than a function's name (v, i ...) and save's own words.

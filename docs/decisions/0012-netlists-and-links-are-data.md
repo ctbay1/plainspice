@@ -178,3 +178,10 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   each kind of name, and one X line whose one fix renames all its nodes, ten times larger among ten
   times the lines, and allows at most three times the work of ten small ones, timed as the work it
   is (`work-time.ts`): the old code took six to eight times as much, the new one about as much.
+  Later (names lane, second critic, 2): the node names on the commands for ngspice (`.control`, `*#`
+  and `##` lines), which these checks read for their sentences and renames, were found with a regex
+  that read the rest of the line again from every `v(` with no `)` after it, so one long `.control`
+  line of `v(` (a 326-character link) froze the page for 6.5 s on opening and 6 s after each key.
+  Each `v(` and the first `)` after it are now found once: the checks take 4 ms on that 120 kB line
+  (7.4 s before), and the same test has the line among its cases (the old code: 831 ms once, 84 ms
+  for ten small ones).
