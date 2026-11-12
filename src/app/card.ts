@@ -169,10 +169,11 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   const vb = volts.get(part.nodes[1]);
   if (words && va !== undefined && vb !== undefined && !isAmmeter(part)) {
     // Its size and which end is higher, SPICE's signed difference underneath.
-    const across = acrossWords({ name: part.name, v: sameNow ? [va, va] : [va, vb], nodes: part.nodes, written: [written(0), written(1)], text: nodeSaid });
+    // A resistor whose real current ngspice rounded to 0 has the exact voltage across it (`across`, C9n): its two ends' numbers are the same.
+    const across = acrossWords({ name: part.name, v: c?.across !== undefined ? [c.across, 0] : sameNow ? [va, va] : [va, vb], nodes: part.nodes, written: [written(0), written(1)], text: nodeSaid });
     const pa = voltsBefore.get(part.nodes[0]);
     const pb = voltsBefore.get(part.nodes[1]);
-    const prev = beforeWords && pa !== undefined && pb !== undefined ? formatSI(sameBefore ? 0 : Math.abs(pa - pb), 'V') : undefined;
+    const prev = beforeWords && pa !== undefined && pb !== undefined ? formatSI(was?.across !== undefined ? Math.abs(was.across) : sameBefore ? 0 : Math.abs(pa - pb), 'V') : undefined;
     const r: Readout = { value: across.text, what: t('readoutAcross'), sub: [across.higher ? t('readoutHigher', { node: across.higher }) : '', across.signed].filter(Boolean), tone: 'voltage', speech: said(across.speech) };
     if (prev && prev !== across.text) r.was = prev;
     readouts.push(r);

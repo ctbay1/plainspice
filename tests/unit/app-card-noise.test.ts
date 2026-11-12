@@ -74,3 +74,21 @@ describe('the card says 0 V across a part whose ends are at the same voltage (wo
     expect(r5.across.value).not.toBe('0 V');
   });
 });
+
+describe('after the critic of the re-check\'s fixes: the card keeps Ohm\'s law where ngspice\'s numbers and the exact solution meet', () => {
+  it('a 1 nΩ wire whose real 454.1 pA ngspice gives as 0 (both its ends the same number): the card says the exact 4.541e-19 V across it', async () => {
+    const text = '* t\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.op\n.end\n';
+    const r3 = await card(text, 'R3');
+    expect([r3.through, r3.across.value, r3.across.sub]).toEqual(['454.1 pA', '4.541e-19 V', ['node d2 is higher', 'V(d2) − V(p3) = 4.541e-19 V']]);
+  });
+
+  it('an E reading the balanced bridge carries a real 5 mA between two nodes at exactly 5 V: 0 V across it, and no power', async () => {
+    const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nV2 x 0 5\nE1 x y a b 1000\nRy y 0 1k\n.op\n.end\n';
+    const sol = await solve(text, ngspice);
+    // ngspice leaves y 8.9e-13 V below x: with it, E1 would absorb 4.4 fW.
+    expect(sol.words.nodes.find((n) => n.node === 'y')!.value).not.toBe(5);
+    const e1 = await card(text, 'E1');
+    expect([e1.through, e1.across.value]).toEqual(['5 mA', '0 V']);
+    expect(sol.words.currents.find((c) => c.name === 'E1')!.power).toBeUndefined();
+  });
+});

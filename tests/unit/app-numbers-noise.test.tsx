@@ -32,4 +32,15 @@ describe('the Numbers panel after the re-check (12 November 2026)', () => {
     const ratio = within(table).getAllByRole('row').slice(1).map((r) => [...r.querySelectorAll('th, td')].map(seen))[0]!;
     expect(ratio.slice(1)).toEqual(['0 V/V', '-5.551115e-17']);
   });
+
+  it('a real current ngspice gives as exactly 0 reads as the exact 454.1 pA, and ngspice\'s column keeps its 0 (C9n)', async () => {
+    const text = '* t\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.op\n.end\n';
+    const result = await solveText(text, ngspice);
+    render(<NumbersPanel outcome={{ kind: 'done', text, result }} text={text} running={false} paused={false} colours={new Map()} plotAvailable={false} onGoToLine={() => {}} onShowChecks={() => {}} onShowPlot={() => {}} />);
+    const table = screen.getAllByRole('table').find((t) => /current/i.test(t.querySelector('caption')?.textContent ?? ''))!;
+    const rows = within(table).getAllByRole('row').slice(1).map((r) => [...r.querySelectorAll('th, td')].map(seen));
+    const r3 = rows.find((r) => r[0] === 'R3')!;
+    expect([r3[1], r3[r3.length - 1]]).toEqual(['454.1 pA', 'i(@r3[i]) = 0.000000e+00']);
+  });
 });
+

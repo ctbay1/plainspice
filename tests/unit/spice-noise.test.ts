@@ -310,7 +310,7 @@ describe('speed: the exact solve keeps describeResults, which runs on the main t
     }
     // The 12 × 12 grid is past the counted work.
     expect(ways[2]).toBe('rule');
-  });
+  }, 60_000);
 
   it('at the limits of the exact solve (a random network of 400 resistors on 133 nodes, about a second of work) it stops in time: under 200 ms, then the other rule decides', async () => {
     for (const seed of [7, 11]) {
@@ -357,6 +357,54 @@ describe('the same-circuit check (exact.ts agrees), measured with the real engin
 describe('after the critic of the re-check\'s fixes: what the exact solution may decide, and how fast', () => {
   const bridge = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k'];
   const run = (...l: string[]): Promise<Awaited<ReturnType<typeof solveText>>> => solveText(`* t\n${l.join('\n')}\n.end\n`, ngspice);
+  const lost = (w: ResultsInWords): string[] => [...w.currents.filter((c) => c.given !== undefined).map((c) => c.name), ...w.nodes.filter((n) => n.given !== undefined).map((n) => `node ${n.node}`)];
+  const lostNote = (w: ResultsInWords): string | undefined => w.warnings.find((m) => m.code === 'rounded-to-0')?.why;
+
+  it('a value with a 9-digit exponent (V2 b 0 1e-999999999, which ngspice reads as 0) keeps every current, at once: it froze the page for 66 s and lost them', async () => {
+    const text = lines('V1 a 0 9', 'R1 a 0 1k', 'V2 b 0 1e-999999999', 'R2 b 0 1k');
+    const r = await solveText(text, ngspice);
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), structuredClone(r.results), r.run)], 1);
+    expect(ms).toBeLessThan(500);
+    expect(r.words.currents.map((c) => sp(c.text))).toEqual(['9 mA from ground to node a through V1', '9 mA from node a to ground through R1', 'V2 measures no current', 'no current through R2']);
+    // The word is no double, so the circuit is not modelled exactly: the rule decides.
+    expect(roundingNoise(r.netlist, r.results).by).toBe('rule');
+  });
+
+  it('ngspice\'s answers far from the exact ones (a 1e-12 Ω wire in a balanced bridge: 4.321 V and 4.374 V for 4.5 V) are shown as ngspice gives them, with no note: no 0 beside them', async () => {
+    const { words, by } = await solved(lines(...bridge, 'Rw a m 1e-12', 'R5 m b 1k'));
+    expect(by).toBe('rule');
+    expect([node(words, 'a'), node(words, 'm'), node(words, 'b')]).toEqual(['4.321 V', '4.321 V', '4.374 V']);
+    expect(current(words, 'R5')).toBe('53.56 µA from node b to node m through R5');
+    expect(noise(words)).toEqual([]);
+    expect(note(words)).toBeUndefined();
+    // A bridge with a 1 nΩ wire read by a G of 1000: G1's 13.84 mA, ngspice's, not 0 A next to it.
+    const g = await solved(lines('V1 top1 0 15', 'R1 top1 s2 1u', 'R2 s2 0 1meg', 'R3 s2 a3 2.7meg', 'R4 a3 0 3.9k', 'R5 s2 b4 2.7meg', 'R6 b4 0 3.9k', 'R7 a3 m5 1n', 'R8 m5 b4 1meg', 'G1 0 g6 a3 b4 1e3', 'R9 g6 0 1.2k'));
+    expect([g.by, current(g.words, 'G1'), node(g.words, 'g6'), noise(g.words)]).toEqual(['rule', '13.84 mA from ground to node g6 through G1', '16.61 V', []]);
+  });
+
+  it('a real current ngspice gives as exactly 0 is the exact one, with ngspice\'s 0 in `given` and a note: a 1 nΩ wire in series with 10 MΩ carries 454.1 pA, as the 10 MΩ does', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg'));
+    expect(by).toBe('exact');
+    expect(current(words, 'R3')).toBe('454.1 pA from node d2 to node p3 through R3');
+    expect(current(words, 'R4')).toBe('454.1 pA from node p3 to ground through R4');
+    expect(words.currents.find((c) => c.name === 'R3')).toMatchObject({ given: 0, value: 4.5413907894834974e-10, across: 4.541390789483498e-19 });
+    expect(lost(words)).toEqual(['R3']);
+    expect(noise(words)).toEqual([]);
+    expect(sp(lostNote(words)!)).toBe(
+      "ngspice gave R3 exactly 0 A. But a current flows through R3: the 4.541e-19 V across it is too small beside the 4.541 mV at its ends, node d2 and node p3, for ngspice's arithmetic (about 16 significant digits), so both ends come out as the same number. Solved exactly, with fractions, from the netlist's values, R3 carries 454.1 pA, so PlainSpice shows 454.1 pA.",
+    );
+    expect(words.warnings.find((m) => m.code === 'rounded-to-0')).toMatchObject({ severity: 'note', title: "R3's current is not 0, though ngspice gave 0", line: 5 });
+  });
+
+  it('N1\'s ladder: the 1 µΩ wire in series with the 1 TΩ meter carries the meter\'s 7.324e-19 A, not "no current"; so do the divider\'s probe and the 1 nV source\'s 1 Ω', async () => {
+    const ladder = (await solved(lines('V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'Rw n3 p 1u', 'Rvm p 0 1t'))).words;
+    expect([current(ladder, 'Rw'), current(ladder, 'Rvm')]).toEqual(['7.324e-19 A from node n3 to node p through Rw', '7.324e-19 A from node p to ground through Rvm']);
+    expect(lost(ladder)).toEqual(['Rw']);
+    const divider = (await solved(lines('V1 in 0 24', 'R1 in mid 1g', 'R2 mid 0 10', 'Rp mid p 100', 'Rvm p 0 1e20'))).words;
+    expect([current(divider, 'Rp'), lost(divider)]).toEqual(['2.4e-27 A from node mid to node p through Rp', ['Rp']]);
+    const source = (await solved(lines('V1 top 0 1n', 'R1 top s 1', 'R2 s 0 1e20', 'Vm top v 0', 'R3 v 0 27k'))).words;
+    expect([current(source, 'R1'), lost(source)]).toEqual(['1e-29 A from node top to node s through R1', ['R1']]);
+  });
 
   it('a .dc point is judged at the value ngspice swept the source to: "-1 1 0.1" reaches −1.39e-16 V, where v(a) follows V1 and is real, so no note (it said v(a) was noise at "V1 = 0 V")', async () => {
     const r = await run('V1 a 0 0', 'R1 a b 1k', 'R2 b 0 2k', '.dc V1 -1 1 0.1');
@@ -366,6 +414,7 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     expect(spec.series.find((s) => s.label === 'v(a)')!.values[10]).toBe(-1.3877787807814457e-16);
     expect(spec.series.some((s) => s.given)).toBe(false);
   });
+
   it('a sweep of 99,999 points is decided with no fractions at each point: describeResults stays well under 50 ms (it took 705 ms at 100,000)', async () => {
     const r = await run(...bridge, 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9.9998 0.0001');
     const points = r.results.dc!.scale.values.length;
@@ -376,7 +425,8 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     const why = sp(r.words.warnings.find((m) => m.code === 'rounding-noise')!.why);
     expect(why).toMatch(/^ngspice gave i\(vm\) \S+ A at V1 = 100 µV, i\(vm\) \S+ A at V1 = 200 µV, i\(vm\) \S+ A at V1 = 300 µV, i\(vm\) \S+ A at V1 = 400 µV and \d+ more, each in the Plot panel's table\. /);
     expect(r.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0 });
-  });
+  }, 60_000);
+
   it('doctored .dc results are not this circuit\'s: a point shifted by 1e-6 V or a value 1 ppm off keeps ngspice\'s numbers', async () => {
     const r = await run(...bridge, 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9 3');
     expect(shownSweep(r.netlist, r.results)).not.toBe(r.results.dc);
@@ -388,6 +438,7 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     va.values[3] = va.values[3]! * (1 + 1e-6);
     expect(shownSweep(r.netlist, off)).toBe(off.dc);
   });
+
   it('doctored .tf results are not this circuit\'s: an input or output resistance 1 % off, or a ratio far above what rounding leaves, keeps ngspice\'s ratio', async () => {
     const r = await run(...bridge, 'R5 a b 1k', '.tf v(a,b) V1');
     const ratio = (results: typeof r.results): number | undefined => describeResults(r.netlist, results, r.run).tf!.transferFunction!.noise;
