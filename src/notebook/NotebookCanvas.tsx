@@ -220,8 +220,6 @@ const PADDING = 24;
 export const LONG_PRESS_MS = 350;
 /** After the page moves the drawing (a card makes room), presses are not taken for this long: about a double click's time. */
 export const PAGE_MOVE_QUIET_MS = 450;
-/** A move of the page this soon after a press is that press's doing (its card opened); a later one (an undo, Esc) is not. */
-const CAUSED_BY_PRESS_MS = 250;
 /** Insets that move less than this while the view is held are the page's bars resizing, not a new sheet. */
 const HOLD_SLACK = 48;
 const MIN_TARGET_PX = 28;
@@ -275,13 +273,33 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const offsetRef = useRef({ x: ox, y: oy });
   /** When the page last moved the drawing itself (a pan to make room for a card): a click just after it was aimed at where things were. */
   const pageMovedAt = useRef(0);
+  /**
+   * Every press and key on the page, counted (inputs.current), and the count when the page last moved
+   * the drawing: that move is a press's doing (its card opened) when nothing came between the press and
+   * the move, however long the page took to get there. (A time limit, 250 ms, took a slow machine's
+   * move for nobody's: the second press of a double click on a part's words was then taken where the
+   * drawing had slid to, and the card did not open on its value.) A move after a key (an undo, Esc) or
+   * after a press elsewhere (a sheet's ×) is not the last press's doing.
+   */
+  const inputs = useRef(0);
+  const pageMovedCount = useRef(-1);
+  /** The last press, when, and its place in the count of presses and keys: a double click whose second press came after the page moved the drawing belongs to the first one's place. */
+  const lastPress = useRef<{ info: PointerInfo; at: number; count: number } | undefined>(undefined);
   // A key pressed since: the student is doing something else, and their next click is aimed anew.
   useEffect(() => {
     const onKey = (): void => {
+      inputs.current += 1;
       pageMovedAt.current = 0;
     };
+    const onPress = (): void => {
+      inputs.current += 1;
+    };
     window.addEventListener('keydown', onKey, { capture: true });
-    return () => window.removeEventListener('keydown', onKey, { capture: true });
+    window.addEventListener('pointerdown', onPress, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', onKey, { capture: true });
+      window.removeEventListener('pointerdown', onPress, { capture: true });
+    };
   }, []);
   useLayoutEffect(() => {
     const was = offsetRef.current;
@@ -291,10 +309,23 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     // The page's pan slides, so the eye follows it (no slide where motion is reduced: app.css), and
     // the pointer's next press within a moment is not taken (WCAG 3.2.1: nothing moves under a click).
     pageMovedAt.current = performance.now();
+    pageMovedCount.current = inputs.current;
     const el = rootRef.current;
     el?.classList.add('is-sliding');
     const timer = window.setTimeout(() => el?.classList.remove('is-sliding'), 240);
-    return () => window.clearTimeout(timer);
+    // The last press's doing (its card opened), and the card may have come to rest under the pointer: for
+    // a double click's time the card does not take the pointer, so the next press reaches the drawing,
+    // which sets it aside (pageJustMoved) and gives a double click the first click's place. The second
+    // click of a double click on a part's words landed on its card's title instead (at once on a busy
+    // machine, after 55 ms on a quiet one), took the focus from the value, and the double click was lost.
+    const byPress = !!lastPress.current && lastPress.current.count === inputs.current;
+    if (byPress) el?.classList.add('is-just-moved');
+    const quiet = byPress ? window.setTimeout(() => el?.classList.remove('is-just-moved'), PAGE_MOVE_QUIET_MS) : undefined;
+    return () => {
+      window.clearTimeout(timer);
+      if (quiet !== undefined) window.clearTimeout(quiet);
+      el?.classList.remove('is-just-moved');
+    };
   }, [ox, oy]);
   const fr = props.frame;
   const [rx0, ry0, rx1, ry1] = fr ? [fr.x0, fr.y0, fr.x1, fr.y1] : [NaN, NaN, NaN, NaN];
@@ -571,18 +602,17 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
    * as a new wire.) The next press clears it; a click from the keys (Enter, Space) is always the button's.
    */
   const gestureClick = useRef(false);
-  /** The last press, and when: a double click whose second press came after the page moved the drawing belongs to the first one's place. */
-  const lastPress = useRef<{ info: PointerInfo; at: number } | undefined>(undefined);
+  /** The page moved the drawing because of this press (its card opened): nothing else came between them. */
+  const movedBy = (press: { count: number } | undefined): boolean => !!press && pageMovedCount.current === press.count;
   /**
    * Just after the page moved the drawing because of a click (a card made room), the next press is
-   * not taken: it is the second click of a double click, or a click aimed at where things were.
+   * not taken: it is the second click of a double click, or a click aimed at where things were. "Just
+   * after" by when the press was made (the event's time), not when a busy page got to it: a press made
+   * before the move, or soon after it, was aimed at where things were.
    */
-  const pageJustMoved = (): boolean => {
-    const now = performance.now();
-    const press = lastPress.current;
-    // Caused by the press: the page moved the drawing within a moment of it (a card opening on a click).
-    return now - pageMovedAt.current < PAGE_MOVE_QUIET_MS && !!press && pageMovedAt.current >= press.at && pageMovedAt.current - press.at < CAUSED_BY_PRESS_MS;
-  };
+  const pageJustMoved = (pressedAt: number): boolean => movedBy(lastPress.current) && pressedAt - pageMovedAt.current < PAGE_MOVE_QUIET_MS;
+  /** When an input was made: its event's time (a busy page handles it later), never later than now (some engines count events' time from another start). */
+  const madeAt = (e: { timeStamp: number }): number => Math.min(e.timeStamp || Number.POSITIVE_INFINITY, performance.now());
   const editing = props.editing;
   const infoOf = (e: { clientX: number; clientY: number; shiftKey: boolean; pointerType?: string }, item?: NavItem): PointerInfo | undefined => {
     const el = rootRef.current;
@@ -623,12 +653,13 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       return;
     }
     const info = infoOf(e, onButton ? itemOf(onButton) : undefined);
-    if (pageJustMoved()) {
+    const pressedAt = madeAt(e);
+    if (pageJustMoved(pressedAt)) {
       pointers.current.delete(e.pointerId);
       gestureClick.current = true;
       return;
     }
-    if (info) lastPress.current = { info, at: performance.now() };
+    if (info) lastPress.current = { info, at: pressedAt, count: inputs.current };
     let claim = info && editing ? editing.press(info) : undefined;
     // A finger: a part's words are no handle (a finger meant to pan picked parts up, critique of step
     // B); they are still a tap.
@@ -847,7 +878,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         // The first click opened a card and the page moved the drawing to make room: the double click is
         // about where the first click was, not what has slid under the pointer since.
         const first = lastPress.current;
-        const moved = first && pageMovedAt.current > first.at && pageMovedAt.current - first.at < CAUSED_BY_PRESS_MS && performance.now() - pageMovedAt.current < PAGE_MOVE_QUIET_MS * 2;
+        const moved = first && movedBy(first) && madeAt(e) - pageMovedAt.current < PAGE_MOVE_QUIET_MS * 2;
         const info = moved ? first.info : infoOf({ clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey }, itemOf(e.target as Element));
         if (info) editing?.doubleClick?.(info);
       }}
