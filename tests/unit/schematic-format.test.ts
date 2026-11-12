@@ -29,6 +29,7 @@ import {
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { TURN_LIMITS, turnedQuarter } from '../../src/notebook/turn.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { groundRowsAndWave } from './schematic-hostile.ts';
 
 const DIVIDER = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
 
@@ -397,39 +398,7 @@ describe('limits: wire over wire, slanted wire and long chains build quickly (se
     onlyTheCircuit(s);
   });
 
-  /**
-   * The critic of the fix round (critic1/gsattack2.ts): no ground line, so a ground symbol is looked
-   * for; K rows of ground wire, each joined to the next by a slanted wire just under it, so a wire runs
-   * through every ground symbol hung on any point of it; and far above, a square wave of `steps`
-   * one-unit pieces of another node between two resistors. At (25, 199, 9900) it is a 31 kB link inside
-   * the format's limits that kept a phone slowed four times busy for half a minute: the ground search
-   * checked every point of ground's wire against every wire, and the phone then rebuilt it four times
-   * to find no clean turn.
-   */
-  const groundRowsAndWave = (K: number, w: number, steps: number): string => {
-    const out = ['* ground rows and a square wave', 'V1 n1 0 6', 'R1 n3 n2 1k', 'R4 n2 n3 1k', 'R2 0 n1 1k', '.op', '* plainspice-drawing v1'];
-    for (let k = 0; k < K; k++) out.push(`*@ wire 0,${k} ${w},${k}`);
-    for (let k = 0; k + 1 < K; k++) out.push(`*@ wire 0,${k} ${w},${k + 1}`);
-    out.push('*@ V1 0 -2 0', `*@ R2 ${w} ${K + 2} 0`, `*@ wire 0,${K - 1} ${w},${K}`, '*@ label n1 0 -4', `*@ label n1 ${w} ${K + 4}`);
-    const pts: [number, number][] = [[-1990, -1900]];
-    let [x, y, dir, up] = [-1990, -1900, 1, false];
-    for (let i = 0; i < steps; i++) {
-      if (i % 2 === 0) {
-        if ((dir > 0 && x >= 1990) || (dir < 0 && x <= -1990)) {
-          [y, up, dir] = [y + (up ? 1 : 0) + 3, false, -dir];
-          pts.push([x, y]);
-          continue;
-        }
-        x += dir;
-      } else [y, up] = [up ? y - 1 : y + 1, !up];
-      pts.push([x, y]);
-    }
-    const [[sx, sy], [ex, ey]] = [pts[0]!, pts[pts.length - 1]!];
-    out.push(`*@ R1 ${sx - 2} ${sy} 270`, dir > 0 ? `*@ R4 ${ex + 2} ${ey} 270` : `*@ R4 ${ex - 2} ${ey} 90`, `*@ wire ${pts.map(([a, b]) => `${a},${b}`).join(' ')}`, '.end');
-    return `${out.join('\n')}\n`;
-  };
-
-  it('finds a ground symbol\'s place quickly when a wire runs through every point of ground\'s wire, beside a 9,900-piece wave; the phone does not try to turn it (critic of the fix round)', () => {
+  it('builds a drawing with a wire through every point of ground\'s wire, beside a 9,900-piece wave, its ground symbol clear of wire; the phone does not try to turn it (critic of the fix round)', () => {
     const text = groundRowsAndWave(25, 199, 9900);
     expect(text.length).toBeGreaterThan(100_000);
     const { s, ms } = (() => {
@@ -442,7 +411,8 @@ describe('limits: wire over wire, slanted wire and long chains build quickly (se
     expect(s.kept).toEqual([]);
     expect(s.drawing.wires.reduce((n, w) => n + w.length - 1, 0)).toBeGreaterThan(9900);
     // About half a second here, cold (4 to 6 s before, the ground search 2.4 s of it); the limit allows
-    // for a busy machine.
+    // for a busy machine, so it is no guard on the search itself: schematic-ground-search.test.ts counts
+    // the search's work, which does not depend on the machine.
     expect(ms).toBeLessThan(5000);
     // No point of ground's wire is clear, so the symbol hangs on a one-unit lead below its lowest end,
     // with no wire through it, and the drawing connects what the netlist connects.
