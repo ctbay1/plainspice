@@ -779,11 +779,11 @@ describe('<App /> after the words re-check of step B', () => {
     fireEvent.keyDown(resistor, { key: 'm' });
     await waitFor(() => expect(polite()).toContain('A resistor in hand, mirrored.'));
     fireEvent.keyDown(resistor, { key: 'R', shiftKey: true });
-    await waitFor(() => expect(polite()).toContain('A resistor in hand, turned round (its two ends swapped).'));
-    // The ground symbol looks the same mirrored: said, not silent.
+    await waitFor(() => expect(polite()).toContain('A resistor in hand, reversed: its two ends swapped.'));
+    // The ground symbol has one end and looks the same mirrored: said, not silent.
     fireEvent.keyDown(resistor, { key: '0' });
     fireEvent.keyDown(resistor, { key: 'm' });
-    await waitFor(() => expect(polite()).toContain('A ground symbol looks the same mirrored or reversed: T turns it.'));
+    await waitFor(() => expect(polite()).toContain('A ground symbol has one end and looks the same mirrored: T turns it.'));
     // F with no voltage source to read: the reason and the way out, before the pointer is on the paper.
     fireEvent.keyDown(resistor, { key: 'f' });
     const why = 'A current-controlled current source (F) reads the current through a voltage source, and this circuit has none yet: add a voltage source first';
