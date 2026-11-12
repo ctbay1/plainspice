@@ -194,3 +194,43 @@ describe('the netlist store', () => {
     expect(store.snapshot()).toMatchObject({ redoLabel: 'R1 added between a and ground.', canUndo: false });
   });
 });
+
+describe('the texts of the circuit open now (a new node never takes a name they had)', () => {
+  it('are the texts Undo can go back to since the circuit was opened, then the text now, not the steps Redo would bring back', () => {
+    const store = createNetlistStore('', { mine: false });
+    expect(store.circuitTexts()).toEqual(['']);
+    store.set('V1 n1 n2 5', { source: 'drawing' });
+    store.set('V1 n1 0 5', { source: 'drawing' });
+    expect(store.circuitTexts()).toEqual(['', 'V1 n1 n2 5', 'V1 n1 0 5']);
+    store.undo();
+    expect(store.circuitTexts()).toEqual(['', 'V1 n1 n2 5']);
+    store.undo();
+    expect(store.circuitTexts()).toEqual(['']);
+    // A new change drops what Redo would have brought back.
+    store.set('R1 n1 n2 1k', { source: 'drawing' });
+    expect(store.circuitTexts()).toEqual(['', 'R1 n1 n2 1k']);
+  });
+
+  it('start where the circuit was opened (an example, a new circuit), and follow Undo back into the circuit before', () => {
+    const store = createNetlistStore('* mine\nR1 n1 n2 1k', { mine: true });
+    store.set('* mine\nR1 n1 n5 1k', { source: 'editor' });
+    store.set('* example\nV1 a 0 6', { source: 'load' });
+    expect(store.circuitTexts()).toEqual(['* example\nV1 a 0 6']);
+    // The first change makes the opened example the student's: it still starts the circuit's history.
+    store.set('* example\nV1 a 0 6\nR1 a b 1k', { source: 'drawing' });
+    expect(store.circuitTexts()).toEqual(['* example\nV1 a 0 6', '* example\nV1 a 0 6\nR1 a b 1k']);
+    store.set('', { source: 'load' });
+    expect(store.circuitTexts()).toEqual(['']);
+    store.undo();
+    store.undo();
+    store.undo();
+    // Back in the student's own circuit: its own history.
+    expect(store.circuitTexts()).toEqual(['* mine\nR1 n1 n2 1k', '* mine\nR1 n1 n5 1k']);
+  });
+
+  it('go back to the oldest step kept when the circuit was opened longer ago than that', () => {
+    const store = createNetlistStore('* t', { mine: true });
+    for (let i = 0; i <= MAX_UNDO_STEPS + 5; i++) store.set(`* t\nR1 n1 n${i + 2} 1k`, { source: 'drawing' });
+    expect(store.circuitTexts()).toHaveLength(MAX_UNDO_STEPS + 1);
+  });
+});

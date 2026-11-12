@@ -135,6 +135,7 @@ import {
   moveOp,
   nodeChoices,
   nodeEnd,
+  nodeNamesIn,
   nodeSaid,
   nodeWords,
   placeEdit,
@@ -150,6 +151,7 @@ import {
   wirePreview,
   wireStartOf,
   wireTargets,
+  withUsedNodeNames,
   type EditKey,
   type Grab,
   type Hand,
@@ -567,6 +569,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [noteLine, setNoteLine] = useState<string | undefined>(undefined);
   /** When the last refusal was said: a pointer moving on the paper a moment later brings the hint back. */
   const refusedAt = useRef(0);
+  /** The node names of the open circuit's undo history, for the store's version they were read at (usedNodeNames, below). */
+  const usedNames = useRef<{ version: number; names: ReadonlySet<string>; memo: Map<string, readonly string[]> }>({ version: -1, names: new Set(), memo: new Map() });
   /** The part's card shows its connections. */
   const [connOpen, setConnOpen] = useState(false);
   /** The Add a part form, as it opens. */
@@ -1996,7 +2000,27 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const currentDrawing = (): Schematic | undefined => {
     if (tooBig) return undefined;
     const now = store.get();
-    return schematic && schematic.netlist.text === now ? schematic : buildSchematic(now, NOTEBOOK_OPTIONS);
+    const s = schematic && schematic.netlist.text === now ? schematic : buildSchematic(now, NOTEBOOK_OPTIONS);
+    return withUsedNodeNames(s, usedNodeNames());
+  };
+  /**
+   * The node names the open circuit had in its undo history (as the store has it now): a new node
+   * never takes one, so a name just said ("Node n2 is now ground") never comes back for a new,
+   * separate node. Each text's names are read once; only this circuit's texts are kept.
+   */
+  const usedNodeNames = (): ReadonlySet<string> => {
+    const version = store.snapshot().version;
+    const known = usedNames.current;
+    if (known.version === version) return known.names;
+    const texts = store.circuitTexts();
+    const memo = new Map<string, readonly string[]>();
+    for (const t of texts) {
+      const names = known.memo.get(t);
+      if (names) memo.set(t, names);
+    }
+    const names = nodeNamesIn(texts, memo);
+    usedNames.current = { version, names, memo };
+    return names;
   };
   /** The phone's turned view is another drawing than the netlist's: editing shows it as drawn (and the hint says so). */
   const asDrawnForEditing = (): void => {

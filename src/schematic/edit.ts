@@ -283,14 +283,29 @@ export function freshPartName(s: Schematic, letter: PartLetter): string {
   }
 }
 
-/** A node name nothing uses yet (n1, n2 ...), counting the lines the drawing does not show and the names already handed out in `taken` (which gets the new one). */
-export function freshNodeName(s: Schematic, taken: Set<string> = new Set()): string {
+/** What a new node's name keeps clear of besides the names the netlist has now (freshNodeName). */
+export interface NodeNameOptions {
+  /**
+   * Node names (in lower case) the circuit had before: the app passes the names in the circuit's
+   * undo history. A new node never gets one, so a name the student was just told about ("Node n2 is
+   * now ground") never comes back for a new, separate node (final reviews, student node-name-reused).
+   */
+  usedNodeNames?: ReadonlySet<string>;
+}
+
+/**
+ * A node name nothing uses yet (n1, n2 ...), counting the lines the drawing does not show, the names
+ * already handed out in `taken` (which gets the new one) and the names the circuit had before
+ * (`usedNodeNames`). The options are those the schematic was built with, as edits use (Schematic.options).
+ */
+export function freshNodeName(s: Schematic, taken: Set<string> = new Set(), options: NodeNameOptions = s.options as LayoutOptions & NodeNameOptions): string {
   // Nodes of lines the drawing does not show count too: ngspice reads a part after .end, for one.
   const elsewhere = new Set(s.circuit.notDrawn.filter((n) => n.reason !== 'in-subcircuit').flatMap((n) => n.nodes));
   for (const r of controlNodeRefs(s.netlist)) elsewhere.add(r.name);
+  const used = options.usedNodeNames;
   for (let i = 1; ; i++) {
     const name = `n${i}`;
-    if (!s.netlist.nodes.has(name) && !elsewhere.has(name) && !taken.has(name)) {
+    if (!s.netlist.nodes.has(name) && !elsewhere.has(name) && !taken.has(name) && !used?.has(name)) {
       taken.add(name);
       return name;
     }

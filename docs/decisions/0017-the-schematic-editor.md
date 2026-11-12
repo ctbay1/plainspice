@@ -332,3 +332,10 @@ browsers other than Chromium.
 - **The first part on a blank page shows why .op and .end were written**, first in the hint line and
   for as long as the drawing note stays there, not only in what is said (words W9; the sentence is
   `starterAdded`, the words lane's).
+- **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
+  now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
+  every node name in the circuit's undo history: the texts Undo can go back to since the circuit was
+  opened (an example, a link, a new circuit), and the text now (the store's `circuitTexts`). Not the
+  steps Redo would bring back: after undoing a part, the next one takes the names it had. The model's
+  `freshNodeName` reads these names from the drawing's options (`usedNodeNames`); the app passes them
+  with every drawing it edits.

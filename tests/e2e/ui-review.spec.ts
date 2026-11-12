@@ -4,7 +4,8 @@
  * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); a fix on the video's
  * mistake examples leaves no drawing warning, and the tab and the announcement agree (kept F1); the
  * starter's why is shown in the hint line (words W9); the Netlist panel a SPICE for Beginners example
- * opened closes with the next video's example (student netlist-panel-stays).
+ * opened closes with the next video's example (student netlist-panel-stays); a new node never takes a
+ * name just said to be ground (student node-name-reused).
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -117,4 +118,24 @@ test('the Netlist panel a SPICE for Beginners example opened closes with the nex
   await expect(page.getByRole('main').getByRole('button', { name: /^R3, / })).toBeInViewport();
   await chooseExample(page, 'Dependent sources E, G, F and H');
   await expect(panel(page, 'netlist')).toBeVisible();
+});
+
+test('a new node never takes a name just said to be ground (student node-name-reused)', async ({ page }) => {
+  test.skip(isPhone(page), 'a phone places by tapping (the phone tests)');
+  await openApp(page);
+  await newCircuit(page);
+  const tools = partsToolbar(page);
+  // V1 upright at (0, 3): its ends n1 and n2; its card opens on its value.
+  await tools.getByRole('button', { name: /^Voltage source/ }).click();
+  await clickAt(page, 0, 3);
+  await expectAnnounced(page, /V1 added between node n1 and node n2\./);
+  await page.keyboard.press('Escape');
+  // Ground on V1's − pin.
+  await tools.getByRole('button', { name: /^Ground/ }).click();
+  await clickAt(page, 0, 5);
+  await expectAnnounced(page, /Node n2 is now ground \(node 0\)/);
+  // A resistor on empty paper: two new nodes, neither of them n2.
+  await tools.getByRole('button', { name: /^Resistor/ }).click();
+  await clickAt(page, 8, 2);
+  await expectAnnounced(page, 'R1 added between node n3 and node n4.');
 });
