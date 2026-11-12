@@ -445,7 +445,14 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   the same words; both pass the word "ground" for ground. When the lanes were merged, navigate.ts took
   the overview's own sentence (`partSentenceFor`), and `src/app/card.ts` and `src/notebook/words.ts`
   pass node names through `sentenceNode`, so the drawing's descriptions and the card quote such a name
-  too: 'R1: a 1 kΩ resistor between node "ground" and ground.', 'node "ground" is higher'.
+  too: 'R1: a 1 kΩ resistor between node "ground" and ground.', 'node "ground" is higher'. Explain's
+  own sentences say it too (also done when the lanes were merged): "R1 is a 1 kΩ resistor between
+  node in and node out.", "Ground is 0 V, so node in sits at 6 V.", "So node a sits 3 V above node
+  b.", and the field rows "one end is at node in". Formulas keep each name as written ("SPICE reads
+  that as V(in) − V(0) = 6 V"); ground stays "ground (node 0)" ("ground" in the sentences after a
+  formula: "flowing from ground, through G1, into node c"); a name like ground stays quoted (the node
+  "ground"); a label that already says node keeps the name alone ("D1 is a diode: + node a and − node
+  ground (node 0)"), and other labels say where ("collector at node c").
 - **The missing-end check says what the blank page's sentence says** (words review W1): .end is the
   netlist's last line, new lines go above it, and ngspice still reads lines written after .end
   (missing-end-1, after-end-1, S25); nothing about other SPICE programs, which no fact here backs.

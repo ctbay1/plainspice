@@ -52,7 +52,8 @@ const EXACT_LOOP_LIMIT = 100_000;
 export const EXPLAIN_STRINGS = {
   ground: 'ground (node 0)',
   groundShort: 'ground',
-  nodeWord: (name: string): string => name,
+  /** A node in a sentence: "node in", as the editor, the overview and the cards say it (words review W8). */
+  nodeWord: (name: string): string => `node ${name}`,
 
   // ---- lines that are not parts
   titleHeading: 'Title line',
@@ -297,7 +298,10 @@ export const EXPLAIN_STRINGS = {
   bCurrent: 'I=: the current from the + node, through the source, to the − node is the expression that follows',
   bExpression: 'part of the expression ngspice works out',
   bNoExpression: 'a word with no V= or I= before it: ngspice stops with a fatal error',
+  /** A label that already says node: "+ node c". */
   labelledNode: (label: string, n: string): string => `${label} ${n}`,
+  /** Any other label: "collector at node c". */
+  labelledAt: (label: string, n: string): string => `${label} at ${n}`,
   listJoin: (items: readonly string[]): string =>
     items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`,
   insideSubcircuit: (name: string, line: number): string =>
@@ -724,20 +728,43 @@ function numberPart(text: string): string {
 
 // ------------------------------------------------------------------ nodes
 
-function nodeText(ref: NodeRef): string {
+/** Names that look like ground but are ordinary nodes (W9, W13, W14). */
+const groundLike = (ref: NodeRef): boolean => ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00';
+
+/** A node's name alone, where a label already says "node" ("+ node c"): "in", "ground (node 0)". */
+function nodeName(ref: NodeRef): string {
   if (ref.ground) return S.ground;
   // W9, W13, W14: names that look like ground but are ordinary nodes are quoted, so "ground" never reads as ground.
-  if (ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00') return S.quotedNode(ref.token.text);
+  if (groundLike(ref)) return S.quotedNode(ref.token.text);
   // invisible-character-3: the character is named, not hidden in the sentence.
   if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
   // space-character-4, nbsp-1: one word for SPICE, though it reads as two.
   if (hasSpaceLike(ref.token.text)) return S.nodeWithSpace(withSpaces(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
-  return S.nodeWord(ref.token.text);
+  return ref.token.text;
 }
 
-/** How a node of a part reads in a sentence: "n1", "ground (node 0)". */
+/**
+ * A node in a sentence: "node in" (a name may be an ordinary word: "So in sits 6 V above out" read
+ * badly), as the editor, the overview and the cards say it (words review W8); ground is "ground (node
+ * 0)", and a name like ground is quoted: the node "ground".
+ */
+function nodeText(ref: NodeRef): string {
+  return ref.ground || groundLike(ref) ? nodeName(ref) : S.nodeWord(nodeName(ref));
+}
+
+/** How a node of a part reads in a sentence: "node n1", "ground (node 0)". */
 function nodePhrase(ref: NodeRef | undefined): string {
   return ref ? nodeText(ref) : '?';
+}
+
+/** A node in the sentences that follow a formula: "node in"; ground is just "ground" there. */
+function nodeProse(ref: NodeRef | undefined): string {
+  return !ref ? '?' : ref.ground ? S.groundShort : nodeText(ref);
+}
+
+/** A node named on an analysis line (.tf v(a,b)), in a sentence: "node a"; 0 is ground. */
+function nodeNameProse(text: string): string {
+  return text === '0' ? S.groundShort : text === '' || text === '?' ? text : S.nodeWord(text);
 }
 
 /** The node's name in a formula: as written; ground as written too ("0", "gnd"). */
@@ -1470,9 +1497,9 @@ function nodeRow(p: PartContext, f: Field, ref: NodeRef, index: number, label: s
   return fieldOf(label, f.token, meaning, EMPHASIS[f.role]);
 }
 
-/** "the voltage at a, measured from b" (ground for node 0). */
+/** "the voltage at node a, measured from node b" (ground for node 0). */
 function voltagePhrase(p: NodeRef | undefined, n: NodeRef | undefined): string {
-  return S.voltageAt(p?.ground ? S.groundShort : nodeFormula(p), n?.ground ? S.groundShort : nodeFormula(n));
+  return S.voltageAt(nodeProse(p), nodeProse(n));
 }
 
 function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
@@ -1521,10 +1548,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
             sentences.push(S.vSwept(swept + 1)); // A7
           } else if (v === 0) {
             sentences.push(S.vZero(nodePhrase(a), nodePhrase(b), el.name.text)); // P9
-            addNote(p.notes, S.vZeroCurrent(el.name.text, nodeFormula(a), nodeFormula(b)));
-          } else if (b.ground && !a.ground) sentences.push(S.vGround(nodeFormula(a), shown));
-          else if (a.ground && !b.ground) sentences.push(S.vGround(nodeFormula(b), formatSI(-v, 'V')));
-          else if (!a.ground && !b.ground) sentences.push(S.vAbove(nodeFormula(a), nodeFormula(b), shown));
+            addNote(p.notes, S.vZeroCurrent(el.name.text, nodeProse(a), nodeProse(b)));
+          } else if (b.ground && !a.ground) sentences.push(S.vGround(nodeProse(a), shown));
+          else if (a.ground && !b.ground) sentences.push(S.vGround(nodeProse(b), formatSI(-v, 'V')));
+          else if (!a.ground && !b.ground) sentences.push(S.vAbove(nodeProse(a), nodeProse(b), shown));
         } else if (fn) {
           const t0 = valueAtTimeZero(fn);
           sentences.push(t0 === undefined ? S.timeZeroValueUnknown(fn.token.text) : S.timeZeroValue(fn.token.text, formatSI(t0, 'V'))); // P17
@@ -1564,10 +1591,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       if (a && b && c && d && value) {
         // P6: gm × (V(c+) − V(c−)) amps from the first node, through G, into the second.
         const gm = value.value !== undefined ? formatSI(value.value, 'A') : value.text;
-        const control = d.ground ? S.gAt(nodeFormula(c)) : S.gBetween(nodeFormula(c), nodeFormula(d));
+        const control = d.ground ? S.gAt(nodeProse(c)) : S.gBetween(nodeProse(c), nodeProse(d));
         sentences.push(capitalise(S.gSentence(gm, control, nodePhrase(a), nodePhrase(b))));
         const g = value.value !== undefined ? formatNumber(value.value) : value.text;
-        sentences.push(S.gReads(g, nodeFormula(c), nodeFormula(d), nodeFormula(a), el.name.text, nodeFormula(b)));
+        sentences.push(S.gReads(g, nodeFormula(c), nodeFormula(d), nodeProse(a), el.name.text, nodeProse(b)));
       } else if (d && !value) addNote(p.notes, S.noGainNote('value in amps per volt')); // missing-value-5
       else addNote(p.notes, S.eFieldsNote); // M9
       break;
@@ -1588,7 +1615,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         const target = partKind(netlist, control.text);
         const tl = target.line !== undefined ? netlist.lines[target.line]?.element : undefined;
         if (tl && (target.letter === 'V' || target.letter === 'E' || target.letter === 'H') && tl.nodes[0] && tl.nodes[1]) {
-          sentences.push(S.controlCurrentSign(control.text, nodeFormula(tl.nodes[0]), nodeFormula(tl.nodes[1])));
+          sentences.push(S.controlCurrentSign(control.text, nodeProse(tl.nodes[0]), nodeProse(tl.nodes[1])));
         }
       } else if (a && b && control && !value && !readNumber(control.text)) {
         addNote(p.notes, S.noGainNote(el.letter === 'F' ? 'gain' : 'value in volts per amp')); // missing-value-6, -7
@@ -1602,7 +1629,11 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       break;
     }
     default: {
-      const labels = el.nodes.map((ref, k) => S.labelledNode(labelFor(el.letter, 'node', k).replace(/ \(.*\)$/, ''), nodePhrase(ref)));
+      // A label that says node keeps the name alone ("+ node c"); others say where ("collector at node c").
+      const labels = el.nodes.map((ref, k) => {
+        const label = labelFor(el.letter, 'node', k).replace(/ \(.*\)$/, '');
+        return /(^|\s)node$/.test(label) ? S.labelledNode(label, nodeName(ref)) : S.labelledAt(label, nodeText(ref));
+      });
       sentences.push(S.otherPart(el.name.text, partWhat(info), S.listJoin(labels)));
       sentences.push(S.notExplained);
       // What ngspice needs, unless the field table already says whether the model or subcircuit is there.
@@ -1807,7 +1838,7 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
   const g = vectorAt(netlist, d.args, 0);
   if (g) {
     const meaning =
-      g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(g.names[0]?.text ?? '', g.names[1]?.text ?? '');
+      g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(nodeNameProse(g.names[0]?.text ?? ''), nodeNameProse(g.names[1]?.text ?? ''));
     fields.push({ label: 'output', text: g.text, span: g.span, meaning });
     if (g.kind === 'voltage') {
       for (const n of g.names) {
@@ -1832,7 +1863,7 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
   const outText = r.output;
   const inText = input?.text ?? '?';
   const [o1, o2] = r.outputNames;
-  const at = o2 ? S.tfBetween(o1 ?? '?', o2) : S.tfAt(o1 ?? '?');
+  const at = o2 ? S.tfBetween(nodeNameProse(o1 ?? '?'), nodeNameProse(o2)) : S.tfAt(nodeNameProse(o1 ?? '?'));
   const ratio = `${r.outputKind === 'current' ? 'A' : 'V'}/${r.inputKind === 'current' ? 'A' : 'V'}`;
   const ratioWords = ratio === 'V/A' ? 'V/A, which is ohms' : ratio;
   let summary = r.outputKind === 'current' ? S.tfCurrent(outText, inText) : S.tf(outText, inText, at); // A3, A4

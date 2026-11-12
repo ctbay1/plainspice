@@ -73,10 +73,10 @@ describe('the fixtures, in the channel\'s words', () => {
     expect(line(text, 1).summary).toBe('Line 1 is the title. SPICE always skips it, whatever it says, so a part written here would silently disappear.');
     const v1 = line(text, 2);
     expect(v1.heading).toBe('V1: a voltage source');
-    expect(sp(v1.summary)).toBe(`V1 has its + side at n1 and its ${MINUS} side at ground (node 0). SPICE reads that as V(n1) ${MINUS} V(0) = 6 V. Ground is 0 V, so n1 sits at 6 V.`);
+    expect(sp(v1.summary)).toBe(`V1 has its + side at node n1 and its ${MINUS} side at ground (node 0). SPICE reads that as V(n1) ${MINUS} V(0) = 6 V. Ground is 0 V, so node n1 sits at 6 V.`);
     expect(rows(v1)).toEqual([
       ['name', 'V1', 'the first letter, V, makes it a voltage source'],
-      ['+ node', 'n1', 'the + side is at n1'],
+      ['+ node', 'n1', 'the + side is at node n1'],
       [`${MINUS} node`, '0', `the ${MINUS} side is at ground (node 0)`],
       ['value', '6', '6 V'],
     ]);
@@ -84,10 +84,10 @@ describe('the fixtures, in the channel\'s words', () => {
     expect(v1.fields[2]!.emphasis).toEqual([MINUS]);
     expect(notes(v1)).toContain("SPICE counts a source's current as positive when it enters at the first node, here the + side");
     const r1 = line(text, 3);
-    expect(sp(r1.summary)).toBe('R1 is a 2 Ω resistor between n1 and ground (node 0).');
+    expect(sp(r1.summary)).toBe('R1 is a 2 Ω resistor between node n1 and ground (node 0).');
     expect(rows(r1)).toEqual([
       ['name', 'R1', 'the first letter, R, makes it a resistor'],
-      ['node', 'n1', 'one end is at n1'],
+      ['node', 'n1', 'one end is at node n1'],
       ['node', '0', 'the other end is at ground (node 0)'],
       ['value', '2', '2 Ω'],
     ]);
@@ -101,7 +101,7 @@ describe('the fixtures, in the channel\'s words', () => {
 
   it('F1b: the swapped source makes n1 −6 V', () => {
     expect(sp(line(fixture('f1b-voltage-source-swapped.cir'), 2).summary)).toBe(
-      `V1 has its + side at ground (node 0) and its ${MINUS} side at n1. SPICE reads that as V(0) ${MINUS} V(n1) = 6 V. Ground is 0 V, so n1 sits at ${MINUS}6 V.`,
+      `V1 has its + side at ground (node 0) and its ${MINUS} side at node n1. SPICE reads that as V(0) ${MINUS} V(n1) = 6 V. Ground is 0 V, so node n1 sits at ${MINUS}6 V.`,
     );
   });
 
@@ -109,17 +109,17 @@ describe('the fixtures, in the channel\'s words', () => {
     const a = line(fixture('f2a-current-source.cir'), 2);
     expect(labels(a)).toEqual(['name', 'from node', 'to node', 'current']);
     expect(sp(a.summary)).toBe(
-      'A current source has its own pattern: name, from node, to node, current. The current flows from the first node, through the source, into the second, the way the arrow points. So I1 pushes 3 A from ground (node 0), through the source, into n1.',
+      'A current source has its own pattern: name, from node, to node, current. The current flows from the first node, through the source, into the second, the way the arrow points. So I1 pushes 3 A from ground (node 0), through the source, into node n1.',
     );
     expect(a.fields[1]).toMatchObject({ meaning: 'the current comes from ground (node 0)', emphasis: ['from'] });
-    expect(a.fields[2]).toMatchObject({ meaning: 'and flows to n1', emphasis: ['to'] });
-    expect(sp(line(fixture('f2b-current-source-swapped.cir'), 2).summary)).toContain('So I1 pushes 3 A from n1, through the source, into ground (node 0).');
+    expect(a.fields[2]).toMatchObject({ meaning: 'and flows to node n1', emphasis: ['to'] });
+    expect(sp(line(fixture('f2b-current-source-swapped.cir'), 2).summary)).toContain('So I1 pushes 3 A from node n1, through the source, into ground (node 0).');
   });
 
   it('F3a and F3b: 1M is a milliohm, 1meg a megaohm', () => {
     const a = line(fixture('f3a-1M-trap.cir'), 3);
     expect(meaningOf(a, 'value')).toBe('1 mΩ (milli!)');
-    expect(sp(a.summary)).toBe('R1 is a 1 mΩ resistor between n1 and n2.');
+    expect(sp(a.summary)).toBe('R1 is a 1 mΩ resistor between node n1 and node n2.');
     expect(notes(a)).toContain('SPICE ignores capital letters, so M is the same as m: milli. 1M is 1 mΩ. For mega, write 1meg.');
     expect(meaningOf(line(fixture('f3a-1M-trap.cir'), 4), 'value')).toBe('1 MΩ');
     expect(meaningOf(line(fixture('f3b-1meg.cir'), 3), 'value')).toBe('1 MΩ');
@@ -129,11 +129,11 @@ describe('the fixtures, in the channel\'s words', () => {
     const tf = line(fixture('f4-tf-output-impedance.cir'), 6);
     expect(tf.heading).toBe('.tf: transfer function');
     expect(tf.summary).toBe(
-      'Find three DC quantities: the transfer function v(a)/V1 (output ÷ input), the input resistance seen by V1, and the output resistance at a, which is the Thévenin resistance seen at a. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms. The transfer function is in V/V.',
+      'Find three DC quantities: the transfer function v(a)/V1 (output ÷ input), the input resistance seen by V1, and the output resistance at node a, which is the Thévenin resistance seen at node a. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms. The transfer function is in V/V.',
     );
     expect(rows(tf)).toEqual([
       ['command', '.tf', 'transfer function'],
-      ['output', 'v(a)', 'the output: the voltage at a, measured from ground'],
+      ['output', 'v(a)', 'the output: the voltage at node a, measured from ground'],
       ['input source', 'V1', 'the input: V1, the voltage source on line 2'],
     ]);
   });
@@ -141,13 +141,13 @@ describe('the fixtures, in the channel\'s words', () => {
   it('F5: the ammeter Vx and the CCCS F1', () => {
     const text = fixture('f5-thevenin-cccs.cir');
     expect(sp(line(text, 3).summary)).toBe(
-      `Vx has its + side at a and its ${MINUS} side at x. SPICE reads that as V(a) ${MINUS} V(x) = 0 V. So a and x are at the same voltage: Vx works like a wire. A 0 V source is how SPICE measures a current: the ammeter trick.`,
+      `Vx has its + side at node a and its ${MINUS} side at node x. SPICE reads that as V(a) ${MINUS} V(x) = 0 V. So node a and node x are at the same voltage: Vx works like a wire. A 0 V source is how SPICE measures a current: the ammeter trick.`,
     );
     const f1 = line(text, 6);
     expect(f1.heading).toBe('F1: a current-controlled current source (CCCS)');
     expect(labels(f1)).toEqual(['name', 'from node', 'to node', 'control source', 'gain']);
     expect(sp(f1.summary)).toBe(
-      `2 × the current in Vx, pushed from ground (node 0) into n1. The current in Vx counts as positive when it flows from its + side (a), through Vx, to its ${MINUS} side (x).`,
+      `2 × the current in Vx, pushed from ground (node 0) into node n1. The current in Vx counts as positive when it flows from its + side (node a), through Vx, to its ${MINUS} side (node x).`,
     );
     expect(meaningOf(f1, 'control source')).toBe('it reads the current in Vx, the voltage source on line 3');
     expect(meaningOf(f1, 'gain')).toBe('2: the output current is 2 × the current it reads');
@@ -235,11 +235,11 @@ describe('every part letter', () => {
 
   it('E, G and H in the channel\'s sentences (P5, P6, P8)', () => {
     const net = '* t\nV1 c 0 2\nVs c d 0\nRd d 0 1\nE1 out1 0 c 0 2\nG1 0 out2 c 0 0.5\nH1 out4 0 Vs 4\nE2 p q c d 1.5\nG2 x y c d 1m\n.end\n';
-    expect(line(net, 5).summary).toBe(`The voltage at out1, measured from ground, is 2 × the voltage at c, measured from ground. SPICE reads it as V(out1) ${MINUS} V(0) = 2 × (V(c) ${MINUS} V(0)).`);
-    expect(sp(line(net, 6).summary)).toBe(`500 mA for every volt at c, pushed from ground (node 0) into out2. SPICE reads it as a current of 0.5 × (V(c) ${MINUS} V(0)) flowing from 0, through G1, into out2.`);
-    expect(sp(line(net, 7).summary)).toContain('The voltage at out4, measured from ground, is 4 V for every amp in Vs.');
-    expect(line(net, 8).summary).toContain('The voltage at p, measured from q, is 1.5 × the voltage at c, measured from d.');
-    expect(sp(line(net, 9).summary)).toContain('1 mA for every volt between c and d, pushed from x into y.');
+    expect(line(net, 5).summary).toBe(`The voltage at node out1, measured from ground, is 2 × the voltage at node c, measured from ground. SPICE reads it as V(out1) ${MINUS} V(0) = 2 × (V(c) ${MINUS} V(0)).`);
+    expect(sp(line(net, 6).summary)).toBe(`500 mA for every volt at node c, pushed from ground (node 0) into node out2. SPICE reads it as a current of 0.5 × (V(c) ${MINUS} V(0)) flowing from ground, through G1, into node out2.`);
+    expect(sp(line(net, 7).summary)).toContain('The voltage at node out4, measured from ground, is 4 V for every amp in Vs.');
+    expect(line(net, 8).summary).toContain('The voltage at node p, measured from node q, is 1.5 × the voltage at node c, measured from node d.');
+    expect(sp(line(net, 9).summary)).toContain('1 mA for every volt between node c and node d, pushed from node x into node y.');
     expect(meaningOf(line(net, 6), 'amps per volt')).toBe('500 mA for every volt it reads (amps per volt)');
     expect(meaningOf(line(net, 7), 'volts per amp')).toBe('4 V for every amp it reads (volts per amp, which is ohms)');
   });
@@ -275,7 +275,7 @@ describe('every part letter', () => {
   it('parts with a model or a subcircuit say whether it is there (M6, M7, M8)', () => {
     const d = line('* t\nD1 a 0 dmod\n', 2);
     expect(labels(d)).toEqual(['name', '+ node (anode)', `${MINUS} node (cathode)`, 'model']);
-    expect(meaningOf(d, '+ node (anode)')).toBe('the anode (+ side) is at a');
+    expect(meaningOf(d, '+ node (anode)')).toBe('the anode (+ side) is at node a');
     expect(notes(d)).toBe('There is no .model line called dmod, so ngspice stops: it cannot find the model.');
     expect(meaningOf(line('* t\nD1 a 0 dmod\n.model dmod D\n', 2), 'model')).toBe('the model dmod, defined on line 3');
     const x = line('* t\nX1 a b amp\n', 2);
@@ -285,7 +285,7 @@ describe('every part letter', () => {
     expect(notes(m)).toBe(
       'The .model line for nm uses level=8, which selects BSIM3, a chip-design model that PlainSpice\'s engine leaves out. ngspice stops: "could not find a valid modelname".',
     );
-    expect(sp(m.summary)).toContain('M1 is a MOS field-effect transistor: drain d, gate g, source ground (node 0) and bulk ground (node 0).');
+    expect(sp(m.summary)).toContain('M1 is a MOS field-effect transistor: drain at node d, gate at node g, source at ground (node 0) and bulk at ground (node 0).');
   });
 
   it('parts the engine does not have (A, N, O) say so', () => {
@@ -411,6 +411,32 @@ describe('values in plain units, with the traps in their spelling', () => {
   });
 });
 
+describe('a node in Explain\'s sentences (words review W8; done when the lanes were merged)', () => {
+  it('says "node in" in a sentence, as the editor, the overview and the cards do; formulas keep the name as written', () => {
+    const net = '* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\nV2 out m 1\nR3 m 0 1k\n.op\n.end\n';
+    // "So in sits 6 V above out" read as an odd sentence: a name may be an ordinary word.
+    expect(sp(line(net, 2).summary)).toBe(`V1 has its + side at node in and its ${MINUS} side at ground (node 0). SPICE reads that as V(in) ${MINUS} V(0) = 6 V. Ground is 0 V, so node in sits at 6 V.`);
+    expect(sp(line(net, 3).summary)).toBe('R1 is a 1 kΩ resistor between node in and node out.');
+    expect(sp(line(net, 5).summary)).toContain(`SPICE reads that as V(out) ${MINUS} V(m) = 1 V. So node out sits 1 V above node m.`);
+    expect(rows(line(net, 3)).slice(1, 3).map((r) => r[2])).toEqual(['one end is at node in', 'the other end is at node out']);
+  });
+
+  it('never says "node node": a label that already says node keeps the name alone, others say where', () => {
+    expect(sp(line('* t\nD1 a 0 dmod\n.model dmod D\n', 2).summary)).toContain(`D1 is a diode: + node a and ${MINUS} node ground (node 0).`);
+    expect(sp(line('* t\nQ1 c b 0 qmod\n.model qmod NPN\n', 2).summary)).toContain('Q1 is a bipolar junction transistor: collector at node c, base at node b and emitter at ground (node 0).');
+    for (const text of ['* t\nX1 a 0 sub1\n.subckt sub1 p q\nR1 p q 1k\n.ends\n', '* t\nD1 a 0 dmod\n', '* t\nV1 a 0 1\nR1 a 0 1k\n']) {
+      const n = parseNetlist(text);
+      for (const e of explainNetlist(n)) for (const t of [e.summary, ...e.fields.map((f) => f.meaning)]) expect(t).not.toMatch(/node node/);
+    }
+  });
+
+  it('keeps ground "ground" and quotes a node named like ground: no "node ground" for either', () => {
+    const g = line('* t\nV1 ground 0 5\nR1 ground 0 1k\n', 2);
+    expect(sp(g.summary)).toBe(`V1 has its + side at the node "ground" and its ${MINUS} side at ground (node 0). SPICE reads that as V(ground) ${MINUS} V(0) = 5 V. Ground is 0 V, so the node "ground" sits at 5 V.`);
+    expect(sp(line('* t\nI1 0 b 1\nG1 0 c b 0 1m\n', 3).summary)).toContain('flowing from ground, through G1, into node c.');
+  });
+});
+
 describe('nodes and ground (W8–W14)', () => {
   it('0 and gnd are ground; gnd as the last word is not; ground and 00 are ordinary nodes', () => {
     expect(meaningOf(line('* t\nR1 a gnd 1\n', 2), 'node', 1)).toBe('the other end is at ground (node 0); ground: gnd is another name for node 0');
@@ -418,7 +444,7 @@ describe('nodes and ground (W8–W14)', () => {
     expect(vx.fields[2]!.meaning).toBe(`the ${MINUS} side is at the node "gnd", which is not ground here: as the last word of a line, ngspice keeps gnd as an ordinary node`);
     expect(notes(vx)).toContain('so here Vx goes to an ordinary node called gnd, not to ground. Write 0 instead.');
     const g = line('* t\nR6 b ground 1\n', 2);
-    expect(g.summary).toBe('R6 is a 1 Ω resistor between b and the node "ground".');
+    expect(g.summary).toBe('R6 is a 1 Ω resistor between node b and the node "ground".');
     expect(notes(g)).toContain('"ground" is an ordinary node name in ngspice: only 0 and gnd are ground (node 0). If you meant ground, write 0.');
     expect(notes(line('* t\nR1 a 00 1\n', 2))).toContain('"00" is an ordinary node name in ngspice');
   });
@@ -496,7 +522,7 @@ describe('dot commands', () => {
     expect(i.summary).toContain('The transfer function is in A/A.');
     expect(notes(i)).toContain('For a current output, ngspice reports an "output impedance" of 1e20 Ω');
     expect(dot('.tf v(a) I1').summary).toContain('The transfer function is in V/A, which is ohms.');
-    expect(dot('.tf v(a,b) V1').summary).toContain('the output resistance between a and b');
+    expect(dot('.tf v(a,b) V1').summary).toContain('the output resistance between node a and node b');
     expect(notes(dot('.tf v(n9) V1'))).toBe('n9 is not a node of the circuit: ngspice says nothing and reports a transfer function of 0.');
     expect(notes(dot('.tf v(a) V9'))).toBe('There is no source called V9, so ngspice runs no analysis.');
     expect(notes(dot('.tf v(a) R1'))).toContain('The input of .tf must be a voltage source (V) or a current source (I)');
@@ -750,7 +776,7 @@ describe('after the final reviews (12 November 2026)', () => {
     // Harmless after the scale letter: said, not called a trap.
     expect(notes(line('* t\nV1 in 0 6\nR1 in out 1k​\n.op\n.end\n', 3))).toContain('There is a zero-width space (U+200B) in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.');
     // In a node name it is named in the sentence too.
-    expect(sp(line('* t\nV1 in 0 6\nR2 ou​t 0 2k\n.op\n.end\n', 3).summary)).toBe('R2 is a 2 kΩ resistor between out (written with a zero-width space in it) and ground (node 0).');
+    expect(sp(line('* t\nV1 in 0 6\nR2 ou​t 0 2k\n.op\n.end\n', 3).summary)).toBe('R2 is a 2 kΩ resistor between node out (written with a zero-width space in it) and ground (node 0).');
   });
 
   it('names a character that looks like a space in a value instead of quoting it, and says what a document meant by it (critic of round 1; space-character-1 to -6, nbsp-2)', () => {
@@ -768,7 +794,7 @@ describe('after the final reviews (12 November 2026)', () => {
       'There is a thin space (U+2009) in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.',
     );
     // Between two words: one word for SPICE, named in the sentence.
-    expect(sp(line('* t\nI1 0 n1 1\nR1 n1 0\u20092\n.op\n.end\n', 3).summary)).toBe('R1 is a resistor between n1 and 0 2 (one word for SPICE: written with a thin space, not a space).');
+    expect(sp(line('* t\nI1 0 n1 1\nR1 n1 0\u20092\n.op\n.end\n', 3).summary)).toBe('R1 is a resistor between node n1 and node 0 2 (one word for SPICE: written with a thin space, not a space).');
   });
 
   const examples = readdirSync(join(root, 'examples'), { withFileTypes: true })

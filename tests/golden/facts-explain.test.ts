@@ -361,19 +361,19 @@ describe('what the explanations predict matches the run', () => {
     const f = fact('P3');
     const n = parseNetlist(f.netlist);
     const v = (node: string): string => formatSI(interpretPlots(runs.get(f.id)!.plots).op!.nodes.find((x) => x.node === node)!.value, 'V');
-    expect(explainLine(n, 1)!.summary).toContain(`so n1 sits at ${v('n1')}.`);
-    expect(explainLine(n, 3)!.summary).toContain(`so n2 sits at ${v('n2')}.`);
-    expect(explainLine(n, 6)!.summary).toContain('So a sits 6 V above b.');
+    expect(explainLine(n, 1)!.summary).toContain(`so node n1 sits at ${v('n1')}.`);
+    expect(explainLine(n, 3)!.summary).toContain(`so node n2 sits at ${v('n2')}.`);
+    expect(explainLine(n, 6)!.summary).toContain('So node a sits 6 V above node b.');
     expect(v('a')).toBe('10 V');
     expect(v('b')).toBe('4 V');
   });
 
   it('says what E, G, F and H do in the channel\'s words (P5–P8)', () => {
     const summary = (code: string, line: number): string => plain(explainLine(parseNetlist(fact(code).netlist), line)!.summary)!;
-    expect(summary('P5', 2)).toBe('The voltage at out1, measured from ground, is 2 × the voltage at c, measured from ground. SPICE reads it as V(out1) − V(0) = 2 × (V(c) − V(0)).');
-    expect(summary('P6', 2)).toBe('500 mA for every volt at c, pushed from ground (node 0) into out2. SPICE reads it as a current of 0.5 × (V(c) − V(0)) flowing from 0, through G1, into out2.');
-    expect(summary('P7', 4)).toBe('3 × the current in Vs, pushed from ground (node 0) into out3. The current in Vs counts as positive when it flows from its + side (c), through Vs, to its − side (d).');
-    expect(summary('P8', 4)).toBe('The voltage at out4, measured from ground, is 4 V for every amp in Vs. The current in Vs counts as positive when it flows from its + side (c), through Vs, to its − side (d).');
+    expect(summary('P5', 2)).toBe('The voltage at node out1, measured from ground, is 2 × the voltage at node c, measured from ground. SPICE reads it as V(out1) − V(0) = 2 × (V(c) − V(0)).');
+    expect(summary('P6', 2)).toBe('500 mA for every volt at node c, pushed from ground (node 0) into node out2. SPICE reads it as a current of 0.5 × (V(c) − V(0)) flowing from ground, through G1, into node out2.');
+    expect(summary('P7', 4)).toBe('3 × the current in Vs, pushed from ground (node 0) into node out3. The current in Vs counts as positive when it flows from its + side (node c), through Vs, to its − side (node d).');
+    expect(summary('P8', 4)).toBe('The voltage at node out4, measured from ground, is 4 V for every amp in Vs. The current in Vs counts as positive when it flows from its + side (node c), through Vs, to its − side (node d).');
   });
 
   it('explains every line of every claim netlist, with no gaps', () => {
