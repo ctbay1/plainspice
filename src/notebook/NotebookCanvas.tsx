@@ -419,7 +419,9 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     shownRef.current = shown;
   }, [shown]);
   // Whole when everything drawn is in the free part of the window (fit.ts: inkInView), wherever the fit or the reader put it.
-  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole: !ink || inkInView(shown, ink, size, insets), view: shown, base: view, size, moved } : undefined), [shown, view, ink, size, insets, moved]);
+  // The page hears of it when that changes, not each time its bars change size (each run): its render must not lag the pointer.
+  const whole = !ink || !shown || inkInView(shown, ink, size, insets);
+  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, view: shown, base: view, size, moved } : undefined), [shown, view, whole, size, moved]);
   const { onView } = props;
   useEffect(() => {
     if (info) onView?.(info);
