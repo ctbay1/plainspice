@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { abs, add, agrees, compare, div, equal, exactModel, fraction, fromDouble, isZero, mul, neg, ONE, operatingPoint, partCurrent, readExact, RESIDUAL_SHARE, solveExact, sub, toDouble, unitSource, ZERO, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
+import { abs, add, agrees, compare, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, mul, neg, ONE, operatingPoint, partCurrent, readExact, RESIDUAL_SHARE, solveExact, sub, toDouble, unitSource, ZERO, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -1030,7 +1030,7 @@ function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
   const out: RoundingNoise = { currents: new Map(), nodes: new Set(), grounded: new Set(), by: 'exact', levels: new Map([['0', 0]]) };
   const v = (n: number): Fraction => (n < 0 ? ZERO : x[n]!);
   const named = (n: number): string => (n < 0 ? '0' : netlistNode(netlist, model.nodes[n]!));
-  const current = model.parts.map((_, k) => partCurrent(model, x, k));
+  const zero = model.parts.map((_, k) => currentIsZero(model, x, k));
   // The parts whose current flows at each node, for "every other current at this node is 0".
   const at: number[][] = model.nodes.map(() => []);
   model.parts.forEach((p, k) => {
@@ -1051,18 +1051,18 @@ function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
   const why = (k: number): NoiseWhy => {
     const p = model.parts[k]!;
     if (p.kind === 'R' || p.kind === 'C') return { kind: 'same', a: named(p.a), b: named(p.b), v: toDouble(v(p.a)) };
-    if (p.kind === 'F' && isZero(current[p.control]!)) {
+    if (p.kind === 'F' && zero[p.control]) {
       const control = model.parts[p.control]!.key;
       return { kind: 'copies', control: partsOf(netlist).byKey.get(netlistPart(netlist, control))?.element?.name.text ?? control };
     }
     if (p.kind === 'G' && equal(v(p.c), v(p.d))) return { kind: 'reads', c: named(p.c), d: named(p.d) };
-    for (const n of [p.a, p.b]) if (n >= 0 && at[n]!.every((j) => j === k || isZero(current[j]!))) return { kind: 'node', node: named(n) };
+    for (const n of [p.a, p.b]) if (n >= 0 && at[n]!.every((j) => j === k || zero[j])) return { kind: 'node', node: named(n) };
     return { kind: 'exact' };
   };
   for (const c of op.currents) {
     if (c.value === 0 || !Number.isFinite(c.value)) continue;
     const k = ex.part.get(c.element);
-    if (k !== undefined && isZero(current[k]!)) out.currents.set(netlistPart(netlist, c.element), why(k));
+    if (k !== undefined && zero[k]) out.currents.set(netlistPart(netlist, c.element), why(k));
   }
   for (const n of op.nodes) {
     if (n.value === 0 || !Number.isFinite(n.value)) continue;
@@ -1225,16 +1225,18 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const level = fromDouble(dc.scale.values[k]!);
     if (!agrees(model, ngspiceValues(nodes, branch, device), (p) => (p === swept ? level : p.value))) return undefined;
   }
+  // a + b·s is 0 at every point when a and b are, else at most at one: s = −a/b, the point k = (s − start)/step.
   const zero = new Map<number, number[]>();
   dc.series.forEach((s, j) => {
     const [a, b] = affine[j]!;
-    for (let k = 0; k < n; k++) {
-      const given = s.values[k]!;
-      if (given === 0 || !Number.isFinite(given) || !isZero(add(a, mul(b, points[k]!)))) continue;
-      const list = zero.get(j);
-      if (list) list.push(k);
-      else zero.set(j, [k]);
+    let at: number[];
+    if (isZero(b)) at = isZero(a) ? Array.from({ length: n }, (_, k) => k) : [];
+    else {
+      const k = div(sub(neg(div(a, b)), start), step);
+      at = k.d === 1n && k.n >= 0n && k.n < BigInt(n) ? [Number(k.n)] : [];
     }
+    const noisy = at.filter((k) => s.values[k] !== 0 && Number.isFinite(s.values[k]!));
+    if (noisy.length) zero.set(j, noisy);
   });
   return { zero, source: sweep.source.text, points: points.map(toDouble) };
 }

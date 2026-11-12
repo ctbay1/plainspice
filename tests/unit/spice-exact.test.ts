@@ -149,17 +149,20 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
 describe('solveExact: the operating point with fractions', () => {
   it('the balanced bridge: a and b are both exactly 9/2 V, and R5 carries exactly 0 A (C9)', () => {
     const m = model('* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.op\n.end\n') as ExactModel;
+    // The unknowns share one denominator, the determinant; in lowest terms they are these.
     const x = solve(m);
-    expect(x[m.nodes.indexOf('a')]).toEqual(q(9n, 2n));
-    expect(x[m.nodes.indexOf('b')]).toEqual(q(9n, 2n));
+    const low = (f: Fraction): Fraction => fraction(f.n, f.d);
+    expect(low(x[m.nodes.indexOf('a')]!)).toEqual(q(9n, 2n));
+    expect(low(x[m.nodes.indexOf('b')]!)).toEqual(q(9n, 2n));
     expect(isZero(partCurrent(m, x, m.parts.findIndex((p) => p.key === 'r5')))).toBe(true);
-    expect(partCurrent(m, x, m.parts.findIndex((p) => p.key === 'v1'))).toEqual(q(-1323n, 940000n));
+    expect(low(partCurrent(m, x, m.parts.findIndex((p) => p.key === 'v1')))).toEqual(q(-1323n, 940000n));
   });
 
   it('P2: an F, a 0 V source and a current source in any order: v(a) = 14, v(n1) = 12, i(vx) = 1', () => {
     const m = model('* t\nF1 0 n1 Vx 2\nR1 n1 0 4\nR2 x n1 2\nVx a x 0\nItest 0 a 1\n.op\n.end\n') as ExactModel;
     const x = solve(m);
-    expect([x[m.nodes.indexOf('a')], x[m.nodes.indexOf('n1')], partCurrent(m, x, m.parts.findIndex((p) => p.key === 'vx'))]).toEqual([q(14n), q(12n), q(1n)]);
+    const low = (f: Fraction): Fraction => fraction(f.n, f.d);
+    expect([low(x[m.nodes.indexOf('a')]!), low(x[m.nodes.indexOf('n1')]!), low(partCurrent(m, x, m.parts.findIndex((p) => p.key === 'vx')))]).toEqual([q(14n), q(12n), q(1n)]);
   });
 
   it('a node with no DC path to ground has no single answer: no solution', () => {

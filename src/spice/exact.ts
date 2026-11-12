@@ -78,7 +78,7 @@ export const add = (x: Fraction, y: Fraction): Fraction =>
 export const sub = (x: Fraction, y: Fraction): Fraction => add(x, neg(y));
 export const mul = (x: Fraction, y: Fraction): Fraction => (x.n === 0n || y.n === 0n ? ZERO : fraction(x.n * y.n, x.d * y.d));
 export const div = (x: Fraction, y: Fraction): Fraction => fraction(x.n * y.d, x.d * y.n);
-export const equal = (x: Fraction, y: Fraction): boolean => x.n * y.d === y.n * x.d;
+export const equal = (x: Fraction, y: Fraction): boolean => (x.d === y.d ? x.n === y.n : x.n * y.d === y.n * x.d);
 /** Sign of x − y. */
 export const compare = (x: Fraction, y: Fraction): number => {
   const l = x.n * y.d;
@@ -330,7 +330,7 @@ const HARMLESS_OPTIONS = new Set([
 ]);
 
 /** At most this many unknowns (node voltages and branch currents) are solved exactly (measured: decision 0015). */
-export const MAX_UNKNOWNS = 200;
+export const MAX_UNKNOWNS = 150;
 
 /** Why a netlist is not modelled exactly, for tests and records: undefined when it is. */
 export type NotExact =
@@ -534,23 +534,36 @@ function rightHandSide(model: ExactModel, level: (p: ExactPart) => Fraction): Fr
   return rhs;
 }
 
-/** The work an exact solve may take before PlainSpice leaves the decision to the other rule (measured: decision 0015). */
-export const MAX_BITS = 2048;
-export const MAX_STEPS = 2_000_000;
+/**
+ * The work an exact solve may take before PlainSpice leaves the decision to the other rule (measured:
+ * decision 0015): how many rows are combined, how many of their entries, and how long a whole number
+ * may grow. All three are counted the same way on every computer, so a circuit is solved exactly, or
+ * not, everywhere.
+ */
+export const MAX_BITS = 4096;
+export const MAX_ROW_STEPS = 600;
+export const MAX_ENTRY_STEPS = 12_000;
 
 class OverBudget extends Error {}
 
-/** A row's whole numbers are divided by their common factor once one of them is longer than this. */
-const CONTENT_BITS = 1024n;
+/** a / b for whole numbers that divide exactly (Bareiss's elimination); throws when they do not, which would be a mistake here. */
+function exactly(a: bigint, b: bigint): bigint {
+  const q = a / b;
+  if (q * b !== a) throw new OverBudget();
+  return q;
+}
 
 /**
- * Solves the equations for each right-hand side, exactly. Each equation is first multiplied by the
- * least common multiple of its denominators, so it has whole numbers only; Gaussian elimination then
- * keeps them whole (a row becomes p × itself − c × the pivot's row, with p and c divided by their
- * common factor), choosing as pivot the unknown that appears in the fewest equations, so a circuit's
- * sparse equations stay sparse and a ladder's numbers grow by a few digits a section. The unknowns are
- * fractions in lowest terms. Undefined when the equations have no single answer (a singular matrix), or
- * when the numbers grow past MAX_BITS or the work past MAX_STEPS.
+ * Solves the equations for each right-hand side, exactly, with whole numbers only: each equation is
+ * first multiplied by the least common multiple of its denominators, then Bareiss's fraction-free
+ * elimination keeps every number a determinant of a part of those equations (so no number grows
+ * beyond the size of the whole determinant, and no common factor has to be searched for). The pivot is
+ * the entry whose row and column have the fewest others (Markowitz's choice), so a circuit's sparse
+ * equations stay sparse; a row the pivot's column does not touch is not rewritten, only its pending
+ * factor is remembered (P_k / P_l, applied when the row is next used). The unknowns come out as whole
+ * numbers over one common denominator, the determinant, by fraction-free back substitution: every
+ * division is exact. Undefined when the equations have no single answer (a singular matrix), or when
+ * the work grows past MAX_BITS, MAX_ROW_STEPS or MAX_ENTRY_STEPS.
  */
 export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][] | undefined {
   const n = model.size;
@@ -565,96 +578,105 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
     rhs.push(sides.map((side) => side[r]!.n * (l / side[r]!.d)));
   }
   const limit = 1n << BigInt(MAX_BITS);
-  const big = 1n << CONTENT_BITS;
-  let steps = 0;
+  let rowSteps = 0;
+  let entrySteps = 0;
   const inColumn: Set<number>[] = Array.from({ length: n }, () => new Set());
   rows.forEach((row, r) => {
     for (const k of row.keys()) inColumn[k]!.add(r);
   });
   const done = new Uint8Array(n);
-  const order: [number, number][] = [];
+  /** The pivots in order; pivot[0] is 1. A row last made true at step l is made true at step k by × pivot[k] / pivot[l]. */
+  const pivot: bigint[] = [1n];
+  const epoch = new Int32Array(n);
+  /** Brings row q's numbers to what they are after `step` steps. */
+  const lift = (q: number, step: number): void => {
+    const l = epoch[q]!;
+    if (l === step) return;
+    const [up, down] = [pivot[step]!, pivot[l]!];
+    const row = rows[q]!;
+    for (const [k, v] of row) row.set(k, exactly(v * up, down));
+    const side = rhs[q]!;
+    for (let s = 0; s < side.length; s++) side[s] = exactly(side[s]! * up, down);
+    entrySteps += row.size + side.length;
+    epoch[q] = step;
+  };
+  const order: { col: number; row: number }[] = [];
   try {
-    for (let step = 0; step < n; step++) {
+    for (let step = 1; step <= n; step++) {
+      // Markowitz's choice: the pivot whose row and column have the fewest other entries.
       let col = -1;
-      for (let k = 0; k < n; k++) if (!done[k] && (col < 0 || inColumn[k]!.size < inColumn[col]!.size)) col = k;
-      const candidates = inColumn[col]!;
-      if (candidates.size === 0) return undefined;
       let r = -1;
-      for (const q of candidates) if (r < 0 || rows[q]!.size < rows[r]!.size) r = q;
+      let cost = Number.POSITIVE_INFINITY;
+      for (let k = 0; k < n && cost > 0; k++) {
+        if (done[k]) continue;
+        const rowsOf = inColumn[k]!;
+        if (rowsOf.size === 0) return undefined;
+        for (const q of rowsOf) {
+          const c = (rowsOf.size - 1) * (rows[q]!.size - 1);
+          if (c < cost) [cost, col, r] = [c, k, q];
+        }
+      }
+      lift(r, step - 1);
       const pivotRow = rows[r]!;
-      const pivot = pivotRow.get(col)!;
-      for (const q of Array.from(candidates)) {
+      const from = rhs[r]!;
+      const p = pivotRow.get(col)!;
+      const before = pivot[step - 1]!;
+      for (const q of Array.from(inColumn[col]!)) {
         if (q === r) continue;
+        rowSteps += 1;
+        lift(q, step - 1);
         const row = rows[q]!;
         const side = rhs[q]!;
-        const g = gcd(pivot, row.get(col)!);
-        const a = pivot / g;
-        const b = row.get(col)! / g;
-        let largest = 0n;
-        if (a !== 1n) {
-          for (const [k, v] of row) row.set(k, v * a);
-          for (let s = 0; s < side.length; s++) side[s] = side[s]! * a;
-        }
+        const a = row.get(col)!;
+        // Bareiss: (p × row − a × pivot row) / the step before's pivot, exactly.
+        for (const [k, v] of row) if (!pivotRow.has(k)) row.set(k, exactly(p * v, before));
         for (const [k, c] of pivotRow) {
           const had = row.get(k);
-          const v = (had ?? 0n) - b * c;
-          steps += 1;
+          const v = exactly(p * (had ?? 0n) - a * c, before);
           if (v === 0n) {
             row.delete(k);
             inColumn[k]!.delete(q);
           } else {
             if (had === undefined) inColumn[k]!.add(q);
             row.set(k, v);
+            if ((v < 0n ? -v : v) > limit) throw new OverBudget();
           }
         }
-        const from = rhs[r]!;
-        for (let s = 0; s < side.length; s++) if (from[s] !== 0n) side[s] = side[s]! - b * from[s]!;
-        for (const v of row.values()) if ((v < 0n ? -v : v) > largest) largest = v < 0n ? -v : v;
-        for (const v of side) if ((v < 0n ? -v : v) > largest) largest = v < 0n ? -v : v;
-        if (largest > big) {
-          // Divide the row by the common factor of its numbers: an equation may be scaled freely.
-          let f = 0n;
-          for (const v of row.values()) if ((f = gcd(f, v)) === 1n) break;
-          if (f !== 1n) for (const v of side) if ((f = gcd(f, v)) === 1n) break;
-          if (f > 1n) {
-            for (const [k, v] of row) row.set(k, v / f);
-            for (let s = 0; s < side.length; s++) side[s] = side[s]! / f;
-            largest /= f;
-          }
-        }
-        if (largest > limit || steps > MAX_STEPS) throw new OverBudget();
+        for (let s = 0; s < side.length; s++) side[s] = exactly(p * side[s]! - a * from[s]!, before);
+        entrySteps += row.size + pivotRow.size + side.length;
+        epoch[q] = step;
+        if (rowSteps > MAX_ROW_STEPS || entrySteps > MAX_ENTRY_STEPS) throw new OverBudget();
       }
       for (const k of pivotRow.keys()) inColumn[k]!.delete(r);
       done[col] = 1;
-      order.push([col, r]);
+      pivot.push(p);
+      order.push({ col, row: r });
     }
   } catch (e) {
     if (e instanceof OverBudget) return undefined;
     throw e;
   }
-  const x: Fraction[][] = sides.map(() => Array.from({ length: n }, () => ZERO));
-  for (let i = order.length - 1; i >= 0; i--) {
-    const [col, r] = order[i]!;
-    const row = rows[r]!;
-    const pivot = row.get(col)!;
-    for (let s = 0; s < sides.length; s++) {
-      // (rhs − Σ c·x) / pivot, over one common denominator, reduced once.
-      let num = rhs[r]![s]!;
-      let den = 1n;
-      for (const [k, c] of row) {
-        if (k === col) continue;
-        const xk = x[s]![k]!;
-        if (xk.n === 0n) continue;
-        if (den === xk.d) num -= c * xk.n;
-        else {
-          num = num * xk.d - c * xk.n * den;
-          den *= xk.d;
-        }
+  // Fraction-free back substitution: X = det × x is whole, and det × (pivot row's equation) gives it exactly.
+  const det = pivot[n]!;
+  const X: bigint[][] = sides.map(() => Array.from({ length: n }, () => 0n));
+  try {
+    for (let i = order.length - 1; i >= 0; i--) {
+      const { col, row: r } = order[i]!;
+      const row = rows[r]!;
+      const pk = row.get(col)!;
+      for (let s = 0; s < sides.length; s++) {
+        let v = det * rhs[r]![s]!;
+        for (const [k, c] of row) if (k !== col) v -= c * X[s]![k]!;
+        X[s]![col] = exactly(v, pk);
       }
-      x[s]![col] = fraction(num, den * pivot);
     }
+  } catch (e) {
+    if (e instanceof OverBudget) return undefined;
+    throw e;
   }
-  return x;
+  // One common denominator, positive: x = X / det, not reduced (equal ones have equal X).
+  const sign = det < 0n ? -1n : 1n;
+  return X.map((side) => side.map((v) => (v === 0n ? ZERO : { n: v * sign, d: det * sign })));
 }
 
 /** The least common multiple of two positive whole numbers. */
@@ -666,6 +688,26 @@ function lcm(a: bigint, b: bigint): bigint {
 export const operatingPoint = (model: ExactModel): Fraction[] => rightHandSide(model, (p) => p.value);
 /** The right-hand side of a slope: `part` at 1 (one volt or one amp), every other source at 0. */
 export const unitSource = (model: ExactModel, part: number): Fraction[] => rightHandSide(model, (p) => (p === model.parts[part] ? ONE : ZERO));
+
+/** True when a part's current is exactly 0, from the unknowns (comparisons only, no arithmetic). */
+export function currentIsZero(model: ExactModel, x: readonly Fraction[], k: number, sourceLevel?: Fraction): boolean {
+  const p = model.parts[k]!;
+  const v = (n: number): Fraction => (n < 0 ? ZERO : x[n]!);
+  switch (p.kind) {
+    case 'R':
+      return equal(v(p.a), v(p.b));
+    case 'C':
+      return true;
+    case 'I':
+      return isZero(sourceLevel ?? p.value);
+    case 'G':
+      return isZero(p.value) || equal(v(p.c), v(p.d));
+    case 'F':
+      return isZero(p.value) || isZero(x[model.parts[p.control]!.branch]!);
+    default:
+      return isZero(x[p.branch]!);
+  }
+}
 
 /** A part's current from the unknowns, with SPICE's sign (from its first node, through it, to its second). */
 export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number, sourceLevel?: Fraction): Fraction {
@@ -690,17 +732,20 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
 // ------------------------------------------------------------------ the same circuit as ngspice's
 
 /**
- * How much of an equation ngspice's own rounding may leave: a share of the sizes of its terms. ngspice
- * solves the equations of a circuit of these parts once, with an LU factorisation in doubles (its
- * Newton iterations of a linear circuit repeat the same solution), and such a solution leaves each
- * equation unbalanced by a few units in the last place of its largest terms, times a growth factor
- * that is small in practice: 2^-44 (about 6e-14) at most over every netlist PlainSpice was measured on
- * (decision 0015). A circuit that is not the one ngspice simulated (another value, another part)
- * leaves a whole share of a term. 2^-30 (about 1e-9) lies between the two by more than ten thousand
- * times on each side.
+ * How much ngspice's own rounding may leave of the equations, as a share of the largest sum of the
+ * sizes of an equation's terms (Shares.equations). ngspice solves the equations of a circuit of these
+ * parts once, with an LU factorisation in doubles (its Newton iterations of a linear circuit repeat the
+ * same solution), and such a solution leaves a few units in the last place of the whole system, times a
+ * growth factor that is small in practice. Measured on 7,756 circuits run in our engine (the repository's
+ * netlists and the re-check's 8,500 generated ones, with wires of 1 µΩ, meters of 1e20 Ω and gains of
+ * 1e9): at most 4.4e-14 (2^-44.4), most below 2^-52. Another circuit than ngspice's (a value 1 ppm off,
+ * a node it does not have) leaves a whole share of a term. 2^-30 (about 9.3e-10) lies far between.
  */
 export const RESIDUAL_SHARE = 2 ** -30;
-/** A part's current as ngspice reports it is its own numbers' product to a few units in the last place: 2^-40 is far beyond that. */
+/**
+ * A part's current as ngspice reports it is its own numbers' product to a few units in the last place:
+ * at most 3.4e-16 over the same 7,756 circuits, against 2^-40 (about 9.1e-13) allowed.
+ */
 export const PRODUCT_SHARE = 2 ** -40;
 
 /** What ngspice gave for one solution: node voltages by name, branch and part currents by part. */

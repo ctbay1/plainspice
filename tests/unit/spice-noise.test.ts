@@ -13,7 +13,9 @@ import { plotSpecs } from '../../src/app/components/PlotPanel.tsx';
 import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { roundingNoise, type ResultsInWords } from '../../src/spice/describe.ts';
+import { describeResults, roundingNoise, type ResultsInWords } from '../../src/spice/describe.ts';
+import { parseNetlist } from '../../src/spice/parse.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 let ngspice: NgspiceEngine;
@@ -241,6 +243,58 @@ describe('S8: .tf and .dc in a circuit solved exactly give 0 where the circuit m
     expect(r.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0, noise: -4.336808689942018e-19 });
     const two = await run(...bridge, 'V2 b2 0 1', 'R6 b2 0 1k', 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9 3 V2 0 1 1');
     expect(two.words.sweeps[0]!.final.every((f) => f.noise === undefined)).toBe(true);
+  });
+});
+
+describe('speed: the exact solve keeps describeResults, which runs on the main thread after every run, quick (decision 0015)', () => {
+  const E12 = [1, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2];
+  /** Circuits from a fixed seed: a ladder, a ladder with ammeters, a random network of resistors, bridges side by side. */
+  const circuits = (parts: number, seed: number): Record<string, string> => {
+    let x = seed;
+    const rnd = (): number => (x = (x * 16807) % 2147483647) / 2147483647;
+    const rv = (): string => `${E12[Math.floor(rnd() * 12)]}${['', 'k', 'k', 'meg'][Math.floor(rnd() * 4)]}`;
+    const ladder = ['V1 n0 0 10'];
+    for (let k = 1; ladder.length + 2 <= parts; k++) ladder.push(`Ra${k} n${k - 1} n${k} ${rv()}`, `Rb${k} n${k} 0 ${rv()}`);
+    const ammeters = ['V1 n0 0 10'];
+    for (let k = 1; ammeters.length + 4 <= parts; k++) ammeters.push(`Ra${k} n${k - 1} n${k} ${rv()}`, `Rb${k} n${k} 0 ${rv()}`, `Vm${k} n${k} m${k} 0`, `Rc${k} m${k} 0 ${rv()}`);
+    const nodes = Math.floor(parts / 3);
+    const mesh = ['V1 n1 0 10'];
+    for (let k = 2; k <= nodes; k++) mesh.push(`Rt${k} n${k} n${1 + Math.floor(rnd() * (k - 1))} ${rv()}`);
+    for (let r = 1; mesh.length < parts; ) {
+      const [a, b] = [1 + Math.floor(rnd() * nodes), Math.floor(rnd() * (nodes + 1))];
+      if (a !== b) mesh.push(`Rx${r++} n${a} ${b === 0 ? '0' : `n${b}`} ${rv()}`);
+    }
+    const bridges = ['V1 top 0 9'];
+    for (let k = 1; bridges.length + 5 <= parts; k++) {
+      const [a, b] = [rv(), rv()];
+      bridges.push(`R${k}a top a${k} ${a}`, `R${k}b a${k} 0 ${b}`, `R${k}c top b${k} ${a}`, `R${k}d b${k} 0 ${b}`, `R${k}e a${k} b${k} ${rv()}`);
+    }
+    return { ladder: ladder.join('\n'), ammeters: ammeters.join('\n'), mesh: mesh.join('\n'), bridges: bridges.join('\n') };
+  };
+  /** The least processor time of describeResults on a fresh copy of the netlist and the results, and how noise was decided. */
+  const timed = async (text: string): Promise<{ ms: number; by: string }> => {
+    const r = await solveText(text, ngspice);
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), structuredClone(r.results), r.run)], 3);
+    return { ms, by: r.results.op ? roundingNoise(r.netlist, r.results).by : 'sweep' };
+  };
+
+  it('a circuit of 60 parts is solved exactly in well under 50 ms, and with a .dc sweep of 1001 points too', async () => {
+    for (const [name, body] of Object.entries(circuits(60, 7))) {
+      const op = await timed(`* ${name}\n${body}\n.op\n.end\n`);
+      expect(op.by, name).toBe('exact');
+      expect(op.ms, name).toBeLessThan(50);
+      const dc = await timed(`* ${name}\n${body}\n.dc V1 0 10 0.01\n.end\n`);
+      expect(dc.ms, name).toBeLessThan(50);
+    }
+  });
+
+  it('at the limits of the exact solve (a random network of 400 resistors on 133 nodes, about a second of work) it stops in time: under 200 ms, then the other rule decides', async () => {
+    for (const seed of [7, 11]) {
+      const { mesh } = circuits(400, seed);
+      const op = await timed(`* mesh\n${mesh}\n.op\n.end\n`);
+      expect(op.by, String(seed)).toBe('rule');
+      expect(op.ms, String(seed)).toBeLessThan(200);
+    }
   });
 });
 
