@@ -32,7 +32,9 @@ function counted(text: string): { s: ReturnType<typeof buildSchematic>; checks: 
 }
 
 describe('the ground symbol\'s place is found by looking at the wires near it (security:F1)', () => {
-  it('a wire through every point of ground\'s wire, beside a 9,900-piece wave: the search checks fewer pieces of wire than the drawing has', () => {
+  // Two builds of a 31 kB drawing take about 2 s here; the count, not the time, is what is checked, so a
+  // busy machine gets all the time it needs.
+  it('a wire through every point of ground\'s wire, beside a 9,900-piece wave: the search checks fewer pieces of wire than the drawing has', { timeout: 60_000 }, () => {
     // The critic's 31 kB link: no ground symbol, so one is looked for, and no point of ground's wire is
     // clear. The control is the same drawing with the symbol and its lead where the search puts them,
     // so it builds the same drawing with no search: what the searched build checks beyond it is the
