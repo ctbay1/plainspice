@@ -1242,7 +1242,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
    * The reader asked to see the whole drawing ("Show the whole drawing": More, Ctrl+K, Shift+1, the
    * status line, the computer's zoom bar): the fit it makes (its fitCount) shows all of it, smaller
    * than its words' readable size if it must be, until something else fits the drawing again (a
-   * circuit opened, a part added in the Netlist panel).
+   * circuit opened, a part added in the Netlist panel) or the reader turns it or shows it as drawn.
    */
   const [wholeAt, setWholeAt] = useState<number | undefined>(undefined);
   const fitCountNow = useRef(fitCount);
@@ -1253,6 +1253,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     setFitCount((n) => n + 1);
     setWholeAt(fitCountNow.current + 1);
     canvas.current?.fit();
+  }, []);
+  /** A phone's "Turn to fit", "As drawn" or "As in the video": the other view at its own fit, not the whole one asked for in this one. */
+  const toggleTurn = useCallback(() => {
+    setTurnWanted((w) => !w);
+    setWholeAt(undefined);
   }, []);
 
   const setFont = useCallback(
@@ -1445,7 +1450,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     else if (kind === 'fit') fit();
     else if (kind === 'zoom-in') canvas.current?.zoomBy(1.2);
     else if (kind === 'zoom-out') canvas.current?.zoomBy(1 / 1.2);
-    else if (kind === 'turn' && !arg) setTurnWanted((w) => !w);
+    else if (kind === 'turn' && !arg) toggleTurn();
     else if (kind === 'part' && arg) openCard(arg);
     else if (kind === 'add-part') openAddForm();
     else if (kind === 'tool' && arg) chooseTool(arg as Tool);
@@ -3038,7 +3043,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       analysis={analysis}
       phone={phone}
       {...(!phone ? { zoom: { percent: zoomPercent, onIn: () => canvas.current?.zoomBy(1.2), onOut: () => canvas.current?.zoomBy(1 / 1.2), onFit: fit } } : {})}
-      {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: () => setTurnWanted((w) => !w) } } : {})}
+      {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: toggleTurn } } : {})}
       // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
       {...(phone && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
       // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):

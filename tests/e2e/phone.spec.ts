@@ -467,6 +467,29 @@ test('a drawing shown as drawn opens at the smallest readable size, and Fit show
   await expect(hintLine(page)).toHaveText(t('hintPhone'));
 });
 
+test('after “Show the whole drawing”, “Turn to fit” and “As in the video” give their own view at its own size, not the whole one', async ({ page }) => {
+  await openApp(page);
+  await chooseExample(page, 'Example 3: open circuit (V_Th)');
+  await expectSolved(page);
+  await page.getByRole('button', { name: t('asInVideo'), exact: true }).click();
+  await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
+  // Moved by the reader (from the middle of the paper, clear of the "more" at its edges), then shown
+  // whole from the status line: smaller than readable.
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  const from = { x: paper.x + paper.width * 0.55, y: paper.y + paper.height * 0.45 };
+  await fingers(page, [from], [{ x: from.x - 160, y: from.y }]);
+  await statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true }).click();
+  await expect.poll(() => unitNow(page)).toBeLessThan(minUnitFor() - 0.5);
+  // Turn to fit: the turned drawing at its own fit, the smallest readable size, as when it opened.
+  await page.getByRole('button', { name: t('turnToFit'), exact: true }).click();
+  await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
+  await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
+  // And back as in the video: its own size again, not whole.
+  await page.getByRole('button', { name: t('asInVideo'), exact: true }).click();
+  await expect(hintLine(page)).toHaveText(t('hintAsInVideo'));
+  await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
+});
+
 test('“Show the whole drawing” and the turn share one row of the status line; the calm status stays for screen readers', async ({ page }) => {
   for (const size of [undefined, { width: 360, height: 780 }]) {
     if (size) await page.setViewportSize(size);
