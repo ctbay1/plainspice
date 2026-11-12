@@ -374,10 +374,13 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   symbol's hint over empty paper keeps one colon: "it touches nothing yet (draw a wire to it)".
 - **"node in" on the card** (W8). The card's "in is higher", and its spoken "2 volts across R1, in is
   higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
-  stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button is
-  "Disconnect the end 1 of R1 from its node, in" ("…from its node, ground (node 0)"): the list gives a
-  node as its name, or as "ground (node 0)", so the sentence says "its node" before it; that is right
-  for both, where "from node {name}" would read "node ground (node 0)".
+  stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button was
+  "Disconnect the end 1 of R1 from in", then "…from its node, in": either ends on a bare name, heard
+  as "from (its node) in…". It is now "Disconnect the end 1 of R1 from its node", naming no node: the
+  card passes the node as its list writes it ("in", "ground (node 0)"), and the end's row says it
+  just before the button. "…from node in" and "…from ground (node 0)" need the card
+  (`CardEdit.tsx`, not the words' file) to pass the node as a sentence says it (`nodeSaid`), with
+  the words "Disconnect the {role} of {name} from {node}".
 - **"skips"** (W11). Whole lines ngspice does not read are lines it "skips", in the Netlist panel's
   foot and the README as in the hint line and the Checks panel; "ignores" stays for characters inside
   a line (a unit after a number).

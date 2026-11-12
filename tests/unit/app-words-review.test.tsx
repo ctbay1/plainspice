@@ -11,7 +11,8 @@
  * - W4: E, F, G and H as one tool are a "dependent source", the channel's word.
  * - W7: Reverse is "reversed", never "turned round" (a half turn is refused); a turn while moving does
  *   not promise that the part lands.
- * - W8: a node in a sentence is "node in" (ground is "ground"), on the card too.
+ * - W8: a node in a sentence is "node in" (ground is "ground"), on the card too; a button's name never
+ *   ends on a bare node name.
  * - W11: whole lines ngspice does not read are lines it "skips".
  * - W12: Thévenin keeps its accent, as in the channel's titles.
  */
@@ -117,12 +118,14 @@ describe('W2: Connections', () => {
     expect(connect.startsWith(t('connConnect').replace('…', ''))).toBe(true);
     // The list of nodes finishes the sentence its group is named by.
     expect(`${t('connTo', { role: end2, name: 'R1' })} ${t('groundWords')}`).toBe('Connect the node at the end 2 of R1 to ground (node 0)');
-    // Disconnect: the node it leaves, named as a node whether it is ground or not (W8).
+    // Disconnect: the card passes the node as its list writes it, a bare name ("in") or "ground (node
+    // 0)"; the sentence names no node, so it never ends on a bare name heard as "from in…" (W8).
     const s = buildSchematic(START, NOTEBOOK_OPTIONS);
-    const words = Object.fromEntries(nodeChoices(s).map((n) => [n.node, n.words]));
-    expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: words.in! })).toBe('Disconnect the end 1 of R1 from its node, in');
-    expect(t('connDisconnectLabel', { role: end2, name: 'R2', node: words['0']! })).toBe('Disconnect the end 2 of R2 from its node, ground (node 0)');
-    expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: words.in! }).startsWith(t('connDisconnect'))).toBe(true);
+    for (const { words } of nodeChoices(s)) {
+      expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: words })).toBe('Disconnect the end 1 of R1 from its node');
+      expect(t('connDisconnectLabel', { role: end2, name: 'R2', node: words })).toBe('Disconnect the end 2 of R2 from its node');
+    }
+    expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: 'in' }).startsWith(t('connDisconnect'))).toBe(true);
   });
 });
 
