@@ -14,6 +14,8 @@ import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { describeResults, roundingNoise, type ResultsInWords } from '../../src/spice/describe.ts';
+import { agrees, exactModel, shares, toDouble, type ExactModel } from '../../src/spice/exact.ts';
+import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
 
@@ -298,3 +300,34 @@ describe('speed: the exact solve keeps describeResults, which runs on the main t
   });
 });
 
+describe('the same-circuit check (exact.ts agrees), measured with the real engine: what it catches (decision 0015)', () => {
+  /** One circuit with every kind of part; `o` changes the values ngspice is given, not the model's. */
+  const circuit = (o: Record<string, string> = {}): string =>
+    lines(`V1 top 0 ${o.V1 ?? '9'}`, 'R1 top a 10k', 'R2 a 0 10k', `I1 0 a ${o.I1 ?? '1m'}`, `E1 e 0 a 0 ${o.E1 ?? '2'}`, 'Re e 0 1k', 'Vm a m 0', 'Rm m 0 1k', `F1 0 f Vm ${o.F1 ?? '3'}`, 'Rf f 0 1k', `G1 0 g a 0 ${o.G1 ?? '1m'}`, 'Rg g 0 1k', `H1 h 0 Vm ${o.H1 ?? '100'}`, 'Rh h 0 1k', `V2 s top ${o.V2 ?? '1p'}`, 'Rs s 0 1meg');
+  /** The model of the circuit as written, against ngspice's values for the circuit changed by `o`. */
+  const check = async (o: Record<string, string>): Promise<{ agrees: boolean; equations: number; products: number }> => {
+    const written = parseNetlist(circuit());
+    const m = exactModel(written, written.lines.flatMap((l) => (l.element ? [l.element] : [])), readAfterEnd(written)) as ExactModel;
+    const op = (await solveText(circuit(o), ngspice)).results.op!;
+    const nodes = new Map(op.nodes.map((n) => [n.node, n.value]));
+    const branch = new Map(op.currents.filter((c) => c.origin === 'branch').map((c) => [c.element, c.value]));
+    const device = new Map(op.currents.filter((c) => c.origin === 'device').map((c) => [c.element, c.value]));
+    const ng = { voltage: (n: string) => nodes.get(n), branch: (k: string) => branch.get(k), device: (k: string) => device.get(k) };
+    const s = shares(m, ng, (p) => p.value)!;
+    return { agrees: agrees(m, ng, (p) => p.value), equations: toDouble(s.equations), products: toDouble(s.products) };
+  };
+
+  it('ngspice\'s own run of the circuit agrees; each kind of value 1 ppm off does not', async () => {
+    expect((await check({})).agrees).toBe(true);
+    for (const o of [{ V1: '9.000009' }, { I1: '1.000001m' }, { E1: '2.000002' }, { F1: '3.000003' }, { G1: '1.000001m' }, { H1: '100.0001' }]) expect((await check(o)).agrees, JSON.stringify(o)).toBe(false);
+    // R, F, G and I by their products; V, E and H by their own equations.
+    expect((await check({ G1: '1.000001m' })).products).toBeGreaterThan(9e-7);
+    expect((await check({ H1: '100.0001' })).equations).toBeGreaterThan(1e-9);
+  });
+
+  it('a small source is weighed against the circuit\'s largest voltage: 1 pV read as 1 nV passes, as 1 µV it does not (the values are read by ngspice\'s own grammar)', async () => {
+    const nano = await check({ V2: '1n' });
+    expect([nano.agrees, nano.equations < 1e-10]).toEqual([true, true]);
+    expect((await check({ V2: '1u' })).agrees).toBe(false);
+  });
+});

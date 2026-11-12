@@ -16,8 +16,8 @@
  *   lines, a .control block, a value below ngspice's smallest resistance, too many unknowns.
  * - `solveExact` solves the circuit's nodal equations with fractions, for several right-hand sides at
  *   once (the operating point, a swept source at 1, a .tf input at 1).
- * - `residualsAgree` checks that ngspice simulated that same circuit: its node voltages and branch
- *   currents, put into the exact equations, leave only what its own rounding can leave.
+ * - `agrees` checks that ngspice simulated that same circuit: its node voltages and branch currents,
+ *   put into the exact equations, leave only what its own rounding can leave.
  */
 import type { NumberReading } from './types.ts';
 import { isSpaceCode, numberWordEnd } from './numbers.ts';
@@ -738,8 +738,14 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
  * same solution), and such a solution leaves a few units in the last place of the whole system, times a
  * growth factor that is small in practice. Measured on 7,756 circuits run in our engine (the repository's
  * netlists and the re-check's 8,500 generated ones, with wires of 1 µΩ, meters of 1e20 Ω and gains of
- * 1e9): at most 4.4e-14 (2^-44.4), most below 2^-52. Another circuit than ngspice's (a value 1 ppm off,
- * a node it does not have) leaves a whole share of a term. 2^-30 (about 9.3e-10) lies far between.
+ * 1e9): at most 4.4e-14 (2^-44.4), most below 2^-52. 2^-30 (about 9.3e-10) leaves room above that.
+ * A circuit other than ngspice's leaves more, measured on one with every kind of part: a node or part
+ * it does not have fails at the names; a 9 V source, a gain of an E or of an H 1 ppm off leave 5e-7,
+ * 1.8e-7 and 8.8e-9 here; an R, F, G or I value 1 ppm off leaves 1e-6 in its product (PRODUCT_SHARE).
+ * A small source is weighed against the circuit's largest voltage, so a 1 pV source read as 1 nV in
+ * that 9 V circuit leaves only 5.6e-11 and passes (as 1 µV, 5.6e-8, it fails). The values are read by
+ * ngspice's own grammar (readExact, exactValue), so this check is there for a part ngspice simulates
+ * differently from the model.
  */
 export const RESIDUAL_SHARE = 2 ** -30;
 /**
