@@ -342,21 +342,25 @@ test('a double click on a part’s value opens its card on the value, also when 
   await openApp(page);
   await expectSolved(page);
   await page.evaluate(() => document.fonts.ready);
-  // When the drawing first moved after the first click, and when the last real press was made (its own
-  // time, not when a busy page got to it).
+  // When the drawing first moved after the first click, and when the last real press and the double click
+  // were made (their own times, not when a busy page got to them).
   await page.evaluate(() => {
-    const w = window as unknown as { movedAt?: number; pressedAt?: number };
+    const w = window as unknown as { movedAt?: number; pressedAt?: number; doubleAt?: number };
     new MutationObserver(() => {
       w.movedAt ??= performance.now();
     }).observe(document.querySelector('.nb-world')!, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('pointerdown', (e) => e.isTrusted && (w.pressedAt = e.timeStamp), true);
+    window.addEventListener('dblclick', (e) => e.isTrusted && (w.doubleAt = e.timeStamp), true);
   });
   const value = page.locator('.nb-ink text').filter({ hasText: /^2\skΩ$/ }).first();
   const field = page.getByRole('dialog', { name: /^R2 / }).getByRole('textbox');
   // A second click this long after the card came to rest is a click on the card (PAGE_MOVE_QUIET_MS in
-  // src/notebook/NotebookCanvas.tsx: about a double click's time). A machine too busy to deliver the second
-  // click that soon (the test's own round trips) has not tried what this test is about: it tries again.
+  // src/notebook/NotebookCanvas.tsx: about a double click's time), and a double click that ends twice as
+  // long after it is a new one. A machine too busy to deliver the second click that soon (the test's own
+  // round trips) has not tried what this test is about: it tries again. (A little short of the page's own
+  // limit: the page counts from its move, a few milliseconds before this test sees it.)
   const QUIET_MS = 450;
+  const MARGIN_MS = 25;
   const gaps: number[] = [];
   for (;;) {
     await settle(page);
@@ -364,9 +368,10 @@ test('a double click on a part’s value opens its card on the value, also when 
     const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
     await page.mouse.move(at.x, at.y);
     await page.evaluate(() => {
-      const w = window as unknown as { movedAt?: number; pressedAt?: number };
+      const w = window as unknown as { movedAt?: number; pressedAt?: number; doubleAt?: number };
       delete w.movedAt;
       delete w.pressedAt;
+      delete w.doubleAt;
     });
     // The first click; then a page too busy to make room for the card for 300 ms (a slow machine; on a
     // quiet one the room is made 55 ms after the press, still before a hand's second click).
@@ -383,16 +388,37 @@ test('a double click on a part’s value opens its card on the value, also when 
     }, at);
     // The drawing slides up to make room, and R2's card comes to rest where the pointer is.
     await page.waitForFunction(() => (window as unknown as { movedAt?: number }).movedAt !== undefined, undefined, { polling: 'raf' });
+    // The second press made in time but handled late: the page is busy as it comes in, until a double
+    // click's time after the move has passed (a busy machine, as when the original failure was seen). It
+    // is still the double click's second press: what counts is when it was made (its own time), not when
+    // the page got to it.
+    await page.evaluate(
+      ({ quiet }) => {
+        const w = window as unknown as { movedAt?: number };
+        window.addEventListener(
+          'pointerdown',
+          (e) => {
+            if (!e.isTrusted) return;
+            const until = (w.movedAt ?? performance.now()) + quiet + 30;
+            while (performance.now() < until) {
+              // a busy page
+            }
+          },
+          { capture: true, once: true },
+        );
+      },
+      { quiet: QUIET_MS },
+    );
     // The second click of the double click, a real one: it belongs to the first click's place, not to
     // the card's title that slid under it (which took the focus from the value).
     await page.mouse.down({ clickCount: 2 });
     await page.mouse.up({ clickCount: 2 });
-    const gap = await page.evaluate(() => {
-      const w = window as unknown as { movedAt?: number; pressedAt?: number };
-      return (w.pressedAt ?? Number.POSITIVE_INFINITY) - w.movedAt!;
+    const [gap, ended] = await page.evaluate(() => {
+      const w = window as unknown as { movedAt?: number; pressedAt?: number; doubleAt?: number };
+      return [(w.pressedAt ?? Number.POSITIVE_INFINITY) - w.movedAt!, (w.doubleAt ?? Number.NEGATIVE_INFINITY) - w.movedAt!];
     });
     gaps.push(Math.round(gap));
-    if (gap >= QUIET_MS) {
+    if (gap >= QUIET_MS - MARGIN_MS || ended >= 2 * QUIET_MS - MARGIN_MS) {
       expect(gaps.length, `the second click never came within ${QUIET_MS} ms of the card coming to rest (${gaps.join(', ')} ms)`).toBeLessThan(5);
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
