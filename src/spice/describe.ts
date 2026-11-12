@@ -18,7 +18,7 @@ import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { withoutInvisible } from './characters.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, ignoredAnalysis, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
@@ -781,7 +781,7 @@ export function describeCircuit(netlist: Netlist): string {
   if (parts.lines.length > DESCRIBED_PARTS) out.push(S.moreParts(parts.lines.length - DESCRIBED_PARTS));
   if (parts.subckts.length) out.push(S.subcircuits(parts.subckts.length, parts.subckts.join(', ')));
   // A3f: an analysis line in a subcircuit no X line uses is ignored, so it is not among the analyses.
-  const run = netlist.analyses.filter((i) => !unusedSubcircuit(netlist, i));
+  const run = netlist.analyses.filter((i) => !ignoredAnalysis(netlist, i));
   const analyses = run.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
   if (analyses.length === 0) {
     // M20; A36: a .control block runs; S25: so does an analysis written after a plain .end.

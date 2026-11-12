@@ -1536,7 +1536,7 @@ Added after the second critic of the words re-check's fix (12 November 2026). A 
 and `.ends` is not the circuit's `.tf` when no X line uses that subcircuit: ngspice ignores it, and runs
 the `.tf v(out)` after `.ends` (0.5 and 500 Ω), which the words named "Transfer function v(a,gnd) / V1"
 until then, with an error that said ngspice makes a new node for a. With nothing else, nothing runs:
-the same for `.op`, `.dc`, `.tran` and `.ac` there. So the words, the checks and the overview leave
+the same for `.op`, `.dc`, `.tran`, `.ac` and `.noise` there. So the words, the checks and the overview leave
 such a line out, and Explain says that ngspice ignores it. When an X line uses the subcircuit, ngspice
 runs the line as if the main circuit had it, once for each such X line, with the main circuit's node
 names: `.tf v(out)` there is the main circuit's out, and `.tf v(a)` a new node a with nothing on it (0
@@ -1568,8 +1568,9 @@ ngspice 47, ngspice -b (exit 0):
     Error: incomplete or empty netlist
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
-  ngspice -b -r out.raw (exit 0): no rawfile; the same with .op, .dc V1 0 5 1, .tran 1m 5m or
-    .ac dec 1 1k 10k (V1 in 0 AC 1) in the subcircuit instead of the .tf
+  ngspice -b -r out.raw (exit 0): no rawfile; the same with .op, .dc V1 0 5 1, .tran 1m 5m,
+    .ac dec 1 1k 10k or .noise v(out) V1 dec 1 1k 10k (V1 in 0 AC 1 for the last two) in the
+    subcircuit instead of the .tf, where in the main circuit .noise gives its two plots
   with X1 out 0 s (the subcircuit used), .tf v(out) V1 inside it and .op after .ends, ngspice -b (exit 0):
     transfer_function = 3.333333e-01
     output_impedance_at_v(out) = 3.333333e+02

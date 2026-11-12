@@ -103,6 +103,7 @@ const FACTS: Fact[] = [
   { code: 'A3f', id: 'an-dc-subckt', netlist: "* .dc only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.dc V1 0 5 1\n.ends\n.end\n", fails: true },
   { code: 'A3f', id: 'an-tran-subckt', netlist: "* .tran only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 1m 5m\n.ends\n.end\n", fails: true },
   { code: 'A3f', id: 'an-ac-subckt', netlist: "* .ac only inside a subcircuit\nV1 in 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.ac dec 1 1k 10k\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-noise-subckt', netlist: "* .noise only inside a subcircuit\nV1 in 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.noise v(out) V1 dec 1 1k 10k\n.ends\n.end\n", fails: true },
   { code: 'A3f', id: 'an-tf-subckt-used', netlist: "* a .tf inside a used subcircuit naming a top node\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.op\n.end\n", vectors: { "v(out)": 1.6666666666666665, "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out))": 333.3333333333333 } },
   { code: 'A3f', id: 'an-tf-subckt-port', netlist: "* a .tf on a port node inside a used subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(a) V1\n.ends\n.op\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a))": 1 } },
   { code: 'A3f', id: 'an-tf-subckt-twice', netlist: "* a .tf inside a subcircuit used twice\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\nX2 in 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.op\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 600, "v(output_impedance_at_V(out))": 333.3333333333333 } },
@@ -551,11 +552,11 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(describeCircuit(sub.netlist)).toContain('Analysis: transfer function from V1 to v(out).');
     expect(explainLine(sub.netlist, 6)!.notes).toEqual(['ngspice ignores this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.']);
     // With nothing else, nothing runs, whatever the analysis.
-    for (const id of ['an-tf-subckt-alone', 'an-op-subckt', 'an-dc-subckt', 'an-tran-subckt', 'an-ac-subckt']) {
+    for (const id of ['an-tf-subckt-alone', 'an-op-subckt', 'an-dc-subckt', 'an-tran-subckt', 'an-ac-subckt', 'an-noise-subckt']) {
       const f = FACTS.find((x) => x.id === id)!;
       expect(runs.get(id)!.plots, id).toEqual([]);
       expect(describeCircuit(parseNetlist(f.netlist)), id).toContain('Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.');
-      const line = parseNetlist(f.netlist).lines.findIndex((l) => l.directive && ['.tf', '.op', '.dc', '.tran', '.ac'].includes(l.directive.name));
+      const line = parseNetlist(f.netlist).lines.findIndex((l) => l.directive && ['.tf', '.op', '.dc', '.tran', '.ac', '.noise'].includes(l.directive.name));
       expect(explainLine(parseNetlist(f.netlist), line)!.notes[0], id).toMatch(/^ngspice ignores this line/);
     }
     // Used by an X line, the .tf is the main circuit's: v(out) is the main circuit's out (1/3, 333.3 Ω).

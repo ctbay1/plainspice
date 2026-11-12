@@ -1164,7 +1164,7 @@ export function sweptBy(netlist: Netlist, key: string): number | undefined {
 }
 
 /** The analyses A3f ran inside a subcircuit no X line uses: ngspice ignores each of them there. */
-const RUN_ANALYSES: ReadonlySet<string> = new Set(['.op', '.tf', '.dc', '.tran', '.ac']);
+const RUN_ANALYSES: ReadonlySet<string> = new Set(['.op', '.tf', '.dc', '.tran', '.ac', '.noise']);
 
 const usedCache = new WeakMap<Netlist, Set<string>>();
 
@@ -1186,7 +1186,7 @@ function usedSubcircuits(netlist: Netlist): Set<string> {
 /**
  * The subcircuit a line is in (its name as written and its .subckt line, 0-based) when no X line uses
  * that subcircuit; undefined for any other line. ngspice ignores such a subcircuit, an analysis line in
- * it too (A3f: .op, .tf, .dc, .tran and .ac run nothing there); in a subcircuit an X line uses, it runs
+ * it too (A3f: .op, .tf, .dc, .tran, .ac and .noise run nothing there); in a subcircuit an X line uses, it runs
  * an analysis line as if the main circuit had it, once for each such X line.
  */
 export function unusedSubcircuit(netlist: Netlist, index: number): { name: string; line: number } | undefined {
@@ -1194,6 +1194,12 @@ export function unusedSubcircuit(netlist: Netlist, index: number): { name: strin
   const name = at === undefined ? undefined : netlist.lines[at]?.directive?.args[0];
   if (at === undefined || !name || usedSubcircuits(netlist).has(lowerAscii(name.text))) return undefined;
   return { name: name.text, line: at };
+}
+
+/** An analysis line A3f found ngspice ignores: one of those it ran, in a subcircuit no X line uses. */
+export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
+  const name = netlist.lines[index]?.directive?.name;
+  return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;
 }
 
 function partKind(netlist: Netlist, name: string): { line?: number; letter?: ElementLetter } {
