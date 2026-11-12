@@ -1239,9 +1239,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   );
 
   /**
-   * The reader asked to see the whole drawing (Fit, "Show the whole drawing"): the fit it makes (its
-   * fitCount) shows all of it, smaller than its words' readable size if it must be, until something
-   * else fits the drawing again (a circuit opened, a part added in the Netlist panel).
+   * The reader asked to see the whole drawing ("Show the whole drawing": More, Ctrl+K, Shift+1, the
+   * status line, the computer's zoom bar): the fit it makes (its fitCount) shows all of it, smaller
+   * than its words' readable size if it must be, until something else fits the drawing again (a
+   * circuit opened, a part added in the Netlist panel).
    */
   const [wholeAt, setWholeAt] = useState<number | undefined>(undefined);
   const fitCountNow = useRef(fitCount);
@@ -1382,7 +1383,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'export:ltspice', group: gCircuit, label: t('exportLtspice'), keywords: 'export save download file net' });
     list.push({ id: 'new', group: gCircuit, label: t('newCircuit'), keywords: 'new blank empty clear start fresh circuit' });
     const gDrawing = t('paletteGroupDrawing');
-    list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'zoom screen whole', shortcut: 'Shift+1' });
+    list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'fit window zoom screen whole', shortcut: 'Shift+1' });
     list.push({ id: 'zoom-in', group: gDrawing, label: t('zoomIn'), keywords: 'bigger', shortcut: '+' });
     list.push({ id: 'zoom-out', group: gDrawing, label: t('zoomOut'), keywords: 'smaller', shortcut: '−' });
     if (phone && turned) list.push({ id: 'turn', group: gDrawing, label: turnWanted ? t(video ? 'paletteAsInVideo' : 'paletteAsDrawn') : t('paletteTurnToFit'), keywords: 'turn rotate upright phone video' });

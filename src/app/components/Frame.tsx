@@ -260,10 +260,14 @@ export function StatusLines({
   invite?: { label: string; onClick: () => void };
   /** A phone just after a change made on the drawing: Undo at hand (else it is under More). */
   undo?: () => void;
-  /** A phone whose drawing the reader moved partly out of view: the way back to all of it (Fit), at hand. */
+  /** A phone whose drawing the reader moved partly out of view: the way back to all of it ("Show the whole drawing", Fit), at hand. */
   whole?: () => void;
 }): ReactNode {
   const bad = status.tone === 'bad' || status.tone === 'paused';
+  // A phone's pill with "Show the whole drawing" and another button (the turn, Undo): a calm status
+  // keeps its words for screen readers only, and no dot, so the buttons share one row over the drawing
+  // (175 and 115 px of buttons in a 360 px phone's 328 px). A status to read keeps its words.
+  const crowded = phone && status.tone === 'ok' && !!whole && (!!turn || !!undo);
   return (
     <div className={`lines${bad ? ' is-bad' : ''}`}>
       {invite ? (
@@ -280,9 +284,9 @@ export function StatusLines({
           {hint}
         </p>
       )}
-      <div className="status" data-tone={status.tone}>
-        <span className={`status__dot status__dot--${status.tone}`} aria-hidden="true" />
-        <span className="status__main">{status.main}</span>
+      <div className={`status${crowded ? ' is-crowded' : ''}`} data-tone={status.tone}>
+        {crowded ? null : <span className={`status__dot status__dot--${status.tone}`} aria-hidden="true" />}
+        <span className={crowded ? 'status__main visually-hidden' : 'status__main'}>{status.main}</span>
         {status.detail ? <span className="status__detail status__reason">{status.detail}</span> : null}
         {/* A reason to read comes first: the rest makes room for it. */}
         {analysis && !phone && status.tone === 'ok' ? <span className="status__detail status__analysis">{analysis}</span> : null}
@@ -294,7 +298,7 @@ export function StatusLines({
         ) : null}
         {whole ? (
           <button type="button" className="turn-button" onClick={whole}>
-            {t('seeWhole')}
+            {t('zoomFit')}
           </button>
         ) : null}
         {turn ? (

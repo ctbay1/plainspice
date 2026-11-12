@@ -3334,6 +3334,11 @@ html[data-contrast='more'] .lines .hint {
 .is-phone .status .turn-button:first-of-type {
   margin-left: auto;
 }
+/* "Show the whole drawing" and another button on the pill: a calm status keeps its words for screen
+   readers only (Frame.tsx), so the pill is just its buttons, on one row, evenly padded. */
+.is-phone .status.is-crowded {
+  padding-left: 0.25rem;
+}
 
 /* The one bar along the bottom: Select · Parts · Netlist · Checks · Explain · More. */
 .bar {

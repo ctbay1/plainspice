@@ -130,20 +130,23 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   place a part on free paper. A part the page brings into view (one moved with the keys, in hand away
   from the drawing) is shown wherever it is. On a phone, once the drawing has been moved partly out of
   view (not by a sheet, which covers it only for a while), the status line offers "Show the whole
-  drawing", the same as Fit, which is at the end of the More sheet.
+  drawing" (Fit, below), which is otherwise at the end of the More sheet.
 - **"Whole" means what is drawn.** The canvas says the drawing is whole when everything drawn (the
   symbols, the wires, the words and numbers as written, not the room kept around them for longer
   numbers) is in the free paper, wherever the fit or the reader put it. The hint says "drag the paper
   to see the rest" only when something drawn is cut off: at 360 px, four turned examples shown whole
   (sp01-4, sp01-5, p01-2, p02-3) told the student to drag; now they say "Turned to fit the screen".
-- **Fit shows the whole drawing.** Fit ("Fit the drawing to the window" in the More sheet, Ctrl+K,
-  Shift+1, the computer's zoom bar, and the phone's "Show the whole drawing") fits all of the drawing,
-  smaller than its words' readable size if it must be, down to 4 px a grid unit (as the phone's view
-  while editing already did); it stays so until something else fits the drawing again (another
-  circuit, a part typed in the Netlist panel), and a phone's card still fits its own part. Before, Fit
-  stopped at the readable size, so it changed nothing for a drawing too long for the screen. Zoom out
-  (its buttons and keys) now goes as far as two fingers do, to half the readable size, and never jumps
-  in from a view that is already smaller.
+- **Fit shows the whole drawing, and is called so.** Fit fits all of the drawing, smaller than its
+  words' readable size if it must be, down to 4 px a grid unit (as the phone's view while editing
+  already did). Before, it stopped at the readable size, so it changed nothing for a drawing too
+  long for the screen. Its one name is now what it does, "Show the whole drawing", wherever it is
+  offered (the More sheet, Ctrl+K, Shift+1 in Help, the computer's zoom bar, and the phone's status
+  line); it was "Fit the drawing to the window" everywhere but on the status line, two names for one
+  action. "Fit" is left to the turn ("Turn to fit", "Turned to fit the screen"), and Ctrl+K still
+  finds the command by "fit". The whole fit stays until something else fits the drawing again
+  (another circuit, a part typed in the Netlist panel), and a phone's card still fits its own part.
+  Zoom out (its buttons and keys) now goes as far as two fingers do, to half the readable size, and
+  never jumps in from a view that is already smaller.
 - **As drawn, at the smallest readable size.** A drawing shown as drawn on a phone that needs panning
   ("As in the video", or a drawing that cannot be turned cleanly) opens at the smallest size its
   words can be read (names 10.5 px), from its left end, instead of as tall as the screen allows up to
@@ -168,6 +171,12 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   never goes, its words still read by screen readers; with buttons on it (Undo, Show the whole
   drawing) it keeps them. Running, paused or an error keep their words, their reason and their buttons.
   The status line keeps its height, so the drawing does not move as runs come and go.
+- **Two buttons on one row.** On a phone, when "Show the whole drawing" shares the status line with
+  another button (the turn, Undo), a calm status keeps its words for screen readers only and leaves
+  out its dot, so the line is just the buttons, on one row: at 360 px the two buttons take 175 and
+  115 px of the 328 px there are, and with the words beside them the line grew from one row to two
+  (36 to 74 px tall) over the drawing as soon as the reader moved it. The words come back with the
+  whole drawing. A status to read (running, paused, an error) keeps its words.
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the

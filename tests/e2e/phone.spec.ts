@@ -330,7 +330,8 @@ test('the paper cannot be dragged off the screen, and “Show the whole drawing�
   let ink = await inkOnScreen(page);
   expect(ink.y0).toBeGreaterThanOrEqual(free.top - 6);
   expect(ink.y1).toBeLessThanOrEqual(free.bottom);
-  const whole = statusLine(page).getByRole('button', { name: t('seeWhole'), exact: true });
+  // Fit's own name, as in More, Ctrl+K and Help.
+  const whole = statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true });
   await expect(whole).toHaveCount(0);
   // Far to the left: part of it goes off the screen (never all of it), and the way back is on the status line.
   for (let i = 0; i < 2; i++) await fingers(page, [{ x: paper.x + paper.width - 30, y: empty.y }], [{ x: paper.x + 30, y: empty.y }]);
@@ -445,7 +446,7 @@ test('a drawing shown as drawn opens at the smallest readable size, and Fit show
   await expect(hintLine(page)).toHaveText(t('hintAsInVideo'));
   // As much of it as can be read at once (it opened at 30 px a unit, twice that, with only V1 and R1 in view).
   await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
-  // More, then "Fit the drawing to the window": all of it, smaller than readable if it must be.
+  // More, then "Show the whole drawing": all of it, smaller than readable if it must be.
   const bar = page.getByRole('navigation', { name: t('barLabel') });
   await bar.getByRole('button', { name: t('barMore') }).click();
   const more = page.getByRole('dialog', { name: t('barMore') });
@@ -461,4 +462,34 @@ test('a drawing shown as drawn opens at the smallest readable size, and Fit show
   expect(ink.y1).toBeLessThanOrEqual(free.bottom);
   expect(await partsInView(page, ['V1', 'R1', 'R2', 'R3', 'G1'])).toBe(true);
   await expect(hintLine(page)).toHaveText(t('hintPhone'));
+});
+
+test('“Show the whole drawing” and the turn share one row of the status line; the calm status stays for screen readers', async ({ page }) => {
+  for (const size of [undefined, { width: 360, height: 780 }]) {
+    if (size) await page.setViewportSize(size);
+    await openApp(page);
+    await chooseExample(page, 'Example 3: open circuit (V_Th)');
+    await expectSolved(page);
+    const status = statusLine(page);
+    const opened = (await status.boundingBox())!;
+    // Dragged to the left (from the middle of the paper, clear of the "more" at its edges): the way
+    // back joins the turn on the status line, on the same row.
+    const paper = (await page.locator('.nb-canvas').boundingBox())!;
+    const from = { x: paper.x + paper.width * 0.55, y: paper.y + paper.height * 0.45 };
+    await fingers(page, [from], [{ x: from.x - 160, y: from.y }]);
+    const whole = status.getByRole('button', { name: t('zoomFit'), exact: true });
+    const turn = status.getByRole('button', { name: t('asInVideo'), exact: true });
+    await expect(whole).toBeVisible();
+    await expect(turn).toBeVisible();
+    const [a, b, pill] = [(await whole.boundingBox())!, (await turn.boundingBox())!, (await status.boundingBox())!];
+    expect(Math.abs(a.y - b.y), `one row at ${page.viewportSize()!.width} px`).toBeLessThan(2);
+    expect(pill.height).toBeLessThanOrEqual(opened.height + 1);
+    expect(pill.x).toBeGreaterThanOrEqual(0);
+    expect(pill.x + pill.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    await expect(status).toContainText(/Finished in \d+ ms/);
+    // Once the drawing is whole again, the status shows its words.
+    await whole.click();
+    await expect(whole).toHaveCount(0);
+    expect((await status.locator('.status__main').boundingBox())!.width).toBeGreaterThan(20);
+  }
 });
