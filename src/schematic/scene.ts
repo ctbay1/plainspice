@@ -20,13 +20,12 @@
  */
 import type { Circuit, CircuitPart, HiddenRef } from './circuit.ts';
 import { GROUND } from './circuit.ts';
-import { danglingEnds, findIslands, junctionPoints } from './connectivity.ts';
+import { SegmentIndex, findIslands, wireEnds } from './connectivity.ts';
 import { groundGeometry, isUpright, partGeometry, valueLines, type Drawing, type GroundPlacement, type LabelSide, type NodeSpot, type SymbolGeometry } from './drawing.ts';
 import {
   boxesOverlap,
   inflate,
   pointKey,
-  pointOnSegment,
   samePoint,
   segmentCrossesBox,
   segmentsOf,
@@ -222,26 +221,88 @@ export function partLabelLines(geom: SymbolGeometry, specs: readonly LineSpec[],
 
 const boxOfLines = (lines: readonly TextLine[]): Box => unionBoxes(lines.map((l) => l.box)) ?? EMPTY_BOX;
 
-/** Things words must stay clear of. */
+/** The side of the squares obstacles are filed in, in grid units. */
+const CELL = 4;
+/** A box covering more squares than this (a very long word, say) is checked by every look instead. */
+const MAX_CELLS = 256;
+
+/** The squares a box covers, or undefined when it covers more than MAX_CELLS (or is not finite). */
+function cellsOf(b: Box): number[] | undefined {
+  const x0 = Math.floor(b.x0 / CELL);
+  const x1 = Math.floor(b.x1 / CELL);
+  const y0 = Math.floor(b.y0 / CELL);
+  const y1 = Math.floor(b.y1 / CELL);
+  if (!((x1 - x0 + 1) * (y1 - y0 + 1) <= MAX_CELLS)) return undefined;
+  const out: number[] = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push(x * 65536 + y);
+  return out;
+}
+
+/**
+ * Things words must stay clear of, filed by the squares of the grid they cover, so that the cost of a
+ * place for words looks only at what is near it (a drawing with a thousand names and wires is not a
+ * thousand times slower to label than one with one).
+ */
 class Obstacles {
   readonly boxes: Box[] = [];
   readonly segments: [Point, Point][] = [];
+  /** What each square holds: box i as i, segment i as −1 − i; `big`: what covers too many squares to file. */
+  private readonly cells = new Map<number, number[]>();
+  private readonly big: number[] = [];
 
-  addBox(b: Box): void {
-    this.boxes.push(b);
+  private file(b: Box, id: number): void {
+    const keys = cellsOf(b);
+    if (!keys) {
+      this.big.push(id);
+      return;
+    }
+    for (const k of keys) {
+      const list = this.cells.get(k);
+      if (list) list.push(id);
+      else this.cells.set(k, [id]);
+    }
+  }
+
+  addBox(b: Box): number {
+    const i = this.boxes.push(b) - 1;
+    this.file(b, i);
+    return i;
   }
 
   addWire(points: readonly Point[]): void {
-    for (const s of segmentsOf(points)) this.segments.push(s);
+    for (const [a, b] of segmentsOf(points)) {
+      const i = this.segments.push([a, b]) - 1;
+      this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i);
+    }
   }
 
-  /** How much the box collides with what is there (0: free). */
-  cost(box: Box): number {
-    let c = 0;
-    for (const b of this.boxes) {
-      if (boxesOverlap(box, b)) c += 1 + overlapArea(box, b);
+  /**
+   * How much the box collides with what is there (0: free), leaving out box `skip` (a part's own
+   * symbol). Boxes count first, then segments, each in the order they came, as one sum over all of
+   * them would.
+   */
+  cost(box: Box, skip = -1): number {
+    const near = new Set<number>(this.big);
+    const keys = cellsOf(box);
+    if (keys) for (const k of keys) for (const id of this.cells.get(k) ?? []) near.add(id);
+    else {
+      this.boxes.forEach((_, i) => near.add(i));
+      this.segments.forEach((_, i) => near.add(-1 - i));
     }
-    for (const [a, b] of this.segments) if (segmentCrossesBox(a, b, box)) c += 1;
+    const boxes: number[] = [];
+    const segments: number[] = [];
+    for (const id of near) (id >= 0 ? boxes : segments).push(id);
+    boxes.sort((i, j) => i - j);
+    segments.sort((i, j) => j - i);
+    let c = 0;
+    for (const i of boxes) {
+      const b = this.boxes[i]!;
+      if (i !== skip && boxesOverlap(box, b)) c += 1 + overlapArea(box, b);
+    }
+    for (const id of segments) {
+      const [a, b] = this.segments[-1 - id]!;
+      if (segmentCrossesBox(a, b, box)) c += 1;
+    }
     return c;
   }
 }
@@ -343,17 +404,14 @@ function inlineNodeLines(text: string, at: Point, spot: NodeSpot, hidden: readon
 
 const OPPOSITE_DIRECTION: Readonly<Record<Direction, Direction>> = { up: 'down', down: 'up', left: 'right', right: 'left' };
 
-/** Which ways the copper runs from a point: wires leaving it, and pins' leads. */
-function directionsAt(p: Point, wires: readonly (readonly Point[])[], pins: readonly PlacedPin[]): Direction[] {
+/** Which ways the copper runs from a point: wires leaving it (`wires`: the drawing's, indexed), and pins' leads. */
+function directionsAt(p: Point, wires: SegmentIndex, pins: readonly PlacedPin[]): Direction[] {
   const out = new Set<Direction>();
-  for (const w of wires) {
-    for (const [a, b] of segmentsOf(w)) {
-      if (!pointOnSegment(p, a, b)) continue;
-      for (const q of [a, b]) {
-        if (samePoint(q, p)) continue;
-        if (q.x === p.x) out.add(q.y < p.y ? 'up' : 'down');
-        else if (q.y === p.y) out.add(q.x < p.x ? 'left' : 'right');
-      }
+  for (const { a, b } of wires.at(p)) {
+    for (const q of [a, b]) {
+      if (samePoint(q, p)) continue;
+      if (q.x === p.x) out.add(q.y < p.y ? 'up' : 'down');
+      else if (q.y === p.y) out.add(q.x < p.x ? 'left' : 'right');
     }
   }
   // The lead runs from the pin into the part: opposite to its outward direction.
@@ -381,8 +439,12 @@ function spotsFor(dirs: readonly Direction[], terminal: boolean): NodeSpot[] {
   return all;
 }
 
-/** Points where a horizontal and a vertical wire segment cross, inside both (no end or corner there). */
-export function wireCrossings(wires: readonly (readonly Point[])[]): Point[] {
+/**
+ * Points where a horizontal and a vertical wire segment cross, inside both (no end or corner there).
+ * Each vertical segment looks only at the rows that have horizontal segments between its ends
+ * (`index`: these wires, indexed, when already done).
+ */
+export function wireCrossings(wires: readonly (readonly Point[])[], index: SegmentIndex = new SegmentIndex(wires)): Point[] {
   const horizontal: [Point, Point][] = [];
   const vertical: [Point, Point][] = [];
   for (const w of wires) {
@@ -391,14 +453,22 @@ export function wireCrossings(wires: readonly (readonly Point[])[]): Point[] {
       else if (a.x === b.x) vertical.push([a, b]);
     }
   }
+  const rows = [...new Set(horizontal.map(([a]) => a.y))].sort((p, q) => p - q);
   const out = new Map<string, Point>();
   for (const [a, b] of vertical) {
     const y0 = Math.min(a.y, b.y);
     const y1 = Math.max(a.y, b.y);
-    for (const [c, d] of horizontal) {
-      const x0 = Math.min(c.x, d.x);
-      const x1 = Math.max(c.x, d.x);
-      if (c.y > y0 && c.y < y1 && a.x > x0 && a.x < x1) out.set(pointKey({ x: a.x, y: c.y }), { x: a.x, y: c.y });
+    // The first row below y0, by halving.
+    let lo = 0;
+    let hi = rows.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rows[mid]! <= y0) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let r = lo; r < rows.length && rows[r]! < y1; r++) {
+      const at = { x: a.x, y: rows[r]! };
+      if (index.at(at).some((s) => s.a.y === s.b.y && Math.min(s.a.x, s.b.x) < a.x && a.x < Math.max(s.a.x, s.b.x))) out.set(pointKey(at), at);
     }
   }
   return [...out.values()].sort((p, q) => p.y - q.y || p.x - q.x);
@@ -429,15 +499,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const first = stored ?? defaultSide(geom.rot, geom.mirror);
     // The part's own symbol is not in the way of its words.
     const own = obstacles.boxes.indexOf(geom.box);
-    const costLines = (lines: TextLine[]): number => {
-      const box = boxOfLines(lines);
-      let cost = 0;
-      obstacles.boxes.forEach((b, i) => {
-        if (i !== own && boxesOverlap(box, b)) cost += 1 + overlapArea(box, b);
-      });
-      for (const [a, b] of obstacles.segments) if (segmentCrossesBox(a, b, box)) cost += 1;
-      return cost;
-    };
+    const costLines = (lines: TextLine[]): number => obstacles.cost(boxOfLines(lines), own);
     const costOf = (side: LabelSide): { lines: TextLine[]; cost: number } => {
       const lines = partLabelLines(geom, specs, side, measure);
       return { lines, cost: costLines(lines) };
@@ -508,11 +570,12 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     ...parts.flatMap((p) => p.pins),
     ...grounds.map((g) => ({ at: g.at, node: GROUND, outward: groundGeometry(g).outward[0]!, role: 'ground' as PinRole })),
   ];
-  const junctions = junctionPoints(drawing.wires, pinPoints);
-  const dangling = danglingEnds(drawing.wires, pinPoints);
+  // The wires indexed once, for everything below that looks up what is at a point.
+  const wireIndex = new SegmentIndex(drawing.wires);
+  const { junctions, dangling } = wireEnds(wireIndex, pinPoints);
 
   // Which node each wire belongs to: the node of the pins on its island.
-  const islands = findIslands(drawing.wires, allPins.map((p) => p.at));
+  const islands = findIslands(drawing.wires, allPins.map((p) => p.at), wireIndex);
   const islandNode = new Map<number, string | null>();
   allPins.forEach((p, i) => {
     const island = islands.anchors[i]!;
@@ -539,7 +602,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
       terminals.push({ node, at });
       return;
     }
-    const dirs = directionsAt(at, drawing.wires, allPins);
+    const dirs = directionsAt(at, wireIndex, allPins);
     const direction = dirs.length === 1 ? OPPOSITE_DIRECTION[dirs[0]!] : 'right';
     stubs.push({ node, at, direction, hidden, box: stubBox(at, direction) });
   };
@@ -570,7 +633,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const names = [...new Set(hidden.map((h) => h.name))];
     const terminal = terminalKeys.has(pointKey(label.at));
     const atEnd = terminal || stubKeys.has(pointKey(label.at));
-    const spots = label.side ? [label.side] : spotsFor(directionsAt(label.at, drawing.wires, allPins), atEnd);
+    const spots = label.side ? [label.side] : spotsFor(directionsAt(label.at, wireIndex, allPins), atEnd);
     let best: { lines: TextLine[]; cost: number; spot: NodeSpot } | undefined;
     for (const spot of spots) {
       const lines = nodeLabelLines(text, label.at, spot, results, names, measure, options.nodeResultInline);
@@ -593,7 +656,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
       ...stubs.map((t) => t.box),
       ...drawing.wires.flatMap((w) => w.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }))),
     ]) ?? EMPTY_BOX;
-  return { parts, grounds, wires, junctions, terminals, stubs, crossings: wireCrossings(drawing.wires), nodeLabels, bounds };
+  return { parts, grounds, wires, junctions, terminals, stubs, crossings: wireCrossings(drawing.wires, wireIndex), nodeLabels, bounds };
 }
 
 // ------------------------------------------------------------------ overlaps

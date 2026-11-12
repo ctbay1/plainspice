@@ -23,32 +23,123 @@ interface Seg {
   b: Point;
 }
 
-/** Wire segments, found by the point they pass through. */
+/** Grid points are keyed as one number: whole x and y within these bounds (far beyond any drawing's). */
+const KEY_SPAN = 2 ** 21;
+const keyable = (p: Point): boolean => Number.isInteger(p.x) && Number.isInteger(p.y) && Math.abs(p.x) < KEY_SPAN && Math.abs(p.y) < KEY_SPAN;
+const gridKey = (x: number, y: number): number => x * 2 * KEY_SPAN + y;
+/** A point as a map key: one number for a grid point (the usual case), its "x,y" text otherwise. */
+export const pointId = (p: Point): number | string => (keyable(p) ? gridKey(p.x, p.y) : pointKey(p));
+const gcd = (m: number, n: number): number => {
+  while (n) [m, n] = [n, m % n];
+  return m;
+};
+
+/**
+ * The straight segments of one row (or one column), sorted by where they start, with how far the
+ * segments up to each one reach: the segments through a point are found by a binary search and a
+ * scan back over only those that can still reach it (one or two in a tidy drawing).
+ */
+class Line {
+  readonly segs: Seg[] = [];
+  readonly order: number[] = [];
+  private lo: number[] = [];
+  private hi: number[] = [];
+  private reach: number[] = [];
+
+  add(s: Seg, order: number): void {
+    this.segs.push(s);
+    this.order.push(order);
+  }
+
+  /** Sorts the segments once all are in; `along` reads a segment's ends along the line. */
+  done(along: (p: Point) => number): void {
+    const idx = this.segs.map((_, i) => i);
+    const from = (i: number): number => Math.min(along(this.segs[i]!.a), along(this.segs[i]!.b));
+    idx.sort((i, j) => from(i) - from(j) || this.order[i]! - this.order[j]!);
+    const segs = idx.map((i) => this.segs[i]!);
+    const order = idx.map((i) => this.order[i]!);
+    this.segs.splice(0, segs.length, ...segs);
+    this.order.splice(0, order.length, ...order);
+    this.lo = segs.map((t) => Math.min(along(t.a), along(t.b)));
+    this.hi = segs.map((t) => Math.max(along(t.a), along(t.b)));
+    let far = -Infinity;
+    this.reach = this.hi.map((h) => (far = Math.max(far, h)));
+  }
+
+  /** The segments through `v` (a position along the line), in the order they were given. */
+  at(v: number): Seg[] {
+    let a = 0;
+    let b = this.lo.length - 1;
+    let last = -1;
+    while (a <= b) {
+      const mid = (a + b) >> 1;
+      if (this.lo[mid]! <= v) {
+        last = mid;
+        a = mid + 1;
+      } else b = mid - 1;
+    }
+    const found: number[] = [];
+    for (let j = last; j >= 0 && this.reach[j]! >= v; j--) if (this.hi[j]! >= v) found.push(j);
+    if (found.length > 1) found.sort((i, j) => this.order[i]! - this.order[j]!);
+    return found.map((j) => this.segs[j]!);
+  }
+}
+
+/**
+ * Wire segments, found by the point they pass through: straight ones by their row or column (see
+ * Line), slanted ones filed under every grid point they pass exactly. Finding the segments at a point
+ * never looks at every segment of the drawing, so the work grows with the number of segments and the
+ * length of wire (both bounded by the drawing format), never with the square of either. At a point,
+ * the horizontal segments come first, then the vertical ones, then the slanted ones, each in the order
+ * they were given (where two islands cross, the first is the one a point is said to be on).
+ */
 export class SegmentIndex {
-  private readonly horizontal = new Map<number, Seg[]>();
-  private readonly vertical = new Map<number, Seg[]>();
-  private readonly slanted: Seg[] = [];
+  private readonly rows = new Map<number, Line>();
+  private readonly cols = new Map<number, Line>();
+  private readonly slanted = new Map<number, Seg[]>();
+  /** Slanted segments with an end off the grid (none that PlainSpice draws): checked one by one. */
+  private readonly loose: Seg[] = [];
   readonly segments: Seg[] = [];
 
   constructor(wires: readonly (readonly Point[])[]) {
+    const line = (m: Map<number, Line>, k: number): Line => {
+      let l = m.get(k);
+      if (!l) m.set(k, (l = new Line()));
+      return l;
+    };
     wires.forEach((w, i) => {
       for (const [a, b] of segmentsOf(w)) {
         const s = { wire: i, a, b };
+        const order = this.segments.length;
         this.segments.push(s);
-        if (a.y === b.y) push(this.horizontal, a.y, s);
-        else if (a.x === b.x) push(this.vertical, a.x, s);
-        else this.slanted.push(s);
+        if (a.y === b.y) line(this.rows, a.y).add(s, order);
+        else if (a.x === b.x) line(this.cols, a.x).add(s, order);
+        else if (!keyable(a) || !keyable(b)) this.loose.push(s);
+        else {
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const steps = gcd(Math.abs(dx), Math.abs(dy));
+          for (let k = 0; k <= steps; k++) push(this.slanted, gridKey(a.x + (dx / steps) * k, a.y + (dy / steps) * k), s);
+        }
       }
     });
+    for (const l of this.rows.values()) l.done((p) => p.x);
+    for (const l of this.cols.values()) l.done((p) => p.y);
   }
 
   /** Segments that pass through or end at p. */
-  at(p: Point): Seg[] {
-    const out: Seg[] = [];
-    for (const s of this.horizontal.get(p.y) ?? []) if (pointOnSegment(p, s.a, s.b)) out.push(s);
-    for (const s of this.vertical.get(p.x) ?? []) if (pointOnSegment(p, s.a, s.b)) out.push(s);
-    for (const s of this.slanted) if (pointOnSegment(p, s.a, s.b)) out.push(s);
-    return out;
+  at(p: Point): readonly Seg[] {
+    const h = this.rows.get(p.y)?.at(p.x) ?? [];
+    const v = this.cols.get(p.x)?.at(p.y) ?? [];
+    let s: readonly Seg[] = keyable(p) ? (this.slanted.get(gridKey(p.x, p.y)) ?? []) : this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y && pointOnSegment(p, t.a, t.b));
+    if (this.loose.length && keyable(p)) {
+      const extra = this.loose.filter((t) => pointOnSegment(p, t.a, t.b));
+      if (extra.length) s = this.segments.filter((t) => s.includes(t) || extra.includes(t));
+    }
+    if (!v.length && !s.length) return h;
+    if (!h.length && !s.length) return v;
+    if (!h.length && !v.length) return s;
+    return [...h, ...v, ...s];
   }
 }
 
@@ -56,6 +147,35 @@ function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
   const list = m.get(k);
   if (list) list.push(v);
   else m.set(k, [v]);
+}
+
+/** Union-find over 0 … n−1 (path halving, union by size). */
+class Groups {
+  private readonly parent: Int32Array;
+  private readonly size: Int32Array;
+
+  constructor(n: number) {
+    this.parent = Int32Array.from({ length: n }, (_, i) => i);
+    this.size = new Int32Array(n).fill(1);
+  }
+
+  find(x: number): number {
+    const parent = this.parent;
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]!]!;
+      x = parent[x]!;
+    }
+    return x;
+  }
+
+  union(a: number, b: number): void {
+    let ra = this.find(a);
+    let rb = this.find(b);
+    if (ra === rb) return;
+    if (this.size[ra]! < this.size[rb]!) [ra, rb] = [rb, ra];
+    this.parent[rb] = ra;
+    this.size[ra]! += this.size[rb]!;
+  }
 }
 
 export interface Islands {
@@ -73,28 +193,37 @@ export interface Islands {
 /**
  * Splits wires and anchors (pins) into islands of copper that touch. Islands are numbered in order
  * of first appearance: wires first, then anchors.
+ *
+ * Each point where a segment ends is visited once, and every segment through it joins the first one
+ * there, so k segments meeting at one point (wires drawn over each other, say) cost k steps, not k².
  */
-export function findIslands(wires: readonly (readonly Point[])[], anchors: readonly Point[]): Islands {
-  const index = new SegmentIndex(wires);
-  const uf = new UnionFind();
-  wires.forEach((_, i) => uf.find(`w${i}`));
+export function findIslands(wires: readonly (readonly Point[])[], anchors: readonly Point[], index: SegmentIndex = new SegmentIndex(wires)): Islands {
+  // Wire i is i; anchor i is wires.length + i.
+  const groups = new Groups(wires.length + anchors.length);
+  const visited = new Set<number | string>();
   for (const s of index.segments) {
-    for (const end of [s.a, s.b]) for (const other of index.at(end)) uf.union(`w${s.wire}`, `w${other.wire}`);
+    for (const end of [s.a, s.b]) {
+      const key = pointId(end);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const here = index.at(end);
+      for (const other of here) groups.union(here[0]!.wire, other.wire);
+    }
   }
-  const byPoint = new Map<string, number>();
+  const byPoint = new Map<number | string, number>();
   anchors.forEach((p, i) => {
-    const key = pointKey(p);
+    const key = pointId(p);
     const same = byPoint.get(key);
-    if (same !== undefined) uf.union(`a${i}`, `a${same}`);
+    // An anchor where another already is joins it, and with it the wires there.
+    if (same !== undefined) groups.union(wires.length + i, wires.length + same);
     else {
       byPoint.set(key, i);
-      uf.find(`a${i}`);
+      for (const s of index.at(p)) groups.union(wires.length + i, s.wire);
     }
-    for (const s of index.at(p)) uf.union(`a${i}`, `w${s.wire}`);
   });
-  const numbers = new Map<string, number>();
-  const number = (id: string): number => {
-    const root = uf.find(id);
+  const numbers = new Map<number, number>();
+  const number = (id: number): number => {
+    const root = groups.find(id);
     let n = numbers.get(root);
     if (n === undefined) {
       n = numbers.size;
@@ -102,8 +231,8 @@ export function findIslands(wires: readonly (readonly Point[])[], anchors: reado
     }
     return n;
   };
-  const wireIslands = wires.map((_, i) => number(`w${i}`));
-  const anchorIslands = anchors.map((_, i) => number(`a${i}`));
+  const wireIslands = wires.map((_, i) => number(i));
+  const anchorIslands = anchors.map((_, i) => number(wires.length + i));
   return {
     wires: wireIslands,
     anchors: anchorIslands,
@@ -111,12 +240,12 @@ export function findIslands(wires: readonly (readonly Point[])[], anchors: reado
     at(p: Point): number | undefined {
       const s = index.at(p)[0];
       if (s) return wireIslands[s.wire];
-      const a = byPoint.get(pointKey(p));
+      const a = byPoint.get(pointId(p));
       return a === undefined ? undefined : anchorIslands[a];
     },
     allAt(p: Point): number[] {
       const out = new Set(index.at(p).map((s) => wireIslands[s.wire]!));
-      const a = byPoint.get(pointKey(p));
+      const a = byPoint.get(pointId(p));
       if (a !== undefined) out.add(anchorIslands[a]!);
       return [...out];
     },
@@ -124,11 +253,10 @@ export function findIslands(wires: readonly (readonly Point[])[], anchors: reado
 }
 
 /** How many wire ends, wire sides and pins meet at each point that is a wire end, a corner or a pin. */
-function arms(wires: readonly (readonly Point[])[], pins: readonly Point[]): Map<string, { at: Point; arms: number; pins: number }> {
-  const index = new SegmentIndex(wires);
-  const out = new Map<string, { at: Point; arms: number; pins: number }>();
+function arms(index: SegmentIndex, pins: readonly Point[]): Map<number | string, { at: Point; arms: number; pins: number }> {
+  const out = new Map<number | string, { at: Point; arms: number; pins: number }>();
   const visit = (p: Point): void => {
-    const key = pointKey(p);
+    const key = pointId(p);
     if (out.has(key)) return;
     let n = 0;
     for (const s of index.at(p)) n += samePoint(p, s.a) || samePoint(p, s.b) ? 1 : 2;
@@ -140,7 +268,7 @@ function arms(wires: readonly (readonly Point[])[], pins: readonly Point[]): Map
   }
   for (const p of pins) {
     visit(p);
-    const e = out.get(pointKey(p))!;
+    const e = out.get(pointId(p))!;
     e.arms += 1;
     e.pins += 1;
   }
@@ -149,12 +277,18 @@ function arms(wires: readonly (readonly Point[])[], pins: readonly Point[]): Map
 
 /** Where junction dots go: three or more wire ends, wire sides or pins at one point. */
 export function junctionPoints(wires: readonly (readonly Point[])[], pins: readonly Point[]): Point[] {
-  return [...arms(wires, pins).values()].filter((e) => e.arms >= 3).map((e) => e.at);
+  return wireEnds(new SegmentIndex(wires), pins).junctions;
 }
 
 /** Wire ends that touch nothing: no pin, no other wire. */
 export function danglingEnds(wires: readonly (readonly Point[])[], pins: readonly Point[]): Point[] {
-  return [...arms(wires, pins).values()].filter((e) => e.arms === 1 && e.pins === 0).map((e) => e.at);
+  return wireEnds(new SegmentIndex(wires), pins).dangling;
+}
+
+/** Both of the above at once, from the wires already indexed (a scene needs both). */
+export function wireEnds(index: SegmentIndex, pins: readonly Point[]): { junctions: Point[]; dangling: Point[] } {
+  const all = [...arms(index, pins).values()];
+  return { junctions: all.filter((e) => e.arms >= 3).map((e) => e.at), dangling: all.filter((e) => e.arms === 1 && e.pins === 0).map((e) => e.at) };
 }
 
 /** Every pin of the drawing with its node: the parts' pins, then the ground symbols' pins (node 0). */

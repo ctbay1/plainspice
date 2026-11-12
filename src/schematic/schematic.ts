@@ -25,7 +25,7 @@
 import { lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Netlist } from '../spice/types.ts';
 import { circuitFromNetlist, GROUND, labelNode, subCircuit, type Circuit } from './circuit.ts';
-import { checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin } from './connectivity.ts';
+import { checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin, type Islands } from './connectivity.ts';
 import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type NodeLabel, type PartPlacement } from './drawing.ts';
 import { parseDrawingLines, readDrawing, type DrawingLines, type DrawingProblem, type PositionLine } from './format.ts';
 import { boxesOverlap, inflate, isOrthogonal, manhattan, pointKey, pt, samePoint, segmentCrossesBox, segmentsOf, unionBoxes, type Box, type Direction, type Point } from './geometry.ts';
@@ -133,7 +133,9 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     const d = emptyDrawing();
     for (const [k, p] of given) d.parts.set(k, p);
     d.grounds = lines.grounds.map((g) => ({ at: g.at, rot: g.rot }));
-    d.wires = lines.wires.map((w) => w.slice());
+    // The copper merged once, before anything looks at it: wire drawn over wire (a share link may
+    // repeat one piece two thousand times) becomes one piece, so no later step sees the repeats.
+    d.wires = normalizeWires(lines.wires);
     d.labels = lines.labels.map((l) => {
       const node = labelNode(circuit, l.node);
       return l.side ? { node, at: l.at, side: l.side } : { node, at: l.at };
@@ -215,10 +217,16 @@ function placeIsFree(circuit: Circuit, drawing: Drawing, key: string, placement:
  * the netlist does not have become orphans, kept as written.
  */
 function labelsInStep(circuit: Circuit, drawing: Drawing, lines: DrawingLines, problems: DrawingProblem[], orphans: string[]): NodeLabel[] {
-  const pins = drawnPins(circuit, drawing);
-  const islands = findIslands(drawing.wires, pins.map((p) => p.at));
-  const nodesOn = new Map<number, Set<string>>();
-  pins.forEach((p, i) => (nodesOn.get(islands.anchors[i]!) ?? nodesOn.set(islands.anchors[i]!, new Set()).get(islands.anchors[i]!)!).add(p.node));
+  // The copper's islands and their nodes, worked out only if some label's node is gone.
+  let found: { islands: Islands; nodesOn: Map<number, Set<string>> } | undefined;
+  const copper = (): { islands: Islands; nodesOn: Map<number, Set<string>> } => {
+    if (found) return found;
+    const pins = drawnPins(circuit, drawing);
+    const islands = findIslands(drawing.wires, pins.map((p) => p.at));
+    const nodesOn = new Map<number, Set<string>>();
+    pins.forEach((p, i) => (nodesOn.get(islands.anchors[i]!) ?? nodesOn.set(islands.anchors[i]!, new Set()).get(islands.anchors[i]!)!).add(p.node));
+    return (found = { islands, nodesOn });
+  };
   const labelled = new Set(drawing.labels.filter((l) => circuit.nodes.has(l.node)).map((l) => l.node));
   const out: NodeLabel[] = [];
   drawing.labels.forEach((label, i) => {
@@ -227,6 +235,7 @@ function labelsInStep(circuit: Circuit, drawing: Drawing, lines: DrawingLines, p
       return;
     }
     const line = lines.labels[i];
+    const { islands, nodesOn } = copper();
     const island = islands.at(label.at);
     const nodes = island === undefined ? undefined : nodesOn.get(island);
     const only = nodes && nodes.size === 1 ? [...nodes][0]! : undefined;
@@ -317,7 +326,8 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   if (segs.some(([a, b]) => !isOrthogonal(a, b))) {
     problems.push({ kind: 'slanted-wire', severity: 'warning', message: 'Some wires are slanted; they are kept, but they connect only at their ends.' });
   }
-  const before = JSON.stringify(normalizeWires(segs));
+  // The wires as given, to tell at the end whether repairs redrew them.
+  const givenSegs = segs.slice();
   const pinsOf = (): DrawnPin[] => drawnPins(circuit, drawing);
   const nodeOrder = new Map([...circuit.nodes.keys()].map((n, i) => [n, i]));
 
@@ -383,7 +393,8 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
       (islandNodes.get(island) ?? islandNodes.set(island, new Set()).get(island)!).add(p.node);
       if (p.ground !== undefined) grounded.add(island);
     });
-    const copper = copperOf(circuit, drawing, segs);
+    // Each node's copper, worked out only if a label must move onto it.
+    let copper: Map<string, Point[]> | undefined;
     const onCopper: NodeLabel[] = [];
     for (const label of drawing.labels) {
       const known = circuit.nodes.has(label.node);
@@ -394,7 +405,8 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
         onCopper.push(label);
         continue;
       }
-      const near = known ? nearest(copper.get(label.node) ?? [], label.at, 2) : undefined;
+      copper ??= known ? copperOf(circuit, drawing, segs, islands) : undefined;
+      const near = known ? nearest(copper?.get(label.node) ?? [], label.at, 2) : undefined;
       if (near) {
         onCopper.push({ ...cloneLabel(label), at: near });
         problems.push({ kind: 'label-moved', severity: 'info', message: `The name of node ${label.node} was moved onto its node's wire.` });
@@ -440,10 +452,10 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   let obstacles: Obstacles | undefined;
   for (const node of circuit.nodes.keys()) {
     for (let guard = 0; guard < 64; guard++) {
-      const groups = groupsOf(circuit, drawing, segs, node);
+      const { groups, islands } = groupsOf(circuit, drawing, segs, node);
       if (groups.length <= 1) break;
       obstacles ??= obstaclesOf(circuit, drawing, segs, options);
-      const path = budget.left > 0 ? routeBetween(circuit, drawing, segs, node, groups, obstacles, budget) : undefined;
+      const path = budget.left > 0 ? routeBetween(circuit, drawing, segs, node, groups, obstacles, budget, islands) : undefined;
       if (path && path.length < 2) break;
       if (path) {
         for (let i = 1; i < path.length; i++) segs.push([path[i - 1]!, path[i]!]);
@@ -496,17 +508,62 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     }
   }
 
+  // The copper as it will be written, merged. Merging pieces that lie on each other (a cut can leave
+  // a slanted piece on top of another) can leave an end that only the copy kept from leading
+  // nowhere: it is cut too, so that reading the lines back gives this same drawing.
   drawing.wires = normalizeWires(segs);
-  if ((cut || routed) && JSON.stringify(drawing.wires) !== before) {
+  for (let round = 0; round < 8; round++) {
+    const settled = normalizeWires(pruneDangling(toSegments(drawing.wires), pinsOf().map((p) => p.at), drawing.labels.map((l) => l.at)));
+    if (sameWires(settled, drawing.wires)) break;
+    drawing.wires = settled;
+  }
+  if ((cut || routed) && redrawn(givenSegs, drawing.wires)) {
     problems.push({ kind: 'wires-redrawn', severity: 'info', message: 'Some wires were redrawn so that the drawing connects what the netlist connects.' });
   }
   return drawing;
 }
 
-/** Copper points of each node: pins, ground pins and every grid point of its wires. */
-function copperOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]): Map<string, Point[]> {
+/** True when two lists of polylines are the same, point for point. */
+function sameWires(a: readonly (readonly Point[])[], b: readonly (readonly Point[])[]): boolean {
+  return a.length === b.length && a.every((w, i) => w.length === b[i]!.length && w.every((p, j) => samePoint(p, b[i]![j]!)));
+}
+
+/**
+ * True when the wires now (merged) differ from the wires as given. A different amount of copper
+ * (grid steps covered, on the grid) settles it at once; otherwise the given wires are merged and
+ * compared.
+ */
+function redrawn(given: readonly Segment[], now: readonly (readonly Point[])[]): boolean {
+  const steps = (segs: readonly (readonly [Point, Point])[]): number => {
+    const seen = new Set<string>();
+    for (const [a, b] of segs) {
+      const n = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      const g = isOrthogonal(a, b) ? n : gcdOf(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      const dx = (b.x - a.x) / g;
+      const dy = (b.y - a.y) / g;
+      for (let k = 0; k < g; k++) {
+        const p = pt(a.x + dx * k, a.y + dy * k);
+        const q = pt(p.x + dx, p.y + dy);
+        seen.add(p.x < q.x || (p.x === q.x && p.y < q.y) ? `${pointKey(p)} ${pointKey(q)}` : `${pointKey(q)} ${pointKey(p)}`);
+      }
+    }
+    return seen.size;
+  };
+  const nowSegs = now.flatMap((w) => segmentsOf(w));
+  const whole = [...given, ...nowSegs].every(([a, b]) => [a.x, a.y, b.x, b.y].every(Number.isInteger));
+  if (whole && steps(given) !== steps(nowSegs)) return true;
+  return !sameWires(now, normalizeWires(given));
+}
+
+const gcdOf = (m: number, n: number): number => {
+  while (n) [m, n] = [n, m % n];
+  return m;
+};
+
+/** Copper points of each node: pins, ground pins and every grid point of its wires (`islands`: of these segments and pins, when already found). */
+function copperOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], known?: Islands): Map<string, Point[]> {
   const pins = drawnPins(circuit, drawing);
-  const islands = findIslands(segs, pins.map((p) => p.at));
+  const islands = known ?? findIslands(segs, pins.map((p) => p.at));
   const nodeOfIsland = new Map<number, string>();
   pins.forEach((p, i) => nodeOfIsland.set(islands.anchors[i]!, p.node));
   const out = new Map<string, Point[]>();
@@ -548,8 +605,8 @@ interface Group {
   labelled: boolean;
 }
 
-/** The pieces of a node: islands of its pins, joined where ground symbols or labels join them by name. */
-function groupsOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string): Group[] {
+/** The pieces of a node: islands of its pins, joined where ground symbols or labels join them by name (and the islands they were found from). */
+function groupsOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string): { groups: Group[]; islands: Islands } {
   const pins = drawnPins(circuit, drawing);
   const islands = findIslands(segs, pins.map((p) => p.at));
   const named = new Set<number>();
@@ -579,7 +636,7 @@ function groupsOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], 
     }
     g.pins.push(p);
   });
-  return groups;
+  return { groups, islands };
 }
 
 /**
@@ -616,10 +673,9 @@ function obstaclesOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[
   };
 }
 
-/** A new wire from the first piece of a node to the nearest other piece, or undefined. */
-function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string, groups: readonly Group[], obstacles: Obstacles, budget: { left: number }): Point[] | undefined {
+/** A new wire from the first piece of a node to the nearest other piece, or undefined (`islands`: of these segments and the drawing's pins, as groupsOf found them). */
+function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string, groups: readonly Group[], obstacles: Obstacles, budget: { left: number }, islands: Islands): Point[] | undefined {
   const pins = drawnPins(circuit, drawing);
-  const islands = findIslands(segs, pins.map((p) => p.at));
   const pinOutward = new Map<string, RouteEnd>();
   for (const [k, list] of obstacles.outward) {
     const own = list.find((x) => x.node === node);
