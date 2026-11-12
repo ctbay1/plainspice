@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { stripDrawing } from '../../src/schematic/index.ts';
 import { encodeShare } from '../../src/share/link.ts';
+import { minUnitFor } from '../../src/notebook/fit.ts';
 import { chooseExample, closePanel, drawing, drawnText, expectSolved, gridPoint, hintLine, isPhone, openApp, openCard, partOnDrawing, setNetlist, settle, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
 
 test.beforeEach(({ page }) => {
@@ -414,4 +415,30 @@ test('a very short window (a laptop at 400 %): a calm status folds to its dot in
   await chooseExample(page, 'Mistake 1: no ground (node 0)');
   await expect(status).toHaveAttribute('data-tone', 'bad');
   expect((await status.locator('.status__main').boundingBox())!.width).toBeGreaterThan(20);
+});
+
+test('a drawing shown as drawn opens at the smallest readable size, and Fit shows all of it', async ({ page }) => {
+  await openApp(page);
+  await chooseExample(page, 'Example 3: open circuit (V_Th)');
+  await expectSolved(page);
+  await page.getByRole('button', { name: t('asInVideo'), exact: true }).click();
+  await expect(hintLine(page)).toHaveText(t('hintAsInVideo'));
+  // As much of it as can be read at once (it opened at 30 px a unit, twice that, with only V1 and R1 in view).
+  await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
+  // More, then "Fit the drawing to the window": all of it, smaller than readable if it must be.
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  await bar.getByRole('button', { name: t('barMore') }).click();
+  const more = page.getByRole('dialog', { name: t('barMore') });
+  await more.getByRole('button', { name: t('zoomFit'), exact: true }).click();
+  await more.getByRole('button', { name: t('moreClose') }).click();
+  await expect(more).toHaveCount(0);
+  await expect.poll(() => unitNow(page)).toBeLessThan(minUnitFor());
+  const free = await freePaper(page);
+  await expect.poll(async () => (await inkOnScreen(page)).x1).toBeLessThanOrEqual(free.width);
+  const ink = await inkOnScreen(page);
+  expect(ink.x0).toBeGreaterThanOrEqual(0);
+  expect(ink.y0).toBeGreaterThanOrEqual(free.top);
+  expect(ink.y1).toBeLessThanOrEqual(free.bottom);
+  expect(await partsInView(page, ['V1', 'R1', 'R2', 'R3', 'G1'])).toBe(true);
+  await expect(hintLine(page)).toHaveText(t('hintPhone'));
 });

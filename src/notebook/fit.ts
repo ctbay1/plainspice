@@ -6,7 +6,7 @@
  * The words on the drawing have a smallest size on screen (minUnit). When the whole circuit does
  * not fit at that size (a wide circuit on a phone), readability wins: the drawing keeps the size,
  * the part that matters (`focus`: the selected part, say) is kept in view, and the reader pans to
- * the rest.
+ * the rest. Only when the reader asks to see it whole (Fit) is it drawn smaller (WHOLE_MIN_UNIT).
  * However the reader pans or zooms, some of the drawing stays in view (keepInView).
  */
 import type { Box } from '../schematic/index.ts';
@@ -90,6 +90,13 @@ export function fitView(bounds: Box, size: Size, insets: Insets, options: FitOpt
   const y = axis(bounds.y0, bounds.y1, focus.y0, focus.y1, fy0, fy1);
   return { unit, x, y, whole: bw * unit <= fw + 0.5 && bh * unit <= fh + 0.5 };
 }
+
+/**
+ * The smallest size the whole drawing is ever fitted at, in pixels per grid unit, when the reader
+ * asks to see it whole (Fit) or a phone shows it whole while it is edited: its words are then too
+ * small to read (two fingers or Zoom in bring them back), but every part is on the screen.
+ */
+export const WHOLE_MIN_UNIT = 4;
 
 /**
  * All of the drawing (`ink`: what is drawn, in grid units, not the room kept around it for longer

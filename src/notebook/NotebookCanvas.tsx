@@ -5,10 +5,11 @@
  * owns the netlist, the runs and the panels.
  *
  * - Fit: the whole drawing in the free part of the window (`insets` say what the page covers),
- *   never so small that its words are too small to read (`minUnit`, fit.ts); then the reader can
- *   pan (drag the paper, from a part or a name too, or scroll) and zoom (Ctrl + wheel, pinch,
- *   zoomBy), never so far that the drawing leaves the window (keepInView). `fitKey` fits again. A
- *   sheet that made the view move (to keep the selected item clear of it) moves it back when it goes.
+ *   never so small that its words are too small to read (`minUnit`, fit.ts), unless the page asks
+ *   for it whole (`fitWhole`: the reader's Fit); then the reader can pan (drag the paper, from a
+ *   part or a name too, or scroll) and zoom (Ctrl + wheel, pinch, zoomBy), never so far that the
+ *   drawing leaves the window (keepInView). `fitKey` fits again. A sheet that made the view move
+ *   (to keep the selected item clear of it) moves it back when it goes.
  * - Keyboard and screen readers: every part and node is a real button over the drawing, with one
  *   tab stop for the drawing (roving focus). Arrow keys move along the wires (navigate.ts:
  *   neighbour), Home and End go to the first and last item in reading order, Enter opens the
@@ -35,7 +36,7 @@ import { elementInfo } from '../spice/elements.ts';
 import { assignNodeColours } from '../theme/nodes.ts';
 import { Drawing, UNIT_PX, itemKey, type PenMarks } from './Drawing.tsx';
 import { EditLayer, type EditMarks } from './EditLayer.tsx';
-import { fitView, inkInView, keepInView, zoomAt, type Insets, type Size, type View } from './fit.ts';
+import { WHOLE_MIN_UNIT, fitView, inkInView, keepInView, zoomAt, type Insets, type Size, type View } from './fit.ts';
 import { TYPE } from './measure.ts';
 import { symbolBoxes } from './place.ts';
 import { inkBoxes, type DrawingResults } from './results.ts';
@@ -185,6 +186,12 @@ export interface NotebookCanvasProps {
   roleDescription?: string;
   /** 'height': a wide drawing as tall as the window allows, read from its left end (fit.ts). */
   fill?: 'whole' | 'height';
+  /**
+   * Fit the whole drawing, smaller than its words' readable size (`minUnit`) if it must be, down to
+   * WHOLE_MIN_UNIT: the reader asked to see it whole (Fit), or a phone shows it whole while it is
+   * edited. Zooming out never goes past the size the view has then.
+   */
+  fitWhole?: boolean;
   /** Fit this part of the drawing (grid units) instead of all of it: a phone's view while a value is typed. */
   frame?: Box | undefined;
   /** A pan the page asks for while the view follows the fit (room for a card), in pixels. */
@@ -288,6 +295,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const [rx0, ry0, rx1, ry1] = fr ? [fr.x0, fr.y0, fr.x1, fr.y1] : [NaN, NaN, NaN, NaN];
   const frame = useMemo((): Box | undefined => (Number.isNaN(rx0) ? undefined : { x0: rx0, y0: ry0, x1: rx1, y1: ry1 }), [rx0, ry0, rx1, ry1]);
   const fill = props.fill ?? 'whole';
+  const fitWhole = !!props.fitWhole;
 
   const given = props.colours;
   const colours = useMemo(() => given ?? assignNodeColours(s.netlist.nodes.keys()), [given, s.netlist]);
@@ -310,9 +318,11 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const selectedBox = selected ? itemBox(s, selected) : undefined;
   const fitNow = useCallback((): View => {
     const focus = frame ? undefined : selectedBox ? grow(selectedBox, 2.5) : focusBox;
-    const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit, maxUnit, fill: frame ? 'whole' : fill, ...(focus ? { focus } : {}) });
+    // Asked for whole: as small as that takes (down to WHOLE_MIN_UNIT), words readable or not.
+    const lo = fitWhole && !frame ? Math.min(minUnit, WHOLE_MIN_UNIT) : minUnit;
+    const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit: lo, maxUnit, fill: frame || fitWhole ? 'whole' : fill, ...(focus ? { focus } : {}) });
     return { unit: f.unit, x: f.x, y: f.y };
-  }, [bounds, size, insets, minUnit, maxUnit, padding, selectedBox, focusBox, frame, fill]);
+  }, [bounds, size, insets, minUnit, maxUnit, padding, selectedBox, focusBox, frame, fill, fitWhole]);
   const applyFit = useCallback((): void => {
     const f = fitNow();
     setView((v) => (sameView(v, f) ? v : f));
@@ -345,7 +355,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     }
     // While held, only a new window size, frame or fitKey fits again, or a sheet or panel arriving: not
     // the drawing's words, nor the page's own bars growing or shrinking a little (a status line that wraps).
-    const inputs = JSON.stringify([size, fitKey, frame, fill, minUnit, maxUnit, padding]);
+    const inputs = JSON.stringify([size, fitKey, frame, fill, fitWhole, minUnit, maxUnit, padding]);
     const same = inputs === lastInputs.current;
     lastInputs.current = inputs;
     const was = heldInsets.current;
@@ -400,7 +410,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     sheetShift.current = shift;
     if (next !== now) setView((v) => (v && sameView(v, now) ? next : v ? intoView(v) : v));
     // Not on every change of the view: the reader's own pan and zoom are not undone while an item is selected.
-  }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, minUnit, maxUnit, padding, hasView]);
+  }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, fitWhole, minUnit, maxUnit, padding, hasView]);
 
   // What is drawn: the fitted view, panned by the page's offset while it follows the fit.
   const shown = useMemo((): View | undefined => (view && !moved && (ox || oy) ? { unit: view.unit, x: view.x + ox, y: view.y + oy } : view), [view, moved, ox, oy]);
@@ -439,6 +449,13 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     } else setView((v) => (v ? kept(next(v)) : v));
   }, []);
 
+  /**
+   * How far the reader may zoom, however they zoom (the buttons, Ctrl + wheel, two fingers): out to half
+   * the words' readable size, in to two and a half times the largest fit; never a jump from a view
+   * already outside those (a drawing fitted whole, smaller than that).
+   */
+  const zoomLimits = useCallback((v: View): { minUnit: number; maxUnit: number } => ({ minUnit: Math.min(minUnit * 0.5, v.unit), maxUnit: Math.max(maxUnit * 2.5, v.unit) }), [minUnit, maxUnit]);
+
   const focusItem = useCallback(
     (item: NavItem): void => {
       const b = buttons.current.get(itemKey(item));
@@ -459,7 +476,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       zoomBy(factor: number) {
         const cx = (insets.left + size.width - insets.right) / 2;
         const cy = (insets.top + size.height - insets.bottom) / 2;
-        moveView((v) => zoomAt(v, factor, { x: cx, y: cy }, { minUnit: Math.min(minUnit, v.unit), maxUnit: Math.max(maxUnit * 2, v.unit) }));
+        moveView((v) => zoomAt(v, factor, { x: cx, y: cy }, zoomLimits(v)));
       },
       panBy(dx: number, dy: number) {
         moveView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
@@ -500,7 +517,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         setView((v) => (v ? { ...v, x: v.x + o.x, y: v.y + o.y } : v));
       },
     }),
-    [focusItem, applyFit, insets, size, moveView, minUnit, maxUnit],
+    [focusItem, applyFit, insets, size, moveView, zoomLimits],
   );
 
   // Wheel: Ctrl (or a trackpad pinch) zooms about the pointer; otherwise the paper scrolls. A native
@@ -513,7 +530,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey) {
         const factor = Math.exp(-e.deltaY * 0.0045);
-        moveView((v) => zoomAt(v, factor, { x: e.clientX - r.left, y: e.clientY - r.top }, { minUnit: minUnit * 0.5, maxUnit: maxUnit * 2.5 }));
+        moveView((v) => zoomAt(v, factor, { x: e.clientX - r.left, y: e.clientY - r.top }, zoomLimits(v)));
       } else moveView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };
     // The paper never scrolls: a part's button that gets the focus near an edge would otherwise
@@ -530,7 +547,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('scroll', onScroll);
     };
-  }, [moveView, minUnit, maxUnit]);
+  }, [moveView, zoomLimits]);
 
   // Dragging the paper pans; two fingers pinch to zoom; a tap on empty paper lets go of the selection.
   // The editor may take a press (a part to drag, a click to place a part or end a wire).
@@ -652,7 +669,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const r = el.getBoundingClientRect();
       const factor = d / Math.max(1, pinch.current.d);
       pinch.current = { d };
-      moveView((v) => zoomAt(v, factor, { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, { minUnit: minUnit * 0.5, maxUnit: maxUnit * 2.5 }));
+      moveView((v) => zoomAt(v, factor, { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, zoomLimits(v)));
       return;
     }
     const g = gesture.current;

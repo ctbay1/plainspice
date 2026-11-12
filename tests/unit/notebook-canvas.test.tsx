@@ -427,4 +427,26 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
     act(() => ref.current!.panBy(-400, 0));
     expect(views.at(-1)!.whole).toBe(false);
   });
+
+  it('asked for the whole drawing (Fit), shows all of it, smaller than readable if it must; zooming out goes as far as two fingers do, never jumping in', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    // At 60 px a unit (the readable size here) p02-4 is far wider than the window.
+    const props = { ...base(views), minUnit: 60, maxUnit: 60 };
+    const { rerender } = render(<NotebookCanvas ref={ref} {...props} />);
+    expect(views.at(-1)!.unit).toBe(60);
+    expect(views.at(-1)!.whole).toBe(false);
+    rerender(<NotebookCanvas ref={ref} {...props} fitWhole />);
+    const whole = views.at(-1)!;
+    expect(whole.unit).toBeLessThan(30);
+    expect(whole.whole).toBe(true);
+    // Zoom out from there: no jump in to half the readable size (30), which is bigger.
+    act(() => ref.current!.zoomBy(1 / 1.2));
+    expect(views.at(-1)!.unit).toBeCloseTo(whole.unit, 6);
+    // Without it, Zoom out goes down to half the readable size, as two fingers do (it stopped at the readable size).
+    rerender(<NotebookCanvas ref={ref} {...props} fitKey="again" />);
+    expect(views.at(-1)!.unit).toBe(60);
+    for (let i = 0; i < 8; i++) act(() => ref.current!.zoomBy(1 / 1.2));
+    expect(views.at(-1)!.unit).toBeCloseTo(30, 6);
+  });
 });

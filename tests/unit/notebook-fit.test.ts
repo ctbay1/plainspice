@@ -1,7 +1,7 @@
 /** src/notebook/fit.ts: the drawing fitted to the window, its words never too small to read. */
 import { describe, expect, it } from 'vitest';
 import { MIN_TEXT_PX, NO_INSETS, TYPE, fitView, minUnitFor, toGrid, toScreen, zoomAt } from '../../src/notebook/index.ts';
-import { KEEP_IN_VIEW_PX, inkInView, keepInView } from '../../src/notebook/fit.ts';
+import { KEEP_IN_VIEW_PX, WHOLE_MIN_UNIT, inkInView, keepInView } from '../../src/notebook/fit.ts';
 
 const box = { x0: -2, y0: -3, x1: 18, y1: 7 }; // 20 × 10 grid units
 const size = { width: 1000, height: 600 };
@@ -143,5 +143,19 @@ describe('inkInView: everything drawn is in the free part of the window (phone r
     expect(inkInView({ unit: 10, x: 10, y: 50 }, ink, size, insets)).toBe(false);
     expect(inkInView({ unit: 10, x: 20, y: 600 - 100 - 150 + 3 }, ink, size, insets)).toBe(true);
     expect(inkInView({ unit: 10, x: 20, y: 600 - 100 - 150 + 10 }, ink, size, insets)).toBe(false);
+  });
+});
+
+describe('a drawing fitted whole when the reader asks (phone review, the shared ladder)', () => {
+  it('goes below the readable size only as far as WHOLE_MIN_UNIT', () => {
+    const wide = { x0: 0, y0: 0, x1: 60, y1: 10 };
+    const phone = { width: 400, height: 700 };
+    const readable = fitView(wide, phone, NO_INSETS, { padding: 10, minUnit: minUnitFor(), maxUnit: 30 });
+    expect(readable.unit).toBe(minUnitFor());
+    expect(readable.whole).toBe(false);
+    const whole = fitView(wide, phone, NO_INSETS, { padding: 10, minUnit: Math.min(minUnitFor(), WHOLE_MIN_UNIT), maxUnit: 30 });
+    expect(whole.whole).toBe(true);
+    expect(whole.unit).toBeCloseTo((400 - 20) / 60, 6);
+    expect(WHOLE_MIN_UNIT).toBeLessThan(minUnitFor());
   });
 });

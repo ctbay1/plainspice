@@ -457,15 +457,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (schematic && schematic.netlist.text === openedText && viewFor !== circuitKey) setViewFor(circuitKey);
   }, [schematic, openedText, circuitKey, viewFor]);
   const phoneView = useMemo(() => {
-    if (!phone || !schematic) return { pans: false, turn: false, wholeUnit: 0 };
+    if (!phone || !schematic) return { turn: false };
     const w = win.width - 30;
     const h = win.height - 190;
     const unitOf = (b: Box): number => Math.min(w / Math.max(1e-6, b.x1 - b.x0), h / Math.max(1e-6, b.y1 - b.y0));
     const asDrawn = unitOf(schematic.scene.bounds);
     const pans = asDrawn < minUnit;
-    if (!(pans && portrait && isWide(schematic))) return { pans, turn: false, wholeUnit: asDrawn };
+    if (!(pans && portrait && isWide(schematic))) return { turn: false };
     const turnedNow = turnedQuarter(schematic);
-    return { pans, turn: !!turnedNow && unitOf(turnedNow.scene.bounds) > asDrawn * 1.15, wholeUnit: asDrawn };
+    return { turn: !!turnedNow && unitOf(turnedNow.scene.bounds) > asDrawn * 1.15 };
     // The circuit (and how many parts it has when typed in the Netlist panel: fitCount), not its text
     // as typed, nor an edit made on the drawing (the view never turns under the hand that edits it).
     // oxlint-disable-next-line react-hooks/exhaustive-deps
@@ -1238,8 +1238,19 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     [announce, phone, turned, turnWanted, turnedForEditing, schematic],
   );
 
+  /**
+   * The reader asked to see the whole drawing (Fit, "Show the whole drawing"): the fit it makes (its
+   * fitCount) shows all of it, smaller than its words' readable size if it must be, until something
+   * else fits the drawing again (a circuit opened, a part added in the Netlist panel).
+   */
+  const [wholeAt, setWholeAt] = useState<number | undefined>(undefined);
+  const fitCountNow = useRef(fitCount);
+  useLayoutEffect(() => {
+    fitCountNow.current = fitCount;
+  }, [fitCount]);
   const fit = useCallback(() => {
     setFitCount((n) => n + 1);
+    setWholeAt(fitCountNow.current + 1);
     canvas.current?.fit();
   }, []);
 
@@ -3168,12 +3179,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             // A computer keeps its fit when a card opens; a phone fits again above the card's sheet,
             // and again above the strip while a value is typed.
             fitKey={`${circuitKey}:${fitCount}:${phone ? 'phone' : 'desk'}:${seen === turned ? 'turned' : 'as-drawn'}:${phone && card ? `card:${card.key}` : ''}:${phone && nodeCard ? `node:${nodeCard.node}` : ''}:${strip ? 'edit' : ''}`}
-            // A phone shown as drawn while editing (it was turned to fit): the whole drawing, smaller,
-            // so no part is off the screen where the student was looking; two fingers zoom in.
-            minUnit={editingWhole ? Math.max(4, Math.min(minUnit, phoneView.wholeUnit)) : minUnit}
+            minUnit={minUnit}
             maxUnit={maxUnit}
             padding={phone ? 10 : 24}
-            fill={asDrawnOnPhone && phoneView.pans && !editingWhole ? 'height' : 'whole'}
+            // Whole, smaller than readable if it must be: a phone shown as drawn while editing (it was
+            // turned to fit), so no part is off the screen where the student was looking (two fingers
+            // zoom in); or the reader asked for it (Fit), except for a phone's card, which fits its part.
+            // Otherwise a drawing that does not fit (as drawn on a phone) opens at the smallest readable
+            // size, from its left end: as much of it as can be read at once.
+            fitWhole={editingWhole || (wholeAt === fitCount && !(phone && (card || nodeCard)))}
             focus={cardFocus}
             frame={frame}
             offset={offset}
