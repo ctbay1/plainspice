@@ -79,6 +79,35 @@ describe('a node\'s name is never written on a part (student:label-on-part)', ()
     expect(open.scene.nodeLabels.find((l) => l.node === 'b')!.at).toEqual({ x: 7, y: 0 });
   });
 
+  it('a name the student moves lands where it was put, even where it has no room, and is said to have moved only then', () => {
+    // n4 is written at R2's top pin (8,1); on R1's side of the junction every spot touches R1, R3 or
+    // their words. Before, each of these moves was "ok" and said "The name of node n4 moved." while
+    // the rebuild put the name back at (8,1) (critic of the fix round): the student's point now stays,
+    // with the spot the name has there kept (side=), as a part's side the student chose is kept.
+    const s = notebookSchematic(MOUSE_LADDER);
+    for (const to of [
+      { x: 8, y: 0 },
+      { x: 7, y: 0 },
+      { x: 6, y: 0 },
+      { x: 9, y: 0 },
+      { x: 10, y: 0 },
+    ]) {
+      const r = applyEdit(s, { kind: 'move-label', node: 'n4', to });
+      expect(r.ok, r.reason).toBe(true);
+      expect(r.summary).toBe('The name of node n4 moved.');
+      const after = notebookSchematic(r.text);
+      expect(after.drawing.labels.find((l) => l.node === 'n4')!.at).toEqual(to);
+      expect(after.scene.nodeLabels.find((l) => l.node === 'n4')!.at).toEqual(to);
+      expect(r.text).toMatch(new RegExp(`^\\*@ label n4 ${to.x} ${to.y} side=`, 'm'));
+    }
+    // Moved on to a point with room, it is written there with a spot chosen afresh, clear of everything.
+    const crowded = notebookSchematic(applyEdit(s, { kind: 'move-label', node: 'n4', to: { x: 8, y: 0 } }).text);
+    const back = applyEdit(crowded, { kind: 'move-label', node: 'n4', to: { x: 8, y: 1 } });
+    const roomy = notebookSchematic(back.text);
+    expect(roomy.scene.nodeLabels.find((l) => l.node === 'n4')!.at).toEqual({ x: 8, y: 1 });
+    expect(findOverlaps(roomy.scene)).toEqual([]);
+  });
+
   it('built with the editor, pin to pin as the reviewer did, ends with no name on a part or its words', () => {
     let s = notebookSchematic('');
     const step = (op: EditOp): void => {

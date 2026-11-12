@@ -1265,8 +1265,26 @@ function moveLabel(s: Schematic, op: Extract<EditOp, { kind: 'move-label' }>, op
   const next = cloneDrawing(s.drawing);
   const side = op.side === undefined ? label.side : op.side === 'auto' ? undefined : op.side;
   next.labels[index] = side ? { node, at: to, side } : { node, at: to };
-  return finish(s, [], next, { summary: S.labelMoved(said(s.circuit, node)), select: { node }, ...(op.side !== undefined && op.side !== 'auto' ? { chosen: { node } } : {}) }, options);
+  const summary = S.labelMoved(said(s.circuit, node));
+  const moved = finish(s, [], next, { summary, select: { node }, ...(op.side !== undefined && op.side !== 'auto' ? { chosen: { node } } : {}) }, options);
+  // A name with no spot of its own (side=) that has no room at a point is written at the nearest
+  // point of its copper where it has (scene.ts); a stored spot an edit puts something on may be let
+  // go (relaxStored), and then the same. But the student put this name at `to`: it stays there, at
+  // the spot it has there (else the one the scene picks there), kept as chosen, as a part's side the
+  // student chose is kept. So the name is where the preview showed it and the summary says, never
+  // somewhere else (student:label-on-part, critic of the fix round). Only 'auto' lets the scene choose.
+  if (!moved.ok || op.side === 'auto' || landed(moved.drawing, node, to)) return moved;
+  const free = cloneDrawing(next);
+  free.labels[index] = { node, at: to };
+  const spot = side ?? buildScene(s.circuit, free, options).nodeLabels[index]?.spot;
+  if (!spot) return refuse(s, S.failed);
+  next.labels[index] = { node, at: to, side: spot };
+  const kept = finish(s, [], next, { summary, select: { node }, chosen: { node } }, options);
+  return !kept.ok || landed(kept.drawing, node, to) ? kept : refuse(s, S.failed);
 }
+
+/** True when a drawing writes a node's name at a point. */
+const landed = (d: Drawing, node: string, at: Point): boolean => d.labels.some((l) => l.node === node && samePoint(l.at, at));
 
 function setSide(s: Schematic, op: Extract<EditOp, { kind: 'set-side' }>, options: EditOptions): EditResult {
   const part = s.circuit.parts.find((p) => p.key === lowerAscii(op.part));

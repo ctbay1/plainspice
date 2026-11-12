@@ -190,8 +190,15 @@ marks). Junction dots and terminals still steer where a name goes but no longer 
 it sits on. This is done only in the scene a schematic keeps, and `buildSchematic` writes the new
 point into the drawing, so the lines written by the next change in the drawing say what the page
 shows; the scenes made along the way (layout, routing, the turned phone view) leave every name
-where it is. A name the student drags onto a crowded point therefore moves to the nearest point
-where it can be read; a spot chosen on purpose (`side=`) never moves.
+where it is. A spot chosen on purpose (`side=`) never moves.
+
+A name the student moves (dragged, Shift+arrow keys, or "Move its name" on the node card) lands
+where it was put, even on a crowded point: there it keeps the spot it has (else the one the scene
+picks there, the least in the way), stored as `side=` and kept as the student's choice, as a part's
+side the student chose is kept. The first fix let the rebuild carry such a name back to a free point
+while the editor said "it can go here" and "The name of node n4 moved." (critic of the fix round).
+Moved on to a point with room, the stored spot is let go when it is in the way there (as any stored
+spot an edit puts something on), and the scene chooses afresh.
 
 **A ground symbol is never put where a wire runs through it** (student:phone-link-unturned). When
 the drawing has no ground symbol (the turned phone view never has one), the symbol goes at the
