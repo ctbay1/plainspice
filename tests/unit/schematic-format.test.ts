@@ -10,6 +10,7 @@ import {
   DRAWING_HEADER,
   MAX_DRAWING_LINES,
   MAX_WIRE_LENGTH,
+  MAX_WIRE_POINTS,
   NEW_TITLE,
   applyChanges,
   applyEdit,
@@ -19,11 +20,16 @@ import {
   parseDrawingLines,
   readDrawing,
   schematicConnectivity,
+  segmentCrossesBox,
+  segmentsOf,
   serializeDrawing,
   stripDrawing,
   type Schematic,
 } from '../../src/schematic/index.ts';
+import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
+import { TURN_LIMITS, turnedQuarter } from '../../src/notebook/turn.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { groundRowsAndWave } from './schematic-hostile.ts';
 
 const DIVIDER = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
 
@@ -294,6 +300,160 @@ describe('limits: a drawing line can never make the drawing slow or fail', () =>
       expect(performance.now() - t0, text).toBeLessThan(1000);
       expect(schematicConnectivity(s!), text).toEqual([]);
     }
+  });
+});
+
+/**
+ * security:F1: wire drawn over wire (a share link may repeat one piece two thousand times), slanted
+ * wire, and long chains of wire hanging from one pin, each at the format's limits, with the Notebook
+ * look's options (what the app builds). Each is built first at 100 lines, then at the limit: the work
+ * grows with the lines, never with their square (it took minutes before).
+ */
+describe('limits: wire over wire, slanted wire and long chains build quickly (security:F1)', () => {
+  const head = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0 m\n*@ R1 4 0 270\n*@ R2 7 3 0\n';
+  /** At most MAX_DRAWING_LINES with the three position lines. */
+  const MOST = MAX_DRAWING_LINES - 3;
+  const build = (wireLines: readonly string[]): { s: Schematic; ms: number } => {
+    const t0 = performance.now();
+    const s = buildSchematic(`${head}${wireLines.join('\n')}\n.end\n`, NOTEBOOK_OPTIONS);
+    return { s, ms: performance.now() - t0 };
+  };
+  /** Builds 100 lines, then `count`: both quick, and the drawing still connects what the netlist does. */
+  const quick = (make: (count: number) => string[], count: number): Schematic => {
+    const small = build(make(100));
+    // Limits ten times what this takes here, for slow or busy machines: before, 100 lines took 2 to
+    // 8 seconds and the limit 15 seconds to minutes.
+    expect(small.ms, 'at 100 lines').toBeLessThan(1000);
+    const { s, ms } = build(make(count));
+    expect(ms, `at ${count} lines`).toBeLessThan(5000);
+    expect(s.problems.map((p) => p.kind)).not.toContain('too-many-lines');
+    expect(schematicConnectivity(s)).toEqual([]);
+    return s;
+  };
+  /** The wires the circuit needs (V1 to R1, R1 to R2, ground), and none of the hostile ones. */
+  const onlyTheCircuit = (s: Schematic): void => {
+    const length = s.drawing.wires.flatMap((w) => w.slice(1).map((p, i) => Math.abs(p.x - w[i]!.x) + Math.abs(p.y - w[i]!.y))).reduce((a, b) => a + b, 0);
+    expect(length).toBeLessThan(20);
+  };
+  /** A chain from R2's ground pin (7,5): along x and back in bands three rows apart, a square wave (or a zigzag of slanted pieces), lines of ten points each continuing the last. */
+  const chain = (slanted: boolean) => (count: number): string[] => {
+    const pts: [number, number][] = [[7, 5]];
+    let used = 0;
+    let [x, y, dir, band, up] = [7, 5, 1, 0, false];
+    while (pts.length < MAX_WIRE_POINTS && pts.length < count * 9 + 1) {
+      let [nx, ny] = [x, y];
+      if (slanted || pts.length % 2 === 1) nx = x + dir;
+      if (slanted || pts.length % 2 === 0) [ny, up] = [up ? y - 1 : y + 1, !up];
+      if (nx > COORD_LIMIT - 10 || nx < 7) [nx, ny, dir, band, up] = [x, 5 + 3 * (band + 1), -dir, band + 1, false];
+      const step = Math.abs(nx - x) + Math.abs(ny - y);
+      if (used + step > MAX_WIRE_LENGTH) break;
+      [used, x, y] = [used + step, nx, ny];
+      pts.push([x, y]);
+    }
+    const out: string[] = [];
+    for (let i = 0; i + 1 < pts.length && out.length < count; i += 9) out.push(`*@ wire ${pts.slice(i, i + 10).map(([a, b]) => `${a},${b}`).join(' ')}`);
+    return out;
+  };
+
+  it(`draws ${MOST} lines of one piece of wire drawn back and forth over itself, as one piece that leads nowhere`, () => {
+    const s = quick((n) => Array.from({ length: n }, () => '*@ wire 7,5 8,5 7,5 8,5 7,5 8,5 7,5 8,5 7,5 8,5'), MOST);
+    // The piece hangs from R2's ground pin and leads nowhere, so it goes (no stub right of R2).
+    onlyTheCircuit(s);
+  });
+
+  it(`draws ${MOST} lines of slanted wire drawn back and forth over itself (as many as the wire's length allows)`, () => {
+    const s = quick((n) => Array.from({ length: n }, () => '*@ wire 7,5 8,6 7,5 8,6 7,5 8,6 7,5 8,6 7,5 8,6'), MOST);
+    expect(s.problems.map((p) => p.kind)).toContain('slanted-wire');
+    onlyTheCircuit(s);
+  });
+
+  it(`draws ${MOST} straight pieces lying over each other, from one pin`, () => {
+    const s = quick((n) => Array.from({ length: n }, (_, i) => `*@ wire 7,5 ${8 + (i % 9)},5`), MOST);
+    onlyTheCircuit(s);
+  });
+
+  it('draws 1111 slanted zigzags all over the page (the most the wire length allows)', () => {
+    const zigzags = (n: number): string[] =>
+      Array.from({ length: n }, (_, i) => {
+        const [x0, y] = [-1900 + (i % 190) * 20, -1900 + Math.floor(i / 190) * 4];
+        return `*@ wire ${Array.from({ length: 10 }, (_, k) => `${x0 + k},${y + (k % 2)}`).join(' ')}`;
+      });
+    expect(zigzags(1111).join('').length).toBeGreaterThan(0);
+    const s = quick(zigzags, 1111);
+    onlyTheCircuit(s);
+  });
+
+  it('cuts away a staircase of wire hanging from one pin, at the limit of wire points', () => {
+    const lines = chain(false)(MOST);
+    expect(lines.length).toBe(MOST);
+    const s = quick(chain(false), MOST);
+    onlyTheCircuit(s);
+  });
+
+  it('cuts away a chain of slanted wire hanging from one pin, at the limit of wire length', () => {
+    const lines = chain(true)(MOST);
+    const length = lines.flatMap((l) => l.split(' ').slice(2)).length;
+    expect(length).toBeGreaterThan(MAX_WIRE_LENGTH / 2 - 10);
+    const s = quick(chain(true), MOST);
+    onlyTheCircuit(s);
+  });
+
+  it('builds a drawing with a wire through every point of ground\'s wire, beside a 9,900-piece wave, its ground symbol clear of wire; the phone does not try to turn it (critic of the fix round)', () => {
+    const text = groundRowsAndWave(25, 199, 9900);
+    expect(text.length).toBeGreaterThan(100_000);
+    const { s, ms } = (() => {
+      const t0 = performance.now();
+      const built = buildSchematic(text, NOTEBOOK_OPTIONS);
+      return { s: built, ms: performance.now() - t0 };
+    })();
+    // Inside the format's limits: every line is read and used.
+    expect(s.problems.map((p) => p.kind)).not.toContain('too-many-lines');
+    expect(s.kept).toEqual([]);
+    expect(s.drawing.wires.reduce((n, w) => n + w.length - 1, 0)).toBeGreaterThan(9900);
+    // About half a second here, cold (4 to 6 s before, the ground search 2.4 s of it); the limit allows
+    // for a busy machine, so it is no guard on the search itself: schematic-ground-search.test.ts counts
+    // the search's work, which does not depend on the machine.
+    expect(ms).toBeLessThan(5000);
+    // No point of ground's wire is clear, so the symbol hangs on a one-unit lead below its lowest end,
+    // with no wire through it, and the drawing connects what the netlist connects.
+    expect(s.problems.map((p) => p.kind)).toContain('ground-added');
+    expect(s.drawing.grounds).toEqual([{ at: { x: 0, y: 25 }, rot: 0 }]);
+    const [ground] = s.scene.grounds;
+    for (const w of s.drawing.wires) for (const [a, b] of segmentsOf(w)) expect(segmentCrossesBox(a, b, ground!.box)).toBe(false);
+    expect(schematicConnectivity(s)).toEqual([]);
+    // Far beyond what a phone can show turned: it is shown as drawn, at once (before: 5 s here, to find
+    // no clean turn).
+    const t1 = performance.now();
+    expect(turnedQuarter(s)).toBeUndefined();
+    expect(performance.now() - t1).toBeLessThan(1000);
+  });
+
+  it('turns a drawing just inside the phone\'s limits quickly, and none beyond them', () => {
+    // 900 pieces of wire, a ground line drawn through every place for its symbol: four tries at most.
+    const near = buildSchematic(groundRowsAndWave(3, 30, 900), NOTEBOOK_OPTIONS);
+    const pieces = near.drawing.wires.reduce((n, w) => n + w.length - 1, 0);
+    expect(pieces).toBeLessThanOrEqual(TURN_LIMITS.wirePieces);
+    const t0 = performance.now();
+    turnedQuarter(near);
+    // About 0.1 s here.
+    expect(performance.now() - t0).toBeLessThan(2000);
+    // One part or one piece of wire beyond: not tried.
+    const parts = Array.from({ length: TURN_LIMITS.parts + 1 }, (_, i) => `R${i + 1} a${i} a${i + 1} 1k`);
+    const many = buildSchematic(`* many parts\n${parts.join('\n')}\n.op\n.end\n`, NOTEBOOK_OPTIONS);
+    expect(many.scene.parts.length).toBe(TURN_LIMITS.parts + 1);
+    expect(turnedQuarter(many)).toBeUndefined();
+    const wavy = buildSchematic(groundRowsAndWave(3, 30, TURN_LIMITS.wirePieces + 200), NOTEBOOK_OPTIONS);
+    expect(wavy.drawing.wires.reduce((n, w) => n + w.length - 1, 0)).toBeGreaterThan(TURN_LIMITS.wirePieces);
+    expect(turnedQuarter(wavy)).toBeUndefined();
+  });
+
+  it('writes a drawing that reads back the same, even where a cut left one slanted wire on another', () => {
+    // The longer wire leads nowhere and is cut back onto the shorter one; the shorter then leads nowhere too.
+    const s = buildSchematic(`${head}*@ wire 7,5 18,6\n*@ wire 7,5 29,7\n.end\n`, NOTEBOOK_OPTIONS);
+    const written = serializeDrawing(s.circuit, s.drawing);
+    const again = buildSchematic(`${head.slice(0, head.indexOf('* plainspice-drawing'))}${written.join('\n')}\n.end\n`, NOTEBOOK_OPTIONS);
+    expect(serializeDrawing(again.circuit, again.drawing)).toEqual(written);
+    expect(written.some((l) => l.includes('18,6') || l.includes('29,7'))).toBe(false);
   });
 });
 

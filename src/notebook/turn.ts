@@ -116,13 +116,25 @@ function turnedBy(s: Schematic, k: number, freshNames = false): Schematic | unde
 }
 
 /**
+ * The largest drawing a phone tries to turn: each try rebuilds the whole drawing (up to four tries),
+ * so a drawing line with thousands of pieces of wire (a share link, security:F1) kept a phone busy
+ * for half a minute before it found no clean turn. No circuit a student draws comes near (the largest
+ * example has 9 parts and 21 pieces of wire), and a drawing this large does not fit a phone at a
+ * size its words can be read, turned or not: it is shown as drawn.
+ */
+export const TURN_LIMITS = { parts: 100, wirePieces: 1000 } as const;
+
+/**
  * The schematic with its drawing turned a quarter clockwise, or undefined when no turned drawing is
- * clean. When the parts' words do not fit between the rails once turned (a source's long control
- * label, say), the rails are first set twice as far apart, the parts' leads lengthened to reach them;
- * when a node's name has no room at its point once turned, the names are placed afresh.
+ * clean, or the drawing is beyond TURN_LIMITS. When the parts' words do not fit between the rails
+ * once turned (a source's long control label, say), the rails are first set twice as far apart, the
+ * parts' leads lengthened to reach them; when a node's name has no room at its point once turned, the
+ * names are placed afresh.
  */
 export function turnedQuarter(s: Schematic): Schematic | undefined {
   if (!s.scene.parts.length) return undefined;
+  const pieces = s.drawing.wires.reduce((n, w) => n + Math.max(0, w.length - 1), 0);
+  if (s.scene.parts.length > TURN_LIMITS.parts || pieces > TURN_LIMITS.wirePieces) return undefined;
   return turnedBy(s, 1) ?? turnedBy(s, 2) ?? turnedBy(s, 1, true) ?? turnedBy(s, 2, true);
 }
 
