@@ -199,6 +199,15 @@ describe('the first part on a blank page (words W9)', () => {
     // of W9: that Escape took the why away unread): it stays, as when the panel's tab closes it.
     fireEvent.click(tab('Netlist'));
     await waitFor(() => expect(screen.getByRole('region', { name: 'Netlist' })).toBeTruthy());
+    // An Escape typed in the netlist editor is the editor's: the why stays, and so does the panel.
+    const editor = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('.cm-content');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.keyDown(editor, { key: 'Escape' });
+    expect(screen.getByRole('region', { name: 'Netlist' })).toBeTruthy();
+    expect(document.querySelector('.hint')!.textContent).toBe(starterWords());
     fireEvent.keyDown(document.body, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Netlist' })).toBeNull());
     expect(document.querySelector('.hint')!.textContent).toBe(starterWords());

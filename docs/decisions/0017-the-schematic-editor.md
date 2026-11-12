@@ -344,8 +344,9 @@ browsers other than Chromium.
   or with its own button (the card, a panel, a sheet, a part being moved), leave it in place. A change
   with a note of its own, a refusal, another tool chosen, Undo or Redo, another circuit opened, or the
   Escape that lets go of the selection (or has nothing left to stop) takes it away at once: the student
-  is done with it. (An Escape that closed a panel, such as the Netlist panel opened to look at the new
-  lines, or put back a part being moved, took it away unread too.)
+  is done with it. An Escape typed in the netlist editor is the editor's, and leaves it. (An Escape that
+  closed a panel, such as the Netlist panel opened to look at the new lines, or put back a part being
+  moved, took it away unread too.)
 - **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
   now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
   every node name in the circuit's undo history: the texts Undo can go back to since the circuit was

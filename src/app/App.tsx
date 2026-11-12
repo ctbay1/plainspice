@@ -2773,7 +2773,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
       let acted = true;
-      /** This Escape let go of the selection, or had nothing left to stop. */
+      /** This Escape let go of the selection, or had nothing left to stop (in the netlist editor, Escape is the editor's). */
       let letGo = false;
       if (move) cancelMove();
       else if (wireDraft) {
@@ -2786,7 +2786,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else if (tool !== 'select') chooseTool('select');
       else if (panel && !inEditor) setPanel(undefined);
       else {
-        letGo = true;
+        letGo = !inEditor;
         if (selectedWire && !inEditor) setSelectedWire(undefined);
         else if (selected && !inEditor) setSelected(undefined);
         // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
