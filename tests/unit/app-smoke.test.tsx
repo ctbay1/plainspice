@@ -858,9 +858,9 @@ describe('<App /> after the words re-check of step B', () => {
     fireEvent.click(part('R2'));
     const card = screen.getByRole('dialog', { name: /^R2 resistor/ });
     fireEvent.click(within(card).getByRole('button', { name: 'Connections' }));
-    await waitFor(() => expect(hint()).toBe('Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers · Esc closes the card'));
-    expect(within(card).getByRole('button', { name: 'Connect to another node: the end 1 of R2' })).toBeTruthy();
-    expect(within(card).getByRole('button', { name: 'Disconnect the end 2 of R2 from ground (node 0)' })).toBeTruthy();
+    await waitFor(() => expect(hint()).toBe('Connect to… draws a wire from an end to another node, and the two nodes become one · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card'));
+    expect(within(card).getByRole('button', { name: 'Connect to another node: the node at the end 1 of R2' })).toBeTruthy();
+    expect(within(card).getByRole('button', { name: 'Disconnect the end 2 of R2 from its node, ground (node 0)' })).toBeTruthy();
     expect(card.textContent).not.toMatch(/node 1|node 2/);
   }, 30000);
 

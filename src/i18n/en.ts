@@ -88,9 +88,13 @@ export const en = {
   hintWireSelectedPhone: 'A piece of the wire of {node} selected · tap “{button}” to delete it',
   hintTyping: '{hint}: ngspice runs again as you type · Enter or Esc closes the card (then T turns it)',
   hintCardOpen: '{hint} · T turns it, M mirrors it · Enter or Esc closes the card',
-  /** A part's card showing its Connections (no value field then). */
-  hintConnections: 'Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers · Esc closes the card',
-  hintConnectionsPhone: 'Connect to… or Disconnect rewires an end · Connections again shows the value and the numbers',
+  /**
+   * A part's card showing its Connections (no value field then). Connect to draws a wire from the end
+   * to another node, so the end's node and that one become one node, every part on them included;
+   * Disconnect gives the end a node of its own (decision 0017).
+   */
+  hintConnections: 'Connect to… draws a wire from an end to another node, and the two nodes become one · Disconnect gives an end a node of its own · Connections again shows the value and the numbers · Esc closes the card',
+  hintConnectionsPhone: 'Connect to… draws a wire from an end to another node, and the two nodes become one · Disconnect gives an end a node of its own · Connections again shows the value and the numbers',
   hintTypingPaused: '{hint} · live runs are paused, so {run} to see the new numbers · Enter or Esc closes the card',
   hintPlace: 'Click the paper to place {part} · T turns it{mirror} · Shift+click places more than one · Esc goes back to Select',
   hintMirrorIt: ' · M mirrors it',
@@ -289,13 +293,15 @@ export const en = {
   editDrawingOnly: 'drawing only',
   editInNetlist: 'in the netlist',
   connTitle: 'Connections',
-  connIntro: 'Each end and the node it is on. A wire from an end to another node makes the two one node.',
+  connIntro: 'Each end and the node it is on. Connect to… draws a wire from an end to another node, so the end’s node and that node become one, with every part on them. To move only one end, Disconnect it first, then Connect to.',
   connConnect: 'Connect to…',
-  connConnectLabel: 'Connect to another node: the {role} of {name}',
-  connTo: 'Connect the {role} of {name} to',
+  /** Starts with the button's own words (WCAG 2.5.3); what it connects is the end's node, with every part on it. */
+  connConnectLabel: 'Connect to another node: the node at the {role} of {name}',
+  connTo: 'Connect the node at the {role} of {name} to',
   connNone: 'There is no other node yet.',
   connDisconnect: 'Disconnect',
-  connDisconnectLabel: 'Disconnect the {role} of {name} from {node}',
+  /** {node} is the node as the list writes it ("in", "ground (node 0)"), so the sentence names it as a node itself. */
+  connDisconnectLabel: 'Disconnect the {role} of {name} from its node, {node}',
   connAlready: 'That end is already on {node}.',
   connReadsVoltage: 'It reads the voltage between',
   connReadsCurrent: 'It reads the current through',

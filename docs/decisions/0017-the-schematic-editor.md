@@ -83,9 +83,11 @@ hears what they did.
 - **Without a pointer** (WCAG 2.1.1): the Add a part form (A, the toolbar's last button, Ctrl+K)
   takes a kind, a value and two nodes chosen from the circuit's nodes or "a new node" (named in the
   form), shows the line the netlist will get, and adds it (the model's `insertLine`: before the
-  analyses, the drawing lines and `.end`); a card's Connections list each end with its node, and
-  Connect to… (the other nodes, as buttons) and Disconnect (the model's new `disconnect-pin`) rewire
-  it. A node's card (Enter on a node) renames it, and renaming it to a name another node has makes
+  analyses, the drawing lines and `.end`); a card's Connections list each end with its node. Connect
+  to… (the other nodes, as buttons) draws a wire from the end to the node chosen, so the end's node
+  and that node become one, with every part on them; Disconnect (the model's new `disconnect-pin`)
+  gives the end a node of its own; to move only one end, Disconnect it, then Connect to. A node's
+  card (Enter on a node) renames it, and renaming it to a name another node has makes
   the two one node, as SPICE does; ground's card says why it keeps its name and offers to move or
   delete its symbol. The form checks its value as a part's card does: what SPICE reads it as, or why
   SPICE cannot use it, with the checks' fix ("4,7k: SPICE reads the comma as a space", Write 4.7k).
