@@ -227,8 +227,8 @@ describe('S8: .tf and .dc in a circuit solved exactly give 0 where the circuit m
     );
     const spec = plotSpecs(r.results, r.netlist)[0]!;
     const vm = spec.series.find((s) => s.label === 'i(vm)')!;
-    expect([...Array.from(vm.values)]).toEqual([0, 0, 0, 0]);
-    expect([...Array.from(vm.given!)]).toEqual([0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19]);
+    expect(Array.from(vm.values)).toEqual([0, 0, 0, 0]);
+    expect(Array.from(vm.given!)).toEqual([0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19]);
     const table = tableRows(spec);
     expect(table.header).toContain('i(vm) as ngspice gave it (A)');
     expect(csvText(spec)).toContain('-2.168404344971009e-19');
