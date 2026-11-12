@@ -31,8 +31,15 @@ function notAnswersWord(r: RunRecord): string {
   return r.words.ngspiceError ? t('statusError') : t('statusEmpty');
 }
 
-/** The status line for the text as it is now. `parts`: the netlist has parts to run. */
-export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, text: string, phone = false, parts = true): StatusWords {
+/**
+ * The status line for the text as it is now. `parts`: the netlist has parts to run. `oldShown`: the
+ * drawing shows numbers of the last run (in pencil), which is not of the text as it is now: only then
+ * does a paused status say they are from before the last change (the drawing writes a run's numbers
+ * only where the parts and nodes still have their names, so a circuit replaced in the Netlist panel
+ * shows none of them).
+ */
+export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, text: string, phone = false, parts = true, oldShown = true): StatusWords {
+
   const run = pressRun(phone);
   if (engine.status === 'failed') return { main: t('statusEngineFailed'), detail: engine.reason, tone: 'bad' };
   if (live.running?.loading) return { main: t('statusLoading'), detail: t('statusLoadingDetail'), tone: 'busy' };
@@ -40,9 +47,9 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
   const o = live.outcome;
   const p = live.paused;
   if (p) {
-    // Only when there are old numbers to see: the last run, of this circuit (a new one starts with
-    // none), gave answers, which the drawing keeps in pencil. A run that gave none left none to warn of.
-    const old = o.kind === 'done' && o.text !== text && o.result.status === 'ok' ? ` ${t('statusOldNumbers')}` : '';
+    // Only when there are old numbers to see: the last run gave answers and the drawing still shows
+    // some of them, in pencil. A run that gave none, or a circuit whose names are all new, leaves none to warn of.
+    const old = o.kind === 'done' && o.text !== text && o.result.status === 'ok' && oldShown ? ` ${t('statusOldNumbers')}` : '';
     switch (p.reason) {
       case 'link':
         return { main: t('statusNotRun'), detail: t('statusNotRunDetail', { run }), tone: 'paused' };

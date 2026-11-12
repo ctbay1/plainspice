@@ -73,6 +73,12 @@ describe('the status line', () => {
       expect(statusWords(READY, paused(reason, done('unreliable')), `${TEXT}* x\n`).detail).not.toContain(t('statusOldNumbers'));
       expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`).detail).toContain(t('statusOldNumbers'));
     }
+    // A run that gave answers, but the drawing shows none of them (the netlist replaced by a circuit whose
+    // parts and nodes have other names): no old numbers to speak of either (critic of the phone lane, F5).
+    for (const reason of [{ reason: 'slow', ms: 2400 }, { reason: 'long', points: 1_000_000 }, { reason: 'stopped' }, { reason: 'timeout', seconds: 20 }] as const) {
+      expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`, true, true, false).detail).not.toContain(t('statusOldNumbers'));
+      expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`, true, true, true).detail).toContain(t('statusOldNumbers'));
+    }
     // A phone has no keys to press: its Run button is tapped.
     expect(statusWords(READY, paused({ reason: 'link' }), TEXT, true).detail).toBe('This link opens without running: tap Run to run it.');
     expect(statusWords(READY, paused({ reason: 'long', points: 250_000 }), TEXT, true).detail).not.toContain('Ctrl');

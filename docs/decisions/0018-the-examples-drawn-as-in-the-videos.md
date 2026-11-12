@@ -152,8 +152,10 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   shows all of it. This changes how "As in the video" looked at Tarık's checkpoint (decision 0015: 30
   px a unit); the canvas keeps its `fill: 'height'`, so `App.tsx` can take it back in a few lines.
 - **Old numbers only when there are some.** A paused status adds "The numbers are from before your last
-  change." only when the last run gave answers, which the drawing keeps in pencil; after a run that gave
-  none (a check found an error) the paper shows none, and the sentence only made the status longer.
+  change." only when the drawing shows some of the last run's numbers, in pencil: that run gave answers,
+  and the drawing writes them where a part or a node still has its name. After a run that gave none (a
+  check found an error), or with the netlist replaced in the Netlist panel by a circuit whose parts and
+  nodes have other names, the paper shows none, and the sentence was untrue there.
 - **A keyboard on a touch screen.** The editing strip (the value field held above the on-screen
   keyboard) is for a field tapped on a touch screen, or for any field while an on-screen keyboard is
   up. A value field reached with the keys (a tablet with a keyboard, switch access) keeps the card's

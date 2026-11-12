@@ -371,6 +371,26 @@ test('the status line speaks of numbers from before the last change only when th
   await expect(statusLine(page)).not.toContainText(t('statusOldNumbers'));
 });
 
+test('a netlist replaced by a circuit with other names: no old numbers on the paper, so none spoken of; with the same names, they are', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  const results = page.locator('.nb-results text');
+  await expect(results.first()).toBeVisible();
+  // Every part and node has another name: the drawing writes none of Start here's numbers.
+  await setNetlist(page, '* RC charging\nVa a 0 1\nRx a b 1k\nCy b 0 1u\n.tran 1n 1m\n.end\n');
+  await closePanel(page, 'netlist');
+  await expect(statusLine(page)).toContainText(t('statusPaused'));
+  await expect(results).toHaveCount(0);
+  await expect(statusLine(page)).not.toContainText(t('statusOldNumbers'));
+  // V1, R1, in and out keep their names: Start here's numbers for them, in pencil, and the status says they are old.
+  await setNetlist(page, '* RC charging\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1n 1m\n.end\n');
+  await closePanel(page, 'netlist');
+  await expect(results.first()).toBeVisible();
+  await expect(page.locator('.nb-canvas')).toHaveClass(/\bis-pending\b/);
+  await expect(statusLine(page)).toContainText(t('statusPaused'));
+  await expect(statusLine(page)).toContainText(t('statusOldNumbers'));
+});
+
 test('a touch screen with a keyboard: Tab from a card’s value goes on to the card’s actions', async ({ page }) => {
   await openApp(page);
   await expectSolved(page);

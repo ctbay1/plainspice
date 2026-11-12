@@ -1731,7 +1731,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const noteNoRoom = noteShown && noteRect.width > 0 && !!viewInfo && !notePlace;
 
   // ------------------------------------------------------------------ words for the frame
-  const statusNow = statusWords(engineStatus, liveState, text, phone, hasParts(netlist));
+  // The drawing shows numbers of a run of another text (in pencil): only then does a paused status say
+  // they are from before the last change. It writes them only where a part or a node kept its name, so
+  // a circuit replaced in the Netlist panel by one with other names shows none (phone review, F5).
+  const oldShown = !current && !!answers(record) && (results.nodes.some((n) => !!n.mark) || [...results.parts.values()].some((p) => p.marks.length > 0));
+  const statusNow = statusWords(engineStatus, liveState, text, phone, hasParts(netlist), oldShown);
   // The last answers kept in pencil while building: said in words on the status line, not only by their grey (WCAG 1.4.1).
   const status = stale ? { ...statusNow, detail: `${statusNow.detail ? `${statusNow.detail} ` : ''}${t('statusOldPencil')}` } : statusNow;
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
