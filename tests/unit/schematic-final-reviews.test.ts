@@ -2,9 +2,9 @@
  * The schematic model after the final reviews of milestone 2 (12 November 2026), each finding pinned
  * down: a node's name goes where it is read clear of the parts wherever its copper or its open end
  * leaves room, and a name the student moves stays where it was put (student:label-on-part); a ground
- * symbol is never put where a wire runs through it, so a ladder built with the mouse turns for a
- * phone held upright (student:phone-link-unturned); and three sentences of the editor say what
- * happens and why (words:W6, W7, W10).
+ * symbol is put where no wire runs through it wherever there is room, so a ladder built with the mouse
+ * turns for a phone held upright (student:phone-link-unturned); and three sentences of the editor say
+ * what happens and why (words:W6, W7, W10).
  */
 import { describe, expect, it } from 'vitest';
 import { nameShift } from '../../src/notebook/results.ts';

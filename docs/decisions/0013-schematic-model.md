@@ -236,12 +236,14 @@ while the editor said "it can go here" and "The name of node n4 moved." (critic 
 Moved on to a point with room, the stored spot is let go when it is in the way there (as any stored
 spot an edit puts something on), and the scene chooses afresh.
 
-**A ground symbol is never put where a wire runs through it** (student:phone-link-unturned). When
+**A ground symbol is put where no wire runs through it, wherever there is room** (student:phone-link-unturned). When
 the drawing has no ground symbol (the turned phone view never has one), the symbol goes at the
 lowest point of ground's copper that is clear of symbols, words and wires (the 100 lowest points
 are tried); when none is (a ground wire drawn straight through the pins, turned upright), it hangs on
 a one-unit lead below the lowest end of ground's copper that has room, best where the lead goes
-straight on from a wire coming down, and the lead is drawn as wire. Ladders built with the mouse now turn for a phone held
+straight on from a wire coming down, and the lead is drawn as wire. When no place and no lead has
+room (none of the repository's drawings), it goes at the lowest point, as before this round, and a
+wire may run through it there (the critic's last edge case, not met in practice). Ladders built with the mouse now turn for a phone held
 upright; of the other netlists, 52 corpus drawings now turn that did not, 4 fixtures and 28 corpus
 drawings turn one unit tighter, the examples' turned views are unchanged, and none lost its turn.
 
