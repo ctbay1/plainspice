@@ -18,6 +18,7 @@ import { lowerAscii } from '../spice/parse.ts';
 import type { Netlist, Trap } from '../spice/types.ts';
 import type { CardContent, CardNote, Readout } from './components/IndexCard.tsx';
 import { readsOf } from './card-edit.ts';
+import { nodeInSentence } from './words.ts';
 import { explainLine } from './model.ts';
 
 /** A card that is open: the part, the value as typed, and what it started from (for Put back and the crossed-out numbers). */
@@ -140,8 +141,9 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   const nodeText = (n: string): string => s.circuit.nodes.get(n)?.text ?? n;
   // A node in a sentence is named as a node ("node in is higher"), as the editor says it (decision
   // 0017); nodeWord keeps ground "ground". The short lines under a number stay bare ("from in to out").
-  // An ordinary node named like ground is quoted, as the overview says it: 'node "ground" is higher'.
-  const nodeSaid = (n: string): string => t('nodeNamed', { name: sentenceNode(nodeText(n)) });
+  // An ordinary node named like ground is quoted, as the overview says it: 'node "ground" is higher';
+  // a name that says node goes alone: "node1 is higher" (nodeInSentence).
+  const nodeSaid = (n: string): string => nodeInSentence(sentenceNode(nodeText(n)));
   const readouts: Readout[] = [];
   // Numbers from before the last change say so to screen readers.
   const said = (speech: string): string => (pending ? `${t('cardBefore')} ${speech}` : speech);

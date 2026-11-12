@@ -1487,12 +1487,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         list.push({ id: `delete:${sel.key}`, group: gEdit, label: t('paletteDelete', { name }), keywords: 'delete remove erase', shortcut: 'Delete' });
       }
       if (selectedWire) list.push({ id: 'delete-wire', group: gEdit, label: t('paletteDeleteWire'), keywords: 'delete remove wire', shortcut: 'Delete' });
-      if (selected?.kind === 'node' && selected.name !== GROUND) list.push({ id: `rename:${selected.name}`, group: gEdit, label: t('paletteRename', { name: nodeWords(schematic, selected.name) }), keywords: 'rename node name label' });
+      if (selected?.kind === 'node' && selected.name !== GROUND) list.push({ id: `rename:${selected.name}`, group: gEdit, label: t('paletteRename', { node: nodeSaid(schematic, selected.name) }), keywords: 'rename node name label' });
       // The node cards' Move, by name too (decision 0017: Ctrl+K has every editing command): the ground symbol, a node's name on the drawing.
       if (selected?.kind === 'node' && !selectedWire && grabOf(schematic, selected)) {
         const g = grabOf(schematic, selected, selectedGround)!;
         if (g.kind === 'ground') list.push({ id: `move-ground:${g.ground}`, group: gEdit, label: t('nodeCardMoveGround'), keywords: 'move drag pick place ground symbol', shortcut: 'Shift+arrow keys' });
-        else if (g.kind === 'label') list.push({ id: `move-name:${g.node}`, group: gEdit, label: t('paletteMoveName', { name: nodeWords(schematic, g.node) }), keywords: 'move drag pick place name label node', shortcut: 'Shift+arrow keys' });
+        else if (g.kind === 'label') list.push({ id: `move-name:${g.node}`, group: gEdit, label: t('paletteMoveName', { node: nodeSaid(schematic, g.node) }), keywords: 'move drag pick place name label node', shortcut: 'Shift+arrow keys' });
       }
       if (selected?.kind === 'node' && selected.name === GROUND && schematic.drawing.grounds.length) list.push({ id: 'delete-ground', group: gEdit, label: t('paletteDeleteGround'), keywords: 'delete remove ground', shortcut: 'Delete' });
     }
@@ -1900,7 +1900,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const empty = !tooBig && !!schematic && schematic.scene.parts.length === 0;
   /** The part in hand cannot go anywhere yet (an F with no source to read, ground on a page with no parts): said at once, not only over the paper. */
   const placeAnywhere = hand && schematic ? refusedAnywhere(schematic, hand.kind) : undefined;
-  const movingName = move && schematic ? (move.grab.kind === 'part' ? (schematic.circuit.parts.find((p) => p.key === (move.grab as { key: string }).key)?.name ?? '') : move.grab.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(schematic, move.grab.node) })) : '';
+  const movingName = move && schematic ? (move.grab.kind === 'part' ? (schematic.circuit.parts.find((p) => p.key === (move.grab as { key: string }).key)?.name ?? '') : move.grab.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeSaid(schematic, move.grab.node) })) : '';
   const hintNow = hintWords({
     phone,
     tool,
@@ -2254,7 +2254,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   /** The item an edit's result says to select: a part or a node. */
   const selectOf = (r: EditResult): NavItem | undefined => (r.select && 'part' in r.select ? { kind: 'part', key: r.select.part } : r.select && 'node' in r.select ? { kind: 'node', name: r.select.node } : undefined);
   /** What a grab is called in the hint line ("R1", "the ground symbol", "the name out"). */
-  const grabName = (s: Schematic, g: Grab): string => (g.kind === 'part' ? (s.circuit.parts.find((p) => p.key === g.key)?.name ?? g.key) : g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(s, g.node) }));
+  const grabName = (s: Schematic, g: Grab): string => (g.kind === 'part' ? (s.circuit.parts.find((p) => p.key === g.key)?.name ?? g.key) : g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeSaid(s, g.node) }));
   const grabItem = (g: Grab): NavItem => (g.kind === 'part' ? { kind: 'part', key: g.key } : g.kind === 'ground' ? { kind: 'node', name: GROUND } : { kind: 'node', name: g.node });
 
   /** Turn, Mirror or Reverse: the part in hand, the part being moved, else the selected part (or the one named). */
@@ -2710,7 +2710,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (!s) return t('pieceNoMoveAlone');
     if (what === 'card') return t('pieceNoCard', { node: nodeSaid(s, node) });
     const g = grabOf(s, { kind: 'node', name: node });
-    return g ? t('pieceNoMove', { what: g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(s, node) }) }) : t('pieceNoMoveAlone');
+    return g ? t('pieceNoMove', { what: g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeSaid(s, node) }) }) : t('pieceNoMoveAlone');
   };
 
   /** Enter (or a click without a pointer) on an item: its card; with a part in hand, the Add a part form; with the Wire tool, a wire's end at a node. */

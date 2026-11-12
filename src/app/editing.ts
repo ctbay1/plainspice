@@ -53,12 +53,14 @@ import {
   type WireEnd,
 } from '../schematic/index.ts';
 import { elementInfo } from '../spice/elements.ts';
+import { sentenceNode } from '../spice/describe.ts';
 import { EXPLAIN_STRINGS } from '../spice/explain.ts';
 import { parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange } from '../spice/types.ts';
 import { checkValue, type ValueCheck } from './card-edit.ts';
 import { toolForKey, type PartKind, type Tool } from './tools.ts';
 
+import { nodeInSentence } from './words.ts';
 const S = EDIT_STRINGS;
 
 /** A point on the grid (whole numbers). */
@@ -574,9 +576,9 @@ export function nodeWords(s: Schematic, node: string): string {
   return node === GROUND ? t('groundWords') : (s.circuit.nodes.get(node)?.text ?? node);
 }
 
-/** A node in a sentence: "node out" (a name may be an ordinary word: "Wire started at node s."), "ground (node 0)". */
+/** A node in a sentence: "node out" (a name may be an ordinary word: "Wire started at node s."), 'node "ground"', "ground (node 0)". */
 export function nodeSaid(s: Schematic, node: string): string {
-  return node === GROUND ? t('groundWords') : t('nodeNamed', { name: s.circuit.nodes.get(node)?.text ?? node });
+  return node === GROUND ? t('groundWords') : nodeInSentence(sentenceNode(s.circuit.nodes.get(node)?.text ?? node));
 }
 
 /**

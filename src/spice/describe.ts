@@ -20,6 +20,7 @@ import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { readNumber } from './numbers.ts';
+import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
 
@@ -180,12 +181,14 @@ export interface DiagnosticWords {
 
 /**
  * A node in a sentence, the way the editor says it (EDIT_STRINGS.node, decision 0017): "node in",
- * because a name may be an ordinary word; ground stays "ground" (written "0" in results). Inside the
- * templates below, so every page that builds a sentence from them (the overview, the drawing's
- * descriptions, the cards) says it the same way.
+ * because a name may be an ordinary word; a name that already says node goes alone ("node1", never
+ * "node node1": node-words.ts); ground stays "ground" (written "0" in results). Inside the templates
+ * below, so every page that builds a sentence from them (the overview, the drawing's descriptions,
+ * the cards) says it the same way. Callers pass a name through `said` first, so a node named like
+ * ground arrives quoted.
  */
 function nodeIn(n: string): string {
-  return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' ? n : `node ${n}`;
+  return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' || nameSaysNode(n) ? n : `node ${n}`;
 }
 
 /** Names that look like ground but are ordinary nodes where they are not ground (W9, W13, W14). */
@@ -248,9 +251,13 @@ export const DESCRIBE_STRINGS = {
   otherPart: (name: string, what: string, nodes: string): string => `${name}: ${what}${nodes ? ` (${nodes})` : ''}.`,
   // "+ node a" already says "node"; a terminal reads "collector at node c", "emitter at ground". At
   // ground a "node" label loses the word: "− side at ground", as the V sentence says, "from ground",
-  // or "ground" alone (critic of the W8 fix: no "− node at ground").
+  // or "ground" alone (critic of the W8 fix: no "− node at ground"); so it does before a name that
+  // says node itself: "+ node1", "node1 and ground" (re-check of W8: no "+ node node1").
   labelled: (label: string, n: string): string => {
-    if (nodeIn(n) !== 'ground') return label.endsWith('node') ? `${label} ${n}` : `${label} at ${nodeIn(n)}`;
+    if (nodeIn(n) !== 'ground') {
+      if (!label.endsWith('node')) return `${label} at ${nodeIn(n)}`;
+      return nameSaysNode(n) ? `${label.replace(/\s*node$/, '')} ${n}`.trim() : `${label} ${n}`;
+    }
     const rest = label.replace(/\s*node$/, '');
     if (rest === label) return `${label} at ground`;
     if (!rest) return 'ground';
@@ -356,19 +363,19 @@ export const DESCRIBE_STRINGS = {
     `${name} has another voltage source, a 0 V source or a wire across it, so the current in ${name} has no single answer (a singular matrix). Two voltage sources cannot sit across the same two nodes.`,
   loopWhyL: (name: string): string =>
     `In .op an inductor is a short circuit, and ${name} sits across a voltage source (or in a loop of them), so its current has no single answer (a singular matrix). ngspice's fallback numbers for it can't be trusted.`,
-  capNodeTitle: (n: string): string => `Node ${n} has no DC path to ground`,
+  capNodeTitle: (n: string): string => `${atSentenceStart(nodeIn(said(n)))} has no DC path to ground`,
   capNodeWhy: (n: string, what: string): string =>
-    `In .op a capacitor is an open circuit, so node ${n}, which connects only to ${what}, is cut off: its voltage has no single answer (a singular matrix). ngspice's fallback numbers can be wrong, even for other nodes.`,
+    `In .op a capacitor is an open circuit, so ${nodeIn(said(n))}, which connects only to ${what}, is cut off: its voltage has no single answer (a singular matrix). ngspice's fallback numbers can be wrong, even for other nodes.`,
   onlyCapacitors: 'capacitors',
   onlyCurrentSources: 'current sources',
   capacitorsAndCurrentSources: 'capacitors and current sources',
-  floatingTitle: (n: string): string => `Node ${n} is not connected to the rest of the circuit`,
+  floatingTitle: (n: string): string => `${atSentenceStart(nodeIn(said(n)))} is not connected to the rest of the circuit`,
   floatingWhy: (n: string): string =>
-    `Node ${n} has no path to ground (node 0), so its voltage has no single answer (a singular matrix). Connect it to the rest of the circuit, or remove the part.`,
+    `${atSentenceStart(nodeIn(said(n)))} has no path to ground (node 0), so its voltage has no single answer (a singular matrix). Connect it to the rest of the circuit, or remove the part.`,
   shortLineTitle: (name: string): string => `${name} is missing fields`,
   shortLineWhy: (name: string): string =>
     `An E or G line needs four nodes and a number, and ${name} has fewer, so PlainSpice's engine finds no single answer (a singular matrix) and gives no results. (Native ngspice says "not enough parameters".)`,
-  singularTitle: (n: string): string => `No single answer at node ${n}`,
+  singularTitle: (n: string): string => `No single answer at ${nodeIn(said(n))}`,
   singularWhy: (n: string): string =>
     `ngspice's equations have no single answer (a singular matrix), so the numbers it prints can't be trusted. ngspice points at ${n}: check that it has a DC path to ground (node 0).`,
   steppingTitle: "ngspice's other ways to find a DC solution failed too",

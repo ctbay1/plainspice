@@ -82,11 +82,13 @@ export const en = {
   hintInviteDesk: 'Click {name} and type a new value: the numbers move as you type · Ctrl+K for every command',
   hintSelected: '{name} selected · Enter opens its card · T turns it · Shift+arrow keys move it · Delete deletes it · Esc lets go',
   hintSelectedPhone: '{name} selected · tap it again to change it · hold it, then drag, to move it',
-  hintNodeSelected: 'Node {name} selected · Enter opens its card, to rename it · Shift+arrow keys move its name · Esc lets go',
-  hintNodeSelectedPhone: 'Node {name} selected · tap it again to rename it',
+  /** {node} as a sentence starts with it: "Node out", 'Node "ground"', "node1" (never "Node node1"). */
+  hintNodeSelected: '{node} selected · Enter opens its card, to rename it · Shift+arrow keys move its name · Esc lets go',
+  hintNodeSelectedPhone: '{node} selected · tap it again to rename it',
   hintGroundSelected: 'Ground selected · Enter opens its card · Shift+arrow keys move the symbol · Delete deletes the symbol · Esc lets go',
   hintWireSelected: 'A piece of the wire of {node} selected · Delete deletes it · Esc lets go',
-  hintNodeCard: 'Type a new name for node {name}, then Enter (or Rename) · Esc closes the card',
+  /** {node} as a sentence says it: "node out", 'node "ground"', "node1" (nodeInSentence in src/app/words.ts). */
+  hintNodeCard: 'Type a new name for {node}, then Enter (or Rename) · Esc closes the card',
   hintGroundCard: 'Ground keeps its name · Move or Delete the ground symbol on the card · Esc closes the card',
   hintWireSelectedPhone: 'A piece of the wire of {node} selected · tap “{button}” to delete it',
   hintTyping: '{hint}: ngspice runs again as you type · Enter or Esc closes the card (then T turns it)',
@@ -247,7 +249,8 @@ export const en = {
   newCircuit: 'Start a new circuit on a blank page',
   newCircuitDone: 'A blank page: choose a part to start a new circuit.',
   turnBack: 'Back to Select: the drawing is turned to fit the screen again.',
-  labelName: 'the name of node {node}',
+  /** {node} as a sentence says it (nodeSaid): "the name of node out", "the name of node1". */
+  labelName: 'the name of {node}',
   wireStartHere: 'A wire starts on a pin, on a wire or at a node’s name.',
   wireOnNode: 'With the Wire tool, Enter on a node starts a wire there, and Enter on another node ends it.',
   groundByKeys: 'Without a pointer, a part goes on ground from its card: Connections, then Connect to, then ground (node 0).',
@@ -435,8 +438,9 @@ export const en = {
   paletteConnections: 'Connect or disconnect {name}',
   paletteDeleteWire: 'Delete the selected piece of wire',
   paletteDeleteGround: 'Delete the ground symbol',
-  paletteRename: 'Rename node {name}',
-  paletteMoveName: 'Move the name of node {name}',
+  /** {node} as a sentence says it (nodeSaid): "Rename node out", "Rename node1". */
+  paletteRename: 'Rename {node}',
+  paletteMoveName: 'Move the name of {node}',
   paletteGroupSettings: 'Settings and help',
   paletteGroupExamples: 'Examples',
   paletteRun: 'Run ngspice now',

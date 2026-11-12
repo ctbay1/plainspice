@@ -18,6 +18,7 @@ import { formatNumber, formatSI } from '../format/si.ts';
 import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
+import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii } from './parse.ts';
 import type {
@@ -52,8 +53,11 @@ const EXACT_LOOP_LIMIT = 100_000;
 export const EXPLAIN_STRINGS = {
   ground: 'ground (node 0)',
   groundShort: 'ground',
-  /** A node in a sentence: "node in", as the editor, the overview and the cards say it (words review W8). */
-  nodeWord: (name: string): string => `node ${name}`,
+  /**
+   * A node in a sentence: "node in", as the editor, the overview and the cards say it (words review W8);
+   * a name that already says node goes alone: "node1", never "node node1" (node-words.ts).
+   */
+  nodeWord: (name: string): string => (nameSaysNode(name) ? name : `node ${name}`),
 
   // ---- lines that are not parts
   titleHeading: 'Title line',
@@ -298,8 +302,8 @@ export const EXPLAIN_STRINGS = {
   bCurrent: 'I=: the current from the + node, through the source, to the − node is the expression that follows',
   bExpression: 'part of the expression ngspice works out',
   bNoExpression: 'a word with no V= or I= before it: ngspice stops with a fatal error',
-  /** A label that already says node: "+ node c". */
-  labelledNode: (label: string, n: string): string => `${label} ${n}`,
+  /** A label that already says node: "+ node c"; before a name that says node itself, the label without it: "+ node1". */
+  labelledNode: (label: string, n: string): string => (nameSaysNode(n) ? `${label.replace(/\s*node$/, '')} ${n}`.trim() : `${label} ${n}`),
   /** Any other label: "collector at node c". */
   labelledAt: (label: string, n: string): string => `${label} at ${n}`,
   listJoin: (items: readonly string[]): string =>
