@@ -1498,7 +1498,6 @@ What PlainSpice shows for space-before-suffix-18 (error, line 3):
 
 Added after the re-check (12 November 2026, C5). The middle dot ends the number (look-alike-letter-9) and the space splits off the unit, so the check reads the pair as the document meant it and writes 4.7k in one click.
 
-==== facts/space-before-suffix-18.cir
 ```spice
 * a middle dot and a space, as a British document writes 4·7 kΩ
 V1 in 0 10
@@ -2112,7 +2111,6 @@ What PlainSpice shows for nbsp-3 (error, line 2):
 
 Added after the re-check (12 November 2026, C2), as space-character-12 for the no-break space.
 
-==== facts/nbsp-3.cir
 ```spice
 * a no-break space right after the minus sign of a value
 I1 0 a -<NBSP>1m
@@ -2504,7 +2502,6 @@ What PlainSpice shows for missing-value-11 (error, line 4):
 
 Added after the re-check (12 November 2026, S6). The output stays at 0 V, without a message from any of the three.
 
-==== facts/missing-value-11.cir
 ```spice
 * E with the word gain but no number
 V1 a 0 1
@@ -2532,7 +2529,6 @@ PlainSpice's checks: `missing-value`.
 
 ### missing-value-12. G with a setting (m=2) but no value: the same
 
-==== facts/missing-value-12.cir
 ```spice
 * G with a setting but no value
 V1 a 0 1
@@ -2559,7 +2555,6 @@ PlainSpice's checks: `missing-value`.
 
 ### missing-value-13. F with a setting but no gain: the same
 
-==== facts/missing-value-13.cir
 ```spice
 * F with a setting but no gain
 V1 a 0 1
@@ -2586,7 +2581,6 @@ PlainSpice's checks: `missing-value`.
 
 ### missing-value-14. H with the word gain but no number: the same
 
-==== facts/missing-value-14.cir
 ```spice
 * H with the word gain but no number
 V1 a 0 1
@@ -5980,7 +5974,6 @@ What PlainSpice shows for dc-sweep-problems-10 (error, line 4):
 
 Added after the re-check (12 November 2026, S5). The letter O typed for the digit 0; the fix writes 0. ngspice 42 reads the word as the name of a second sweep instead.
 
-==== facts/dc-sweep-problems-9.cir
 ```spice
 * the letter O where the start of a .dc sweep goes
 V1 in 0 1
@@ -6019,7 +6012,6 @@ PlainSpice's checks: `dc-sweep-problems`.
 
 ngspice 42 runs this line without a sweep: no points, no message.
 
-==== facts/dc-sweep-problems-10.cir
 ```spice
 * the source named again where the stop of a .dc sweep goes
 V1 in 0 1
@@ -7924,7 +7916,6 @@ What PlainSpice shows for space-character-13 (error, line 2):
 
 Added after the re-check (12 November 2026, S6): a textbook symbol where the number goes, with no `.param` line that defines it.
 
-==== facts/unknown-word-13.cir
 ```spice
 * a textbook symbol as a resistor's value
 V1 a 0 1
@@ -7968,7 +7959,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-14. The same where a capacitor's value goes
 
-==== facts/unknown-word-14.cir
 ```spice
 * a textbook symbol as a capacitor's value
 V1 a 0 1
@@ -8012,7 +8002,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-15. The same where an inductor's value goes
 
-==== facts/unknown-word-15.cir
 ```spice
 * a textbook symbol as an inductor's value
 V1 a 0 1
@@ -8056,7 +8045,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-16. A word where a voltage source's value goes: ngspice stops
 
-==== facts/unknown-word-16.cir
 ```spice
 * a textbook symbol as a voltage source's value
 V1 a 0 Vs
@@ -8095,7 +8083,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-17. The same where a current source's value goes
 
-==== facts/unknown-word-17.cir
 ```spice
 * a textbook symbol as a current source's value
 I1 0 a Is
@@ -8136,7 +8123,6 @@ PlainSpice's checks: `unknown-word`.
 
 Native 47's XSPICE reads extra words after a gain as a polynomial (unknown-word-5); with no gain before the word, it stops at it like 42 and our engine.
 
-==== facts/unknown-word-18.cir
 ```spice
 * a textbook symbol as the gain of E
 V1 a 0 1
@@ -8177,7 +8163,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-19. The same where F's gain goes
 
-==== facts/unknown-word-19.cir
 ```spice
 * a textbook symbol as the gain of F
 V1 a 0 1
@@ -8218,7 +8203,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-20. The same where G's value goes
 
-==== facts/unknown-word-20.cir
 ```spice
 * a textbook symbol as the value of G
 V1 a 0 1
@@ -8259,7 +8243,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### unknown-word-21. The same where H's value goes
 
-==== facts/unknown-word-21.cir
 ```spice
 * a textbook symbol as the value of H
 V1 a 0 1
@@ -8302,7 +8285,6 @@ PlainSpice's checks: `unknown-word`.
 
 ngspice puts each parameter's value in place of its name: V1 is 5 V, R1 2 kΩ (2.5 mA), E1's gain 10, F1's 2, G1's 1 mA/V and H1's 1 kΩ. On R, C and L it also looks the name up as a model first and warns that it finds none.
 
-==== facts/unknown-word-22.cir
 ```spice
 * names from a .param line where each part's value goes
 .param Rl=2k Cx=1u Lx=1m Vs=5 Is=1m Av=10 beta=2 gm=1m rm=1k
@@ -8358,7 +8340,6 @@ PlainSpice's checks: none.
 
 What the unknown-word check suggests for a name with no `.param` line: give it a value there and write it in braces.
 
-==== facts/unknown-word-23.cir
 ```spice
 * the same names in braces
 .param Rl=2k Cx=1u Lx=1m Vs=5 Is=1m Av=10 beta=2 gm=1m rm=1k
@@ -8981,7 +8962,6 @@ What PlainSpice shows for invisible-character-23 (warning, line 3):
 
 Added after the re-check of the fixes for the final reviews (12 November 2026, S4). The same character in a capacitor's and an inductor's value ends the number as in a resistor's (invisible-character-1), and for these two parts ngspice also looks the whole word up as a model name and warns that it finds none, as for the Greek mu (greek-mu-2) and a thin space (space-character-8). So on C and L the checks say "and only warns that it can't find a model with the word's name", never "without a message". C1 is 2 F and L1 is 3 H: through 1 Ω, out has barely risen after 1 ms, and b has barely dropped. Native 47's time grid differs from 42's and from our engine's (81, 80 and 59 points); the final values agree to 6 significant figures.
 
-==== facts/invisible-character-7.cir
 ```spice
 * a zero-width space in a capacitor's and an inductor's value
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -9032,7 +9012,6 @@ PlainSpice's checks: `invisible-character` (twice).
 
 Added after the re-check (12 November 2026, S2): on an analysis line a number that starts with a character ngspice writes as `_` is no number, as on a part line, but ngspice never says "unknown parameter" there. What it does depends on the place of the word, so the checks say it place by place, from the runs below (invisible-character-8 to -21), and leave alone the words of any place no run shows (`.four`, which a run with a results file ignores anyway, invisible-character-27, `.disto`, `.pz`, `.sens`, `.sp`, a `.noise`'s points per summary). The character does not matter, only the place: ngspice writes each byte outside printable ASCII as `_` (W16), and look-alike-letter-8 and space-character-15 show the same with a minus sign and a thin space. ngspice reads the step as 0, then reads the same word again for the stop.
 
-==== facts/invisible-character-8.cir
 ```spice
 * a zero-width space before the step of .tran
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -9072,7 +9051,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-9. At the start of .tran's stop time: 'TSTOP is invalid'
 
-==== facts/invisible-character-9.cir
 ```spice
 * a zero-width space before the stop time of .tran
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -9114,7 +9092,6 @@ PlainSpice's checks: `invisible-character`.
 
 ngspice says the word is ignored, but the error stops it: the circuit is not parsed and no analysis runs.
 
-==== facts/invisible-character-10.cir
 ```spice
 * a zero-width space before the start time of .tran
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -9154,7 +9131,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-11. At the start of .tran's largest step: the same
 
-==== facts/invisible-character-11.cir
 ```spice
 * a zero-width space before the largest step of .tran
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -9196,7 +9172,6 @@ PlainSpice's checks: `invisible-character`.
 
 ngspice 47 reads a word it cannot read as 0 and reads the same word again for the next number, so the step comes out 0 and it stops ('Bad syntax!', as for a step of 0, dc-sweep-problems-1). ngspice 42, without that check, reads the word on as the name of a second sweep and stops when the sweep starts, under `-b -r`.
 
-==== facts/invisible-character-12.cir
 ```spice
 * a zero-width space before the start of a .dc sweep
 V1 in 0 1
@@ -9233,7 +9208,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-13. At the start of a .dc sweep's stop: the same
 
-==== facts/invisible-character-13.cir
 ```spice
 * a zero-width space before the stop of a .dc sweep
 V1 in 0 1
@@ -9270,7 +9244,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-14. At the start of a .dc sweep's step: the same
 
-==== facts/invisible-character-14.cir
 ```spice
 * a zero-width space before the step of a .dc sweep
 V1 in 0 1
@@ -9309,7 +9282,6 @@ PlainSpice's checks: `invisible-character`.
 
 ngspice 42 was stopped after 8 s (as with a step of 0, dc-sweep-problems-1), so the checks say only what ngspice 47 does here.
 
-==== facts/invisible-character-15.cir
 ```spice
 * a zero-width space before the start of a second .dc sweep
 V1 in 0 1
@@ -9346,7 +9318,6 @@ PlainSpice's checks: `invisible-character`.
 
 ngspice puts 10 points in place of the word, then reads the same word for the start frequency, which comes out 0.
 
-==== facts/invisible-character-16.cir
 ```spice
 * a zero-width space before the number of points of .ac
 V1 in 0 DC 0 AC 1
@@ -9386,7 +9357,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-17. At the start of .ac's start frequency: the same
 
-==== facts/invisible-character-17.cir
 ```spice
 * a zero-width space before the start frequency of .ac
 V1 in 0 DC 0 AC 1
@@ -9428,7 +9398,6 @@ PlainSpice's checks: `invisible-character`.
 
 The run goes on, with the stop frequency ngspice puts in place of one below the start: 1000 times the start frequency (ngspice 47, inp2dot.c), so 1 Hz to 1 kHz here, not to the 5 kHz written. So the check says that ngspice runs, never that it stops; it is still an error, as the frequencies are not the ones written.
 
-==== facts/invisible-character-18.cir
 ```spice
 * a zero-width space before the stop frequency of .ac
 V1 in 0 DC 0 AC 1
@@ -9462,7 +9431,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-19. At the start of .noise's number of points: 'Frequency of 0 is invalid'
 
-==== facts/invisible-character-19.cir
 ```spice
 * a zero-width space before the number of points of .noise
 V1 in 0 DC 0 AC 1
@@ -9502,7 +9470,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-20. At the start of .noise's start frequency: the same
 
-==== facts/invisible-character-20.cir
 ```spice
 * a zero-width space before the start frequency of .noise
 V1 in 0 DC 0 AC 1
@@ -9542,7 +9509,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-21. At the start of .noise's stop frequency: the same
 
-==== facts/invisible-character-21.cir
 ```spice
 * a zero-width space before the stop frequency of .noise
 V1 in 0 DC 0 AC 1
@@ -9584,7 +9550,6 @@ PlainSpice's checks: `invisible-character`.
 
 What the warnings say of a word on an analysis line: the .dc sweep goes to 5 (6 points), the .ac sweep to 20 Hz (14 points) and the .tran run to 2 s. The three analyses run in one netlist, as nothing stops ngspice. Native 47's time grid differs from 42's and from our engine's (2066, 2066 and 2017 points); the last time is 2 s in all three.
 
-==== facts/invisible-character-22.cir
 ```spice
 * characters inside the numbers of analysis lines
 V1 in 0 DC 1 AC 1 PULSE(0 1 0 1n 1n 1 2)
@@ -9624,7 +9589,6 @@ PlainSpice's checks: `invisible-character`, `look-alike-letter`, `space-characte
 
 Added after the re-check (12 November 2026, C5): characters the first list left out. Each draws nothing in a line, so 4<X>.7k reads 4.7k but is 4 Ω. The check now takes all of Unicode's default-ignorable characters, and the line and paragraph separators and the next-line character, and names each one in words.
 
-==== facts/invisible-character-23.cir
 ```spice
 * more invisible characters inside a value
 I1 0 n1 1
@@ -9680,7 +9644,6 @@ PlainSpice's checks: `invisible-character` (twelve times).
 
 ### invisible-character-24. At the start of a value one of them makes the word no number too: ngspice stops
 
-==== facts/invisible-character-24.cir
 ```spice
 * a line separator before a value
 V1 in 0 10
@@ -9724,7 +9687,6 @@ PlainSpice's checks: `invisible-character`.
 
 ### invisible-character-25. In a node name one of them makes another node: o<MVS>ut is o___ut, not out
 
-==== facts/invisible-character-25.cir
 ```spice
 * a Mongolian vowel separator inside a node name
 V1 in 0 10
@@ -9753,7 +9715,6 @@ PlainSpice's checks: `invisible-character`.
 
 Added after the re-check (12 November 2026, S6). A gain that ngspice cannot read is no missing gain: native 47 and 42 and our engine all stop at the word, so the only check is the character's, and its fix writes the gain.
 
-==== facts/invisible-character-26.cir
 ```spice
 * a zero-width space before the gain of E
 V1 a 0 1
@@ -9796,7 +9757,6 @@ PlainSpice's checks: `invisible-character`.
 
 Why the checks leave the words of a `.four` line alone (re-check, 12 November 2026, S2): run as `ngspice -b`, ngspice says the frequency is bad and finds no data for it; run as `ngspice -b -r`, as PlainSpice runs it, it skips the whole line with a note and the run goes on. Nothing in the line changes what PlainSpice shows.
 
-==== facts/invisible-character-27.cir
 ```spice
 * a zero-width space before the frequency of .four
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -10197,7 +10157,6 @@ What PlainSpice shows for look-alike-letter-12 (warning, line 3):
 
 Added after the re-check (12 November 2026, S4), as invisible-character-7 for the look-alikes: C1 is 2 F and L1 is 3 H, and ngspice warns about a model called after each word.
 
-==== facts/look-alike-letter-7.cir
 ```spice
 * letters from other alphabets in a capacitor's and an inductor's value
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
@@ -10248,7 +10207,6 @@ PlainSpice's checks: `look-alike-letter` (twice).
 
 Added after the re-check (12 November 2026, S2, S5). The same as invisible-character-12: the place, not the character, decides what ngspice says. The dc-sweep-problems check leaves the line to this one, so its fix, Write -5, is the only one, and it runs.
 
-==== facts/look-alike-letter-8.cir
 ```spice
 * a minus sign from a document as the start of a .dc sweep
 V1 in 0 1
@@ -10287,7 +10245,6 @@ PlainSpice's checks: `look-alike-letter`.
 
 Added after the re-check (12 November 2026, C5). British documents write 4·7 kΩ with a middle dot; ngspice stops reading the number at each of these, without a message.
 
-==== facts/look-alike-letter-9.cir
 ```spice
 * characters that look like a decimal point, or are one in a document
 I1 0 n1 1
@@ -10321,7 +10278,6 @@ PlainSpice's checks: `look-alike-letter` (four times).
 
 Added after the re-check (12 November 2026, C4). The plain letter O and the Cyrillic о and О read alike: ngspice stops at the letter. The Russian unit Ом is read as meant, after a number (100 Ω) and after a plain k (1 kΩ), so the check never flags an O before a unit; 10кОм is 10 Ω because of the Cyrillic к, which look-alike-letter-1 covers. On a capacitor, 1On is 1 F, with a model warning.
 
-==== facts/look-alike-letter-10.cir
 ```spice
 * the letter O where a zero belongs, and the Russian unit Ом
 I1 0 n1 1
@@ -10365,7 +10321,6 @@ PlainSpice's checks: `look-alike-letter` (five times).
 
 Added after the re-check (12 November 2026, C4). The fix writes 0.47k; before, the only fix made O.47k a comment, which left R1 with no value.
 
-==== facts/look-alike-letter-11.cir
 ```spice
 * the letter O at the start of a value
 V1 in 0 10
@@ -10411,7 +10366,6 @@ PlainSpice's checks: `look-alike-letter`.
 
 Added after the re-check (12 November 2026, C5): an ideographic full stop (from a Chinese or Japanese keyboard), a bullet and the Greek ano teleia, which looks like a middle dot. What was meant is not clear, so the check says what ngspice reads and offers no fix.
 
-==== facts/look-alike-letter-12.cir
 ```spice
 * characters SPICE does not know inside a number
 I1 0 n1 1
@@ -10440,7 +10394,6 @@ PlainSpice's checks: `look-alike-letter` (three times).
 
 ### look-alike-letter-13. At the start of a value a middle dot makes the word no number: ·47k stops ngspice
 
-==== facts/look-alike-letter-13.cir
 ```spice
 * a middle dot at the start of a value
 V1 in 0 10
@@ -10486,7 +10439,6 @@ PlainSpice's checks: `look-alike-letter`.
 
 Added after the re-check (12 November 2026, S6), as invisible-character-26.
 
-==== facts/look-alike-letter-14.cir
 ```spice
 * a minus sign from a document as the gain of E
 V1 a 0 1
@@ -11101,7 +11053,6 @@ What PlainSpice shows for space-character-14 (error, line 2):
 
 Added after the re-check (12 November 2026, C2). The fix writes -5, which gives −5 V.
 
-==== facts/space-character-12.cir
 ```spice
 * a thin space right after the minus sign of a value
 V1 a 0 -<THIN>5
@@ -11142,7 +11093,6 @@ PlainSpice's checks: `space-character`.
 
 Why the fix for space-character-12 never puts a normal space where the character was. The unknown-word check offers Write -5 here.
 
-==== facts/space-character-13.cir
 ```spice
 * a normal space right after the minus sign of a value
 V1 a 0 - 5
@@ -11181,7 +11131,6 @@ PlainSpice's checks: `unknown-word`.
 
 ### space-character-14. A minus sign from a document, then a thin space: −<THIN>5 stops ngspice too
 
-==== facts/space-character-14.cir
 ```spice
 * a minus sign from a document, then a thin space
 V1 a 0 −<THIN>5
@@ -11222,7 +11171,6 @@ PlainSpice's checks: `space-character`.
 
 Added after the re-check (12 November 2026, S2), as invisible-character-9.
 
-==== facts/space-character-15.cir
 ```spice
 * a thin space before the stop time of .tran
 V1 in 0 PULSE(0 1 0 1n 1n 1 2)
