@@ -109,6 +109,13 @@ describe('words re-check 4: a name that says node is never "node node1"', () => 
     expect(ex.find((e) => e.summary.startsWith('X1'))!.summary).toContain('X1 is a subcircuit: node1 and node ground (node 0).');
   });
 
+  it('the .tf check says it once too: ".tf asks about node5, which is not in the circuit"', () => {
+    const check = (out: string) => checkTraps(parseNetlist(`* tf to a missing node\nV1 node1 0 6\nR1 node1 node2 1k\nR2 node2 0 2k\n.tf v(${out}) V1\n.end\n`)).find((c) => c.id === 'tf-problems')!;
+    expect(check('node5').title).toBe('.tf asks about node5, which is not in the circuit');
+    expect(check('node5').why).toBe('There is no node called node5: no part connects to it. .tf v(node5) needs a node of the circuit.');
+    expect(check('node').title).toBe('.tf asks about node node, which is not in the circuit');
+  });
+
   it('a node called just "node" keeps the word, so the sentence says what it is', () => {
     const text = '* a node called node\nV1 node 0 6\nR1 node 0 2k\n.op\n.end\n';
     const w = describeResults(parseNetlist(text), op({ node: 6 }, [['v1', -0.003, 'branch']]), run());
@@ -321,6 +328,17 @@ describe('code review 1, 4 and 5, words re-check 3: the .tf words name each outp
     const zeros = tfWords('* tf at 00\nV1 in 0 5\nR1 in 00 1k\nR2 00 0 1k\n.tf v(00) V1\n.end\n', tf(0.5, 'v(00)', 500, 'v1', 2000));
     expect(zeros.at).toBe('at node "00"');
     expect(zeros.speech).toContain('the voltage at node "00"');
+  });
+
+  it('the .tf check on a missing node named like ground quotes it, as Explain does on the same line', () => {
+    // No part connects to "ground" (W13: an ordinary node), so ngspice reports a transfer function of 0 (A6).
+    for (const out of ['ground', 'GROUND', '00']) {
+      const n = parseNetlist(`* tf at a missing ground\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.tf v(${out}) V1\n.end\n`);
+      const check = checkTraps(n).find((c) => c.id === 'tf-problems')!;
+      expect(check.title).toBe(`.tf asks about node "${out}", which is not in the circuit`);
+      expect(check.why).toBe(`There is no node called "${out}": no part connects to it. .tf v(${out}) needs a node of the circuit.`);
+      expect(explainNetlist(n).find((e) => e.heading.startsWith('.tf'))!.notes).toContain(`"${out}" is not a node of the circuit: ngspice says nothing and reports a transfer function of 0.`);
+    }
   });
 
   it('a .tf written after .end, which ngspice runs (A3c), is named from ngspice\'s own name for it, never "node v(out)"', () => {

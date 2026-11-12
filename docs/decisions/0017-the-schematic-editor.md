@@ -474,7 +474,8 @@ what they look like):
   `nameSaysNode` in `src/spice/node-words.ts` (the name starts with "node" and goes on: node1,
   Node_A, nodeB), which each page's own template applies, so a translation keeps its own word:
   `DESCRIBE_STRINGS.node`, `labelled`, `EXPLAIN_STRINGS.nodeWord`, `labelledNode`, `EDIT_STRINGS.node`
-  and the app's `nodeInSentence` (Connections, the card, the hints, Ctrl+K). So "node1 is 6 volts",
+  and the app's `nodeInSentence` (Connections, the card, the hints, Ctrl+K); the .tf check says it the
+  same way (".tf asks about node5, which is not in the circuit"). So "node1 is 6 volts",
   "between node1 and node2", "+ node1", "Type a new name for node1", "Rename node1", and at the start
   of a sentence the name keeps its own letters ("node1 connects V1 and R1.", never "Node1"). A node
   called just "node" keeps the word ("node node is 6 volts"), or nothing would say what "node" is.
@@ -494,7 +495,8 @@ what they look like):
   called gnd), so the text, the speech and Explain say "between node out and ground", never "node
   gnd" nor 'node "gnd"'; an ordinary node named like ground is quoted in the text and the speech alike
   ('the output resistance at node "ground"'; Explain: 'at the node "ground"'), where the text said "at
-  ground", the word for node 0; and a .tf written after .end, which ngspice runs (S25, A3c) but
+  ground", the word for node 0, and so is it in the .tf check when no part connects to it ('.tf asks
+  about node "ground", which is not in the circuit'); and a .tf written after .end, which ngspice runs (S25, A3c) but
   PlainSpice does not read as a dot command, takes its nodes from ngspice's own name for the output,
   as the netlist writes them: "between node out and node mid", "at node çıkış", never "at node
   v(out,mid)"; its source is named as written ("V1").

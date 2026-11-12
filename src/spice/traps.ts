@@ -36,6 +36,7 @@ import {
 } from './characters.ts';
 import { isKnownDotCommand, nodeNameInWords, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
+import { nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type {
@@ -1967,9 +1968,11 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
       // look-alike-letter): this one would say "There is no node called out", with "Use out".
       const clean = hasInvisible(t.text) ? withoutInvisible(t.text) : hasSpaceLike(t.text) ? withoutSpaces(t.text) : lookAlikeName(t.text);
       if (clean !== undefined && (c.n.nodes.get(lowerAscii(clean))?.connections.length ?? 0) > 0) return;
-      // Otherwise such a character is named, never shown hidden in the name (decision 0012).
-      const named = nodeNameInWords(t.text);
-      add(c, 'tf-problems', 'error', t, `.tf asks about node ${named}, which is not in the circuit`,
+      // Otherwise such a character is named, never shown hidden in the name (decision 0012); a name like
+      // ground is quoted, and a name that says node goes alone ("node5", never "node node5"), as Explain
+      // says them on the same line (words re-check 3 and 4, decision 0017).
+      const named = name === 'ground' || name === '00' ? `"${t.text}"` : nodeNameInWords(t.text);
+      add(c, 'tf-problems', 'error', t, `.tf asks about ${nameSaysNode(named) ? named : `node ${named}`}, which is not in the circuit`,
         `There is no node called ${named}: no part connects to it. .tf v(${withoutInvisible(t.text)}) needs a node of the circuit.`,
         idx === 0
           ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1]'
