@@ -1297,15 +1297,21 @@ function checkFloating(c: Ctx): void {
     } else {
       why = `Only parts that draw no DC current (capacitors, control inputs, MOSFET gates) reach ${nodes}, so SPICE can't pin ${plural ? 'their voltages' : 'its voltage'} down.`;
     }
-    const failing = controls.length > 0 && caps.length === 0 && gates.length === 0;
+    // Control inputs alone stop ngspice (floating-dc-4, -10); joined by a resistor, they get numbers (floating-dc-9).
+    const failing = controls.length > 0 && caps.length === 0 && gates.length === 0 && g.conductors.length === 0;
     const mixed = controls.length > 0 && !failing;
-    // ngspice's warning as it prints it: the node in its own spelling ("check node __iki__", M2d).
-    const checked = ngspiceSpelling(g.nodes[0]!);
+    // ngspice's warning names one node: this one, in its own spelling ("check node __iki__", M2d), when it
+    // is the only node with no DC path; else any of them, not always the first (critic of the fix:
+    // "check node x" for node1 and x, floating-dc-7; "check node a" only, beside b, floating-dc-8, -10).
+    const named = g.nodes.length === 1 && c.graph.floating.length === 1;
+    const warns = named
+      ? `ngspice warns 'singular matrix: check node ${ngspiceSpelling(g.nodes[0]!)}'`
+      : "ngspice warns 'singular matrix: check node …' (it names one of the nodes with no DC path)";
     const ngspice = failing
-      ? `ngspice warns 'singular matrix: check node ${checked}' and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4]`
+      ? `${warns} and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4${named ? '' : ', floating-dc-10'}]`
       : mixed
-        ? `ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4]`
-        : `ngspice warns 'singular matrix: check node ${checked}', falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]`;
+        ? `ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4${g.conductors.length > 0 ? ', floating-dc-9' : ''}]`
+        : `${warns}, falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5${named ? '' : ', floating-dc-7, floating-dc-8'}]`;
     const fixes: Fix[] = [];
     if (!failing && !mixed && kinds.size > 0) {
       const target = g.nodes[0]!;

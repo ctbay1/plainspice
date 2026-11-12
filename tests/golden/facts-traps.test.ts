@@ -43,6 +43,12 @@ interface Fact {
   unreliable?: true;
   /** What checkTraps finds, in order. */
   traps: string[];
+  /**
+   * Two traps of the same kind, each with its own fix (two nodes with no DC path, floating-dc-8): a fix
+   * mends its own trap only, so the fixes are applied in turn, each to the netlist the one before made,
+   * and the last netlist must run cleanly.
+   */
+  fixInTurn?: true;
 }
 
 const FACTS: Fact[] = [
@@ -127,6 +133,10 @@ const FACTS: Fact[] = [
   { code: 'floating-dc-4', netlist: "* a control node with nothing else\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c 0 2\nR2 out 0 1\n.op\n.end\n", prints: ["singular matrix:  check node c", "operating point could not be simulated"], fails: true, unreliable: true, traps: ['floating-dc'] },
   { code: 'floating-dc-5', netlist: "* a MOSFET with a floating gate\nV1 d 0 5\nR1 d dd 1k\nM1 dd g 0 0 nm\n.model nm nmos level=1\n.op\n.end\n", prints: ["singular matrix:  check node g"], unreliable: true, traps: ['floating-dc'] },
   { code: 'floating-dc-6', netlist: "* a capacitor-only node, tran with uic\nV1 a 0 6\nC1 a b 1u\nC2 b 0 1u\n.tran 1u 10u uic\n.end\n", last: { "v(b)": 2.9999999999999996 }, traps: [] },
+  { code: 'floating-dc-7', netlist: "* a floating group of two nodes: ngspice names x, not node1\nV1 in 0 5\nC1 in node1 1u\nR1 node1 x 1k\nC2 x 0 1u\n.op\n.end\n", vectors: { "v(in)": 4.9999999999949996, "v(node1)": 4.950496683061028, "v(x)": 0.04950331688396305, "i(v1)": -0.0049009933711090525 }, prints: ["singular matrix:  check node x"], unreliable: true, traps: ['floating-dc'] },
+  { code: 'floating-dc-8', netlist: "* two capacitor-only nodes\nV1 in 0 6\nC1 in a 1u\nC2 a 0 1u\nC3 in b 1u\nC4 b 0 1u\n.op\n.end\n", vectors: { "v(in)": 5.9999999999939995, "v(a)": 2.9999999999819513, "v(b)": 2.9999999999819513, "i(v1)": -4.888534022029489e-12 }, prints: ["singular matrix:  check node a"], unreliable: true, traps: ['floating-dc', 'floating-dc'], fixInTurn: true },
+  { code: 'floating-dc-9', netlist: "* a control input on two nodes joined only by a resistor\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\nR3 c d 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(out)": 0, "v(c)": 0, "v(d)": 0, "i(e1)": 0, "i(v1)": -2.9999999999939995 }, prints: ["singular matrix:  check node c", "Transient op finished successfully"], unreliable: true, traps: ['floating-dc'] },
+  { code: 'floating-dc-10', netlist: "* a control input on two nodes with nothing else on them\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\n.op\n.end\n", prints: ["singular matrix:  check node d", "operating point could not be simulated"], fails: true, unreliable: true, traps: ['floating-dc', 'floating-dc'] },
   { code: 'current-source-no-path-1', netlist: "* a current source in series with a capacitor\nV1 a 0 5\nR1 a c 1k\nI1 c b 1m\nC1 b 0 1u\n.op\n.end\n", vectors: { "v(b)": 0.009999999999950042 }, prints: ["singular matrix:  check node b"], unreliable: true, traps: ['current-source-no-path'] },
   { code: 'current-source-no-path-2', netlist: "* two different current sources in series\nI1 0 n1 1m\nI2 n1 0 2m\nR1 n2 0 1k\nV1 n2 0 1\n.op\n.end\n", vectors: { "v(n1)": -0.001 }, traps: ['current-source-no-path'] },
   { code: 'current-source-no-path-3', netlist: "* a current source into a node with nothing else\nI1 0 n1 1\nV1 n2 0 1\nR1 n2 0 1\n.op\n.end\n", vectors: { "v(n1)": 1 }, traps: ['current-source-no-path'] },
@@ -293,10 +303,22 @@ beforeAll(async () => {
   for (const f of FACTS) {
     runs.set(f.code, await engine.run(f.netlist));
     const list: { label: string; netlist: string; run: RunResult }[] = [];
-    for (const t of checkTraps(parseNetlist(f.netlist))) {
-      for (const fix of t.fixes) {
-        const netlist = applyFix(f.netlist, fix);
-        list.push({ label: `${t.id}: ${fix.label}`, netlist, run: await engine.run(netlist) });
+    if (f.fixInTurn) {
+      let netlist = f.netlist;
+      const labels: string[] = [];
+      for (let k = 0; k < f.traps.length; k++) {
+        const t = checkTraps(parseNetlist(netlist)).find((x) => x.fixes.length > 0);
+        if (!t) break;
+        labels.push(`${t.id}: ${t.fixes[0]!.label}`);
+        netlist = applyFix(netlist, t.fixes[0]!);
+      }
+      list.push({ label: labels.join(', then '), netlist, run: await engine.run(netlist) });
+    } else {
+      for (const t of checkTraps(parseNetlist(f.netlist))) {
+        for (const fix of t.fixes) {
+          const netlist = applyFix(f.netlist, fix);
+          list.push({ label: `${t.id}: ${fix.label}`, netlist, run: await engine.run(netlist) });
+        }
       }
     }
     fixed.set(f.code, list);

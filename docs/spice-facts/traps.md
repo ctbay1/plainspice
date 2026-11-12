@@ -3380,7 +3380,7 @@ PlainSpice's checks: `dangling-node`.
 
 ## floating-dc
 
-A group of nodes with no DC path to ground: what touches it are capacitors, the control nodes of E and G, MOSFET gates, or parts joining only the group's own nodes. Error. For capacitors and gates the fix adds a 1 GΩ resistor to ground. Not raised when every analysis is `.tran ... uic` and only capacitors reach the group (floating-dc-6).
+A group of nodes with no DC path to ground: what touches it are capacitors, the control nodes of E and G, MOSFET gates, or parts joining only the group's own nodes. Error. For capacitors and gates the fix adds a 1 GΩ resistor to ground. Not raised when every analysis is `.tran ... uic` and only capacitors reach the group (floating-dc-6). ngspice's warning names one node, which the check quotes only when it is the only node with no DC path: in a larger group, or beside another group, ngspice may name any of them (floating-dc-7, -8, -10). Control inputs alone stop ngspice (floating-dc-4); joined by a resistor, they get numbers that can't be trusted (floating-dc-9).
 
 What PlainSpice shows for floating-dc-1 (error, line 3):
 
@@ -3604,6 +3604,179 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: no trap.
+
+### floating-dc-7. In a group of two nodes ngspice may name either one: check node x, not node1
+
+node1 and x have no DC path: C1 and C2 are open at DC, and R1 joins only the two of them. ngspice's
+warning names x, the second of them in the netlist, so the check quotes a node only when it is the
+only node with no DC path (floating-dc-1, -4, -5, M2d); here it says ngspice names one of them
+(critic of the words re-check's fix, 12 November 2026). In floating-dc-3 it names the first, n3.
+
+```spice
+* a floating group of two nodes: ngspice names x, not node1
+V1 in 0 5
+C1 in node1 1u
+R1 node1 x 1k
+C2 x 0 1u
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        x                                4.950332e-02
+        node1                            4.950497e+00
+        in                               5.000000e+00
+        v1#branch                        -4.90099e-03
+    Warning: singular matrix:  check node x
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 4.9999999999949996, v(node1) = 4.950496683061028, v(x) = 0.04950331688396305, i(v1) = -0.0049009933711090525
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
+    the same messages as ngspice 47
+    vectors: v(in) = 4.9999999999949996, v(node1) = 4.950496683061028, v(x) = 0.04950331688396305, i(v1) = -0.0049009933711090525
+```
+
+PlainSpice's checks: `floating-dc` (ngspice "names one of the nodes with no DC path", never "check node node1").
+
+### floating-dc-8. With two nodes that have no DC path, ngspice names only one of them: check node a
+
+a and b each sit between two capacitors, two separate groups. ngspice warns about a only; with the
+lines for b written first, it warns about b only (the same run otherwise). So each group's check
+says ngspice names one of the nodes with no DC path, never "check node b" for b's group.
+
+```spice
+* two capacitor-only nodes
+V1 in 0 6
+C1 in a 1u
+C2 a 0 1u
+C3 in b 1u
+C4 b 0 1u
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                3.000000e+00
+        a                                3.000000e+00
+        in                               6.000000e+00
+        v1#branch                        -4.88853e-12
+    Warning: singular matrix:  check node a
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5.9999999999939995, v(a) = 2.9999999999819513, v(b) = 2.9999999999819513, i(v1) = -4.888534022029489e-12
+  with C3 and C4 written before C1 and C2: Warning: singular matrix:  check node b, and the same values
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
+    the same messages as ngspice 47
+    vectors: v(in) = 5.9999999999939995, v(a) = 2.9999999999819513, v(b) = 2.9999999999819513, i(v1) = -4.888534022029489e-12
+```
+
+PlainSpice's checks: `floating-dc`, `floating-dc` (one for a, one for b).
+
+### floating-dc-9. Two control nodes joined by a resistor: singular matrix, but ngspice prints numbers
+
+E1's control input reads c and d, and R3 joins only the two of them, so nothing sets their voltage.
+Unlike a control node with nothing else on it (floating-dc-4), ngspice does not stop here: its
+'transient op' finishes and it prints numbers, which mean nothing for c and d. So the check says
+ngspice "either stops or prints numbers that can't be trusted" (critic of the words re-check's fix,
+12 November 2026; it said that ngspice stops).
+
+```spice
+* a control input on two nodes joined only by a resistor
+V1 a 0 6
+R1 a 0 2
+E1 out 0 c d 2
+R2 out 0 1
+R3 c d 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        d                                0.000000e+00
+        c                                0.000000e+00
+        out                              0.000000e+00
+        a                                6.000000e+00
+        v1#branch                        -3.00000e+00
+        e1#branch                        0.000000e+00
+    Warning: singular matrix:  check node c
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 5.9999999999939995, v(out) = 0, v(c) = 0, v(d) = 0, i(e1) = 0, i(v1) = -2.9999999999939995
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
+    the same messages as ngspice 47
+    vectors: v(a) = 5.9999999999939995, v(out) = 0, v(c) = 0, v(d) = 0, i(e1) = 0, i(v1) = -2.9999999999939995
+```
+
+PlainSpice's checks: `floating-dc`.
+
+### floating-dc-10. Two control nodes with nothing else on them: ngspice names d only, then stops
+
+c and d are each a group of their own, as in floating-dc-4. ngspice warns about d only, not c, and
+stops as it does there.
+
+```spice
+* a control input on two nodes with nothing else on them
+V1 a 0 6
+R1 a 0 2
+E1 out 0 c d 2
+R2 out 0 1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    [ngspice lists the last node voltages here]
+    Warning: singular matrix:  check node d
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: an Operating Point plot with 0 points (no results)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `floating-dc`, `floating-dc` (one for c, one for d).
 
 ## current-source-no-path
 
