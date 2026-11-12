@@ -1241,17 +1241,23 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   /**
    * The reader asked to see the whole drawing ("Show the whole drawing": More, Ctrl+K, Shift+1, the
    * status line, the computer's zoom bar): the fit it makes (its fitCount) shows all of it, smaller
-   * than its words' readable size if it must be, until something else fits the drawing again (a
-   * circuit opened, a part added in the Netlist panel) or the reader turns it or shows it as drawn.
+   * than its words' readable size if it must be, in the view it was asked in (on a phone, turned to
+   * fit or as drawn), until something else fits the drawing again (a circuit opened, a part added in
+   * the Netlist panel) or the reader turns it or shows it as drawn (toggleTurn). Any other view (the
+   * turned drawing shown as drawn for a tool, turned back by Select, the phone turned on its side)
+   * opens at its own fit: the whole drawing asked for while editing as drawn is not the turned view's.
    */
-  const [wholeAt, setWholeAt] = useState<number | undefined>(undefined);
+  const [wholeAt, setWholeAt] = useState<{ count: number; turned: boolean } | undefined>(undefined);
+  const viewTurned = !!turned && seen === turned;
   const fitCountNow = useRef(fitCount);
+  const viewTurnedNow = useRef(viewTurned);
   useLayoutEffect(() => {
     fitCountNow.current = fitCount;
-  }, [fitCount]);
+    viewTurnedNow.current = viewTurned;
+  }, [fitCount, viewTurned]);
   const fit = useCallback(() => {
     setFitCount((n) => n + 1);
-    setWholeAt(fitCountNow.current + 1);
+    setWholeAt({ count: fitCountNow.current + 1, turned: viewTurnedNow.current });
     canvas.current?.fit();
   }, []);
   /** A phone's "Turn to fit", "As drawn" or "As in the video": the other view at its own fit, not the whole one asked for in this one. */
@@ -3200,12 +3206,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             padding={phone ? 10 : 24}
             // Whole, smaller than readable if it must be: a phone shown as drawn while editing (it was
             // turned to fit), so no part is off the screen where the student was looking (two fingers
-            // zoom in); or the reader asked for it ("Show the whole drawing"). On a phone not while a
-            // sheet is open: the paper left above it would make the drawing a stamp (a card fits its
-            // part; More closes to show it); the whole fit comes when the sheet goes.
+            // zoom in); or the reader asked for it ("Show the whole drawing") in the view shown now. On
+            // a phone not while a sheet is open: the paper left above it would make the drawing a stamp
+            // (a card fits its part; More closes to show it); the whole fit comes when the sheet goes.
             // Otherwise a drawing that does not fit (as drawn on a phone) opens at the smallest readable
             // size, from its left end: as much of it as can be read at once.
-            fitWhole={editingWhole || (wholeAt === fitCount && !(phone && phoneSheet))}
+            fitWhole={editingWhole || (wholeAt?.count === fitCount && wholeAt.turned === viewTurned && !(phone && phoneSheet))}
             focus={cardFocus}
             frame={frame}
             offset={offset}

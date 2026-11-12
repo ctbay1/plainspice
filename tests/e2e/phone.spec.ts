@@ -541,6 +541,45 @@ test('a turned drawing that fits, moved partly off the screen: the hint still sa
   await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
 });
 
+test('“Show the whole drawing” belongs to the view it was asked in: Select turns the drawing back at that view’s own fit', async ({ page }) => {
+  await openApp(page);
+  await chooseExample(page, 'Example 3: open circuit (V_Th)');
+  await expectSolved(page);
+  await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  const wire = async (): Promise<void> => {
+    await bar.getByRole('button', { name: t('barParts') }).click();
+    await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Wire/ }).click();
+    await expect(page.getByRole('dialog', { name: t('partsSheetTitle') })).toHaveCount(0);
+  };
+  const whole = statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true });
+  // Wire: the drawing as drawn, whole, while editing. Moved by the reader (from the empty paper above
+  // it: a press on a wire would start one), then shown whole from the status line.
+  await wire();
+  const free = await freePaper(page);
+  const above = { x: free.width * 0.6, y: free.top + 60 };
+  await fingers(page, [above], [{ x: above.x - 160, y: above.y }]);
+  await whole.click();
+  await expect(whole).toHaveCount(0);
+  // Select turns it back to fit at the turned view's own size, the smallest readable one, as when it
+  // opened: the whole drawing asked for as drawn is not the turned view's.
+  await bar.getByRole('button', { name: t('toolSelect') }).click();
+  await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
+  await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
+  // Shown whole in the turned view itself: after a tool, Select gives it back as it was, whole.
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  const from = { x: paper.x + paper.width * 0.55, y: paper.y + paper.height * 0.45 };
+  await fingers(page, [from], [{ x: from.x - 160, y: from.y }]);
+  await whole.click();
+  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  await expect.poll(() => unitNow(page)).toBeLessThan(minUnitFor() - 0.5);
+  const turnedWhole = await unitNow(page);
+  await wire();
+  await bar.getByRole('button', { name: t('toolSelect') }).click();
+  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  await expect.poll(() => unitNow(page)).toBeCloseTo(turnedWhole, 3);
+});
+
 test('a run started by an edit leaves the status line, its buttons, the hint and the “more” at the edge where they were', async ({ page }) => {
   type Frame = { running: boolean; status: string; hint: string; edges: string };
   for (const size of [undefined, { width: 360, height: 780 }]) {

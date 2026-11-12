@@ -154,15 +154,23 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   finds the command by "fit". The whole fit stays until something else fits the drawing again
   (another circuit, a part typed in the Netlist panel) or the reader changes the view: "Turn to
   fit", "As drawn" and "As in the video" give the other view at its own fit (they went on fitting
-  whole, below the readable size, until another circuit was opened). On a phone it waits while a
-  sheet or a card is open: in the strip of paper left above a sheet the whole drawing was a stamp
-  (p02-4 at 4.3 px a grid unit). So the More sheet's "Show the whole drawing" closes the sheet, as
-  Export does, and the whole drawing shows at once, the focus back on More; it kept the sheet open,
-  as Zoom in and Zoom out do, and then changed nothing on the screen until the sheet was closed,
-  with the hint above still saying to drag (the critic of these fixes). Zoom in and Zoom out keep
-  the sheet open, their change seen above it; a card still fits its own part. Zoom out (its buttons
-  and keys) now goes as far as two fingers do, to half the readable size, and never jumps in from a
-  view that is already smaller.
+  whole, below the readable size, until another circuit was opened). It belongs to the view it was
+  asked in, turned or as drawn: the whole drawing asked for while editing (a tool shows a turned
+  drawing as drawn) is not the turned view's, so Select turns the drawing back at the turned view's
+  own fit, the smallest readable size for p02-4, where it came back at 12.3 px a grid unit (words
+  of 8.4 px) and said it was "turned to fit the screen"; one asked for in the turned view comes back
+  with it after a tool, as the student left it. A phone turned on its side shows the drawing as
+  drawn, at that view's own fit unless the whole drawing was asked for as drawn (p02-4 asked for
+  whole turned now shows at the readable size on its side, where it showed whole at 14.2 px a grid
+  unit), and upright again the turned view comes back as it was left.
+  On a phone it waits while a sheet or a card is open: in the strip of paper left above a sheet the
+  whole drawing was a stamp (p02-4 at 4.3 px a grid unit). So the More sheet's "Show the whole
+  drawing" closes the sheet, as Export does, and the whole drawing shows at once, the focus back on
+  More; it kept the sheet open, as Zoom in and Zoom out do, and then changed nothing on the screen
+  until the sheet was closed, with the hint above still saying to drag (the critic of these fixes).
+  Zoom in and Zoom out keep the sheet open, their change seen above it; a card still fits its own
+  part. Zoom out (its buttons and keys) now goes as far as two fingers do, to half the readable
+  size, and never jumps in from a view that is already smaller.
 - **As drawn, at the smallest readable size.** A drawing shown as drawn on a phone that needs panning
   ("As in the video", or a drawing that cannot be turned cleanly) opens at the smallest size its
   words can be read (names 10.5 px), from its left end, instead of as tall as the screen allows up to
