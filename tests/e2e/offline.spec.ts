@@ -77,4 +77,12 @@ test('the service worker leaves the site’s other pages alone: once it is insta
     await expect(page, path).toHaveTitle(titleOf(file));
     if (!offline) expect(response?.fromServiceWorker(), `${path} comes from the site`).toBe(false);
   }
+  // The same pages without their closing slash, as a link typed by hand gives them: the site answers
+  // (GitHub Pages sends each on to the address with the slash; this test's server, vite preview, answers
+  // with the app's page itself, so only where the answer came from is checked here), not the service
+  // worker with its copy of the app.
+  for (const path of ['./design', './design/checkpoint', './spike', './licenses']) {
+    const response = await page.goto(path);
+    expect(response?.fromServiceWorker(), `${path} comes from the site`).toBe(false);
+  }
 });

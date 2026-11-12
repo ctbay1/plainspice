@@ -320,9 +320,10 @@ function offlineApp(): Plugin[] {
       // pages, which are pages of their own and not kept offline: once a student had opened the app, the
       // design pages (Tarık's checkpoint among them) opened as a broken copy of the app instead, its
       // scripts looked for under design/ (seen in the end-to-end tests whenever the service worker was
-      // installed before they got there).
+      // installed before they got there). With or without the closing slash ("…/design" too, which the
+      // site sends on to "…/design/"), and with a query; Workbox matches the path and the query.
       navigateFallback: 'index.html',
-      navigateFallbackDenylist: [/\/spike\//, /\/licenses\//, /\/engine\//, /\/design\//],
+      navigateFallbackDenylist: [/\/(?:spike|licenses|engine|design)(?:[/?]|$)/],
       cleanupOutdatedCaches: true,
     },
   });
