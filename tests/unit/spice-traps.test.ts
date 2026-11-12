@@ -1125,6 +1125,13 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(groundEnds(applyFix(pair, merged.fixes[0]!))).toEqual(groundEnds(pair));
   });
 
+  it('says ngspice\'s spelling with "as", never two names side by side: "ngspice spells the node giriş as giri__" (words-recheck-7)', () => {
+    const found = traps('* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n');
+    expect(found.map((t) => t.title)).toEqual(['ngspice spells the node giri\u015f as giri__', 'ngspice spells the node \u00e7\u0131k\u0131\u015f as ____k____']);
+    // A one-letter name read like a blank to fill in: "ngspice calls the node ç __".
+    expect(first('* t\nV1 \u00e7 0 12\nR1 \u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').title).toBe('ngspice spells the node \u00e7 as __');
+  });
+
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {
     const merged = first('* t\nV1 \u0130 0 6\nR1 \u0130 \u015f 1k\nR2 \u015f 0 1k\n.op\n.end\n', 'non-ascii-node');
     expect(merged).toMatchObject({ severity: 'error', title: '\u0130 and \u015f are one node for ngspice' });

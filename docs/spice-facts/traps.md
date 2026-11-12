@@ -7793,7 +7793,7 @@ the announcement say `giriş`.
 
 What PlainSpice shows for non-ascii-node-1 (warning, line 2):
 
-> **ngspice calls the node giriş giri__.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ş as __), so its printout and results call this node giri__, and two names can become one node. A name in plain letters avoids both.
+> **ngspice spells the node giriş as giri__.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ş as __), so its printout and results call this node giri__, and two names can become one node. A name in plain letters avoids both.
 >
 > *ngspice:* ngspice runs it and spells the node giri__, without a message. [non-ascii-node-1]
 >

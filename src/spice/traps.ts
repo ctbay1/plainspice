@@ -1525,7 +1525,7 @@ function checkNodeNames(c: Ctx): void {
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
     const to = plainFor(info);
-    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice calls the node ${written} ${spelled}`,
+    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells the node ${written} as ${spelled}`,
       `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
       `ngspice runs it and spells the node ${spelled}, without a message. [non-ascii-node-1]`,
       [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);

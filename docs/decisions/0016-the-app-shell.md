@@ -262,3 +262,7 @@ Ctrl+K stay as they are.
   (non-ascii-node-6: g__d and gnd2 are ordinary nodes, gnd is ground). The other node checks (a
   look-alike, an invisible character, a character that looks like a space) still connect `ｇnd` and
   `g<zero-width space>nd` to ground: that is the node the student typed.
+- **"ngspice spells the node giriş as giri__"** (words re-check 7). The warning's title put the two
+  names side by side, "ngspice calls the node çıkış ____k____", and for a one-letter name "… ç __"
+  read like a blank to fill in; the card, the red pen and the announcement show the title alone. It
+  now says "as", as the check's other sentences do ("ngspice spells ş and ç as __").
