@@ -72,7 +72,8 @@ double) and C9l (two ends more than a few steps of a double apart carry a real c
 bridges) in explanations.md; and in traps.md space-character-7 to -11 (groups of digits with a unit,
 `10<THIN>000<THIN>Ω` is 10 Ω; on a capacitor ngspice also looks the word up as a model; with normal
 spaces the groups are three words and ngspice stops; in a node name the character makes another node;
-digits not grouped in threes end the number too).
+digits not grouped in threes end the number too) and look-alike-letter-6 (a look-alike right after a
+sign: `-５` stops ngspice).
 
 ## Where the evidence came from
 

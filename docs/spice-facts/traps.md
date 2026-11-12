@@ -7898,7 +7898,7 @@ What PlainSpice shows for invisible-character-5 (error, line 4):
 
 What PlainSpice shows for invisible-character-6 (error, line 2):
 
-> **V1's value is not a number for SPICE.** It has a zero-width space (U+200B) right after the -, a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.
+> **V1's value is not a number for SPICE.** Right after the -, it has a zero-width space (U+200B), a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.
 >
 > *ngspice:* ngspice stops: 'unknown parameter (-___5)'. [invisible-character-6]
 >
@@ -8174,6 +8174,14 @@ What PlainSpice shows for look-alike-letter-5 (warning, line 4):
 >
 > *Fixes:* "Connect to out"
 
+What PlainSpice shows for look-alike-letter-6(error, line 2):
+
+> **V1's value is not a number for SPICE.** Right after the -, it has the fullwidth digit ５, which looks like 5, so SPICE does not read the word as a number. Write -5.
+>
+> *ngspice:* ngspice stops: 'unknown parameter (-___)'. [look-alike-letter-6]
+>
+> *Fixes:* "Write -5 (−5 V)"
+
 ### look-alike-letter-1. к (Cyrillic), κ (Greek) and ｋ (fullwidth) are not k, and м (Cyrillic) is not m: ngspice ignores them
 
 ```spice
@@ -8331,6 +8339,46 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(in) = 6, v(out) = 6, v(__ut) = 0, i(v1) = 0
+```
+
+PlainSpice's checks: `look-alike-letter`.
+
+### look-alike-letter-6. Right after a sign a look-alike makes the word no number too: -５ stops ngspice
+
+Added after the critic of round 2 (12 November 2026). The minus sign is the plain `-`, and the fullwidth digit ５ (U+FF15) comes right after it: ngspice writes the digit's three bytes as `___` and stops, as it does for a minus sign from a document at the start of a value (look-alike-letter-2). The check says where the character is, the place first: "Right after the -, it has the fullwidth digit ５, which looks like 5".
+
+```spice
+* a fullwidth digit right after the minus sign of a value
+V1 a 0 -５
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 -___
+      unknown parameter (-___)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 -___
+      unknown parameter (-___)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
 ```
 
 PlainSpice's checks: `look-alike-letter`.

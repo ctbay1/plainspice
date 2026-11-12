@@ -94,8 +94,10 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   invisible-character check does, else "Rename оut to out". A name with no Latin letter (α, Ом) is
   meant as written and stays the non-ascii-node check's, whose fix still gives a plain name (n1); a
   name with a Turkish letter too (çоk) stays that check's, and its fix writes the look-alike plain
-  (cok, not ck). An invisible character right after a sign is said where it is: "It has a zero-width
-  space (U+200B) right after the -" (invisible-character-6).
+  (cok, not ck). An invisible character right after a sign is said where it is, the place first:
+  "Right after the -, it has a zero-width space (U+200B)" (invisible-character-6); after the critic of
+  round 2, a look-alike there too: "Right after the -, it has the fullwidth digit ５, which looks like 5"
+  (look-alike-letter-6), where "which looks like 5 right after the -" read as if the 5 were.
 - **Groups of digits with a unit, and no split inside a value** (critic of round 2). Documents write
   `10 000 Ω`, `4 700 Ω` and `1 000 µF` with a thin space before the unit too; ngspice still stops
   reading at the first one, so they are 10 Ω, 4 Ω and 1 F (space-character-7, -8). `spacedValue` now

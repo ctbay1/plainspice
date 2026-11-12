@@ -524,11 +524,12 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const subject = name ? `${name}'s value` : 'This value';
   const fixes = [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(meant.value, letter)})` : ''}`, replace(t, clean))];
   if (!read) {
-    // Where it is, from the text before it: "-<zero-width space>5" starts with the - (invisible-character-6).
+    // Where it is, from the text before it, said first: "Right after the -, it has ..." for
+    // -<zero-width space>5 and -５ (invisible-character-6, look-alike-letter-6).
     const lead = withoutInvisible([...t.text].slice(0, [...t.text].indexOf(ch)).join(''));
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
-      `${lead ? `It has ${what} right after the ${lead}` : `It starts with ${what}`}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
-      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : 'invisible-character-5') : 'look-alike-letter-2'}]`,
+      `${lead ? `Right after the ${lead}, it has ${what}` : `It starts with ${what}`}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
+      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : 'invisible-character-5') : lead ? 'look-alike-letter-6' : 'look-alike-letter-2'}]`,
       fixes);
     return;
   }

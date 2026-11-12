@@ -992,9 +992,21 @@ describe('after the final reviews (12 November 2026)', () => {
 
   it('says where an invisible character sits when the word is no number: right after the -, not "starts with" (critic of round 1; invisible-character-6)', () => {
     const t = first('* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n', 'invisible-character');
-    expect(t.why).toBe('It has a zero-width space (U+200B) right after the -, a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.');
+    expect(t.why).toBe('Right after the -, it has a zero-width space (U+200B), a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.');
     expect(t.ngspice).toBe("ngspice stops: 'unknown parameter (-___5)'. [invisible-character-6]");
     expect(first('* t\nI1 0 a 1\nR1 a 0 \u200b2k\n.op\n.end\n', 'invisible-character').why).toMatch(/^It starts with a zero-width space \(U\+200B\)/);
+  });
+
+  it('says the place first for a look-alike right after a sign too: "Right after the -, it has the fullwidth digit ５, which looks like 5" (critic of round 2; look-alike-letter-6)', () => {
+    const t = first('* t\nV1 a 0 -\uff15\nR1 a 0 1k\n.op\n.end\n', 'look-alike-letter');
+    expect([t.title, t.why, t.ngspice, t.fixes.map((f) => f.label)]).toEqual([
+      'V1\'s value is not a number for SPICE',
+      'Right after the -, it has the fullwidth digit \uff15, which looks like 5, so SPICE does not read the word as a number. Write -5.',
+      "ngspice stops: 'unknown parameter (-___)'. [look-alike-letter-6]",
+      ['Write -5 (\u22125\u00a0V)'],
+    ]);
+    // At the start, a minus sign from a document keeps "It starts with" and its own run (look-alike-letter-2).
+    expect(first('* t\nV1 a 0 \u22125\nR1 a 0 1k\n.op\n.end\n', 'look-alike-letter').ngspice).toBe("ngspice stops: 'unknown parameter (___5)'. [look-alike-letter-2]");
   });
 
   it('a node name with an invisible character: no "Rename out to out", and no dangling-node notes for the two names (security review F2)', () => {
