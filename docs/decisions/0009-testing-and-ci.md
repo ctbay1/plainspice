@@ -67,11 +67,21 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   never made to wait longer or expect less instead.
 - **A test made to wait for what it is about**: the double click's own test sends its second click once
   the card has come to rest; a machine too slow to send it within a double click's time (450 ms) has not
-  tried what the test is about, so it tries again, up to five times, and says so if it never could. It
-  also keeps the page busy as that second press comes in, until a double click's time after the move
-  has passed, so the press is handled late though made in time: the critic of these fixes showed the
-  test passed with the press timed by when the page got to it, the case seen failing under load (it
-  fails 3 of 3 that way now). A double click that ended too late to be one is tried again too.
+  tried what the test is about, so it tries again, up to five times, and says so if it never could. A
+  double click that ended too late to be one is tried again too. The test runs two ways, because the
+  page's fix has two parts and one way of running cannot try both:
+  - *The second press handled at once* (the page gets to it while the card is still sliding): it guards
+    the cause of the failure seen under load, that the move is the first click's doing when nothing came
+    between that click and the move, however long the page took (the count of presses and keys). Put back
+    the old time limit (250 ms) and it fails 3 of 3; take away the card letting presses through just
+    after the move and it fails 3 of 3.
+  - *The second press handled late* (the page is busy as it comes in, until a double click's time after
+    the move has passed): it guards that a press is judged by when it was made, its own time, not when a
+    busy page got to it. Timed by when the page got to it, it fails 3 of 3; without the pass-through, 3 of 3.
+  Both also check that R2's card stays open through the double click. With the time limit put back, the
+  card closed under the second press and, once the drawing had slid back, a late double click found R2's
+  value again and opened the card on it: the second critic of these fixes showed the late way passed
+  then. With the check it fails that way too (3 of 3), whenever the page gets to the press.
 - **Heavy unit tests have their own time limit**, written next to them with what they cost: those that
   take 0.4 to 1.5 s alone (the converter for each video's drawing, random edits and turns of every
   example, 160 random circuits laid out, 1500 random netlists checked, Node started six times) ran 6 to
