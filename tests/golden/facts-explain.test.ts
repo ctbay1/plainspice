@@ -465,7 +465,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
   it('describes every fixture circuit for a screen reader', () => {
     const d = ofFixture('f5-thevenin-cccs', false);
     expect(plain(describeCircuit(d.netlist))).toBe(
-      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x, used as an ammeter. R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
+      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
     );
     for (const id of FIXTURES) expect(describeCircuit(parseNetlist(fixtureText(id))).length, id).toBeGreaterThan(40);
   });

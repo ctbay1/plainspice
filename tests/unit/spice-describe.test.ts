@@ -4,6 +4,8 @@
  * the editor, and the plain words for every diagnostic code. The same words on real engine runs
  * are checked in tests/golden/facts-explain.test.ts.
  */
+import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import type { EngineDiagnostic, RawPlot, RunResult } from '../../src/engine/types.ts';
@@ -11,6 +13,7 @@ import { DESCRIBE_STRINGS, DESCRIBED_PARTS, annotateLines, describeCircuit, desc
 import { parseNetlist } from '../../src/spice/parse.ts';
 
 const MINUS = '−';
+const root = resolve(import.meta.dirname, '../..');
 /** formatSI writes a no-break space between number and unit; expectations here use a plain space. */
 const sp = (s: string | undefined): string => (s ?? '').replace(/ /g, ' ');
 
@@ -56,9 +59,18 @@ const F5_RESULTS = op({ a: 14, x: 14, n1: 12 }, [
 ]);
 
 describe('describeCircuit', () => {
+  it('says what every 0 V source is, without a purpose it may not have: the turned-off source of a Thevenin example too (student review)', () => {
+    const rth = readFileSync(join(root, 'examples/p02/p02-2-test-current.cir'), 'utf8');
+    const meter = readFileSync(join(root, 'examples/sp01/sp01-2-ammeter.cir'), 'utf8');
+    const said = (text: string): string => sp(describeCircuit(parseNetlist(text)));
+    expect(said(rth)).toContain('V1: a 0 V source from s to ground: a wire, through which ngspice measures the current (the ammeter trick).');
+    expect(said(meter)).toContain('Vm: a 0 V source from n2 to n2b: a wire, through which ngspice measures the current (the ammeter trick).');
+    for (const text of [rth, meter]) expect(said(text)).not.toContain('used as an ammeter');
+  });
+
   it('describes F5 in netlist order, as the brief asks', () => {
     expect(sp(describeCircuit(parseNetlist(F5)))).toBe(
-      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x, used as an ammeter. R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
+      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
     );
   });
 
@@ -69,7 +81,7 @@ describe('describeCircuit', () => {
       ),
     );
     expect(text).toContain(`V1: a 2 V source with its + side at c and its ${MINUS} side at ground.`);
-    expect(text).toContain('Vs: a 0 V source from c to d, used as an ammeter.');
+    expect(text).toContain('Vs: a 0 V source from c to d: a wire, through which ngspice measures the current (the ammeter trick).');
     expect(text).toContain('R1: a 1 kΩ resistor between d and ground.');
     expect(text).toContain('C1: a 1 µF capacitor between d and ground.');
     expect(text).toContain('L1: a 1 mH inductor between d and e.');

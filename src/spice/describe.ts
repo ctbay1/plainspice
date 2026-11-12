@@ -169,7 +169,9 @@ export const DESCRIBE_STRINGS = {
   vSource: (name: string, v: string, a: string, b: string): string =>
     `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${a} and its ${MINUS} side at ${b}.`,
   vFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} voltage source with its + side at ${a} and its ${MINUS} side at ${b}.`,
-  ammeter: (name: string, a: string, b: string): string => `${name}: a 0 V source from ${a} to ${b}, used as an ammeter.`,
+  // P9: true of every 0 V source, the turned-off source of a Thevenin example too (student review): what
+  // it is and what ngspice does with it, not a purpose the circuit may not have.
+  ammeter: (name: string, a: string, b: string): string => `${name}: a 0 V source from ${a} to ${b}: a wire, through which ngspice measures the current (the ammeter trick).`,
   swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${a} and its ${MINUS} side at ${b}, swept by .dc.`,
   iSource: (name: string, v: string, a: string, b: string): string =>
     `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${a} into ${b}.`,
