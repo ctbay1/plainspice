@@ -71,7 +71,6 @@ import {
   EDIT_STRINGS,
   GROUND,
   NAVIGATE_STRINGS,
-  applyChanges,
   applyEdit,
   buildSchematic,
   describeNode,
@@ -136,6 +135,7 @@ import {
   moveOp,
   nodeChoices,
   nodeEnd,
+  nodeNamesIn,
   nodeSaid,
   nodeWords,
   placeEdit,
@@ -143,6 +143,7 @@ import {
   placePreview,
   reverseHand,
   sourceChoices,
+  starterWords,
   stepFrom,
   symbolEnd,
   turnHand,
@@ -150,6 +151,7 @@ import {
   wirePreview,
   wireStartOf,
   wireTargets,
+  withUsedNodeNames,
   type EditKey,
   type Grab,
   type Hand,
@@ -159,11 +161,13 @@ import {
   type WireDraft,
   type WireStart,
 } from './editing.ts';
-import { isPartKind, kindName, toolPhrase, type Tool } from './tools.ts';
+import { isPartKind, kindName, toolAliases, toolPhrase, type Tool } from './tools.ts';
 import { PlotPanel } from './components/PlotPanel.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
 import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, drawnAsInVideo, exampleById, exampleName } from './examples.ts';
+import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedText, stillToChoose } from './fixes.ts';
+import { hintShowsNote, noteAfterTool, REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
 import { useKeyboardInset, useMedia, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
 import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
@@ -289,8 +293,6 @@ interface NodeCardState {
 
 const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
 
-/** How long a refused edit's reason stays in the hint line (it is announced as well). */
-const REFUSAL_SHOWN_MS = 6000;
 /** How long a refusal stays in the hint line however the pointer moves (time to read it). */
 const REFUSAL_READ_MS = 1500;
 
@@ -509,8 +511,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [cardTyping, setCardTyping] = useState(false);
   const cardSession = useRef(0);
   const [panel, setPanel] = useState<PanelId | undefined>(undefined);
-  /** The next panel opens without taking the focus (one opened along with an example). */
+  /** The next panel opens (or closes) without moving the focus (one opened or closed along with an example). */
   const quietPanel = useRef(false);
+  /**
+   * The Netlist panel was opened by a SPICE for Beginners example, not by the student: an example from
+   * another video closes it again (else its drawing runs under the panel). Forgotten as soon as the
+   * student opens or closes a panel.
+   */
+  const panelByExample = useRef(false);
   const [tool, setTool] = useState<Tool>('select');
   /** The tool was chosen with the keys: the hint line gives the keyboard's way to use it. */
   const [toolByKey, setToolByKey] = useState(false);
@@ -556,10 +564,19 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [nodeCard, setNodeCard] = useState<NodeCardState | undefined>(undefined);
   /** Why the last edit was refused (the model's words): in the hint line until the next thing happens. */
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
-  /** What PlainSpice also did to the drawing with the last edit (an edit's notes), in the hint line for a moment. */
-  const [noteLine, setNoteLine] = useState<string | undefined>(undefined);
+  /**
+   * What PlainSpice also did to the drawing with the last edit (an edit's notes), in the hint line for
+   * a moment; or, held there until it has been read, why the first part also wrote .op and .end.
+   */
+  const [noteLine, setNoteLine] = useState<HintNote | undefined>(undefined);
+  /** The note's time is up (hint-note.ts): it goes, unless a newer note has taken its place. */
+  const clearNote = useCallback((note: HintNote) => setNoteLine((now) => (now === note ? undefined : now)), []);
   /** When the last refusal was said: a pointer moving on the paper a moment later brings the hint back. */
   const refusedAt = useRef(0);
+  /** The node names of the open circuit's undo history, for the store's version they were read at (usedNodeNames, below). */
+  const usedNames = useRef<{ version: number; names: ReadonlySet<string>; memo: Map<string, readonly string[]> }>({ version: -1, names: new Set(), memo: new Map() });
+  /** The drawing last given to an edit, with those names (currentDrawing, below). */
+  const editable = useRef<{ s: Schematic; names: ReadonlySet<string>; out: Schematic } | undefined>(undefined);
   /** The part's card shows its connections. */
   const [connOpen, setConnOpen] = useState(false);
   /** The Add a part form, as it opens. */
@@ -632,16 +649,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const related = useMemo(() => relatedOf(selectedPart?.part), [selectedPart]);
   const checks = current ? record.checks : traps;
   /** What is wrong with the drawing lines (a *@ line PlainSpice cannot read or use): in the Checks panel, counted with the checks. */
-  const drawingWarnings = useMemo(() => (schematic?.problems ?? []).filter((p) => p.severity === 'warning'), [schematic]);
+  const drawingWarnings = useMemo(() => drawingWarningsOf(schematic), [schematic]);
   /** The controlled sources placed on the drawing that still read what PlainSpice chose for them (in the Checks panel too). */
-  const unchosenNow = useMemo(() => {
-    if (!schematic) return [];
-    return [...unchosen].flatMap((key) => {
-      const part = schematic.circuit.parts.find((p) => p.key === key);
-      const control = part ? controlWords(part) : undefined;
-      return part && control ? [{ key, name: part.name, control }] : [];
-    });
-  }, [schematic, unchosen]);
+  const unchosenNow = useMemo(() => stillToChoose(schematic, unchosen), [schematic, unchosen]);
   const checkCount = checks.length + drawingWarnings.length + unchosenNow.length;
   /** Checks on part lines (not notes): each part's first, which its symbol shows in red pen. */
   const partTraps = useMemo(() => {
@@ -680,12 +690,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     SAVE_DELAY_MS,
     { flushOnUnmount: true },
   );
-  const announcedChecks = useRef(traps.length);
+  /** The Checks tab's count as last said: said again only when it changes (what is heard is the number the tab shows). */
+  const announcedChecks = useRef(tn('checksCount', traps.length));
   const announceChecksSoon = useDebounced(() => {
-    const count = readNetlist(store.get()).traps.length;
-    if (count === announcedChecks.current) return;
-    announcedChecks.current = count;
-    announce(tn('checksCount', count));
+    const now = store.get();
+    // The tab's own count, for the text as it is now (counted afresh when the drawing is still a frame behind).
+    const said = shownText === now ? checksSaid(checks.length, drawingWarnings.length + unchosenNow.length) : checksSaidFor(now, unchosen, MAX_DRAWN_PARTS);
+    if (said === announcedChecks.current) return;
+    announcedChecks.current = said;
+    announce(said);
   }, ANNOUNCE_CHECKS_DELAY_MS);
   // A circuit just opened: its traps are said once, after what opened it (the red pen on the drawing
   // is a picture; the parts' descriptions carry it too).
@@ -746,6 +759,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setMove(undefined);
       setLookAt(undefined);
       setRefusal(undefined);
+      setNoteLine(undefined);
       setTurnedForEditing(false);
       setUnchosen(new Set());
       setNotice(null);
@@ -756,7 +770,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setFitCount((n) => n + 1);
       store.set(next, { source: 'load' });
       live.load(next, { run: how.run, manual: how.manual ?? false });
-      announcedChecks.current = readNetlist(next).traps.length;
+      announcedChecks.current = tn('checksCount', readNetlist(next).traps.length);
       announceOpenedSoon();
     },
     [store, live, saveSoon, announceOpenedSoon],
@@ -768,10 +782,22 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       if (!example) return;
       load(example.netlist, { run: true, example: example.id });
       // SPICE for Beginners is about the netlist: on a computer its examples open with the Netlist
-      // panel beside the drawing (the focus stays where the student chose the example).
-      if (example.group === 'sp01' && !phone) {
-        quietPanel.current = true;
-        setPanel('netlist');
+      // panel beside the drawing (the focus stays where the student chose the example). An example of
+      // another video closes the panel such an example opened (final reviews, student
+      // netlist-panel-stays); a panel the student opened stays.
+      const open = openedPanel.current;
+      if (example.group === 'sp01') {
+        if (!phone && open !== 'netlist') {
+          quietPanel.current = true;
+          panelByExample.current = true;
+          setPanel('netlist');
+        }
+      } else if (panelByExample.current) {
+        panelByExample.current = false;
+        if (open === 'netlist') {
+          quietPanel.current = true;
+          setPanel(undefined);
+        }
       }
       // The link in the address is no longer what is open.
       if (linkInAddress.current) {
@@ -793,13 +819,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         if (!fresh) return;
         changes = fresh.changes;
       }
-      const next = applyChanges(now, changes);
+      // The fix's changes, and the drawing lines it leaves with no node or part to name taken out with
+      // them (final reviews, kept F1); said with the count the Checks tab then shows.
+      const next = fixedText(now, changes, MAX_DRAWN_PARTS);
       store.set(next, { source: 'fix' });
-      const count = readNetlist(next).traps.length;
-      announcedChecks.current = count;
-      announce(`${t('fixApplied', { label: fix.label })}. ${tn('checksCount', count)}`);
+      const said = checksSaidFor(next, unchosen, MAX_DRAWN_PARTS);
+      announcedChecks.current = said;
+      announce(`${t('fixApplied', { label: fix.label })}. ${said}`);
     },
-    [store, read.text, announce],
+    [store, read.text, announce, unchosen],
   );
 
   /** After an undo or a redo: what was being done on the drawing stops (the text it was for is gone). */
@@ -1156,17 +1184,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     },
     [phone],
   );
-  // A panel that opens takes the focus to its heading; one that closes gives it back to its tab.
+  // A panel that opens takes the focus to its heading; one that closes gives it back to its tab
+  // (not one opened or closed along with an example: the focus stays where the example was chosen).
   const openedPanel = useRef<PanelId | undefined>(undefined);
   useEffect(() => {
     const was = openedPanel.current;
     openedPanel.current = panel;
     const quiet = quietPanel.current;
     quietPanel.current = false;
+    // The student opened or closed a panel: an example no longer closes it.
+    if (panel !== was && !quiet) panelByExample.current = false;
     if (panel && panel !== was) {
       if (!quiet) panelHeading.current?.focus({ preventScroll: true });
     }
-    else if (!panel && was && (document.activeElement === document.body || !document.activeElement)) {
+    else if (!panel && was && !quiet && (document.activeElement === document.body || !document.activeElement)) {
       // On a phone, Numbers, Plot and ngspice output open from More: back to More.
       const tab = document.querySelector<HTMLElement>(phone ? `.bar .tab--${was}` : `.tabs .tab--${was}`) ?? (phone ? barMore.current : null);
       tab?.focus({ preventScroll: true });
@@ -1203,7 +1234,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setWireDraft(undefined);
       setLookAt(undefined);
       setRefusal(undefined);
-      setNoteLine(undefined);
+      // Back to Select only puts the part in hand down: a note that must be read stays (hint-note.ts; the
+      // second critic of words W9: after a Shift+click, Escape took the starter's why away unseen).
+      setNoteLine((now) => noteAfterTool(now, next));
       setMove(undefined);
       setPartsSheet(false);
       if (next === 'select') {
@@ -1376,7 +1409,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (schematic && !tooBig) {
       list.push({ id: 'add-part', group: gEdit, label: t('paletteAddPart'), keywords: 'add new part form nodes keyboard netlist line', shortcut: 'A' });
       for (const tl of ['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'ground'] as const) {
-        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}`}`, shortcut: tl === 'ground' ? '0' : tl });
+        // E to H also by their other names, ranked as words of their names: "dependent source" (the channel's
+        // word, the examples') and their initials, "vcvs" ... ("controlled" is in their names): final reviews,
+        // words W4. This group comes before the examples, so "dependent" lists the four first.
+        const aliases = toolAliases(tl);
+        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}`}`, ...(aliases.length ? { aliases } : {}), shortcut: tl === 'ground' ? '0' : tl });
       }
       list.push({ id: 'tool:wire', group: gEdit, label: t('paletteWire'), keywords: 'wire draw line', shortcut: 'W' });
       const sel = selected?.kind === 'part' ? schematic.circuit.parts.find((p) => p.key === selected.key) : undefined;
@@ -1407,12 +1444,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'settings', group: gSettings, label: t('paletteSettings'), keywords: 'preferences text size contrast motion font' });
     list.push({ id: 'help', group: gSettings, label: t('paletteHelp'), keywords: 'keys keyboard shortcuts licences' });
     // The open circuit's example comes last in its group. A video's examples are named with the
-    // video ("Example 3: a and b open" is in three videos), and found by its words, accents or not.
-    const plainWords = (words: string): string => words.normalize('NFD').replace(/\p{M}/gu, '');
+    // video ("Example 3: a and b open" is in three videos), and found by its words, accents or not
+    // (filterCommands folds accents in every command's words and in what is typed).
     for (const e of [...EXAMPLES].sort((a, b) => Number(a.id === exampleId) - Number(b.id === exampleId))) {
       const video = EXAMPLE_GROUPS.find((g) => g.group === e.group && g.video)?.label;
       const label = video ? t('paletteOpenVideoExample', { name: e.name, video }) : t('paletteOpenExample', { name: e.name });
-      list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video ${plainWords(`${video ?? ''} ${e.name}`)}` });
+      list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video` });
     }
     return list;
   }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, video, shown, plain, exampleId, schematic, tooBig, selected, selectedWire, selectedGround]);
@@ -1761,17 +1798,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   });
   // A refused edit's reason is in the hint line until the next thing happens, or for a few seconds
   // (it was said aloud too): then the hint says again what can be done now.
-  const hint = refusal && !hand && tool !== 'wire' && !move ? refusal : noteLine && !hand && !move ? noteLine : hintNow;
+  const refusalShown = !!refusal && !hand && tool !== 'wire' && !move;
+  // (A note that must be read shows with a part still in hand too: Shift+click keeps the tool.)
+  const noteInHint = hintShowsNote(noteLine, { refused: refusalShown, inHand: !!hand, moving: !!move });
+  const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
+  // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
+  // netlist being typed puts it aside.
+  const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist));
   useEffect(() => {
     if (!refusal) return undefined;
     const timer = window.setTimeout(() => setRefusal(undefined), REFUSAL_SHOWN_MS);
     return () => window.clearTimeout(timer);
   }, [refusal]);
-  useEffect(() => {
-    if (!noteLine) return undefined;
-    const timer = window.setTimeout(() => setNoteLine(undefined), REFUSAL_SHOWN_MS);
-    return () => window.clearTimeout(timer);
-  }, [noteLine]);
+  // An edit's note goes after a few seconds; the starter's why once it has been in view long enough
+  // to read (after the first part's card sheet closes, on a phone: the critic of words W9).
+  useNoteTimer(noteLine, noteInView, clearNote);
   const plotAvailable = hasSweeps(record);
   /** The netlist's sweep lines (.dc, .tran), by name. */
   const sweepNames = useMemo(() => [...new Set(netlist.analyses.map((i) => netlist.lines[i]?.directive?.name).filter((n): n is string => n === '.dc' || n === '.tran'))], [netlist]);
@@ -1974,7 +2015,33 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const currentDrawing = (): Schematic | undefined => {
     if (tooBig) return undefined;
     const now = store.get();
-    return schematic && schematic.netlist.text === now ? schematic : buildSchematic(now, NOTEBOOK_OPTIONS);
+    const s = schematic && schematic.netlist.text === now ? schematic : buildSchematic(now, NOTEBOOK_OPTIONS);
+    const names = usedNodeNames();
+    // The same drawing with the same names is the same object, render after render (as the drawing itself is).
+    const last = editable.current;
+    if (last && last.s === s && last.names === names) return last.out;
+    const out = withUsedNodeNames(s, names);
+    editable.current = { s, names, out };
+    return out;
+  };
+  /**
+   * The node names the open circuit had in its undo history (as the store has it now): a new node
+   * never takes one, so a name just said ("Node n2 is now ground") never comes back for a new,
+   * separate node. Each text's names are read once; only this circuit's texts are kept.
+   */
+  const usedNodeNames = (): ReadonlySet<string> => {
+    const version = store.snapshot().version;
+    const known = usedNames.current;
+    if (known.version === version) return known.names;
+    const texts = store.circuitTexts();
+    const memo = new Map<string, readonly string[]>();
+    for (const t of texts) {
+      const names = known.memo.get(t);
+      if (names) memo.set(t, names);
+    }
+    const names = nodeNamesIn(texts, memo);
+    usedNames.current = { version, names, memo };
+    return names;
   };
   /** The phone's turned view is another drawing than the netlist's: editing shows it as drawn (and the hint says so). */
   const asDrawnForEditing = (): void => {
@@ -2004,11 +2071,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     // no longer has removed, a line it could not use): said after the summary.
     const said = (how.notes ?? []).filter((n) => n.severity === 'warning' || n.kind === 'orphans-dropped').map((n) => n.message);
     announce([`${summary}${wrote}`, ...said].join(' '));
+    // The first part on a blank page also wrote .op and .end (needsStarter): why, first in the hint
+    // line, so the new lines in the netlist are explained to the eye too (final reviews, words W9),
+    // and held there until it has been read (hint-note.ts: the critic of W9).
+    const starter = summary.includes(starterWords()) ? starterWords() : '';
     // Seen too, not only heard: in the hint line for a moment, as a refusal's reason is (setRefusal below clears it otherwise).
-    if (said.length || wrote) {
+    if (said.length || wrote || starter) {
       refusedAt.current = performance.now();
-      setNoteLine([...(wrote ? [wrote.trim()] : []), ...said].join(' '));
-    } else setNoteLine(undefined);
+      setNoteLine({ words: [...(starter ? [starter] : []), ...(wrote ? [wrote.trim()] : []), ...said].join(' '), ...(starter ? { read: true } : {}) });
+    } else if (!noteLine?.read) setNoteLine(undefined);
+    // (A change with nothing to say leaves a note that must be read, as a value typed on the new part's
+    // card does: it stays for its reading time, on a phone from when the card's sheet closes.)
     setNoteWanted(false);
     if (how.select) {
       setSelected(how.select);
@@ -2017,10 +2090,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       if (how.focus || how.open) pendingFocus.current = { item: how.select, ...(how.open ? { open: how.open } : {}) };
     }
   };
-  /** An edit refused: the model's reason in the hint line and for screen readers. */
+  /** An edit refused: the model's reason in the hint line and for screen readers (in place of an edit's note). */
   const refuse = (reason: string): void => {
     refusedAt.current = performance.now();
     setRefusal(reason);
+    setNoteLine(undefined);
     announce(reason);
   };
   /** A model edit on the drawing as it is now: done (one undo step), or refused with the model's reason. */
@@ -2524,9 +2598,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       // The pointer is in use: the hint gives the pointer's way again (a tool chosen by its key gave the keys' way).
       if (info && toolByKey) setToolByKey(false);
       // A refusal (or an edit's note) has been read (it was said aloud too): the pointer moving on brings back what can be done now.
-      if ((refusal || noteLine) && info && performance.now() - refusedAt.current > REFUSAL_READ_MS && !hand && tool !== 'wire') {
+      // (A note that must be read stays for its reading time, whatever the pointer does: hint-note.ts.)
+      if ((refusal || (noteLine && !noteLine.read)) && info && performance.now() - refusedAt.current > REFUSAL_READ_MS && !hand && tool !== 'wire') {
         setRefusal(undefined);
-        setNoteLine(undefined);
+        if (!noteLine?.read) setNoteLine(undefined);
       }
       const q = info ? quarter(info.at) : undefined;
       setHover((h) => ((h && q && h.x === q.x && h.y === q.y) || (!h && !q) ? h : q));
@@ -2685,10 +2760,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else openPalette();
       return;
     }
-    if (paletteOpen || inOverlay) return;
+    if (paletteOpen) {
+      // Escape closes Ctrl+K wherever the focus is, as its Esc badge says (its field handles its own
+      // keys first; the focus may have left the field for the page itself: final reviews, a11y A1).
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePalette();
+      }
+      return;
+    }
+    if (inOverlay) return;
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
       let acted = true;
+      /** This Escape let go of the selection, or had nothing left to stop (in the netlist editor, Escape is the editor's). */
+      let letGo = false;
       if (move) cancelMove();
       else if (wireDraft) {
         setWireDraft(undefined);
@@ -2699,15 +2785,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else if (nodeCard) closeNodeCard();
       else if (tool !== 'select') chooseTool('select');
       else if (panel && !inEditor) setPanel(undefined);
-      else if (selectedWire && !inEditor) setSelectedWire(undefined);
-      else if (selected && !inEditor) setSelected(undefined);
-      // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
-      // already (in a browser, React draws that before this listener runs).
-      else acted = false;
+      else {
+        letGo = !inEditor;
+        if (selectedWire && !inEditor) setSelectedWire(undefined);
+        else if (selected && !inEditor) setSelected(undefined);
+        // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
+        // already (in a browser, React draws that before this listener runs).
+        else acted = false;
+      }
       // The next thing has happened: the hint line says again what can be done now, not an older refusal
-      // or an edit's note (they were said aloud when they came).
+      // or an edit's note (they were said aloud when they came). A note that must be read goes only with
+      // the Escape that lets go (the student is done): one that closes or stops something leaves it, as
+      // that thing's own button does (closing the new part's card brings a phone's hint line, and the
+      // note, back into view; going back to Select is what the hint line offers after a Shift+click).
       setRefusal(undefined);
-      setNoteLine(undefined);
+      if (letGo || !noteLine?.read) setNoteLine(undefined);
       if (acted) e.preventDefault();
       return;
     }
@@ -3052,6 +3144,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       <a
         className="skip-link"
         href="#drawing"
+        // Behind Ctrl+K like the rest of the page: never reached from the dialog (WCAG 2.4.3).
+        inert={inert}
         onClick={(e) => {
           e.preventDefault();
           const link = e.currentTarget;

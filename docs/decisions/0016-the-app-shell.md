@@ -162,3 +162,48 @@ Ctrl+K stay as they are.
   screen, live runs, every fixture and every video example against native ngspice, traps and fixes,
   share links including a link made for the old address, export, plots, keyboard only, the phone's
   turned drawing and sheets, offline, and axe in every main state).
+
+## After the final reviews (12 November 2026)
+
+- **Ctrl+K keeps the focus in its field** (a11y A1). The field is the dialog's one Tab stop: Tab and
+  Shift+Tab stay in it, as in every other dialog here (React Aria keeps Tab inside), so the focus
+  never reaches the page behind (the skip link is inert too while Ctrl+K is open). The list is never
+  a Tab stop (`tabIndex -1`: Chromium made the scrolling list one, where the arrows, Enter and Esc did
+  nothing). A press anywhere in the dialog but the field keeps the focus in the field; an option
+  still runs on its click, and the list still scrolls with the wheel, a finger and its scrollbar.
+  Escape closes Ctrl+K wherever the focus is, as its Esc badge says.
+- **Its list is a `<div role=listbox>`** of `<div role=group>`s, each a name and a `<ul role=none>` of
+  `<li role=option>`s (a11y A3: an `<li>` may not be a group, and a list may hold only `<li>`s). The
+  accessibility tree is as it was; axe's best-practice rules pass on it.
+- **What is typed is cut into words as the commands are** (words W5, W12): at anything that is not a
+  letter, a digit, _ or a dot, any case, accents or not. So a command's own name, typed as it is shown
+  ("Place a current-controlled current source", "Example 3: short", "(V_Th)"), finds it, and
+  "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands have
+  other names of their own (a command's `aliases`, found and ranked as words of its name are, never as
+  the start of its name): "dependent source", the channel's word, and their textbook initials, "vcvs",
+  "cccs", "vccs" and "ccvs" (read off the catalog's names). So "dependent" lists them first, before the
+  eight examples named with the word (their group, Edit the drawing, comes before Examples), in view on
+  a phone too, and Enter places a source rather than opening an example over the open circuit (words W4
+  and its critic); "controlled", the textbook's word, is in their names. A short query keeps the
+  command whose name it starts: "v" the voltage source, "d" Draw a wire, "de" Delete R1. (Counted as
+  the start of a name, "vcvs" and "dependent source" put E first for all three: the second critic.)
+- **A fix keeps the drawing lines in step** (kept F1 and its critic). A check's fix changes part lines
+  only. When it renames a node ("Make n3 the ground", "Rename n12 to n2"), the `*@ label` line of the
+  old name goes in the same step, as the editor's own rename takes a node's name off the drawing. When
+  it renames a part whose old name then names nothing (a 0 V source in place of a 0 Ω resistor, "VR1";
+  a 0 V source for a W written as a wire, "VW1"), the part's `*@` position line takes the new name, the
+  rest as written, so the new part stands where the old one was drawn and no wire is redrawn (unless the
+  new name already has a position line of its own). A second part renamed ("Rename it R3") leaves the
+  line to the part that keeps the name, and is placed. No fix takes a part away; a position line whose
+  part a change takes away goes too. So the Checks tab never warns about a line the student never
+  wrote. A drawing line that already named nothing before the fix stays (the student's, and the panel
+  says what is wrong with it). Every fix offered on every video example now ends with no trap and no
+  drawing warning (`app-fixes.test.ts`).
+- **What is said is the number the Checks tab shows**: after a fix and after an edit, the count says
+  the checks, the drawing lines PlainSpice cannot use and the dependent sources still to choose, as
+  the tab counts them. While everything counted is a trap it is said as before ("1 trap found.": the
+  checks find traps); otherwise in the tab's own words, "2 found in Checks."
+- **The Netlist panel a SPICE for Beginners example opens closes again** when an example of another
+  video (or of the basics) opens, so that drawing has the paper to itself (student
+  netlist-panel-stays). A panel the student opened or closed is the student's: no example closes it.
+  A panel opened or closed along with an example leaves the focus where the example was chosen.

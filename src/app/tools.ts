@@ -62,3 +62,20 @@ export function toolPhrase(tool: Tool): string {
 export function theTool(kind: PartKind): string {
   return kind === 'ground' ? t('theGround') : t('theName', { name: elementInfo(kind)?.name ?? kind });
 }
+
+/**
+ * The other names a tool's Place command has in Ctrl+K, found and ranked as its own name: each
+ * dependent source (E to H) is a "dependent source", the channel's word and the examples', and has
+ * its textbook initials, read off its catalog name ("vcvs": voltage-controlled voltage source, E).
+ * So "dependent" or "cccs" puts a Place command first, not an example that would replace the open
+ * circuit (final reviews, words W4).
+ */
+export function toolAliases(tool: Tool): string[] {
+  if (!isControlled(tool)) return [];
+  const initials = (elementInfo(tool)?.name ?? '')
+    .split(/[^a-z]+/i)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toLowerCase())
+    .join('');
+  return ['dependent source', initials];
+}

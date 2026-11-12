@@ -678,6 +678,32 @@ export function disconnectEdit(s: Schematic, key: string, pin: 0 | 1): EditResul
 
 // ------------------------------------------------------------------ the Add a part form
 
+// ------------------------------------------------------------------ names for new nodes
+
+/**
+ * The node names (lower case) in a circuit's texts: those of its undo history, which a new node
+ * never takes (final reviews, student node-name-reused: right after "Node n2 is now ground", a new,
+ * separate node was called n2 again). `memo` keeps each text's names, so each text is read once.
+ */
+export function nodeNamesIn(texts: readonly string[], memo: Map<string, readonly string[]> = new Map()): Set<string> {
+  const out = new Set<string>();
+  for (const text of texts) {
+    let names = memo.get(text);
+    if (!names) {
+      names = [...parseNetlist(text).nodes.keys()];
+      memo.set(text, names);
+    }
+    for (const n of names) out.add(n);
+  }
+  return out;
+}
+
+/** The drawing to edit, with the node names its circuit had before: the model's freshNodeName keeps clear of them (its usedNodeNames option, read from the drawing's options). */
+export function withUsedNodeNames(s: Schematic, used: ReadonlySet<string>): Schematic {
+  const options: Schematic['options'] & { usedNodeNames: ReadonlySet<string> } = { ...s.options, usedNodeNames: used };
+  return { ...s, options };
+}
+
 /** One end's node in the form: a node of the circuit, or a new one with the name typed. */
 export type NodePick = { node: string } | { fresh: string };
 

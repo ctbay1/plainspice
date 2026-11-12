@@ -326,3 +326,31 @@ Still open, on the plan: dragging a piece of wire; choosing what a controlled so
 the drawing; the phone's layout used with a keyboard and a mouse (large text on a laptop) gives touch
 words; automatic node names keep their numbers (n1, n4) when nodes merge; real screen readers and
 browsers other than Chromium.
+
+## After the final reviews (12 November 2026)
+
+- **The first part on a blank page shows why .op and .end were written**, first in the hint line, not
+  only in what is said (words W9; the sentence is `starterAdded`, the words lane's), and holds it there
+  until it can have been read. (Held as the drawing note, it went at the first pointer move after
+  1.5 s, after 6 s at most, and a phone never showed it: the critic of W9.) The hold is its reading
+  time, 60 ms a character, about 170 words a minute (never less than a refusal's 6 s; about 19 s for
+  the sentence and the drawing note together), counted only while the hint line shows it: on a phone
+  the new part's card opens as a sheet in the hint line's place, so the time starts when the sheet
+  closes (`src/app/hint-note.ts`). It shows with a part still in hand too: Shift+click keeps the tool,
+  as the hint line offers, and the why shows at once, as after a plain click (the second critic of W9:
+  placed that way, it was never shown). Moving the pointer, typing the new part's value, another change
+  with nothing to say (another part placed with Shift+click), going back to Select (Escape, Cancel, the
+  Select tool, or the click that places the last part), and closing or stopping something, with Escape
+  or with its own button (the card, a panel, a sheet, a part being moved), leave it in place. A change
+  with a note of its own, a refusal, another tool chosen, Undo or Redo, another circuit opened, or the
+  Escape that lets go of the selection (or has nothing left to stop) takes it away at once: the student
+  is done with it. An Escape typed in the netlist editor is the editor's, and leaves it. (An Escape that
+  closed a panel, such as the Netlist panel opened to look at the new lines, or put back a part being
+  moved, took it away unread too.)
+- **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
+  now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
+  every node name in the circuit's undo history: the texts Undo can go back to since the circuit was
+  opened (an example, a link, a new circuit), and the text now (the store's `circuitTexts`). Not the
+  steps Redo would bring back: after undoing a part, the next one takes the names it had. The model's
+  `freshNodeName` reads these names from the drawing's options (`usedNodeNames`); the app passes them
+  with every drawing it edits.

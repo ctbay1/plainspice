@@ -55,6 +55,12 @@ export interface NetlistStore {
   set(text: string, change: Change): void;
   undo(): boolean;
   redo(): boolean;
+  /**
+   * The texts of the circuit open now, oldest first: those Undo can go back to since it was opened
+   * (an example, a link, a new circuit, or the text the page started with), then the text now. Not
+   * the steps Redo would bring back. (A new node never takes a name these had: freshNodeName.)
+   */
+  circuitTexts(): string[];
   /** Called after every change, with the new text and what made it. */
   subscribe(listener: (text: string, change: Change) => void): () => void;
 }
@@ -74,6 +80,8 @@ interface Entry {
   mine: boolean;
   /** What the change that made this text did (its label). */
   label?: string;
+  /** A circuit was opened with this text (a load, or the text the page started with): its history starts here. */
+  opened?: true;
 }
 
 /**
@@ -82,7 +90,7 @@ interface Entry {
  */
 export function createNetlistStore(initial: string, options: { mine?: boolean; now?: () => number } = {}): NetlistStore {
   const now = options.now ?? (() => Date.now());
-  let current: Entry = { text: initial, mine: options.mine ?? true };
+  let current: Entry = { text: initial, mine: options.mine ?? true, opened: true };
   let past: Entry[] = [];
   let future: Entry[] = [];
   let version = 0;
@@ -120,7 +128,7 @@ export function createNetlistStore(initial: string, options: { mine?: boolean; n
       const at = now();
       const student = STUDENT.has(change.source);
       // The first change to a circuit opened for the student makes it theirs, as it was opened too.
-      if (student && !current.mine) current = { text: current.text, mine: true };
+      if (student && !current.mine) current = { ...current, mine: true };
       const mine = change.source === 'load' ? false : student ? true : current.mine;
       if (!joins(change, at)) {
         past.push(current);
@@ -137,7 +145,7 @@ export function createNetlistStore(initial: string, options: { mine?: boolean; n
       }
       future = [];
       lastAt = at;
-      current = change.label === undefined ? { text: next, mine } : { text: next, mine, label: change.label };
+      current = { text: next, mine, ...(change.label === undefined ? {} : { label: change.label }), ...(change.source === 'load' ? { opened: true as const } : {}) };
       publish(change);
     },
     undo() {
@@ -163,6 +171,16 @@ export function createNetlistStore(initial: string, options: { mine?: boolean; n
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    circuitTexts() {
+      const texts = [current.text];
+      if (current.opened) return texts;
+      // Back to where this circuit was opened (or to the oldest step kept).
+      for (let i = past.length - 1; i >= 0; i--) {
+        texts.unshift(past[i]!.text);
+        if (past[i]!.opened) break;
+      }
+      return texts;
     },
   };
 }

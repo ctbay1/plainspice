@@ -2,9 +2,11 @@
  * Ctrl+K (from the Studio direction, decision 0014): every command in one searchable list, every
  * panel, overlay, example and part reached from the keyboard. A modal dialog with a combobox and its
  * list (ARIA 1.2 combobox pattern): type to filter, arrow keys to choose, Enter to run, Escape to
- * close; focus goes back where it was (the page does that).
+ * close; focus goes back where it was (the page does that). The field keeps the focus the whole time:
+ * Tab stays in it (a modal dialog keeps Tab inside, and the field is its one stop), and a click on
+ * the list runs an option without taking the focus from the field (final reviews, a11y A1).
  */
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { t, tn } from '../../i18n/index.ts';
 import { LineIcon } from './Icons.tsx';
 
@@ -17,31 +19,54 @@ export interface Command {
   group: string;
   /** Extra words that should find it. */
   keywords?: string;
+  /**
+   * Other names it has (the channel's word, a textbook's initials: "dependent source", "vcvs"):
+   * found, and ranked, as words of its name are, never as its start. So a short query keeps the
+   * command whose name it starts ("v" the voltage source, "d" Draw a wire, "de" Delete R1), and
+   * "dependent" still brings the command above a command found only by its keywords.
+   */
+  aliases?: readonly string[];
   /** A shortcut to show. */
   shortcut?: string;
 }
 
 /**
- * Commands whose label, group or keywords have a word starting with each typed word (any order, any
- * case): "plain" finds "the plain font", not "explain"; "net" finds "netlist".
+ * The words of a command's name, group or keywords, and of what was typed, cut the same way: any case,
+ * accents or not ("Thévenin" and "Thevenin" are one word), and split at anything that is not a
+ * letter, a digit, _ or a dot. So a name typed as it is shown finds its command, hyphens, colons and
+ * brackets included ("current-controlled", "Example 3:", "(V_Th)"), and ".tf" or "V_Th" stay one word
+ * (final reviews, words W5 and W12).
  */
+export function commandWords(text: string): string[] {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}_.]+/u)
+    .filter(Boolean);
+}
+
 /**
- * The commands whose words start with every typed word, best first: a command whose name starts with
- * what was typed, then one whose name has every typed word, then one found by its group or keywords
- * ("open the help" finds Open the help first, not Open the settings in "Settings and help"). Within
- * each rank the list keeps its order, and each group stays in one piece.
+ * The commands whose words start with every typed word (any order: "plain" finds "the plain font",
+ * not "explain"; "net" finds "netlist"), best first: a command whose name starts with what was
+ * typed, then one whose names (its name and its other names, its aliases) have every typed word,
+ * then one found by its group or keywords ("open the help" finds Open the help first, not Open the
+ * settings in "Settings and help"). Within each rank the list keeps its order, and each group stays
+ * in one piece. Another name never counts as the start of the name: counted so, "vcvs" and
+ * "dependent source" put E first for "v", "d" and "de", ahead of the voltage source, Draw a wire
+ * and Delete (the second critic of words W4).
  */
 export function filterCommands(commands: readonly Command[], query: string): Command[] {
-  const typed = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const typed = commandWords(query);
   if (!typed.length) return commands.slice();
-  const split = (text: string): string[] => text.toLowerCase().split(/[^\p{L}\p{N}_.]+/u).filter(Boolean);
   const phrase = typed.join(' ');
   const ranked: { c: Command; rank: number; i: number }[] = [];
   commands.forEach((c, i) => {
-    const name = split(c.label);
-    const all = [...name, ...split(c.group), ...split(c.keywords ?? '')];
+    const label = commandWords(c.label);
+    const name = [...label, ...(c.aliases ?? []).flatMap(commandWords)];
+    const all = [...name, ...commandWords(c.group), ...commandWords(c.keywords ?? '')];
     if (!typed.every((w) => all.some((x) => x.startsWith(w)))) return;
-    const rank = name.join(' ').startsWith(phrase) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
+    const rank = label.join(' ').startsWith(phrase) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
     ranked.push({ c, rank, i });
   });
   // Groups stay whole (the list shows each group once, under its heading): a group goes where its best
@@ -59,7 +84,7 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const list = useRef<HTMLUListElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const id = useId();
   const shown = useMemo(() => filterCommands(commands, query), [commands, query]);
   const current = shown[Math.min(active, shown.length - 1)];
@@ -98,11 +123,25 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
     e.preventDefault();
     e.stopPropagation();
   };
+  // The field is the dialog's one Tab stop: Tab and Shift+Tab stay in it, as in every modal dialog
+  // here (React Aria's keep Tab inside theirs), never reaching the page behind (WCAG 2.4.3).
+  const onDialogKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    input.current?.focus({ preventScroll: true });
+  };
+  // A click on the list, a group's name or the search glyph never takes the focus from the field
+  // (an option still runs on its click), so the arrow keys, Enter and Escape keep working.
+  const keepFocus = (e: MouseEvent<HTMLDivElement>): void => {
+    if (e.target === input.current) return;
+    e.preventDefault();
+    input.current?.focus({ preventScroll: true });
+  };
 
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the rest of the page is made inert while it is open */}
-      <div className="palette" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
+      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-static-element-interactions -- the rest of the page is made inert while it is open; its keys and clicks keep the focus in the field */}
+      <div className="palette" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} onKeyDown={onDialogKeyDown} onMouseDown={keepFocus}>
         <h2 className="visually-hidden" id={`${id}-title`}>
           {t('paletteTitle')}
         </h2>
@@ -134,12 +173,14 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
         </div>
         {/* How many commands match, said as the search is typed. */}
         <output className="visually-hidden">{query ? tn('paletteCount', shown.length) : ''}</output>
-        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- a filtered list a <select> cannot be */}
-        <ul className="palette__list" id={`${id}-list`} role="listbox" aria-label={t('paletteTitle')} ref={list}>
+        {/* The list is never a Tab stop (tabIndex -1: a list that scrolls is otherwise one in Chromium): the field keeps the focus and moves the active option (aria-activedescendant). */}
+        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a filtered list a <select> cannot be */}
+        <div className="palette__list" id={`${id}-list`} role="listbox" aria-label={t('paletteTitle')} tabIndex={-1} ref={list}>
           {groups.map(({ group, items }, g) => (
             // A group of options with its name, as a listbox allows (the name is read with the options).
+            // A <div>: an <li> may not be a group, and a list may hold only <li> (final reviews, a11y A3).
             // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-            <li key={group} role="group" aria-labelledby={`${id}-g${g}`} className="palette__groupbox">
+            <div key={group} role="group" aria-labelledby={`${id}-g${g}`} className="palette__groupbox">
               <span className="palette__group" id={`${id}-g${g}`}>
                 {group}
               </span>
@@ -166,15 +207,15 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
                   </li>
                 ))}
               </ul>
-            </li>
+            </div>
           ))}
           {shown.length === 0 ? (
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role
-            <li className="palette__empty" role="option" aria-selected="false" aria-disabled="true">
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+            <div className="palette__empty" role="option" aria-selected="false" aria-disabled="true">
               {t('paletteEmpty', { query })}
-            </li>
+            </div>
           ) : null}
-        </ul>
+        </div>
       </div>
     </div>
   );

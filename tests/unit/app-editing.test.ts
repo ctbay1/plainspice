@@ -35,6 +35,7 @@ import {
   nodeAt,
   nodeChoices,
   nodeEnd,
+  nodeNamesIn,
   placeEdit,
   pieceAt,
   placePreview,
@@ -49,6 +50,7 @@ import {
   wireStartOf,
   wireTargets,
   withStarter,
+  withUsedNodeNames,
   type PartForm,
 } from '../../src/app/editing.ts';
 import { readNetlist } from '../../src/app/model.ts';
@@ -473,5 +475,45 @@ describe('after the reviews of step B', () => {
   it('a current source in hand says which way its arrow pushes', () => {
     const p = placePreview(s0, handFor('I'), { x: 14, y: 3 });
     expect(joinsWords(s0, p)).toBe('its arrow pushes current from a new node, through it, into a new node');
+  });
+});
+
+describe('after the final reviews: a new node never takes a name the circuit had', () => {
+  // A blank page, V1 placed (its ends n1 and n2), then a ground symbol on V1's − pin: "Node n2 is now ground".
+  const blank = '';
+  const v1 = placeEdit(build(blank), handFor('V'), { x: 0, y: 3 });
+  const grounded = placeEdit(after(v1.text), handFor('ground'), { x: 0, y: 5 });
+  const history = [blank, v1.text, grounded.text];
+
+  it('the model alone would call a new node n2 again, right after n2 became ground (student node-name-reused)', () => {
+    expect(v1.summary).toMatch(/^V1 added between node n1 and node n2\./);
+    expect(grounded.summary).toContain('Node n2 is now ground');
+    expect(placeEdit(after(grounded.text), handFor('R'), { x: 8, y: 2 }).summary).toBe('R1 added between node n2 and node n3.');
+  });
+
+  it('with the names of the circuit’s undo history kept clear, the resistor’s new nodes are n3 and n4', () => {
+    const used = nodeNamesIn(history);
+    expect([...used].sort()).toEqual(['0', 'n1', 'n2']);
+    const s = withUsedNodeNames(after(grounded.text), used);
+    const r1 = placeEdit(s, handFor('R'), { x: 8, y: 2 });
+    expect(r1.summary).toBe('R1 added between node n3 and node n4.');
+    expect(r1.text).toContain('R1 n3 n4 1k');
+    // The Add a part form offers the same new names, and writes them.
+    const form = formStart(s, 'R');
+    expect(form.ends).toEqual([{ node: 'n1' }, { fresh: 'n3' }]);
+    expect(addPartEdit(s, { ...form, ends: [{ fresh: 'n3' }, { fresh: 'n4' }] })).toMatchObject({ ok: true, summary: 'R1 added between node n3 and node n4.' });
+  });
+
+  it('keeps clear of the names wherever the model makes a new node: an end let go onto a node of its own', () => {
+    const s = withUsedNodeNames(build('* t\nV1 a 0 6\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n'), new Set(['n1', 'n2']));
+    expect(disconnectEdit(s, 'r1', 1)).toMatchObject({ ok: true, summary: 'R1 no longer connects to node b: that end is now on a node of its own, n3.' });
+  });
+
+  it('reads each text of the history once', () => {
+    const memo = new Map<string, readonly string[]>();
+    nodeNamesIn(history, memo);
+    expect(memo.size).toBe(3);
+    memo.set(v1.text, ['zz']);
+    expect(nodeNamesIn(history, memo).has('zz')).toBe(true);
   });
 });
