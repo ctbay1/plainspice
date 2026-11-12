@@ -337,7 +337,7 @@ test('a piece of wire selected: Shift+arrow keys and Enter say why they do nothi
   await expect(drawing(page).getByRole('button', { name: 'Node in' })).toBeFocused();
   // Shift+Right would have moved the name of node in, and Enter opened its card: neither, and why.
   await page.keyboard.press('Shift+ArrowRight');
-  await expect(hintLine(page)).toHaveText(t('pieceNoMove', { what: t('labelName', { node: 'in' }) }));
+  await expect(hintLine(page)).toHaveText(t('pieceNoMove', { what: t('labelName', { node: 'node in' }) }));
   // At once: a key's click is the key's own, never taken for the click a pointer sends after a tap.
   await page.keyboard.press('Enter');
   await expect(hintLine(page)).toHaveText(t('pieceNoCard', { node: 'node in' }));
