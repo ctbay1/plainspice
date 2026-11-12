@@ -362,6 +362,9 @@ test('a phone: a finger drags a part to move it and the paper to pan, two finger
   await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).click();
   await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Wire/ }).click();
   await expect(hintLine(page)).toHaveText(t('hintWirePhone'));
+  // The sheet had moved the drawing to keep the selected piece clear of it: it goes back where it was
+  // once the page has measured the sheet gone, a frame or more after the hint changes (decision 0018).
+  await settle(page);
   const first = await gridPoint(page, 10, 5);
   await page.touchscreen.tap(first.x, first.y);
   await expect(hintLine(page)).toHaveText(t('hintWireOnPhone'));

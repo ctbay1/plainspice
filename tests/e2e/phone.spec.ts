@@ -551,6 +551,8 @@ test('“Show the whole drawing” belongs to the view it was asked in: Select t
     await bar.getByRole('button', { name: t('barParts') }).click();
     await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Wire/ }).click();
     await expect(page.getByRole('dialog', { name: t('partsSheetTitle') })).toHaveCount(0);
+    // Shown as drawn, it slides to its new place: a finger is put on the paper once it is there.
+    await settle(page);
   };
   const whole = statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true });
   // Wire: the drawing as drawn, whole, while editing. Moved by the reader (from the empty paper above
