@@ -3334,6 +3334,17 @@ html[data-contrast='more'] .lines .hint {
 .is-phone .status .turn-button:first-of-type {
   margin-left: auto;
 }
+/* "Show the whole drawing" and another button on the pill: a calm status, and "Running…", keep their
+   words for screen readers only (Frame.tsx), so the pill is just its buttons, on one row, evenly
+   padded, and stays so through a run; where even they do not fit (320 px, large text), each row of
+   them is centred rather than pushed apart. */
+.is-phone .status.is-crowded {
+  justify-content: center;
+  padding-left: 0.25rem;
+}
+.is-phone .status.is-crowded .turn-button {
+  margin-left: 0;
+}
 
 /* The one bar along the bottom: Select · Parts · Netlist · Checks · Explain · More. */
 .bar {
@@ -3836,5 +3847,31 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
   }
   .is-phone .bar__button {
     min-height: 2.75rem;
+  }
+}
+
+/* Shorter still (a laptop at 300 % or 400 %: 200 to 270 px of window): a status pill in the middle
+   would sit over the drawing's numbers. A calm one ("Finished in 32 ms") folds to its dot, its words
+   still there for screen readers: with nothing to press, just the dot, in the paper's margin left of its
+   red line, where the drawing never goes; with buttons (Undo, Show the whole drawing), the dot and the
+   buttons. One that needs reading (running, paused, an error) keeps its words, its reason and its
+   buttons. The line keeps its height, so the drawing does not move as runs come and go. */
+@media (max-height: 300px) {
+  .is-phone .status[data-tone='ok'] .status__main {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .is-phone .status[data-tone='ok']:not(:has(button)) {
+    align-self: flex-start;
+    margin-left: -1.3125rem;
+    padding-left: 0.1875rem;
+    padding-right: 0.1875rem;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
   }
 }

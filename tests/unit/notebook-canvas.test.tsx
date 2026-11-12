@@ -12,6 +12,8 @@ import { createRef, useState, type ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import { NO_INSETS, NO_RESULTS, NotebookCanvas, notebookSchematic, placeResults, type CanvasHandle, type CanvasViewInfo, type DrawingResults } from '../../src/notebook/index.ts';
+import { KEEP_IN_VIEW_PX } from '../../src/notebook/fit.ts';
+import { inkBox } from '../../src/notebook/NotebookCanvas.tsx';
 import { describeItem, describeSchematic, neighbour, stripDrawing, type NavItem } from '../../src/schematic/index.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -235,9 +237,12 @@ describe('NotebookCanvas', () => {
     const props = { schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: { kind: 'part', key: 'r1' } as NavItem, onSelect: () => undefined, onOpen: () => undefined, insets: { top: 0, right: 0, bottom: 480, left: 0 }, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v) };
     render(<NotebookCanvas ref={ref} {...props} />);
     const first = views.at(-1)!;
-    // A pan that takes R1 out of the free part stays: the page does not pull it back.
-    act(() => ref.current!.panBy(0, -400));
-    expect(views.at(-1)!.view.y).toBeCloseTo(first.view.y - 400, 6);
+    // A pan that takes R1 out of the free part stays: the page does not pull it back. (Not so far that
+    // the drawing leaves the window: some of it always stays, as the next test says.)
+    act(() => ref.current!.panBy(0, -100));
+    expect(views.at(-1)!.view.y).toBeCloseTo(first.view.y - 100, 6);
+    const r1 = s.scene.parts.find((p) => p.key === 'r1')!.box;
+    expect(views.at(-1)!.view.y + r1.y1 * views.at(-1)!.unit, 'R1 is above the free part').toBeLessThan(0);
     // Zoomed in far past R1's size: no tug of war between its two edges (no endless updates).
     for (let i = 0; i < 6; i++) act(() => ref.current!.zoomBy(1.5));
     expect(views.at(-1)!.unit).toBeGreaterThan(first.unit * 4);
@@ -331,3 +336,135 @@ describe('NotebookCanvas', () => {
   });
 });
 
+
+describe('NotebookCanvas after the final reviews (the phone lane)', () => {
+  const base = (views: CanvasViewInfo[]) => ({ schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: undefined as NavItem | undefined, onSelect: () => undefined, onOpen: () => undefined as void, insets: NO_INSETS, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v) });
+
+  it('a press on a part the editor does not take (the turned view): held still it is the part’s click, moving it pans, two fingers pinch (F1)', () => {
+    const views: CanvasViewInfo[] = [];
+    const onOpen = vi.fn();
+    // The turned view is another drawing: the editor takes nothing on it.
+    const editing = { press: () => undefined };
+    const { container } = render(<NotebookCanvas {...base(views)} onOpen={onOpen} editing={editing} />);
+    const canvas = container.querySelector<HTMLElement>('.nb-canvas')!;
+    canvas.setPointerCapture = () => undefined;
+    const r3 = screen.getByRole('button', { name: /^R3, / });
+    // A finger that moves from R3: the paper pans, and the click the browser may still send is not acted on.
+    const before = views.at(-1)!.view;
+    fireEvent.pointerDown(r3, { pointerId: 1, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+    fireEvent.pointerMove(r3, { pointerId: 1, pointerType: 'touch', clientX: 280, clientY: 200, buttons: 1 });
+    fireEvent.pointerMove(r3, { pointerId: 1, pointerType: 'touch', clientX: 150, clientY: 200, buttons: 1 });
+    fireEvent.pointerUp(r3, { pointerId: 1, pointerType: 'touch', clientX: 150, clientY: 200 });
+    fireEvent.click(r3, { detail: 1 });
+    expect(views.at(-1)!.view.x).toBeLessThan(before.x - 100);
+    expect(onOpen).not.toHaveBeenCalled();
+    // Held still, it is R3's own click: its card opens.
+    fireEvent.pointerDown(r3, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+    fireEvent.pointerUp(r3, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200 });
+    fireEvent.click(r3, { detail: 1 });
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // Two fingers, the first on R3, spread apart: the drawing grows.
+    const unit = views.at(-1)!.unit;
+    fireEvent.pointerDown(r3, { pointerId: 3, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+    fireEvent.pointerDown(canvas, { pointerId: 4, pointerType: 'touch', clientX: 300, clientY: 260, buttons: 1 });
+    fireEvent.pointerMove(canvas, { pointerId: 4, pointerType: 'touch', clientX: 300, clientY: 380, buttons: 1 });
+    fireEvent.pointerUp(canvas, { pointerId: 4, pointerType: 'touch', clientX: 300, clientY: 380 });
+    fireEvent.pointerUp(r3, { pointerId: 3, pointerType: 'touch', clientX: 300, clientY: 200 });
+    fireEvent.click(r3, { detail: 1 });
+    expect(views.at(-1)!.unit).toBeGreaterThan(unit * 1.5);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('a sheet that moved the drawing to keep the selected item clear of it moves it back when it goes, unless the reader moved it since (F2)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    const props = { ...base(views), selected: { kind: 'part', key: 'r3' } as NavItem };
+    const sheet = { top: 0, right: 0, bottom: 300, left: 0 };
+    const { rerender } = render(<NotebookCanvas ref={ref} {...props} />);
+    // The view held still, as after a part placed on the drawing.
+    act(() => ref.current!.keep());
+    const home = views.at(-1)!.view;
+    // A sheet over the bottom half: R3 is moved up, clear of it...
+    rerender(<NotebookCanvas ref={ref} {...props} insets={sheet} />);
+    expect(views.at(-1)!.view.y).toBeLessThan(home.y - 50);
+    // ...and the drawing is back where it was when the sheet goes.
+    rerender(<NotebookCanvas ref={ref} {...props} />);
+    expect(views.at(-1)!.view).toEqual(home);
+    // Moved by the reader while the sheet was open: it stays where they put it.
+    rerender(<NotebookCanvas ref={ref} {...props} insets={sheet} />);
+    act(() => ref.current!.panBy(30, 0));
+    const panned = views.at(-1)!.view;
+    rerender(<NotebookCanvas ref={ref} {...props} />);
+    expect(views.at(-1)!.view).toEqual(panned);
+  });
+
+  it('a drag never takes the drawing off the window: some of what is drawn always stays in the free part (F3)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    render(<NotebookCanvas ref={ref} {...base(views)} />);
+    const ink = inkBox(s.scene, NO_RESULTS)!;
+    act(() => ref.current!.panBy(0, -5000));
+    let v = views.at(-1)!.view;
+    expect(v.y + ink.y1 * v.unit).toBeGreaterThanOrEqual(KEEP_IN_VIEW_PX - 1e-6);
+    act(() => ref.current!.panBy(-5000, 5000));
+    v = views.at(-1)!.view;
+    expect(v.x + ink.x1 * v.unit).toBeGreaterThanOrEqual(KEEP_IN_VIEW_PX - 1e-6);
+    expect(v.y + ink.y0 * v.unit).toBeLessThanOrEqual(600 - KEEP_IN_VIEW_PX + 1e-6);
+    // Part of it is out of view now: not whole.
+    expect(views.at(-1)!.whole).toBe(false);
+  });
+
+  it('is whole when everything drawn is in the free part of the window, wherever the reader put it (F4)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    render(<NotebookCanvas ref={ref} {...base(views)} />);
+    expect(views.at(-1)!.whole).toBe(true);
+    // Moved a little, all of it still in view: still whole (it said not whole after any move).
+    act(() => ref.current!.panBy(2, 2));
+    expect(views.at(-1)!.moved).toBe(true);
+    expect(views.at(-1)!.whole).toBe(true);
+    // Moved so that some of it is out of view: not whole.
+    act(() => ref.current!.panBy(-400, 0));
+    expect(views.at(-1)!.whole).toBe(false);
+  });
+
+  it('says whether its fit shows all of the drawing, wherever the reader moved it since (the hint’s words after a pan)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    const { rerender } = render(<NotebookCanvas ref={ref} {...base(views)} />);
+    expect(views.at(-1)!).toMatchObject({ whole: true, fits: true });
+    // Moved partly off the screen: no longer whole, but the fit it came from shows all of it.
+    act(() => ref.current!.panBy(-400, 0));
+    expect(views.at(-1)!).toMatchObject({ moved: true, whole: false, fits: true });
+    // At a readable size the window cannot hold, the fit itself cuts some of it off, moved or not.
+    rerender(<NotebookCanvas ref={ref} {...base(views)} minUnit={60} maxUnit={60} fitKey="big" />);
+    expect(views.at(-1)!).toMatchObject({ moved: false, whole: false, fits: false });
+    act(() => ref.current!.panBy(-100, 0));
+    expect(views.at(-1)!).toMatchObject({ moved: true, whole: false, fits: false });
+    // Asked for whole ("Show the whole drawing"): its fit shows all of it.
+    rerender(<NotebookCanvas ref={ref} {...base(views)} minUnit={60} maxUnit={60} fitKey="whole" fitWhole />);
+    expect(views.at(-1)!).toMatchObject({ moved: false, whole: true, fits: true });
+  });
+
+  it('asked for the whole drawing (Fit), shows all of it, smaller than readable if it must; zooming out goes as far as two fingers do, never jumping in', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    // At 60 px a unit (the readable size here) p02-4 is far wider than the window.
+    const props = { ...base(views), minUnit: 60, maxUnit: 60 };
+    const { rerender } = render(<NotebookCanvas ref={ref} {...props} />);
+    expect(views.at(-1)!.unit).toBe(60);
+    expect(views.at(-1)!.whole).toBe(false);
+    rerender(<NotebookCanvas ref={ref} {...props} fitWhole />);
+    const whole = views.at(-1)!;
+    expect(whole.unit).toBeLessThan(30);
+    expect(whole.whole).toBe(true);
+    // Zoom out from there: no jump in to half the readable size (30), which is bigger.
+    act(() => ref.current!.zoomBy(1 / 1.2));
+    expect(views.at(-1)!.unit).toBeCloseTo(whole.unit, 6);
+    // Without it, Zoom out goes down to half the readable size, as two fingers do (it stopped at the readable size).
+    rerender(<NotebookCanvas ref={ref} {...props} fitKey="again" />);
+    expect(views.at(-1)!.unit).toBe(60);
+    for (let i = 0; i < 8; i++) act(() => ref.current!.zoomBy(1 / 1.2));
+    expect(views.at(-1)!.unit).toBeCloseTo(30, 6);
+  });
+});

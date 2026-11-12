@@ -459,15 +459,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (schematic && schematic.netlist.text === openedText && viewFor !== circuitKey) setViewFor(circuitKey);
   }, [schematic, openedText, circuitKey, viewFor]);
   const phoneView = useMemo(() => {
-    if (!phone || !schematic) return { pans: false, turn: false, wholeUnit: 0 };
+    if (!phone || !schematic) return { turn: false };
     const w = win.width - 30;
     const h = win.height - 190;
     const unitOf = (b: Box): number => Math.min(w / Math.max(1e-6, b.x1 - b.x0), h / Math.max(1e-6, b.y1 - b.y0));
     const asDrawn = unitOf(schematic.scene.bounds);
     const pans = asDrawn < minUnit;
-    if (!(pans && portrait && isWide(schematic))) return { pans, turn: false, wholeUnit: asDrawn };
+    if (!(pans && portrait && isWide(schematic))) return { turn: false };
     const turnedNow = turnedQuarter(schematic);
-    return { pans, turn: !!turnedNow && unitOf(turnedNow.scene.bounds) > asDrawn * 1.15, wholeUnit: asDrawn };
+    return { turn: !!turnedNow && unitOf(turnedNow.scene.bounds) > asDrawn * 1.15 };
     // The circuit (and how many parts it has when typed in the Netlist panel: fitCount), not its text
     // as typed, nor an edit made on the drawing (the view never turns under the hand that edits it).
     // oxlint-disable-next-line react-hooks/exhaustive-deps
@@ -533,8 +533,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [offlineReady, setOfflineReady] = useState(false);
   /** The sticky note invites the student on the first screen (Start here), until a card opens or it is hidden. */
   const [noteWanted, setNoteWanted] = useState(startup.source === 'example' && startup.exampleId === START_HERE_ID);
-  /** A phone: the card's value field has the focus (the editing strip shows above the keyboard). */
-  const [editing, setEditing] = useState(false);
+  /**
+   * A phone: the card's value field has the focus, and how it got it: a tap ('touch': on a touch
+   * screen the editing strip shows above its keyboard) or the keys ('keys': Tab, a digit typed on the
+   * card; the sheet stays, with its actions next in the Tab order, as on a computer).
+   */
+  const [editing, setEditing] = useState<false | 'touch' | 'keys'>(false);
   /** A touch screen (a coarse pointer): a phone's card becomes the strip above its keyboard while a value is typed. */
   const coarse = useMedia('(pointer: coarse)');
   /** The netlist is being typed: the drawing keeps its size (only a new part fits it again). */
@@ -1267,9 +1271,32 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     [announce, phone, turned, turnWanted, turnedForEditing, schematic],
   );
 
+  /**
+   * The reader asked to see the whole drawing ("Show the whole drawing": More, Ctrl+K, Shift+1, the
+   * status line, the computer's zoom bar): the fit it makes (its fitCount) shows all of it, smaller
+   * than its words' readable size if it must be, in the view it was asked in (on a phone, turned to
+   * fit or as drawn), until something else fits the drawing again (a circuit opened, a part added in
+   * the Netlist panel) or the reader turns it or shows it as drawn (toggleTurn). Any other view (the
+   * turned drawing shown as drawn for a tool, turned back by Select, the phone turned on its side)
+   * opens at its own fit: the whole drawing asked for while editing as drawn is not the turned view's.
+   */
+  const [wholeAt, setWholeAt] = useState<{ count: number; turned: boolean } | undefined>(undefined);
+  const viewTurned = !!turned && seen === turned;
+  const fitCountNow = useRef(fitCount);
+  const viewTurnedNow = useRef(viewTurned);
+  useLayoutEffect(() => {
+    fitCountNow.current = fitCount;
+    viewTurnedNow.current = viewTurned;
+  }, [fitCount, viewTurned]);
   const fit = useCallback(() => {
     setFitCount((n) => n + 1);
+    setWholeAt({ count: fitCountNow.current + 1, turned: viewTurnedNow.current });
     canvas.current?.fit();
+  }, []);
+  /** A phone's "Turn to fit", "As drawn" or "As in the video": the other view at its own fit, not the whole one asked for in this one. */
+  const toggleTurn = useCallback(() => {
+    setTurnWanted((w) => !w);
+    setWholeAt(undefined);
   }, []);
 
   const setFont = useCallback(
@@ -1400,7 +1427,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'export:ltspice', group: gCircuit, label: t('exportLtspice'), keywords: 'export save download file net' });
     list.push({ id: 'new', group: gCircuit, label: t('newCircuit'), keywords: 'new blank empty clear start fresh circuit' });
     const gDrawing = t('paletteGroupDrawing');
-    list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'zoom screen whole', shortcut: 'Shift+1' });
+    list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'fit window zoom screen whole', shortcut: 'Shift+1' });
     list.push({ id: 'zoom-in', group: gDrawing, label: t('zoomIn'), keywords: 'bigger', shortcut: '+' });
     list.push({ id: 'zoom-out', group: gDrawing, label: t('zoomOut'), keywords: 'smaller', shortcut: '−' });
     if (phone && turned) list.push({ id: 'turn', group: gDrawing, label: turnWanted ? t(video ? 'paletteAsInVideo' : 'paletteAsDrawn') : t('paletteTurnToFit'), keywords: 'turn rotate upright phone video' });
@@ -1466,7 +1493,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     else if (kind === 'fit') fit();
     else if (kind === 'zoom-in') canvas.current?.zoomBy(1.2);
     else if (kind === 'zoom-out') canvas.current?.zoomBy(1 / 1.2);
-    else if (kind === 'turn' && !arg) setTurnWanted((w) => !w);
+    else if (kind === 'turn' && !arg) toggleTurn();
     else if (kind === 'part' && arg) openCard(arg);
     else if (kind === 'add-part') openAddForm();
     else if (kind === 'tool' && arg) chooseTool(arg as Tool);
@@ -1505,9 +1532,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const firstScreenInvite = shown?.scene.parts.find((p) => p.key === 'r1') ?? shown?.scene.parts.find((p) => p.letter === 'R');
   const noteShown = !phone && noteWanted && tool === 'select' && !card && !nodeCard && !panel && !paletteOpen && !!firstScreenInvite && !!schematic;
   const phoneSheet: 'card' | 'parts' | 'more' | 'panel' | undefined = phone ? (card || nodeCard ? 'card' : partsSheet ? 'parts' : moreSheet ? 'more' : panel ? 'panel' : undefined) : undefined;
-  // The strip (the field held above the on-screen keyboard) is for a touch screen; the phone's layout
-  // on a laptop (large text, zoom) keeps the sheet and its actions, which Tab reaches (WCAG 2.1.1).
-  const strip = phone && !!card && editing && (keyboard > 0 || coarse);
+  // The strip (the field held above the on-screen keyboard) is for a field tapped on a touch screen, or
+  // whenever an on-screen keyboard is up. A field reached with the keys (a touch screen with a keyboard,
+  // the phone's layout on a laptop at large text) keeps the sheet: Tab goes on to the card's actions
+  // (WCAG 2.4.3), as on a computer. (Android may report no keyboard inset at all: a tap is enough.)
+  const strip = phone && !!card && !!editing && (keyboard > 0 || (coarse && editing === 'touch'));
   const vw = win.width;
   const vh = win.height;
   const rightEdge = !phone ? Math.min(tabsRect.width ? tabsRect.left : vw, panel && sheetRect.width ? sheetRect.left : vw) : vw;
@@ -1751,9 +1780,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const noteNoRoom = noteShown && noteRect.width > 0 && !!viewInfo && !notePlace;
 
   // ------------------------------------------------------------------ words for the frame
-  const statusNow = statusWords(engineStatus, liveState, text, phone, hasParts(netlist));
-  // The last answers kept in pencil while building: said in words on the status line, not only by their grey (WCAG 1.4.1).
-  const status = stale ? { ...statusNow, detail: `${statusNow.detail ? `${statusNow.detail} ` : ''}${t('statusOldPencil')}` } : statusNow;
+  // Whether the drawing shows any of a run's numbers. It writes them only where a part or a node kept
+  // its name: a circuit replaced in the Netlist panel by one with other names shows none, nor does a
+  // drawing whose parts have all been deleted (phone review, F5).
+  const marksShown = results.nodes.some((n) => !!n.mark) || [...results.parts.values()].some((p) => p.marks.length > 0);
+  // The drawing shows numbers of a run of another text (in pencil): only then does a paused status say
+  // they are from before the last change.
+  const oldShown = !current && !!answers(record) && marksShown;
+  const statusNow = statusWords(engineStatus, liveState, text, phone, hasParts(netlist), oldShown);
+  // The last answers kept in pencil while building, if the drawing still shows some: said in words on
+  // the status line, not only by their grey (WCAG 1.4.1).
+  const status = stale && marksShown ? { ...statusNow, detail: `${statusNow.detail ? `${statusNow.detail} ` : ''}${t('statusOldPencil')}` } : statusNow;
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
@@ -1775,6 +1812,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     nodeCard: nodeCard && schematic ? { name: nodeCard.node === GROUND ? t('groundName') : nodeWords(schematic, nodeCard.node), ground: nodeCard.node === GROUND } : undefined,
     paused: status.tone === 'paused',
     whole: viewInfo?.whole ?? true,
+    fits: viewInfo?.fits ?? true,
     turned: !!turned && shown === turned,
     asDrawn: asDrawnOnPhone,
     video,
@@ -1924,8 +1962,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     );
   };
 
-  // A drawing wider than the window (as drawn on a phone, a long circuit on a laptop): the edges say
-  // there is more, judged by the ink on the paper (not the room kept around it for longer numbers).
+  // A drawing wider than the window (on a phone, as drawn or turned as well as it can be; a long circuit
+  // on a laptop): the edges say there is more, judged by the ink on the paper (not the room kept around
+  // it for longer numbers).
   const inkParts = useMemo((): Box[] => {
     if (!shown) return [];
     const wires = shown.scene.wires.map((w) => unionBoxes(w.points.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })))).filter((b): b is Box => !!b);
@@ -1934,7 +1973,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const ink = useMemo(() => unionBoxes(inkParts), [inkParts]);
   const edges = useMemo(() => {
     const none = { left: false, right: false, top: 0 };
-    if (!viewInfo || strip || !ink || !shown || (phone && !asDrawnOnPhone)) return none;
+    if (!viewInfo || strip || !ink || !shown) return none;
     const c = boxOnScreen(viewInfo.view, ink);
     const left = c.x0 < insets.left - 4;
     const right = c.x1 > viewInfo.size.width - insets.right + 4;
@@ -1950,7 +1989,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     return { left, right, top: tries.find(clear) ?? middle };
     // insets by their numbers
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, asDrawnOnPhone, viewInfo, ink, inkParts, shown, strip, insets.left, insets.right, insets.top, insets.bottom]);
+  }, [viewInfo, ink, inkParts, shown, strip, insets.left, insets.right, insets.top, insets.bottom]);
   /** The edge buttons: small, and where they cover none of the drawing's words if they can. */
   const edgeTop = edges.top;
   const panSideways = (dir: 1 | -1): void => {
@@ -3107,9 +3146,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       analysis={analysis}
       phone={phone}
       {...(!phone ? { zoom: { percent: zoomPercent, onIn: () => canvas.current?.zoomBy(1.2), onOut: () => canvas.current?.zoomBy(1 / 1.2), onFit: fit } } : {})}
-      {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: () => setTurnWanted((w) => !w) } } : {})}
+      {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: toggleTurn } } : {})}
       // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
       {...(phone && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
+      // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
+      // the way back to all of it (Fit, under More) at hand.
+      {...(phone && !phoneSheet && viewInfo?.moved && !viewInfo.whole ? { whole: fit } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line.
       {...(phone && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
     />
@@ -3219,7 +3261,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             ref={canvas}
             schematic={shown}
             results={results}
-            pending={(!!record && !current) || !!stale}
+            // In pencil, and "Before your last change:" for screen readers, only over numbers the drawing shows (as the status line).
+            pending={((!!record && !current) || !!stale) && marksShown}
             {...(stale ? { pendingWords: t('staleBefore') } : {})}
             plain={plain}
             colours={colours}
@@ -3252,12 +3295,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             // A computer keeps its fit when a card opens; a phone fits again above the card's sheet,
             // and again above the strip while a value is typed.
             fitKey={`${circuitKey}:${fitCount}:${phone ? 'phone' : 'desk'}:${seen === turned ? 'turned' : 'as-drawn'}:${phone && card ? `card:${card.key}` : ''}:${phone && nodeCard ? `node:${nodeCard.node}` : ''}:${strip ? 'edit' : ''}`}
-            // A phone shown as drawn while editing (it was turned to fit): the whole drawing, smaller,
-            // so no part is off the screen where the student was looking; two fingers zoom in.
-            minUnit={editingWhole ? Math.max(4, Math.min(minUnit, phoneView.wholeUnit)) : minUnit}
+            minUnit={minUnit}
             maxUnit={maxUnit}
             padding={phone ? 10 : 24}
-            fill={asDrawnOnPhone && phoneView.pans && !editingWhole ? 'height' : 'whole'}
+            // Whole, smaller than readable if it must be: a phone shown as drawn while editing (it was
+            // turned to fit), so no part is off the screen where the student was looking (two fingers
+            // zoom in); or the reader asked for it ("Show the whole drawing") in the view shown now. On
+            // a phone not while a sheet is open: the paper left above it would make the drawing a stamp
+            // (a card fits its part; More closes to show it); the whole fit comes when the sheet goes.
+            // Otherwise a drawing that does not fit (as drawn on a phone) opens at the smallest readable
+            // size, from its left end: as much of it as can be read at once.
+            fitWhole={editingWhole || (wholeAt?.count === fitCount && wholeAt.turned === viewTurned && !(phone && phoneSheet))}
             focus={cardFocus}
             frame={frame}
             offset={offset}
@@ -3330,7 +3378,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
               canUndo={snap.canUndo}
               canRedo={snap.canRedo}
               onZoom={(how) => {
-                if (how === 'fit') fit();
+                // "Show the whole drawing" closes the sheet, as Export does, so all of the drawing shows at
+                // once (in the strip of paper above the sheet it could only be a stamp). Zoom in and Zoom
+                // out keep it open: their change shows above it.
+                if (how === 'fit')
+                  fromMore(() => {
+                    setMoreSheet(false);
+                    fit();
+                  });
                 else canvas.current?.zoomBy(how === 'in' ? 1.2 : 1 / 1.2);
               }}
               onClose={() => setMoreSheet(false)}
@@ -3353,7 +3408,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
                 // The arrow keys on the drawing move the card along without taking the focus into it.
                 takeFocus={card?.focus !== false}
                 {...(card ? { session: card.session } : {})}
-                onFieldFocus={() => setEditing(true)}
+                onFieldFocus={() => setEditing(lastInput.current === 'pointer' ? 'touch' : 'keys')}
                 onFieldBlur={(next) => {
                   if (!next?.closest('.index-card')) setEditing(false);
                 }}

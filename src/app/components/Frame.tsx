@@ -247,6 +247,7 @@ export function StatusLines({
   turn,
   invite,
   undo,
+  whole,
 }: {
   hint: string;
   status: StatusWords;
@@ -259,8 +260,17 @@ export function StatusLines({
   invite?: { label: string; onClick: () => void };
   /** A phone just after a change made on the drawing: Undo at hand (else it is under More). */
   undo?: () => void;
+  /** A phone whose drawing the reader moved partly out of view: the way back to all of it ("Show the whole drawing", Fit), at hand. */
+  whole?: () => void;
 }): ReactNode {
   const bad = status.tone === 'bad' || status.tone === 'paused';
+  // A phone's pill with "Show the whole drawing" and another button (the turn, Undo): a calm status
+  // keeps its words for screen readers only, and no dot, so the buttons share one row over the drawing
+  // (175 and 115 px of buttons in a 360 px phone's 328 px). So does "Running…" (the numbers in pencil
+  // show the run), so the pill, the hint and the buttons keep their place through each run an edit
+  // starts, and a tap is not met by Undo where "Show the whole drawing" was. A status to read (paused,
+  // an error, one with a reason) keeps its words.
+  const crowded = phone && (status.tone === 'ok' || status.tone === 'busy') && !status.detail && !!whole && (!!turn || !!undo);
   return (
     <div className={`lines${bad ? ' is-bad' : ''}`}>
       {invite ? (
@@ -277,9 +287,9 @@ export function StatusLines({
           {hint}
         </p>
       )}
-      <div className="status" data-tone={status.tone}>
-        <span className={`status__dot status__dot--${status.tone}`} aria-hidden="true" />
-        <span className="status__main">{status.main}</span>
+      <div className={`status${crowded ? ' is-crowded' : ''}`} data-tone={status.tone}>
+        {crowded ? null : <span className={`status__dot status__dot--${status.tone}`} aria-hidden="true" />}
+        <span className={crowded ? 'status__main visually-hidden' : 'status__main'}>{status.main}</span>
         {status.detail ? <span className="status__detail status__reason">{status.detail}</span> : null}
         {/* A reason to read comes first: the rest makes room for it. */}
         {analysis && !phone && status.tone === 'ok' ? <span className="status__detail status__analysis">{analysis}</span> : null}
@@ -287,6 +297,11 @@ export function StatusLines({
         {undo ? (
           <button type="button" className="turn-button" onClick={undo}>
             {t('undo')}
+          </button>
+        ) : null}
+        {whole ? (
+          <button type="button" className="turn-button" onClick={whole}>
+            {t('zoomFit')}
           </button>
         ) : null}
         {turn ? (

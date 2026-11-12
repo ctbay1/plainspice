@@ -5,8 +5,11 @@
  * owns the netlist, the runs and the panels.
  *
  * - Fit: the whole drawing in the free part of the window (`insets` say what the page covers),
- *   never so small that its words are too small to read (`minUnit`, fit.ts); then the reader can
- *   pan (drag the paper, or scroll) and zoom (Ctrl + wheel, pinch, zoomBy). `fitKey` fits again.
+ *   never so small that its words are too small to read (`minUnit`, fit.ts), unless the page asks
+ *   for it whole (`fitWhole`: the reader's Fit); then the reader can pan (drag the paper, from a
+ *   part or a name too, or scroll) and zoom (Ctrl + wheel, pinch, zoomBy), never so far that the
+ *   drawing leaves the window (keepInView). `fitKey` fits again. A sheet that made the view move
+ *   (to keep the selected item clear of it) moves it back when it goes.
  * - Keyboard and screen readers: every part and node is a real button over the drawing, with one
  *   tab stop for the drawing (roving focus). Arrow keys move along the wires (navigate.ts:
  *   neighbour), Home and End go to the first and last item in reading order, Enter opens the
@@ -21,19 +24,22 @@
  * - The schematic editor (decision 0017, `editing`): a press on a part, a ground symbol or a node's
  *   name that moves becomes a drag the editor takes (the paper still pans from empty paper); a press
  *   the editor wants as a click (placing a part, a wire's end) comes to it as a tap, and the item's
- *   own click is then not acted on; the pointer over the paper is reported for previews. What the
- *   editor shows (`marks`: the part in hand, a wire on its way ...) is drawn over the drawing.
+ *   own click is then not acted on; a press on an item the editor does not take (the turned view's
+ *   parts) is the item's click if it holds still and pans the paper if it moves; the pointer over
+ *   the paper is reported for previews. What the editor shows (`marks`: the part in hand, a wire on
+ *   its way ...) is drawn over the drawing.
  */
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react';
-import { describeItem, neighbour, readingOrder, GROUND, type Box, type NavItem, type PartLetter, type Point, type Schematic } from '../schematic/index.ts';
+import { describeItem, neighbour, readingOrder, unionBoxes, GROUND, type Box, type NavItem, type PartLetter, type Point, type Scene, type Schematic } from '../schematic/index.ts';
 import { DESCRIBE_STRINGS } from '../spice/describe.ts';
 import { elementInfo } from '../spice/elements.ts';
 import { assignNodeColours } from '../theme/nodes.ts';
 import { Drawing, UNIT_PX, itemKey, type PenMarks } from './Drawing.tsx';
 import { EditLayer, type EditMarks } from './EditLayer.tsx';
-import { fitView, zoomAt, type Insets, type Size, type View } from './fit.ts';
+import { WHOLE_MIN_UNIT, fitView, inkInView, keepInView, zoomAt, type Insets, type Size, type View } from './fit.ts';
 import { TYPE } from './measure.ts';
-import type { DrawingResults } from './results.ts';
+import { symbolBoxes } from './place.ts';
+import { inkBoxes, type DrawingResults } from './results.ts';
 import { NOTEBOOK_STRINGS } from './strings.ts';
 
 export interface CanvasHandle {
@@ -66,8 +72,13 @@ export interface CanvasHandle {
 export interface CanvasViewInfo {
   /** Screen pixels per grid unit. */
   unit: number;
-  /** The whole drawing is in view. */
+  /** All of the drawing (what is drawn: not the room kept around it for longer numbers) is in the free part of the window. */
   whole: boolean;
+  /**
+   * The fit (not the reader's pans and zooms) shows all of the drawing, as `whole` judges it: a
+   * drawing the reader moved partly off the screen is not whole, but still fits.
+   */
+  fits: boolean;
   /** Where the drawing is on the canvas now (with `offset` applied). */
   view: View;
   /** The same without `offset`: where the fit puts it. */
@@ -180,6 +191,12 @@ export interface NotebookCanvasProps {
   roleDescription?: string;
   /** 'height': a wide drawing as tall as the window allows, read from its left end (fit.ts). */
   fill?: 'whole' | 'height';
+  /**
+   * Fit the whole drawing, smaller than its words' readable size (`minUnit`) if it must be, down to
+   * WHOLE_MIN_UNIT: the reader asked to see it whole (Fit), or a phone shows it whole while it is
+   * edited. Zooming out never goes past the size the view has then.
+   */
+  fitWhole?: boolean;
   /** Fit this part of the drawing (grid units) instead of all of it: a phone's view while a value is typed. */
   frame?: Box | undefined;
   /** A pan the page asks for while the view follows the fit (room for a card), in pixels. */
@@ -216,7 +233,16 @@ export function itemBox(s: Schematic, item: NavItem): Box | undefined {
   return s.scene.nodeLabels.find((l) => l.node === item.name)?.box;
 }
 
+/** What is drawn (grid units): the symbols, the words and results as written (not the room kept for longer ones), the wires. */
+export function inkBox(scene: Scene, results: DrawingResults): Box | undefined {
+  const wires = scene.wires.flatMap((w) => w.points.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })));
+  return unionBoxes([...symbolBoxes(scene), ...inkBoxes(scene, results), ...wires]);
+}
+
 const grow = (b: Box, d: number): Box => ({ x0: b.x0 - d, y0: b.y0 - d, x1: b.x1 + d, y1: b.y1 + d });
+
+/** Two sets of insets are the same page around the paper, give or take its bars resizing (HOLD_SLACK). */
+const nearInsets = (a: Insets, b: Insets): boolean => Math.max(Math.abs(a.top - b.top), Math.abs(a.right - b.right), Math.abs(a.bottom - b.bottom), Math.abs(a.left - b.left)) <= HOLD_SLACK;
 
 const ARROW_KEYS: Readonly<Record<string, 'up' | 'down' | 'left' | 'right'>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
 
@@ -231,11 +257,11 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const [fx0, fy0, fx1, fy1] = f ? [f.x0, f.y0, f.x1, f.y1] : [NaN, NaN, NaN, NaN];
   const focusBox = useMemo((): Box | undefined => (Number.isNaN(fx0) ? undefined : { x0: fx0, y0: fy0, x1: fx1, y1: fy1 }), [fx0, fy0, fx1, fy1]);
   const rootRef = useRef<HTMLDivElement>(null);
+  const worldRef = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const descId = useId();
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const [view, setView] = useState<View | undefined>(undefined);
-  const [whole, setWhole] = useState(true);
   const [hovered, setHovered] = useState<NavItem | undefined>(undefined);
   const [focused, setFocused] = useState<NavItem | undefined>(undefined);
   /** Where a ghost (`ghost`, no editor) follows the pointer, in grid units. */
@@ -274,12 +300,14 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const [rx0, ry0, rx1, ry1] = fr ? [fr.x0, fr.y0, fr.x1, fr.y1] : [NaN, NaN, NaN, NaN];
   const frame = useMemo((): Box | undefined => (Number.isNaN(rx0) ? undefined : { x0: rx0, y0: ry0, x1: rx1, y1: ry1 }), [rx0, ry0, rx1, ry1]);
   const fill = props.fill ?? 'whole';
+  const fitWhole = !!props.fitWhole;
 
   const given = props.colours;
   const colours = useMemo(() => given ?? assignNodeColours(s.netlist.nodes.keys()), [given, s.netlist]);
   const order = useMemo(() => readingOrder(s), [s]);
   const items = useMemo(() => order.map((item) => ({ item, box: itemBox(s, item) })).filter((x): x is { item: NavItem; box: Box } => x.box !== undefined), [order, s]);
   const bounds = s.scene.bounds;
+  const ink = useMemo(() => inkBox(s.scene, results), [s, results]);
 
   // The window's size.
   useLayoutEffect(() => {
@@ -293,16 +321,16 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   }, []);
 
   const selectedBox = selected ? itemBox(s, selected) : undefined;
-  const fitNow = useCallback((): { view: View; whole: boolean } => {
+  const fitNow = useCallback((): View => {
     const focus = frame ? undefined : selectedBox ? grow(selectedBox, 2.5) : focusBox;
-    const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit, maxUnit, fill: frame ? 'whole' : fill, ...(focus ? { focus } : {}) });
-    const all = frame ? fitView(bounds, size, insets, { padding: padding ?? PADDING, minUnit: f.unit, maxUnit: f.unit }) : f;
-    return { view: { unit: f.unit, x: f.x, y: f.y }, whole: all.whole };
-  }, [bounds, size, insets, minUnit, maxUnit, padding, selectedBox, focusBox, frame, fill]);
+    // Asked for whole: as small as that takes (down to WHOLE_MIN_UNIT), words readable or not.
+    const lo = fitWhole && !frame ? Math.min(minUnit, WHOLE_MIN_UNIT) : minUnit;
+    const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit: lo, maxUnit, fill: frame || fitWhole ? 'whole' : fill, ...(focus ? { focus } : {}) });
+    return { unit: f.unit, x: f.x, y: f.y };
+  }, [bounds, size, insets, minUnit, maxUnit, padding, selectedBox, focusBox, frame, fill, fitWhole]);
   const applyFit = useCallback((): void => {
     const f = fitNow();
-    setView((v) => (sameView(v, f.view) ? v : f.view));
-    setWhole(f.whole);
+    setView((v) => (sameView(v, f) ? v : f));
   }, [fitNow]);
 
   // Fit when the window, the insets, the drawing or fitKey change, unless the reader moved the view
@@ -310,6 +338,17 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   // free part of the window.
   const lastInputs = useRef('');
   const heldInsets = useRef<Insets | undefined>(undefined);
+  /** The view as it is drawn now (for the effect below, which must not run again on every pan). */
+  const viewRef = useRef<View | undefined>(undefined);
+  useLayoutEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  /**
+   * The view was moved to keep the selected item clear of a sheet or panel that arrived: the insets
+   * before it came (`home`), the view then (`from`) and the view this left (`to`). When the insets
+   * are back (the sheet has gone) and nothing else has moved the view since, it goes back.
+   */
+  const sheetShift = useRef<{ home: Insets; from: View; to: View } | undefined>(undefined);
   const hold = !!props.hold;
   const hasView = view !== undefined;
   useLayoutEffect(() => {
@@ -321,20 +360,22 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     }
     // While held, only a new window size, frame or fitKey fits again, or a sheet or panel arriving: not
     // the drawing's words, nor the page's own bars growing or shrinking a little (a status line that wraps).
-    const inputs = JSON.stringify([size, fitKey, frame, fill, minUnit, maxUnit, padding]);
+    const inputs = JSON.stringify([size, fitKey, frame, fill, fitWhole, minUnit, maxUnit, padding]);
     const same = inputs === lastInputs.current;
     lastInputs.current = inputs;
     const was = heldInsets.current;
-    const insetsMoved = !was || Math.max(Math.abs(was.top - insets.top), Math.abs(was.right - insets.right), Math.abs(was.bottom - insets.bottom), Math.abs(was.left - insets.left)) > HOLD_SLACK;
+    const insetsMoved = !was || !nearInsets(was, insets);
     if (auto.current) {
+      sheetShift.current = undefined;
       if (hold && same && hasView && !insetsMoved) return;
       heldInsets.current = insets;
       applyFit();
       return;
     }
     heldInsets.current = insets;
-    setView((v) => {
-      if (!v || !selectedBox) return v;
+    /** The view moved just enough to bring the selected item into the free part of the window (the view itself when it is there). */
+    const intoView = (v: View): View => {
+      if (!selectedBox) return v;
       const b = grow(selectedBox, 1);
       const sx0 = v.x + b.x0 * v.unit;
       const sx1 = v.x + b.x1 * v.unit;
@@ -349,9 +390,32 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const dx = sx1 - sx0 > fx1 - fx0 ? 0 : sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
       const dy = sy1 - sy0 > fy1 - fy0 ? 0 : sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
       return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
-    });
+    };
+    const now = viewRef.current;
+    if (!now) return;
+    // A move made since by anything else (the reader's pan or zoom, a part revealed) stays: no going back.
+    let shift = sheetShift.current && sameView(now, sheetShift.current.to) ? sheetShift.current : undefined;
+    let next: View;
+    if (shift && nearInsets(insets, shift.home)) {
+      // The sheet has gone: back to where the drawing was before it came (the selected item still in
+      // view), at once rather than sliding, so a tap made just after (a pin, once Wire is chosen in the
+      // sheet) lands on what is under it.
+      next = intoView(shift.from);
+      shift = undefined;
+      const world = worldRef.current;
+      if (world) {
+        world.style.transition = 'none';
+        requestAnimationFrame(() => requestAnimationFrame(() => world.style.removeProperty('transition')));
+      }
+    } else {
+      next = intoView(now);
+      // A sheet or a panel arrived and the item was moved clear of it (or moved again while it is there): remembered.
+      if (next !== now && (shift || (insetsMoved && was))) shift = { home: shift?.home ?? was!, from: shift?.from ?? now, to: next };
+    }
+    sheetShift.current = shift;
+    if (next !== now) setView((v) => (v && sameView(v, now) ? next : v ? intoView(v) : v));
     // Not on every change of the view: the reader's own pan and zoom are not undone while an item is selected.
-  }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, minUnit, maxUnit, padding, hasView]);
+  }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, fitWhole, minUnit, maxUnit, padding, hasView]);
 
   // What is drawn: the fitted view, panned by the page's offset while it follows the fit.
   const shown = useMemo((): View | undefined => (view && !moved && (ox || oy) ? { unit: view.unit, x: view.x + ox, y: view.y + oy } : view), [view, moved, ox, oy]);
@@ -359,22 +423,47 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   useLayoutEffect(() => {
     shownRef.current = shown;
   }, [shown]);
-  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, view: shown, base: view, size, moved } : undefined), [shown, view, whole, size, moved]);
+  // Whole when everything drawn is in the free part of the window (fit.ts: inkInView), wherever the fit or the reader put it.
+  // The page hears of it when that changes, not each time its bars change size (each run): its render must not lag the pointer.
+  const whole = !ink || !shown || inkInView(shown, ink, size, insets);
+  // And whether the fit itself shows all of it (the page's words for the view: "turned to fit the screen", or "drag").
+  const fits = useMemo(() => !ink || !size.width || !size.height || inkInView(fitNow(), ink, size, insets), [ink, size, insets, fitNow]);
+  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, fits, view: shown, base: view, size, moved } : undefined), [shown, view, whole, fits, size, moved]);
   const { onView } = props;
   useEffect(() => {
     if (info) onView?.(info);
   }, [info, onView]);
 
-  const moveView = useCallback((next: (v: View) => View): void => {
+  /** What a pan or a zoom must keep in view: the drawing's ink, in the free part of the window as it is now. */
+  const keepRef = useRef<{ ink: Box | undefined; size: Size; insets: Insets }>({ ink: undefined, size, insets });
+  useLayoutEffect(() => {
+    keepRef.current = { ink, size, insets };
+  }, [ink, size, insets]);
+  /**
+   * The reader moves the view (a drag, a scroll, a zoom), or the page does for them (`keep` false: a
+   * part revealed, which may be in hand away from the drawing, is shown wherever it is).
+   */
+  const moveView = useCallback((next: (v: View) => View, keep = true): void => {
+    // However far the reader drags or zooms, some of the drawing stays on the screen (fit.ts: keepInView).
+    const kept = (v: View): View => {
+      const k = keepRef.current;
+      return keep && k.ink && k.size.width && k.size.height ? keepInView(v, k.ink, k.size, k.insets) : v;
+    };
     if (auto.current) {
       // The reader takes over: the page's pan becomes part of the view.
       const o = offsetRef.current;
       auto.current = false;
       setMoved(true);
-      setView((v) => (v ? next({ ...v, x: v.x + o.x, y: v.y + o.y }) : v));
-    } else setView((v) => (v ? next(v) : v));
-    setWhole(false);
+      setView((v) => (v ? kept(next({ ...v, x: v.x + o.x, y: v.y + o.y })) : v));
+    } else setView((v) => (v ? kept(next(v)) : v));
   }, []);
+
+  /**
+   * How far the reader may zoom, however they zoom (the buttons, Ctrl + wheel, two fingers): out to half
+   * the words' readable size, in to two and a half times the largest fit; never a jump from a view
+   * already outside those (a drawing fitted whole, smaller than that).
+   */
+  const zoomLimits = useCallback((v: View): { minUnit: number; maxUnit: number } => ({ minUnit: Math.min(minUnit * 0.5, v.unit), maxUnit: Math.max(maxUnit * 2.5, v.unit) }), [minUnit, maxUnit]);
 
   const focusItem = useCallback(
     (item: NavItem): void => {
@@ -396,7 +485,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       zoomBy(factor: number) {
         const cx = (insets.left + size.width - insets.right) / 2;
         const cy = (insets.top + size.height - insets.bottom) / 2;
-        moveView((v) => zoomAt(v, factor, { x: cx, y: cy }, { minUnit: Math.min(minUnit, v.unit), maxUnit: Math.max(maxUnit * 2, v.unit) }));
+        moveView((v) => zoomAt(v, factor, { x: cx, y: cy }, zoomLimits(v)));
       },
       panBy(dx: number, dy: number) {
         moveView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
@@ -426,7 +515,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
           const dx = sx1 - sx0 > fx1 - fx0 ? 0 : sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
           const dy = sy1 - sy0 > fy1 - fy0 ? 0 : sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
           return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
-        });
+        }, false);
       },
       keep() {
         if (!auto.current) return;
@@ -437,7 +526,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         setView((v) => (v ? { ...v, x: v.x + o.x, y: v.y + o.y } : v));
       },
     }),
-    [focusItem, applyFit, insets, size, moveView, minUnit, maxUnit],
+    [focusItem, applyFit, insets, size, moveView, zoomLimits],
   );
 
   // Wheel: Ctrl (or a trackpad pinch) zooms about the pointer; otherwise the paper scrolls. A native
@@ -450,7 +539,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey) {
         const factor = Math.exp(-e.deltaY * 0.0045);
-        moveView((v) => zoomAt(v, factor, { x: e.clientX - r.left, y: e.clientY - r.top }, { minUnit: minUnit * 0.5, maxUnit: maxUnit * 2.5 }));
+        moveView((v) => zoomAt(v, factor, { x: e.clientX - r.left, y: e.clientY - r.top }, zoomLimits(v)));
       } else moveView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };
     // The paper never scrolls: a part's button that gets the focus near an edge would otherwise
@@ -467,7 +556,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('scroll', onScroll);
     };
-  }, [moveView, minUnit, maxUnit]);
+  }, [moveView, zoomLimits]);
 
   // Dragging the paper pans; two fingers pinch to zoom; a tap on empty paper lets go of the selection.
   // The editor may take a press (a part to drag, a click to place a part or end a wire).
@@ -525,8 +614,9 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
-      // A second finger: a pinch, never a drag.
+      // A second finger: a pinch, never a drag, and no click for the button the first finger is on.
       endGesture(true);
+      gestureClick.current = true;
       const [a, b] = [...pointers.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
       pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) };
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -544,11 +634,10 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     // B); they are still a tap.
     const touch = e.pointerType === 'touch';
     if (touch && claim === 'drag-tap') claim = 'tap';
-    // A press on a part's button that the editor does not take is that button's own click.
-    if (onButton && claim === undefined) {
-      pointers.current.delete(e.pointerId);
-      return;
-    }
+    // A press on an item's button that the editor does not take (a part of the turned view, which is
+    // another drawing) is that button's own click while it holds still. Once it moves it pans the
+    // paper, as from empty paper, and a second finger makes it a pinch (decision 0017: a finger that
+    // moves pans): it is followed, not captured yet (onPointerMove).
     if (!info) return;
     const g: NonNullable<typeof gesture.current> = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, claim, info, dragging: false, button: !!onButton };
     gesture.current = g;
@@ -589,12 +678,21 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const r = el.getBoundingClientRect();
       const factor = d / Math.max(1, pinch.current.d);
       pinch.current = { d };
-      moveView((v) => zoomAt(v, factor, { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, { minUnit: minUnit * 0.5, maxUnit: maxUnit * 2.5 }));
+      moveView((v) => zoomAt(v, factor, { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, zoomLimits(v)));
       return;
     }
     const g = gesture.current;
     if (!g || g.id !== e.pointerId) return;
     if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) < (e.pointerType === 'touch' ? 8 : 4)) return;
+    // A press on a button that nobody took, moving: a pan of the paper from now on, and the button gets no click.
+    if (!g.moved && g.button && g.claim === undefined) {
+      gestureClick.current = true;
+      try {
+        el?.setPointerCapture(e.pointerId);
+      } catch {
+        // The pointer may be gone already.
+      }
+    }
     g.moved = true;
     // A finger that moves before the part lifts pans the paper (and the part's button gets no click).
     if (e.pointerType === 'touch' && g.claim === 'drag' && !g.dragging) {
@@ -754,7 +852,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         if (info) editing?.doubleClick?.(info);
       }}
     >
-      <div className="nb-world" style={worldStyle}>
+      <div ref={worldRef} className="nb-world" style={worldStyle}>
         {/* An SVG picture is read by its title and description only with role="img". */}
         {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
         <svg role="img"

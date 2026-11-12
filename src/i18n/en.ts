@@ -167,8 +167,13 @@ export const en = {
   zoomLabel: 'Zoom',
   zoomIn: 'Zoom in',
   zoomOut: 'Zoom out',
-  zoomFit: 'Fit the drawing to the window',
-  zoomPercent: '{percent}%: fit the drawing to the window',
+  /**
+   * Fit: all of the drawing in the free part of the window, smaller than its words' readable size if
+   * it must be (decision 0018). One name wherever it is offered: More, Ctrl+K, the zoom bar, Help, and
+   * a phone's status line once the drawing has been moved partly off the screen.
+   */
+  zoomFit: 'Show the whole drawing',
+  zoomPercent: '{percent}%: show the whole drawing',
 
   // ---------------------------------------------------------------- sticky note, results card, notices
   noteTitle: 'Change {name} and watch the numbers move',
@@ -535,7 +540,7 @@ export const en = {
   helpKeyNode: 'Enter (on a node)',
   helpKeyNodeAction: 'Open the node’s card: its name to change, its voltage, the parts on it',
   helpKeyZoom: '+, −, Shift+1 (on the drawing)',
-  helpKeyZoomAction: 'Zoom in, zoom out, fit the drawing to the window',
+  helpKeyZoomAction: 'Zoom in, zoom out, show the whole drawing',
   helpKeyToolbar: 'Arrow keys (in the margin and in the row of actions at the top)',
   helpKeyToolbarAction: 'Move between their buttons',
   helpKeysNetlist: 'In the Netlist panel',

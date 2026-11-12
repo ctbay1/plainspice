@@ -63,6 +63,22 @@ describe('the status line', () => {
     );
     expect(statusWords(READY, paused({ reason: 'stopped' }), TEXT)).toEqual({ main: 'Stopped', detail: 'To run it again, press Run (Ctrl+Enter).', tone: 'paused' });
     expect(statusWords(READY, paused({ reason: 'timeout', seconds: 20 }), TEXT).main).toBe('Stopped after 20 s');
+    // Numbers from before the last change only when that run gave answers (the drawing keeps them in
+    // pencil): a run that gave none (a check found an error) left none to speak of (phone review, F5).
+    const checked = done('check', { checks: [{ id: 'no-ground', severity: 'error', line: 2, span: { from: 0, to: 1 }, title: 'No ground (node 0).', why: '', ngspice: '', fixes: [] }] });
+    expect(statusWords(READY, paused({ reason: 'long', points: 1_000_000 }, checked), `${TEXT}* x\n`).detail).toBe(
+      'This netlist asks for about 1,000,000 points, so ngspice does not run after every change: press Run (Ctrl+Enter).',
+    );
+    for (const reason of [{ reason: 'slow', ms: 2400 }, { reason: 'stopped' }, { reason: 'timeout', seconds: 20 }] as const) {
+      expect(statusWords(READY, paused(reason, done('unreliable')), `${TEXT}* x\n`).detail).not.toContain(t('statusOldNumbers'));
+      expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`).detail).toContain(t('statusOldNumbers'));
+    }
+    // A run that gave answers, but the drawing shows none of them (the netlist replaced by a circuit whose
+    // parts and nodes have other names): no old numbers to speak of either (critic of the phone lane, F5).
+    for (const reason of [{ reason: 'slow', ms: 2400 }, { reason: 'long', points: 1_000_000 }, { reason: 'stopped' }, { reason: 'timeout', seconds: 20 }] as const) {
+      expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`, true, true, false).detail).not.toContain(t('statusOldNumbers'));
+      expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`, true, true, true).detail).toContain(t('statusOldNumbers'));
+    }
     // A phone has no keys to press: its Run button is tapped.
     expect(statusWords(READY, paused({ reason: 'link' }), TEXT, true).detail).toBe('This link opens without running: tap Run to run it.');
     expect(statusWords(READY, paused({ reason: 'long', points: 250_000 }), TEXT, true).detail).not.toContain('Ctrl');
@@ -115,6 +131,14 @@ describe('the hint line', () => {
     expect(hintWords({ ...base, phone: true, asDrawn: true, whole: false })).toBe('As drawn, not turned · drag the paper to see the rest');
     // A video's own drawing (its *@ lines, unchanged): the way the video draws it (decision 0015).
     expect(hintWords({ ...base, phone: true, asDrawn: true, whole: false, video: true })).toBe('As in the video, not turned · drag the paper to see the rest');
+    // A drawing whose fit shows all of it, moved partly off the screen by the reader: still the words of
+    // its fit, never "as well as it can" nor "drag" (the status line offers all of it back: the critic
+    // of the phone lane). Only a fit that cuts something off says to drag.
+    expect(hintWords({ ...base, phone: true, turned: true, whole: false, fits: true })).toBe('Turned to fit the screen · tap a part to change it');
+    expect(hintWords({ ...base, phone: true, turned: true, whole: false, fits: false })).toBe('Turned to fit as well as it can · drag the paper to see the rest');
+    expect(hintWords({ ...base, phone: true, whole: false, fits: true })).toBe('Tap a part to see its numbers and change it');
+    expect(hintWords({ ...base, phone: true, asDrawn: true, whole: false, fits: true, video: true })).toBe('Tap a part to see its numbers and change it');
+    expect(hintWords({ ...base, phone: true, asDrawn: true, whole: false, fits: false, video: true })).toBe('As in the video, not turned · drag the paper to see the rest');
     // Nothing to draw yet.
     expect(hintWords({ ...base, empty: true })).toBe('Choose a part in the margin and click the paper to place it, or press A to add one between two nodes · Ctrl+K for every command');
     expect(hintWords({ ...base, empty: true, phone: true })).toBe('Tap Parts, choose one, then tap the paper where it goes');
