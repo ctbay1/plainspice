@@ -841,8 +841,8 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
  * sizes of an equation's terms of the same kind (Shares.equations). ngspice solves the equations of a
  * circuit of these parts once, with an LU factorisation in doubles (its Newton iterations of a linear
  * circuit repeat the same solution), and such a solution leaves a few units in the last place of the
- * whole system, times a growth factor that is small in practice. Measured on the 11,645 netlists of the
- * repository and the re-check's corpora run in our engine (wires of 1 µΩ, meters of 1e20 Ω, gains of
+ * whole system, times a growth factor that is small in practice. Measured on the 9,627 netlists of the
+ * repository and the re-check's corpora that PlainSpice models exactly, run in our engine (wires of 1 µΩ, meters of 1e20 Ω, gains of
  * 1e9): at most 3.8e-15 for the nodes and 4.4e-11 for the branches, most below 2^-52. 2^-30 (about
  * 9.3e-10) leaves room above that. It says nothing of how far ngspice's answers are from the exact
  * ones where a tiny wire makes the equations ill-conditioned: `answersAgree` does.
@@ -894,8 +894,8 @@ export interface Shares {
    * equations together, with one LU factorisation in doubles, so what its rounding leaves in an equation
    * is a share of the whole system, not of that equation's own terms: a chain of 0 V sources that
    * carries no current can show 1e-16 A against 1e-16 A, and a 0 V source next to a 1 mΩ wire 8e-10 V
-   * against 9 V (decision 0015). Measured over the 11,645 netlists of the re-check's corpora and the
-   * repository: at most 3.8e-15 for the nodes and 4.4e-11 for the branches.
+   * against 9 V (decision 0015). Measured over the 9,627 netlists of the re-check's corpora and the
+   * repository that PlainSpice models exactly: at most 3.8e-15 for the nodes and 4.4e-11 for the branches.
    */
   equations: Fraction;
   /**

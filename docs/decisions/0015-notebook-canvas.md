@@ -162,8 +162,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   the same nodes and parts; its values put into the exact equations leave at most 2⁻³⁰ of the largest
   sum of the sizes of an equation's terms, Kirchhoff's law at the nodes weighed against the nodes'
   own sizes (in amps) and the branches' own equations against theirs (in volts): weighed together, a
-  9 V source's equation hid a node's misread nanoamps (measured over the 11,645 netlists of the
-  re-check's corpora and the repository: at most 3.8e−15 for the nodes, 4.4e−11 for the branches);
+  9 V source's equation hid a node's misread nanoamps (measured over the 9,627 netlists of the
+  re-check's corpora and the repository that it models exactly: at most 3.8e−15 for the nodes, 4.4e−11 for the branches);
   and each current it reports is its own numbers' product to 2⁻⁴⁰ (measured: at most 3.4e−16). In a
   circuit with every kind of part any value 1 ppm off fails one or the other, and so does a .dc
   point's value 1 ppm off (unit tests keep it so); a source is weighed against the circuit's largest
