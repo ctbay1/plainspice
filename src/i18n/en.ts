@@ -354,6 +354,7 @@ export const en = {
   readoutMeasured: 'measured',
   readoutAcross: 'across it',
   readoutFromTo: 'from {from} to {to}',
+  /** {node}: "node in", or "ground" (src/app/card.ts), as a node is named in sentences. */
   readoutHigher: '{node} is higher',
   typeHintR: 'Type a value, such as 3, 4.7k or 1meg',
   typeHintC: 'Type a value, such as 10u or 100n',
