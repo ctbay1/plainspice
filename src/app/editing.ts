@@ -155,10 +155,11 @@ export type Hit =
   | { kind: 'ground'; ground: number };
 
 /** A node's name on the drawing under a point (the name's own line, a little wider). */
-function labelAt(s: Schematic, p: Point): Hit | undefined {
+/** A node's name under a point: its name's own words, or (`whole`) anywhere on its label, the value written after it too. */
+function labelAt(s: Schematic, p: Point, whole = false): Hit | undefined {
   for (const l of s.scene.nodeLabels) {
-    const box = l.lines.find((x) => x.role === 'node')?.box ?? l.box;
-    if (inside(box, p, 0.15)) return { kind: 'label', node: l.node, at: l.at };
+    const box = whole ? l.box : (l.lines.find((x) => x.role === 'node')?.box ?? l.box);
+    if (inside(box, p, whole ? 0.1 : 0.15)) return { kind: 'label', node: l.node, at: l.at };
   }
   return undefined;
 }
@@ -232,7 +233,9 @@ export function hitTest(s: Schematic, p: Point, tol: number, mode: 'select' | 'w
     for (const part of sc.parts) part.pins.forEach((pin, i) => consider({ kind: 'pin', part: part.key, pin: i === 0 ? 0 : 1, at: pin.at, node: pin.node }, pin.at));
     for (const g of sc.grounds) consider({ kind: 'ground-pin', ground: g.index, at: g.at }, g.at);
     if (best) return best.hit;
-    return labelAt(s, p) ?? wireAt(s, p, tol);
+    // Then a node's name, a wire, and anywhere else on a name's label ("out = 4 V"): the node's button
+    // covers all of it, so a click there means the node, as a click on its name does (not a refusal).
+    return labelAt(s, p) ?? wireAt(s, p, tol) ?? labelAt(s, p, true);
   }
   for (const part of sc.parts) if (inside(part.body, p, 0.35)) return { kind: 'part', key: part.key };
   for (const g of sc.grounds) if (inside(g.box, p, 0.25)) return { kind: 'ground', ground: g.index };

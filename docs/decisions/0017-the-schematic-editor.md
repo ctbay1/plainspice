@@ -292,6 +292,14 @@ and what changed (each with a test that fails without it):
 - **Phone.** Undo is on the status line after a change made on the drawing; a status reason has a
   line of its own; the whole as-drawn view while editing says two fingers zoom in, and the turned view
   comes back when editing ends.
+- **A slow device.** A tap or a click is acted on once, however long the edit takes. The click a
+  browser sends after a tap was set aside only for 400 ms; on a busy machine (a slow phone, a loaded
+  test run) it came later and was taken again: as a refusal on the part's button, or as a wire's end
+  followed by a new wire (found when an end-to-end test failed once). Now the click that ends a
+  gesture the editor took is set aside whenever it comes, and a click from the keys never is (Enter
+  right after a tap was swallowed too). With the Wire tool, a click anywhere on a node's name (the
+  value written after it too, which its button covers) means the node, as the name does; it was
+  refused as no place to start a wire.
 - **Words, and these documents.** Each sentence says what the netlist now has, one word for one idea.
   A line that still names a deleted part is given, and offered, by its number after the delete (it
   was the number before). A piece cut off a node names the parts whose ends moved, and when no part

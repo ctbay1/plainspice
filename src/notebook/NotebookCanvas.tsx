@@ -474,8 +474,14 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{ id: number; x: number; y: number; moved: boolean; claim: PressClaim; info: PointerInfo; dragging: boolean; button: boolean; timer?: number | undefined } | undefined>(undefined);
   const pinch = useRef<{ d: number } | undefined>(undefined);
-  /** A drawing item's click is not acted on until then: the pointer gesture before it was the editor's (a drag, a tap). */
-  const quietUntil = useRef(0);
+  /**
+   * The pointer gesture that just ended was the editor's (a tap, a drag), or a press set aside (a pan, a
+   * press just after the page moved the drawing): the click the browser sends after it, on a drawing
+   * item's button, belongs to that gesture and is not acted on again, however long the edit took. (A
+   * time limit of 400 ms let a slow phone's click through: a wire's end was taken twice, as a refusal or
+   * as a new wire.) The next press clears it; a click from the keys (Enter, Space) is always the button's.
+   */
+  const gestureClick = useRef(false);
   /** The last press, and when: a double click whose second press came after the page moved the drawing belongs to the first one's place. */
   const lastPress = useRef<{ info: PointerInfo; at: number } | undefined>(undefined);
   /**
@@ -504,11 +510,13 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     gesture.current = undefined;
     if (g?.timer !== undefined) window.clearTimeout(g.timer);
     if (g?.dragging) {
-      quietUntil.current = performance.now() + 400;
+      gestureClick.current = true;
       editing?.dragEnd?.(info, cancelled);
     }
   };
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    // A new gesture: the click of the last one has come (or never will).
+    gestureClick.current = false;
     const target = e.target as Element;
     // The card over the paper, and the page's own controls, keep their pointer.
     if (target.closest('a, input, select, textarea, [data-nb-own-pointer], .nb-anchored')) return;
@@ -527,7 +535,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     const info = infoOf(e, onButton ? itemOf(onButton) : undefined);
     if (pageJustMoved()) {
       pointers.current.delete(e.pointerId);
-      quietUntil.current = performance.now() + PAGE_MOVE_QUIET_MS;
+      gestureClick.current = true;
       return;
     }
     if (info) lastPress.current = { info, at: performance.now() };
@@ -593,7 +601,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       if (g.timer !== undefined) window.clearTimeout(g.timer);
       g.timer = undefined;
       g.claim = undefined;
-      quietUntil.current = performance.now() + 1000;
+      gestureClick.current = true;
       try {
         el?.setPointerCapture(e.pointerId);
       } catch {
@@ -632,7 +640,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     gesture.current = undefined;
     if (g.moved) return;
     if (g.claim === 'tap' || g.claim === 'drag-tap') {
-      quietUntil.current = performance.now() + 400;
+      gestureClick.current = true;
       editing?.tap?.({ ...g.info, shift: e.shiftKey || g.info.shift });
     } else if (!g.button) onSelect(undefined);
   };
@@ -797,9 +805,13 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
                 aria-current={isSel ? 'true' : undefined}
                 {...(isPart ? { 'aria-haspopup': 'dialog' as const, 'aria-expanded': props.open === item.key } : {})}
                 data-item={key}
-                onClick={() => {
-                  // The pointer gesture before this click was the editor's (a drag, a tap): done already.
-                  if (performance.now() < quietUntil.current) return;
+                onClick={(e) => {
+                  // The pointer gesture before this click was the editor's (a drag, a tap) or was set aside:
+                  // done already. A click from the keys (detail 0) is the button's own.
+                  if (e.detail !== 0 && gestureClick.current) {
+                    gestureClick.current = false;
+                    return;
+                  }
                   onSelect(item);
                   onOpen(item);
                 }}

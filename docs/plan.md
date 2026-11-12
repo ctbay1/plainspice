@@ -148,7 +148,8 @@ Done so far:
   this circuit's and are named on the status line; one rule for the card's keys, badges and hint;
   words after a turn or a move find a free place (22 of 108 turns of the videos' drawings put words
   on something, every turn did before); straight rails; the Wire tool ends where its preview showed;
-  a placed controlled source stays marked until chosen; Undo on a phone's status line. A last look at
+  a placed controlled source stays marked until chosen; Undo on a phone's status line; a tap is acted
+  on once however slow the device (its click was taken again after 400 ms). A last look at
   the words and these documents (12 Nov) made each sentence say what the netlist now has, in one word
   for one idea: a line that still names a deleted part is given by its number after the delete; a
   piece cut off a node names the parts whose ends moved, and deleting the last ground symbol says the

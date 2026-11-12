@@ -338,8 +338,7 @@ test('a piece of wire selected: Shift+arrow keys and Enter say why they do nothi
   // Shift+Right would have moved the name of node in, and Enter opened its card: neither, and why.
   await page.keyboard.press('Shift+ArrowRight');
   await expect(hintLine(page)).toHaveText(t('pieceNoMove', { what: t('labelName', { node: 'in' }) }));
-  // (The drawing takes no click for 400 ms after a tap on the paper: the click a pointer sends after it.)
-  await page.waitForTimeout(500);
+  // At once: a key's click is the key's own, never taken for the click a pointer sends after a tap.
   await page.keyboard.press('Enter');
   await expect(hintLine(page)).toHaveText(t('pieceNoCard', { node: 'node in' }));
   await expect(page.getByRole('dialog', { name: /^Node in/ })).toHaveCount(0);
@@ -362,11 +361,10 @@ test('a piece of wire selected: a click on its node’s name opens the node’s 
   await page.mouse.move(wire.x, wire.y);
   await page.mouse.click(wire.x, wire.y);
   await expect(hintLine(page)).toHaveText(t('hintWireSelected', { node: 'node in' }));
-  // The name of node in, clicked with the mouse (its button covers the name), after the 400 ms in which
-  // the drawing takes no click after a tap on the paper.
+  // The name of node in, clicked with the mouse (its button covers the name) right after: a new click is
+  // acted on at once (only the click that ends a tap's own gesture is not).
   const name = (await drawing(page).getByRole('button', { name: 'Node in' }).boundingBox())!;
   await page.mouse.move(name.x + name.width / 2, name.y + name.height / 2);
-  await page.waitForTimeout(500);
   await page.mouse.click(name.x + name.width / 2, name.y + name.height / 2);
   await expect(page.getByRole('dialog', { name: /^Node in/ })).toBeVisible();
   await expect(hintLine(page)).not.toHaveText(t('pieceNoCard', { node: 'node in' }));
@@ -385,4 +383,44 @@ test('Esc on the drawing clears an older refusal from the hint line at once, als
   await expect(hintLine(page)).toHaveText(t('deleteNothing'));
   await page.keyboard.press('Escape');
   await expect(hintLine(page)).not.toHaveText(t('deleteNothing'), { timeout: 1000 });
+});
+
+test('a slow tap is acted on once: the click the browser sends after it, long after on a slow phone, does nothing more', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  // V1 and R1 on nodes of their own, not wired yet.
+  await setNetlistWithDrawing(page, '* slow\nV1 n1 0 6\nR1 n2 n3 1k\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0\n*@ R1 4 0 270\n*@ ground 0 6 0\n.end\n');
+  await closePanel(page, 'netlist');
+  await settle(page);
+  // Every pointer up takes 650 ms longer (after the page's own handlers), as on a slow phone: the click
+  // that follows a tap comes long after it. It used to be taken as a second click on the part's button
+  // (a refusal in the hint), or as a wire's end and then a new wire.
+  await page.evaluate(() => window.addEventListener('pointerup', () => { const t0 = performance.now(); while (performance.now() - t0 < 650) {} }));
+  await partsToolbar(page).getByRole('button', { name: t('toolWire') }).click();
+  const clickAt = async (x: number, y: number): Promise<void> => {
+    const p = await gridPoint(page, x, y);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.click(p.x, p.y);
+  };
+  // V1's top end, then R1's left end.
+  await clickAt(0, 1);
+  await expectAnnounced(page, 'Wire started at node n1.');
+  await expect(hintLine(page)).toHaveText(t('hintWireOn'), { timeout: 2000 });
+  await clickAt(2, 0);
+  await expectAnnounced(page, 'Wire added. Node n2 and node n1 are now one node, n1.');
+  // No refusal, and no wire on its way: the tool is ready for the next wire.
+  await expect(hintLine(page)).toHaveText(t('hintWire'), { timeout: 2000 });
+  await expect.poll(() => savedNetlist(page)).toContain('R1 n1 n3 1k');
+  expect(await savedNetlist(page)).toContain('*@ wire 0,1 0,0 2,0');
+});
+
+test('the Wire tool takes a click anywhere on a node’s name, the value written after it too (its button covers both)', async ({ page }) => {
+  await startHere(page);
+  await partsToolbar(page).getByRole('button', { name: t('toolWire') }).click();
+  // The middle of the name's button: "out = 4 V" (it was refused as no place to start a wire).
+  const name = (await drawing(page).getByRole('button', { name: 'Node out' }).boundingBox())!;
+  await page.mouse.move(name.x + name.width / 2, name.y + name.height / 2);
+  await page.mouse.click(name.x + name.width / 2, name.y + name.height / 2);
+  await expectAnnounced(page, 'Wire started at node out.');
+  await expect(hintLine(page)).toHaveText(t('hintWireOn'));
 });

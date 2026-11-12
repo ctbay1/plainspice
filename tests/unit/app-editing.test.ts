@@ -83,6 +83,15 @@ describe('hit testing in grid units', () => {
     expect(hitTest(s0, { x: 4, y: 3 }, 0.45, 'wire')).toBeUndefined();
   });
 
+  it('takes a click anywhere on a node’s name with the Wire tool, the value written after it too: the node’s button covers both', () => {
+    const out = s0.scene.nodeLabels.find((l) => l.node === 'out')!;
+    const value = out.lines.find((l) => l.role === 'result')!.box;
+    const p = { x: (value.x0 + value.x1) / 2, y: (value.y0 + value.y1) / 2 };
+    expect(hitTest(s0, p, 0.45, 'wire')).toEqual({ kind: 'label', node: 'out', at: out.at });
+    // With Select, only the name's own words: a click elsewhere on the label is its button's.
+    expect(hitTest(s0, p, 0.45, 'select')).toBeUndefined();
+  });
+
   it('finds a part (its symbol or its words), a ground symbol, a node name or a wire with Select', () => {
     expect(hitTest(s0, { x: 4, y: 0.1 }, 0.45, 'select')).toEqual({ kind: 'part', key: 'r1' });
     const words = s0.scene.parts.find((p) => p.key === 'r2')!.labelBox;
