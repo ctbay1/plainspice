@@ -571,6 +571,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const refusedAt = useRef(0);
   /** The node names of the open circuit's undo history, for the store's version they were read at (usedNodeNames, below). */
   const usedNames = useRef<{ version: number; names: ReadonlySet<string>; memo: Map<string, readonly string[]> }>({ version: -1, names: new Set(), memo: new Map() });
+  /** The drawing last given to an edit, with those names (currentDrawing, below). */
+  const editable = useRef<{ s: Schematic; names: ReadonlySet<string>; out: Schematic } | undefined>(undefined);
   /** The part's card shows its connections. */
   const [connOpen, setConnOpen] = useState(false);
   /** The Add a part form, as it opens. */
@@ -2001,7 +2003,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (tooBig) return undefined;
     const now = store.get();
     const s = schematic && schematic.netlist.text === now ? schematic : buildSchematic(now, NOTEBOOK_OPTIONS);
-    return withUsedNodeNames(s, usedNodeNames());
+    const names = usedNodeNames();
+    // The same drawing with the same names is the same object, render after render (as the drawing itself is).
+    const last = editable.current;
+    if (last && last.s === s && last.names === names) return last.out;
+    const out = withUsedNodeNames(s, names);
+    editable.current = { s, names, out };
+    return out;
   };
   /**
    * The node names the open circuit had in its undo history (as the store has it now): a new node
