@@ -1149,11 +1149,11 @@ describe('after the final reviews (12 November 2026)', () => {
     const control = net(`.control\nrun\nprint v(${name})\nsave v(${name})\nrun\n.endc\n`);
     const t = first(control, 'non-ascii-node');
     expect(t.ngspice).toBe(
-      `ngspice spells the node ____k____ in its printout and results. In a command for ngspice (.control) it reads the name as written too, so it finds no node ${name} there, and save v(${name}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too. [non-ascii-node-1, non-ascii-node-4]`,
+      `ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node ${name} there, and save v(${name}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too. [non-ascii-node-1, non-ascii-node-4]`,
     );
     expect(applyFix(control, t.fixes[0]!)).toBe(net('.control\nrun\nprint v(cikis)\nsave v(cikis)\nrun\n.endc\n').replaceAll(name, 'cikis'));
-    expect(first(net(`.control\nrun\nprint v(${name})\n.endc\n`), 'non-ascii-node').ngspice).toContain(`(.control) it reads the name as written too, so it finds no node ${name} there. [non-ascii-node-1, non-ascii-node-4]`);
-    expect(first(net(`*# save v(${name})\n`), 'non-ascii-node').ngspice).toContain('In a command for ngspice (a *# line) it reads the name as written too');
+    expect(first(net(`.control\nrun\nprint v(${name})\n.endc\n`), 'non-ascii-node').ngspice).toContain(`In a .control block it reads the name as written too, so it finds no node ${name} there. [non-ascii-node-1, non-ascii-node-4]`);
+    expect(first(net(`*# save v(${name})\n`), 'non-ascii-node').ngspice).toContain('On a *# line, a command for ngspice, it reads the name as written too');
   });
 
   it('says why a\u00b5 and au are one node, and keeps them apart when a part has an end on each (words-recheck-8; non-ascii-node-5)', () => {

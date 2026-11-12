@@ -8017,7 +8017,7 @@ What PlainSpice shows for non-ascii-node-4 (warning, line 3):
 
 > **ngspice spells the node çıkış as ____k____.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so its printout and results call this node ____k____, and two names can become one node. A name in plain letters avoids both.
 >
-> *ngspice:* ngspice spells the node ____k____ in its printout and results. In a command for ngspice (.control) it reads the name as written too, so it finds no node çıkış there, and save v(çıkış) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too. [non-ascii-node-1, non-ascii-node-4]
+> *ngspice:* ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node çıkış there, and save v(çıkış) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too. [non-ascii-node-1, non-ascii-node-4]
 >
 > *Fixes:* "Rename çıkış to cikis"
 

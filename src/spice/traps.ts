@@ -1526,7 +1526,7 @@ function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
     const save = control.find((x) => x.command === 'save');
     const star = /^\s*(\*#|##)/.exec(lineAt(c.n, control[0]!.token.from).text)?.[1];
     out.push(
-      `In a command for ngspice (${star ? `a ${star} line` : '.control'}) it reads the name as written too, so it finds no node ${control[0]!.token.text} there${save ? `, and save v(${save.token.text}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too` : ''}.`,
+      `${star ? `On a ${star} line, a command for ngspice,` : 'In a .control block'} it reads the name as written too, so it finds no node ${control[0]!.token.text} there${save ? `, and save v(${save.token.text}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too` : ''}.`,
     );
     facts.push('non-ascii-node-4');
   }
