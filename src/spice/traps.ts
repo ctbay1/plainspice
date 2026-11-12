@@ -743,7 +743,6 @@ function checkUnknownWord(c: Ctx, i: number): void {
   const f = e.fields[k];
   if (!f || (c.byLine.get(lineAt(c.n, f.token.from).number) ?? []).some((t) => t.span.from <= f.token.from && f.token.to <= t.span.to)) return;
   const word = f.token.text;
-  const lower = lowerAscii(word);
   const name = nameOf(e);
   const kind = { R: 'a resistor', C: 'a capacitor', L: 'an inductor', V: 'a voltage source', I: 'a current source', E: 'an E line', F: 'an F line', G: 'a G line', H: 'an H line' }[e.letter as 'R'];
   const efgh = 'EFGH'.includes(e.letter);
