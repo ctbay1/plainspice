@@ -167,6 +167,16 @@ interface Ctx {
   controlNodes?: Map<string, CommandRef[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
   savesNothing?: boolean;
+  /** The .print and .plot cards as ngspice -b reads them, read on the first use (printCards). */
+  printCards?: PrintCard[];
+  /** The node names on those lines, by node, read on the first use (printNodes). */
+  printNodes?: Map<string, PrintRef[]>;
+  /** ngspice -b would save nothing but names it can't parse on those lines, read on the first use (printsNothing). */
+  printsNothing?: boolean;
+  /** The analyses the netlist runs, by the word a .print line gives them (dc, tran ...), read on the first use. */
+  runTypes?: Set<string>;
+  /** The netlist has lines after .end, read on the first use. */
+  afterEnd?: boolean;
 }
 
 const GROUND = '0';
@@ -217,10 +227,10 @@ const change = (from: number, to: number, insert: string): TextChange => ({ from
 const replace = (t: Span, insert: string): TextChange => change(t.from, t.to, insert);
 const fix = (label: string, ...changes: TextChange[]): Fix => ({ label, changes: changes.sort((a, b) => a.from - b.from) });
 
-/** "a", "a and b", "a, b and c". */
-function list(items: readonly string[]): string {
+/** "a", "a and b", "a, b and c" (or "a, b or c"). */
+function list(items: readonly string[], word = 'and'): string {
   if (items.length <= 1) return items[0] ?? '';
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+  return `${items.slice(0, -1).join(', ')} ${word} ${items[items.length - 1]}`;
 }
 
 const el = (c: Ctx, i: number): Element => c.n.lines[i]!.element!;
@@ -1608,52 +1618,264 @@ function savesNothing(c: Ctx): boolean {
   return c.savesNothing;
 }
 
-/** The line a token is on, or for a continuation line the line it continues (a card's first line). */
-function cardOf(c: Ctx, t: Token): NetlistLine {
-  const l = lineAt(c.n, t.from);
-  return l.kind === 'continuation' && l.continues !== undefined ? c.n.lines[l.continues]! : l;
+/** The words ngspice takes out of a .plot line before it saves the rest (its plot_opts, dotcards.c). */
+const PLOT_OPTIONS: ReadonlySet<string> = new Set(['linear', 'xlog', 'ylog', 'loglog']);
+
+/** What may save something under ngspice -b besides the .print and .plot lines, or read lines we do not see. */
+const SAVING_DIRECTIVES: ReadonlySet<string> = new Set([
+  '.save', '.probe', '.meas', '.measure', '.four', '.fourier', '.sndparam', '.sndprint', '.include', '.inc', '.lib', '.alter',
+]);
+
+/** A name ngspice -b tries to save from a word of a .print or .plot line: the name as it reads it, and where it stands. */
+interface PrintName {
+  name: string;
+  token: Token;
+}
+
+/** A word of a .print or .plot line after its analysis type, as ngspice -b reads it (gettoks, dotcards.c). */
+interface PrintItem {
+  /** The node names it saves: the word itself when bare (out), the names inside brackets (v(a), v(a,b)). */
+  names: PrintName[];
+  bare: boolean;
+  /** One name alone: bare, or the only name inside v(...), vm(...), vp(...), vr(...) or vdb(...). */
+  lone: boolean;
+}
+
+/** A .print or .plot card as ngspice -b reads it: its directive, its analysis type (lower-case) and its words. */
+interface PrintCard {
+  directive: string;
+  type: string;
+  items: PrintItem[];
+}
+
+/** A node named on a .print or .plot line: where, on which kind of line, for which analysis, and whether bare. */
+interface PrintRef {
+  name: string;
+  token: Token;
+  directive: string;
+  type: string;
+  bare: boolean;
+}
+
+const isBlank = (ch: string): boolean => ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n' || ch === '\v' || ch === '\f';
+
+/**
+ * One word of a .print or .plot line, read as ngspice's gettoks reads it: a word that starts with a
+ * bracket is dropped; a word with no bracket is a name as it stands (`.print dc out` prints v(out));
+ * otherwise the name is what follows the last opening bracket, up to a comma or the closing bracket,
+ * with a second name after the comma (v(a,b)), and a word whose last bracket follows an i (i(V1),
+ * vi(x)) names a source's current, no node.
+ */
+function printItem(chars: readonly string[], at: readonly number[], text: string): PrintItem | undefined {
+  const word = chars.join('');
+  if (word.startsWith('(')) return { names: [], bare: false, lone: false };
+  const name = (from: number, to: number): PrintName | undefined => {
+    if (to <= from) return undefined;
+    const a = at[from]!;
+    const b = at[to - 1]! + 1;
+    return { name: chars.slice(from, to).join(''), token: { from: a, to: b, text: text.slice(a, b) } };
+  };
+  const l = word.lastIndexOf('(');
+  if (l < 0) {
+    const bare = name(0, chars.length)!;
+    return { names: [bare], bare: true, lone: true };
+  }
+  if (/[iI]/.test(word[l - 1] ?? '')) return { names: [], bare: false, lone: false };
+  const r = word.indexOf(')');
+  const comma = word.indexOf(',');
+  if ((comma >= 0 && comma < l) || (r >= 0 && r < l) || (comma >= 0 && r < comma)) return { names: [], bare: false, lone: false };
+  const first = name(l + 1, comma >= 0 ? comma : r >= 0 ? r : chars.length);
+  const second = comma >= 0 ? name(comma + 1, r) : undefined;
+  const names = [first, second].filter((x): x is PrintName => x !== undefined);
+  const call = lowerAscii(word.slice(0, word.indexOf('(')));
+  const lone = names.length === 1 && comma < 0 && word.indexOf('(') === l && r === chars.length - 1 && ['v', 'vm', 'vp', 'vr', 'vdb'].includes(call);
+  return { names, bare: false, lone };
+}
+
+/**
+ * The .print and .plot cards as ngspice -b reads them (ft_savedotargs and gettoks in its dotcards.c):
+ * the card joined with its continuation lines, its comment left out, the analysis type its first word,
+ * then words split at blanks and at commas outside brackets, with the blanks inside brackets left out;
+ * on a .plot line ngspice drops linear, xlog, ylog and loglog. Read once.
+ */
+function printCards(c: Ctx): PrintCard[] {
+  if (c.printCards) return c.printCards;
+  const cards: PrintCard[] = [];
+  for (const i of c.n.directives) {
+    const d = c.n.lines[i]!.directive!;
+    if (d.name !== '.print' && d.name !== '.plot') continue;
+    // Each line of the card up to the end of its last word and the brackets, commas and blanks after it:
+    // a comment starts with none of them. A continuation line joins after a space, as in ngspice.
+    const chars: string[] = [];
+    const at: number[] = [];
+    const last = c.lastContinuation.get(i) ?? i;
+    for (let k = i; k <= last; k++) {
+      const line = c.n.lines[k]!;
+      if (k > i && line.continues !== i) continue;
+      let p = k === i ? d.token.to : line.span.from + /^[ \t]*\+?/.exec(line.text)![0].length;
+      let end = p;
+      for (const t of line.tokens) if (t.to > end) end = t.to;
+      while (end < line.span.to && ' \t,=()'.includes(c.text[end]!)) end += 1;
+      if (k > i) {
+        chars.push(' ');
+        at.push(-1);
+      }
+      for (; p < end; p++) {
+        chars.push(c.text[p]!);
+        at.push(p);
+      }
+    }
+    const n = chars.length;
+    let q = 0;
+    while (q < n && isBlank(chars[q]!)) q += 1;
+    const typeFrom = q;
+    let depth = 0;
+    while (q < n && !isBlank(chars[q]!)) {
+      const ch = chars[q]!;
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      else if (ch === ',' && depth < 1) break;
+      q += 1;
+    }
+    const type = lowerAscii(chars.slice(typeFrom, q).join(''));
+    const items: PrintItem[] = [];
+    for (;;) {
+      while (q < n && (isBlank(chars[q]!) || chars[q] === ',')) q += 1;
+      if (q >= n) break;
+      const word: string[] = [];
+      const from: number[] = [];
+      let inside = false;
+      depth = 0;
+      for (; q < n; q++) {
+        const ch = chars[q]!;
+        if (!inside && (isBlank(ch) || (ch === ',' && depth < 1))) break;
+        if (inside && isBlank(ch)) continue;
+        word.push(ch);
+        from.push(at[q]!);
+        if (ch === '(') {
+          depth += 1;
+          inside = true;
+        } else if (ch === ')') {
+          depth -= 1;
+          inside = false;
+        }
+      }
+      if (d.name === '.plot' && PLOT_OPTIONS.has(lowerAscii(word.join('')))) continue;
+      const item = printItem(word, from, c.text);
+      if (item) items.push(item);
+    }
+    cards.push({ directive: d.name, type, items });
+  }
+  c.printCards = cards;
+  return cards;
+}
+
+/** The node names on .print and .plot lines, by node as the parser keys them (ngspiceName), read once. */
+function printNodes(c: Ctx): Map<string, PrintRef[]> {
+  if (c.printNodes) return c.printNodes;
+  const out = new Map<string, PrintRef[]>();
+  for (const card of printCards(c)) {
+    for (const item of card.items) {
+      for (const { name, token } of item.names) {
+        const ref = { name, token, directive: card.directive, type: card.type, bare: item.bare };
+        const key = ngspiceName(name);
+        const same = out.get(key);
+        if (same) same.push(ref);
+        else out.set(key, [ref]);
+      }
+    }
+  }
+  c.printNodes = out;
+  return out;
+}
+
+/**
+ * True when ngspice -b would save nothing at all, so it runs no analysis ("no data saved … analysis not
+ * run"): every analysis is a .dc, .tran or .ac (an .op or .tf saves everything for itself), nothing but
+ * the .print and .plot lines asks to save anything (no .save, .probe, .meas, .four or savecurrents, no
+ * command for ngspice, no line after .end), and every word of every .print and .plot line is one name
+ * ngspice can't parse: bare or alone in v(...), with a character outside printable ASCII, the micro sign
+ * aside (non-ascii-node-3). Anything else, a name it finds (v(in), i(V1)), two names in one v(...),
+ * leaves it undecided: false (the analysis runs: non-ascii-node-13). Read once.
+ */
+function printsNothing(c: Ctx): boolean {
+  if (c.printsNothing !== undefined) return c.printsNothing;
+  const cards = printCards(c);
+  let nothing = cards.length > 0 && c.n.analyses.length > 0 && c.n.analyses.every((i) => ['.dc', '.tran', '.ac'].includes(c.n.lines[i]!.directive!.name)) && !hasSaveCurrents(c.n);
+  for (const l of c.n.lines) {
+    if (!nothing) break;
+    if (l.kind === 'control' || l.kind === 'after-end' || SAVING_DIRECTIVES.has(l.directive?.name ?? '')) nothing = false;
+  }
+  c.printsNothing =
+    nothing &&
+    cards.every((card) => card.items.length > 0 && card.items.every((item) => item.lone && !isPlainName(item.names[0]!.name) && !/[@#[\]=]/.test(item.names[0]!.name)));
+  return c.printsNothing;
 }
 
 /**
  * The sentences for the lines where ngspice reads a node's name as written, not as the name it gave the
- * node (W16), each said only when such a line names the node (`print`, `command`; each check cites its
- * own claims for them). A .print or .plot line, which ngspice leaves out of the step that writes such
- * letters as `_`: run as ngspice -b it finds no such node there and prints nothing for that line, and
- * runs no analysis when that line was all it had to print, while PlainSpice's run leaves those lines
- * out (non-ascii-node-3). A command for ngspice (.control, *#, ##), where it finds no such node either
- * (non-ascii-node-4), and where a save that leaves it nothing to save gives PlainSpice's run no results
- * (savesNothing). The quoted message spells the name as ngspice does, µ as u and capitals small ("can't
- * parse 'uş'"). With `show` false the words never show the name (an invisible character, a character
- * that looks like a space): they say "the name".
+ * node (W16), each said only when such a line names one of the nodes (`print`, `command`; each check
+ * cites its own claims for them); for several nodes that ngspice makes one, one sentence of each kind,
+ * listing the names. A .print or .plot line, which ngspice leaves out of the step that writes such
+ * letters as `_`: run as ngspice -b it finds no such node there, warns "can't parse" (unless a save
+ * of the name came first: non-ascii-node-14) and prints nothing for that line, and, when nothing else
+ * can be printed or saved, runs no analysis (printsNothing, non-ascii-node-13), while PlainSpice's run
+ * leaves those lines out (non-ascii-node-3). Only a line whose analysis the netlist runs counts: ngspice
+ * saves a .print tran line's names only for a .tran, and warns about them only then. The name may stand
+ * inside v(...) or bare (printNodes). A command for ngspice (.control, *#,
+ * ##), where it finds no such node either (non-ascii-node-4), and where a save that leaves it nothing to
+ * save gives PlainSpice's run no results (savesNothing). The quoted message spells the name as ngspice
+ * does, µ as u and capitals small ("can't parse 'uş'"). With `show` false the words never show the name
+ * (an invisible character, a character that looks like a space): they say "the name".
  */
-function asWritten(c: Ctx, info: NodeInfo, show: boolean): { said: string[]; print: boolean; command: boolean } {
+function asWritten(c: Ctx, infos: readonly NodeInfo[], show: boolean): { said: string[]; print: boolean; command: boolean } {
   const said: string[] = [];
-  const printed = info.refs.find((t) => {
-    const d = cardOf(c, t).directive?.name;
-    return d === '.print' || d === '.plot';
-  });
-  if (printed) {
-    const ignored = `PlainSpice's run leaves .print and .plot lines out (ngspice: "${cardOf(c, printed).directive!.name} line ignored since rawfile was produced.").`;
+  const runs = (c.runTypes ??= new Set(c.n.analyses.map((i) => c.n.lines[i]!.directive!.name.slice(1))));
+  const afterEnd = (c.afterEnd ??= c.n.lines.some((l) => l.kind === 'after-end'));
+  // For each node, the first .print or .plot line for an analysis the netlist runs, and whether ngspice
+  // warns about the name: ngspice saves a name once, so only when the first line that names it is for an
+  // analysis that runs, and no save of the name in a command for ngspice, which it reads before them,
+  // came first (non-ascii-node-14); lines after .end may hold such a save too.
+  const printed: PrintRef[] = [];
+  const warned: string[] = [];
+  for (const info of infos) {
+    const refs = printNodes(c).get(info.name) ?? [];
+    const ref = refs.find((r) => runs.has(r.type));
+    if (!ref) continue;
+    printed.push(ref);
+    if (!afterEnd && runs.has(refs[0]!.type) && !(controlNodes(c).get(info.name) ?? []).some((x) => x.command === 'save')) warned.push(ngspiceName(refs[0]!.name));
+  }
+  if (printed.length) {
+    const ignored = `PlainSpice's run leaves .print and .plot lines out (ngspice: "${printed[0]!.directive} line ignored since rawfile was produced.").`;
+    const lines = new Set(printed.map((r) => lineAt(c.n, r.token.from).continues ?? lineAt(c.n, r.token.from).index)).size;
+    const that = lines === 1 ? 'that line' : 'those lines';
+    const none = printsNothing(c) ? '; with nothing else it can print or save, it runs no analysis ("no data saved")' : '';
+    const warns = !warned.length ? '' : show ? `warns ${list(warned.map((x) => `"can't parse '${x}'"`))}${warned.length > 1 ? ',' : ''} and ` : 'warns that it can\'t parse the name and ';
     said.push(
-      show
-        ? `On a .print or .plot line it reads the name as written, so it finds no node ${printed.text} there: run as ngspice -b, it warns "can't parse '${ngspiceName(printed.text)}'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${ignored}`
-        : `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${ignored}`,
+      !show
+        ? `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it ${warns}prints nothing for that line${none}. ${ignored}`
+        : `On a .print or .plot line it reads ${printed.length === 1 ? 'the name' : 'each name'} as written, so it finds no node ${list(printed.map((r) => r.name), 'or')} there: run as ngspice -b, it ${warns}prints nothing for ${that}${none}. ${ignored}`,
     );
   }
-  const commands = controlNodes(c).get(info.name) ?? [];
+  const commands = infos.map((info) => controlNodes(c).get(info.name) ?? []).filter((x) => x.length > 0);
   if (commands.length) {
-    const save = commands.find((x) => x.command === 'save');
-    const star = /^\s*(\*#|##)/.exec(lineAt(c.n, commands[0]!.token.from).text)?.[1];
+    // Each node's first save, those on one line said as one save (save v(ş) v(ç)).
+    const saves = new Map<number, string[]>();
+    for (const x of commands.flatMap((y) => y.find((z) => z.command === 'save') ?? [])) {
+      const line = lineAt(c.n, x.token.from).index;
+      saves.set(line, [...(saves.get(line) ?? []), x.bare ? x.token.text : `v(${x.token.text})`]);
+    }
+    const star = /^\s*(\*#|##)/.exec(lineAt(c.n, commands[0]![0]!.token.from).text)?.[1];
     const where = star ? `On a ${star} line, a command for ngspice,` : 'In a .control block';
-    const saved = save === undefined ? '' : save.bare ? `save ${save.token.text}` : `save v(${save.token.text})`;
-    const none = save !== undefined && savesNothing(c) ? `${show ? saved : 'the save of that name'} saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved")` : '';
+    const saved = list([...saves.values()].map((names) => `save ${names.join(' ')}`));
+    const none = saves.size && savesNothing(c) ? `${show ? `${saved} ${saves.size === 1 ? 'saves' : 'save'}` : 'the save of that name saves'} nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved")` : '';
     said.push(
       show
-        ? `${where} it reads the name as written too, so it finds no node ${commands[0]!.token.text} there${none ? `: ${none}` : ''}.`
+        ? `${where} it reads ${commands.length === 1 ? 'the name' : 'each name'} as written too, so it finds no node ${list(commands.map((x) => x[0]!.token.text), 'or')} there${none ? `: ${none}` : ''}.`
         : `${where} it reads the name as written too, with the character in it, so it finds no such node there${none ? `: ${none}` : ''}.`,
     );
   }
-  return { said, print: printed !== undefined, command: commands.length > 0 };
+  return { said, print: printed.length > 0, command: commands.length > 0 };
 }
 
 /**
@@ -1662,7 +1884,7 @@ function asWritten(c: Ctx, info: NodeInfo, show: boolean): { said: string[]; pri
  * only when no line where it reads the name as written names the node (asWritten: non-ascii-node-3, -4).
  */
 function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
-  const { said, print, command } = asWritten(c, info, true);
+  const { said, print, command } = asWritten(c, [info], true);
   // Cites [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
   const facts = ['non-ascii-node-1', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
   return [`ngspice spells the node ${spelled} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
@@ -1671,6 +1893,18 @@ function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
 /** A node renamed on the commands for ngspice too (controlNodes): there ngspice reads the name as written. */
 function commandChanges(c: Ctx, info: NodeInfo, to: string): TextChange[] {
   return (controlNodes(c).get(info.name) ?? []).map((x) => replace(x.token, to));
+}
+
+/**
+ * A node renamed where a .print or .plot line names it bare (`.print dc çıkış`, printNodes), which the
+ * parser's references leave out: inside v(...) they have it already. With `form`, only the words written
+ * that way (checkMicroNode renames one spelling of a node).
+ */
+function printChanges(c: Ctx, info: NodeInfo, to: string, form?: string): TextChange[] {
+  const refs = new Set(info.refs.map((t) => t.from));
+  return (printNodes(c).get(info.name) ?? [])
+    .filter((r) => r.bare && !refs.has(r.token.from) && (form === undefined || lowerAscii(r.token.text) === form))
+    .map((r) => replace(r.token, to));
 }
 
 /**
@@ -1734,18 +1968,18 @@ function checkNodeNames(c: Ctx): void {
   }
   const freeName = nodeNamer(new Set(groups.keys()));
   const plainFor = (info: NodeInfo): string => freeName(plainLetters(info.refs[0]!.text, true) || 'n1');
-  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to), ...commandChanges(c, info, to)];
+  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to), ...commandChanges(c, info, to), ...printChanges(c, info, to)];
   for (const [spelled, infos] of groups) {
     if (infos.length > 1) {
       const odd = infos.filter((i) => !isPlainName(i.name));
       const names = infos.map((i) => i.refs[0]!.text);
       const to = odd.map((i) => [i, plainFor(i)] as const);
       const at = (odd[odd.length - 1] ?? infos[infos.length - 1]!).refs[0]!;
-      // Each name with such letters, where a line names it that ngspice reads as written (S10). Cites
-      // [non-ascii-node-2, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
-      const written = odd.map((i) => asWritten(c, i, true));
-      const said = [...new Set(written.flatMap((w) => w.said))];
-      const facts = ['non-ascii-node-2', ...(written.some((w) => w.print) ? ['non-ascii-node-3'] : []), ...(written.some((w) => w.command) ? ['non-ascii-node-4'] : [])];
+      // The names with such letters, where a line names them that ngspice reads as written (S10), one
+      // sentence for them all (names lane critic 2, 7). Cites [non-ascii-node-2, non-ascii-node-3,
+      // non-ascii-node-4], the last two for their sentences.
+      const { said, print, command } = asWritten(c, odd, true);
+      const facts = ['non-ascii-node-2', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
       add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
         `ngspice ${lettersRule(names, 'a node name')}, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
         [`ngspice spells ${list(names)} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
@@ -1811,6 +2045,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
     ...forms.get(form)!.map((t) => replace(t, to)),
     ...labelChanges(c, info.name, to, form),
     ...(controlNodes(c).get(info.name) ?? []).filter((x) => lowerAscii(x.token.text) === form).map((x) => replace(x.token, to)),
+    ...printChanges(c, info, to, form),
   ];
   const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}, without a message`;
   if (across.length) {
@@ -1863,8 +2098,8 @@ function checkInvisibleNodes(c: Ctx): void {
     const what = nameOfCharacter(ch)!;
     const clean = withoutInvisible(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const { said, print, command } = asWritten(c, info, false);
+    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...printChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const { said, print, command } = asWritten(c, [info], false);
     // Cites [invisible-character-3, invisible-character-7, invisible-character-8], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-7'] : []), ...(command ? ['invisible-character-8'] : [])];
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
@@ -1896,8 +2131,8 @@ function checkSpaceNodes(c: Ctx): void {
     const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
     const clean = withoutSpaces(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const { said, print, command } = asWritten(c, info, false);
+    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...printChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const { said, print, command } = asWritten(c, [info], false);
     // Cites [space-character-10, space-character-12, space-character-13], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-12'] : []), ...(command ? ['space-character-13'] : [])];
     add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `The node ${withSpaces(t.text)} has ${nameOfCharacter(ch)!} in it`,
@@ -1924,8 +2159,8 @@ function checkLookAlikeNodes(c: Ctx): void {
     const ch = cleanWord(t.text).odd[0]!;
     const like = lookAlikeOf(ch)!;
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const { said, print, command } = asWritten(c, info, true);
+    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...printChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const { said, print, command } = asWritten(c, [info], true);
     // Cites [look-alike-letter-5, look-alike-letter-7, look-alike-letter-8], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-7'] : []), ...(command ? ['look-alike-letter-8'] : [])];
     add(c, 'look-alike-letter', 'warning', t, `The node ${t.text} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,

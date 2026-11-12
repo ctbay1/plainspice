@@ -7857,10 +7857,13 @@ never give a name another node has (that would join two nodes), nor one of groun
 would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
 ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6); they also rename
 the node on the commands for ngspice (a .control block, `*#` and `##` lines), inside `v(...)` and after
-`save`. What ngspice does is said only as far as it holds in every run, with a sentence more when a
-.print or .plot line (non-ascii-node-3) or a command for ngspice (non-ascii-node-4) names the node; that
-a save there leaves PlainSpice's run no results is said only when it leaves ngspice nothing else to save
-(non-ascii-node-7 to -9). A name with an invisible character or a no-break space is
+`save`, and on .print and .plot lines inside `v(...)` and bare. What ngspice does is said only as far
+as it holds in every run, with a sentence more when a .print or .plot line (non-ascii-node-3) or a
+command for ngspice (non-ascii-node-4) names the node; that a save there leaves PlainSpice's run no
+results is said only when it leaves ngspice nothing else to save (non-ascii-node-7 to -9), that ngspice
+-b runs no analysis only when nothing else can be printed or saved (non-ascii-node-13), and ngspice's
+warning is quoted only when ngspice gives it (non-ascii-node-14); for names ngspice makes one node, one
+sentence of each kind lists the names. A name with an invisible character or a no-break space is
 left to those checks (invisible-character, nbsp). PlainSpice matches ngspice's results back to the
 netlist's names (`src/spice/describe.ts`), so the drawing, the Numbers panel and the announcement say
 `giriş`.
@@ -7940,22 +7943,31 @@ lines out of the step that writes the letters outside ASCII as `_` (`inp_casefix
 its `src/frontend/inp.c`; the micro sign is still read as u, earlier, and capital letters become small),
 so there `çıkış` is not `____k____`, the node it built: run as `ngspice -b`, it warns "can't parse
 'çıkış'" and prints nothing for that line, not even for a name it finds on the same line (`.print dc
-v(çıkış) i(V1)` prints no table at all), and when that line was all it had to print, it runs no analysis
-(exit 1); a .print line of its own for v(in) still prints its table. With a results file (`-b -r`, as
-PlainSpice runs it), ngspice reads .print and .plot lines and leaves them out (".print line ignored
-since rawfile was produced."), and the run is not affected. So the check says "without a message" only
-when no such line names the node, and says this when one does, with ngspice's warning as ngspice spells
-the name there: `µş` as `uş`, `çAk` as `çak` (names lane critic, 3, which also found "prints nothing for
-it" and "skips those lines" short of what happens). The one-click rename writes the plain name on that
-line too; the fixed netlist runs under `ngspice -b` and prints its table (exit 0, native 47 and 42).
-With ngspice's own spelling, `.print dc v(____k____)`, the table prints; a name with only the micro
-sign, `.print dc v(aµ)`, prints as `v(au)`.
+v(çıkış) i(V1)` prints no table at all); a .print line of its own for v(in) still prints its table. When
+nothing else can be printed or saved, it runs no analysis (exit 1): here, every word of every .print and
+.plot line is a name it can't parse, the analyses are .dc, .tran or .ac, and nothing else saves anything.
+With anything else, an .op or a .tf, a name it finds, a .save line, savecurrents, a .meas or .four line,
+it runs (non-ascii-node-13), so the check says "it runs no analysis" only in the first case (the second
+critic of the names lane, 1, found the earlier "when that line was all it had to print it runs no
+analysis" said beside an .op and a .tf that ran). The name may stand bare, as ngspice reads a word
+without brackets on these lines (`.print dc çıkış` prints v(çıkış) for it), and draws the same warning
+(second critic, 3). With a results file (`-b -r`, as PlainSpice runs it), ngspice reads .print and .plot
+lines and leaves them out (".print line ignored since rawfile was produced."), and the run is not
+affected. So the check says "without a message" only when no such line names the node, and says this
+when one does, for a line whose analysis the netlist runs (ngspice saves a `.print tran` line's names
+only for a .tran, and warns about them only then), with ngspice's warning as ngspice spells the name
+there: `µş` as `uş`, `çAk` as `çak` (names lane critic, 3, which also found "prints nothing for it" and
+"skips those lines" short of what happens). It quotes the warning only when ngspice gives it: a save of
+the name in a command for ngspice takes it away (non-ascii-node-14). The one-click rename writes the
+plain name on that line too, inside `v(...)` and bare; the fixed netlist runs under `ngspice -b` and
+prints its table (exit 0, native 47 and 42). With ngspice's own spelling, `.print dc v(____k____)`, the
+table prints; a name with only the micro sign, `.print dc v(aµ)`, prints as `v(au)`.
 
 What PlainSpice shows for non-ascii-node-3 (warning, line 3):
 
 > **ngspice spells the node çıkış as ____k____.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so its printout and results call this node ____k____, and two names can become one node. A name in plain letters avoids both.
 >
-> *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
+> *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
 >
 > *Fixes:* "Rename çıkış to cikis"
 
@@ -8020,8 +8032,42 @@ The same in other forms, native 47 and 42 alike, `ngspice -b`:
     Warning: can't parse 'çak': ignored
     Error: no data saved for D.C. Transfer curve analysis; analysis not run
     ...
+.print dc çıkış, the name bare (exit 1):
+    Warning: can't parse 'çıkış': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    ...
+  after the rename, .print dc cikis (exit 0): the table prints, Index v-sweep cikis, 0 4 8 for cikis
+.plot dc çıkış, bare on a .plot line (exit 1): the same warning, no data saved, ".plot: no dc analysis found."
+.print dc çıkış in, and .print dc v(in) çıkış (exit 0, no table): the same warning, and
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+.print ac vdb(çıkış), with .ac dec 1 1k 10k (exit 1):
+    Warning: can't parse 'çıkış': ignored
+    Error: no data saved for A.C. Small signal analysis; analysis not run
+.plot ac xlog vdb(çıkış), with .ac (exit 1): the same; ngspice drops xlog from the words to save
+.print dc v(çıkış) v(ş), for two nodes with such letters (exit 1):
+    Warning: can't parse 'çıkış': ignored
+    Warning: can't parse 'ş': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+  the same with the two on two .print lines, or v(ş) on a + line after .print dc v(çıkış) (exit 1)
+.print dc v(çıkış) ; v(in), a comment after it (exit 1): the same as .print dc v(çıkış)
+.print dc v(çıkış), with .dc V1 0 12 6 and .tran 1u 2u (exit 1): neither runs:
+    Warning: can't parse 'çıkış': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    Error: no data saved for Transient analysis; analysis not run
+.print tran v(çıkış), with only .dc (exit 1): no warning; the .dc saves nothing:
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    ...
+    Error: .print: no tran analysis found.
+  the same for .print op v(çıkış) with only .dc ("no op analysis found")
+.print v(çıkış), with no analysis named (exit 1): ngspice takes v(çıkış) for the analysis:
+    Warning: no nodes given: .print v(çıkış)
+.print dc v (çıkış), a space before the bracket (exit 1): Warning: can't parse 'v': ignored
+.print dc (çıkış) (exit 1): Warning: no nodes given: .print dc (çıkış)
   ngspice -b -r, each of them: .print line ignored since rawfile was produced. (exit 0)
 ```
+
+The check says no sentence for a line whose analysis the netlist does not run, nor for the last three
+forms, where ngspice reads no node çıkış.
 
 PlainSpice's checks: `non-ascii-node`.
 
@@ -8525,6 +8571,135 @@ D1 aµ au dd ic=0.7 in place of C1, .model dd D, with .tran 1u 10u uic: i(@d1[id
 
 PlainSpice's checks: `non-ascii-node`.
 
+### non-ascii-node-13. With anything else to print or save, ngspice -b runs the analysis: only the line is lost
+
+Added after the second critic of the names lane, 12 November 2026 (1). The check said "when that line
+was all it had to print it runs no analysis" whenever a .print or .plot line named the node, but ngspice
+-b runs the analysis whenever something can be printed or saved: here `v(in)` on the same line, which
+it finds, so the sweep runs (exit 0), and only the line prints nothing, not even v(in). The same holds
+with an .op or a .tf, which save everything for themselves, with a name it finds anywhere on a .print or
+.plot line, with two names in one `v(...)` (the second, `in`, is found), and with a .save line, `.options
+savecurrents` (on a continuation line too), a .meas or a .four line (below). So the check says "it runs
+no analysis" only when every word of every .print and .plot line is a name it can't parse, every
+analysis is a .dc, .tran or .ac, and nothing else saves anything; with a .control block, `*#` or `##`
+lines, a .probe line or lines after .end it says nothing about the run either way.
+
+What PlainSpice shows for non-ascii-node-13 (warning, line 3):
+
+> **ngspice spells the node çıkış as ____k____.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so its printout and results call this node ____k____, and two names can become one node. A name in plain letters avoids both.
+>
+> *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
+>
+> *Fixes:* "Rename çıkış to cikis"
+
+```spice
+* a .print line naming a node with Turkish letters beside one ngspice finds
+V1 in 0 12
+R1 in çıkış 1k
+R2 çıkış 0 2k
+.dc V1 0 12 6
+.print dc v(in) v(çıkış)
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), and no table at all:
+    Warning: can't parse 'çıkış': ignored
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+  ngspice -b -r out.raw (exit 0)
+    .print line ignored since rawfile was produced.
+    rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    .print line ignored since rawfile was produced.
+    vectors: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+```
+
+The analysis runs in these too, native 47 and 42 alike, `ngspice -b` (exit 0), each with "can't parse
+'çıkış'" and nothing printed for the .print line:
+
+```text
+.op with .print op v(çıkış): the operating point's own printout still lists ____k____ = 8, in = 12
+.tf v(çıkış) V1 with .print tf v(çıkış): transfer_function = 6.666667e-01 is printed
+.print dc v(çıkış) i(V1); .print dc v(çıkış,in); .print dc v(in,çıkış); .print dc çıkış in
+.print dc v(çıkış), with another line .print dc i(V1) (that line prints its table)
+.print dc v(çıkış), with .save v(in), .save all, .options savecurrents, or .options reltol=1e-3 and + savecurrents
+.print dc v(çıkış), with .meas dc m1 max v(in) (m1 = 1.20000e+01 is printed)
+.print tran v(çıkış), with .tran 10u 2m and .four 1k v(in) (the Fourier table is printed)
+.print dc v(çıkış), with .probe v(in)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-14. A save of the name in a command for ngspice takes the .print line's warning away
+
+Added after the second critic of the names lane, 12 November 2026 (1). ngspice saves a name once: the
+first save of it stands, and a later one is dropped. It reads the commands for ngspice (a .control
+block, `*#` and `##` lines) while it loads the file, before the .print and .plot lines, so a `save
+v(çıkış)` there comes first, and it saves nothing (non-ascii-node-4). The .print line's `çıkış` is then
+no save of its own, and ngspice, which warns only about a .print line's names, gives no "can't parse
+'çıkış'" (exit 1, "no data saved", twice: once for the run in the block, once for the .print lines).
+Likewise an earlier `.print tran v(çıkış)` takes the warning from a later `.print dc v(çıkış)` when only
+the .dc runs. A .save line does not: there ngspice writes the letters as underscores, so it saves the
+node ____k____, another name, and the warning stays (the analysis then runs). So the check quotes the
+warning only when the first .print or .plot line naming the node is for an analysis the netlist runs,
+no command for ngspice saves the name, and there are no lines after .end; otherwise it says only that
+ngspice prints nothing for that line.
+
+What PlainSpice shows for non-ascii-node-14 (warning, line 3):
+
+> **ngspice spells the node çıkış as ____k____.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so its printout and results call this node ____k____, and two names can become one node. A name in plain letters avoids both.
+>
+> *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it prints nothing for that line. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). In a .control block it reads the name as written too, so it finds no node çıkış there: save v(çıkış) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4]
+>
+> *Fixes:* "Rename çıkış to cikis"
+
+```spice
+* a save of the name in a .control block, read before the .print line
+V1 in 0 12
+R1 in çıkış 1k
+R2 çıkış 0 2k
+.dc V1 0 12 6
+.print dc v(çıkış)
+.control
+save v(çıkış)
+run
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1), no "can't parse":
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: .print: no dc analysis found.
+  ngspice -b -r out.raw (exit 1): the same two errors, then
+    .print line ignored since rawfile was produced.
+    rawfile: (no rawfile data)
+ngspice 42: the same printout and exit codes as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    .print line ignored since rawfile was produced.
+```
+
+In other forms, native 47 and 42 alike, `ngspice -b`:
+
+```text
+*# save v(çıkış), then .print dc v(çıkış) (exit 1): no "can't parse"; no data saved
+.print tran v(çıkış), then .print dc v(çıkış), with only .dc (exit 1): no "can't parse"; no data saved
+.print dc v(çıkış), then .print tran v(çıkış), with only .dc (exit 1): Warning: can't parse 'çıkış': ignored
+.save v(çıkış), or .save çıkış, then .print dc v(çıkış) (exit 0): Warning: can't parse 'çıkış': ignored,
+  and the sweep runs, saving ____k____
+if 0 / save v(çıkış) / end in a .control block, then .print dc v(çıkış) (exit 1): the save never runs, so
+  Warning: can't parse 'çıkış': ignored (the check, which does not follow an if, does not quote it)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
 ## invisible-character
 
 Added after the final reviews of 12 November 2026 (security review F2). An invisible character (a
@@ -8775,15 +8950,15 @@ PlainSpice's checks: `invisible-character`.
 Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
 (non-ascii-node-3), ngspice leaves .print and .plot lines out of the step that writes such characters as
 `_`, so there `ou<ZWSP>t` is not `ou___t`, the node it built: run as `ngspice -b`, it warns that it
-can't parse the name and prints nothing for that line, and runs no analysis when that line was all it
-had to print; PlainSpice's run leaves the line out. The check said "without a message" here; now it says
+can't parse the name and prints nothing for that line, and, with nothing else it can print or save,
+runs no analysis (non-ascii-node-13 says when); PlainSpice's run leaves the line out. The check said "without a message" here; now it says
 so only when no such line names the node, and its words name the character, never show it.
 
 What PlainSpice shows for invisible-character-7 (warning, line 3):
 
 > **A zero-width space (U+200B) hides in the node name out.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is a node called ou___t for ngspice.
 >
-> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [invisible-character-3, invisible-character-7]
+> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [invisible-character-3, invisible-character-7]
 >
 > *Fixes:* "Take it out: name the node out"
 
@@ -9164,15 +9339,16 @@ PlainSpice's checks: `look-alike-letter`.
 
 Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
 (non-ascii-node-3): on a .print or .plot line `оut`, with a Cyrillic о, is not `__ut`, the node ngspice
-built, so run as `ngspice -b` it warns "can't parse 'оut'", prints nothing for that line, and runs no
-analysis when that line was all it had to print; PlainSpice's run leaves the line out. The check said
+built, so run as `ngspice -b` it warns "can't parse 'оut'", prints nothing for that line, and, with
+nothing else it can print or save, runs no analysis (non-ascii-node-13 says when); PlainSpice's run
+leaves the line out. The check said
 "without a message" here; now it says so only when no such line names the node.
 
 What PlainSpice shows for look-alike-letter-7 (warning, line 3):
 
 > **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so ngspice calls this node __ut.
 >
-> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-7]
+> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-7]
 >
 > *Fixes:* "Rename оut to out"
 
@@ -9819,15 +9995,15 @@ PlainSpice's checks: `space-character`, `zero-ohm`, `space-character`.
 Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
 (non-ascii-node-3): on a .print or .plot line `o<THIN>ut` is not `o___ut`, the node ngspice built (its
 words end only at an ASCII space or tab), so run as `ngspice -b` it warns that it can't parse the name,
-prints nothing for that line, and runs no analysis when that line was all it had to print; PlainSpice's
-run leaves the line out. The check said "without a message" here; now it says so only when no such line
+prints nothing for that line, and, with nothing else it can print or save, runs no analysis
+(non-ascii-node-13 says when); PlainSpice's run leaves the line out. The check said "without a message" here; now it says so only when no such line
 names the node, and its words name the character, never show it.
 
 What PlainSpice shows for space-character-12 (warning, line 3):
 
 > **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is a node called o___ut for ngspice.
 >
-> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [space-character-10, space-character-12]
+> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [space-character-10, space-character-12]
 >
 > *Fixes:* "Take it out: name the node out"
 

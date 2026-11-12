@@ -261,6 +261,8 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-10', netlist: "* a capacitor and a diode with an end on a\u00b5 and one on au\nV1 in 0 PULSE(0 12 0 10u 10u 1 2)\nR1 in a\u00b5 1k\nC1 a\u00b5 au 1u\nD1 a\u00b5 au dd\nR2 au 0 2k\n.model dd D\n.options savecurrents\n.tran 10u 50u\n.end\n", last: { "v(au)": 8, "i(@c1[i])": 0, "i(@d1[id])": 0, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-11', netlist: "* a current source with an end on a\u00b5 and one on au\nV1 in 0 12\nR1 in a\u00b5 1k\nI1 a\u00b5 au 1m\nR2 au 0 2k\n.options savecurrents\n.op\n.end\n", vectors: { "v(au)": 8, "i(@i1[current])": 0.001, "i(@r1[i])": 0.004, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-12', netlist: "* a capacitor given a starting voltage, with an end on a\u00b5 and one on au\nV1 in 0 12\nR1 in a\u00b5 1k\nC1 a\u00b5 au 1u ic=5\nR2 au 0 2k\n.options savecurrents\n.tran 1u 10u uic\n.end\n", last: { "v(au)": 8, "i(@c1[i])": 0, "i(@r1[i])": 0.004, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-13', netlist: "* a .print line naming a node with Turkish letters beside one ngspice finds\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.dc V1 0 12 6\n.print dc v(in) v(\u00e7\u0131k\u0131\u015f)\n.end\n", vectors: { "v(in)": [0, 6, 12], "v(____k____)": [0, 4, 8], "i(v1)": [0, -0.002, -0.004] }, prints: [".print line ignored since rawfile was produced."], traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-14', netlist: "* a save of the name in a .control block, read before the .print line\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.dc V1 0 12 6\n.print dc v(\u00e7\u0131k\u0131\u015f)\n.control\nsave v(\u00e7\u0131k\u0131\u015f)\nrun\n.endc\n.end\n", prints: ["no data saved for D.C. Transfer curve analysis; analysis not run", ".print line ignored since rawfile was produced."], fails: true, traps: ['non-ascii-node'] },
   { code: 'duplicate-name-3', netlist: "* two part names that become one\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists"], fails: true, traps: ['duplicate-name'] },
   { code: 'duplicate-name-4', netlist: "* R\u00b5 and Ru are the same name: ngspice reads \u00b5 as u\nV1 a 0 6\nR\u00b5 a 0 2\nRu a 0 3\n.op\n.end\n", prints: ["device already exists", "ru a 0 3"], fails: true, traps: ['duplicate-name'] },
   // Added after the final reviews of 12 Nov 2026: characters that are not what they look like (W16).
@@ -362,8 +364,8 @@ it('non-ascii-node-6: the fix keeps gñd off ground: gnd3 is 2.5 V, as g__d was 
   expect(vector(f!.run, 'i(@r2[i])')).toEqual([0.0025]);
 });
 
-it('non-ascii-node-3, -4: the rename writes the plain name on the .print line and in the .control block too, and the run then gives v(cikis) (S10)', () => {
-  for (const code of ['non-ascii-node-3', 'non-ascii-node-4']) {
+it('non-ascii-node-3, -4, -14: the rename writes the plain name on the .print line and in the .control block too, and the run then gives v(cikis) (S10)', () => {
+  for (const code of ['non-ascii-node-3', 'non-ascii-node-4', 'non-ascii-node-14']) {
     const [f] = fixed.get(code)!;
     expect(f!.netlist, code).not.toContain('\u00e7\u0131k\u0131\u015f');
     expect(vector(f!.run, 'v(cikis)'), code).toEqual([0, 4, 8]);

@@ -270,8 +270,9 @@ Ctrl+K stay as they are.
   warning said "ngspice runs it and spells the node ____k____, without a message", recorded on an .op
   netlist. But ngspice reads a .print or .plot line as written (it leaves those lines out of the step
   that writes such letters as `_`): run as `ngspice -b`, as a student may run the exported file, it
-  warns "can't parse 'çıkış'" and prints nothing for it, and runs no .dc or .tran when that was all it
-  had to print (non-ascii-node-3). A command for ngspice (a .control line, a `*#` line) reads the name
+  warns "can't parse 'çıkış'" and prints nothing for it, and runs no .dc, .tran or .ac when nothing
+  else can be printed or saved (non-ascii-node-3, -13; corrected below, after the second critic of the
+  names lane). A command for ngspice (a .control line, a `*#` line) reads the name
   as written too, so a `save v(çıkış)` there that leaves nothing else saved stops the analysis, in
   PlainSpice's own run as well (non-ascii-node-4; narrowed below). Now the sentence says only "ngspice
   spells the node ____k____ in its printout and results" (and "without a message" when nothing else
@@ -327,11 +328,12 @@ Ctrl+K stay as they are.
   saves no node voltage, so there the plain name would not help either), and not when a delete, a
   .probe line or lines after .end could change what is saved; "in PlainSpice's run", because under
   plain `ngspice -b` a run placed before the save works. `save çıkış`, without `v(...)`, counts too, and
-  the rename now writes the plain name there. The .print sentence says what -b does in full: "prints
-  nothing for that line, and when that line was all it had to print it runs no analysis", and that
-  PlainSpice's run "leaves .print and .plot lines out" (ngspice reads them: ".print line ignored since
-  rawfile was produced."), not that it skips them (W11); its quote spells the name as ngspice does
-  (`uş` for `µş`). The error for ş and ç made one node drops "without a message" on the same terms.
+  the rename now writes the plain name there. The .print sentence says that -b "prints nothing for that
+  line" (its "and when that line was all it had to print it runs no analysis" did not hold: see "No
+  analysis only when nothing else is printed or saved" below), and that PlainSpice's run "leaves .print
+  and .plot lines out" (ngspice reads them: ".print line ignored since rawfile was produced."), not that
+  it skips them (W11); its quote spells the name as ngspice does (`uş` for `µş`). The error for ş and ç
+  made one node drops "without a message" on the same terms.
 - **The other node-name checks say what a .print or .control line does too** (names lane critic, 4).
   An invisible character, a look-alike letter or a character that looks like a space in a node name
   reads on a .print or .plot line and in a .control block exactly as a Turkish letter does
@@ -369,3 +371,40 @@ Ctrl+K stay as they are.
   `ic=0.7` stays at 0). The warning said "C1 has both ends on it and carries no current". A capacitor
   with an `ic=` value now gets the words for the other parts, "which joins both ends of C1", and
   cites non-ascii-node-12, which records the runs.
+- **No analysis only when nothing else is printed or saved** (names lane, second critic, 1). Every
+  .print sentence of the node-name checks ended "and when that line was all it had to print it runs
+  no analysis", but native ngspice 47 and 42 (`-b`) run the analysis, exit 0, with an .op or a .tf
+  (they save everything for themselves), with a name it finds on the line (`.print dc v(in) v(çıkış)`,
+  which the S10 test used, prints no table but runs), with `v(çıkış,in)`, and with a .save line,
+  savecurrents, a .meas or a .four line (non-ascii-node-13). The sentence now says "it warns … and
+  prints nothing for that line", which held in every run, and adds "; with nothing else it can print
+  or save, it runs no analysis ("no data saved")" only when that holds: every analysis is a .dc, .tran
+  or .ac, every word of every .print and .plot line is one name ngspice can't parse (bare or alone in
+  `v(...)`, `vdb(...)` …), and nothing else saves anything (no .save, .probe, .meas, .four,
+  savecurrents, command for ngspice or line after .end). The lines are read as ngspice's own reading
+  (`gettoks`) reads them: words split at blanks and at commas outside brackets, `xlog` and the other
+  .plot options dropped, a word with a bracket naming what follows its last opening bracket, `i(…)`
+  and `vi(…)` a source's current. The sentence is said only for a line whose analysis the netlist runs
+  (ngspice saves a `.print tran` line's names only for a .tran, and warns about them only then: with
+  only a .dc it says nothing about the name), and the warning is quoted only when ngspice gives it:
+  ngspice saves a name once, and reads the commands for ngspice first, so a `save v(çıkış)` in a
+  .control block or on a `*#` line, or an earlier `.print tran v(çıkış)`, takes the warning away
+  (non-ascii-node-14); then the sentence says only that ngspice prints nothing for that line. A fuzz of
+  900 netlists with such names on .print and .plot lines of every form, run as native ngspice 47 -b (a
+  third of them under 42 too), found no quoted warning missing (167 quoted), no "runs no analysis" for a
+  run that ran (57), and no "without a message" beside a warning about the node.
+- **A bare name on a .print or .plot line** (names lane, second critic, 3). ngspice's .print takes a
+  node name without `v(...)` (`.print dc out` prints v(out)), but PlainSpice's parser takes node names on
+  these lines only inside `v(...)`, so `.print dc çıkış` got "without a message" while ngspice -b warns
+  "can't parse 'çıkış'" and runs no analysis, and the rename left the line as it was, so the fixed
+  netlist failed the same way. The node-name checks now read these lines as ngspice does (above), once
+  for the whole netlist, and count a bare name for their sentences; all four checks (non-ascii-node,
+  invisible-character, space-character and nbsp, look-alike-letter) and the aµ/au split rename it, so
+  after "Rename çıkış to cikis" `.print dc cikis` prints its table (native 47 and 42; non-ascii-node-3
+  lists the forms).
+- **One sentence for names ngspice makes one node** (names lane, second critic, 7). The error for ş and
+  ç made one node repeated the whole .print sentence, the "leaves .print and .plot lines out" sentence
+  and the .control sentence for each name (about 1,250 characters for two names). It now says each
+  once, listing the names: "it reads each name as written, so it finds no node ş or ç there", "it warns
+  "can't parse 'ş'" and "can't parse 'ç'"", and "save v(ş) v(ç) saves nothing" (one save line) or "save
+  v(ş) and save ç save nothing" (two).

@@ -92,7 +92,14 @@ space-character-12, -13 (a .print line or a .control block reads a node name wit
 written, as for a Turkish letter).
 
 After the second critic of the names lane, the same day: in traps.md non-ascii-node-12 (a capacitor
-given a starting voltage, `ic=`, across `aµ` and `au` carries −5000 A at the first point under `uic`).
+given a starting voltage, `ic=`, across `aµ` and `au` carries −5000 A at the first point under `uic`),
+non-ascii-node-13 (with anything else to print or save, an .op or .tf, a name ngspice finds on the
+line, a .save, savecurrents, .meas or .four line, `ngspice -b` runs the analysis: only the .print line
+is lost) and non-ascii-node-14 (a save of the name in a command for ngspice, or an earlier .print line
+for another analysis, takes ngspice's "can't parse" warning away); non-ascii-node-3 now lists a bare
+name on a .print or .plot line (`.print dc çıkış`) and the other forms of those lines, and
+non-ascii-node-7 three more saves that leave the run going (savecurrents on a continuation line, a
+`reset`, a save inside `if 0`).
 
 ## Where the evidence came from
 
