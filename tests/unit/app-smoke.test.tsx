@@ -134,7 +134,7 @@ describe('<App />', () => {
       'Inductor',
       'Voltage source',
       'Current source',
-      'Controlled source',
+      'Dependent source',
       'Ground',
       'Add a part',
     ]);

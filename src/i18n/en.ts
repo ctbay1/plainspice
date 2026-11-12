@@ -41,10 +41,11 @@ export const en = {
   partsLabel: 'Parts and tools',
   toolSelect: 'Select',
   toolWire: 'Wire',
-  toolControlled: 'Controlled source',
-  toolControlledWith: 'Controlled source ({letter})',
+  /** E, F, G and H as one tool and group: the channel's word, "dependent source" (each keeps its catalog name, "voltage-controlled voltage source" ...). */
+  toolControlled: 'Dependent source',
+  toolControlledWith: 'Dependent source ({letter})',
   toolGround: 'Ground',
-  controlledMenu: 'Controlled sources',
+  controlledMenu: 'Dependent sources',
   controlledMakes: 'makes a {makes}: {gain} × {follows}',
   wordVoltage: 'voltage',
   wordCurrent: 'current',
@@ -64,7 +65,7 @@ export const en = {
   partsSheetAdd: 'Add a part between two nodes',
   partsSheetAddLine: 'Choose its nodes from a list; PlainSpice draws it',
   partsClose: 'Close the parts',
-  partsGroupControlled: 'Controlled sources',
+  partsGroupControlled: 'Dependent sources',
   partsGroupBasic: 'Parts and wires',
 
   // ---------------------------------------------------------------- hint line
@@ -206,7 +207,7 @@ export const en = {
   nodeNamed: 'node {name}',
   nodeWithParts: '{node}: {parts}',
   checksUnchosenTitle: 'Chosen by PlainSpice for now',
-  checksUnchosenIntro: 'A controlled source reads a voltage or a current elsewhere in the circuit. These were placed on the drawing, and PlainSpice chose what they read so the circuit runs; until you choose, ngspice solves that circuit:',
+  checksUnchosenIntro: 'A dependent source reads a voltage or a current elsewhere in the circuit. These were placed on the drawing, and PlainSpice chose what they read so the circuit runs; until you choose, ngspice solves that circuit:',
   checksUnchosen: '{name} reads {control}',
   checksUnchosenOpen: 'Choose on {name}’s card',
   checksDrawingTitle: 'The drawing lines',
