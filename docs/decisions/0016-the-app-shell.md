@@ -162,3 +162,16 @@ Ctrl+K stay as they are.
   screen, live runs, every fixture and every video example against native ngspice, traps and fixes,
   share links including a link made for the old address, export, plots, keyboard only, the phone's
   turned drawing and sheets, offline, and axe in every main state).
+
+## After the final reviews (12 November 2026)
+
+- **Ctrl+K keeps the focus in its field** (a11y A1). The field is the dialog's one Tab stop: Tab and
+  Shift+Tab stay in it, as in every other dialog here (React Aria keeps Tab inside), so the focus
+  never reaches the page behind (the skip link is inert too while Ctrl+K is open). The list is never
+  a Tab stop (`tabIndex -1`: Chromium made the scrolling list one, where the arrows, Enter and Esc did
+  nothing). A press anywhere in the dialog but the field keeps the focus in the field; an option
+  still runs on its click, and the list still scrolls with the wheel, a finger and its scrollbar.
+  Escape closes Ctrl+K wherever the focus is, as its Esc badge says.
+- **Its list is a `<div role=listbox>`** of `<div role=group>`s, each a name and a `<ul role=none>` of
+  `<li role=option>`s (a11y A3: an `<li>` may not be a group, and a list may hold only `<li>`s). The
+  accessibility tree is as it was; axe's best-practice rules pass on it.

@@ -2,9 +2,11 @@
  * Ctrl+K (from the Studio direction, decision 0014): every command in one searchable list, every
  * panel, overlay, example and part reached from the keyboard. A modal dialog with a combobox and its
  * list (ARIA 1.2 combobox pattern): type to filter, arrow keys to choose, Enter to run, Escape to
- * close; focus goes back where it was (the page does that).
+ * close; focus goes back where it was (the page does that). The field keeps the focus the whole time:
+ * Tab stays in it (a modal dialog keeps Tab inside, and the field is its one stop), and a click on
+ * the list runs an option without taking the focus from the field (final reviews, a11y A1).
  */
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { t, tn } from '../../i18n/index.ts';
 import { LineIcon } from './Icons.tsx';
 
@@ -59,7 +61,7 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const list = useRef<HTMLUListElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const id = useId();
   const shown = useMemo(() => filterCommands(commands, query), [commands, query]);
   const current = shown[Math.min(active, shown.length - 1)];
@@ -98,11 +100,25 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
     e.preventDefault();
     e.stopPropagation();
   };
+  // The field is the dialog's one Tab stop: Tab and Shift+Tab stay in it, as in every modal dialog
+  // here (React Aria's keep Tab inside theirs), never reaching the page behind (WCAG 2.4.3).
+  const onDialogKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    input.current?.focus({ preventScroll: true });
+  };
+  // A click on the list, a group's name or the search glyph never takes the focus from the field
+  // (an option still runs on its click), so the arrow keys, Enter and Escape keep working.
+  const keepFocus = (e: MouseEvent<HTMLDivElement>): void => {
+    if (e.target === input.current) return;
+    e.preventDefault();
+    input.current?.focus({ preventScroll: true });
+  };
 
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the rest of the page is made inert while it is open */}
-      <div className="palette" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`}>
+      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-static-element-interactions -- the rest of the page is made inert while it is open; its keys and clicks keep the focus in the field */}
+      <div className="palette" role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} onKeyDown={onDialogKeyDown} onMouseDown={keepFocus}>
         <h2 className="visually-hidden" id={`${id}-title`}>
           {t('paletteTitle')}
         </h2>
@@ -134,12 +150,14 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
         </div>
         {/* How many commands match, said as the search is typed. */}
         <output className="visually-hidden">{query ? tn('paletteCount', shown.length) : ''}</output>
-        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- a filtered list a <select> cannot be */}
-        <ul className="palette__list" id={`${id}-list`} role="listbox" aria-label={t('paletteTitle')} ref={list}>
+        {/* The list is never a Tab stop (tabIndex -1: a list that scrolls is otherwise one in Chromium): the field keeps the focus and moves the active option (aria-activedescendant). */}
+        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a filtered list a <select> cannot be */}
+        <div className="palette__list" id={`${id}-list`} role="listbox" aria-label={t('paletteTitle')} tabIndex={-1} ref={list}>
           {groups.map(({ group, items }, g) => (
             // A group of options with its name, as a listbox allows (the name is read with the options).
+            // A <div>: an <li> may not be a group, and a list may hold only <li> (final reviews, a11y A3).
             // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-            <li key={group} role="group" aria-labelledby={`${id}-g${g}`} className="palette__groupbox">
+            <div key={group} role="group" aria-labelledby={`${id}-g${g}`} className="palette__groupbox">
               <span className="palette__group" id={`${id}-g${g}`}>
                 {group}
               </span>
@@ -166,15 +184,15 @@ export function CommandPalette({ commands, onRun, onClose }: { commands: readonl
                   </li>
                 ))}
               </ul>
-            </li>
+            </div>
           ))}
           {shown.length === 0 ? (
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role
-            <li className="palette__empty" role="option" aria-selected="false" aria-disabled="true">
+            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+            <div className="palette__empty" role="option" aria-selected="false" aria-disabled="true">
               {t('paletteEmpty', { query })}
-            </li>
+            </div>
           ) : null}
-        </ul>
+        </div>
       </div>
     </div>
   );

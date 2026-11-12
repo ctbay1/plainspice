@@ -2685,7 +2685,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else openPalette();
       return;
     }
-    if (paletteOpen || inOverlay) return;
+    if (paletteOpen) {
+      // Escape closes Ctrl+K wherever the focus is, as its Esc badge says (its field handles its own
+      // keys first; the focus may have left the field for the page itself: final reviews, a11y A1).
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePalette();
+      }
+      return;
+    }
+    if (inOverlay) return;
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
       let acted = true;
@@ -3052,6 +3061,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       <a
         className="skip-link"
         href="#drawing"
+        // Behind Ctrl+K like the rest of the page: never reached from the dialog (WCAG 2.4.3).
+        inert={inert}
         onClick={(e) => {
           e.preventDefault();
           const link = e.currentTarget;
