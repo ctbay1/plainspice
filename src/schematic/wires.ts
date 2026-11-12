@@ -19,17 +19,31 @@ export function normalizeWires(wires: readonly (readonly Point[])[]): Point[][] 
   const vertical = new Map<number, [number, number][]>();
   const slanted: Point[][] = [];
   const slantedSeen = new Set<string>();
-  for (const [a, b] of toSegments(wires)) {
-    if (!isOrthogonal(a, b)) {
-      const key = [pointKey(a), pointKey(b)].sort().join(' ');
-      if (!slantedSeen.has(key)) {
-        slantedSeen.add(key);
-        slanted.push([a, b]);
+  // Every point where a piece ended (a connection the merged wires must keep), by row, left to right.
+  const endsByRow = new Map<number, number[]>();
+  const ended = (p: Point): void => {
+    const xs = endsByRow.get(p.y);
+    if (xs) xs.push(p.x);
+    else endsByRow.set(p.y, [p.x]);
+  };
+  for (const w of wires) {
+    for (let i = 1; i < w.length; i++) {
+      const a = w[i - 1]!;
+      const b = w[i]!;
+      if (samePoint(a, b)) continue;
+      ended(a);
+      ended(b);
+      if (!isOrthogonal(a, b)) {
+        const key = [pointKey(a), pointKey(b)].sort().join(' ');
+        if (!slantedSeen.has(key)) {
+          slantedSeen.add(key);
+          slanted.push([a, b]);
+        }
+        continue;
       }
-      continue;
+      if (a.y === b.y) (horizontal.get(a.y) ?? horizontal.set(a.y, []).get(a.y)!).push([Math.min(a.x, b.x), Math.max(a.x, b.x)]);
+      else (vertical.get(a.x) ?? vertical.set(a.x, []).get(a.x)!).push([Math.min(a.y, b.y), Math.max(a.y, b.y)]);
     }
-    if (a.y === b.y) (horizontal.get(a.y) ?? horizontal.set(a.y, []).get(a.y)!).push([Math.min(a.x, b.x), Math.max(a.x, b.x)]);
-    else (vertical.get(a.x) ?? vertical.set(a.x, []).get(a.x)!).push([Math.min(a.y, b.y), Math.max(a.y, b.y)]);
   }
   const mergeSpans = (spans: [number, number][]): [number, number][] => {
     const out: [number, number][] = [];
@@ -40,9 +54,6 @@ export function normalizeWires(wires: readonly (readonly Point[])[]): Point[][] 
     }
     return out;
   };
-  // Every point where a piece ended (a connection the merged wires must keep), by row, left to right.
-  const endsByRow = new Map<number, number[]>();
-  for (const [a, b] of toSegments(wires)) for (const p of [a, b]) (endsByRow.get(p.y) ?? endsByRow.set(p.y, []).get(p.y)!).push(p.x);
   for (const xs of endsByRow.values()) xs.sort((p, q) => p - q);
   const merged: Segment[] = [];
   const verticalSpans = new Map<number, [number, number][]>();

@@ -15,7 +15,7 @@ import { UnionFind } from '../spice/graph.ts';
 import type { Circuit } from './circuit.ts';
 import { GROUND } from './circuit.ts';
 import { groundGeometry, partGeometry, type Drawing } from './drawing.ts';
-import { pointKey, pointOnSegment, samePoint, segmentCrossesBox, segmentsOf, type Box, type Point } from './geometry.ts';
+import { pointKey, pointOnSegment, samePoint, segmentCrossesBox, type Box, type Point } from './geometry.ts';
 
 interface Seg {
   wire: number;
@@ -35,104 +35,143 @@ const gcd = (m: number, n: number): number => {
 };
 
 /**
- * The straight segments of one row (or one column), sorted by where they start, with how far the
- * segments up to each one reach: the segments through a point are found by a binary search and a
- * scan back over only those that can still reach it (one or two in a tidy drawing).
+ * The straight segments of one kind (all the horizontal ones, or all the vertical ones), in flat
+ * arrays sorted by their line (a row's y, a column's x), then by where they start along it, then by
+ * the order they were given; with, for each, how far the segments of its line up to it reach. The
+ * segments through a point are found by a binary search within its line and a scan back over only
+ * those that can still reach it (one or two in a tidy drawing). A few large arrays, not an object
+ * per line: a drawing line can make thousands of lines of one segment each (security:F1).
  */
-class Line {
-  readonly segs: Seg[] = [];
-  readonly order: number[] = [];
-  private lo: number[] = [];
-  private hi: number[] = [];
-  private reach: number[] = [];
+class Lines {
+  /** Where each line's segments start in the arrays below; `end[start]` is where they stop. */
+  private readonly start = new Map<number, number>();
+  private readonly end: Int32Array;
+  private readonly lo: Float64Array;
+  private readonly hi: Float64Array;
+  private readonly reach: Float64Array;
+  /** Each one's index in SegmentIndex.segments (the order they were given). */
+  private readonly seg: Int32Array;
+  /** The lines, in order. */
+  readonly keys: number[] = [];
+  /** For a segment (by index), the one-segment list `at` returns, made when first needed. */
+  private readonly alone = new Map<number, readonly Seg[]>();
+  private readonly segments: readonly Seg[];
 
-  add(s: Seg, order: number): void {
-    this.segs.push(s);
-    this.order.push(order);
+  /** `ids`: the segments' indexes in `segments`, in that order; `line` and `along` read a point. */
+  constructor(segments: readonly Seg[], ids: readonly number[], line: (p: Point) => number, along: (p: Point) => number) {
+    this.segments = segments;
+    const n = ids.length;
+    const from = (i: number): number => Math.min(along(segments[i]!.a), along(segments[i]!.b));
+    const sorted = ids.slice().sort((i, j) => line(segments[i]!.a) - line(segments[j]!.a) || from(i) - from(j) || i - j);
+    this.end = new Int32Array(n);
+    this.lo = new Float64Array(n);
+    this.hi = new Float64Array(n);
+    this.reach = new Float64Array(n);
+    this.seg = new Int32Array(n);
+    let first = 0;
+    for (let k = 0; k < n; k++) {
+      const i = sorted[k]!;
+      const t = segments[i]!;
+      const key = line(t.a);
+      if (k === 0 || key !== this.keys[this.keys.length - 1]) {
+        if (k > 0) this.end[first] = k;
+        first = k;
+        this.start.set(key, k);
+        this.keys.push(key);
+      }
+      const a = along(t.a);
+      const b = along(t.b);
+      this.lo[k] = a < b ? a : b;
+      this.hi[k] = a < b ? b : a;
+      this.reach[k] = k === first ? this.hi[k]! : Math.max(this.reach[k - 1]!, this.hi[k]!);
+      this.seg[k] = i;
+    }
+    if (n > 0) this.end[first] = n;
   }
 
-  /** Sorts the segments once all are in; `along` reads a segment's ends along the line. */
-  done(along: (p: Point) => number): void {
-    const idx = this.segs.map((_, i) => i);
-    const from = (i: number): number => Math.min(along(this.segs[i]!.a), along(this.segs[i]!.b));
-    idx.sort((i, j) => from(i) - from(j) || this.order[i]! - this.order[j]!);
-    const segs = idx.map((i) => this.segs[i]!);
-    const order = idx.map((i) => this.order[i]!);
-    this.segs.splice(0, segs.length, ...segs);
-    this.order.splice(0, order.length, ...order);
-    this.lo = segs.map((t) => Math.min(along(t.a), along(t.b)));
-    this.hi = segs.map((t) => Math.max(along(t.a), along(t.b)));
-    let far = -Infinity;
-    this.reach = this.hi.map((h) => (far = Math.max(far, h)));
-  }
-
-  /** The segments that cover some of the open stretch from `lo` to `hi` along the line (any order). */
-  overlapping(lo: number, hi: number): Seg[] {
-    let a = 0;
-    let b = this.lo.length - 1;
-    let last = -1;
+  /** In the line's stretch [s, e): the last that starts at or before `v` (`strict`: before), or s − 1. */
+  private lastFrom(s: number, e: number, v: number, strict: boolean): number {
+    let a = s;
+    let b = e - 1;
+    let last = s - 1;
     while (a <= b) {
       const mid = (a + b) >> 1;
-      if (this.lo[mid]! < hi) {
+      if (strict ? this.lo[mid]! < v : this.lo[mid]! <= v) {
         last = mid;
         a = mid + 1;
       } else b = mid - 1;
     }
+    return last;
+  }
+
+  /** The segments of a line that cover some of the open stretch from `lo` to `hi` along it (any order). */
+  overlapping(key: number, lo: number, hi: number): Seg[] {
+    const s = this.start.get(key);
+    if (s === undefined) return [];
     const out: Seg[] = [];
-    for (let j = last; j >= 0 && this.reach[j]! > lo; j--) if (this.hi[j]! > lo) out.push(this.segs[j]!);
+    for (let j = this.lastFrom(s, this.end[s]!, hi, true); j >= s && this.reach[j]! > lo; j--) if (this.hi[j]! > lo) out.push(this.segments[this.seg[j]!]!);
     return out;
   }
 
-  /** The segments through `v` (a position along the line), in the order they were given. */
-  at(v: number): Seg[] {
-    let a = 0;
-    let b = this.lo.length - 1;
-    let last = -1;
-    while (a <= b) {
-      const mid = (a + b) >> 1;
-      if (this.lo[mid]! <= v) {
-        last = mid;
-        a = mid + 1;
-      } else b = mid - 1;
+  /** The segments of a line through `v` (a position along it), in the order they were given (a list that may be shared: never to be changed). */
+  at(key: number, v: number): readonly Seg[] {
+    const s = this.start.get(key);
+    if (s === undefined) return NONE;
+    let one = -1;
+    let found: number[] | undefined;
+    for (let j = this.lastFrom(s, this.end[s]!, v, false); j >= s && this.reach[j]! >= v; j--) {
+      if (this.hi[j]! < v) continue;
+      if (one < 0 && !found) one = this.seg[j]!;
+      else {
+        found ??= [one];
+        found.push(this.seg[j]!);
+      }
     }
-    const found: number[] = [];
-    for (let j = last; j >= 0 && this.reach[j]! >= v; j--) if (this.hi[j]! >= v) found.push(j);
-    if (found.length > 1) found.sort((i, j) => this.order[i]! - this.order[j]!);
-    return found.map((j) => this.segs[j]!);
+    if (!found) {
+      if (one < 0) return NONE;
+      let list = this.alone.get(one);
+      if (!list) this.alone.set(one, (list = [this.segments[one]!]));
+      return list;
+    }
+    found.sort((i, j) => i - j);
+    return found.map((i) => this.segments[i]!);
   }
 }
 
+/** The list of no segments, shared (never changed). */
+const NONE: readonly Seg[] = Object.freeze([]);
+
 /**
  * Wire segments, found by the point they pass through: straight ones by their row or column (see
- * Line), slanted ones filed under every grid point they pass exactly. Finding the segments at a point
+ * Lines), slanted ones filed under every grid point they pass exactly. Finding the segments at a point
  * never looks at every segment of the drawing, so the work grows with the number of segments and the
  * length of wire (both bounded by the drawing format), never with the square of either. At a point,
  * the horizontal segments come first, then the vertical ones, then the slanted ones, each in the order
  * they were given (where two islands cross, the first is the one a point is said to be on).
  */
 export class SegmentIndex {
-  private readonly rows = new Map<number, Line>();
-  private readonly cols = new Map<number, Line>();
+  private readonly rows: Lines;
+  private readonly cols: Lines;
   private readonly slanted = new Map<number, Seg[]>();
   /** Slanted segments with an end off the grid (none that PlainSpice draws): checked one by one. */
   private readonly loose: Seg[] = [];
   readonly segments: Seg[] = [];
-  /** For `crosses`, made when first asked: the rows and columns in order, and the slanted segments by square. */
-  private byArea?: { rows: number[]; cols: number[]; squares: Map<number, Seg[]>; wide: Seg[] };
+  /** For `crosses`, made when first asked: the slanted segments by square, and those too long to file. */
+  private byArea?: { squares: Map<number, Seg[]>; wide: Seg[] };
 
   constructor(wires: readonly (readonly Point[])[]) {
-    const line = (m: Map<number, Line>, k: number): Line => {
-      let l = m.get(k);
-      if (!l) m.set(k, (l = new Line()));
-      return l;
-    };
+    const horizontal: number[] = [];
+    const vertical: number[] = [];
     wires.forEach((w, i) => {
-      for (const [a, b] of segmentsOf(w)) {
+      for (let j = 1; j < w.length; j++) {
+        const a = w[j - 1]!;
+        const b = w[j]!;
+        if (samePoint(a, b)) continue;
         const s = { wire: i, a, b };
         const order = this.segments.length;
         this.segments.push(s);
-        if (a.y === b.y) line(this.rows, a.y).add(s, order);
-        else if (a.x === b.x) line(this.cols, a.x).add(s, order);
+        if (a.y === b.y) horizontal.push(order);
+        else if (a.x === b.x) vertical.push(order);
         else if (!keyable(a) || !keyable(b)) this.loose.push(s);
         else {
           const dx = b.x - a.x;
@@ -142,8 +181,8 @@ export class SegmentIndex {
         }
       }
     });
-    for (const l of this.rows.values()) l.done((p) => p.x);
-    for (const l of this.cols.values()) l.done((p) => p.y);
+    this.rows = new Lines(this.segments, horizontal, (p) => p.y, (p) => p.x);
+    this.cols = new Lines(this.segments, vertical, (p) => p.x, (p) => p.y);
   }
 
   /**
@@ -165,16 +204,16 @@ export class SegmentIndex {
       return out;
     };
     const hit = (list: readonly Seg[]): boolean => list.some((t) => segmentCrossesBox(t.a, t.b, box));
-    for (const y of inside(area.rows, box.y0, box.y1)) if (hit(this.rows.get(y)!.overlapping(box.x0, box.x1))) return true;
-    for (const x of inside(area.cols, box.x0, box.x1)) if (hit(this.cols.get(x)!.overlapping(box.y0, box.y1))) return true;
+    for (const y of inside(this.rows.keys, box.y0, box.y1)) if (hit(this.rows.overlapping(y, box.x0, box.x1))) return true;
+    for (const x of inside(this.cols.keys, box.x0, box.x1)) if (hit(this.cols.overlapping(x, box.y0, box.y1))) return true;
     if (hit(area.wide) || hit(this.loose)) return true;
     const cells = squaresOf(box);
     if (!cells) return hit(this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y));
-    for (const k of cells) if (hit(area.squares.get(k) ?? [])) return true;
+    for (const k of cells) if (hit(area.squares.get(k) ?? NONE)) return true;
     return false;
   }
 
-  private fileByArea(): { rows: number[]; cols: number[]; squares: Map<number, Seg[]>; wide: Seg[] } {
+  private fileByArea(): { squares: Map<number, Seg[]>; wide: Seg[] } {
     const squares = new Map<number, Seg[]>();
     const wide: Seg[] = [];
     const filed = new Set<Seg>();
@@ -187,15 +226,14 @@ export class SegmentIndex {
         else for (const k of cells) push(squares, k, t);
       }
     }
-    const sorted = (m: Map<number, Line>): number[] => [...m.keys()].sort((a, b) => a - b);
-    return { rows: sorted(this.rows), cols: sorted(this.cols), squares, wide };
+    return { squares, wide };
   }
 
-  /** Segments that pass through or end at p. */
+  /** Segments that pass through or end at p (a list that may be shared: never to be changed). */
   at(p: Point): readonly Seg[] {
-    const h = this.rows.get(p.y)?.at(p.x) ?? [];
-    const v = this.cols.get(p.x)?.at(p.y) ?? [];
-    let s: readonly Seg[] = keyable(p) ? (this.slanted.get(gridKey(p.x, p.y)) ?? []) : this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y && pointOnSegment(p, t.a, t.b));
+    const h = this.rows.at(p.y, p.x);
+    const v = this.cols.at(p.x, p.y);
+    let s: readonly Seg[] = keyable(p) ? (this.slanted.get(gridKey(p.x, p.y)) ?? NONE) : this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y && pointOnSegment(p, t.a, t.b));
     if (this.loose.length && keyable(p)) {
       const extra = this.loose.filter((t) => pointOnSegment(p, t.a, t.b));
       if (extra.length) s = this.segments.filter((t) => s.includes(t) || extra.includes(t));
@@ -282,14 +320,16 @@ export function findIslands(wires: readonly (readonly Point[])[], anchors: reado
   // Wire i is i; anchor i is wires.length + i.
   const groups = new Groups(wires.length + anchors.length);
   const visited = new Set<number | string>();
+  const visit = (end: Point): void => {
+    const key = pointId(end);
+    if (visited.has(key)) return;
+    visited.add(key);
+    const here = index.at(end);
+    for (const other of here) groups.union(here[0]!.wire, other.wire);
+  };
   for (const s of index.segments) {
-    for (const end of [s.a, s.b]) {
-      const key = pointId(end);
-      if (visited.has(key)) continue;
-      visited.add(key);
-      const here = index.at(end);
-      for (const other of here) groups.union(here[0]!.wire, other.wire);
-    }
+    visit(s.a);
+    visit(s.b);
   }
   const byPoint = new Map<number | string, number>();
   anchors.forEach((p, i) => {

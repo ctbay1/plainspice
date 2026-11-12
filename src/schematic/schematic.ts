@@ -334,6 +334,20 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   }
   // The wires as given, to tell at the end whether repairs redrew them.
   const givenSegs = segs.slice();
+  // The copper indexed, and merged, once for each version of it: `segs` is only ever replaced or
+  // added to, so the array and its length tell the versions apart (a drawing at the format's limits
+  // has twenty thousand pieces; security:F1).
+  let indexed: { segs: readonly Segment[]; length: number; index: SegmentIndex } | undefined;
+  const indexOf = (list: readonly Segment[]): SegmentIndex => {
+    if (indexed?.segs !== list || indexed.length !== list.length) indexed = { segs: list, length: list.length, index: new SegmentIndex(list) };
+    return indexed.index;
+  };
+  const islandsOf = (anchors: readonly Point[]): Islands => findIslands(segs, anchors, indexOf(segs));
+  let merged: { segs: readonly Segment[]; length: number; wires: Point[][] } | undefined;
+  const mergedOf = (list: readonly Segment[]): Point[][] => {
+    if (merged?.segs !== list || merged.length !== list.length) merged = { segs: list, length: list.length, wires: normalizeWires(list) };
+    return merged.wires;
+  };
   const pinsOf = (): DrawnPin[] => drawnPins(circuit, drawing);
   const nodeOrder = new Map([...circuit.nodes.keys()].map((n, i) => [n, i]));
 
@@ -360,7 +374,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   let cut = false;
   for (let round = 0; round < 50; round++) {
     const pins = pinsOf();
-    const islands = findIslands(segs, pins.map((p) => p.at));
+    const islands = islandsOf(pins.map((p) => p.at));
     const members = new Map<number, DrawnPin[]>();
     pins.forEach((p, i) => (members.get(islands.anchors[i]!) ?? members.set(islands.anchors[i]!, []).get(islands.anchors[i]!)!).push(p));
     let changed = false;
@@ -391,7 +405,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   //    piece of copper (ground's name is its symbol, so a "0" label where a ground symbol is goes).
   {
     const pins = pinsOf();
-    const islands = findIslands(segs, pins.map((p) => p.at));
+    const islands = islandsOf(pins.map((p) => p.at));
     const islandNodes = new Map<number, Set<string>>();
     const grounded = new Set<number>();
     pins.forEach((p, i) => {
@@ -445,7 +459,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   {
     const pins = pinsOf();
     const anchors = [...pins.map((p) => p.at), ...drawing.labels.map((l) => l.at)];
-    const islands = findIslands(segs, anchors);
+    const islands = islandsOf(anchors);
     const useful = new Set(islands.anchors);
     segs = segs.filter((_, i) => useful.has(islands.wires[i]!));
     segs = pruneDangling(segs, pins.map((p) => p.at), drawing.labels.map((l) => l.at));
@@ -461,7 +475,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   const islandsNow = (): { pins: DrawnPin[]; islands: Islands } => {
     if (found?.wires !== segs.length || found.grounds !== drawing.grounds.length) {
       const pins = drawnPins(circuit, drawing);
-      found = { wires: segs.length, grounds: drawing.grounds.length, pins, islands: findIslands(segs, pins.map((p) => p.at)) };
+      found = { wires: segs.length, grounds: drawing.grounds.length, pins, islands: islandsOf(pins.map((p) => p.at)) };
     }
     return found;
   };
@@ -469,7 +483,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     for (let guard = 0; guard < 64; guard++) {
       const { groups, islands } = groupsOf(drawing, node, islandsNow());
       if (groups.length <= 1) break;
-      obstacles ??= obstaclesOf(circuit, drawing, segs, options);
+      obstacles ??= obstaclesOf(circuit, drawing, mergedOf(segs), options);
       const path = budget.left > 0 ? routeBetween(circuit, drawing, segs, node, groups, obstacles, budget, islands) : undefined;
       if (path && path.length < 2) break;
       if (path) {
@@ -493,14 +507,14 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   // 6. Ground: a circuit with ground gets a ground symbol when it has none (after the wiring, so it
   //    goes under the finished ground wire rather than in its way).
   if (circuit.hasGround && drawing.grounds.length === 0) {
-    const spot = groundSpot(circuit, drawing, segs, options);
+    const spot = groundSpot(circuit, drawing, segs, mergedOf(segs), indexOf(segs), options);
     if (spot) {
       if (spot.lead) segs.push(spot.lead);
       drawing.grounds.push({ at: spot.at, rot: 0 });
       problems.push({ kind: 'ground-added', severity: 'info', message: 'A ground symbol was added: the circuit has ground (node 0) and the drawing had none.' });
       // Its symbol names that copper now: a "0" label there goes.
       const pins = pinsOf();
-      const islands = findIslands(segs, pins.map((p) => p.at));
+      const islands = islandsOf(pins.map((p) => p.at));
       const grounded = new Set(pins.flatMap((p, i) => (p.ground !== undefined ? [islands.anchors[i]!] : [])));
       drawing.labels = drawing.labels.filter((l) => l.node !== GROUND || !grounded.has(islands.at(l.at) ?? -1));
     }
@@ -512,9 +526,9 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     const pins = pinsOf();
     const missing = [...circuit.nodes.values()].filter((n) => !n.ground && !labelled.has(n.name));
     if (missing.length) {
-      const wires = normalizeWires(segs);
+      const wires = mergedOf(segs);
       const scene = buildScene(circuit, { ...drawing, wires }, options);
-      const islands = findIslands(segs, pins.map((p) => p.at));
+      const islands = islandsOf(pins.map((p) => p.at));
       const index = new SegmentIndex(wires);
       const taken: Box[] = [];
       for (const node of missing) {
@@ -530,9 +544,13 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   // The copper as it will be written, merged. Merging pieces that lie on each other (a cut can leave
   // a slanted piece on top of another) can leave an end that only the copy kept from leading
   // nowhere: it is cut too, so that reading the lines back gives this same drawing.
-  drawing.wires = normalizeWires(segs);
+  drawing.wires = mergedOf(segs);
   for (let round = 0; round < 8; round++) {
-    const settled = normalizeWires(pruneDangling(toSegments(drawing.wires), pinsOf().map((p) => p.at), drawing.labels.map((l) => l.at)));
+    const merged = toSegments(drawing.wires);
+    const pruned = pruneDangling(merged, pinsOf().map((p) => p.at), drawing.labels.map((l) => l.at));
+    // Nothing cut: merging the merged copper again gives it back (normalizeWires is idempotent).
+    if (pruned.length === merged.length && pruned.every(([a, b], i) => samePoint(a, merged[i]![0]) && samePoint(b, merged[i]![1]))) break;
+    const settled = normalizeWires(pruned);
     if (sameWires(settled, drawing.wires)) break;
     drawing.wires = settled;
   }
@@ -673,8 +691,9 @@ interface Obstacles {
   outward: Map<string, { at: Point; outward: Direction; node: string }[]>;
 }
 
-function obstaclesOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], options: LayoutOptions): Obstacles {
-  const scene = buildScene(circuit, { ...drawing, wires: normalizeWires(segs) }, options);
+/** `wires`: the copper as it stands, merged (normalizeWires). */
+function obstaclesOf(circuit: Circuit, drawing: Drawing, wires: Point[][], options: LayoutOptions): Obstacles {
+  const scene = buildScene(circuit, { ...drawing, wires }, options);
   const outward = new Map<string, { at: Point; outward: Direction; node: string }[]>();
   const add = (at: Point, dir: Direction, node: string): void => {
     (outward.get(pointKey(at)) ?? outward.set(pointKey(at), []).get(pointKey(at))!).push({ at, outward: dir, node });
@@ -775,9 +794,9 @@ const GROUND_TRIES = 100;
  * any symbol hung on it), the symbol hangs on a one-unit lead below the lowest end of ground's copper
  * that has room, best where the lead goes straight on from a wire coming down (no new bend), as the
  * automatic layout's ground rail ends; the lead is returned to be drawn. Else the least bad point.
+ * `wires`: the copper merged (normalizeWires of `segs`); `segIndex`: `segs` indexed.
  */
-function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], options: LayoutOptions): { at: Point; lead?: Segment } | undefined {
-  const wires = normalizeWires(segs);
+function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], wires: Point[][], segIndex: SegmentIndex, options: LayoutOptions): { at: Point; lead?: Segment } | undefined {
   const scene = buildScene(circuit, { ...drawing, wires }, options);
   const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box)];
   // The wires indexed once: a place is checked against the wires near it only (security:F1, critic).
@@ -788,7 +807,8 @@ function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]
     const box = symbolGeometry('ground', at, 0, false).box;
     return !(wordsMove ? symbols : boxes).some((b) => boxesOverlap(inflate(box, 0.1), b)) && !index.crosses(box);
   };
-  const copper = copperOf(circuit, drawing, segs).get(GROUND) ?? [];
+  const pins = drawnPins(circuit, drawing);
+  const copper = copperOf(circuit, drawing, segs, findIslands(segs, pins.map((p) => p.at), segIndex)).get(GROUND) ?? [];
   // Each point once, lowest first; at most GROUND_TRIES of them are tried.
   const seen = new Set<string>();
   const candidates: Point[] = [];
