@@ -164,7 +164,8 @@ test('a fix that renames a part keeps it where it was drawn: the 0 V source stan
     const p = await gridPoint(page, 9, 0);
     return p.x > b.x && p.x < b.x + b.width && p.y > b.y && p.y < b.y + b.height;
   };
-  if (!phone) expect(await standsAt('R1')).toBe(true);
+  // (Polled: the drawing may still be moving clear of the Checks panel that just opened.)
+  if (!phone) await expect.poll(() => standsAt('R1')).toBe(true);
   await checks.getByRole('button', { name: fix, exact: true }).click();
   await expectAnnounced(page, `${t('fixApplied', { label: fix })}. No traps found.`);
   // Its position line took the new name (nothing else changed in it), and the tab warns about nothing.
