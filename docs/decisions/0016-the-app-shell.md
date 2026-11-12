@@ -350,3 +350,13 @@ Ctrl+K stay as they are.
   of E1", "both ends of V2") and that ngspice makes the two spellings one node, and still warns, with
   the fix that gives the µ spelling a name of its own. For V2 and L1 the voltage-loop check says the
   rest, as before.
+- **A save claims no results when something else decides it** (names lane, second critic, 4). The
+  .control sentence still said "PlainSpice's run gives no results" beside a finished sweep in three
+  netlists that run and give results (native 47 and 42, `-b -r`, and our engine): `savecurrents` on
+  a continuation line of `.options` (the check read only the line's own text), a `reset` after the
+  save (ngspice loads the circuit again and saves every vector), and a save inside `if 0 … end`. Now
+  savecurrents is found as the run finds it (`hasSaveCurrents`, continuation lines too), and any
+  command that loads, resets or switches the circuit (`reset`, `source`, `remcirc`, `setcirc`,
+  `circbyline`, `edit`, `snload`), takes saves back (`delete`) or decides which commands run (`if`,
+  `while`, `repeat`, `dowhile`, `foreach`, `goto`, `label` …) leaves the claim undecided, so the check
+  says only that ngspice finds no such node there (non-ascii-node-7 lists the three).

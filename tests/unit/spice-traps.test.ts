@@ -1259,6 +1259,12 @@ describe('after the final reviews (12 November 2026)', () => {
       `.save v(in)\n.control\nsave v(${name})\nrun\n.endc\n`,
       `.options savecurrents\n.control\nsave v(${name})\nrun\n.endc\n`,
       `.control\nsave v(${name})\ndelete all\nrun\n.endc\n`,
+      // The critic's three (names lane critic 2, 4; native 47 and 42, -b -r, and our engine give every
+      // vector, or i(@r1[i]) and i(@r2[i])): savecurrents on a continuation line, a reset after the save, a
+      // save that never runs. Their run gives results, so the check claims none.
+      `.options reltol=1e-3\n+ savecurrents\n.control\nsave v(${name})\nrun\n.endc\n`,
+      `.control\nsave v(${name})\nreset\nrun\n.endc\n`,
+      `.control\nif 0\nsave v(${name})\nend\nrun\n.endc\n`,
     ]) {
       expect(said(net(extra)), extra).toContain(found);
     }

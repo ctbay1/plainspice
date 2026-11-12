@@ -8216,7 +8216,12 @@ PlainSpice's checks: `non-ascii-node`.
 Added after the critic of the names lane, 12 November 2026 (1). `save v(çıkış) i(v1)` saves i(v1): the
 analysis runs and gives it, with the sweep, though `v(çıkış)` saves nothing. So the check says only that
 ngspice finds no node çıkış there, never that the run gives no results. The same holds for any other
-name ngspice finds on a save (below).
+name ngspice finds on a save (below), and, as the second critic of the names lane found (4), when
+`savecurrents` stands on a continuation line of `.options`, when a `reset` follows the save (ngspice
+loads the circuit again and saves every vector), and when the save sits inside an `if` that does not
+run it. The check claims no results after any command that loads, resets or switches the circuit
+(`reset`, `source`, `remcirc`, `setcirc` …), takes saves back (`delete`) or decides which commands run
+(`if`, `while`, `goto` …).
 
 What PlainSpice shows for non-ascii-node-7 (warning, line 3):
 
@@ -8258,6 +8263,9 @@ save v(çıkış) @r1[i]: rawfile: v(v-sweep) = 0, 6, 12, i(@r1[i]) = 0, 0.002, 
 .save v(in), with save v(çıkış) in the block: rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12
 .options savecurrents, with save v(çıkış) in the block: rawfile: v(v-sweep) = 0, 6, 12, i(@r1[i]) = 0, 0.002, 0.004, i(@r2[i]) = 0, 0.002, 0.004
 save v(çıkış), then delete all: rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+.options reltol=1e-3, then + savecurrents on its continuation line: rawfile: v(v-sweep) = 0, 6, 12, i(@r1[i]) = 0, 0.002, 0.004, i(@r2[i]) = 0, 0.002, 0.004
+save v(çıkış), then reset ("Reset re-loads circuit * t"): rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+if 0 / save v(çıkış) / end, then run: rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
 our engine, as ngspice -b -r: the same vectors for each
 ```
 

@@ -38,6 +38,7 @@ import { isKnownDotCommand, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist } from './parse.ts';
+import { hasSaveCurrents } from './run-netlist.ts';
 import type {
   Element,
   ElementLetter,
@@ -1485,6 +1486,17 @@ interface CommandRef {
 const SAVE_WORDS: ReadonlySet<string> = new Set(['all', 'allv', 'alli', 'nosub', 'nointernals', 'none']);
 
 /**
+ * Commands for ngspice after which what a save does is not decided by reading the lines in order:
+ * delete takes saves back; reset, source, remcirc, removecirc, setcirc, circbyline, edit and snload load,
+ * reset or switch the circuit (after reset every vector is saved again: names lane critic 2, 4); and the
+ * words that decide which commands run (ngspice's control.c), so a save inside `if 0` never runs.
+ */
+const UNDECIDED_COMMANDS: ReadonlySet<string> = new Set([
+  'delete', 'reset', 'source', 'remcirc', 'removecirc', 'setcirc', 'circbyline', 'edit', 'snload',
+  'if', 'else', 'end', 'while', 'repeat', 'dowhile', 'foreach', 'break', 'continue', 'label', 'goto',
+]);
+
+/**
  * A command line's code, after its *# or ## and before its comment (inside .control a ';', a '//' or a
  * '$' and a space starts one: S12-S15), with the offset where it starts.
  */
@@ -1562,25 +1574,27 @@ function controlNodes(c: Ctx): Map<string, CommandRef[]> {
  * results file, then has nothing to save: ngspice says "no data saved … analysis not run", and there are
  * no results (non-ascii-node-4). Anything else to save keeps the analysis running (non-ascii-node-7 to
  * -9): a name ngspice finds (v(in), in, i(v1), @r1[i]), save all, a .save line, .options savecurrents,
- * which PlainSpice adds for .op (src/spice/run-netlist.ts). Only for .dc, .tran and .ac, whose results
- * are node voltages, so that the plain name gives results again (a .tf saves no node voltage at all).
- * Whatever else might save something or take a save back (a .probe line, a delete, lines after .end,
- * which ngspice may read too) leaves it undecided: false. Read once.
+ * which PlainSpice adds for .op (src/spice/run-netlist.ts), also on a continuation line. Only for .dc,
+ * .tran and .ac, whose results are node voltages, so that the plain name gives results again (a .tf
+ * saves no node voltage at all). Whatever else might save something, take a save back or skip it leaves
+ * it undecided: false. That is a .probe line, lines after .end (ngspice may read them too), a delete, a
+ * command that loads or resets the circuit (reset: every vector is saved again), and a word that
+ * decides which commands run (if, while, goto ...: a save inside `if 0` never runs). Read once.
  */
 function savesNothing(c: Ctx): boolean {
   if (c.savesNothing !== undefined) return c.savesNothing;
   let saves = false;
-  let nothing = c.n.analyses.length > 0 && c.n.analyses.every((i) => ['.dc', '.tran', '.ac'].includes(c.n.lines[i]!.directive!.name));
+  let nothing = c.n.analyses.length > 0 && c.n.analyses.every((i) => ['.dc', '.tran', '.ac'].includes(c.n.lines[i]!.directive!.name)) && !hasSaveCurrents(c.n);
   for (const l of c.n.lines) {
     if (!nothing) break;
     const d = l.directive?.name;
-    if (l.kind === 'after-end' || d === '.save' || d === '.probe' || (d !== undefined && /^\.opt(ions?)?$/.test(d) && /savecurrents/i.test(l.text))) {
+    if (l.kind === 'after-end' || d === '.save' || d === '.probe') {
       nothing = false;
     } else if (l.kind === 'control') {
       const words = commandCode(l).code.split(/[ \t]+/).filter(Boolean);
       const command = lowerAscii(words[0] ?? '');
       const args = words.slice(1);
-      if (command === 'delete') nothing = false;
+      if (UNDECIDED_COMMANDS.has(command)) nothing = false;
       else if (command === 'save' && args.length) {
         saves = true;
         nothing = args.every((w) => {
