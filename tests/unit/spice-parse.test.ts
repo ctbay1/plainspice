@@ -719,4 +719,31 @@ describe('after the final reviews (12 November 2026)', () => {
       'r__',
     ]);
   });
+
+  // A .print line of v( with no ) used to make each v( name every word after it: 2000 v( (4 kB)
+  // gave 2 million references and 8000 used up the memory of the tab, from a link of a few hundred
+  // characters. Each word is now named once, by the first bracket that holds it. The count is the
+  // guard (it does not depend on the machine's load); the time is a second, generous one.
+  it('names each word of a directive once, however its brackets are left open or nested', () => {
+    const refs = (line: string): number => {
+      const n = parseNetlist(`* t\nV1 a 0 1\nR1 a 0 1k\n.dc V1 0 1 1\n${line}\n.end\n`);
+      return [...n.nodes.values()].reduce((sum, node) => sum + node.refs.length, 0);
+    };
+    const parts = 4; // V1's and R1's ends
+    for (const n of [1000, 8000]) {
+      expect(refs(`.print dc ${'v('.repeat(n)}x`)).toBe(parts + n);
+      expect(refs(`.print dc ${'v('.repeat(n)}x${')'.repeat(n)}`)).toBe(parts + n);
+      expect(refs(`.print dc ${Array.from({ length: n }, (_, i) => `v( n${i}`).join(' ')}`)).toBeLessThanOrEqual(parts + 2 * n);
+    }
+    const [work] = leastWorkMs([() => refs(`.print dc ${'v('.repeat(32_000)}x`)], 3);
+    expect(work).toBeLessThan(1000);
+  }, 30_000);
+
+  it('still names the nodes of well-formed brackets, each once, as before', () => {
+    const named = (line: string): string[] => {
+      const n = parseNetlist(`* t\nV1 a 0 1\nR1 a b 1k\nR2 b 0 1k\n.dc V1 0 1 1\n${line}\n.end\n`);
+      return [...n.nodes.values()].flatMap((node) => node.refs.filter((t) => t.from > n.text.indexOf(line)).map(() => node.name)).sort();
+    };
+    expect(named('.print dc v(a) v(a,b) vm(b) vdb( a , 0 )')).toEqual(['0', 'a', 'a', 'a', 'b', 'b']);
+  });
 });

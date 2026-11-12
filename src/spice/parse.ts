@@ -1169,20 +1169,32 @@ function firstVisible(s: string): number {
   return Number.NaN;
 }
 
-/** Nodes named in a directive: the words inside v(...), vm(...), vp(...), vr(...), vi(...), vdb(...). */
+/**
+ * Nodes named in a directive: the words inside v(...), vm(...), vp(...), vr(...), vi(...), vdb(...).
+ *
+ * Each word is named once, by the first bracket that holds it, and each closing bracket is
+ * looked for once: a line of v( with no ) (or with one ) at its end) is read in one pass. Read
+ * again from every v(, such a line made references by the square of its length: a .print line
+ * of 2000 v( (4 kB) gave 2 million of them, and 8000 used up the memory of the tab.
+ */
 function nodeRefsInDirective(src: Source, netlistText: string): { token: Token; name: string; ground: boolean }[] {
   const s = src.text;
   const out: { token: Token; name: string; ground: boolean }[] = [];
   const words = plainWords(s, 0, s.length);
+  let next = 0; // the first word no bracket has named yet
+  let stop = -1; // the first ) at or after the last place looked from, or the line's end
   for (let k = 0; k < words.length; k++) {
     const [a, b] = words[k]!;
     if (!/^v(m|p|r|i|db)?$/.test(lowerAscii(s.slice(a, b)))) continue;
     let p = b;
     while (p < s.length && isSpaceCode(s.charCodeAt(p))) p += 1;
     if (s.charCodeAt(p) !== LPAREN) continue;
-    const close = s.indexOf(')', p);
-    const stop = close < 0 ? s.length : close;
-    for (let j = k + 1; j < words.length && words[j]![0] < stop; j++) {
+    if (stop < p) {
+      const close = s.indexOf(')', p);
+      stop = close < 0 ? s.length : close;
+    }
+    for (let j = Math.max(k + 1, next); j < words.length && words[j]![0] < stop; j++) {
+      next = j + 1;
       const [wa, wb] = words[j]!;
       const name = ngspiceName(s.slice(wa, wb));
       const ground = name === '0' || (name === 'gnd' && gndIsGround(s, wa, wb));
