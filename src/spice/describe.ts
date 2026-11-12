@@ -833,8 +833,10 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
     const known = two && amps.has(el.key);
     for (const ref of two ? el.nodes.slice(0, 2) : el.nodes) {
       const n = nodeName(ref);
+      const list = at.get(n);
       if (!known) unknown.add(n);
-      else at.set(n, [...(at.get(n) ?? []), el]);
+      else if (list) list.push(el);
+      else at.set(n, [el]);
     }
   }
   // Nodes joined by parts with no voltage across them: one name per group.
