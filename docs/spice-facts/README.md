@@ -87,8 +87,8 @@ After the critic of the names lane, the same day: in traps.md non-ascii-node-7 t
 names something ngspice finds, `save all`, or the currents PlainSpice saves for .op keep the analysis
 running), non-ascii-node-10 and -11 (a capacitor with no starting voltage or a diode across `aµ` and
 `au` carries no current, as a resistor does; a current source, a dependent source or a transistor still
-works, a voltage source stops ngspice), and invisible-character-7, -8, look-alike-letter-7, -8,
-space-character-12, -13 (a .print line or a .control block reads a node name with such a character as
+works, a voltage source stops ngspice), and invisible-character-65, -66, look-alike-letter-16, -17,
+space-character-20, -21 (a .print line or a .control block reads a node name with such a character as
 written, as for a Turkish letter).
 
 After the second critic of the names lane, the same day: in traps.md non-ascii-node-12 (a capacitor

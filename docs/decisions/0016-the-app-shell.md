@@ -337,7 +337,7 @@ Ctrl+K stay as they are.
 - **The other node-name checks say what a .print or .control line does too** (names lane critic, 4).
   An invisible character, a look-alike letter or a character that looks like a space in a node name
   reads on a .print or .plot line and in a .control block exactly as a Turkish letter does
-  (invisible-character-7, -8, look-alike-letter-7, -8, space-character-12, -13), but those checks
+  (invisible-character-65, -66, look-alike-letter-16, -17, space-character-20, -21), but those checks
   still said "makes a separate node, without a message". They now use the same sentences as the
   non-ASCII check, and say "without a message" only when no such line names the node; for an invisible
   character or a space-like one the sentences say "the name" and never show it. Their fixes now rename

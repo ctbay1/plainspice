@@ -8945,7 +8945,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `invisible-character`.
 
-### invisible-character-7. On a .print line ngspice reads the name with the character as written: ngspice -b finds no such node there
+### invisible-character-65. On a .print line ngspice reads the name with the character as written: ngspice -b finds no such node there
 
 Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
 (non-ascii-node-3), ngspice leaves .print and .plot lines out of the step that writes such characters as
@@ -8954,11 +8954,11 @@ can't parse the name and prints nothing for that line, and, with nothing else it
 runs no analysis (non-ascii-node-13 says when); PlainSpice's run leaves the line out. The check said "without a message" here; now it says
 so only when no such line names the node, and its words name the character, never show it.
 
-What PlainSpice shows for invisible-character-7 (warning, line 3):
+What PlainSpice shows for invisible-character-65 (warning, line 3):
 
 > **A zero-width space (U+200B) hides in the node name out.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is a node called ou___t for ngspice.
 >
-> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [invisible-character-3, invisible-character-7]
+> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [invisible-character-3, invisible-character-65]
 >
 > *Fixes:* "Take it out: name the node out"
 
@@ -8992,7 +8992,7 @@ after the fix ("Take it out: name the node out"), native 47 and 42 and our engin
 
 PlainSpice's checks: `invisible-character`.
 
-### invisible-character-8. In a .control block too: a save of the name saves nothing, and with nothing else saved PlainSpice's run gives no results
+### invisible-character-66. In a .control block too: a save of the name saves nothing, and with nothing else saved PlainSpice's run gives no results
 
 Added after the critic of the names lane, 12 November 2026 (4). As non-ascii-node-4 for a letter outside
 ASCII: a command for ngspice reads the name as written, so `save v(ou<ZWSP>t)` saves nothing, and with
@@ -9002,11 +9002,11 @@ too. When the save also names something ngspice finds, the run goes on (as non-a
 v(ou<ZWSP>t) i(v1)`, native 47 and 42 and our engine, -b -r, exit 0, v(v-sweep) and i(v1) saved), and
 the check says only that ngspice finds no such node there.
 
-What PlainSpice shows for invisible-character-8 (warning, line 3):
+What PlainSpice shows for invisible-character-66 (warning, line 3):
 
 > **A zero-width space (U+200B) hides in the node name out.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is a node called ou___t for ngspice.
 >
-> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [invisible-character-3, invisible-character-8]
+> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [invisible-character-3, invisible-character-66]
 >
 > *Fixes:* "Take it out: name the node out"
 
@@ -9335,7 +9335,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `look-alike-letter`.
 
-### look-alike-letter-7. On a .print line ngspice reads a look-alike as written: ngspice -b finds no node оut there
+### look-alike-letter-16. On a .print line ngspice reads a look-alike as written: ngspice -b finds no node оut there
 
 Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
 (non-ascii-node-3): on a .print or .plot line `оut`, with a Cyrillic о, is not `__ut`, the node ngspice
@@ -9344,11 +9344,11 @@ nothing else it can print or save, runs no analysis (non-ascii-node-13 says when
 leaves the line out. The check said
 "without a message" here; now it says so only when no such line names the node.
 
-What PlainSpice shows for look-alike-letter-7 (warning, line 3):
+What PlainSpice shows for look-alike-letter-16 (warning, line 3):
 
 > **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so ngspice calls this node __ut.
 >
-> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-7]
+> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-16]
 >
 > *Fixes:* "Rename оut to out"
 
@@ -9382,18 +9382,18 @@ after the fix ("Rename оut to out"), native 47 and 42 and our engine: ngspice -
 
 PlainSpice's checks: `look-alike-letter`.
 
-### look-alike-letter-8. In a .control block too: save v(оut) saves nothing, and with nothing else saved PlainSpice's run gives no results
+### look-alike-letter-17. In a .control block too: save v(оut) saves nothing, and with nothing else saved PlainSpice's run gives no results
 
 Added after the critic of the names lane, 12 November 2026 (4). As non-ascii-node-4: `save v(оut)` saves
 nothing, and with nothing else to save the analysis does not run, in PlainSpice's run too; the rename
 now writes `out` on the .control line too. With something else saved the run goes on (`save v(оut)
 i(v1)`, native 47 and 42 and our engine, -b -r, exit 0).
 
-What PlainSpice shows for look-alike-letter-8 (warning, line 3):
+What PlainSpice shows for look-alike-letter-17 (warning, line 3):
 
 > **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so ngspice calls this node __ut.
 >
-> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [look-alike-letter-5, look-alike-letter-8]
+> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [look-alike-letter-5, look-alike-letter-17]
 >
 > *Fixes:* "Rename оut to out"
 
@@ -9990,7 +9990,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 PlainSpice's checks: `space-character`, `zero-ohm`, `space-character`.
 
-### space-character-12. On a .print line ngspice reads the name with the character as written: ngspice -b finds no such node there
+### space-character-20. On a .print line ngspice reads the name with the character as written: ngspice -b finds no such node there
 
 Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
 (non-ascii-node-3): on a .print or .plot line `o<THIN>ut` is not `o___ut`, the node ngspice built (its
@@ -9999,11 +9999,11 @@ prints nothing for that line, and, with nothing else it can print or save, runs 
 (non-ascii-node-13 says when); PlainSpice's run leaves the line out. The check said "without a message" here; now it says so only when no such line
 names the node, and its words name the character, never show it.
 
-What PlainSpice shows for space-character-12 (warning, line 3):
+What PlainSpice shows for space-character-20 (warning, line 3):
 
 > **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is a node called o___ut for ngspice.
 >
-> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [space-character-10, space-character-12]
+> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [space-character-10, space-character-20]
 >
 > *Fixes:* "Take it out: name the node out"
 
@@ -10041,17 +10041,17 @@ leaves the line out and gives v(o__ut) = 0, 4, 8 (exit 0), as our engine does.
 
 PlainSpice's checks: `space-character`.
 
-### space-character-13. In a .control block too: a save of the name saves nothing, and with nothing else saved PlainSpice's run gives no results
+### space-character-21. In a .control block too: a save of the name saves nothing, and with nothing else saved PlainSpice's run gives no results
 
 Added after the critic of the names lane, 12 November 2026 (4). As non-ascii-node-4: `save v(o<THIN>ut)`
 saves nothing (a thin space does not end a word there either), and with nothing else to save the
 analysis does not run, in PlainSpice's run too; the rename now writes `out` on the .control line too.
 
-What PlainSpice shows for space-character-13 (warning, line 3):
+What PlainSpice shows for space-character-21 (warning, line 3):
 
 > **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is a node called o___ut for ngspice.
 >
-> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [space-character-10, space-character-13]
+> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [space-character-10, space-character-21]
 >
 > *Fixes:* "Take it out: name the node out"
 

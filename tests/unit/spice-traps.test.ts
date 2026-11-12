@@ -1061,7 +1061,7 @@ describe('after the final reviews (12 November 2026)', () => {
     ]);
   });
 
-  it('says "without a message" for an invisible character, a look-alike or a character that looks like a space in a node name only when no .print, .plot or .control line names it, and renames it there too (names lane critic, 4; invisible-character-7, -8, look-alike-letter-7, -8, space-character-12, -13)', () => {
+  it('says "without a message" for an invisible character, a look-alike or a character that looks like a space in a node name only when no .print, .plot or .control line names it, and renames it there too (names lane critic, 4; invisible-character-65, -66, look-alike-letter-16, -17, space-character-20, -21)', () => {
     const net = (name: string, extra: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n${extra}.end\n`;
     const print = (name: string): string => net(name, `.print dc v(${name})\n`);
     const save = (name: string): string => net(name, `.control\nsave v(${name})\nrun\n.endc\n`);
@@ -1072,13 +1072,13 @@ describe('after the final reviews (12 November 2026)', () => {
     const unseenSave = 'In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").';
     const kept = (spelled: string): string => `ngspice keeps the character in the name, as underscores (${spelled}), and makes a separate node`;
     const cases: [id: string, name: string, first: string, print: string, save: string, facts: [string, string, string]][] = [
-      ['invisible-character', 'ou\u200bt', kept('ou___t'), unseenPrint, unseenSave, ['invisible-character-3', 'invisible-character-7', 'invisible-character-8']],
-      ['space-character', 'o\u2009ut', kept('o___ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
-      ['nbsp', 'o\u00a0ut', kept('o__ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['invisible-character', 'ou\u200bt', kept('ou___t'), unseenPrint, unseenSave, ['invisible-character-3', 'invisible-character-65', 'invisible-character-66']],
+      ['space-character', 'o\u2009ut', kept('o___ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-20', 'space-character-21']],
+      ['nbsp', 'o\u00a0ut', kept('o__ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-20', 'space-character-21']],
       ['look-alike-letter', 'оut', 'ngspice writes the letter\'s bytes as underscores (__ut) and makes a separate node',
         `On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). ${left}`,
         'In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").',
-        ['look-alike-letter-5', 'look-alike-letter-7', 'look-alike-letter-8']],
+        ['look-alike-letter-5', 'look-alike-letter-16', 'look-alike-letter-17']],
     ];
     for (const [id, name, said, printed, saved, [base, onPrint, onSave]] of cases) {
       const noted = ': in one test the resistor on it carried no current.';
