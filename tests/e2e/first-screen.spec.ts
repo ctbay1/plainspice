@@ -162,7 +162,8 @@ test('typing on a card never leaves stray words in the netlist; a value SPICE ca
 
   // A word SPICE cannot use, then a value: only the value is in the netlist, and the numbers are back.
   card = await type('R1', 'abc');
-  await expect(card).toContainText("SPICE can't use abc on this line");
+  // A word where the value goes is said as that (re-check S6).
+  await expect(card).toContainText("R1's value is not a number");
   await card.getByRole('textbox').press('ControlOrMeta+a');
   await card.getByRole('textbox').pressSequentially('2k', TYPING);
   await expect.poll(() => drawnText(page), { timeout: 30_000 }).toMatch(/=\s3\sV/);
