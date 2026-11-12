@@ -77,10 +77,15 @@ sign: `-５` stops ngspice).
 
 After the re-check of the merged build, the same day (the names lane): in traps.md non-ascii-node-3 (a
 .print or .plot line keeps a node's letters as written, so `ngspice -b` finds no such node there),
-non-ascii-node-4 (so does a command for ngspice: `save v(çıkış)` stops the analysis, in PlainSpice's run
-too), non-ascii-node-5 (ngspice reads the micro sign as u, so `aµ` and `au` are one node), non-ascii-node-6
-(`gñd` is the ordinary node `g__d`, while `gnd` is ground) and duplicate-name-4 (`Rµ` and `Ru` are the
-same name); in explanations.md M4b and M4c (the Numbers panel's words for `Rş` and `Rç`, `Rµ` and `Ru`).
+non-ascii-node-4 (so does a command for ngspice: a `save v(çıkış)` that leaves nothing else saved stops
+the analysis, in PlainSpice's run too), non-ascii-node-5 (ngspice reads the micro sign as u, so `aµ` and
+`au` are one node), non-ascii-node-6 (`gñd` is the ordinary node `g__d`, while `gnd` is ground) and
+duplicate-name-4 (`Rµ` and `Ru` are the same name); in explanations.md M4b and M4c (the Numbers panel's
+words for `Rş` and `Rç`, `Rµ` and `Ru`).
+
+After the critic of the names lane, the same day: non-ascii-node-7 to -9 (a save that also names
+something ngspice finds, `save all`, or the currents PlainSpice saves for .op keep the analysis running)
+in traps.md.
 
 ## Where the evidence came from
 

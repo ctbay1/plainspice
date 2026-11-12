@@ -272,8 +272,8 @@ Ctrl+K stay as they are.
   that writes such letters as `_`): run as `ngspice -b`, as a student may run the exported file, it
   warns "can't parse 'çıkış'" and prints nothing for it, and runs no .dc or .tran when that was all it
   had to print (non-ascii-node-3). A command for ngspice (a .control line, a `*#` line) reads the name
-  as written too, so `save v(çıkış)` there stops the analysis, in PlainSpice's own run as well
-  (non-ascii-node-4). Now the sentence says only "ngspice spells the node ____k____ in its printout and
+  as written too, so a `save v(çıkış)` there that leaves nothing else saved stops the analysis, in
+  PlainSpice's own run as well (non-ascii-node-4; narrowed below). Now the sentence says only "ngspice spells the node ____k____ in its printout and
   results" (and "without a message" when nothing else names the node), and adds a sentence for each
   kind of line only when such a line names the node; .save, .tf, .ic and .meas lines are read like part
   lines and work, so they get none. The rename fix also writes the plain name inside `v(...)` on the
@@ -315,3 +315,19 @@ Ctrl+K stay as they are.
   parser keys as ngspice reads it (`uş`), so "Rename µş to us" left `*@ label µş`, a label of no node.
   The label lines are now kept by the node they name as ngspice reads it (µ as u), as the nodes are;
   the aµ/au check, which renames one spelling only, takes the labels written that way.
+- **A save stops PlainSpice's run only when it leaves nothing to save** (names lane critic, 1 and 3).
+  The .control sentence said "save v(çıkış) leaves nothing to save: the analysis does not run, in
+  PlainSpice too" whenever any save named the node, but the analysis runs when the save also names
+  something ngspice finds (`save v(çıkış) i(v1)`, non-ascii-node-7), after `save all` (the node is saved
+  as ____k____, non-ascii-node-8), with a `.save` line, and with .options savecurrents, which PlainSpice
+  adds for .op (only the currents are saved, non-ascii-node-9); the results beside the card showed it.
+  Now the check says "save v(çıkış) saves nothing, and since nothing else is saved, PlainSpice's run
+  gives no results" only when every save names nothing ngspice finds, for .dc, .tran and .ac (a .tf
+  saves no node voltage, so there the plain name would not help either), and not when a delete, a
+  .probe line or lines after .end could change what is saved; "in PlainSpice's run", because under
+  plain `ngspice -b` a run placed before the save works. `save çıkış`, without `v(...)`, counts too, and
+  the rename now writes the plain name there. The .print sentence says what -b does in full: "prints
+  nothing for that line, and when that line was all it had to print it runs no analysis", and that
+  PlainSpice's run "leaves .print and .plot lines out" (ngspice reads them: ".print line ignored since
+  rawfile was produced."), not that it skips them (W11); its quote spells the name as ngspice does
+  (`uş` for `µş`). The error for ş and ç made one node drops "without a message" on the same terms.

@@ -162,8 +162,10 @@ interface Ctx {
   spaced: Set<number>;
   /** The drawing's `*@ label` lines, by the node they name as ngspice reads it, with the name as written (lower-case), read on the first rename (labelChanges). */
   labels?: Map<string, { span: Span; form: string }[]>;
-  /** The node names inside v(...) on .control lines, by node, read on the first use (controlNodes). */
-  controlNodes?: Map<string, { token: Token; command: string }[]>;
+  /** The node names on the commands for ngspice (.control, *#, ##), by node, read on the first use (controlNodes). */
+  controlNodes?: Map<string, CommandRef[]>;
+  /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
+  savesNothing?: boolean;
 }
 
 const GROUND = '0';
@@ -1470,31 +1472,117 @@ function labelChanges(c: Ctx, key: string, to: string, form?: string): TextChang
   return (c.labels.get(key) ?? []).filter((x) => form === undefined || x.form === form).map((x) => replace(x.span, to));
 }
 
+/** A node named on a command line for ngspice: the word, its command, and whether it stands bare (save out) or inside v(...). */
+interface CommandRef {
+  token: Token;
+  command: string;
+  bare: boolean;
+}
+
+/** The words save takes besides names: what else to save (ngspice's beginPlot, outitf.c). */
+const SAVE_WORDS: ReadonlySet<string> = new Set(['all', 'allv', 'alli', 'nosub', 'nointernals', 'none']);
+
 /**
- * The node names inside v(...) on the lines of a .control block (`save v(out)`, `print v(a, b)` ...), by
- * node as the parser keys them, with the command, read once. ngspice reads these lines as written, so a
- * name it spells with underscores is no node there (non-ascii-node-4); a fix that renames such a node
- * renames it there too.
+ * A command line's code, after its *# or ## and before its comment (inside .control a ';', a '//' or a
+ * '$' and a space starts one: S12-S15), with the offset where it starts.
  */
-function controlNodes(c: Ctx): Map<string, { token: Token; command: string }[]> {
+function commandCode(l: NetlistLine): { code: string; from: number } {
+  const head = /^\s*(?:\*#|##)?/.exec(l.text)![0].length;
+  let end = l.text.length;
+  for (let i = head; i < l.text.length; i++) {
+    const ch = l.text[i];
+    if (ch === '"' || ch === "'") {
+      const close = l.text.indexOf(ch, i + 1);
+      if (close < 0) break;
+      i = close;
+    } else if (ch === ';' || (ch === '/' && l.text[i + 1] === '/') || (ch === '$' && l.text[i + 1] === ' ')) {
+      end = i;
+      break;
+    }
+  }
+  return { code: l.text.slice(head, end), from: l.span.from + head };
+}
+
+/**
+ * The node names on the commands for ngspice, the lines of a .control block and *# and ## lines: inside
+ * v(...) (`save v(out)`, `print v(a, b)` ...), and for save a bare name too (`save out`). By node as the
+ * parser keys them, with the command, read once. ngspice reads these lines as written, so a name it
+ * spells with underscores is no node there (non-ascii-node-4); a fix that renames such a node renames
+ * it there too. Words end only at an ASCII space, a tab or a comma, as for ngspice: a thin space or a
+ * no-break space is part of a name (space-character-12).
+ */
+function controlNodes(c: Ctx): Map<string, CommandRef[]> {
   if (c.controlNodes) return c.controlNodes;
-  const out = new Map<string, { token: Token; command: string }[]>();
+  const out = new Map<string, CommandRef[]>();
+  const put = (from: number, text: string, command: string, bare: boolean): void => {
+    const ref = { token: { from, to: from + text.length, text }, command, bare };
+    const key = ngspiceName(text);
+    const same = out.get(key);
+    if (same) same.push(ref);
+    else out.set(key, [ref]);
+  };
   for (const l of c.n.lines) {
     if (l.kind !== 'control') continue;
-    const command = lowerAscii(/^\s*(?:\*#|##)?\s*([^\s(]*)/.exec(l.text)?.[1] ?? '');
-    for (const m of l.text.matchAll(/\bv(?:m|p|r|i|db)?\s*\(([^)]*)\)/gi)) {
-      const inside = l.span.from + m.index + m[0].indexOf('(') + 1;
-      for (const w of m[1]!.matchAll(/[^\s,]+/g)) {
-        const token = { from: inside + w.index, to: inside + w.index + w[0].length, text: w[0] };
-        const key = ngspiceName(w[0]);
-        const list = out.get(key);
-        if (list) list.push({ token, command });
-        else out.set(key, [{ token, command }]);
+    const { code, from } = commandCode(l);
+    const command = lowerAscii(/^[ \t]*([^ \t(]*)/.exec(code)![1]!);
+    for (const m of code.matchAll(/\bv(?:m|p|r|i|db)?[ \t]*\(([^)]*)\)/gi)) {
+      const inside = from + m.index + m[0].indexOf('(') + 1;
+      for (const w of m[1]!.matchAll(/[^ \t,]+/g)) put(inside + w.index, w[0], command, false);
+    }
+    if (command !== 'save') continue;
+    // The words outside brackets after save, other than a function's name (v, i ...) and save's own words.
+    let depth = 0;
+    let first = true;
+    for (const w of code.matchAll(/[()]|[^ \t,()]+/g)) {
+      if (w[0] === '(') depth += 1;
+      else if (w[0] === ')') depth = Math.max(0, depth - 1);
+      else if (first) first = false;
+      else if (depth === 0 && !/^[ \t]*\(/.test(code.slice(w.index + w[0].length)) && !/[@#[\]=]/.test(w[0]) && !SAVE_WORDS.has(lowerAscii(w[0]))) {
+        put(from + w.index, w[0], command, true);
       }
     }
   }
   c.controlNodes = out;
   return out;
+}
+
+/**
+ * True when the commands for ngspice save something, and every save names only nodes ngspice does not
+ * find: names it reads as written there, with a character outside printable ASCII (the micro sign
+ * aside), as v(çıkış) or bare. PlainSpice's run, which runs the analyses again at the end to write its
+ * results file, then has nothing to save: ngspice says "no data saved … analysis not run", and there are
+ * no results (non-ascii-node-4). Anything else to save keeps the analysis running (non-ascii-node-7 to
+ * -9): a name ngspice finds (v(in), in, i(v1), @r1[i]), save all, a .save line, .options savecurrents,
+ * which PlainSpice adds for .op (src/spice/run-netlist.ts). Only for .dc, .tran and .ac, whose results
+ * are node voltages, so that the plain name gives results again (a .tf saves no node voltage at all).
+ * Whatever else might save something or take a save back (a .probe line, a delete, lines after .end,
+ * which ngspice may read too) leaves it undecided: false. Read once.
+ */
+function savesNothing(c: Ctx): boolean {
+  if (c.savesNothing !== undefined) return c.savesNothing;
+  let saves = false;
+  let nothing = c.n.analyses.length > 0 && c.n.analyses.every((i) => ['.dc', '.tran', '.ac'].includes(c.n.lines[i]!.directive!.name));
+  for (const l of c.n.lines) {
+    if (!nothing) break;
+    const d = l.directive?.name;
+    if (l.kind === 'after-end' || d === '.save' || d === '.probe' || (d !== undefined && /^\.opt(ions?)?$/.test(d) && /savecurrents/i.test(l.text))) {
+      nothing = false;
+    } else if (l.kind === 'control') {
+      const words = commandCode(l).code.split(/[ \t]+/).filter(Boolean);
+      const command = lowerAscii(words[0] ?? '');
+      const args = words.slice(1);
+      if (command === 'delete') nothing = false;
+      else if (command === 'save' && args.length) {
+        saves = true;
+        nothing = args.every((w) => {
+          const name = /^v\(([^(),]+)\)$/i.exec(w)?.[1] ?? (/^[^(),@#[\]=]+$/.test(w) ? w : undefined);
+          return name !== undefined && !isPlainName(name);
+        });
+      }
+    }
+  }
+  c.savesNothing = saves && nothing;
+  return c.savesNothing;
 }
 
 /** The line a token is on, or for a continuation line the line it continues (a card's first line). */
@@ -1504,36 +1592,62 @@ function cardOf(c: Ctx, t: Token): NetlistLine {
 }
 
 /**
- * What ngspice does with a node name it spells with underscores, said only as far as it holds in every
- * run (S10): it spells the node so in its printout and results (non-ascii-node-1). A .print or .plot
- * line keeps the letters as written, so there ngspice finds no such node, run as ngspice -b; PlainSpice
- * runs it with a results file, which makes ngspice skip those lines (non-ascii-node-3). A command for
- * ngspice (.control, *#) keeps them too, and a save of the node there stops the analysis, in PlainSpice
- * as well (non-ascii-node-4). The last two are said only when such a line names the node.
+ * The sentences for the lines where ngspice reads a node's name as written, not as the name it gave the
+ * node (W16), each said only when such a line names the node (`print`, `command`; each check cites its
+ * own claims for them). A .print or .plot line, which ngspice leaves out of the step that writes such
+ * letters as `_`: run as ngspice -b it finds no such node there and prints nothing for that line, and
+ * runs no analysis when that line was all it had to print, while PlainSpice's run leaves those lines
+ * out (non-ascii-node-3). A command for ngspice (.control, *#, ##), where it finds no such node either
+ * (non-ascii-node-4), and where a save that leaves it nothing to save gives PlainSpice's run no results
+ * (savesNothing). The quoted message spells the name as ngspice does, µ as u and capitals small ("can't
+ * parse 'uş'"). With `show` false the words never show the name (an invisible character, a character
+ * that looks like a space): they say "the name".
  */
-function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
+function asWritten(c: Ctx, info: NodeInfo, show: boolean): { said: string[]; print: boolean; command: boolean } {
+  const said: string[] = [];
   const printed = info.refs.find((t) => {
     const d = cardOf(c, t).directive?.name;
     return d === '.print' || d === '.plot';
   });
-  const control = controlNodes(c).get(info.name) ?? [];
-  const out = [`ngspice spells the node ${spelled} in its printout and results${printed || control.length ? '.' : ', without a message.'}`];
-  const facts = ['non-ascii-node-1'];
   if (printed) {
-    out.push(
-      `On a .print or .plot line it reads the name as written, so it finds no node ${printed.text} there: run as ngspice -b, it warns "can't parse '${printed.text}'" and prints nothing for it. PlainSpice's run skips those lines.`,
+    const ignored = `PlainSpice's run leaves .print and .plot lines out (ngspice: "${cardOf(c, printed).directive!.name} line ignored since rawfile was produced.").`;
+    said.push(
+      show
+        ? `On a .print or .plot line it reads the name as written, so it finds no node ${printed.text} there: run as ngspice -b, it warns "can't parse '${ngspiceName(printed.text)}'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${ignored}`
+        : `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${ignored}`,
     );
-    facts.push('non-ascii-node-3');
   }
-  if (control.length) {
-    const save = control.find((x) => x.command === 'save');
-    const star = /^\s*(\*#|##)/.exec(lineAt(c.n, control[0]!.token.from).text)?.[1];
-    out.push(
-      `${star ? `On a ${star} line, a command for ngspice,` : 'In a .control block'} it reads the name as written too, so it finds no node ${control[0]!.token.text} there${save ? `, and save v(${save.token.text}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too` : ''}.`,
+  const commands = controlNodes(c).get(info.name) ?? [];
+  if (commands.length) {
+    const save = commands.find((x) => x.command === 'save');
+    const star = /^\s*(\*#|##)/.exec(lineAt(c.n, commands[0]!.token.from).text)?.[1];
+    const where = star ? `On a ${star} line, a command for ngspice,` : 'In a .control block';
+    const saved = save === undefined ? '' : save.bare ? `save ${save.token.text}` : `save v(${save.token.text})`;
+    const none = save !== undefined && savesNothing(c) ? `${show ? saved : 'the save of that name'} saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved")` : '';
+    said.push(
+      show
+        ? `${where} it reads the name as written too, so it finds no node ${commands[0]!.token.text} there${none ? `: ${none}` : ''}.`
+        : `${where} it reads the name as written too, with the character in it, so it finds no such node there${none ? `: ${none}` : ''}.`,
     );
-    facts.push('non-ascii-node-4');
   }
-  return `${out.join(' ')} [${facts.join(', ')}]`;
+  return { said, print: printed !== undefined, command: commands.length > 0 };
+}
+
+/**
+ * What ngspice does with a node name it spells with underscores, said only as far as it holds in every
+ * run (S10): it spells the node so in its printout and results (non-ascii-node-1), "without a message"
+ * only when no line where it reads the name as written names the node (asWritten: non-ascii-node-3, -4).
+ */
+function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
+  const { said, print, command } = asWritten(c, info, true);
+  // Cites [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
+  const facts = ['non-ascii-node-1', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
+  return [`ngspice spells the node ${spelled} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
+}
+
+/** A node renamed on the commands for ngspice too (controlNodes): there ngspice reads the name as written. */
+function commandChanges(c: Ctx, info: NodeInfo, to: string): TextChange[] {
+  return (controlNodes(c).get(info.name) ?? []).map((x) => replace(x.token, to));
 }
 
 /**
@@ -1597,20 +1711,21 @@ function checkNodeNames(c: Ctx): void {
   }
   const freeName = nodeNamer(new Set(groups.keys()));
   const plainFor = (info: NodeInfo): string => freeName(plainLetters(info.refs[0]!.text, true) || 'n1');
-  const renaming = (info: NodeInfo, to: string): TextChange[] => [
-    ...renameNode(info, to),
-    ...labelChanges(c, info.name, to),
-    ...(controlNodes(c).get(info.name) ?? []).map((x) => replace(x.token, to)),
-  ];
+  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to), ...commandChanges(c, info, to)];
   for (const [spelled, infos] of groups) {
     if (infos.length > 1) {
       const odd = infos.filter((i) => !isPlainName(i.name));
       const names = infos.map((i) => i.refs[0]!.text);
       const to = odd.map((i) => [i, plainFor(i)] as const);
       const at = (odd[odd.length - 1] ?? infos[infos.length - 1]!).refs[0]!;
+      // Each name with such letters, where a line names it that ngspice reads as written (S10). Cites
+      // [non-ascii-node-2, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
+      const written = odd.map((i) => asWritten(c, i, true));
+      const said = [...new Set(written.flatMap((w) => w.said))];
+      const facts = ['non-ascii-node-2', ...(written.some((w) => w.print) ? ['non-ascii-node-3'] : []), ...(written.some((w) => w.command) ? ['non-ascii-node-4'] : [])];
       add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
         `ngspice ${lettersRule(names, 'a node name')}, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
-        `ngspice spells ${list(names)} as ${spelled} and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]`,
+        [`ngspice spells ${list(names)} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
         to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${i.refs[0]!.text}`))}`, ...to.flatMap(([i, n]) => renaming(i, n)))] : []);
       continue;
     }
