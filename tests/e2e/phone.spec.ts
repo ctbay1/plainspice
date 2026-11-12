@@ -1013,19 +1013,36 @@ test('the hint line’s box cuts nothing at the usual text size, and squeezed it
     return cuts;
   });
   expect(cut, 'boxes that cut the focus ring of Change R1').toEqual([]);
-  // A small phone with the largest text and a resistor in hand: the hint's box keeps its first line and
-  // scrolls. A box cut exactly between two lines gave no sign of more words: it fades at that end now.
-  await page.setViewportSize({ width: 360, height: 640 });
+  // Small phones with the largest text and a resistor in hand: the hint's box is squeezed and scrolls. A
+  // box cut exactly between two lines gave no sign of more words: it fades at that end now. On the
+  // smallest (320 × 568, an iPhone SE) the box is squeezed to its least, a line and a half, so the fade
+  // falls on the top of the second line, where it can be seen: on its first line alone it fell on the
+  // bottoms of the letters, and "Tap the paper where a" read as all there was.
   await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
-  await openApp(page);
-  await newCircuit(page);
-  await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).tap();
-  await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }).tap();
-  const box = page.getByRole('region', { name: t('hintScrollLabel') });
-  await expect(box).toBeVisible();
-  const fade = (): Promise<{ more: string; mask: string }> => box.evaluate((el) => ({ more: (el as HTMLElement).dataset.more ?? '', mask: getComputedStyle(el).maskImage }));
-  await expect.poll(fade).toMatchObject({ more: 'below', mask: expect.stringMatching(/gradient/) });
-  // Scrolled to its end, the fade moves to the top, where the words it has passed are.
-  await box.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
-  await expect.poll(fade).toMatchObject({ more: 'above', mask: expect.stringMatching(/gradient/) });
+  for (const size of [{ width: 360, height: 640 }, { width: 320, height: 568 }]) {
+    const at = `${size.width} × ${size.height}`;
+    await page.setViewportSize(size);
+    await openApp(page);
+    await newCircuit(page);
+    await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).tap();
+    await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }).tap();
+    const box = page.getByRole('region', { name: t('hintScrollLabel') });
+    await expect(box).toBeVisible();
+    const fade = (): Promise<{ more: string; mask: string }> => box.evaluate((el) => ({ more: (el as HTMLElement).dataset.more ?? '', mask: getComputedStyle(el).maskImage }));
+    await expect.poll(fade).toMatchObject({ more: 'below', mask: expect.stringMatching(/gradient/) });
+    // How much of the hint's second line the box shows (in lines), where the fade is.
+    const secondLine = (): Promise<number> =>
+      box.evaluate((el) => {
+        const hint = el.querySelector('#hint-line')!;
+        const range = document.createRange();
+        range.selectNodeContents(hint);
+        const tops = [...range.getClientRects()].map((r) => r.top).sort((a, b) => a - b);
+        const second = tops.find((top) => top > tops[0]! + 2);
+        return second === undefined ? 0 : (el.getBoundingClientRect().bottom - second) / Number.parseFloat(getComputedStyle(hint).lineHeight);
+      });
+    await expect.poll(secondLine, { message: `${at}: the box shows half of the hint's second line at least` }).toBeGreaterThanOrEqual(0.5);
+    // Scrolled to its end, the fade moves to the top, where the words it has passed are.
+    await box.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect.poll(fade).toMatchObject({ more: 'above', mask: expect.stringMatching(/gradient/) });
+  }
 });
