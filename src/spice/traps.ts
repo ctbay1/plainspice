@@ -1698,7 +1698,7 @@ function lettersRule(names: readonly string[], what: string): string {
  * one: an error, because ngspice then simulates another circuit; the fix gives each its plain letters.
  * A name with an invisible character is the invisible-character check's. µ alone is fine (ngspice reads
  * u), but one node written with µ in one place and u in another (aµ, au) looks like two nodes: a warning
- * when a part has an end on each, so it has both ends on one node (non-ascii-node-5), else a note.
+ * when a part has an end on each, whose ends it joins (non-ascii-node-5, -11), else a note.
  * The fixes never give a name ngspice already uses, that would join two nodes, nor one of ground's
  * (nodeNamer).
  */
