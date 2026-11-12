@@ -325,7 +325,7 @@ describe.each(FACTS)('$code ($id)', (f) => {
 
 describe('what the explanations predict matches the run', () => {
   /** A line Explain says ngspice ignores: an analysis in a subcircuit no X line uses (A3f). */
-  const ignoredLine = (n: Netlist, i: number): boolean => /^ngspice ignores this line/.test(explainLine(n, i)?.notes[0] ?? '');
+  const ignoredLine = (n: Netlist, i: number): boolean => (explainLine(n, i)?.notes[0] ?? '').startsWith('ngspice ignores this line');
 
   it('counts the .dc points as ngspice does (A7–A15, A31)', () => {
     let checked = 0;
