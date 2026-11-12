@@ -54,7 +54,7 @@ test('the F5 example runs in the browser: a = 14 V, n1 = 12 V, 3 A from n1 to gr
 
   // And said in the polite live region, with the units in words (a screen reader would spell out
   // "V" or "mV").
-  await expectAnnounced(page, /a is 14 volts, x is 14 volts, n1 is 12 volts/);
+  await expectAnnounced(page, /node a is 14 volts, node x is 14 volts, node n1 is 12 volts/);
 
   // The same result on R1's own line of the netlist (line 5: "R1 n1 0 4").
   await openNetlist(page);

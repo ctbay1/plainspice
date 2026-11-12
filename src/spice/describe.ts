@@ -153,9 +153,21 @@ export interface DiagnosticWords {
 
 // ------------------------------------------------------------------ strings
 
+/**
+ * A node in a sentence, the way the editor says it (EDIT_STRINGS.node, decision 0017): "node in",
+ * because a name may be an ordinary word; ground stays "ground" (written "0" in results). Inside the
+ * templates below, so every page that builds a sentence from them (the overview, the drawing's
+ * descriptions, the cards) says it the same way.
+ */
+function nodeIn(n: string): string {
+  return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' ? n : `node ${n}`;
+}
+
 /** Every sentence this module writes, in one object so a Turkish UI can replace it later. */
 export const DESCRIBE_STRINGS = {
   ground: 'ground',
+  /** A node in a sentence: "node in"; ground is "ground". */
+  node: nodeIn,
   // ---- describeCircuit
   counts: (parts: number, nodes: number, names: string): string =>
     `${parts} ${parts === 1 ? 'part' : 'parts'} and ${nodes} ${nodes === 1 ? 'node' : 'nodes'} besides ground${names ? ` (${names})` : ''}.`,
@@ -163,33 +175,39 @@ export const DESCRIBE_STRINGS = {
     `${parts} ${parts === 1 ? 'part' : 'parts'} and ${nodes} ${nodes === 1 ? 'node' : 'nodes'}${names ? ` (${names})` : ''}. Nothing is connected to ground (node 0).`,
   noParts: 'No parts yet.',
   moreParts: (n: number): string => `And ${n} more ${n === 1 ? 'part' : 'parts'}.`,
-  resistor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} resistor` : 'a resistor'} between ${a} and ${b}.`,
-  capacitor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} capacitor` : 'a capacitor'} between ${a} and ${b}.`,
-  inductor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} inductor` : 'an inductor'} between ${a} and ${b}.`,
+  resistor: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} resistor` : 'a resistor'} between ${nodeIn(a)} and ${nodeIn(b)}.`,
+  capacitor: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} capacitor` : 'a capacitor'} between ${nodeIn(a)} and ${nodeIn(b)}.`,
+  inductor: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} inductor` : 'an inductor'} between ${nodeIn(a)} and ${nodeIn(b)}.`,
   vSource: (name: string, v: string, a: string, b: string): string =>
-    `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${a} and its ${MINUS} side at ${b}.`,
-  vFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} voltage source with its + side at ${a} and its ${MINUS} side at ${b}.`,
+    `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
+  vFunction: (name: string, fn: string, a: string, b: string): string =>
+    `${name}: a ${fn} voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
   // P9: true of every 0 V source, the turned-off source of a Thevenin example too (student review): what
   // it is and what ngspice does with it, not a purpose the circuit may not have.
-  ammeter: (name: string, a: string, b: string): string => `${name}: a 0 V source from ${a} to ${b}: a wire, through which ngspice measures the current (the ammeter trick).`,
-  swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${a} and its ${MINUS} side at ${b}, swept by .dc.`,
+  ammeter: (name: string, a: string, b: string): string =>
+    `${name}: a 0 V source from ${nodeIn(a)} to ${nodeIn(b)}: a wire, through which ngspice measures the current (the ammeter trick).`,
+  swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}, swept by .dc.`,
   iSource: (name: string, v: string, a: string, b: string): string =>
-    `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${a} into ${b}.`,
-  iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${a} into ${b}.`,
+    `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
+  iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
   vcvs: (name: string, out: string, gain: string, control: string): string =>
     `${name}: a voltage-controlled voltage source: ${out}, is ${gain} × ${control}.`,
   cccs: (name: string, gain: string, control: string, a: string, b: string): string =>
-    `${name}: a current-controlled current source pushing ${gain} × the current in ${control} from ${a} into ${b}.`,
+    `${name}: a current-controlled current source pushing ${gain} × the current in ${control} from ${nodeIn(a)} into ${nodeIn(b)}.`,
   vccs: (name: string, gm: string, control: string, a: string, b: string): string =>
-    `${name}: a voltage-controlled current source pushing ${gm} for every volt ${control} from ${a} into ${b}.`,
+    `${name}: a voltage-controlled current source pushing ${gm} for every volt ${control}, from ${nodeIn(a)} into ${nodeIn(b)}.`,
   ccvs: (name: string, out: string, r: string, control: string): string =>
     `${name}: a current-controlled voltage source: ${out}, is ${r} for every amp in ${control}.`,
-  voltageAt: (n: string, ref: string): string => `the voltage at ${n}, measured from ${ref}`,
-  at: (n: string): string => `at ${n}`,
-  between: (a: string, b: string): string => `between ${a} and ${b}`,
+  voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
+  at: (n: string): string => `at ${nodeIn(n)}`,
+  between: (a: string, b: string): string => `between ${nodeIn(a)} and ${nodeIn(b)}`,
   coupling: (name: string, l1: string, l2: string, k: string): string => `${name}: couples ${l1} and ${l2} (coupling ${k}).`,
   otherPart: (name: string, what: string, nodes: string): string => `${name}: ${what}${nodes ? ` (${nodes})` : ''}.`,
-  labelled: (label: string, n: string): string => `${label} ${n}`,
+  // "+ node a" already says "node"; a terminal reads "collector at node c", "emitter at ground".
+  labelled: (label: string, n: string): string => (/node$/.test(label) && nodeIn(n) !== 'ground' ? `${label} ${n}` : `${label} at ${nodeIn(n)}`),
   modelOf: (m: string): string => `model ${m}`,
   subcircuitOf: (m: string): string => `subcircuit ${m}`,
   analysis: (list: string): string => `Analysis: ${list}.`,
@@ -207,11 +225,11 @@ export const DESCRIBE_STRINGS = {
   otherAnalysis: (name: string): string => `${name}`,
   subcircuits: (n: number, names: string): string => `${n} subcircuit ${n === 1 ? 'definition' : 'definitions'} (${names}).`,
   // ---- results
-  amps: (a: string, from: string, to: string, name: string): string => `${a} from ${from} to ${to} through ${name}`,
-  ampsSpeech: (a: string, verb: string, from: string, to: string, name: string): string => `${a} ${verb} from ${from} to ${to} through ${name}`,
+  amps: (a: string, from: string, to: string, name: string): string => `${a} from ${nodeIn(from)} to ${nodeIn(to)} through ${name}`,
+  ampsSpeech: (a: string, verb: string, from: string, to: string, name: string): string => `${a} ${verb} from ${nodeIn(from)} to ${nodeIn(to)} through ${name}`,
   noCurrent: (name: string): string => `no current through ${name}`,
   noCurrentSpeech: (name: string): string => `no current flows through ${name}`,
-  measures: (name: string, a: string, from: string, to: string): string => `${name} measures ${a} flowing from ${from} to ${to}`,
+  measures: (name: string, a: string, from: string, to: string): string => `${name} measures ${a} flowing from ${nodeIn(from)} to ${nodeIn(to)}`,
   measuresNothing: (name: string): string => `${name} measures no current`,
   delivers: (name: string, w: string): string => `${name} delivers ${w}`,
   absorbs: (name: string, w: string): string => `${name} absorbs ${w}`,
@@ -227,7 +245,8 @@ export const DESCRIBE_STRINGS = {
   outputRCurrentSpeech: (out: string, r: string): string => `ngspice reports ${r} as the output impedance for ${out}; it is not a resistance of your circuit`,
   ratioWords: { 'V/V': 'volts per volt', 'V/A': 'volts per amp, which is ohms', 'A/V': 'amps per volt', 'A/A': 'amps per amp' } as Record<string, string>,
   ratioWordsOne: { 'V/V': 'volt per volt', 'V/A': 'volt per amp, which is an ohm', 'A/V': 'amp per volt', 'A/A': 'amp per amp' } as Record<string, string>,
-  voltageOf: (n: string): string => `the voltage at ${n}`,
+  voltageOf: (n: string): string => `the voltage at ${nodeIn(n)}`,
+  voltageBetween: (a: string, b: string): string => `the voltage between ${nodeIn(a)} and ${nodeIn(b)}`,
   currentIn: (name: string): string => `the current in ${name}`,
   dcSweepText: (what: string, points: number): string => `DC sweep of ${what}: ${points} ${points === 1 ? 'point' : 'points'}.`,
   dcNoPoints: (what: string): string => `DC sweep of ${what}: no points.`,
@@ -253,7 +272,7 @@ export const DESCRIBE_STRINGS = {
   summaryNothing: 'no results to show',
   // ---- annotations
   noteAmps: (a: string, from: string, to: string): string => `${a}, ${from} ${ARROW} ${to}`,
-  noteAmpsSpeech: (a: string, verb: string, from: string, to: string): string => `${a} ${verb} from ${from} to ${to}`,
+  noteAmpsSpeech: (a: string, verb: string, from: string, to: string): string => `${a} ${verb} from ${nodeIn(from)} to ${nodeIn(to)}`,
   noteNoCurrent: '0 A',
   noteNoCurrentSpeech: 'no current flows',
   noteAcross: (v: string): string => `${v} across`,
@@ -265,7 +284,7 @@ export const DESCRIBE_STRINGS = {
   noteIntoPlusSpeech: 'into its + side',
   noteDelivers: (w: string): string => `delivers ${w}`,
   noteAbsorbs: (w: string): string => `absorbs ${w}`,
-  noteMeasures: (a: string, from: string, to: string): string => `measures ${a} flowing from ${from} to ${to}`,
+  noteMeasures: (a: string, from: string, to: string): string => `measures ${a} flowing from ${nodeIn(from)} to ${nodeIn(to)}`,
   // ---- messages
   unreliableTitle: "These numbers can't be trusted",
   unreliableWhy:
@@ -716,7 +735,8 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const words: TransferFunctionWords = { output, input, ratio };
   if (tf.transferFunction !== undefined) {
     const v = formatNumber(tf.transferFunction);
-    const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? output) : S.voltageOf((reading?.outputNames ?? [output]).join(' and '));
+    const [n1, n2] = reading?.outputNames ?? [];
+    const outSpeech = outKind === 'current' ? S.currentIn(n1 ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
     words.transferFunction = {
       value: tf.transferFunction,
       text: S.transfer(output, input, v, ratio),
@@ -746,7 +766,10 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
 function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   const m = /^([vi])\((.*)\)$/i.exec(s.name);
   if (!m) return s.name;
-  if (m[1]!.toLowerCase() === 'v') return S.voltageOf(m[2]!);
+  if (m[1]!.toLowerCase() === 'v') {
+    const [a, b] = m[2]!.split(',');
+    return b === undefined ? S.voltageOf(a!) : S.voltageBetween(a!, b);
+  }
   // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents.
   const inner = /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
   const part = partsOf(netlist).byKey.get(lowerAscii(inner));
@@ -923,7 +946,8 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   }
   const parts: string[] = [];
   if (words.nodes.length) {
-    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(n.node === '0' ? S.ground : n.node, n.speech) : S.valueIs(n.node, n.text)));
+    // "node in is 6 volts": a node's name may be an ordinary word (W8, decision 0017).
+    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(n.node), n.speech) : S.valueIs(S.node(n.node), n.text)));
     parts.push(S.summaryNodes(shown.join(', '), words.nodes.length - shown.length));
   }
   if (words.currents.length) parts.push(S.summaryCurrents(words.currents.length));

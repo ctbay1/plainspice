@@ -145,9 +145,9 @@ describe('the page’s words, from the model’s', () => {
 
   it('says "ground" in a current’s words, as the card does', () => {
     const c: CurrentWords = { element: 'g1', name: 'G1', value: 4, from: '0', to: 'a', ammeter: false, text: '', speech: '' };
-    expect(currentText(c).replace(/ /g, ' ')).toBe('4 A from ground to a through G1');
-    expect(currentText({ ...c, value: -4, from: 'a', to: '0' }).replace(/ /g, ' ')).toBe('4 A from a to ground through G1');
-    expect(currentText({ ...c, name: 'Vshort', ammeter: true, value: 3, from: 'a', to: '0' }).replace(/ /g, ' ')).toBe('Vshort measures 3 A flowing from a to ground');
+    expect(currentText(c).replace(/ /g, ' ')).toBe('4 A from ground to node a through G1');
+    expect(currentText({ ...c, value: -4, from: 'a', to: '0' }).replace(/ /g, ' ')).toBe('4 A from node a to ground through G1');
+    expect(currentText({ ...c, name: 'Vshort', ammeter: true, value: 3, from: 'a', to: '0' }).replace(/ /g, ' ')).toBe('Vshort measures 3 A flowing from node a to ground');
   });
 
   it('gives a voltage across a part as a size and the higher end, SPICE’s signed difference kept', () => {

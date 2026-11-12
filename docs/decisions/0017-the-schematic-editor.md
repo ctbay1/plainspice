@@ -326,3 +326,15 @@ Still open, on the plan: dragging a piece of wire; choosing what a controlled so
 the drawing; the phone's layout used with a keyboard and a mouse (large text on a laptop) gives touch
 words; automatic node names keep their numbers (n1, n4) when nodes merge; real screen readers and
 browsers other than Chromium.
+
+## After the final reviews (12 November 2026)
+
+- **"node out" in the model's sentences too** (words review W8). The circuit overview, the drawing's
+  part descriptions, the cards and the run summary are built from `DESCRIBE_STRINGS`
+  (`src/spice/describe.ts`), and its templates now write a node the way the editor does: "R1: a 1 kΩ
+  resistor between node in and node out.", "3 A from node n1 to ground through R1", "Simulation
+  finished: node in is 6 volts"; ground stays "ground". The templates add the word themselves, so a
+  page that builds a sentence from them (`src/schematic/navigate.ts`, `src/app/card.ts`) says it the
+  same way. Left bare, because they are not sentences: the short notes at the end of netlist lines
+  ("3 A, n1 → 0"), the value beside a node's name on the drawing ("s = 12 V") and the names listed after
+  the counts ("2 nodes besides ground (in, out)").

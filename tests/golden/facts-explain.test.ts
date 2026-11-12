@@ -379,11 +379,11 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
   it('F1a: V1 delivers 18 W, and 3 A flow from n1 to 0 through R1 (C1)', () => {
     const d = ofFixture('f1a-voltage-source');
     expect(d.words.status).toBe('ok');
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from n1 to 0 through R1');
-    expect(plain(currentText(d, 'V1'))).toBe('3 A from 0 to n1 through V1');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from node n1 to ground through R1');
+    expect(plain(currentText(d, 'V1'))).toBe('3 A from ground to node n1 through V1');
     expect(plain(powerText(d, 'V1'))).toBe('V1 delivers 18 W');
     expect(plain(d.words.nodes[0]?.text)).toBe('6 V');
-    expect(plain(d.words.summary)).toBe('Simulation finished: n1 = 6 V; 2 currents. Open the results for details.');
+    expect(plain(d.words.summary)).toBe('Simulation finished: node n1 = 6 V; 2 currents. Open the results for details.');
     const notes = annotateLines(d.netlist, d.results, d.run).map((a) => [a.line, plain(a.text)]);
     expect(notes).toEqual([[2, 'delivers 18 W, 3 A out of +'], [3, '3 A, n1 → 0']]);
   });
@@ -392,28 +392,28 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const d = ofFixture('f1b-voltage-source-swapped');
     expect(plain(d.words.nodes[0]?.text)).toBe('−6 V');
     expect(plain(powerText(d, 'V1'))).toBe('V1 delivers 18 W');
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from 0 to n1 through R1');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from ground to node n1 through R1');
   });
 
   it('F2a and F2b: the current source pushes 3 A one way or the other, and delivers 36 W (P4, C3)', () => {
     const a = ofFixture('f2a-current-source');
-    expect(plain(currentText(a, 'I1'))).toBe('3 A from 0 to n1 through I1');
+    expect(plain(currentText(a, 'I1'))).toBe('3 A from ground to node n1 through I1');
     expect(plain(powerText(a, 'I1'))).toBe('I1 delivers 36 W');
-    expect(plain(currentText(a, 'R1'))).toBe('3 A from n1 to 0 through R1');
+    expect(plain(currentText(a, 'R1'))).toBe('3 A from node n1 to ground through R1');
     const b = ofFixture('f2b-current-source-swapped');
-    expect(plain(currentText(b, 'I1'))).toBe('3 A from n1 to 0 through I1');
+    expect(plain(currentText(b, 'I1'))).toBe('3 A from node n1 to ground through I1');
     expect(plain(powerText(b, 'I1'))).toBe('I1 delivers 36 W');
-    expect(plain(currentText(b, 'R1'))).toBe('3 A from 0 to n1 through R1');
+    expect(plain(currentText(b, 'R1'))).toBe('3 A from ground to node n1 through R1');
   });
 
   it('F3a and F3b: 1M is a milliohm, 1meg a megaohm', () => {
     const a = ofFixture('f3a-1M-trap');
     expect(plain(a.words.nodes.find((n) => n.node === 'n2')?.text)).toBe('6 V');
-    expect(plain(currentText(a, 'R1'))).toBe('6 µA from n1 to n2 through R1');
+    expect(plain(currentText(a, 'R1'))).toBe('6 µA from node n1 to node n2 through R1');
     expect(plain(explainLine(a.netlist, 2)!.fields.find((f) => f.label === 'value')?.meaning)).toBe('1 mΩ (milli!)');
     const b = ofFixture('f3b-1meg');
     expect(plain(b.words.nodes.find((n) => n.node === 'n2')?.text)).toBe('3 V');
-    expect(plain(currentText(b, 'R1'))).toBe('3 µA from n1 to n2 through R1');
+    expect(plain(currentText(b, 'R1'))).toBe('3 µA from node n1 to node n2 through R1');
   });
 
   it('F4: the output resistance at v(a) is 4 Ω, the Thevenin resistance (A3)', () => {
@@ -421,22 +421,22 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const tf = d.words.tf!;
     expect(plain(tf.transferFunction?.text)).toBe('v(a)/V1 = 0.3333 (V/V)');
     expect(plain(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
-    expect(plain(tf.outputResistance?.text)).toBe('output resistance at a: 4 Ω, the Thevenin resistance seen at a (ngspice calls it the output impedance)');
-    expect(tf.outputResistance?.speech).toBe('the output resistance at a is 4 ohms, the Thevenin resistance');
+    expect(plain(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thevenin resistance seen at node a (ngspice calls it the output impedance)');
+    expect(tf.outputResistance?.speech).toBe('the output resistance at node a is 4 ohms, the Thevenin resistance');
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {
     const d = ofFixture('f5-thevenin-cccs');
     expect(d.words.nodes.map((n) => [n.node, plain(n.text), n.colourIndex])).toEqual([['a', '14 V', 0], ['x', '14 V', 1], ['n1', '12 V', 2]]);
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from n1 to 0 through R1');
-    expect(plain(currentText(d, 'R2'))).toBe('1 A from x to n1 through R2');
-    expect(plain(currentText(d, 'Vx'))).toBe('Vx measures 1 A flowing from a to x');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from node n1 to ground through R1');
+    expect(plain(currentText(d, 'R2'))).toBe('1 A from node x to node n1 through R2');
+    expect(plain(currentText(d, 'Vx'))).toBe('Vx measures 1 A flowing from node a to node x');
     expect(d.words.currents.find((c) => c.name === 'Vx')?.power).toBeUndefined();
-    expect(plain(currentText(d, 'F1'))).toBe('2 A from 0 to n1 through F1');
+    expect(plain(currentText(d, 'F1'))).toBe('2 A from ground to node n1 through F1');
     expect(plain(powerText(d, 'Itest'))).toBe('Itest delivers 14 W');
     expect(plain(powerText(d, 'F1'))).toBe('F1 delivers 24 W');
-    expect(d.words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from n1 to ground through R1');
-    expect(plain(d.words.summary)).toBe('Simulation finished: a = 14 V, x = 14 V, n1 = 12 V; 5 currents. Open the results for details.');
+    expect(d.words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from node n1 to ground through R1');
+    expect(plain(d.words.summary)).toBe('Simulation finished: node a = 14 V, node x = 14 V, node n1 = 12 V; 5 currents. Open the results for details.');
   });
 
   it('F5 without savecurrents: only the 0 V source has a current, and the other lines show their voltage (A1)', () => {
@@ -451,7 +451,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const s = d.words.sweeps[0]!;
     expect(s.points).toBe(13);
     expect(plain(s.text)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. At V1 = 12 V: v(in) = 12 V, v(out) = 8 V, i(v1) = −4 mA.');
-    expect(s.speech).toContain('the voltage at out is 8 volts, the current in V1 is minus 4 milliamps');
+    expect(s.speech).toContain('the voltage at node out is 8 volts, the current in V1 is minus 4 milliamps');
   });
 
   it('T1: a transient over 5 ms on ngspice\'s own time points (A16)', () => {
@@ -465,7 +465,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
   it('describes every fixture circuit for a screen reader', () => {
     const d = ofFixture('f5-thevenin-cccs', false);
     expect(plain(describeCircuit(d.netlist))).toBe(
-      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
+      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into node a. Vx: a 0 V source from node a to node x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between node x and node n1. R1: a 4 Ω resistor between node n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into node n1. Analysis: operating point.',
     );
     for (const id of FIXTURES) expect(describeCircuit(parseNetlist(fixtureText(id))).length, id).toBeGreaterThan(40);
   });
@@ -481,7 +481,7 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
     const c1b = ofFact('C1b');
     expect(plain(powerText(c1b, 'V1'))).toBe('V1 delivers 18 W');
     expect(c1b.words.currents.find((c) => c.name === 'V1')!.value).toBeGreaterThan(0);
-    expect(plain(currentText(c1b, 'V1'))).toBe('3 A from 0 to n1 through V1');
+    expect(plain(currentText(c1b, 'V1'))).toBe('3 A from ground to node n1 through V1');
     const note = explainLine(c1b.netlist, 1)!.notes.join(' ');
     expect(note).toContain('Its value is negative, so its + side is the lower one: while it delivers power, its current is positive.');
     expect(note).not.toContain('negative current');
@@ -504,25 +504,25 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
 
   it('C3: resistor directions from the sign; current sources from their value', () => {
     const d = ofFact('C3');
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from n1 to 0 through R1');
-    expect(plain(currentText(d, 'R2'))).toBe('3 A from 0 to n2 through R2');
-    expect(plain(currentText(d, 'I2'))).toBe('3 A from n2 to 0 through I2');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from node n1 to ground through R1');
+    expect(plain(currentText(d, 'R2'))).toBe('3 A from ground to node n2 through R2');
+    expect(plain(currentText(d, 'I2'))).toBe('3 A from node n2 to ground through I2');
     expect(plain(powerText(d, 'I1'))).toBe('I1 delivers 36 W');
     expect(plain(powerText(d, 'I2'))).toBe('I2 delivers 36 W');
   });
 
   it('C4: F and G push their current into the node they name second', () => {
     const d = ofFact('C4');
-    expect(plain(currentText(d, 'F1'))).toBe('4 A from 0 to o through F1');
-    expect(plain(currentText(d, 'F2'))).toBe('4 A from p to 0 through F2');
-    expect(plain(currentText(d, 'G1'))).toBe('1 A from 0 to q through G1');
-    expect(plain(currentText(d, 'G2'))).toBe('1 A from r to 0 through G2');
+    expect(plain(currentText(d, 'F1'))).toBe('4 A from ground to node o through F1');
+    expect(plain(currentText(d, 'F2'))).toBe('4 A from node p to ground through F2');
+    expect(plain(currentText(d, 'G1'))).toBe('1 A from ground to node q through G1');
+    expect(plain(currentText(d, 'G2'))).toBe('1 A from node r to ground through G2');
   });
 
   it('C6, C7: E, H and B sources deliver power', () => {
     expect(plain(powerText(ofFact('C6'), 'E1'))).toBe('E1 delivers 18 W');
     expect(plain(powerText(ofFact('C6'), 'H1'))).toBe('H1 delivers 32 W');
-    expect(plain(currentText(ofFact('C7'), 'B1'))).toBe('2 A from 0 to b through B1');
+    expect(plain(currentText(ofFact('C7'), 'B1'))).toBe('2 A from ground to node b through B1');
     expect(plain(powerText(ofFact('C7'), 'B1'))).toBe('B1 delivers 4 W');
   });
 
@@ -531,13 +531,13 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
     expect(d.results.op!.currents.map((c) => c.element)).toEqual(expect.arrayContaining(['s1', 'w1']));
     expect(d.words.currents.map((c) => c.element)).not.toContain('s1');
     expect(d.words.currents.map((c) => c.element)).not.toContain('w1');
-    expect(plain(currentText(d, 'Rc'))).toBe('1.5 A from c to 0 through Rc');
+    expect(plain(currentText(d, 'Rc'))).toBe('1.5 A from node c to ground through Rc');
   });
 
   it('A1, A2: an inductor appears once, with its branch current', () => {
     const d = ofFact('A2');
     expect(d.words.currents.filter((c) => c.element === 'l1')).toHaveLength(1);
-    expect(plain(currentText(d, 'L1'))).toBe('2.097 A from b to c through L1');
+    expect(plain(currentText(d, 'L1'))).toBe('2.097 A from node b to node c through L1');
     expect(plain(currentText(d, 'C1'))).toBe('no current through C1');
   });
 
@@ -550,8 +550,8 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
   it('A4: a current-source input gives a ratio in V/A', () => {
     const tf = ofFact('A4').words.tf!;
     expect(tf.ratio).toBe('V/A');
-    expect(tf.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at b is 1 volt per amp, which is an ohm');
-    expect(plain(tf.outputResistance?.text)).toContain('output resistance at b: 1.5 Ω');
+    expect(tf.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at node b is 1 volt per amp, which is an ohm');
+    expect(plain(tf.outputResistance?.text)).toContain('output resistance at node b: 1.5 Ω');
   });
 });
 

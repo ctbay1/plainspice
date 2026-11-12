@@ -61,7 +61,7 @@ describe('F5 with every current saved', () => {
     const run = asRun.get(f5.id)!;
     const words = describeResults(parseNetlist(f5.text), interpretPlots(run.plots), run);
     const byName = new Map(words.currents.map((c) => [c.name, c]));
-    expect(byName.get('R1')?.text).toBe('3\u00a0A from n1 to 0 through R1'); // a no-break space between number and unit
+    expect(byName.get('R1')?.text).toBe('3\u00a0A from node n1 to ground through R1'); // a no-break space between number and unit
     expect(byName.get('R2')).toMatchObject({ from: 'x', to: 'n1' });
     expect(byName.get('R2')?.value).toBeCloseTo(1, 12);
     expect(byName.get('F1')).toMatchObject({ from: '0', to: 'n1' });

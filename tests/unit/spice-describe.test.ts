@@ -63,14 +63,14 @@ describe('describeCircuit', () => {
     const rth = readFileSync(join(root, 'examples/p02/p02-2-test-current.cir'), 'utf8');
     const meter = readFileSync(join(root, 'examples/sp01/sp01-2-ammeter.cir'), 'utf8');
     const said = (text: string): string => sp(describeCircuit(parseNetlist(text)));
-    expect(said(rth)).toContain('V1: a 0 V source from s to ground: a wire, through which ngspice measures the current (the ammeter trick).');
-    expect(said(meter)).toContain('Vm: a 0 V source from n2 to n2b: a wire, through which ngspice measures the current (the ammeter trick).');
+    expect(said(rth)).toContain('V1: a 0 V source from node s to ground: a wire, through which ngspice measures the current (the ammeter trick).');
+    expect(said(meter)).toContain('Vm: a 0 V source from node n2 to node n2b: a wire, through which ngspice measures the current (the ammeter trick).');
     for (const text of [rth, meter]) expect(said(text)).not.toContain('used as an ammeter');
   });
 
   it('describes F5 in netlist order, as the brief asks', () => {
     expect(sp(describeCircuit(parseNetlist(F5)))).toBe(
-      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
+      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into node a. Vx: a 0 V source from node a to node x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between node x and node n1. R1: a 4 Ω resistor between node n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into node n1. Analysis: operating point.',
     );
   });
 
@@ -80,24 +80,24 @@ describe('describeCircuit', () => {
         parseNetlist('* t\nV1 c 0 2\nVs c d 0\nR1 d 0 1k\nC1 d 0 1u\nL1 d e 1m\nE1 o1 0 c 0 2\nG1 0 o2 c 0 0.5\nF1 0 o3 Vs 3\nH1 o4 0 Vs 4\nI1 0 o5 1m\nK1 L1 L2 0.9\nL2 f 0 1m\nVp p 0 PULSE(0 5 0 1u 1u 1 2)\n.op\n'),
       ),
     );
-    expect(text).toContain(`V1: a 2 V source with its + side at c and its ${MINUS} side at ground.`);
-    expect(text).toContain('Vs: a 0 V source from c to d: a wire, through which ngspice measures the current (the ammeter trick).');
-    expect(text).toContain('R1: a 1 kΩ resistor between d and ground.');
-    expect(text).toContain('C1: a 1 µF capacitor between d and ground.');
-    expect(text).toContain('L1: a 1 mH inductor between d and e.');
-    expect(text).toContain('E1: a voltage-controlled voltage source: the voltage at o1, measured from ground, is 2 × the voltage at c, measured from ground.');
-    expect(text).toContain('G1: a voltage-controlled current source pushing 500 mA for every volt at c from ground into o2.');
-    expect(text).toContain('F1: a current-controlled current source pushing 3 × the current in Vs from ground into o3.');
-    expect(text).toContain('H1: a current-controlled voltage source: the voltage at o4, measured from ground, is 4 V for every amp in Vs.');
-    expect(text).toContain('I1: a 1 mA current source pushing current from ground into o5.');
+    expect(text).toContain(`V1: a 2 V source with its + side at node c and its ${MINUS} side at ground.`);
+    expect(text).toContain('Vs: a 0 V source from node c to node d: a wire, through which ngspice measures the current (the ammeter trick).');
+    expect(text).toContain('R1: a 1 kΩ resistor between node d and ground.');
+    expect(text).toContain('C1: a 1 µF capacitor between node d and ground.');
+    expect(text).toContain('L1: a 1 mH inductor between node d and node e.');
+    expect(text).toContain('E1: a voltage-controlled voltage source: the voltage at node o1, measured from ground, is 2 × the voltage at node c, measured from ground.');
+    expect(text).toContain('G1: a voltage-controlled current source pushing 500 mA for every volt at node c, from ground into node o2.');
+    expect(text).toContain('F1: a current-controlled current source pushing 3 × the current in Vs from ground into node o3.');
+    expect(text).toContain('H1: a current-controlled voltage source: the voltage at node o4, measured from ground, is 4 V for every amp in Vs.');
+    expect(text).toContain('I1: a 1 mA current source pushing current from ground into node o5.');
     expect(text).toContain('K1: couples L1 and L2 (coupling 0.9).');
-    expect(text).toContain(`Vp: a PULSE voltage source with its + side at p and its ${MINUS} side at ground.`);
+    expect(text).toContain(`Vp: a PULSE voltage source with its + side at node p and its ${MINUS} side at ground.`);
   });
 
   it('describes other parts with their node labels and model', () => {
     const text = sp(describeCircuit(parseNetlist('* t\nD1 a 0 dmod\nQ1 c b 0 qn\nX1 a b amp\n.model dmod D\n.model qn NPN\n.op\n')));
-    expect(text).toContain(`D1: a diode (+ node a, ${MINUS} node ground, model dmod).`);
-    expect(text).toContain('Q1: a bipolar junction transistor (collector c, base b, emitter ground, model qn).');
+    expect(text).toContain(`D1: a diode (+ node a, ${MINUS} node at ground, model dmod).`);
+    expect(text).toContain('Q1: a bipolar junction transistor (collector at node c, base at node b, emitter at ground, model qn).');
     expect(text).toContain('X1: a subcircuit (node a, node b, subcircuit amp).');
   });
 
@@ -135,29 +135,29 @@ describe('describeResults: node voltages and currents', () => {
 
   it('gives every current its direction from SPICE\'s sign, and each source its power (C1–C5)', () => {
     expect(words.currents.map((c) => [c.name, sp(c.text), c.from, c.to, c.ammeter, sp(c.power?.text)])).toEqual([
-      ['Itest', '1 A from 0 to a through Itest', '0', 'a', false, 'Itest delivers 14 W'],
-      ['Vx', 'Vx measures 1 A flowing from a to x', 'a', 'x', true, ''],
-      ['R2', '1 A from x to n1 through R2', 'x', 'n1', false, ''],
-      ['R1', '3 A from n1 to 0 through R1', 'n1', '0', false, ''],
-      ['F1', '2 A from 0 to n1 through F1', '0', 'n1', false, 'F1 delivers 24 W'],
+      ['Itest', '1 A from ground to node a through Itest', '0', 'a', false, 'Itest delivers 14 W'],
+      ['Vx', 'Vx measures 1 A flowing from node a to node x', 'a', 'x', true, ''],
+      ['R2', '1 A from node x to node n1 through R2', 'x', 'n1', false, ''],
+      ['R1', '3 A from node n1 to ground through R1', 'n1', '0', false, ''],
+      ['F1', '2 A from ground to node n1 through F1', '0', 'n1', false, 'F1 delivers 24 W'],
     ]);
     expect(words.currents[0]).toMatchObject({ element: 'itest', line: 2, value: 1 });
-    expect(words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from n1 to ground through R1');
-    expect(words.currents.find((c) => c.name === 'R2')?.speech).toBe('1 amp flows from x to n1 through R2');
-    expect(words.currents.find((c) => c.name === 'Vx')?.speech).toBe('Vx measures 1 amp flowing from a to x');
+    expect(words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from node n1 to ground through R1');
+    expect(words.currents.find((c) => c.name === 'R2')?.speech).toBe('1 amp flows from node x to node n1 through R2');
+    expect(words.currents.find((c) => c.name === 'Vx')?.speech).toBe('Vx measures 1 amp flowing from node a to node x');
     expect(words.currents.find((c) => c.name === 'F1')?.power).toMatchObject({ watts: 24, delivers: true, speech: 'F1 delivers 24 watts' });
   });
 
   it('writes the live summary', () => {
-    expect(sp(words.summary)).toBe('Simulation finished: a = 14 V, x = 14 V, n1 = 12 V; 5 currents. Open the results for details.');
+    expect(sp(words.summary)).toBe('Simulation finished: node a = 14 V, node x = 14 V, node n1 = 12 V; 5 currents. Open the results for details.');
   });
 
   it('a voltage source that delivers power reads negative; one that absorbs reads positive (C1, C2)', () => {
     const n = parseNetlist('* t\nV1 a 0 6\nV2 b 0 12\nR1 b a 3\n.op\n');
     const w = describeResults(n, op({ a: 6, b: 12 }, [['v1', 2, 'branch'], ['v2', -2, 'branch']]), run());
     expect(w.currents.map((c) => [sp(c.text), sp(c.power?.text)])).toEqual([
-      ['2 A from a to 0 through V1', 'V1 absorbs 12 W'],
-      ['2 A from 0 to b through V2', 'V2 delivers 24 W'],
+      ['2 A from node a to ground through V1', 'V1 absorbs 12 W'],
+      ['2 A from ground to node b through V2', 'V2 delivers 24 W'],
     ]);
   });
 
@@ -184,7 +184,7 @@ describe('describeResults: node voltages and currents', () => {
   it('a 0 V source with no current measures no current, and a source written without a value is an ammeter too (P16)', () => {
     const n = parseNetlist('* t\nV1 a 0 6\nVx a b\nR1 b 0 2\nVy a c 0\n.op\n');
     const w = describeResults(n, op({ a: 6, b: 6, c: 6 }, [['vx', 3, 'branch'], ['vy', 0, 'branch']]), run());
-    expect(w.currents.map((c) => sp(c.text))).toEqual(['Vx measures 3 A flowing from a to b', 'Vy measures no current']);
+    expect(w.currents.map((c) => sp(c.text))).toEqual(['Vx measures 3 A flowing from node a to node b', 'Vy measures no current']);
   });
 
   it('nodes the netlist does not name get no colour, and "gnd" is skipped like the editor does', () => {
@@ -211,11 +211,11 @@ describe('describeResults: .tf', () => {
     const tf = w.tf!;
     expect(tf).toMatchObject({ output: 'v(a)', input: 'V1', ratio: 'V/V' });
     expect(sp(tf.transferFunction?.text)).toBe('v(a)/V1 = 0.3333 (V/V)');
-    expect(tf.transferFunction?.speech).toBe('the transfer function from V1 to the voltage at a is 0.3333 volts per volt');
+    expect(tf.transferFunction?.speech).toBe('the transfer function from V1 to the voltage at node a is 0.3333 volts per volt');
     expect(sp(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
     expect(tf.inputResistance?.speech).toBe('the input resistance seen by V1 is 9 ohms');
-    expect(sp(tf.outputResistance?.text)).toBe('output resistance at a: 4 Ω, the Thevenin resistance seen at a (ngspice calls it the output impedance)');
-    expect(sp(w.summary)).toBe('Simulation finished: transfer function v(a)/V1 = 0.3333 (V/V); input resistance seen by V1: 9 Ω; output resistance at a: 4 Ω. Open the results for details.');
+    expect(sp(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thevenin resistance seen at node a (ngspice calls it the output impedance)');
+    expect(sp(w.summary)).toBe('Simulation finished: transfer function v(a)/V1 = 0.3333 (V/V); input resistance seen by V1: 9 Ω; output resistance at node a: 4 Ω. Open the results for details.');
   });
 
   it('a current output: ngspice\'s 1e20 Ω is not called a resistance (A5)', () => {
@@ -229,8 +229,8 @@ describe('describeResults: .tf', () => {
   it('a differential output, and a current-source input in V/A (A4)', () => {
     const w = describeResults(parseNetlist('* t\nI1 0 a 1\nR1 a b 4\nR2 b 0 2\n.tf v(a,b) I1\n'), tfResults(1, { at: 'v(a,b)', value: 3 }, { source: 'i1', value: 6 }), run());
     expect(w.tf?.ratio).toBe('V/A');
-    expect(w.tf?.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at a and b is 1 volt per amp, which is an ohm');
-    expect(sp(w.tf?.outputResistance?.text)).toContain('output resistance between a and b: 3 Ω');
+    expect(w.tf?.transferFunction?.speech).toBe('the transfer function from I1 to the voltage between node a and node b is 1 volt per amp, which is an ohm');
+    expect(sp(w.tf?.outputResistance?.text)).toContain('output resistance between node a and node b: 3 Ω');
   });
 
   it('warns when the .tf output node is not in the circuit (A6)', () => {
@@ -252,7 +252,7 @@ describe('describeResults: sweeps', () => {
     const w = describeResults(n, { dc: sweep('v(v-sweep)', 'V', v, [['v(out)', 'V', v.map((x) => (2 * x) / 3)], ['i(v1)', 'A', v.map((x) => -x / 3000)]]), other: [] }, run());
     expect(w.sweeps).toHaveLength(1);
     expect(sp(w.sweeps[0]!.text)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. At V1 = 12 V: v(out) = 8 V, i(v1) = −4 mA.');
-    expect(sp(w.sweeps[0]!.speech)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. When V1 is 12 volts: the voltage at out is 8 volts, the current in V1 is minus 4 milliamps.');
+    expect(sp(w.sweeps[0]!.speech)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. When V1 is 12 volts: the voltage at node out is 8 volts, the current in V1 is minus 4 milliamps.');
     expect(w.sweeps[0]!.final.map((f) => [f.name, f.value])).toEqual([['v(out)', 8], ['i(v1)', -0.004]]);
     expect(w.summary).toBe('Simulation finished: a DC sweep of 13 points. Open the results for details.');
   });
@@ -267,7 +267,7 @@ describe('describeResults: sweeps', () => {
     const n = parseNetlist('* T1\nV1 in 0 PULSE(0 5 0 1u 1u 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 10u 5m\n');
     const w = describeResults(n, { tran: sweep('time', 's', [0, 0.001, 0.005], [['v(out)', 'V', [0, 3.16, 4.966]], ['i(@c1[i])', 'A', [0, 1e-3, 3.4e-5]]]), other: [] }, run());
     expect(sp(w.sweeps[0]!.text)).toBe('Transient from 0 s to 5 ms: 3 time points. At 5 ms: v(out) = 4.966 V, i(@c1[i]) = 34 µA.');
-    expect(w.sweeps[0]!.speech).toContain('At 5 milliseconds: the voltage at out is 4.966 volts, the current in C1 is 34 microamps.');
+    expect(w.sweeps[0]!.speech).toContain('At 5 milliseconds: the voltage at node out is 4.966 volts, the current in C1 is 34 microamps.');
   });
 
   it('other analyses are counted, not described', () => {
@@ -356,7 +356,7 @@ describe('describeResults: messages and status', () => {
       run({ diagnostics: [diag('resistor-too-small', 'Warning: Value of resistor r1 is too small, set to 1.000000e-12', { severity: 'warning', subject: 'r1' })] }),
     );
     expect(w.status).toBe('ok');
-    expect(sp(w.summary)).toBe('Simulation finished: a = 6 V, b = 6 V; 1 current. 1 warning: R1 is too small for ngspice. Open the results for details.');
+    expect(sp(w.summary)).toBe('Simulation finished: node a = 6 V, node b = 6 V; 1 current. 1 warning: R1 is too small for ngspice. Open the results for details.');
   });
 });
 
@@ -364,11 +364,11 @@ describe('annotateLines', () => {
   it('F5: one short note per part line', () => {
     const n = parseNetlist(F5);
     expect(annotateLines(n, F5_RESULTS).map((a) => [a.line, sp(a.text), a.speech])).toEqual([
-      [2, '1 A, 0 → a, delivers 14 W', '1 amp flows from ground to a; delivers 14 watts'],
-      [3, '1 A, a → x', 'measures 1 amp flowing from a to x'],
-      [4, '1 A, x → n1', '1 amp flows from x to n1'],
-      [5, '3 A, n1 → 0', '3 amps flow from n1 to ground'],
-      [6, '2 A, 0 → n1, delivers 24 W', '2 amps flow from ground to n1; delivers 24 watts'],
+      [2, '1 A, 0 → a, delivers 14 W', '1 amp flows from ground to node a; delivers 14 watts'],
+      [3, '1 A, a → x', 'measures 1 amp flowing from node a to node x'],
+      [4, '1 A, x → n1', '1 amp flows from node x to node n1'],
+      [5, '3 A, n1 → 0', '3 amps flow from node n1 to ground'],
+      [6, '2 A, 0 → n1, delivers 24 W', '2 amps flow from ground to node n1; delivers 24 watts'],
     ]);
   });
 
@@ -512,7 +512,7 @@ describe('the app reviews of 10 Nov 2026', () => {
   it('parts after a plain .end are in the results, as ngspice builds them; not after .end;… (words review M6)', () => {
     const results = op({ a: 6 }, [['v1', -6, 'branch'], ['r1', 3, 'device'], ['r2', 3, 'device']]);
     const after = describeResults(parseNetlist('* t\nV1 a 0 6\nR1 a 0 2\n.op\n.end\nR2 a 0 2\n'), results, run());
-    expect(after.currents.map((c) => sp(c.text))).toEqual(['6 A from 0 to a through V1', '3 A from a to 0 through R1', '3 A from a to 0 through R2']);
+    expect(after.currents.map((c) => sp(c.text))).toEqual(['6 A from ground to node a through V1', '3 A from node a to ground through R1', '3 A from node a to ground through R2']);
     expect(annotateLines(parseNetlist('* t\nV1 a 0 6\nR1 a 0 2\n.op\n.end\nR2 a 0 2\n'), results, run()).map((a) => a.line)).toEqual([2, 3, 6]);
     const glued = describeResults(parseNetlist('* t\nV1 a 0 6\nR1 a 0 2\n.op\n.end;x\nR2 a 0 2\n'), results, run());
     expect(glued.currents.map((c) => c.name)).toEqual(['V1', 'R1']);
@@ -547,8 +547,8 @@ describe('the app reviews of 10 Nov 2026', () => {
 
   it('writes the spoken summary with units in words (a11y review F11, words review m10)', () => {
     const w = describeResults(parseNetlist(F5), F5_RESULTS, run());
-    expect(sp(w.summary)).toBe('Simulation finished: a = 14 V, x = 14 V, n1 = 12 V; 5 currents. Open the results for details.');
-    expect(w.summarySpeech).toBe('Simulation finished: a is 14 volts, x is 14 volts, n1 is 12 volts; 5 currents. Open the results for details.');
+    expect(sp(w.summary)).toBe('Simulation finished: node a = 14 V, node x = 14 V, node n1 = 12 V; 5 currents. Open the results for details.');
+    expect(w.summarySpeech).toBe('Simulation finished: node a is 14 volts, node x is 14 volts, node n1 is 12 volts; 5 currents. Open the results for details.');
   });
 
   it('says "an 8 Ω resistor" and "an 11 kΩ resistor", but "a 1.5 kΩ resistor" (words review m12)', () => {
@@ -565,7 +565,7 @@ describe('the app reviews of 10 Nov 2026', () => {
     const results: AnalysisResults = { dc: { scale: { name: 'temp-sweep', values, unit: '°C' }, series: [{ name: 'v(a)', values: new Float64Array([1, 1, 1]), unit: 'V' }] }, other: [] };
     const s = describeResults(n, results, run()).sweeps[0]!;
     expect(sp(s.text)).toBe('DC sweep of the temperature from 0 °C to 100 °C in steps of 50 °C: 3 points. At 100 °C: v(a) = 1 V.');
-    expect(s.speech).toContain('At 100 degrees Celsius: the voltage at a is 1 volt.');
+    expect(s.speech).toContain('At 100 degrees Celsius: the voltage at node a is 1 volt.');
   });
 
   it('writes ngspice\'s 1e20 Ω stand-in and other numbers beyond the prefixes with an exponent (words review m1)', () => {
@@ -583,5 +583,22 @@ describe('a very long netlist', () => {
     expect(words).toContain('301 parts and 1 node besides ground (a).');
     expect(words).toContain(`And ${301 - DESCRIBED_PARTS} more parts.`);
     expect(words).not.toContain('R299:');
+  });
+});
+
+describe('after the final reviews (12 November 2026)', () => {
+  it('names a node "node in" in its sentences, as the editor does; ground stays "ground" (words review W8)', () => {
+    const n = parseNetlist('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\nG1 0 out in 0 1m\n.op\n.end\n');
+    const overview = sp(describeCircuit(n));
+    expect(overview).toContain(`V1: a 6 V source with its + side at node in and its ${MINUS} side at ground.`);
+    expect(overview).toContain('R1: a 1 kΩ resistor between node in and node out.');
+    expect(overview).toContain('G1: a voltage-controlled current source pushing 1 mA for every volt at node in, from ground into node out.');
+    const w = describeResults(n, op({ in: 6, out: 4 }, [['v1', -0.002, 'branch'], ['r1', 0.002, 'device'], ['r2', 0.002, 'device'], ['g1', 0.006, 'device']]), run());
+    expect(w.summarySpeech).toBe('Simulation finished: node in is 6 volts, node out is 4 volts; 4 currents. Open the results for details.');
+    expect(sp(w.summary)).toBe('Simulation finished: node in = 6 V, node out = 4 V; 4 currents. Open the results for details.');
+    expect(sp(w.currents.find((c) => c.name === 'R2')!.text)).toBe('2 mA from node out to ground through R2');
+    expect(w.currents.find((c) => c.name === 'R1')!.speech).toBe('2 milliamps flow from node in to node out through R1');
+    // The short note at the end of a netlist line is a note, not a sentence: it keeps the bare names.
+    expect(sp(annotateLines(n, op({ in: 6, out: 4 }, [['v1', -0.002, 'branch'], ['r1', 0.002, 'device']])).find((a) => a.line === 3)?.text)).toBe('2 mA, in → out');
   });
 });
