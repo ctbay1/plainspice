@@ -174,7 +174,10 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   o)". On .ic, .save and .print lines such a voltage is said in words ("the voltage at node out
   (written with a zero-width space in it) starts at 1 V"), and the .tf formula leaves the character
   out, the words after it naming it (in the summary, the box on the paper and the Numbers panel's .tf
-  table, which wrote "v(ou<ZWSP>t)" until the critic of the fix). A name all in another alphabet (α) or with a Turkish letter is
+  table, which wrote "v(ou<ZWSP>t)" until the critic of the fix). So does the card's formula, "V(in) −
+  V(out) = 2 V", whose spoken form names it after the formula ("V(in) minus V(out) is 2 volts, where out
+  is node out (written with a zero-width space in it)") unless the words before it, "node … is higher",
+  name it already (critic of the fix: a screen reader heard V(out), the node it is not). A name all in another alphabet (α) or with a Turkish letter is
   meant as written, and not named. The .tf check keeps an error on a name that is a node of the
   circuit but for such a character, as on any node no part connects to: ngspice's numbers for it are a
   transfer function of 0 and an output impedance of 1 Ω (tf-problems-8), so the run is "Not reliable"

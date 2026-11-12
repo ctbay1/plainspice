@@ -442,6 +442,26 @@ describe('S11: a character in a node name that is not what it looks like is name
     expect(across.speech.match(/written with/g)).toHaveLength(1);
   }, 30000);
 
+  it('the card\'s formula never hides it: "V(in) − V(out) = 2 V", and the speech names it after "V(in) minus V(out)" (critic of the fix)', async () => {
+    // Native ngspice 47 and 42: in = 6 V, ou___t = 4 V.
+    const text = `* zw divider\nV1 in 0 6\nR1 in ou${ZW}t 1k\nR2 ou${ZW}t 0 2k\n.op\n.end\n`;
+    const s = buildSchematic(text, NOTEBOOK_OPTIONS);
+    const solution = await solve(text, await engine);
+    const card = (name: string) => {
+      const part = s.circuit.parts.find((p) => p.name === name)!;
+      const state: CardState = { key: part.key, start: part.valueText, input: part.valueText, before: undefined, session: 1, kept: part.valueText };
+      return cardContent(part, state, s, solution, text).readouts.find((r) => r.tone === 'voltage')!;
+    };
+    const r1 = card('R1');
+    expect(sp(r1.sub?.join(' | '))).toBe('node in is higher | V(in) − V(out) = 2 V');
+    expect(r1.speech).toBe('2 volts across R1, node in is higher. V(in) minus V(out) is 2 volts, where out is node out (written with a zero-width space in it)');
+    // On the higher end the "is higher" words name it already: once.
+    const r2 = card('R2');
+    expect(sp(r2.sub?.join(' | '))).toBe('node out (written with a zero-width space in it) is higher | V(out) − V(0) = 4 V');
+    expect(r2.speech.match(/written with/g)).toHaveLength(1);
+    for (const r of [r1, r2]) expect([...(r.sub ?? []), r.speech].filter((w) => INVISIBLE.test(w))).toEqual([]);
+  }, 30000);
+
   it('the overview and the results\' words name it too: "node out (written with a zero-width space in it)"', () => {
     const n = parseNetlist(ZW_BOTH);
     expect(describeCircuit(n)).toContain('3 nodes besides ground (in, out, out (written with a zero-width space in it))');

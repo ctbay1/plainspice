@@ -11,7 +11,9 @@
  * Plain TypeScript.
  */
 import { formatSI, speakSI } from '../format/si.ts';
+import { withoutInvisible } from '../spice/characters.ts';
 import { DESCRIBE_STRINGS as S, sentenceNode, type CurrentWords } from '../spice/describe.ts';
+import { nodeNameInWords } from '../spice/explain.ts';
 
 const MARK = '\u0000';
 
@@ -48,7 +50,7 @@ export interface AcrossWords {
   text: string;
   /** The end that is higher, by name ("a"; "ground"), or undefined when the two ends are level. */
   higher?: string;
-  /** SPICE's signed difference, as the netlist writes the nodes: "V(0) − V(a) = −24 V". */
+  /** SPICE's signed difference, as the netlist writes the nodes: "V(0) − V(a) = −24 V" (never with an invisible character: S11). */
   signed: string;
   /** All of it for screen readers. */
   speech: string;
@@ -72,16 +74,25 @@ const MINUS = '−';
 export const ACROSS_STRINGS = {
   across: 'across it',
   higher: (node: string): string => `${node} is higher`,
+  /** After the spoken formula, a name in it that is not what it looks like (S11): "where out is node out (written with a zero-width space in it)". */
+  where: (name: string, node: string): string => `where ${name} is ${node}`,
 } as const;
 
 /** The voltage across a part: its size, which end is higher, and SPICE's signed V(a) − V(b). */
 export function acrossWords(p: AcrossInput): AcrossWords {
   const d = p.v[0] - p.v[1];
   const text = formatSI(Math.abs(d), 'V');
-  const signed = `V(${p.written[0]}) ${MINUS} V(${p.written[1]}) = ${formatSI(d, 'V')}`;
+  // The formula as written, but never with an invisible character in it, which reads as another name
+  // (S11, as the .tf formula): V(out) for ou<ZWSP>t. Such a name, or one with a look-alike letter, is
+  // said in words after the spoken formula, unless "… is higher" names it already (critic of the fix).
+  const shown = [withoutInvisible(p.written[0]), withoutInvisible(p.written[1])] as const;
+  const signed = `V(${shown[0]}) ${MINUS} V(${shown[1]}) = ${formatSI(d, 'V')}`;
   const level = text === formatSI(0, 'V');
   const higherNode = d > 0 ? p.nodes[0] : p.nodes[1];
   const higher = level ? undefined : nodeWord(higherNode, p.text);
-  const speech = `${speakSI(Math.abs(d), 'V')} across ${p.name}${higher ? `, ${ACROSS_STRINGS.higher(higher)}` : ''}. V(${p.written[0]}) minus V(${p.written[1]}) is ${speakSI(d, 'V')}`;
+  const where = ([0, 1] as const)
+    .filter((i) => nodeNameInWords(p.written[i]) !== p.written[i] && (higher === undefined || p.nodes[i] !== higherNode))
+    .map((i) => ACROSS_STRINGS.where(shown[i], nodeWord(p.nodes[i], p.text)));
+  const speech = `${speakSI(Math.abs(d), 'V')} across ${p.name}${higher ? `, ${ACROSS_STRINGS.higher(higher)}` : ''}. V(${shown[0]}) minus V(${shown[1]}) is ${speakSI(d, 'V')}${where.length ? `, ${where.join(', ')}` : ''}`;
   return higher === undefined ? { text, signed, speech } : { text, higher, signed, speech };
 }
