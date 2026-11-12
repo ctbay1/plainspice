@@ -16,6 +16,7 @@ import { buildGraph, subcircuitLines, UnionFind } from '../../src/spice/graph.ts
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps, looksLikeTypo, TRAP_IDS, type TrapId } from '../../src/spice/traps.ts';
 import type { Trap, TrapSeverity } from '../../src/spice/types.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const traps = (text: string): Trap[] => checkTraps(parseNetlist(text));
@@ -560,22 +561,27 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       for (let i = 0; i < n; i++) out.push(`R${i}a n${i} n${i + 1} 1k`, `R${i}b n${i + 1} 0 ${i % 7 ? '2k' : '2k2'}`);
       return [...out, '.op', '.tran 1u 1m', '.end'].join('\n');
     };
-    const time = (text: string): number => {
-      let best = Number.POSITIVE_INFINITY;
-      for (let k = 0; k < 3; k++) {
-        const t0 = performance.now();
-        const n = parseNetlist(text);
-        checkTraps(n);
-        explainNetlist(n);
-        best = Math.min(best, performance.now() - t0);
-      }
-      return best;
+    const all = (text: string): void => {
+      const n = parseNetlist(text);
+      checkTraps(n);
+      explainNetlist(n);
     };
-    time(ladder(50));
-    const small = time(ladder(100));
-    const large = time(ladder(1000)); // 2004 lines; about 35 ms on a developer machine
+    all(ladder(50));
+    // 2004 lines at once against ten netlists of 204 (about 35 ms of work each): linear work takes about
+    // as long either way, quadratic about ten times as long at once; here at most 3 times (as before: 30
+    // times one netlist of 204). Timed as the work it is, the least of three tries of each in turns
+    // (work-time.ts: on a busy machine the clock counts the wait for a processor, the larger one's most).
+    const [tenSmall, large] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) all(ladder(100));
+        },
+        () => all(ladder(1000)),
+      ],
+      3,
+    );
     expect(large).toBeLessThan(300);
-    expect(large).toBeLessThan(30 * Math.max(small, 1));
+    expect(large).toBeLessThan(3 * tenSmall);
   });
 
   it('stays fast on netlists with thousands of problems (each was quadratic: seconds)', () => {
@@ -722,6 +728,8 @@ describe('robustness', () => {
     'pulse', 'dc', 'level=49', 'nmos', 'd', '{x}', 'é', '\ud800', '\u0000',
   ];
 
+  // About 0.4 s alone (1500 random netlists, every fix applied and checked again); 2.4 s at load 16 on
+  // 4 cores, half of vitest's 5 s: 30 s, as the app's slow tests have.
   it('never throws, keeps spans and fixes inside the text, and sorts by line then column', () => {
     let seed = 20261109;
     const random = (): number => {
@@ -755,17 +763,19 @@ describe('robustness', () => {
         }
       }
     }
-  });
+  }, 30_000);
 
+  // About 45 ms of work here. Timed as the work it is (work-time.ts: the processor time, not the clock,
+  // which on a busy machine counts the wait for a processor: 740 ms by the clock at load 16), the least
+  // of three tries.
   it('checks 10,000 lines in well under a second', () => {
     const lines = ['* ladder', 'V1 n0 0 10'];
     for (let k = 0; k < 5000; k++) lines.push(`R${2 * k + 1} n${k} n${k + 1} 1k`, `R${2 * k + 2} n${k + 1} 0 2k`);
     lines.push('.op', '.end');
     const n = parseNetlist(`${lines.join('\n')}\n`);
-    checkTraps(n);
-    const t0 = performance.now();
     expect(checkTraps(n)).toEqual([]);
-    expect(performance.now() - t0).toBeLessThan(500);
+    const [ms] = leastWorkMs([() => checkTraps(n)], 3);
+    expect(ms).toBeLessThan(500);
   });
 });
 
