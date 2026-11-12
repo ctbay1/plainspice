@@ -86,7 +86,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [unknown-dot-command](#unknown-dot-command) | a dot command ngspice does not know: `.tarn`, `.pss` | error | stops before anything runs |
 | [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
 | [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`) | warning, error | ends the number silently; another node; at the start of a value: stops |
-| [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), a minus sign from a document (`−5`) | warning, error | ignores it like a unit, silently; at the start of a value: stops |
+| [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash from a document (`1e−3`, `−5`) | warning, error | ends the number silently; at the start of a value: stops |
 
 ## mega-as-milli
 
@@ -8017,19 +8017,20 @@ PlainSpice's checks: `invisible-character`.
 
 Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,
 or the fullwidth form of a letter or digit, that looks like the scale letter or digit a value needs:
-the Cyrillic к and м, the Greek κ, the fullwidth ｋ, a minus sign or a dash from a document. ngspice
-writes their bytes as `_` (W16), so it ignores them like a unit, or, when the value starts with one,
+the Cyrillic к and м, the Greek κ, the fullwidth ｋ, the Kelvin sign, a fullwidth digit or full stop,
+a minus sign or a dash from a document. ngspice writes their bytes as `_` (W16), so it stops reading
+the number at them and ignores the rest of the word, like a unit, or, when the value starts with one,
 reads no number and stops. Flagged only when the reading changes once they are written as the letters
 they look like (the Greek mu has a check of its own, greek-mu). Warning, or error when ngspice stops;
 the fix writes the plain letter.
 
 What PlainSpice shows for look-alike-letter-1 (warning, line 3):
 
-> **R1's value is read as 1 Ω, not 1 kΩ.** This Cyrillic letter к, which looks like k: SPICE knows only the plain letter, so it ignores this one like a unit. Write 1k.
+> **R1's value is read as 1 Ω, not 1 kΩ.** The value has the Cyrillic letter к, which looks like k. SPICE knows only the plain letter k, so it ignores this one like a unit. Write 1k.
 >
-> *ngspice:* ngspice ignores the Cyrillic letter к like a unit, without a message: it reads 1 Ω. [look-alike-letter-1]
+> *ngspice:* ngspice stops reading the number at the Cyrillic letter к, without a message: it reads 1 Ω. [look-alike-letter-1]
 >
-> *Fixes:* "Write 1k (1 kΩ)"
+> *Fixes:* "Write 1k (1 kΩ)"
 
 What PlainSpice shows for look-alike-letter-2 (error, line 2):
 
@@ -8038,6 +8039,14 @@ What PlainSpice shows for look-alike-letter-2 (error, line 2):
 > *ngspice:* ngspice stops: 'unknown parameter (___5)'. [look-alike-letter-2]
 >
 > *Fixes:* "Write -5 (−5 V)"
+
+What PlainSpice shows for look-alike-letter-3 (warning, line 9):
+
+> **R4's value is read as 1 Ω, not 1 mΩ.** The value has a minus sign (U+2212), which looks like -. SPICE knows only the plain - sign, so it ignores this one like a unit, and the 3 after it. Write 1e-3.
+>
+> *ngspice:* ngspice stops reading the number at the minus sign (U+2212), without a message: it reads 1 Ω. [look-alike-letter-3]
+>
+> *Fixes:* "Write 1e-3 (1 mΩ)"
 
 ### look-alike-letter-1. к (Cyrillic), κ (Greek) and ｋ (fullwidth) are not k, and м (Cyrillic) is not m: ngspice ignores them
 
@@ -8107,3 +8116,37 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `look-alike-letter`.
+
+### look-alike-letter-3. Nor are the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash what they look like: 1K, 1０k, 1．5k, 1e−3 and 1e–3 are all 1 Ω
+
+```spice
+* a Kelvin sign, a fullwidth digit and full stop, a minus sign and a dash in values
+I1 0 n1 1
+R1 n1 0 1K
+I2 0 n2 1
+R2 n2 0 1０k
+I3 0 n3 1
+R3 n3 0 1．5k
+I4 0 n4 1
+R4 n4 0 1e−3
+I5 0 n5 1
+R5 n5 0 1e–3
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n5                               1.000000e+00
+        n4                               1.000000e+00
+        n3                               1.000000e+00
+        n2                               1.000000e+00
+        n1                               1.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1, v(n2) = 1, v(n3) = 1, v(n4) = 1, v(n5) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(n1) = 1, v(n2) = 1, v(n3) = 1, v(n4) = 1, v(n5) = 1
+```
+
+PlainSpice's checks: `look-alike-letter` (five times).

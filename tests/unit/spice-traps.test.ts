@@ -816,6 +816,34 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5​m\n.end\n', 'invisible-character').title).toBe('This value is read as 5, not 0.005');
   });
 
+  it('says a look-alike in whole sentences, whatever it looks like, and cites the run that shows it (security review F2; look-alike-letter-1, -3)', () => {
+    const cases: [netlist: string, why: string, ngspice: string][] = [
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\u043a\n.op\n.end\n',
+        'The value has the Cyrillic letter \u043a, which looks like k. SPICE knows only the plain letter k, so it ignores this one like a unit. Write 1k.',
+        'ngspice stops reading the number at the Cyrillic letter \u043a, without a message: it reads 1\u00a0Ω. [look-alike-letter-1]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1e\u22123\n.op\n.end\n',
+        'The value has a minus sign (U+2212), which looks like -. SPICE knows only the plain - sign, so it ignores this one like a unit, and the 3 after it. Write 1e-3.',
+        'ngspice stops reading the number at the minus sign (U+2212), without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1e\u20133\n.op\n.end\n',
+        'The value has a dash (U+2013), which looks like -. SPICE knows only the plain - sign, so it ignores this one like a unit, and the 3 after it. Write 1e-3.',
+        'ngspice stops reading the number at the dash (U+2013), without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\uff10k\n.op\n.end\n',
+        'The value has the fullwidth digit \uff10, which looks like 0. SPICE knows only the plain digit 0, so it ignores this one like a unit, and the k after it. Write 10k.',
+        'ngspice stops reading the number at the fullwidth digit \uff10, without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\uff0e5k\n.op\n.end\n',
+        'The value has the fullwidth sign \uff0e, which looks like a decimal point. SPICE knows only the plain decimal point, so it ignores this one like a unit, and the 5k after it. Write 1.5k.',
+        'ngspice stops reading the number at the fullwidth sign \uff0e, without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\u212a\n.op\n.end\n',
+        'The value has the Kelvin sign \u212a (U+212A), which looks like K. SPICE knows only the plain letter K, so it ignores this one like a unit. Write 1K.',
+        'ngspice stops reading the number at the Kelvin sign \u212a (U+212A), without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+    ];
+    for (const [netlist, why, ngspice] of cases) {
+      const t = first(netlist, 'look-alike-letter');
+      expect(t.why).toBe(why);
+      expect(t.ngspice).toBe(ngspice);
+    }
+  });
+
   it('a node name with an invisible character: no "Rename out to out", and no dangling-node notes for the two names (security review F2)', () => {
     const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n';
     const found = traps(text);

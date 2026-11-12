@@ -180,7 +180,7 @@ export const EXPLAIN_STRINGS = {
     `The Greek letter μ is not a scale letter, so ngspice ignores it and everything after it in ${text}. For micro, write u.`,
   unitsIgnoredNote: (letters: string): string => `ngspice ignores '${letters}' after the number. Don't type units after numbers.`,
   // Security review F2: a character that is not what it looks like is named, never shown in quotes
-  // (invisible-character-1, -4, look-alike-letter-1).
+  // (invisible-character-1, -4, look-alike-letter-1, -3).
   oddIgnored: (what: string, after: string): string => (after ? `${what}${what.includes(', which') ? ',' : ''} and the '${after}' after it are ignored` : `${what}${what.includes(', which') ? ',' : ''} is ignored`),
   invisibleNote: (what: string, clean: string): string =>
     `${what}, a character you cannot see, ends the number here, so ngspice ignores it and everything after it. Delete it: write ${clean}.`,

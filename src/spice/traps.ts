@@ -17,7 +17,7 @@
  * skips the DC operating point).
  */
 import { formatNumber, formatSI, speakSI } from '../format/si.ts';
-import { cleanWord, describeCharacter, hasInvisible, INVISIBLE, isPlainName, nameOfCharacter, plainLetters, withoutInvisible } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, INVISIBLE, isPlainName, lookAlikeOf, nameOfCharacter, plainLetters, withoutInvisible } from './characters.ts';
 import { isKnownDotCommand, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -477,7 +477,8 @@ const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
  * A value with an invisible character or a letter from another alphabet in it (security review F2):
  * ngspice reads bytes, so an invisible character ends the number and the rest of the word is ignored
  * (1<zero-width space>k is 1 Ω: invisible-character-1, -2), and к, κ, ｋ or м is no scale letter (1к is
- * 1, look-alike-letter-1); a word that starts with one is no number at all, and ngspice stops
+ * 1, look-alike-letter-1), nor is the Kelvin sign, a fullwidth digit or full stop, a minus sign or a
+ * dash what it looks like (look-alike-letter-3); a word that starts with one is no number at all, and ngspice stops
  * (invisible-character-5, look-alike-letter-2). Flagged only when the reading changes once the
  * invisible characters are removed and the look-alikes written as the letters they look like, so 1kΩ,
  * or a zero-width space after the scale letter, is no trap (invisible-character-4). The Greek mu and
@@ -509,13 +510,21 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const at = [...t.text].indexOf(ch);
   const before = withoutInvisible([...t.text].slice(0, at).join(''));
   const after = cleanWord([...t.text].slice(at + 1).join('')).clean;
+   // A look-alike: what it looks like ("the plain letter k", "the plain - sign"), the character as
+  // "the ..." ("the minus sign (U+2212)"), and the claim: letters from other alphabets are
+  // look-alike-letter-1; the Kelvin sign, fullwidth digits and signs, minus signs and dashes, -3.
+  const like = lookAlikeOf(ch) ?? '';
+  const isLetter = /[A-Za-z]/.test(like);
+  const plain = /\d/.test(like) ? `the plain digit ${like}` : isLetter ? `the plain letter ${like}` : like === '.' ? 'the plain decimal point' : `the plain ${like} sign`;
+  const the = what.replace(/, which looks like .*$/, '').replace(/^an? /, 'the ');
+  const claim = isLetter && /[\u0370-\u04ff\uff21-\uff3a\uff41-\uff5a]/.test(ch) ? 'look-alike-letter-1' : 'look-alike-letter-3';
   add(c, id, 'warning', t, `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
     hidden
       ? `${capital(what)} sits between ${before} and ${after}: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the ${after} after it does not count. Write ${clean}.`
-      : `This ${what.replace(/^the /, '')}: SPICE knows only the plain letter, so it ignores this one like a unit${after ? `, and the ${after} after it` : ''}. Write ${clean}.`,
+      : `The value has ${what}. SPICE knows only ${plain}, so it ignores this one like a unit${after ? `, and the ${after} after it` : ''}. Write ${clean}.`,
     hidden
       ? `ngspice stops reading the number at the ${nameOfCharacter(ch)!.replace(/^an? /, '').replace(/ \(U\+[0-9A-F]+\)$/, '')} and ignores the rest of the word, without a message: it reads ${shown(read.value)}. [invisible-character-1, invisible-character-2]`
-      : `ngspice ignores the ${what.replace(/^the /, '').replace(/, which looks like .*$/, '')} like a unit, without a message: it reads ${shown(read.value)}. [look-alike-letter-1]`,
+      : `ngspice stops reading the number at ${the}, without a message: it reads ${shown(read.value)}. [${claim}]`,
     fixes);
 }
 

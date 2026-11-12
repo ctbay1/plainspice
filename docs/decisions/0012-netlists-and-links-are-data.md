@@ -61,3 +61,6 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   character: they name it ("a zero-width space (U+200B)"), in the checks and in Explain, and the
   netlist editor shows it as a dot with that name (CodeMirror's highlightSpecialChars, with the set
   above added). ngspice's own messages are quoted with its spelling ("unknown parameter (y__k)").
+  What the checks say of each kind was run: letters from other alphabets (look-alike-letter-1), and
+  the Kelvin sign, fullwidth digits and full stop, minus signs and dashes (look-alike-letter-3), each
+  said in a whole sentence ("The value has a minus sign (U+2212), which looks like -.").

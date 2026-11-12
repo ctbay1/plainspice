@@ -54,7 +54,7 @@ ngspice 47 and 42, and our engine) on 12 November 2026 and asserted by the same 
 (a current that is 0 can come out as rounding noise; ngspice's current tolerance abstol is 1 pA) in
 explanations.md; W16, W17, W18 (each byte of a letter outside ASCII in a name becomes `_`, so two
 names can become one) in numbers-and-syntax.md; and in traps.md non-ascii-node-1, -2,
-duplicate-name-3, invisible-character-1 to -5, look-alike-letter-1, -2, unknown-word-12 and
+duplicate-name-3, invisible-character-1 to -5, look-alike-letter-1 to -3, unknown-word-12 and
 space-before-suffix-16, -17. drawing-1 is now relied on by Explain too.
 
 ## Where the evidence came from

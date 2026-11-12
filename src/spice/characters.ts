@@ -101,7 +101,7 @@ const SCRIPT_NAMES: readonly [RegExp, string][] = [
 /**
  * A character in plain words, never the character itself where it would be invisible:
  * "a zero-width space (U+200B)", "the Cyrillic letter к, which looks like k", "a minus sign (U+2212),
- * which looks like -".
+ * which looks like -", "the fullwidth sign ．, which looks like a decimal point".
  */
 export function describeCharacter(ch: string): string {
   const code = `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
@@ -110,7 +110,7 @@ export function describeCharacter(ch: string): string {
   const like = LOOK_ALIKES[ch];
   if (!like) return `the character ${ch} (${code})`;
   const script = SCRIPT_NAMES.find(([re]) => re.test(ch))?.[1];
-  if (script === 'fullwidth') return `the fullwidth ${/\d/.test(like) ? 'digit' : /[A-Za-z]/.test(like) ? 'letter' : 'sign'} ${ch}, which looks like ${like}`;
+  if (script === 'fullwidth') return `the fullwidth ${/\d/.test(like) ? 'digit' : /[A-Za-z]/.test(like) ? 'letter' : 'sign'} ${ch}, which looks like ${like === '.' ? 'a decimal point' : like}`;
   if (script) return `the ${script} letter ${ch}, which looks like ${like}`;
   if (ch === 'K') return `the Kelvin sign ${ch} (${code}), which looks like K`;
   return `${ch === '−' ? 'a minus sign' : 'a dash'} (${code}), which looks like ${like}`;

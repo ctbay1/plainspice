@@ -262,6 +262,7 @@ const FACTS: Fact[] = [
   { code: 'invisible-character-5', netlist: "* a zero-width space before a resistor value\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 ​2k\n.op\n.end\n", prints: ["unknown parameter (___2k)"], fails: true, traps: ['invisible-character'] },
   { code: 'look-alike-letter-1', netlist: "* letters that look like k and m\nI1 0 n1 1\nR1 n1 0 1к\nI2 0 n2 1\nR2 n2 0 1κ\nI3 0 n3 1\nR3 n3 0 1ｋ\nI4 0 n4 1\nR4 n4 0 2м\n.op\n.end\n", vectors: { "v(n1)": 1, "v(n2)": 1, "v(n3)": 1, "v(n4)": 2 }, traps: ['look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter'] },
   { code: 'look-alike-letter-2', netlist: "* a minus sign copied from a document on a voltage source\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n", prints: ["unknown parameter (___5)"], fails: true, traps: ['look-alike-letter'] },
+  { code: 'look-alike-letter-3', netlist: "* a Kelvin sign, a fullwidth digit and full stop, a minus sign and a dash in values\nI1 0 n1 1\nR1 n1 0 1\u212a\nI2 0 n2 1\nR2 n2 0 1\uff10k\nI3 0 n3 1\nR3 n3 0 1\uff0e5k\nI4 0 n4 1\nR4 n4 0 1e\u22123\nI5 0 n5 1\nR5 n5 0 1e\u20133\n.op\n.end\n", vectors: { "v(n1)": 1, "v(n2)": 1, "v(n3)": 1, "v(n4)": 1, "v(n5)": 1 }, traps: ['look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
