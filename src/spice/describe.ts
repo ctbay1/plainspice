@@ -16,8 +16,9 @@
 import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../engine/results.ts';
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { withoutInvisible } from './characters.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
@@ -203,9 +204,11 @@ const GROUND_LIKE = /^(gnd|ground|00)$/i;
 /**
  * A node's name for the sentences: ground ("0") is "ground"; an ordinary node named like ground is
  * quoted, as Explain quotes it, so 'node "ground"' never reads as ground (words review W8, critic of
- * its fix). The templates above read "ground" as ground, as the drawing's and the cards' words pass it.
+ * its fix); a character in the name that is not what it looks like is named, never shown hidden in it
+ * ("out (written with a zero-width space in it)", S11), as Explain names it. The templates above read
+ * "ground" as ground, as the drawing's and the cards' words pass it.
  */
-const said = (n: string): string => (n === '0' ? 'ground' : GROUND_LIKE.test(n) ? `"${n}"` : n);
+const said = (n: string): string => (n === '0' ? 'ground' : GROUND_LIKE.test(n) ? `"${n}"` : nodeNameInWords(n));
 /** said, for the other modules that build sentences from these templates (the drawing's, the cards'). */
 export const sentenceNode = said;
 
@@ -698,8 +701,14 @@ function analysisPhrase(netlist: Netlist, r: AnalysisReading): string {
   switch (r.kind) {
     case 'op':
       return S.opName;
-    case 'tf':
-      return S.tfName(r.output, r.input?.text ?? '?');
+    case 'tf': {
+      // A node whose name has a character that is not what it looks like is said in words, the character
+      // named (S11), never as "v(out)", which reads as another node.
+      const [a, b] = r.outputNodes.map((n) => said(n.ground ? '0' : n.token.text));
+      const odd = r.outputNodes.some((n) => nodeNameInWords(n.token.text) !== n.token.text);
+      const out = !odd || a === undefined ? r.output : b === undefined ? S.voltageOf(a) : S.voltageBetween(a, b);
+      return S.tfName(out, r.input?.text ?? '?');
+    }
     case 'dc': {
       const sweeps = r.sweeps.map((s) => S.dcSweep(sweepName(s), sweepValue(s, s.startValue, s.start?.text), sweepValue(s, s.stopValue, s.stop?.text), sweepValue(s, s.stepValue, s.step?.text)));
       return S.dcName(sweeps.join(' and '), r.points !== undefined ? S.points(r.points) : '');
@@ -742,7 +751,7 @@ export function describeCircuit(netlist: Netlist): string {
   const parts = partsOf(netlist);
   const out: string[] = [];
   const nodes = [...netlist.nodes.values()].filter((n) => !n.ground && n.connections.length > 0);
-  // The names as the results' words say them (S7), a name like ground quoted.
+  // The names as the results' words say them (S7), a name like ground quoted and a hidden character named (S11).
   const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => said(shownNode(netlist, n.name))).join(', ');
   const grounded = netlist.nodes.get('0')?.connections.length ?? 0;
   if (parts.lines.length === 0) out.push(S.noParts);
@@ -1288,7 +1297,8 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
     const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
     words.transferFunction = {
       value: tf.transferFunction,
-      text: S.transfer(output, input, v, ratio),
+      // The formula as written, but never with a character hidden in it (S11): the words after it name it.
+      text: S.transfer(withoutInvisible(output), input, v, ratio),
       speech: S.transferSpeech(outSpeech, input, v.replace(MINUS, 'minus '), (v === '1' ? S.ratioWordsOne[ratio] : S.ratioWords[ratio]) ?? ratio),
     };
   }

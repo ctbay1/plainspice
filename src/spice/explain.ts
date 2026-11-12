@@ -15,7 +15,7 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
-import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeName, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
@@ -204,6 +204,8 @@ export const EXPLAIN_STRINGS = {
   spaceWriteDigits: (spice: string, several: boolean): string => `Write the number without ${several ? 'them' : 'it'}: ${spice}.`,
   spaceHarmless: (what: string): string => `There is ${what} in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.`,
   nodeWithSpace: (shown: string, what: string): string => `${shown} (one word for SPICE: written with ${what}, not a space)`,
+  // S11: a letter from another alphabet that looks like a Latin one is named in a node's name too, as in a value (look-alike-letter-5).
+  nodeWithLookAlike: (shown: string, what: string): string => `${shown} (written with ${what})`,
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
     `ngspice read two numbers for the value, ${first} and ${second}, and uses the last one: ${used}.${why ? ` ${why}` : ''}`,
   twoNumbersComma: 'A comma separates words in SPICE: use a decimal point.',
@@ -256,6 +258,8 @@ export const EXPLAIN_STRINGS = {
   iPushesNoValue: (name: string, from: string, to: string): string =>
     `So ${name} pushes its current from ${from}, through the source, into ${to}.`,
   voltageAt: (node: string, ref: string): string => `the voltage at ${node}, measured from ${ref}`,
+  voltageOfNode: (node: string): string => `the voltage at ${node}`,
+  voltageBetweenNodes: (a: string, b: string): string => `the voltage between ${a} and ${b}`,
   eSentence: (out: string, gain: string, control: string): string => `${capitalise(out)}, is ${gain} × ${control}.`,
   eReads: (p: string, n: string, gain: string, cp: string, cn: string): string =>
     `SPICE reads it as V(${p}) ${MINUS} V(${n}) = ${gain} × (V(${cp}) ${MINUS} V(${cn})).`,
@@ -747,11 +751,21 @@ function nodeName(ref: NodeRef): string {
   if (ref.ground) return S.ground;
   // W9, W13, W14: names that look like ground but are ordinary nodes are quoted, so "ground" never reads as ground.
   if (groundLike(ref)) return S.quotedName(ref.token.text);
-  // invisible-character-3: the character is named, not hidden in the sentence.
-  if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
-  // space-character-4, nbsp-1: one word for SPICE, though it reads as two.
-  if (hasSpaceLike(ref.token.text)) return S.nodeWithSpace(withSpaces(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
-  return ref.token.text;
+  return nodeNameInWords(ref.token.text);
+}
+
+/**
+ * A node's name as written, with a character in it that is not what it looks like named, never shown
+ * (security review F2; S11: on every line that names a node, and in the results' words too): "out
+ * (written with a zero-width space in it)" (invisible-character-3), "o ut (one word for SPICE: written
+ * with a thin space, not a space)" (space-character-4, nbsp-1), "оut (written with the Cyrillic letter
+ * о, which looks like o)" (look-alike-letter-5). Any other name as written.
+ */
+export function nodeNameInWords(text: string): string {
+  if (hasInvisible(text)) return S.nodeWithInvisible(withoutInvisible(text), nameOfCharacter([...text].find((ch) => INVISIBLE.test(ch))!, false)!);
+  if (hasSpaceLike(text)) return S.nodeWithSpace(withSpaces(text), nameOfCharacter([...text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
+  if (lookAlikeName(text) !== undefined) return S.nodeWithLookAlike(text, describeCharacter(cleanWord(text).odd[0]!));
+  return text;
 }
 
 /**
@@ -1794,10 +1808,10 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
       return out(S.libWhat, S.lib, d.args.map((a, k) => fieldOf(k === 0 ? 'file' : 'section', a, k === 0 ? S.fileName(a.text) : S.libSection(a.text))), d.args.length < 2 ? [S.libOneWord] : []); // A33, include-not-available-3
     case '.print':
     case '.plot':
-      return out(S.printWhat(name), S.print(name), vectorFields(netlist, d.args)); // A25, A25b
+      return out(S.printWhat(name), S.print(name), vectorFields(netlist, d.args).map((f) => f.field)); // A25, A25b
     case '.save': {
       const fields = vectorFields(netlist, d.args);
-      return out(S.saveWhat, S.save(fields.map((f) => f.text).join(', ')), fields); // A24
+      return out(S.saveWhat, S.save(fields.map((f) => f.said).join(', ')), fields.map((f) => f.field)); // A24
     }
     case '.control':
       return out(S.controlWhat, S.control); // S31, A27
@@ -1810,7 +1824,7 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
         if (g) {
           const v = d.args[k + g.used];
           const r = v ? readNumber(v.text) : undefined;
-          fields.push({ label: 'node voltage', text: g.text, span: g.span, meaning: S.icField(g.text, r ? formatSI(r.value, 'V') : (v?.text ?? '?')) });
+          fields.push({ label: 'node voltage', text: g.text, span: g.span, meaning: S.icField(vectorWords(netlist, g), r ? formatSI(r.value, 'V') : (v?.text ?? '?')) });
           if (v) fields.push(fieldOf('value', v, r ? formatSI(r.value, 'V') : v.text));
           k += g.used + (v ? 1 : 0);
         } else {
@@ -1842,21 +1856,34 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
   }
 }
 
-function vectorFields(netlist: Netlist, args: readonly Token[]): FieldExplanation[] {
-  const fields: FieldExplanation[] = [];
+/** The rows of a .save or .print line, each with the result as the line's sentence names it (vectorWords). */
+function vectorFields(netlist: Netlist, args: readonly Token[]): { field: FieldExplanation; said: string }[] {
+  const fields: { field: FieldExplanation; said: string }[] = [];
   for (let k = 0; k < args.length; ) {
     const g = vectorAt(netlist, args, k);
     if (g) {
-      fields.push({ label: 'result', text: g.text, span: g.span, meaning: S.vectorField(g.text) });
+      const said = vectorWords(netlist, g);
+      fields.push({ field: { label: 'result', text: g.text, span: g.span, meaning: S.vectorField(said) }, said });
       k += g.used;
     } else {
       const t = args[k]!;
       const isType = k === 0 && /^(dc|ac|tran|op|tf|noise|disto)$/i.test(t.text);
-      fields.push(fieldOf(isType ? 'analysis' : 'result', t, isType ? S.analysisField(t.text) : S.vectorField(t.text)));
+      fields.push({ field: fieldOf(isType ? 'analysis' : 'result', t, isType ? S.analysisField(t.text) : S.vectorField(t.text)), said: t.text });
       k += 1;
     }
   }
   return fields;
+}
+
+/**
+ * A v(...) group as a sentence names it: as written ("v(out)"), unless a node's name in it has a
+ * character that is not what it looks like, which is never shown hidden in it (S11): then in words,
+ * with the character named ("the voltage at node out (written with a zero-width space in it)").
+ */
+function vectorWords(netlist: Netlist, g: VectorGroup): string {
+  if (g.kind !== 'voltage' || g.names.every((t) => nodeNameInWords(t.text) === t.text)) return g.text;
+  const [a, b] = g.names.map((t) => nodeProse(nodeOfWord(netlist, t)));
+  return b ? S.voltageBetweenNodes(a!, b) : S.voltageOfNode(a ?? '?');
 }
 
 type Out = (what: string, summary: string, fields?: FieldExplanation[], notes?: string[]) => LineExplanation;
@@ -1895,7 +1922,8 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     } else meaning = S.tfInput(input.text, part.line! + 1, partWord(netlist, part.line!));
     fields.push(fieldOf('input source', input, meaning));
   }
-  const outText = r.output;
+  // The formula keeps the line's words, but never a character hidden in them (S11): the words after it name it.
+  const outText = withoutInvisible(r.output);
   const inText = input?.text ?? '?';
   const at = n2 ? S.tfBetween(nodeProse(n1), nodeProse(n2)) : S.tfAt(nodeProse(n1));
   const ratio = `${r.outputKind === 'current' ? 'A' : 'V'}/${r.inputKind === 'current' ? 'A' : 'V'}`;

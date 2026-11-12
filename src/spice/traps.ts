@@ -34,7 +34,7 @@ import {
   withoutSpaces,
   withSpaces,
 } from './characters.ts';
-import { isKnownDotCommand, readAfterEnd } from './explain.ts';
+import { isKnownDotCommand, nodeNameInWords, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
@@ -1961,8 +1961,16 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
     outputs.forEach((t, idx) => {
       const name = lowerAscii(t.text);
       if (name === GROUND || name === 'gnd' || (c.n.nodes.get(name)?.connections.length ?? 0) > 0) return;
-      add(c, 'tf-problems', 'error', t, `.tf asks about node ${t.text}, which is not in the circuit`,
-        `There is no node called ${t.text}: no part connects to it. .tf v(${t.text}) needs a node of the circuit.`,
+      // S11: a name that is a node of the circuit but for a character that is not what it looks like (an
+      // invisible one, one that looks like a space, a letter from another alphabet) is left to the check
+      // that names that character and offers the same fix (invisible-character, space-character,
+      // look-alike-letter): this one would say "There is no node called out", with "Use out".
+      const clean = hasInvisible(t.text) ? withoutInvisible(t.text) : hasSpaceLike(t.text) ? withoutSpaces(t.text) : lookAlikeName(t.text);
+      if (clean !== undefined && (c.n.nodes.get(lowerAscii(clean))?.connections.length ?? 0) > 0) return;
+      // Otherwise such a character is named, never shown hidden in the name (decision 0012).
+      const named = nodeNameInWords(t.text);
+      add(c, 'tf-problems', 'error', t, `.tf asks about node ${named}, which is not in the circuit`,
+        `There is no node called ${named}: no part connects to it. .tf v(${withoutInvisible(t.text)}) needs a node of the circuit.`,
         idx === 0
           ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1]'
           : 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2]',

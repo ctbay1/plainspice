@@ -21,9 +21,11 @@ import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve } from '../../src/notebook/index.ts';
 import { EDIT_STRINGS, applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { DESCRIBE_STRINGS, annotateLines, describeCircuit, describeResults, netlistVector } from '../../src/spice/describe.ts';
+import { INVISIBLE } from '../../src/spice/characters.ts';
 import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
 import { nameSaysNode } from '../../src/spice/node-words.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { checkTraps } from '../../src/spice/traps.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 /** formatSI writes a no-break space between number and unit; expectations here use a plain space. */
@@ -320,5 +322,78 @@ describe('code review 1, 4 and 5, words re-check 3: the .tf words name each outp
     const tr = tfWords('* tf after end\nV1 in 0 5\nR1 in çıkış 1k\nR2 çıkış 0 1k\n.end\n.tf v(çıkış) V1\n', tf(0.5, 'v(____k____)', 500, 'v1', 2000));
     expect(tr.at).toBe('at node çıkış');
     expect(tr.text).toContain('transfer function v(çıkış)/V1 = 0.5 (V/V)');
+  });
+});
+
+describe('S11: a character in a node name that is not what it looks like is named on every line, never shown hidden', () => {
+  const ZW = '\u200b';
+  /** Every word a page could show about a netlist: Explain, the overview, and the checks with their fixes. */
+  function shownWords(text: string): string[] {
+    const n = parseNetlist(text);
+    return [
+      describeCircuit(n),
+      ...explainNetlist(n).flatMap((e) => [e.summary, ...e.fields.map((f) => f.meaning), ...e.notes]),
+      ...checkTraps(n).flatMap((c) => [c.title, c.why, c.ngspice, ...c.fixes.map((f) => f.label)]),
+    ];
+  }
+  // Native ngspice 47 and 42 (invisible-character-3, look-alike-letter-5): ou<ZWSP>t is the node ou___t
+  // and оut (Cyrillic о) the node __ut, separate nodes, without a message.
+  const ZW_BOTH = `* zw\nV1 in 0 6\nR1 in out 1k\nR2 ou${ZW}t 0 2k\n.tf v(ou${ZW}t) V1\n.end\n`;
+  const ZW_TF_ONLY = `* zw tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(ou${ZW}t) V1\n.end\n`;
+  const CY_BOTH = '* cy\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.tf v(\u043eut) V1\n.end\n';
+  const CY_TF_ONLY = '* cy tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(\u043eut) V1\n.end\n';
+  const IC_SAVE = `* ic save print\nV1 in 0 PULSE(0 5 0 1u 1u 1 2)\nR1 in ou${ZW}t 1k\nC1 ou${ZW}t 0 1u\n.ic v(ou${ZW}t)=1\n.save v(ou${ZW}t) v(in)\n.print tran v(ou${ZW}t)\n.tran 10u 1m uic\n.end\n`;
+
+  it('no word Explain, the overview or the checks write hides an invisible character', () => {
+    for (const text of [ZW_BOTH, ZW_TF_ONLY, IC_SAVE]) expect(shownWords(text).filter((w) => INVISIBLE.test(w)), text).toEqual([]);
+  });
+
+  it('Explain\'s .tf line names it, in the at-words, the output field and the missing-node note; the formula leaves it out', () => {
+    const tf = explainNetlist(parseNetlist(ZW_BOTH)).find((e) => e.heading.startsWith('.tf'))!;
+    expect(tf.summary).toContain('the transfer function v(out)/V1 (output ÷ input)');
+    expect(tf.summary).toContain('the output resistance at node out (written with a zero-width space in it)');
+    expect(tf.fields.find((f) => f.label === 'output')?.meaning).toBe('the output: the voltage at node out (written with a zero-width space in it), measured from ground');
+    const only = explainNetlist(parseNetlist(ZW_TF_ONLY)).find((e) => e.heading.startsWith('.tf'))!;
+    expect(only.notes).toContain('out (written with a zero-width space in it) is not a node of the circuit: ngspice says nothing and reports a transfer function of 0.');
+  });
+
+  it('the .ic, .save and .print lines say the voltage in words, the character named', () => {
+    const ex = explainNetlist(parseNetlist(IC_SAVE));
+    expect(sp(ex.find((e) => e.heading.startsWith('.ic'))!.fields.find((f) => f.label === 'node voltage')?.meaning)).toBe('the voltage at node out (written with a zero-width space in it) starts at 1 V');
+    const save = ex.find((e) => e.heading.startsWith('.save'))!;
+    expect(save.summary).toContain('the results file holds only what .save names (the voltage at node out (written with a zero-width space in it), v(in))');
+    expect(ex.find((e) => e.heading.startsWith('.print'))!.fields.find((f) => f.label === 'result')?.meaning).toBe('the voltage at node out (written with a zero-width space in it): a result to keep');
+  });
+
+  it('a look-alike letter in a node name is named, as in a value: "node оut (written with the Cyrillic letter о, which looks like o)"', () => {
+    const n = parseNetlist(CY_BOTH);
+    const r2 = explainNetlist(n).find((e) => e.summary.startsWith('R2'))!;
+    expect(sp(r2.summary)).toBe('R2 is a 2 kΩ resistor between node \u043eut (written with the Cyrillic letter \u043e, which looks like o) and ground (node 0).');
+    expect(explainNetlist(n).find((e) => e.heading.startsWith('.tf'))!.summary).toContain('the output resistance at node \u043eut (written with the Cyrillic letter \u043e, which looks like o)');
+    expect(describeCircuit(n)).toContain('3 nodes besides ground (in, out, \u043eut (written with the Cyrillic letter \u043e, which looks like o))');
+    // A name all in another alphabet is meant as written, and a Turkish name is not a slip: neither is named.
+    expect(describeCircuit(parseNetlist('* names\nV1 \u03b1\u03b2 0 1\nR1 \u03b1\u03b2 \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n'))).not.toContain('written with');
+  });
+
+  it('the overview and the results\' words name it too: "node out (written with a zero-width space in it)"', () => {
+    const n = parseNetlist(ZW_BOTH);
+    expect(describeCircuit(n)).toContain('3 nodes besides ground (in, out, out (written with a zero-width space in it))');
+    expect(describeCircuit(n)).toContain('Analysis: transfer function from V1 to the voltage at node out (written with a zero-width space in it).');
+    // Native ngspice 47 and 42: v(in) = 6, v(out) = 6, v(ou___t) = 0 (R2's node, a node of its own).
+    const w = describeResults(n, op({ in: 6, out: 6, ou___t: 0 }, [['v1', 0, 'branch']]), run());
+    expect(w.summarySpeech).toContain('node out (written with a zero-width space in it) is 0 volts');
+    expect(w.summarySpeech).not.toMatch(INVISIBLE);
+  });
+
+  it('the .tf check leaves a name that is a node but for such a character to that character\'s warning: never "There is no node called out" with "Use out"', () => {
+    for (const text of [ZW_TF_ONLY, CY_TF_ONLY]) {
+      const checks = checkTraps(parseNetlist(text));
+      expect(checks.filter((c) => c.id === 'tf-problems'), text).toEqual([]);
+      expect(checks.some((c) => c.id === 'invisible-character' || c.id === 'look-alike-letter'), text).toBe(true);
+    }
+    // A name that is no node even without the character: the error stays, the character named.
+    const none = checkTraps(parseNetlist(`* zw no node\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(xy${ZW}z) V1\n.end\n`)).find((c) => c.id === 'tf-problems')!;
+    expect(none.title).toBe('.tf asks about node xyz (written with a zero-width space in it), which is not in the circuit');
+    expect(none.why).toBe('There is no node called xyz (written with a zero-width space in it): no part connects to it. .tf v(xyz) needs a node of the circuit.');
   });
 });
