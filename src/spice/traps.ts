@@ -1666,7 +1666,7 @@ const isBlank = (ch: string): boolean => ch === ' ' || ch === '\t' || ch === '\r
  * with a second name after the comma (v(a,b)), and a word whose last bracket follows an i (i(V1),
  * vi(x)) names a source's current, no node.
  */
-function printItem(chars: readonly string[], at: readonly number[], text: string): PrintItem | undefined {
+function printItem(chars: readonly string[], at: readonly number[], text: string): PrintItem {
   const word = chars.join('');
   if (word.startsWith('(')) return { names: [], bare: false, lone: false };
   const name = (from: number, to: number): PrintName | undefined => {
@@ -1761,8 +1761,7 @@ function printCards(c: Ctx): PrintCard[] {
         }
       }
       if (d.name === '.plot' && PLOT_OPTIONS.has(lowerAscii(word.join('')))) continue;
-      const item = printItem(word, from, c.text);
-      if (item) items.push(item);
+      items.push(printItem(word, from, c.text));
     }
     cards.push({ directive: d.name, type, items });
   }
@@ -1822,11 +1821,11 @@ function printsNothing(c: Ctx): boolean {
  * can be printed or saved, runs no analysis (printsNothing, non-ascii-node-13), while PlainSpice's run
  * leaves those lines out (non-ascii-node-3). Only a line whose analysis the netlist runs counts: ngspice
  * saves a .print tran line's names only for a .tran, and warns about them only then. The name may stand
- * inside v(...) or bare (printNodes). A command for ngspice (.control, *#,
- * ##), where it finds no such node either (non-ascii-node-4), and where a save that leaves it nothing to
- * save gives PlainSpice's run no results (savesNothing). The quoted message spells the name as ngspice
- * does, µ as u and capitals small ("can't parse 'uş'"). With `show` false the words never show the name
- * (an invisible character, a character that looks like a space): they say "the name".
+ * inside v(...) or bare (printNodes). A command for ngspice (.control, *#, ##), where it finds no such
+ * node either (non-ascii-node-4), and where a save that leaves it nothing to save gives PlainSpice's run
+ * no results (savesNothing). The quoted message spells the name as ngspice does, µ as u and capitals
+ * small ("can't parse 'uş'"). With `show` false the words never show the name (an invisible character,
+ * a character that looks like a space): they say "the name".
  */
 function asWritten(c: Ctx, infos: readonly NodeInfo[], show: boolean): { said: string[]; print: boolean; command: boolean } {
   const said: string[] = [];
