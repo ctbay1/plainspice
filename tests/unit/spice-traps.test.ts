@@ -1702,7 +1702,7 @@ describe('after the second critic of the re-check fixes (12 November 2026)', () 
     // A line ngspice stops at computes no points: no wrong-way words there.
     expect(traps(`${dc}.dc V9 5 0 1\n.end\n`).map((t) => t.title)).toEqual(['.dc sweeps V9, which is not in the circuit']);
     // .ac lin has no check of its start: a start read as 0 runs from 0 Hz (invisible-character-57).
-    expect(first(`${ac}.ac lin 10 0\u200b.5 1k\n.end\n`, 'invisible-character').ngspice).toContain('without a message: it reads 0. [');
+    expect(first(`${ac}.ac lin 10 0\u200b.5 1k\n.end\n`, 'invisible-character').ngspice).toContain('without a message: it reads 0. [invisible-character-1, invisible-character-2, invisible-character-44, invisible-character-57]');
     expect(first(`${ac}.ac dec 10 0\u200b.5 1k\n.end\n`, 'invisible-character').ngspice).toContain("'AC startfreq <= 0'");
   });
 

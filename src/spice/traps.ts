@@ -780,7 +780,8 @@ function analysisPlace(c: Ctx, d: Directive, k: number): Place | undefined {
     verdict: (read, meant, spelled) => {
       const R = outcome(read ?? 'word');
       const said = read === undefined ? unreadRun : quiet;
-      if (R === '') return silent(said);
+      // A lin .ac sweep has no check of its start: read as 0 it runs from 0 Hz (invisible-character-57).
+      if (R === '') return silent(d.name === '.ac' && k === 2 && read !== undefined && read <= 0 ? `${said}, invisible-character-57` : said);
       if (R === '?') return none(said);
       // `alone`: written as meant, this word leaves a line ngspice runs as it is; ngspice 42's part of the .dc
       // words was recorded only on such lines.
