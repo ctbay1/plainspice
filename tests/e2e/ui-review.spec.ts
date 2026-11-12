@@ -2,17 +2,18 @@
  * What the final reviews of milestone 2 found in the page (the ui lane), fixed, in a real browser:
  * Ctrl+K keeps the focus in its field (Tab stays there, a click on a group's name too, Escape closes
  * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); "dependent" lists the
- * dependent sources' Place commands first (words W4); a fix on the video's mistake examples leaves no
- * drawing warning, the tab and the announcement agree, and a fix that renames a part keeps it where it
- * was drawn (kept F1); the starter's why is shown in the hint line until it has been read, on a phone
- * too, and after a Shift+click (words W9); the Netlist panel a SPICE for Beginners example opened
- * closes with the next video's example (student netlist-panel-stays); a new node never takes a name
- * just said to be ground (student node-name-reused).
+ * dependent sources' Place commands first, and a short query keeps the command whose name it starts
+ * (words W4); a fix on the video's mistake examples leaves no drawing warning, the tab and the
+ * announcement agree, and a fix that renames a part keeps it where it was drawn (kept F1); the
+ * starter's why is shown in the hint line until it has been read, on a phone too, and after a
+ * Shift+click (words W9); the Netlist panel a SPICE for Beginners example opened closes with the next
+ * video's example (student netlist-panel-stays); a new node never takes a name just said to be ground
+ * (student node-name-reused).
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { starterWords } from '../../src/app/editing.ts';
-import { toolPhrase } from '../../src/app/tools.ts';
+import { kindName, toolPhrase } from '../../src/app/tools.ts';
 import {
   checksCount,
   chooseExample,
@@ -107,6 +108,41 @@ test('Ctrl+K “dependent” lists the four Place commands first, in view on a p
   await expect(options.first()).toContainText(tools[1]!);
   await page.keyboard.press('Escape');
   await expect(palette(page)).toHaveCount(0);
+});
+
+test('Ctrl+K: a short query keeps the command whose name it starts: “v” the voltage source, “d” Draw a wire, “de” Delete R1 (the second critic of words W4)', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  const first = palette(page).locator('.palette__label').first();
+  const chosen = palette(page).getByRole('option', { selected: true });
+  const voltage = t('palettePlace', { part: toolPhrase('V') });
+  await page.keyboard.press('ControlOrMeta+k');
+  for (const [query, label] of [['d', t('paletteWire')], ['v', voltage]] as const) {
+    await search(page).fill(query);
+    await expect(first).toHaveText(label);
+    await expect(chosen).toContainText(label);
+  }
+  // Enter on "v" puts the voltage source in hand (the other names put a voltage-controlled one there).
+  await page.keyboard.press('Enter');
+  await expect(palette(page)).toHaveCount(0);
+  await expect(page.getByRole('toolbar', { name: t('handLabel', { part: kindName('V') }) })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('toolbar', { name: t('handLabel', { part: kindName('V') }) })).toHaveCount(0);
+  // R1 selected (its card opened from Ctrl+K, then closed): "de", on the way to "delete", is Delete R1.
+  await page.keyboard.press('ControlOrMeta+k');
+  await search(page).fill('change r1');
+  await page.keyboard.press('Enter');
+  const card = page.getByRole('dialog', { name: /^R1 / });
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+  await page.keyboard.press('ControlOrMeta+k');
+  await search(page).fill('de');
+  await expect(first).toHaveText(t('paletteDelete', { name: 'R1' }));
+  await expect(chosen).toContainText(t('paletteDelete', { name: 'R1' }));
+  await page.keyboard.press('Enter');
+  await expect(palette(page)).toHaveCount(0);
+  await expect.poll(() => savedNetlist(page)).not.toMatch(/^R1 /m);
 });
 
 test('a fix on the video’s mistake examples leaves no drawing warning; the tab and what is said agree (kept F1)', async ({ page }) => {
