@@ -263,7 +263,8 @@ export const en = {
   squaresDown_one: '{count} square down',
   squaresDown_other: '{count} squares down',
   turnOnlyParts: 'Only a part turns, mirrors or reverses (and a ground symbol turns while it is in hand): a placed ground symbol, a node’s name and a piece of wire stay as they are.',
-  reverseWhileMoving: 'Put {name} down first: Reverse swaps its two ends in the netlist.',
+  /** As deleteWhileMoving: where the part can't go (a half turn), Esc puts it back, as noHalfTurn says. */
+  reverseWhileMoving: 'Put {name} down first (Esc puts it back), then Reverse swaps its two ends in the netlist.',
   /** T and M on a part being moved: the next sentence (moveSayHere, moveSayNot) says whether it can land there. */
   turnedMoving: '{name} turned.',
   mirroredMoving: '{name} mirrored.',

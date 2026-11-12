@@ -30,7 +30,7 @@ import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts'
 import { en } from '../../src/i18n/en.ts';
 import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve, type Solution } from '../../src/notebook/index.ts';
-import { GROUND, buildSchematic, type Schematic } from '../../src/schematic/index.ts';
+import { EDIT_STRINGS, GROUND, buildSchematic, type Schematic } from '../../src/schematic/index.ts';
 import { EXPLAIN_STRINGS } from '../../src/spice/explain.ts';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -217,6 +217,12 @@ describe('W7: Reverse, the ground symbol in hand, and turning while moving', () 
     expect(t('turnedMoving', { name: 'R1' })).toBe('R1 turned.');
     expect(t('mirroredMoving', { name: 'R1' })).toBe('R1 mirrored.');
     expect(CATALOG.filter(([, v]) => /turned round|lands that way\./.test(v)).map(([k]) => k)).toEqual([]);
+  });
+
+  it('never asks to put down a part being moved without saying Esc puts it back: where a half turn is refused, it can only go back (merge of the lanes)', () => {
+    expect(EDIT_STRINGS.noHalfTurn('R1')).toBe('A half turn of R1 where it stands would loop its wires round it. To swap its two ends, use Reverse once R1 is back in place.');
+    expect(t('reverseWhileMoving', { name: 'R1' })).toBe('Put R1 down first (Esc puts it back), then Reverse swaps its two ends in the netlist.');
+    expect(t('deleteWhileMoving', { name: 'R1' })).toBe('Put R1 down first (Esc puts it back), then Delete deletes it.');
   });
 
   it('gives the ground symbol over empty paper a hint with one colon in its part', () => {

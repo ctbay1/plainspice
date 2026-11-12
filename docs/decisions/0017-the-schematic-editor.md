@@ -403,6 +403,10 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   turns it."; T or M on a part being moved says "R1 turned." or "R1 mirrored." and the sentence after
   it says whether it can go there (it said "it lands that way" before a refusal); the ground
   symbol's hint over empty paper keeps one colon: "it touches nothing yet (draw a wire to it)".
+  Shift+R on a part being moved says "Put R1 down first (Esc puts it back), then Reverse swaps its
+  two ends in the netlist.", as Delete does: where a half turn is refused the part can only go back,
+  and the refusal says "use Reverse once R1 is back in place" (decision 0013), so the two never
+  disagree (done when the lanes were merged).
 - **"node in" on the card** (W8). The card's "in is higher", and its spoken "2 volts across R1, in is
   higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
   stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button was
