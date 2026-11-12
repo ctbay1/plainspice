@@ -3298,8 +3298,16 @@ html[data-contrast='more'] .lines .hint {
   flex: 0 1 auto;
   min-height: 0;
 }
+/* The stack and its lines take a new size at once, also where motion is reduced (the motion rules above
+   give every property a transition of 0.01 ms, which shows the old size for a frame): the lines measure
+   themselves (App.tsx), and a frame at the old size would read as no room for them. */
+.phone-bottom,
+.phone-lines {
+  transition-property: none;
+}
 /* The lines give way before a sheet does (a sheet open is what the student is using), and within them the
-   hint gives way first: its box scrolls, the status and its buttons stay whole below it. */
+   hint gives way first: its box keeps its first line and scrolls, the status and its buttons stay whole
+   below it. */
 .phone-lines {
   display: flex;
   flex-direction: column;
@@ -3326,6 +3334,11 @@ html[data-contrast='more'] .lines .hint {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+/* Above a sheet, once the hint has stepped aside (App.tsx: hintAside), the status line keeps its size and
+   the sheet gives way below it (App.tsx: linesMax leaves the sheet its head and about two rows). */
+.phone-lines.is-hint-aside {
+  flex: none;
+}
 /* Squeezed (large text on a small phone), what scrolls takes a finger (the paper under it does not pan)
    and the keys (App.tsx, StatusLines: a named region); the lines as a whole are then a strip of paper of
    their own, their edge drawn, so they read as part of the stack and not as words on the drawing. */
@@ -3342,8 +3355,8 @@ html[data-contrast='more'] .lines .hint {
 .phone-lines.is-squeezed:focus-visible {
   outline-offset: -0.1875rem;
 }
-/* Behind a sheet that needs their room (App.tsx: linesAside): out of sight, still read by screen readers
-   (and nothing in them a box that scrolls, which the keys would have to reach). */
+/* Behind a sheet that needs their room (App.tsx: linesAside): out of sight, still read by screen readers,
+   with none of their buttons (App.tsx leaves them out: no Tab stop nobody can see). */
 .phone-lines.is-aside {
   position: absolute;
   width: 1px;
@@ -3351,9 +3364,6 @@ html[data-contrast='more'] .lines .hint {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-.phone-lines.is-aside .hint-scroll {
-  overflow: visible;
 }
 .is-phone .lines {
   align-items: stretch;
@@ -3890,13 +3900,16 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
   display: none;
 }
 
-/* A very short window (400 % zoom on a laptop, a phone on its side), or short for its text (a small
-   phone with text at 150 %: App.tsx sets is-short below 420 px of height at the usual text size, scaled
-   with it, as the phone's layout itself is chosen): the paper keeps what room it can. The hint line
-   steps out of sight (screen readers still have it), and the first screen's button with it (the part
-   itself is there to tap). The bars get compact: their buttons as small as a finger's target allows
-   (44 px), larger only for the icons of large text, and less padding around them. */
-.is-phone.is-short .phone-lines .hint {
+/* A very short window (400 % zoom on a laptop, a phone on its side), or short for its text (a phone on
+   its side, or a laptop window, with large text: App.tsx sets is-short below 420 px of height at the
+   usual text size, scaled with it for a window wider than tall, as the phone's layout itself is chosen;
+   an upright phone keeps its hint): the paper keeps what room it can. The hint line steps out of sight
+   (screen readers still have it), and the first screen's button with it (the part itself is there to
+   tap); so does the hint above a sheet that needs its room (App.tsx: hintAside). The bars get compact:
+   their buttons as small as a finger's target allows (44 px), larger only for the icons of large text,
+   and less padding around them. */
+.is-phone.is-short .phone-lines .hint,
+.phone-lines.is-hint-aside .hint {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -3904,10 +3917,12 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.is-phone.is-short .hint__invite {
+.is-phone.is-short .hint__invite,
+.phone-lines.is-hint-aside .hint__invite {
   display: none;
 }
-.is-phone.is-short .hint-scroll {
+.is-phone.is-short .hint-scroll,
+.phone-lines.is-hint-aside .hint-scroll {
   display: contents;
 }
 /* A sheet's head: no grab (it only shows that the sheet came up from the bottom), less padding. */

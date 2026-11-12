@@ -96,6 +96,7 @@ export function PanelTabs({ open, checks, onToggle, tabsRef }: { open: PanelId |
 
 /** The phone's one bar along the bottom: Select · Parts · Netlist · Checks · Explain · More. */
 export function BottomBar({
+  barRef,
   partsRef,
   moreRef,
   tool,
@@ -108,6 +109,8 @@ export function BottomBar({
   onPanel,
   onMore,
 }: {
+  /** The bar itself (the phone's stack measures it). */
+  barRef?: (el: HTMLElement | null) => void;
   /** The Parts and More buttons (the focus comes back to them when their sheet closes). */
   partsRef?: RefObject<HTMLButtonElement | null>;
   moreRef?: RefObject<HTMLButtonElement | null>;
@@ -123,7 +126,7 @@ export function BottomBar({
 }): ReactNode {
   const inMore = panel === 'numbers' || panel === 'plot' || panel === 'output';
   return (
-    <nav className="bar" aria-label={t('barLabel')}>
+    <nav className="bar" ref={barRef} aria-label={t('barLabel')}>
       <button type="button" className={`bar__button${tool === 'select' && !partsOpen ? ' is-on' : ''}`} aria-pressed={tool === 'select' && !partsOpen} onClick={onSelectTool}>
         <ToolGlyph kind="select" />
         <span className="bar__word">{t('toolSelect')}</span>

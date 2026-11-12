@@ -227,6 +227,11 @@ const SHORTER_HEIGHT = 300;
  */
 const PAPER_KEPT_SHARE = 0.15;
 const PAPER_KEPT_PX = 48;
+/**
+ * What a sheet on a phone (Parts, More, a panel) keeps below its head, in rem (it grows with the text):
+ * about two of its rows. The status line stays above the sheet while that is left (decision 0018).
+ */
+const SHEET_ROWS_KEPT_REM = 6;
 /** The card on a computer: as wide and as tall as its tallest state at the usual text size (it is measured, too). */
 const CARD_W = 680;
 const CARD_H = 218;
@@ -1609,18 +1614,62 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const stackMax = phone && topRect.height ? Math.max(0, Math.floor(vh - keyboard - topRect.bottom - paperKept - (handRect.height ? handRect.height + 12 : 0))) : undefined;
   const [linesRef, linesSqueezed] = useOverflowing<HTMLElement>();
   const [hintBoxRef, hintSqueezed] = useOverflowing<HTMLDivElement>();
-  // A sheet open on a phone (Parts, More, a panel) leaves the lines no room, even with the hint scrolled
-  // to its first line: they step out of sight (screen readers keep them) and the sheet keeps its size,
-  // until that sheet closes or the window changes; in a short window always, as the hint does there. Not
-  // a sliver of half a line over the sheet. (Out of sight they are not squeezed: kept for this sheet and
-  // window, not measured again, or they would come back and go again.)
-  const asideKey = phone && phoneSheet && phoneSheet !== 'card' ? `${phoneSheet}|${vw}|${vh}|${textScale}` : undefined;
-  const [linesAsideFor, setLinesAsideFor] = useState<string | undefined>(undefined);
+  const [barRef, barRect] = useRect<HTMLElement>();
+  // A sheet open on a phone (Parts, More, a panel), the hint and status lines above it. They give way to
+  // the sheet in two steps, each kept for this sheet and this window (not measured again, or the lines
+  // would come back and go again), never a sliver of half a line over the sheet:
+  // 1. When the hint and the status do not both fit above the sheet at its full height, the hint steps
+  //    out of sight (screen readers keep it), as it does in a short window (whatever the sheet is about,
+  //    the hint is about the drawing); the status line stays whole above the sheet, which gives way below
+  //    it and scrolls, down to its head and about two rows (SHEET_ROWS_KEPT_REM).
+  // 2. When even the status would leave the sheet less, the lines step out of sight too, until the sheet
+  //    closes or the window changes: their words for screen readers, none of their buttons (Undo, As
+  //    drawn), which would be Tab stops nobody can see (WCAG 2.4.7); More keeps Undo at hand.
+  const sheetKey = phone && phoneSheet && phoneSheet !== 'card' ? `${phoneSheet === 'panel' ? panel : phoneSheet}|${vw}|${vh}|${textScale}` : undefined;
+  const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
+  const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
+  const hintAside = linesStep >= 1;
+  const linesAside = linesStep === 2;
+  // How far down the open sheet its head ends (its grab and head: a long title wraps with large text);
+  // the sheet keeps its rows below that.
+  const [sheetHead, setSheetHead] = useState(0);
   useLayoutEffect(() => {
-    if (!asideKey) setLinesAsideFor(undefined);
-    else if (linesSqueezed) setLinesAsideFor(asideKey);
-  }, [asideKey, linesSqueezed]);
-  const linesAside = !!asideKey && (short || linesAsideFor === asideKey);
+    if (!sheetKey) return undefined;
+    const sheet = document.querySelector<HTMLElement>('.phone-bottom > .sheet');
+    const head = sheet?.querySelector<HTMLElement>(':scope > .card-head');
+    if (!sheet || !head) return undefined;
+    const measure = (): void => {
+      const h = Math.ceil(head.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top);
+      setSheetHead((old) => (old === h ? old : h));
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    ro?.observe(head);
+    return () => ro?.disconnect();
+  }, [sheetKey]);
+  /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows. */
+  const linesMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - SHEET_ROWS_KEPT_REM * 16 * textScale)) : undefined;
+  const linesBox = useRef<HTMLElement | null>(null);
+  const linesBoxRef = useCallback(
+    (el: HTMLElement | null) => {
+      linesBox.current = el;
+      linesRef(el);
+    },
+    [linesRef],
+  );
+  useLayoutEffect(() => {
+    if (!sheetKey) {
+      setGaveWay(undefined);
+      return;
+    }
+    // Measured here, at this step and with the room it has now (linesMax): what the lines' watchers said
+    // last may be from the step before, when the lines still gave way first.
+    const over = (box: Element | null | undefined): boolean => !!box && box.scrollHeight > box.clientHeight + 1;
+    const box = linesBox.current;
+    if (linesStep === 0 && (over(box) || over(box?.querySelector('.hint-scroll')))) setGaveWay({ key: sheetKey, step: 1 });
+    else if (linesStep === 1 && over(box)) setGaveWay({ key: sheetKey, step: 2 });
+    // Measured again when the watchers see a change (words, sizes) or the room changes.
+  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax]);
   const insets: Insets = phone
     ? // The stack along the bottom, lifted above the keyboard while a value is typed.
       { top: Math.max(topRect.bottom, stackBottom) + 4, right: 4, left: 16, bottom: bottomRect.height ? vh - bottomRect.top + 4 : 0 }
@@ -1890,8 +1939,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const noteInHint = hintShowsNote(noteLine, { refused: refusalShown, inHand: !!hand, moving: !!move });
   const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
-  // netlist being typed puts it aside, as does a sheet that needs its room.
-  const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !linesAside));
+  // netlist being typed puts it aside, as does a sheet that needs its room (hintAside).
+  const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !hintAside));
   useEffect(() => {
     if (!refusal) return undefined;
     const timer = window.setTimeout(() => setRefusal(undefined), REFUSAL_SHOWN_MS);
@@ -3203,16 +3252,18 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       analysis={analysis}
       phone={phone}
       {...(!phone ? { zoom: { percent: zoomPercent, onIn: () => canvas.current?.zoomBy(1.2), onOut: () => canvas.current?.zoomBy(1 / 1.2), onFit: fit } } : {})}
-      {...(phone && turned ? { turn: { turned: turnWanted, video, onToggle: toggleTurn } } : {})}
+      // (On a phone the lines' buttons only while the lines are in sight: behind a sheet that needs their
+      // room they keep their words for screen readers, and no Tab stop nobody can see.)
+      {...(phone && turned && !linesAside ? { turn: { turned: turnWanted, video, onToggle: toggleTurn } } : {})}
       // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
-      {...(phone && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
+      {...(phone && !linesAside && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
       // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
       // the way back to all of it (Fit, under More) at hand.
       {...(phone && !phoneSheet && viewInfo?.moved && !viewInfo.whole ? { whole: fit } : {})}
-      // The first screen on a phone: the sticky note's button, on the hint line.
-      {...(phone && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
+      // The first screen on a phone: the sticky note's button, on the hint line (not while the hint is out of sight).
+      {...(phone && !hintAside && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
       // On a phone the hint gives way first when the stack is short of room, and scrolls: the status stays whole.
-      {...(phone ? { hintRef: hintBoxRef, hintScrolls: hintSqueezed } : {})}
+      {...(phone ? { hintRef: hintBoxRef, hintScrolls: hintSqueezed && !hintAside } : {})}
     />
   );
 
@@ -3429,12 +3480,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           {phoneSheet === 'card' ? null : (
             // The hint gives way first and scrolls (StatusLines); should even the status be taller than
             // the room left, the lines scroll as a whole: then they are a named region a finger can scroll
-            // and the keys can reach (WCAG 2.1.1), as a table too wide for the screen is. Behind a sheet
-            // that needs their room, out of sight (linesAside).
+            // and the keys can reach (WCAG 2.1.1), as a table too wide for the screen is. Above a sheet that
+            // needs their room, the hint out of sight and the status kept whole (hintAside, linesMax), or
+            // all of them out of sight (linesAside).
             // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             <footer
-              className={`phone-lines${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}`}
-              ref={linesRef}
+              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}`}
+              ref={linesBoxRef}
+              style={linesMax !== undefined ? { maxHeight: linesMax } : undefined}
               {...(linesSqueezed && !linesAside ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
             >
               {lines}
@@ -3501,6 +3554,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           ) : null}
           {phoneSheet === 'card' ? null : (
             <BottomBar
+              barRef={barRef}
               partsRef={barParts}
               moreRef={barMore}
               tool={tool}

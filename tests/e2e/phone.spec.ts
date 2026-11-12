@@ -12,7 +12,7 @@ import { resolve } from 'node:path';
 import { stripDrawing } from '../../src/schematic/index.ts';
 import { encodeShare } from '../../src/share/link.ts';
 import { minUnitFor } from '../../src/notebook/fit.ts';
-import { chooseExample, closePanel, drawing, drawnText, expectSolved, gridPoint, hintLine, isPhone, newCircuit, openApp, openCard, partOnDrawing, setNetlist, settle, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
+import { chooseExample, closePanel, drawing, drawnText, expectSolved, gridPoint, hintLine, isPhone, newCircuit, openApp, openCard, openPanel, partOnDrawing, setNetlist, settle, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
 
 test.beforeEach(({ page }) => {
   test.skip(!isPhone(page), 'the phone’s layout');
@@ -814,5 +814,97 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
     expect(free.bottom - free.top, `${at}: some paper shows`).toBeGreaterThanOrEqual(48);
     await partOnDrawing(page, 'R1').tap();
     await expect(card).toBeVisible();
+  }
+});
+
+/** One round of Tab stops on the page: none of them may be out of sight (clipped to nothing for screen readers only, or not shown). */
+async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<number> {
+  const seen = new Set<string>();
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press('Tab');
+    const stop = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el || el === document.body) return { key: 'the page', why: '' };
+      let why = '';
+      for (let p: Element | null = el; p; p = p.parentElement) {
+        const s = getComputedStyle(p);
+        if (s.clipPath === 'inset(50%)') why = 'clipped to nothing';
+        else if (s.display === 'none' || s.visibility === 'hidden') why = 'not shown';
+      }
+      const r = el.getBoundingClientRect();
+      if (!why && (r.width < 1 || r.height < 1)) why = 'no size';
+      const name = (el.getAttribute('aria-label') ?? el.textContent ?? el.tagName).trim().replace(/\s+/g, ' ').slice(0, 40);
+      return { key: `${name} at ${Math.round(r.left)}, ${Math.round(r.top)}`, why };
+    });
+    if (seen.has(stop.key)) break;
+    seen.add(stop.key);
+    expect(stop.why, `${what}: the Tab stop ${stop.key} can be seen`).toBe('');
+  }
+  return seen.size;
+}
+
+test('a sheet on a phone on its side keeps the status line and its Undo above it while the sheet keeps its rows; with less room they step out of sight, and nothing out of sight takes a Tab stop', async ({ page }) => {
+  // A Pixel 7 on its side, the usual text (863 × 360): the critic of these fixes found the status line
+  // out of sight above every sheet there, its Undo still a Tab stop that nobody could see (Enter undid
+  // a change with nothing on the screen to say so). It stays now, above the sheet, which scrolls.
+  await page.setViewportSize({ width: 863, height: 360 });
+  await openApp(page);
+  await expectSolved(page);
+  // A change made on the drawing: the status line offers Undo.
+  await partOnDrawing(page, 'R2').focus();
+  await page.keyboard.press('t');
+  const undo = statusLine(page).getByRole('button', { name: t('undo'), exact: true });
+  await expect(undo).toBeVisible();
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  const sheets = [
+    { name: 'Checks', open: () => openPanel(page, 'checks'), close: () => closePanel(page, 'checks') },
+    { name: 'Numbers', open: () => openPanel(page, 'numbers'), close: () => closePanel(page, 'numbers') },
+    {
+      name: 'Parts',
+      open: async () => {
+        await bar.getByRole('button', { name: t('barParts') }).tap();
+        return page.getByRole('dialog', { name: t('partsSheetTitle') });
+      },
+      close: async () => {
+        await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: t('partsClose') }).tap();
+        await expect(page.getByRole('dialog', { name: t('partsSheetTitle') })).toHaveCount(0);
+      },
+    },
+  ];
+  for (const sheet of sheets) {
+    const box = await sheet.open();
+    await settle(page);
+    await expectInSight(statusLine(page), `${sheet.name} open: the status line`);
+    await expectUsable(undo, `${sheet.name} open: the status line's Undo`);
+    const status = (await statusLine(page).boundingBox())!;
+    expect(status.y + status.height, `${sheet.name} open: the status line is above the sheet`).toBeLessThanOrEqual((await box.boundingBox())!.y + 1);
+    expect(await expectNoTabStopOutOfSight(page, `${sheet.name} open`)).toBeGreaterThan(10);
+    await sheet.close();
+  }
+  // The Parts sheet scrolls below the status line and keeps its rows: Resistor can be reached.
+  await bar.getByRole('button', { name: t('barParts') }).tap();
+  await expectUsable(page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }), 'the Parts sheet below the status line: Resistor');
+});
+
+test('a sheet that leaves the status line no room puts it out of sight, its words for screen readers and no Tab stop (568 × 320, the largest text)', async ({ page }) => {
+  // An iPhone SE on its side with the Settings' largest text: a sheet keeps its head and about two rows,
+  // and the status line would leave it less.
+  await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
+  await page.setViewportSize({ width: 568, height: 320 });
+  await openApp(page);
+  await expectSolved(page);
+  await partOnDrawing(page, 'R2').focus();
+  await page.keyboard.press('t');
+  await expect(statusLine(page).getByRole('button', { name: t('undo'), exact: true })).toBeVisible();
+  for (const name of ['checks', 'explain'] as const) {
+    await openPanel(page, name);
+    await settle(page);
+    // Out of sight, the run's words still there for screen readers.
+    expect((await sight(statusLine(page))).why, `${name} open: the status line is out of sight`).toMatch(/^out of sight/);
+    await expect(statusLine(page)).toContainText(/Finished in \d+ ms/);
+    expect(await expectNoTabStopOutOfSight(page, `${name} open`)).toBeGreaterThan(10);
+    await closePanel(page, name);
+    // The sheet closed, the status line and its Undo are back.
+    await expectUsable(statusLine(page).getByRole('button', { name: t('undo'), exact: true }), `${name} closed: the status line's Undo`);
   }
 });
