@@ -24,24 +24,36 @@ export interface Command {
 }
 
 /**
- * Commands whose label, group or keywords have a word starting with each typed word (any order, any
- * case): "plain" finds "the plain font", not "explain"; "net" finds "netlist".
+ * The words of a command's name, group or keywords, and of what was typed, cut the same way: any case,
+ * accents or not ("Thévenin" and "Thevenin" are one word), and split at anything that is not a
+ * letter, a digit, _ or a dot. So a name typed as it is shown finds its command, hyphens, colons and
+ * brackets included ("current-controlled", "Example 3:", "(V_Th)"), and ".tf" or "V_Th" stay one word
+ * (final reviews, words W5 and W12).
  */
+export function commandWords(text: string): string[] {
+  return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}_.]+/u)
+    .filter(Boolean);
+}
+
 /**
- * The commands whose words start with every typed word, best first: a command whose name starts with
- * what was typed, then one whose name has every typed word, then one found by its group or keywords
- * ("open the help" finds Open the help first, not Open the settings in "Settings and help"). Within
- * each rank the list keeps its order, and each group stays in one piece.
+ * The commands whose words start with every typed word (any order: "plain" finds "the plain font",
+ * not "explain"; "net" finds "netlist"), best first: a command whose name starts with what was
+ * typed, then one whose name has every typed word, then one found by its group or keywords ("open the
+ * help" finds Open the help first, not Open the settings in "Settings and help"). Within each rank the
+ * list keeps its order, and each group stays in one piece.
  */
 export function filterCommands(commands: readonly Command[], query: string): Command[] {
-  const typed = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const typed = commandWords(query);
   if (!typed.length) return commands.slice();
-  const split = (text: string): string[] => text.toLowerCase().split(/[^\p{L}\p{N}_.]+/u).filter(Boolean);
   const phrase = typed.join(' ');
   const ranked: { c: Command; rank: number; i: number }[] = [];
   commands.forEach((c, i) => {
-    const name = split(c.label);
-    const all = [...name, ...split(c.group), ...split(c.keywords ?? '')];
+    const name = commandWords(c.label);
+    const all = [...name, ...commandWords(c.group), ...commandWords(c.keywords ?? '')];
     if (!typed.every((w) => all.some((x) => x.startsWith(w)))) return;
     const rank = name.join(' ').startsWith(phrase) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
     ranked.push({ c, rank, i });

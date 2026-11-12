@@ -1376,7 +1376,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (schematic && !tooBig) {
       list.push({ id: 'add-part', group: gEdit, label: t('paletteAddPart'), keywords: 'add new part form nodes keyboard netlist line', shortcut: 'A' });
       for (const tl of ['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'ground'] as const) {
-        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}`}`, shortcut: tl === 'ground' ? '0' : tl });
+        // E, F, G and H by both words a student brings: "dependent" (the channel's, the examples') and "controlled" (final reviews, words W4).
+        const dependent = tl === 'E' || tl === 'F' || tl === 'G' || tl === 'H' ? ' dependent controlled' : '';
+        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}${dependent}`}`, shortcut: tl === 'ground' ? '0' : tl });
       }
       list.push({ id: 'tool:wire', group: gEdit, label: t('paletteWire'), keywords: 'wire draw line', shortcut: 'W' });
       const sel = selected?.kind === 'part' ? schematic.circuit.parts.find((p) => p.key === selected.key) : undefined;
@@ -1407,12 +1409,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'settings', group: gSettings, label: t('paletteSettings'), keywords: 'preferences text size contrast motion font' });
     list.push({ id: 'help', group: gSettings, label: t('paletteHelp'), keywords: 'keys keyboard shortcuts licences' });
     // The open circuit's example comes last in its group. A video's examples are named with the
-    // video ("Example 3: a and b open" is in three videos), and found by its words, accents or not.
-    const plainWords = (words: string): string => words.normalize('NFD').replace(/\p{M}/gu, '');
+    // video ("Example 3: a and b open" is in three videos), and found by its words, accents or not
+    // (filterCommands folds accents in every command's words and in what is typed).
     for (const e of [...EXAMPLES].sort((a, b) => Number(a.id === exampleId) - Number(b.id === exampleId))) {
       const video = EXAMPLE_GROUPS.find((g) => g.group === e.group && g.video)?.label;
       const label = video ? t('paletteOpenVideoExample', { name: e.name, video }) : t('paletteOpenExample', { name: e.name });
-      list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video ${plainWords(`${video ?? ''} ${e.name}`)}` });
+      list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video` });
     }
     return list;
   }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, video, shown, plain, exampleId, schematic, tooBig, selected, selectedWire, selectedGround]);

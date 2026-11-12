@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The page after the final reviews of milestone 2 (the ui lane), in jsdom with the real ngspice as
- * in app-smoke.test.tsx: Ctrl+K's field keeping the focus (a11y A1, A3). Focus order and axe in a real browser:
+ * in app-smoke.test.tsx: Ctrl+K's real list found by the words it shows (words W4, W5, W12) and its
+ * field keeping the focus (a11y A1, A3). Focus order and axe in a real browser:
  * tests/e2e/ui-review.spec.ts.
  */
 import { readFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ import { App } from '../../src/app/App.tsx';
 import type { Engine } from '../../src/app/engine.ts';
 import { START_HERE_ID } from '../../src/app/examples.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
+import { toolPhrase } from '../../src/app/tools.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { t } from '../../src/i18n/index.ts';
 
@@ -61,12 +63,44 @@ const openPalette = (): HTMLElement => {
   fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
   return screen.getByRole('dialog', { name: t('paletteTitle') });
 };
+const labels = (palette: HTMLElement): string[] => [...palette.querySelectorAll('.palette__label')].map((l) => l.textContent ?? '');
 
 async function solved(): Promise<void> {
   await waitFor(() => expect(statusLine()).toMatch(/Finished in \d+ ms/), { timeout: 15000 });
 }
 
 describe('Ctrl+K after the final reviews', () => {
+  it('finds every command of the real list by its own name, as shown; “dependent” finds the dependent sources; accents or not', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    // A part selected, so the list has the selection's commands too.
+    act(() => screen.getByRole('button', { name: /^R2, / }).focus());
+    const palette = openPalette();
+    const input = within(palette).getByRole('combobox');
+    const all = labels(palette);
+    expect(all.length).toBeGreaterThan(60);
+    for (const label of all) {
+      fireEvent.change(input, { target: { value: label } });
+      expect(labels(palette), label).toContain(label);
+    }
+    // Hyphens typed as shown (words W5).
+    fireEvent.change(input, { target: { value: 'current-controlled current' } });
+    expect(labels(palette)[0]).toBe(t('palettePlace', { part: toolPhrase('F') }));
+    // The channel's word finds the four tools (words W4), and "controlled" still does.
+    const dependentTools = (['E', 'F', 'G', 'H'] as const).map((tl) => t('palettePlace', { part: toolPhrase(tl) }));
+    fireEvent.change(input, { target: { value: 'dependent' } });
+    expect(labels(palette)).toEqual(expect.arrayContaining(dependentTools));
+    fireEvent.change(input, { target: { value: 'controlled' } });
+    expect(labels(palette)).toEqual(expect.arrayContaining(dependentTools));
+    // Accents or not: the same examples (words W12).
+    fireEvent.change(input, { target: { value: 'Thévenin' } });
+    const accented = labels(palette);
+    fireEvent.change(input, { target: { value: 'Thevenin' } });
+    expect(labels(palette)).toEqual(accented);
+    expect(accented.length).toBeGreaterThanOrEqual(6);
+    fireEvent.keyDown(input, { key: 'Escape' });
+  }, 60000);
+
   it('keeps the focus in its field: Tab stays there, a click on the list does not take it, and Escape closes it from anywhere', async () => {
     render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     await solved();

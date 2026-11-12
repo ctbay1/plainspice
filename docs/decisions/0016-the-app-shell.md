@@ -175,3 +175,8 @@ Ctrl+K stay as they are.
 - **Its list is a `<div role=listbox>`** of `<div role=group>`s, each a name and a `<ul role=none>` of
   `<li role=option>`s (a11y A3: an `<li>` may not be a group, and a list may hold only `<li>`s). The
   accessibility tree is as it was; axe's best-practice rules pass on it.
+- **What is typed is cut into words as the commands are** (words W5, W12): at anything that is not a
+  letter, a digit, _ or a dot, any case, accents or not. So a command's own name, typed as it is shown
+  ("Place a current-controlled current source", "Example 3: short", "(V_Th)"), finds it, and
+  "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands are also
+  found by "dependent" and by "controlled" (words W4: the channel's word and the textbook's).
