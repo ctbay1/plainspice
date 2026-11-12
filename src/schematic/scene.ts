@@ -279,13 +279,7 @@ class Obstacles {
     }
   }
 
-  /**
-   * How much the box collides with what is there (0: free), leaving out box `skip` (a part's own
-   * symbol), and with `solid`, the soft boxes too (what is left is what findOverlaps would call an
-   * overlap). Boxes count first, then segments, each in the order they came, as one sum over all of
-   * them would.
-   */
-  /** What is filed in the squares a box covers (and what covers too many squares to file), each once. */
+  /** What is filed in the squares a box covers (and what covers too many squares to file), each once, in order. */
   private near(box: Box): { boxes: number[]; segments: number[] } {
     const near = new Set<number>(this.big);
     const keys = cellsOf(box);
@@ -302,6 +296,12 @@ class Obstacles {
     return { boxes, segments };
   }
 
+  /**
+   * How much the box collides with what is there (0: free), leaving out box `skip` (a part's own
+   * symbol), and with `solid`, the soft boxes too (what is left is what findOverlaps would call an
+   * overlap). Boxes count first, then segments, each in the order they came, as one sum over all of
+   * them would.
+   */
   cost(box: Box, skip = -1, solid = false): number {
     const { boxes, segments } = this.near(box);
     let c = 0;
