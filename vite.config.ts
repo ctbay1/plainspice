@@ -316,9 +316,13 @@ function offlineApp(): Plugin[] {
           };
         },
       ],
-      // Share links live in the fragment, so every link opens the same index.html.
+      // Share links live in the fragment, so every link opens the same index.html. Not the site's other
+      // pages, which are pages of their own and not kept offline: once a student had opened the app, the
+      // design pages (Tarık's checkpoint among them) opened as a broken copy of the app instead, its
+      // scripts looked for under design/ (seen in the end-to-end tests whenever the service worker was
+      // installed before they got there).
       navigateFallback: 'index.html',
-      navigateFallbackDenylist: [/\/spike\//, /\/licenses\//, /\/engine\//],
+      navigateFallbackDenylist: [/\/spike\//, /\/licenses\//, /\/engine\//, /\/design\//],
       cleanupOutdatedCaches: true,
     },
   });
