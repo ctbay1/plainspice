@@ -267,6 +267,23 @@ describe('words re-check 11: Shift+R and Delete on a part being moved say what c
     await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 out in 1k'));
   }, 30000);
 
+  it('the ground symbol: "Put the ground symbol down first", and "The ground symbol can’t go here" (critic of the fix)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const ground = (): HTMLElement => screen.getByRole('button', { name: /^Ground, node 0/ });
+    fireEvent.click(ground());
+    fireEvent.click(await screen.findByRole('button', { name: t('nodeCardMoveGround') }));
+    await waitFor(() => expect(polite()).toContain('The ground symbol picked up'));
+    fireEvent.keyDown(ground(), { key: 'Delete' });
+    await waitFor(() => expect(polite()).toContain('Put the ground symbol down first (Esc puts it back), then Delete deletes it.'));
+    // One square up it would lie across a wire: there it can only go back first.
+    fireEvent.keyDown(ground(), { key: 'ArrowUp' });
+    await waitFor(() => expect(polite()).toContain('not here'));
+    fireEvent.keyDown(ground(), { key: 'Delete' });
+    await waitFor(() => expect(polite()).toContain('The ground symbol can’t go here: Esc puts it back, then Delete deletes it.'));
+    expect(polite()).not.toContain('Put The ground symbol');
+  }, 30000);
+
   it('where it can go, both still say to put it down first', async () => {
     render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     await solved();

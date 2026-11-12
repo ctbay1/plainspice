@@ -410,7 +410,10 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   back, then Reverse swaps its two ends in the netlist." and "…, then Delete deletes it." (words
   re-check 11: until then Shift+R said "Put R1 down first" beside the hint's "R1 can’t go here"). The
   sentence follows the move's preview, made again when the one drawn is of an older place, turn or
-  text, as Enter's is, so a key pressed before the next frame gets the right one.
+  text, as Enter's is, so a key pressed before the next frame gets the right one. Delete on the ground
+  symbol in hand says the same with its name in lower case where it does not start the sentence: "Put
+  the ground symbol down first (Esc puts it back), then Delete deletes it." (it said "Put The ground
+  symbol": critic of the fix), and "The ground symbol can’t go here: …" where it can't go.
 - **"node in" on the card** (W8). The card's "in is higher", and its spoken "2 volts across R1, in is
   higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
   stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button was

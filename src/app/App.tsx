@@ -2288,8 +2288,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       const placed = m.grab.kind === 'part' ? s.drawing.parts.get(m.grab.key) : undefined;
       if (!placed) return refuse(t('turnOnlyParts'));
       // Where it cannot go (a half turn where it stands, a place taken ...) it can only go back first:
-      // the sentence follows the move's preview, as the hint line does (words re-check 11).
-      if (kind === 'reverse') return refuse(t(canGoNow(m, s) ? 'reverseWhileMoving' : 'reverseWhileRefused', { name }));
+      // the sentence follows the move's preview, as the hint line does (words re-check 11). The name
+      // starts only the second sentence ("Put R1 down first", "R1 can’t go here").
+      if (kind === 'reverse') return refuse(canGoNow(m, s) ? t('reverseWhileMoving', { name: grabName(s, m.grab) }) : t('reverseWhileRefused', { name }));
       const was = m.turn ?? { rot: placed.rot, mirror: placed.mirror };
       const next: MoveState = { ...m, turn: kind === 'turn' ? { ...was, rot: nextRotation(was.rot) } : { ...was, mirror: !was.mirror } };
       moveRef.current = next;
@@ -2898,7 +2899,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         }
         if (move) {
           const s = currentDrawing();
-          if (s) refuse(t(canGoNow(moveRef.current ?? move, s) ? 'deleteWhileMoving' : 'deleteWhileRefused', { name: cap(grabName(s, move.grab)) }));
+          // "Put the ground symbol down first", "The ground symbol can’t go here": a capital only where the name starts the sentence.
+          const name = s ? grabName(s, move.grab) : '';
+          if (s) refuse(canGoNow(moveRef.current ?? move, s) ? t('deleteWhileMoving', { name }) : t('deleteWhileRefused', { name: cap(name) }));
           return true;
         }
         deleteNow();
