@@ -9,6 +9,7 @@ import type { AnalysisResults } from '../../src/engine/results.ts';
 import { roundingNoise } from '../../src/spice/describe.ts';
 import {
   agrees,
+  ANSWER_FLOOR,
   ANSWER_GAP,
   answersAgree,
   answersGap,
@@ -277,10 +278,14 @@ describe('answersAgree: ngspice\'s answers are the exact ones to the page\'s dig
     expect(answersAgree(m, x, ng({ ...good, a: 4.5 * (1 + 0.9 * ANSWER_GAP) }, currents))).toBe(true);
   });
 
-  it('a value tiny beside the others of its kind is not compared (1 nV beside 9 V, 1 pA beside 1.4 mA); neither is a resistor\'s current, a product of the node voltages', () => {
+  it('a value tiny beside the others of its kind is held to what rounding leaves, 2^-30 of the largest (8.4 nV beside 9 V, 1.3 pA beside 1.4 mA), not skipped (the critic of round 2); a resistor\'s current, a product of the node voltages, is not compared', () => {
     const m = model(text) as ExactModel;
     const x = solve(m);
     expect(answersAgree(m, x, ng({ ...good, s: 2e-9 }, { ...currents, v2: -2e-12 }))).toBe(true);
+    // 1 nV off by 9 nV, or 1 pA off by 2 pA: more than rounding leaves.
+    expect(answersAgree(m, x, ng({ ...good, s: 1e-8 }, currents))).toBe(false);
+    expect(answersAgree(m, x, ng(good, { ...currents, v2: -3e-12 }))).toBe(false);
+    expect(ANSWER_FLOOR).toBe(2 ** -30);
     expect(answersAgree(m, x, ng(good, currents, { r1: 1 }))).toBe(true);
     // A value ngspice did not give for an answer it must give: no agreement.
     expect(answersGap(m, x, ng({ a: 4.5, b: 4.5, s: 1e-9 }, currents))).toBeUndefined();

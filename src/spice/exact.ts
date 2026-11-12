@@ -366,6 +366,13 @@ const HARMLESS_OPTIONS = new Set([
 
 /** At most this many unknowns (node voltages and branch currents) are solved exactly (measured: decision 0015). */
 export const MAX_UNKNOWNS = 150;
+/**
+ * At most this many parts are modelled exactly. Each part adds a term or more to the equations and about
+ * four to each check of ngspice's values, each counted TERM_WORK, so past MAX_WORK / (5 × TERM_WORK)
+ * parts the solve and one check cannot fit in MAX_WORK: the netlist is left to the other rule before any
+ * value is read (reading the values of a 256 kB netlist of 12,000 resistors alone took 40 to 80 ms).
+ */
+export const MAX_PARTS = 1600;
 
 /** Why a netlist is not modelled exactly, for tests and records: undefined when it is. */
 export type NotExact =
@@ -388,6 +395,7 @@ export interface NetlistInput {
  * that ngspice still reads.
  */
 export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], afterEnd: readonly { text: string }[] = []): ExactModel | NotExact {
+  if (parts.length > MAX_PARTS) return 'size';
   for (const line of netlist.lines) {
     if (line.kind === 'control' || line.kind === 'invalid') return 'directive';
     const d = line.directive;
@@ -477,54 +485,47 @@ function spelling(name: string): string {
 
 // ------------------------------------------------------------------ the equations
 
-/** One equation: coefficients by unknown. */
-type Row = Map<number, Fraction>;
-
-/** Adds c to row[k]. */
-function put(row: Row, k: number, c: Fraction): void {
-  if (k < 0 || isZero(c)) return;
-  const had = row.get(k);
-  const v = had ? add(had, c) : c;
-  if (isZero(v)) row.delete(k);
-  else row.set(k, v);
+/** One term of an equation: the coefficient `c` of unknown `k`. */
+interface Term {
+  k: number;
+  c: Fraction;
 }
 
 /**
  * The circuit's equations (modified nodal analysis): Kirchhoff's current law at each node (the
- * currents leaving it add up to 0), then one equation for each branch (V, E, H, L). `sources` says
- * which independent sources take part in the right-hand side: all of them at their values (the
- * operating point), or one of them at 1 and the rest at 0 (a sweep's slope, a .tf input).
+ * currents leaving it add up to 0), then one equation for each branch (V, E, H, L), as lists of terms,
+ * not yet added up: solveExact adds each row's terms as whole numbers over the row's one denominator,
+ * with no common factor searched for in a growing sum (1,000 resistors side by side at one node made
+ * each sum of fractions slower than the last, the critic of round 2 of the re-check's fixes).
  */
-function equations(model: ExactModel): Row[] {
-  const rows: Row[] = Array.from({ length: model.size }, () => new Map());
+function equations(model: ExactModel): Term[][] {
+  const rows: Term[][] = Array.from({ length: model.size }, () => []);
+  const put = (row: number, k: number, c: Fraction): void => {
+    if (row >= 0 && k >= 0 && !isZero(c)) rows[row]!.push({ k, c });
+  };
   for (const p of model.parts) {
     const { a, b } = p;
     switch (p.kind) {
       case 'R': {
-        const g = div(ONE, p.value);
-        if (a >= 0) {
-          put(rows[a]!, a, g);
-          put(rows[a]!, b, neg(g));
-        }
-        if (b >= 0) {
-          put(rows[b]!, b, g);
-          put(rows[b]!, a, neg(g));
-        }
+        // 1/R, R of either sign; R's value is in lowest terms, so 1/R is too.
+        const g: Fraction = p.value.n < 0n ? { n: -p.value.d, d: -p.value.n } : { n: p.value.d, d: p.value.n };
+        put(a, a, g);
+        put(a, b, neg(g));
+        put(b, b, g);
+        put(b, a, neg(g));
         break;
       }
-      case 'G': {
+      case 'G':
         // gm × (v(c) − v(d)) leaves node a and enters node b.
-        for (const [n, s] of [[a, ONE], [b, neg(ONE)]] as const) {
-          if (n < 0) continue;
-          put(rows[n]!, p.c, mul(s, p.value));
-          put(rows[n]!, p.d, neg(mul(s, p.value)));
-        }
+        put(a, p.c, p.value);
+        put(a, p.d, neg(p.value));
+        put(b, p.c, neg(p.value));
+        put(b, p.d, p.value);
         break;
-      }
       case 'F': {
         const k = model.parts[p.control]!.branch;
-        if (a >= 0) put(rows[a]!, k, p.value);
-        if (b >= 0) put(rows[b]!, k, neg(p.value));
+        put(a, k, p.value);
+        put(b, k, neg(p.value));
         break;
       }
       case 'V':
@@ -532,15 +533,14 @@ function equations(model: ExactModel): Row[] {
       case 'H':
       case 'L': {
         const k = p.branch;
-        if (a >= 0) put(rows[a]!, k, ONE);
-        if (b >= 0) put(rows[b]!, k, neg(ONE));
-        const row = rows[k]!;
-        put(row, a, ONE);
-        put(row, b, neg(ONE));
+        put(a, k, ONE);
+        put(b, k, neg(ONE));
+        put(k, a, ONE);
+        put(k, b, neg(ONE));
         if (p.kind === 'E') {
-          put(row, p.c, neg(p.value));
-          put(row, p.d, p.value);
-        } else if (p.kind === 'H') put(row, model.parts[p.control]!.branch, neg(p.value));
+          put(k, p.c, neg(p.value));
+          put(k, p.d, p.value);
+        } else if (p.kind === 'H') put(k, model.parts[p.control]!.branch, neg(p.value));
         break;
       }
       default:
@@ -570,20 +570,35 @@ function rightHandSide(model: ExactModel, level: (p: ExactPart) => Fraction): Fr
 }
 
 /**
- * The work an exact solve may take before PlainSpice leaves the decision to the other rule, counted the
- * same way on every computer, so a circuit is solved exactly, or not, everywhere (decision 0015). Each
- * combination of two rows counts ROW_WORK; each entry it writes counts ENTRY_WORK plus the square of its
- * size in 64-bit words (the pivot's, measured once a step), since multiplying and dividing whole numbers
- * of 4,096 bits takes thousands of times as long as small ones; the back substitution counts the same
- * way, with the determinant's size, before it starts. Measured over 174 grids, meshes, ladders and
- * networks of E and G sources of up to 146 unknowns, with values of 1, 3 and 7 digits, on a machine
- * shared with other builds: from 2.6e-6 to 9.1e-6 ms of processor time a unit, so MAX_WORK keeps a
- * solve, or the work until it stops, under about 75 ms. A whole number past MAX_BITS stops it too.
+ * The work the exact solution of one netlist may take, the solve and every check of ngspice's values
+ * against it, before PlainSpice leaves the decision to the other rule; counted the same way on every
+ * computer, so a circuit is decided exactly, or not, everywhere (decision 0015). Each combination of two
+ * rows counts ROW_WORK; each entry it writes counts ENTRY_WORK plus the square of its size in 64-bit
+ * words (the pivot's, measured once a step), since multiplying and dividing whole numbers of 4,096 bits
+ * takes thousands of times as long as small ones; the back substitution counts the same way, with the
+ * determinant's size, before it starts. Building the equations and each check of ngspice's values
+ * (`shares`) count TERM_WORK for each term they add, before they start: a term costs up to about 3 µs
+ * with numbers of 4,096 bits, and 1,000 resistors side by side at one node froze the page for 12.9 s
+ * while only the elimination was counted (the critic of round 2 of the re-check's fixes). Measured over
+ * 174 grids, meshes, ladders and networks of E and G sources of up to 146 unknowns, with values of 1, 3
+ * and 7 digits, on a machine shared with other builds: from 2.6e-6 to 9.1e-6 ms of processor time a
+ * unit of the elimination. A whole number past MAX_BITS stops it too: in the elimination, and in the
+ * one denominator of an equation's terms or of a check's sum (a node with hundreds of resistors of
+ * different values has a denominator of thousands of bits).
  */
 export const MAX_WORK = 8_000_000;
 const ROW_WORK = 2000;
 const ENTRY_WORK = 16;
+/** What one term counts when an equation or a check's sum is added up as whole numbers (MAX_WORK). */
+export const TERM_WORK = 1000;
 export const MAX_BITS = 4096;
+
+/** The work left for one netlist's exact solution and its checks (MAX_WORK); spent as they go. */
+export interface Budget {
+  left: number;
+}
+/** A new budget of MAX_WORK. */
+export const newBudget = (): Budget => ({ left: MAX_WORK });
 
 /** What one entry written with numbers the size of x counts (MAX_WORK). */
 function entryWork(x: bigint): number {
@@ -592,6 +607,12 @@ function entryWork(x: bigint): number {
 }
 
 class OverBudget extends Error {}
+
+/** Takes `work` from the budget and gives up: undefined. */
+function spent(budget: Budget, work: number): undefined {
+  budget.left = Math.max(0, budget.left - work);
+  return undefined;
+}
 
 /** a / b for whole numbers that divide exactly (Bareiss's elimination); throws when they do not, which would be a mistake here. */
 function exactly(a: bigint, b: bigint): bigint {
@@ -610,22 +631,37 @@ function exactly(a: bigint, b: bigint): bigint {
  * factor is remembered (P_k / P_l, applied when the row is next used). The unknowns come out as whole
  * numbers over one common denominator, the determinant, by fraction-free back substitution: every
  * division is exact. Undefined when the equations have no single answer (a singular matrix), or when
- * the work grows past MAX_WORK or a number past MAX_BITS.
+ * the work grows past what `budget` has left (MAX_WORK for a new one) or a number past MAX_BITS. The
+ * work done is taken from `budget`.
  */
-export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][] | undefined {
+export function solveExact(model: ExactModel, sides: Fraction[][], budget: Budget = newBudget()): Fraction[][] | undefined {
   const n = model.size;
   const eq = equations(model);
+  const limit = 1n << BigInt(MAX_BITS);
+  // Building the rows: each term counted before any is added (1,000 resistors at one node are 4,000 terms).
+  let terms = 0;
+  for (const row of eq) terms += row.length;
+  let work = (terms + n * sides.length) * TERM_WORK;
+  if (work > budget.left) {
+    budget.left = 0;
+    return undefined;
+  }
   const rows: Map<number, bigint>[] = [];
   const rhs: bigint[][] = [];
   for (let r = 0; r < n; r++) {
+    // The row's one denominator: the least common multiple of its terms', which must stay within MAX_BITS.
     let l = 1n;
-    for (const c of eq[r]!.values()) l = lcm(l, c.d);
-    for (const side of sides) l = lcm(l, side[r]!.d);
-    rows.push(new Map([...eq[r]!].map(([k, c]) => [k, c.n * (l / c.d)])));
+    for (const t of eq[r]!) if (l % t.c.d !== 0n && (l = lcm(l, t.c.d)) > limit) return spent(budget, work);
+    for (const side of sides) if (l % side[r]!.d !== 0n && (l = lcm(l, side[r]!.d)) > limit) return spent(budget, work);
+    const row = new Map<number, bigint>();
+    for (const t of eq[r]!) {
+      const v = (row.get(t.k) ?? 0n) + t.c.n * (l / t.c.d);
+      if (v === 0n) row.delete(t.k);
+      else row.set(t.k, v);
+    }
+    rows.push(row);
     rhs.push(sides.map((side) => side[r]!.n * (l / side[r]!.d)));
   }
-  const limit = 1n << BigInt(MAX_BITS);
-  let work = 0;
   const inColumn: Set<number>[] = Array.from({ length: n }, () => new Set());
   rows.forEach((row, r) => {
     for (const k of row.keys()) inColumn[k]!.add(r);
@@ -658,7 +694,7 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
       for (let k = 0; k < n && cost > 0; k++) {
         if (done[k]) continue;
         const rowsOf = inColumn[k]!;
-        if (rowsOf.size === 0) return undefined;
+        if (rowsOf.size === 0) return spent(budget, work);
         for (const q of rowsOf) {
           const c = (rowsOf.size - 1) * (rows[q]!.size - 1);
           if (c < cost) [cost, col, r] = [c, k, q];
@@ -693,7 +729,7 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
         for (let s = 0; s < side.length; s++) side[s] = exactly(p * side[s]! - a * from[s]!, before);
         work += ROW_WORK + (row.size + pivotRow.size + side.length) * each;
         epoch[q] = step;
-        if (work > MAX_WORK) throw new OverBudget();
+        if (work > budget.left) throw new OverBudget();
       }
       for (const k of pivotRow.keys()) inColumn[k]!.delete(r);
       done[col] = 1;
@@ -702,14 +738,14 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
       order.push({ col, row: r });
     }
   } catch (e) {
-    if (e instanceof OverBudget) return undefined;
+    if (e instanceof OverBudget) return spent(budget, work);
     throw e;
   }
   // Fraction-free back substitution: X = det × x is whole, and det × (pivot row's equation) gives it exactly.
   const det = pivot[n]!;
   const backEach = entryWork(det);
   for (const { row: r } of order) work += rows[r]!.size * sides.length * backEach;
-  if (work > MAX_WORK) return undefined;
+  if (work > budget.left) return spent(budget, work);
   const X: bigint[][] = sides.map(() => Array.from({ length: n }, () => 0n));
   try {
     for (let i = order.length - 1; i >= 0; i--) {
@@ -723,9 +759,10 @@ export function solveExact(model: ExactModel, sides: Fraction[][]): Fraction[][]
       }
     }
   } catch (e) {
-    if (e instanceof OverBudget) return undefined;
+    if (e instanceof OverBudget) return spent(budget, work);
     throw e;
   }
+  budget.left -= work;
   // One common denominator, positive: x = X / det, not reduced (equal ones have equal X).
   const sign = det < 0n ? -1n : 1n;
   return X.map((side) => side.map((v) => (v === 0n ? ZERO : { n: v * sign, d: det * sign })));
@@ -871,21 +908,73 @@ export interface NgspiceValues {
   device(part: string): number | undefined;
 }
 
-/** Sum of fractions, and of their sizes. */
-class Sum {
-  value: Fraction = ZERO;
-  size: Fraction = ZERO;
-  term(x: Fraction): void {
-    this.value = add(this.value, x);
-    this.size = add(this.size, abs(x));
-  }
-  /** |value| / size: the share of its terms that is left (0 when every term is 0). */
-  share(): Fraction {
-    return isZero(this.value) ? ZERO : isZero(this.size) ? ONE : div(abs(this.value), this.size);
-  }
+/**
+ * A number m / (q × 2^e) with whole m, q > 0 and e of either sign: a double (q = 1) times a value the
+ * netlist writes (q its denominator). The checks of ngspice's values add such numbers as whole numbers
+ * over one denominator, with no common factor searched for: the powers of 2 by shifting, the q by their
+ * least common multiple, which stays small (a resistor's value, a power of ten).
+ */
+interface Dyadic {
+  m: bigint;
+  q: bigint;
+  e: number;
 }
 
-/** How closely ngspice's values solve the model's equations (`shares`). */
+const dyadicView = new DataView(new ArrayBuffer(8));
+/** A finite double as m / 2^e exactly (q = 1; m not reduced). */
+function dyadic(v: number): Dyadic {
+  if (v === 0) return { m: 0n, q: 1n, e: 0 };
+  dyadicView.setFloat64(0, v);
+  const hi = dyadicView.getUint32(0);
+  const lo = dyadicView.getUint32(4);
+  const exponent = (hi >>> 20) & 0x7ff;
+  let mantissa = (BigInt(hi & 0xfffff) << 32n) | BigInt(lo);
+  if (exponent !== 0) mantissa |= 1n << 52n;
+  return { m: v < 0 ? -mantissa : mantissa, q: 1n, e: 1075 - (exponent === 0 ? 1 : exponent) };
+}
+/** x × f for a fraction f (its sign into m, its denominator into q). */
+const times = (x: Dyadic, f: Fraction): Dyadic => (f.d < 0n ? { m: -x.m * f.n, q: -x.q * f.d, e: x.e } : { m: x.m * f.n, q: x.q * f.d, e: x.e });
+const negD = (x: Dyadic): Dyadic => ({ m: -x.m, q: x.q, e: x.e });
+/** A fraction as a Dyadic: a power of 2 below goes into e (a swept source's double), anything else into q. */
+function dyadicOf(f: Fraction): Dyadic {
+  if (f.d !== 1n && (f.d & (f.d - 1n)) === 0n) return { m: f.n, q: 1n, e: bitLength(f.d) - 1 };
+  return { m: f.n, q: f.d, e: 0 };
+}
+/** x − y for two doubles' Dyadics (q = 1), over 2^max(e). */
+function minusD(x: Dyadic, y: Dyadic): Dyadic {
+  const e = Math.max(x.e, y.e);
+  return { m: (x.m << BigInt(e - x.e)) - (y.m << BigInt(e - y.e)), q: 1n, e };
+}
+const absBig = (x: bigint): bigint => (x < 0n ? -x : x);
+
+/**
+ * The terms of one equation added up as whole numbers over one denominator: the residual |Σ terms| and
+ * the size Σ |terms| as the fractions value/den and size/den. Undefined when the denominator's odd part
+ * passes MAX_BITS (thousands of resistors of different values at one node), which leaves the decision
+ * to the other rule.
+ */
+function sumOf(terms: readonly Dyadic[], limit: bigint): { value: bigint; size: bigint; den: bigint } | undefined {
+  let q = 1n;
+  let e = Number.NEGATIVE_INFINITY;
+  for (const t of terms) {
+    if (t.m === 0n) continue;
+    if (q % t.q !== 0n && (q = lcm(q, t.q)) > limit) return undefined;
+    if (t.e > e) e = t.e;
+  }
+  if (e === Number.NEGATIVE_INFINITY) return { value: 0n, size: 0n, den: 1n };
+  let value = 0n;
+  let size = 0n;
+  for (const t of terms) {
+    if (t.m === 0n) continue;
+    const scaled = (t.m * (q / t.q)) << BigInt(e - t.e);
+    value += scaled;
+    size += absBig(scaled);
+  }
+  // den = q × 2^e; e can be below 0 for a double of 2^53 or more.
+  return e >= 0 ? { value: absBig(value), size, den: q << BigInt(e) } : { value: absBig(value) << BigInt(-e), size: size << BigInt(-e), den: q };
+}
+
+/** How closely ngspice's values solve this model's equations (`shares`), as fractions not in lowest terms. */
 export interface Shares {
   /**
    * The largest amount by which ngspice's values leave one of the equations unbalanced, over the largest
@@ -908,99 +997,120 @@ export interface Shares {
   products: Fraction;
 }
 
-/** A product of node voltages is checked only when their difference is at least this share of them. */
-const RESOLVED = fraction(1n, 1n << 20n);
-/** Below the smallest normal double a product has fewer digits: gaps that small say nothing. */
-const SMALLEST_NORMAL = fraction(1n, 1n << 1022n);
+/** The larger of two fractions with positive denominators (not in lowest terms), by cross-multiplying. */
+const larger = (a: Fraction, b: Fraction): Fraction => (b.n * a.d > a.n * b.d ? b : a);
 
 /**
  * How closely ngspice's values solve this model's equations (Shares). `level` gives each independent
- * source's value in that solution. Undefined when a value the equations need is missing.
+ * source's value in that solution. Undefined when a value the equations need is missing, when an
+ * equation's one denominator passes MAX_BITS, or when the check would take more work than `budget` has
+ * left (each term counts TERM_WORK; the work is taken from `budget`).
  */
-export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction): Shares | undefined {
-  const volts: (Fraction | undefined)[] = model.nodes.map((n) => {
+export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget()): Shares | undefined {
+  const volts: (Dyadic | undefined)[] = model.nodes.map((n) => {
     const v = ng.voltage(n);
-    return v === undefined || !Number.isFinite(v) ? undefined : fromDouble(v);
+    return v === undefined || !Number.isFinite(v) ? undefined : dyadic(v);
   });
   if (volts.some((v) => v === undefined)) return undefined;
-  const branch = new Map<number, Fraction>();
+  const branch = new Map<number, Dyadic>();
   for (const p of model.parts) {
     if (p.branch < 0) continue;
     const i = ng.branch(p.key);
     if (i === undefined || !Number.isFinite(i)) return undefined;
-    branch.set(p.branch, fromDouble(i));
+    branch.set(p.branch, dyadic(i));
   }
-  const v = (n: number): Fraction => (n < 0 ? ZERO : volts[n]!);
-  const sums: Sum[] = model.nodes.map(() => new Sum());
-  let products = ZERO;
-  const worse = (a: Fraction, b: Fraction): Fraction => (compare(b, a) > 0 ? b : a);
-  /** v(x) − v(y), when it is not a near cancellation of the two. */
+  const v = (n: number): Dyadic => (n < 0 ? { m: 0n, q: 1n, e: 0 } : volts[n]!);
+  // Every term is counted before any is added: about four for each part.
+  const work = (4 * model.parts.length + model.size) * TERM_WORK;
+  if (work > budget.left) {
+    budget.left = 0;
+    return undefined;
+  }
+  budget.left -= work;
+  const nodeTerms: Dyadic[][] = model.nodes.map(() => []);
+  const ownTerms: Dyadic[][] = [];
+  let products: Fraction = ZERO;
+  /** v(x) − v(y) is not a near cancellation of the two: at least 2^-20 of the larger. */
   const resolved = (x: number, y: number): boolean => {
-    const d = abs(sub(v(x), v(y)));
-    const big = compare(abs(v(x)), abs(v(y))) > 0 ? abs(v(x)) : abs(v(y));
-    return compare(d, mul(RESOLVED, big)) >= 0;
+    const d = minusD(v(x), v(y));
+    const e = d.e;
+    const big = [v(x), v(y)].reduce((m, t) => {
+      const s = absBig(t.m << BigInt(e - t.e));
+      return s > m ? s : m;
+    }, 0n);
+    return absBig(d.m) << 20n >= big;
   };
   for (const p of model.parts) {
-    let terms: Fraction[] = [];
-    let product: Fraction | undefined;
+    let terms: Dyadic[] = [];
+    let product: Dyadic | undefined;
     switch (p.kind) {
-      case 'R':
-        terms = [div(v(p.a), p.value), neg(div(v(p.b), p.value))];
-        if (resolved(p.a, p.b)) product = add(terms[0]!, terms[1]!);
+      case 'R': {
+        const g: Fraction = { n: p.value.d, d: p.value.n };
+        terms = [times(v(p.a), g), negD(times(v(p.b), g))];
+        if (resolved(p.a, p.b)) product = times(minusD(v(p.a), v(p.b)), g);
         break;
+      }
       case 'C':
         break;
       case 'I':
-        terms = [level(p)];
-        product = level(p);
+        product = dyadicOf(level(p));
+        terms = [product];
         break;
       case 'G':
-        terms = [mul(p.value, v(p.c)), neg(mul(p.value, v(p.d)))];
-        if (resolved(p.c, p.d)) product = add(terms[0]!, terms[1]!);
+        terms = [times(v(p.c), p.value), negD(times(v(p.d), p.value))];
+        if (resolved(p.c, p.d)) product = times(minusD(v(p.c), v(p.d)), p.value);
         break;
       case 'F':
-        terms = [mul(p.value, branch.get(model.parts[p.control]!.branch)!)];
-        product = terms[0];
+        product = times(branch.get(model.parts[p.control]!.branch)!, p.value);
+        terms = [product];
         break;
       default: {
         terms = [branch.get(p.branch)!];
         // Its own equation: v(a) − v(b) and what the part makes of it.
-        const own = new Sum();
-        own.term(v(p.a));
-        own.term(neg(v(p.b)));
-        if (p.kind === 'V') own.term(neg(level(p)));
-        else if (p.kind === 'E') {
-          own.term(neg(mul(p.value, v(p.c))));
-          own.term(mul(p.value, v(p.d)));
-        } else if (p.kind === 'H') own.term(neg(mul(p.value, branch.get(model.parts[p.control]!.branch)!)));
-        sums.push(own);
+        const own = [v(p.a), negD(v(p.b))];
+        if (p.kind === 'V') own.push(negD(dyadicOf(level(p))));
+        else if (p.kind === 'E') own.push(negD(times(v(p.c), p.value)), times(v(p.d), p.value));
+        else if (p.kind === 'H') own.push(negD(times(branch.get(model.parts[p.control]!.branch)!, p.value)));
+        ownTerms.push(own);
       }
     }
     for (const t of terms) {
-      if (p.a >= 0) sums[p.a]!.term(t);
-      if (p.b >= 0) sums[p.b]!.term(neg(t));
+      if (p.a >= 0) nodeTerms[p.a]!.push(t);
+      if (p.b >= 0) nodeTerms[p.b]!.push(negD(t));
     }
-    if (product !== undefined && compare(abs(product), SMALLEST_NORMAL) >= 0) {
+    if (product !== undefined && product.m !== 0n) {
       const reported = ng.device(p.key);
       if (reported !== undefined) {
         if (!Number.isFinite(reported)) return undefined;
-        const gap = abs(sub(fromDouble(reported), product));
-        products = worse(products, isZero(gap) ? ZERO : div(gap, abs(product)));
+        // Over the denominator q × 2^e of both: the product's size, and its gap from what ngspice reported.
+        const r = dyadic(reported);
+        const e = Math.max(product.e, r.e);
+        const size = absBig(product.m) << BigInt(e - product.e);
+        const gap = absBig(((r.m * product.q) << BigInt(e - r.e)) - size * (product.m < 0n ? -1n : 1n));
+        // Below the smallest normal double a product has fewer digits: gaps that small say nothing.
+        const normal = e < 0 || size << 1022n >= product.q << BigInt(e);
+        if (normal) products = larger(products, gap === 0n ? ZERO : { n: gap, d: size });
       }
     }
   }
   // Each kind of equation against its own kind: Kirchhoff's law at the nodes in amps, the branches' own
   // equations in volts (a 9 V source's equation made a node's 5 nA of misread current look like nothing).
-  const share = (list: readonly Sum[]): Fraction => {
-    let largest = ZERO;
-    let left = ZERO;
-    for (const s of list) {
-      largest = worse(largest, s.size);
-      left = worse(left, abs(s.value));
+  const limit = 1n << BigInt(MAX_BITS);
+  const share = (list: readonly Dyadic[][]): Fraction | undefined => {
+    let largest: Fraction = ZERO;
+    let left: Fraction = ZERO;
+    for (const terms of list) {
+      const s = sumOf(terms, limit);
+      if (!s) return undefined;
+      largest = larger(largest, { n: s.size, d: s.den });
+      left = larger(left, { n: s.value, d: s.den });
     }
-    return isZero(left) ? ZERO : isZero(largest) ? ONE : div(left, largest);
+    return left.n === 0n ? ZERO : largest.n === 0n ? ONE : { n: left.n * largest.d, d: left.d * largest.n };
   };
-  return { equations: worse(share(sums.slice(0, model.nodes.length)), share(sums.slice(model.nodes.length))), products };
+  const atNodes = share(nodeTerms);
+  const atBranches = share(ownTerms);
+  if (!atNodes || !atBranches) return undefined;
+  return { equations: larger(atNodes, atBranches), products };
 }
 
 /**
@@ -1009,23 +1119,13 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
  * (PRODUCT_SHARE): then the model is the circuit ngspice simulated, and every difference between its
  * values and the exact ones (the noise of a 0 among them) is what that rounding leaves.
  */
-export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction): boolean {
-  const s = shares(model, ng, level);
+export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget()): boolean {
+  const s = shares(model, ng, level, budget);
   return !!s && compare(s.equations, fromDouble(RESIDUAL_SHARE)) <= 0 && compare(s.products, fromDouble(PRODUCT_SHARE)) <= 0;
 }
 
 // ------------------------------------------------------------------ ngspice's answers beside the exact ones
 
-/**
- * The answers compared with the exact ones (`answersAgree`): the unknowns ngspice solves for, each node
- * voltage and the current of each V, E, H and L, whose exact value is not 0 and is at least this share
- * of the largest exact value of its kind (node voltages; currents). A smaller one is tiny beside the
- * others, and there ngspice's rounding can be as large as the value itself without any mistake in the
- * circuit (a 4 aA current beside milliamps). The current of an R, F or G is not compared: ngspice works
- * it out from these unknowns (a resistor's from the voltages at its ends, which can cancel to a few
- * digits), and `agrees` holds it to that product.
- */
-export const ANSWER_SHARE = 1e-3;
 /**
  * How far ngspice's answer may be from the exact one, as a share of it: 5e-5, less than half a unit in
  * the last of the 4 significant digits the page shows a value with, whatever its first digits (half a
@@ -1037,36 +1137,86 @@ export const ANSWER_SHARE = 1e-3;
  * makes the equations ill-conditioned, and ngspice's answers can then be far off while what they leave
  * of the equations stays small (`agrees`): a 1e-12 Ω wire in the middle branch of a balanced bridge
  * gives its ends as 4.321 V and 4.374 V where the circuit makes both 4.5 V (the critic of the re-check's
- * fixes). There PlainSpice shows ngspice's numbers, by the rule for other circuits (decision 0015).
+ * fixes). There PlainSpice shows ngspice's numbers, by the rule for other circuits, and says that they
+ * are off (decision 0015).
  */
 export const ANSWER_GAP = 5e-5;
-
 /**
- * The largest gap between ngspice's answers and the exact unknowns `x` of one solution (node voltages,
- * then branch currents), as a share of the exact value, over the answers ANSWER_SHARE picks; undefined
- * when ngspice gave no value for one of them. Worked out in doubles from the exact values (each
- * rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
+ * What ngspice's rounding may add to the gap of an answer, as a share of the largest exact value of its
+ * kind (node voltages; currents): an answer tiny beside the others can be off by more than ANSWER_GAP of
+ * itself with nothing wrong (a 10 mΩ wire beside attoamps leaves a source's 4 aA at 21 fA, beside
+ * milliamps). ngspice's LU solution leaves each unknown a few units in the last place of the largest
+ * values times what the circuit's conditioning makes of them: what it leaves of the equations was at
+ * most 3.8e-15 of their sizes over the 9,627 netlists of the corpora and the repository that PlainSpice
+ * models exactly (RESIDUAL_SHARE). 2^-30 (about 9.3e-10) leaves room above that, and it is the check
+ * that catches a bridge at a few millivolts beside a 12 V source: there ngspice's 4.882 mV, 5.9 % from
+ * the exact 5.189 mV, is 3.1e-4 V off, far more than 2^-30 of 12 V (1.1e-8 V), where an earlier check
+ * skipped every answer below 1e-3 of the largest and called ngspice's 2.097 V and 82.78 mV rounding
+ * noise beside it (the critic of round 2 of the re-check's fixes).
  */
-export function answersGap(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): number | undefined {
-  const gapOf = (list: { exact: Fraction; given: number | undefined }[]): number | undefined => {
-    const exact = list.map((e) => (isZero(e.exact) ? 0 : toDouble(e.exact)));
-    const largest = exact.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
-    let gap = 0;
-    for (let k = 0; k < list.length; k++) {
-      const e = exact[k]!;
-      if (e === 0 || !(Math.abs(e) >= ANSWER_SHARE * largest)) continue;
-      const given = list[k]!.given;
-      if (given === undefined || !Number.isFinite(given)) return undefined;
-      gap = Math.max(gap, Math.abs(given - e) / Math.abs(e));
-    }
-    return gap;
-  };
-  const volts = gapOf(model.nodes.map((n, k) => ({ exact: x[k]!, given: ng.voltage(n) })));
-  const amps = gapOf(model.parts.filter((p) => p.branch >= 0).map((p) => ({ exact: x[p.branch]!, given: ng.branch(p.key) })));
-  return volts === undefined || amps === undefined ? undefined : Math.max(volts, amps);
+export const ANSWER_FLOOR = 2 ** -30;
+
+/** One of ngspice's answers beside the exact one: a node voltage, or the current of a V, E, H or L. */
+export interface Answer {
+  kind: 'voltage' | 'current';
+  /** The node or the part, as ngspice spells it. */
+  name: string;
+  exact: number;
+  given: number;
+  /**
+   * How far it is, beyond what rounding leaves (ANSWER_FLOOR of the largest of its kind), as a share of
+   * the exact value; for an exact value of 0, 0 within what rounding leaves and Infinity beyond it.
+   */
+  gap: number;
 }
 
-/** True when ngspice's answers are the exact ones to within ANSWER_GAP (answersGap). */
+/**
+ * ngspice's answers beside the exact unknowns `x` of one solution: every node voltage and every V, E, H
+ * and L current. The current of an R, F or G is not among them: ngspice works it out from these answers
+ * (a resistor's from the voltages at its ends, which can cancel to a few digits), and `agrees` holds it
+ * to that product. Undefined when ngspice gave no value for one of them. Worked out in doubles from the
+ * exact values (each rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
+ * The largest value of each kind, which ANSWER_FLOOR is a share of, counts every part's current, so
+ * that a 0 V ammeter beside milliamps is weighed against the milliamps.
+ */
+export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): Answer[] | undefined {
+  const exactV = model.nodes.map((_, k) => (isZero(x[k]!) ? 0 : toDouble(x[k]!)));
+  const branches = model.parts.filter((p) => p.branch >= 0);
+  const exactI = branches.map((p) => (isZero(x[p.branch]!) ? 0 : toDouble(x[p.branch]!)));
+  const largestV = exactV.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  // Every part's current, in doubles from the node voltages and branch currents: only a scale.
+  const at = (n: number): number => (n < 0 ? 0 : exactV[n]!);
+  const branchOf = new Map(branches.map((p, k) => [p.branch, exactI[k]!]));
+  let largestI = exactI.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+  for (const p of model.parts) {
+    const value = p.kind === 'R' ? (at(p.a) - at(p.b)) / toDouble(p.value) : p.kind === 'I' ? toDouble(p.value) : p.kind === 'G' ? toDouble(p.value) * (at(p.c) - at(p.d)) : p.kind === 'F' ? toDouble(p.value) * (branchOf.get(model.parts[p.control]!.branch) ?? 0) : 0;
+    if (Number.isFinite(value)) largestI = Math.max(largestI, Math.abs(value));
+  }
+  const out: Answer[] = [];
+  const one = (kind: Answer['kind'], name: string, exact: number, given: number | undefined, largest: number): boolean => {
+    if (given === undefined || !Number.isFinite(given)) return false;
+    const beyond = Math.max(0, Math.abs(given - exact) - ANSWER_FLOOR * largest);
+    out.push({ kind, name, exact, given, gap: exact !== 0 ? beyond / Math.abs(exact) : beyond > 0 ? Number.POSITIVE_INFINITY : 0 });
+    return true;
+  };
+  for (let k = 0; k < model.nodes.length; k++) if (!one('voltage', model.nodes[k]!, exactV[k]!, ng.voltage(model.nodes[k]!), largestV)) return undefined;
+  for (let k = 0; k < branches.length; k++) if (!one('current', branches[k]!.key, exactI[k]!, ng.branch(branches[k]!.key), largestI)) return undefined;
+  return out;
+}
+
+/**
+ * The largest gap of ngspice's answers from the exact unknowns `x` beyond what rounding leaves, as a
+ * share of the exact value (`answers`), over the answers whose exact value is not 0: 0 when every one is
+ * within ANSWER_FLOOR of the largest of its kind. What ngspice gives for an exact 0 is not weighed here:
+ * roundingNoise decides it, and an H of 1 GΩ lifts a balanced bridge's rounding to 193.5 nV with every
+ * other answer exact to 16 digits (C9o). Undefined when ngspice gave no value for one of them.
+ */
+export function answersGap(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): number | undefined {
+  const list = answers(model, x, ng);
+  return list?.reduce((m, a) => (a.exact !== 0 ? Math.max(m, a.gap) : m), 0);
+}
+
+/** True when each of ngspice's answers is within ANSWER_GAP of the exact one, beyond what rounding leaves (answersGap). */
 export function answersAgree(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): boolean {
   const gap = answersGap(model, x, ng);
   return gap !== undefined && gap <= ANSWER_GAP;

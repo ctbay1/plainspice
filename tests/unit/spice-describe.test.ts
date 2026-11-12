@@ -770,10 +770,12 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     const loop = kept('* t\nV1 a 0 12\nR1 a b 1k\nI1 0 b 2A\n.op\n.end\n', op({ a: 12, b: 12.000000000000002 }, [['v1', 1.734723475976807e-18, 'branch'], ['r1', -1.7763568394002505e-18, 'device'], ['i1', 2e-18, 'device']]));
     expect(sp(loop.currents.find((c) => c.name === 'R1')!.text)).toBe('1.776 aA from node b to node a through R1');
     expect(sp(loop.currents.find((c) => c.name === 'V1')!.power!.text)).toBe('V1 absorbs 20.82 aW');
-    // R2's two ends are the same double, so ngspice gives its 3 aA as exactly 0: the exact 3 aA is shown,
-    // with ngspice's 0 kept in `given` (the critic of the re-check's fixes; C9n). The others are ngspice's.
+    // R2's two ends are the same double, so ngspice gives its 3 aA as exactly 0, and V1 888.2 aA where the
+    // circuit makes 3 aA: ngspice's answers are off, so every number is ngspice's, never an exact value
+    // mixed in beside them (the critic of round 2), and a warning gives V1's exact 3 aA.
     const series = describeResults(parseNetlist('* t\nV1 a 0 10\nR1 a b 2\nR2 b c 3\nI1 c 0 3A\n.op\n.end\n'), op({ a: 10, b: 10.000000000000002, c: 10.000000000000002 }, [['v1', 8.881784197001252e-16, 'branch'], ['r1', -8.881784197001252e-16, 'device'], ['r2', 0, 'device'], ['i1', 3.0000000000000002e-18, 'device']]), run());
-    expect(series.currents.map((c) => [c.name, c.value, c.noise, c.given])).toEqual([['V1', 8.881784197001252e-16, undefined, undefined], ['R1', -8.881784197001252e-16, undefined, undefined], ['R2', 3e-18, undefined, 0], ['I1', 3.0000000000000002e-18, undefined, undefined]]);
+    expect(series.currents.map((c) => [c.name, c.value, c.noise, c.given])).toEqual([['V1', 8.881784197001252e-16, undefined, undefined], ['R1', -8.881784197001252e-16, undefined, undefined], ['R2', 0, undefined, undefined], ['I1', 3.0000000000000002e-18, undefined, undefined]]);
+    expect(sp(series.warnings.find((m) => m.code === 'imprecise-answers')!.why)).toContain('V1 carries 3 aA, where ngspice gives 888.2 aA the other way.');
     kept('* t\nV1 a 0 12\nR1 a b 1k\nR2 a b 1k\nI1 0 b 2A\n.op\n.end\n', op({ a: 12, b: 12.000000000000002 }, [['v1', 3.469446951953614e-18, 'branch'], ['r1', -1.7763568394002505e-18, 'device'], ['r2', -1.7763568394002505e-18, 'device'], ['i1', 2e-18, 'device']]));
   });
 

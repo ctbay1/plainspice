@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { agrees, ANSWER_GAP, answersAgree, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, neg, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, unitSource, ZERO, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
+import { agrees, ANSWER_GAP, answers, answersAgree, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, unitSource, ZERO, type Answer, type Budget, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -584,6 +584,18 @@ export const DESCRIBE_STRINGS = {
   /** `shows`: for one value, what it is ("R3 carries 454.1 pA") and its value; for several, the list of their exact values. */
   lostWhy: (gave: string, reason: string, shows: string, value: string | undefined): string =>
     `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
+  // Where ngspice's answers are farther from the exact ones than the page's digits (opCheck 'imprecise'):
+  // PlainSpice shows ngspice's numbers and says that they are off, and by how much.
+  offTitle: 'Some of ngspice\'s answers here are off',
+  offVoltage: (node: string, exact: string, given: string): string => `node ${node} is at ${exact}, where ngspice gives ${given}`,
+  /** A current's size; `reversed` when ngspice gives it flowing the other way. */
+  offCurrent: (name: string, exact: string, given: string, reversed: boolean): string => `${name} carries ${exact}, where ngspice gives ${given}${reversed ? ' the other way' : ''}`,
+  offNoCurrent: (name: string, given: string): string => `${name} carries no current, where ngspice gives ${given}`,
+  /** The items, each with a comma of its own, joined by semicolons; a list cut short counts the rest (never "and 1 more"). */
+  offList: (items: readonly string[], more: number): string =>
+    more ? `${items.join('; ')}; and ${more} more` : items.length === 1 ? items[0]! : `${items.slice(0, -1).join('; ')}; and ${items[items.length - 1]}`,
+  offWhy: (list: string): string =>
+    `Solved exactly, with fractions, from the netlist's values, ${list}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.`,
   // S8, C9p: a .tf ratio and .dc points ngspice gives as rounding noise of a 0.
   noiseTfTitle: 'The transfer function is shown as 0',
   noiseTfWhy: (tf: string, value: string, output: string, input: string, ratio: string): string =>
@@ -903,6 +915,11 @@ export interface RoundingNoise {
   lostCurrents: Map<string, { value: number; across?: number }>;
   /** Nodes whose voltage ngspice gave as exactly 0 though the circuit makes it real: the exact voltage. */
   lostNodes: Map<string, number>;
+  /**
+   * Where ngspice's answers are farther from the exact ones than the page's digits (opCheck 'imprecise'),
+   * those answers, worst first, with the netlist's names: the note says ngspice's numbers are off there.
+   */
+  off?: Answer[];
 }
 
 /** No rounding noise and nothing lost: what a run without an operating point has. */
@@ -968,10 +985,10 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
   const op = results.op;
   if (!op) return noNoise('rule');
   const ex = exactOf(netlist);
-  const check = ex ? opCheck(ex, op) : 'other';
+  const { check, off } = ex ? opCheck(ex, op) : { check: 'other' as const };
   if (ex && check === 'same') return exactNoise(netlist, ex, op);
   const rule = ruleNoise(netlist, results);
-  return ex && check === 'imprecise' ? withExact(netlist, ex, op, rule) : rule;
+  return ex && check === 'imprecise' ? withExact(netlist, ex, rule, off!) : rule;
 }
 
 // ---- the exact solution (exact.ts)
@@ -988,6 +1005,8 @@ interface Exact {
   sweep?: { part: number; slope: Fraction[] };
   /** .tf: its input and how much every unknown changes for 1 V or 1 A of it; for a voltage output, the voltages 1 A into it makes. */
   tf?: { part: number; slope: Fraction[]; into?: Fraction[] };
+  /** The work left for the checks of ngspice's values against the solution (exact.ts MAX_WORK): the solve's own work is spent. */
+  budget: Budget;
 }
 
 const exactCache = new WeakMap<Netlist, Exact | null>();
@@ -1032,9 +1051,10 @@ function exactOf(netlist: Netlist): Exact | undefined {
         }
       }
     }
-    const x = solveExact(model, sides);
+    const budget = newBudget();
+    const x = solveExact(model, sides, budget);
     if (x) {
-      ex = { model, op: x[0]!, part, node };
+      ex = { model, op: x[0]!, part, node, budget };
       if (sweep !== undefined) ex.sweep = { part: sweep, slope: x[1]! };
       if (tf) {
         const at = sweep !== undefined ? 2 : 1;
@@ -1062,31 +1082,35 @@ function ngspiceValues(nodes: Map<string, number>, branch: Map<string, number>, 
 /**
  * How ngspice's operating point stands to the exact solution. 'same': it is this circuit's (it names the
  * same nodes and parts, and its values solve the exact equations as closely as its own rounding can,
- * exact.ts `agrees`), solved to the digits the page shows (its answers are the exact ones to within 5e-5
- * of each, wherever the exact value is not tiny beside the others of its kind, `answersAgree`).
- * 'imprecise': this circuit's, but ngspice's answers are farther from the exact ones (a 1e-12 Ω wire
- * beside kilohms: 4.321 V for 4.5 V). 'other': not this circuit's, as far as its values show.
+ * exact.ts `agrees`), solved to the digits the page shows (each answer whose exact value is not 0 is the
+ * exact one to within 5e-5 of it, beyond what rounding leaves, `answersAgree`). 'imprecise': this
+ * circuit's, but ngspice's answers are farther from the exact ones (a 1e-12 Ω wire beside kilohms:
+ * 4.321 V for 4.5 V); `off` lists them. 'other': not this circuit's, as far as its values show, or more
+ * work to check than the netlist's budget has left.
  */
-function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): 'same' | 'imprecise' | 'other' {
+function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 'same' | 'imprecise' | 'other'; off?: Answer[] } {
   const nodes = new Map<string, number>();
   const branch = new Map<string, number>();
   const device = new Map<string, number>();
   for (const n of op.nodes) {
-    if (!ex.node.has(n.node)) return 'other';
+    if (!ex.node.has(n.node)) return { check: 'other' };
     nodes.set(n.node, n.value);
   }
   for (const c of op.currents) {
     const k = ex.part.get(c.element);
-    if (k === undefined) return 'other';
+    if (k === undefined) return { check: 'other' };
     const p = ex.model.parts[k]!;
     if (c.origin === 'branch') {
-      if (p.branch < 0) return 'other';
+      if (p.branch < 0) return { check: 'other' };
       branch.set(c.element, c.value);
     } else if (p.kind !== 'V' && p.kind !== 'E' && p.kind !== 'H') device.set(c.element, c.value);
   }
   const ng = ngspiceValues(nodes, branch, device);
-  if (!agrees(ex.model, ng, (p) => p.value)) return 'other';
-  return answersAgree(ex.model, ex.op, ng) ? 'same' : 'imprecise';
+  if (!agrees(ex.model, ng, (p) => p.value, ex.budget)) return { check: 'other' };
+  const list = answers(ex.model, ex.op, ng);
+  if (!list) return { check: 'other' };
+  // Imprecise when an answer whose exact value is not 0 is off; the note then also names the exact 0s ngspice gives beyond rounding.
+  return list.some((a) => a.exact !== 0 && a.gap > ANSWER_GAP) ? { check: 'imprecise', off: list.filter((a) => a.gap > ANSWER_GAP) } : { check: 'same' };
 }
 
 /**
@@ -1118,14 +1142,16 @@ function lostValues(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
 
 /**
  * The rule's decision for a circuit PlainSpice solves exactly whose answers ngspice gave farther from
- * the exact ones than the page's digits (opCheck 'imprecise'). The rule calls a value noise only where
- * ngspice's own numbers show it is 0, so its 0s agree with the numbers beside them; the exact solution
- * keeps it from calling a real value noise (a value whose exact value is not 0 stays as ngspice gave
- * it), keeps a level only for nodes whose exact voltages are equal, and gives the real values ngspice
- * gave as exactly 0 (lostValues). A reason "every other current at this node is 0" stays only where the
- * exact solution makes it so.
+ * the exact ones than the page's digits (opCheck 'imprecise'): the run is decided as other circuits are,
+ * from ngspice's own numbers, and every number on the page is ngspice's (the critic of round 2 of the
+ * re-check's fixes: the exact value of a current ngspice gave as 0, beside ngspice's other numbers a few
+ * per cent off, pushed current into one node from both sides). The exact solution only keeps the rule
+ * from calling a real value noise (a value whose exact value is not 0 stays as ngspice gave it), keeps a
+ * level only for nodes whose exact voltages are equal, and gives the answers that are off (`off`) for
+ * the note that says so. A reason "every other current at this node is 0" stays only where the exact
+ * solution makes it so.
  */
-function withExact(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults['op']>, rule: RoundingNoise): RoundingNoise {
+function withExact(netlist: Netlist, ex: Exact, rule: RoundingNoise, off: readonly Answer[]): RoundingNoise {
   const { model, op: x } = ex;
   const out: RoundingNoise = { ...noNoise('rule'), grounded: new Set(rule.grounded) };
   const zero = model.parts.map((_, k) => currentIsZero(model, x, k));
@@ -1158,7 +1184,13 @@ function withExact(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults[
     const first = level === 0 ? ZERO : exact[0];
     if (first && exact.every((v) => v !== undefined && equal(v, first))) for (const name of names) out.levels.set(name, level);
   }
-  lostValues(netlist, ex, op, out);
+  // The answers that are off, with the netlist's names; an exact 0 the rule shows as 0 is not off on the page.
+  out.off = [];
+  for (const a of off) {
+    const name = a.kind === 'voltage' ? netlistNode(netlist, a.name) : netlistPart(netlist, a.name);
+    if (a.exact === 0 && (a.kind === 'voltage' ? out.nodes.has(name) : out.currents.has(name) || a.given === 0)) continue;
+    out.off.push({ ...a, name });
+  }
   return out;
 }
 
@@ -1386,7 +1418,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const level = (p: ExactModel['parts'][number]): Fraction => (p === swept ? x : p.value);
     const ng = ngspiceValues(nodes, branch, device);
     const unknowns = a.map((ai, i) => ({ n: ai * x.d + b[i]! * x.n, d: den * x.d }));
-    if (!agrees(model, ng, level) || !answersAgree(model, unknowns, ng)) return undefined;
+    if (!agrees(model, ng, level, ex.budget) || !answersAgree(model, unknowns, ng)) return undefined;
   }
   // a + b·s is 0 at every point when a and b are, else only at s = −a/b, where ngspice's x must be that number exactly.
   const zero = new Map<number, number[]>();
@@ -2289,6 +2321,29 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
   return note;
 }
 
+/**
+ * The note for a circuit PlainSpice solves exactly whose answers ngspice gave farther from the exact ones
+ * than the page's digits (opCheck 'imprecise'; the critic of round 2 of the re-check's fixes): the page
+ * shows ngspice's numbers, and this says they are off, with the exact values of the answers farthest
+ * off (at most NOTE_LIST of them when there are more than NOTE_LIST + 1): first the exact 0s ngspice
+ * gives as numbers (node g6 at 0 V, where ngspice gives 2.097 V), the largest first, then the others by
+ * how far they are from the exact value, as a share of it.
+ */
+function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | undefined {
+  const off = noiseOf(netlist, results).off;
+  if (!off?.length) return undefined;
+  const share = (a: Answer): number => (a.exact === 0 ? Number.POSITIVE_INFINITY : Math.abs(a.given - a.exact) / Math.abs(a.exact));
+  const list = [...off].sort((x, y) => share(y) - share(x) || Math.abs(y.given) - Math.abs(x.given));
+  const items = list.map((a) => {
+    if (a.kind === 'voltage') return S.offVoltage(bare(a.name), formatSI(a.exact, 'V'), formatSI(a.given, 'V'));
+    const name = partsOf(netlist).byKey.get(a.name)?.element?.name.text ?? a.name;
+    if (a.exact === 0) return S.offNoCurrent(name, formatSI(Math.abs(a.given), 'A'));
+    return S.offCurrent(name, formatSI(Math.abs(a.exact), 'A'), formatSI(Math.abs(a.given), 'A'), a.given !== 0 && Math.sign(a.given) !== Math.sign(a.exact));
+  });
+  const shown = items.length <= NOTE_LIST + 1 ? S.offList(items, 0) : S.offList(items.slice(0, NOTE_LIST), items.length - NOTE_LIST);
+  return { code: 'imprecise-answers', severity: 'warning', title: S.offTitle, why: S.offWhy(shown) };
+}
+
 /** The note for a .tf ratio shown as 0 because ngspice gave rounding noise of a 0 (S8, C9p). */
 function tfNoiseNote(netlist: Netlist, words: SummaryInput): MessageWords | undefined {
   const tf = words.tf;
@@ -2363,6 +2418,9 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   // C9n: the real values ngspice's arithmetic rounded to 0, shown exactly.
   const lost = status === 'ok' ? lostNote(netlist, results, words) : undefined;
   if (lost) words.warnings.push(lost);
+  // ngspice's answers farther from the exact ones than the page's digits: shown as ngspice gives them, with a warning.
+  const off = status === 'ok' ? offNote(netlist, results) : undefined;
+  if (off) words.warnings.push(off);
   // S8, C9p: the same for a .tf ratio and for the points of a .dc sweep.
   for (const extra of status === 'ok' ? [tfNoiseNote(netlist, words), sweepNoiseNote(netlist, results)] : []) if (extra) words.warnings.push(extra);
   return {
