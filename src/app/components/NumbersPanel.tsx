@@ -91,7 +91,8 @@ const NodeTable = memo(
                   </td>
                   <td className="num">
                     <code className="code">
-                      v({n.node}) = {formatLikeNgspice(n.value)}
+                      {/* ngspice's own spelling ("giri__" for "giriş", W16) and value, also when the voltage is said as 0 V (rounding noise, C9d). */}
+                      v({n.ngspice ?? n.node}) = {formatLikeNgspice(n.noise ?? n.value)}
                     </code>
                   </td>
                 </tr>
@@ -145,7 +146,8 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
               )}
               <td className="num">
                 <code className="code">
-                  {vectorOf(c.element)} = {formatLikeNgspice(c.value)}
+                  {/* ngspice's own vector and value, also when the current is said as 0 A (rounding noise, C9). */}
+                  {c.vector ?? vectorOf(c.element)} = {formatLikeNgspice(c.noise ?? c.value)}
                 </code>
               </td>
             </tr>
