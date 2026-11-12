@@ -177,9 +177,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   Any other place has no recorded run, so the character checks leave its words alone: .four (which a
   run with a results file ignores anyway, invisible-character-27), .disto, .pz, .sens, .sp, a .noise's
   points per summary. A
-  character inside such a number ends it, without a message, as in a value (invisible-character-22). A
-  unit test runs every place with each kind of character and checks that no trap on an analysis line
-  quotes "unknown parameter".
+  character inside such a number ends it, as in a value; what ngspice then does with the number it reads
+  depends on the place too, and "without a message" holds only where a run shows ngspice running on
+  with it (invisible-character-22, three stops still past their start, and -44; see "What the number
+  read does, place by place" below). A unit test runs every place with each kind of character and
+  checks that no trap on an analysis line quotes "unknown parameter".
 - **A .dc line read by place** (S5). The dc-sweep check read numbers greedily and took a word it could
   not read for the name of the next sweep, so `.dc V1 −5 5 1` (a minus sign from a document) got ".dc
   sweeps −5, which is not in the circuit" and ".dc needs a step", whose fixes led to `.dc V1 V1 5 1
@@ -217,7 +219,9 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - **A 0 another check explains** (C1). `0<zero-width space>.47`, `0R47`, `0k47` and `0．47` are read as
   0, but 470 mΩ was meant: the zero-ohm warning, whose "Use a 0 V source" would make a short, now
   steps aside for the check that explains the value; the error for a resistor straight across a
-  source stays (zero-ohm-2).
+  source stays (zero-ohm-2). That check now says what zero-ohm says of a 0 (zero-ohm-4): ngspice 47
+  warns and uses 1e-12 Ω, ngspice 42 used 1 mΩ without a word, never "without a message" (critic of the
+  re-check fixes, CR1-1, below).
 - **A sign then a character that looks like a space** (C2). `-<thin space>5` is no number, and ngspice
   stops; it got the glue warning, whose "Replace it with a normal space" left `- 5`, which ngspice also
   stops at (space-character-13), and a comment fix that left 0 V. Now the space-character (or nbsp)
@@ -242,3 +246,75 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   it is, never "a dash". Any other character outside ASCII inside a number, with a digit after it
   (`4。7k`), is said as what ngspice reads, without a fix (look-alike-letter-12), and Explain names it
   instead of "Don't type units after numbers".
+- **What the number read does, place by place** (critic of the re-check fixes, CR1-1, CR1-2, CR1-13).
+  The step-asides of C1 and S5 left the covering check alone, and its words said "without a message"
+  (rkm-notation: "says nothing") for numbers ngspice cannot use: a resistor read as 0 (ngspice 47 warns
+  "Value of resistor r1 is too small" and uses 1e-12 Ω; 42 used 1 mΩ), a `.tran` step or stop of 0
+  ("TSTEP/TSTOP is invalid"), a `.dc` step of 0 (47: "Bad syntax!"; 42 never finishes), an `.ac` start of
+  0 ("AC startfreq <= 0"), while the status line on the same screen said ngspice had stopped. We keep
+  one trap per word: the check that explains how the word is written owns it, and now says what ngspice
+  does with the number it reads there, weighed with the line's other numbers as ngspice reads them, from a
+  run of each place (zero-ohm-4, invisible-character-28 to -44), and is an error where ngspice stops.
+  "Without a message" is said only where a run shows ngspice running on with that number. We chose this
+  over the critic's other way (keeping the zero-ohm warning or the step-0 error beside it): two cards for
+  one word would say the same consequence twice with two different buttons, of which "Use a 0 V source"
+  makes a short where 470 mΩ was meant; the true words and the fix that writes what was meant ("Write
+  0.47", "Write 0.5") are in one card. `checkTran`, as `checkDc` already did, leaves such a word to that
+  check (before, `.tran 0.1m 0<zero-width space>.5` got "The step is longer than the whole run" and a fix
+  that wrote a step of 0 with the raw character in its label), and a stop time of 0 or less is now an
+  error of its own (tran-problems-8, -9; "Make it 1" for `-1`). The status words for ngspice's "TSTOP is
+  invalid" (`describe.ts`) say "The .tran stop time must be more than 0" when the line has a stop time,
+  and keep "With one number, ngspice has no stop time" for a line of one number. Away from a part's value
+  the number meant is said as written ("This value is read as 0, not 0.1m", never "not 1e-4"). The same
+  holds for a word that a character looking like a space glues on an analysis line (`.dc V1 0 5
+  0<thin space>.5`): ngspice reads it as one number cut short, so the glue check says what the place
+  does with it (space-character-16 to -18), never "says nothing about it", and offers only a fix that can
+  make the line run: a normal space where the line lacks a word and the number read does no harm (`.dc
+  V1 0 5<thin space>1`), else taking the character out, since a normal space keeps the same number at
+  that place, or makes one word too many.
+- **A source's function, AC value and settings have places of their own** (CR1-5). A word in PULSE, SIN,
+  PWL, EXP or SFFM, in the AC value or phase, or in a setting's value got the part-value quote "unknown
+  parameter (___0)" and was called "V1's value", with V1's unit in its fix. From runs of each place: the
+  first number of a function gives "parameter value out of range or the wrong type", the second "no such
+  parameter on this device or parameter is missing" (42: "no such parameter on this device"), later ones
+  "unknown parameter" (invisible-character-45 to -47); the AC value and phase "unknown parameter" (-48,
+  -49); a setting's value (`m=`, `dc=`, `ic=`) numparam's fatal "Undefined parameter [___2]" (-50, -52,
+  -53); a number read short there runs on without a message (-51). Their subjects say what they are ("A
+  word in V1's PULSE", "V1's AC value", "R1's m value") and their fixes give no unit. A place with no
+  recorded run (AM, TRNOISE and the like) is left alone by the character checks and by unknown-word.
+- **One word for E's and F's gain** (CR1-14): "E1's gain" in the character checks too, as unknown-word
+  and missing-value say it.
+- **A sign with a space, said part by part** (CR1-3). `E1 b 0 a 0 - 2`: native 47 and 42 (both built with
+  XSPICE) read a polynomial and stop with "MIF-ERROR ... Bad real value", and only our engine says
+  "unknown parameter (-)" (unknown-word-25 to -28); on C and L ngspice first warns that it can't find a
+  model called `-` (-29, -30); R, V and I stop at the sign (-31, -32, space-character-13). The fix "Write
+  -2" stays.
+- **Only a top-level .param's names are values outside a subcircuit** (CR1-7). A subcircuit's own
+  parameter, a `.param` inside a subcircuit and a `.func`'s name are no value at the top level: ngspice
+  stops (unknown-word-33 to -35), so they are flagged again, and the words say where the name has its
+  value ("it has a value only inside the subcircuit foo", "the name of a function (on a .func line)")
+  instead of "no .param line gives it a value". A `.param` line after `.end`, even `.end;comment`, is read
+  (unknown-word-36, -37), so its names are values, in Checks and in Explain.
+- **A .dc line read by place, to the end** (CR1-4, CR1-6, CR1-8, CR1-11, CR1-12). A word in braces or
+  quotes is a number numparam works out, so the sweep runs (dc-sweep-problems-17): no trap, no "stops"
+  note in Explain, and the "Bad syntax!" words blame the step only when that step comes to 0; a `.param`
+  name without braces stops ngspice 47 (-18), with "Write {st}". A sweep missing its numbers (`.dc V1 0`,
+  a second sweep's name alone) gets one error (-11, -12); a number where a second sweep's name goes is
+  "One number too many", deleted by its fix (-13, -14), never "Sweep V1 instead", which wrote a line
+  ngspice 47 rejects; a name with a hidden or look-alike character is said with the character named and
+  quoted as ngspice spells it ("___v1"), with "Take it out: sweep V1" (-15, -16); words after the second
+  sweep are ignored (-19). The letter O gets "Write 0" for the start and the stop only: at the step the
+  words say that 0 would not do either. Explain's summary and the circuit's analysis sentence say that
+  ngspice 47 stops at a `.dc` line it cannot read ("see Checks"), never a sweep that runs.
+- **The letter O, with a unit, meg or more Os** (CR1-8, CR1-9, CR1-10). `1OkΩ`, `1Omeg`, `1OOk`, `1OkOhm`
+  and `1OuF` read as 1 too (look-alike-letter-15) and are flagged; a lone A or F after the O is the unit,
+  as space-before-suffix reads it (`1OA` is meant as 10 A, not 10 aA). Explain names the letter O as
+  Checks does ("Write 10k") instead of "Don't type units after numbers", and its note for a stray
+  character ends as Checks does: a model warning on C and L, zero-ohm's words for a resistor read as 0.
+- **Known limits, recorded** (critic of the re-check fixes). A brace expression that comes to 0 (a `.dc`
+  step `{st}` with `st=0`) is not flagged by Checks, though the "Bad syntax!" words name the step. Words
+  in a function with no recorded run (AM, TRNOISE) are left alone. The letter O at the end of a value
+  (`10о`) is not flagged, as a unit could be meant; `0O47` is read by the check as 0047. A glued word on an
+  analysis line where the line lacks a word says what is read there, not what ngspice does with the line
+  as a whole (`.tran 1u<thin space>2m` has no stop time). Explain and the circuit's words for a `.tran`
+  stop of 0 ("this line has no stop time", "from 0 to 0 s") are as before.

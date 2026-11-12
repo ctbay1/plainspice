@@ -88,6 +88,20 @@ native 47 too), unknown-word-13 to -24 (a word where a part's value goes; a `.pa
 that value) and dc-sweep-problems-9, -10 (a word that is no number where a `.dc` number goes); and in
 explanations.md P16b (`dc` with no number: 0, without a note).
 
+After the critic of the re-check fixes, the same day, each run the same way: in traps.md, zero-ohm-4 (a
+value read as 0 because of how it is written: ngspice 47 warns for each resistor, 42 uses 1 mΩ),
+invisible-character-28 to -44 (a number read short is weighed at its place: a `.tran` step or stop of 0,
+a `.dc` step of 0, `.ac` and `.noise` numbers read as 0 or past the line's other numbers, and the places
+where ngspice runs on with it; invisible-character-22 now claims only the stops it recorded),
+invisible-character-45 to -53 (a word in a source's function, its AC value or phase, or a setting's
+value: what ngspice says at each), look-alike-letter-15 (the letter O before a unit, meg or another O),
+unknown-word-25 to -37 (a sign with a space after it, part by part: a polynomial natively on E-H; a
+subcircuit's parameter, a `.param` in a subcircuit and a `.func` name are no value outside it; a
+`.param` line after `.end` is read), dc-sweep-problems-11 to -19 (a sweep missing its numbers, a number
+too many, a name with a character that is not what it looks like, braces and quotes, a `.param` name
+without them, words after the second sweep), tran-problems-8, -9 (a stop time of 0 or less) and
+space-character-16 to -18 (a word glued by a thin space on an analysis line is one number, cut short).
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the
