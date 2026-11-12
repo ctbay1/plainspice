@@ -89,6 +89,20 @@ describe('a wide drawing turned for a phone held upright', () => {
     // 25 of the 30 laid out automatically; the rest are shown as drawn (and a phone pans them).
     expect(turned).toBeGreaterThanOrEqual(25);
   });
+
+  it('is worked out once per drawing: a phone asks whether it fits better, then shows the same one', () => {
+    const s = notebookSchematic(stripDrawing(readFileSync(resolve(root, 'examples/p02/p02-4-open.cir'), 'utf8')));
+    const first = turnedQuarter(s);
+    expect(first).toBeDefined();
+    expect(turnedQuarter(s)).toBe(first);
+    // A drawing with no clean turn is remembered too, and a new schematic (an edit) is turned afresh.
+    const flat = notebookSchematic('* nothing to turn\n.op\n.end\n');
+    expect(turnedQuarter(flat)).toBeUndefined();
+    expect(turnedQuarter(flat)).toBeUndefined();
+    const again = notebookSchematic(stripDrawing(readFileSync(resolve(root, 'examples/p02/p02-4-open.cir'), 'utf8')));
+    expect(turnedQuarter(again)).not.toBe(first);
+    expect(turnedQuarter(again)!.scene.bounds).toEqual(first!.scene.bounds);
+  });
 });
 
 describe('SceneOptions.resultRoom (the schematic model’s addition for the Notebook)', () => {

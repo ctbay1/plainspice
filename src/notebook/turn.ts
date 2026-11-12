@@ -132,6 +132,21 @@ export const TURN_LIMITS = { parts: 100, wirePieces: 1000 } as const;
  * names are placed afresh.
  */
 export function turnedQuarter(s: Schematic): Schematic | undefined {
+  const known = turnedOnce.get(s);
+  if (known !== undefined) return known ?? undefined;
+  const turned = turnedAfresh(s);
+  turnedOnce.set(s, turned ?? null);
+  return turned;
+}
+
+/**
+ * Each schematic's turned drawing, worked out once: a phone asks whether the turned drawing fits
+ * better, then shows it, for the same schematic (src/app/App.tsx). A schematic is never changed once
+ * built (an edit builds a new one), so its turned drawing never goes stale.
+ */
+const turnedOnce = new WeakMap<Schematic, Schematic | null>();
+
+function turnedAfresh(s: Schematic): Schematic | undefined {
   if (!s.scene.parts.length) return undefined;
   const pieces = s.drawing.wires.reduce((n, w) => n + Math.max(0, w.length - 1), 0);
   if (s.scene.parts.length > TURN_LIMITS.parts || pieces > TURN_LIMITS.wirePieces) return undefined;
