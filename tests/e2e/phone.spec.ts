@@ -817,12 +817,16 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
   }
 });
 
-/** One round of Tab stops on the page: none of them may be out of sight (clipped to nothing for screen readers only, or not shown). */
+/**
+ * One round of Tab stops on the page: none of them may be out of sight (clipped to nothing for screen
+ * readers only, or not shown), nor hidden behind something else on the page, such as a sheet over the
+ * drawing's part that has the drawing's Tab stop (WCAG 2.4.11): some of what shows of it, inside the
+ * window and whatever scrolls around it, is not under anything else.
+ */
 async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<number> {
-  const seen = new Set<string>();
-  for (let i = 0; i < 80; i++) {
-    await page.keyboard.press('Tab');
-    const stop = await page.evaluate(() => {
+  /** The Tab stop now: itself (a list may have several of one name, scrolled to one place), its name and place, and why it cannot be seen. */
+  const look = (): Promise<{ key: string; name: string; why: string }> =>
+    page.evaluate(() => {
       const el = document.activeElement;
       if (!el || el === document.body) return { key: 'the page', name: 'the page', why: '' };
       let why = '';
@@ -833,6 +837,28 @@ async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<numb
       }
       const r = el.getBoundingClientRect();
       if (!why && (r.width < 1 || r.height < 1)) why = 'no size';
+      if (!why) {
+        // What shows of it: inside the window and every box around it that cuts what it holds.
+        let [x0, y0, x1, y1] = [Math.max(r.left, 0), Math.max(r.top, 0), Math.min(r.right, innerWidth), Math.min(r.bottom, innerHeight)];
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const s = getComputedStyle(p);
+          if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
+          const c = p.getBoundingClientRect();
+          [x0, y0, x1, y1] = [Math.max(x0, c.left), Math.max(y0, c.top), Math.min(x1, c.right), Math.min(y1, c.bottom)];
+        }
+        if (x1 - x0 < 1 || y1 - y0 < 1) why = 'out of view';
+        else {
+          const points = [[0.5, 0.5], [0.15, 0.15], [0.85, 0.15], [0.15, 0.85], [0.85, 0.85]].map(([fx, fy]) => [x0 + (x1 - x0) * fx!, y0 + (y1 - y0) * fy!] as const);
+          const shows = points.some(([x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            return !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+          });
+          if (!shows) {
+            const over = document.elementFromPoint(points[0]![0], points[0]![1]);
+            why = `under ${over ? `${over.tagName.toLowerCase()}.${(over.getAttribute('class') ?? '').split(' ')[0]}` : 'nothing'}`;
+          }
+        }
+      }
       const name = (el.getAttribute('aria-label') ?? el.textContent ?? el.tagName).trim().replace(/\s+/g, ' ').slice(0, 40);
       // Each element by itself (a list may have several of one name, scrolled to one place).
       const w = window as unknown as { tabStops?: WeakMap<Element, number>; tabStopCount?: number };
@@ -840,9 +866,14 @@ async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<numb
       if (!w.tabStops.has(el)) w.tabStops.set(el, (w.tabStopCount = (w.tabStopCount ?? 0) + 1));
       return { key: `${w.tabStops.get(el)}`, name: `${name} at ${Math.round(r.left)}, ${Math.round(r.top)}`, why };
     });
+  const seen = new Set<string>();
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press('Tab');
+    const stop = await look();
     if (seen.has(stop.key)) break;
     seen.add(stop.key);
-    expect(stop.why, `${what}: the Tab stop ${stop.name} can be seen`).toBe('');
+    // The page may first bring it into view: the drawing slides there over a third of a second.
+    if (stop.why) await expect.poll(async () => (await look()).why, { message: `${what}: the Tab stop ${stop.name} can be seen`, timeout: 2000 }).toBe('');
   }
   return seen.size;
 }
@@ -885,9 +916,89 @@ test('a sheet on a phone on its side keeps the status line and its Undo above it
     expect(await expectNoTabStopOutOfSight(page, `${sheet.name} open`)).toBeGreaterThan(10);
     await sheet.close();
   }
-  // The Parts sheet scrolls below the status line and keeps its rows: Resistor can be reached.
+  // A change that brings an error with Parts open (its rows stay as they are): the error's long reason
+  // leaves the status line no room above the sheet. Undone, the short status comes back, and with it the
+  // status line: a new status is measured again from the first step (the step taken for the error was
+  // kept until the sheet closed, though the room was the same as before it). So is a status line that
+  // offers Undo again, after the next change made on the drawing (just after an undo, Undo is under More).
   await bar.getByRole('button', { name: t('barParts') }).tap();
+  await settle(page);
+  await expectInSight(statusLine(page), 'Parts open, before the error: the status line');
+  await partOnDrawing(page, 'Ground').focus();
+  await page.keyboard.press('Delete');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  await page.keyboard.press('Control+z');
+  await expect(partOnDrawing(page, 'Ground')).toHaveCount(1);
+  await expectSolved(page);
+  await settle(page);
+  await expectInSight(statusLine(page), 'Parts open, the error undone: the status line');
+  await partOnDrawing(page, 'R2').focus();
+  await page.keyboard.press('t');
+  await expectSolved(page);
+  await settle(page);
+  await expectInSight(statusLine(page), 'Parts open, a change after the undo: the status line');
+  await expectUsable(undo, 'Parts open, a change after the undo: the status line’s Undo');
+  // The Parts sheet scrolls below the status line and keeps its rows: Resistor can be reached.
   await expectUsable(page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }), 'the Parts sheet below the status line: Resistor');
+});
+
+test('an upright phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it on its side (320 × 568, the usual text)', async ({ page }) => {
+  // Upright, an iPhone SE at the usual text size: above More and Parts the hint steps aside and the status
+  // line stays (the first step). On its side, Plot before a sweep has one line of words below its head:
+  // the sheet keeps what it has, not two rows' room, and the status line stays above it too.
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  const sheets = {
+    more: {
+      open: async (): Promise<Locator> => {
+        await bar.getByRole('button', { name: t('barMore') }).tap();
+        return page.getByRole('dialog', { name: t('barMore') });
+      },
+      close: async (): Promise<void> => {
+        await page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('moreClose') }).tap();
+        await expect(page.getByRole('dialog', { name: t('barMore') })).toHaveCount(0);
+      },
+    },
+    parts: {
+      open: async (): Promise<Locator> => {
+        await bar.getByRole('button', { name: t('barParts') }).tap();
+        return page.getByRole('dialog', { name: t('partsSheetTitle') });
+      },
+      close: async (): Promise<void> => {
+        await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: t('partsClose') }).tap();
+        await expect(page.getByRole('dialog', { name: t('partsSheetTitle') })).toHaveCount(0);
+      },
+    },
+    plot: { open: (): Promise<Locator> => openPanel(page, 'plot'), close: (): Promise<void> => closePanel(page, 'plot') },
+  };
+  for (const c of [
+    { size: { width: 320, height: 568 }, open: ['more', 'parts'] as const },
+    { size: { width: 568, height: 320 }, open: ['plot'] as const },
+  ]) {
+    const at = `${c.size.width} × ${c.size.height}`;
+    await page.setViewportSize(c.size);
+    await openApp(page);
+    await expectSolved(page);
+    // A change made on the drawing: the status line offers Undo.
+    await partOnDrawing(page, 'R2').focus();
+    await page.keyboard.press('t');
+    const undo = statusLine(page).getByRole('button', { name: t('undo'), exact: true });
+    await expect(undo).toBeVisible();
+    for (const name of c.open) {
+      const sheet = await sheets[name].open();
+      await expect(sheet).toBeVisible();
+      await settle(page);
+      await expectInSight(statusLine(page), `${at}, ${name} open: the status line`);
+      await expectUsable(undo, `${at}, ${name} open: the status line’s Undo`);
+      const status = (await statusLine(page).boundingBox())!;
+      expect(status.y + status.height, `${at}, ${name} open: the status line is above the sheet`).toBeLessThanOrEqual((await sheet.boundingBox())!.y + 1);
+      const free = await paperLeft(page);
+      expect(free.bottom - free.top, `${at}, ${name} open: some paper shows`).toBeGreaterThanOrEqual(48);
+      // The drawing's Tab stop (R2, the part just turned) too: brought out from under the sheet when the
+      // keys reach it, its focus ring in the paper left above the sheet.
+      expect(await expectNoTabStopOutOfSight(page, `${at}, ${name} open`)).toBeGreaterThan(10);
+      await sheets[name].close();
+    }
+  }
 });
 
 test('a sheet that leaves the status line no room puts it out of sight, its words for screen readers and no Tab stop (568 × 320, the largest text)', async ({ page }) => {
@@ -936,19 +1047,36 @@ test('the hint line’s box cuts nothing at the usual text size, and squeezed it
     return cuts;
   });
   expect(cut, 'boxes that cut the focus ring of Change R1').toEqual([]);
-  // A small phone with the largest text and a resistor in hand: the hint's box keeps its first line and
-  // scrolls. A box cut exactly between two lines gave no sign of more words: it fades at that end now.
-  await page.setViewportSize({ width: 360, height: 640 });
+  // Small phones with the largest text and a resistor in hand: the hint's box is squeezed and scrolls. A
+  // box cut exactly between two lines gave no sign of more words: it fades at that end now. On the
+  // smallest (320 × 568, an iPhone SE) the box is squeezed to its least, a line and a half, so the fade
+  // falls on the top of the second line, where it can be seen: on its first line alone it fell on the
+  // bottoms of the letters, and "Tap the paper where a" read as all there was.
   await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
-  await openApp(page);
-  await newCircuit(page);
-  await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).tap();
-  await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }).tap();
-  const box = page.getByRole('region', { name: t('hintScrollLabel') });
-  await expect(box).toBeVisible();
-  const fade = (): Promise<{ more: string; mask: string }> => box.evaluate((el) => ({ more: (el as HTMLElement).dataset.more ?? '', mask: getComputedStyle(el).maskImage }));
-  await expect.poll(fade).toMatchObject({ more: 'below', mask: expect.stringMatching(/gradient/) });
-  // Scrolled to its end, the fade moves to the top, where the words it has passed are.
-  await box.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
-  await expect.poll(fade).toMatchObject({ more: 'above', mask: expect.stringMatching(/gradient/) });
+  for (const size of [{ width: 360, height: 640 }, { width: 320, height: 568 }]) {
+    const at = `${size.width} × ${size.height}`;
+    await page.setViewportSize(size);
+    await openApp(page);
+    await newCircuit(page);
+    await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).tap();
+    await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }).tap();
+    const box = page.getByRole('region', { name: t('hintScrollLabel') });
+    await expect(box).toBeVisible();
+    const fade = (): Promise<{ more: string; mask: string }> => box.evaluate((el) => ({ more: (el as HTMLElement).dataset.more ?? '', mask: getComputedStyle(el).maskImage }));
+    await expect.poll(fade).toMatchObject({ more: 'below', mask: expect.stringMatching(/gradient/) });
+    // How much of the hint's second line the box shows (in lines), where the fade is.
+    const secondLine = (): Promise<number> =>
+      box.evaluate((el) => {
+        const hint = el.querySelector('#hint-line')!;
+        const range = document.createRange();
+        range.selectNodeContents(hint);
+        const tops = [...range.getClientRects()].map((r) => r.top).sort((a, b) => a - b);
+        const second = tops.find((top) => top > tops[0]! + 2);
+        return second === undefined ? 0 : (el.getBoundingClientRect().bottom - second) / Number.parseFloat(getComputedStyle(hint).lineHeight);
+      });
+    await expect.poll(secondLine, { message: `${at}: the box shows half of the hint's second line at least` }).toBeGreaterThanOrEqual(0.5);
+    // Scrolled to its end, the fade moves to the top, where the words it has passed are.
+    await box.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect.poll(fade).toMatchObject({ more: 'above', mask: expect.stringMatching(/gradient/) });
+  }
 });

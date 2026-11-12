@@ -239,6 +239,23 @@ export function inkBox(scene: Scene, results: DrawingResults): Box | undefined {
 
 const grow = (b: Box, d: number): Box => ({ x0: b.x0 - d, y0: b.y0 - d, x1: b.x1 + d, y1: b.y1 + d });
 
+/**
+ * The view moved so that a box (grid units) shows in the free part of the window (screen pixels), when
+ * less than half of it shows there along a side (or, a box larger than the free part, less than half the
+ * free part): all of it when it fits, else its middle. The view itself when enough of it shows already.
+ */
+export function showBox(v: View, b: Box, free: Box): View {
+  const by = (s0: number, s1: number, f0: number, f1: number): number => {
+    const shown = Math.min(s1, f1) - Math.max(s0, f0);
+    if (shown >= Math.min(s1 - s0, f1 - f0) / 2) return 0;
+    if (s1 - s0 > f1 - f0) return (f0 + f1) / 2 - (s0 + s1) / 2;
+    return s0 < f0 ? f0 - s0 : s1 > f1 ? f1 - s1 : 0;
+  };
+  const dx = by(v.x + b.x0 * v.unit, v.x + b.x1 * v.unit, free.x0, free.x1);
+  const dy = by(v.y + b.y0 * v.unit, v.y + b.y1 * v.unit, free.y0, free.y1);
+  return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
+}
+
 /** Two sets of insets are the same page around the paper, give or take its bars resizing (HOLD_SLACK). */
 const nearInsets = (a: Insets, b: Insets): boolean => Math.max(Math.abs(a.top - b.top), Math.abs(a.right - b.right), Math.abs(a.bottom - b.bottom), Math.abs(a.left - b.left)) <= HOLD_SLACK;
 
@@ -503,6 +520,22 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     },
     [],
   );
+  /**
+   * An item that gets the focus from the keys while the page covers it (a sheet over the drawing on a
+   * phone, where the free paper above the sheet may be smaller than the item) is brought into the free
+   * part of the window: the focus is never on something nobody can see (WCAG 2.4.11). Moved, the view is
+   * the reader's from then on, as for a part revealed.
+   */
+  const showFocused = (item: NavItem): void => {
+    const box = itemBox(s, item);
+    const now = shownRef.current;
+    if (!box || !size.width || !now) return;
+    const free: Box = { x0: insets.left + 8, y0: insets.top + 8, x1: size.width - insets.right - 8, y1: size.height - insets.bottom - 8 };
+    if (free.x1 <= free.x0 || free.y1 <= free.y0) return;
+    // Only when it must move: the view follows the fit until something moves it.
+    if (showBox(now, grow(box, 0.5), free) === now) return;
+    moveView((v) => showBox(v, grow(box, 0.5), free), false);
+  };
 
   useImperativeHandle(
     ref,
@@ -945,8 +978,10 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
                   onOpen(item);
                 }}
                 onFocus={(e) => {
-                  setFocused(focusVisible(e.currentTarget) ? item : undefined);
+                  const keys = focusVisible(e.currentTarget);
+                  setFocused(keys ? item : undefined);
                   if (!selected || itemKey(selected) !== key) onSelect(item);
+                  if (keys) showFocused(item);
                 }}
                 onBlur={() => setFocused((f) => (f && itemKey(f) === key ? undefined : f))}
                 onKeyDown={(e) => onItemKey(e, item)}

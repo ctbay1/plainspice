@@ -280,6 +280,44 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   order reaches Undo at x = −43), and the 320 × 568 test checks the hint line on the first screen, on a
   blank page, with a part in hand and once it is placed (on the previous fix the first screen's hint is
   out of sight).
+- **A new status is measured again, and a short sheet keeps only what it has.** The second critic of
+  these fixes found the steps above a sheet kept too long in two places. A step was kept for the sheet
+  and the room, never for what the status line said: a change that brought an error put the lines out
+  of sight above the sheet (its reason is long), and undoing it left the short status out of sight too
+  until the sheet closed, in the same room as before. A step is now also kept for the status line's
+  tone, its words (not the run's time, which changes with every run), its reason and its buttons (Undo,
+  the turn): a new status is measured again from the first step, before the page is drawn, so nothing
+  flickers, and the same status never comes back and goes again. And a sheet kept its head and 6 rem
+  below it whatever it had: on an iPhone SE on its side at the usual text size, Plot before a sweep (one
+  line of words, 36 px below its head) put the status line out of sight with 126 px of paper free. A
+  sheet now keeps the less of 6 rem and all it has below its head: there the status line stays above
+  Plot, with 84 px of paper left (in the audit, above Checks too, in 16 of the 24 phone views where it
+  was 14). Tests (`tests/e2e/phone.spec.ts`): the 863 × 360 test deletes the ground with Parts open and
+  undoes it, and expects the status line back (on the previous fix it stays out of sight); "an upright
+  phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it
+  on its side" checks an iPhone SE upright at the usual text size, the first step, which no test
+  checked on an upright phone (with a sheet that puts the lines straight out of sight it fails above
+  More), and on its side with Plot (out of sight on the previous fix).
+- **A squeezed hint box keeps a line and a half.** Cut to its first line (an iPhone SE at 150 % with a
+  part in hand: "Tap the paper where a"), the box's fade fell on the bottoms of its letters, and nothing
+  showed that more words followed. A box that hides words now keeps its first line whole and the top of
+  the next, which fades (`.hint-scroll[data-more]`: the mark is set as the box is measured, before the
+  page is drawn, so the box never shows one line first). It takes 17 px more of the stack there; the
+  status line below it scrolls in the lines' box as before (the audit flags the same four places: a part
+  in hand on a blank page, on the iPhone SE at 150 %). The fade test runs at 320 × 568 too, and checks
+  that at least half of the second line shows (0.1 of it on the previous fix).
+- **The drawing's part that the keys reach is never under a sheet.** With a sheet open, the Tab key
+  reached the drawing's part (its one Tab stop) under the sheet, and nothing on the screen showed where
+  the focus was (WCAG 2.4.11): a sheet moves a selected part clear of it only when the part fits in the
+  paper left above the sheet, which on a phone it rarely does. Now a part, a node's name or the ground
+  that gets the focus from the keys while less than half of it shows (or, larger than the paper left,
+  while it fills less than half of that) is brought into the free paper: all of it when it fits, else
+  its middle, with its focus ring; the drawing slides there and stays, as for a part revealed. Not done:
+  a sheet that opens over a selected part larger than the paper above it still leaves it where it is
+  until the keys reach it, so the drawing does not move every time a sheet opens over it. Tests: every
+  Tab walk in `tests/e2e/phone.spec.ts` (on its side, upright, and at 150 %) now also checks that no Tab
+  stop is under something else: some of what shows of it, inside the window and whatever scrolls around
+  it, is the stop itself. On the previous fix each walk finds R2 under the sheet.
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the

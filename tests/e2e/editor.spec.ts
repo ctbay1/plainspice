@@ -337,99 +337,133 @@ test('a double click on a part’s value opens its card with the value selected;
   expect(await savedNetlist(page)).toBe(other);
 });
 
-test('a double click on a part’s value opens its card on the value, also when the card comes to rest under the pointer between the two clicks', async ({ page }) => {
-  test.skip(isPhone(page), 'a double click (a phone taps the part)');
-  await openApp(page);
-  await expectSolved(page);
-  await page.evaluate(() => document.fonts.ready);
-  // When the drawing first moved after the first click, and when the last real press and the double click
-  // were made (their own times, not when a busy page got to them).
-  await page.evaluate(() => {
-    const w = window as unknown as { movedAt?: number; pressedAt?: number; doubleAt?: number };
-    new MutationObserver(() => {
-      w.movedAt ??= performance.now();
-    }).observe(document.querySelector('.nb-world')!, { attributes: true, attributeFilter: ['style'] });
-    window.addEventListener('pointerdown', (e) => e.isTrusted && (w.pressedAt = e.timeStamp), true);
-    window.addEventListener('dblclick', (e) => e.isTrusted && (w.doubleAt = e.timeStamp), true);
-  });
-  const value = page.locator('.nb-ink text').filter({ hasText: /^2\skΩ$/ }).first();
-  const field = page.getByRole('dialog', { name: /^R2 / }).getByRole('textbox');
-  // A second click this long after the card came to rest is a click on the card (PAGE_MOVE_QUIET_MS in
-  // src/notebook/NotebookCanvas.tsx: about a double click's time), and a double click that ends twice as
-  // long after it is a new one. A machine too busy to deliver the second click that soon (the test's own
-  // round trips) has not tried what this test is about: it tries again. (A little short of the page's own
-  // limit: the page counts from its move, a few milliseconds before this test sees it.)
-  const QUIET_MS = 450;
-  const MARGIN_MS = 25;
-  const gaps: number[] = [];
-  for (;;) {
-    await settle(page);
-    const box = (await value.boundingBox())!;
-    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    await page.mouse.move(at.x, at.y);
+/**
+ * The double click's second press comes in after the first click opened R2's card and the page, busy, took
+ * 300 ms to slide the drawing up to make room for it: the card comes to rest under the pointer. Run two ways
+ * (decision 0009):
+ * - handled at once: the page gets to the second press while the card is still sliding, so it reaches the
+ *   drawing through the card (the card lets presses through for a double click's time after the move) and
+ *   is set aside, because the move was the first click's doing: nothing came between that click and the
+ *   move, however long the page took to make it (the count of presses and keys). With a time limit instead
+ *   (250 ms, the cause of the failure seen under load), the press is taken where the drawing slid to, and
+ *   the card closes under the double click;
+ * - handled late: the page is busy as the second press comes in, until a double click's time after the
+ *   move has passed by the clock. It is still the double click's second press, judged by when it was made
+ *   (the event's own time), not when the page got to it.
+ * Either way R2's card stays open through the double click (it never closes and opens again) and ends on
+ * its value, selected.
+ */
+for (const late of [false, true]) {
+  test(`a double click on a part’s value opens its card on the value, also when the card comes to rest under the pointer between the two clicks (the second press handled ${late ? 'late' : 'at once'})`, async ({ page }) => {
+    test.skip(isPhone(page), 'a double click (a phone taps the part)');
+    await openApp(page);
+    await expectSolved(page);
+    await page.evaluate(() => document.fonts.ready);
+    // When the drawing first moved after the first click, when the last real press, its handling and the
+    // double click were made (their own times, not when a busy page got to them), and whether R2's card was
+    // ever closed after the first click opened it.
     await page.evaluate(() => {
-      const w = window as unknown as { movedAt?: number; pressedAt?: number; doubleAt?: number };
-      delete w.movedAt;
-      delete w.pressedAt;
-      delete w.doubleAt;
+      const w = window as unknown as { movedAt?: number; pressedAt?: number; handledAt?: number; doubleAt?: number; closed?: boolean; opened?: boolean };
+      new MutationObserver(() => {
+        w.movedAt ??= performance.now();
+      }).observe(document.querySelector('.nb-world')!, { attributes: true, attributeFilter: ['style'] });
+      // R2’s card: a dialog named by its title, "R2 resistor · line 3".
+      const cardOpen = (): boolean => [...document.querySelectorAll('[role="dialog"]')].some((d) => (document.getElementById(d.getAttribute('aria-labelledby') ?? '')?.textContent ?? '').startsWith('R2 '));
+      new MutationObserver(() => {
+        if (cardOpen()) w.opened = true;
+        else if (w.opened) w.closed = true;
+      }).observe(document.body, { childList: true, subtree: true });
+      window.addEventListener(
+        'pointerdown',
+        (e) => {
+          if (!e.isTrusted) return;
+          w.pressedAt = e.timeStamp;
+          w.handledAt = performance.now();
+        },
+        true,
+      );
+      window.addEventListener('dblclick', (e) => e.isTrusted && (w.doubleAt = e.timeStamp), true);
     });
-    // The first click; then a page too busy to make room for the card for 300 ms (a slow machine; on a
-    // quiet one the room is made 55 ms after the press, still before a hand's second click).
-    await page.evaluate(({ x, y }) => {
-      const target = document.elementFromPoint(x, y)!;
-      const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
-      target.dispatchEvent(new PointerEvent('pointerdown', { ...base, button: 0, buttons: 1, detail: 1 }));
-      target.dispatchEvent(new PointerEvent('pointerup', { ...base, button: 0, buttons: 0, detail: 1 }));
-      target.dispatchEvent(new MouseEvent('click', { ...base, button: 0, detail: 1 }));
-      const busy = performance.now() + 300;
-      while (performance.now() < busy) {
-        // a busy page
-      }
-    }, at);
-    // The drawing slides up to make room, and R2's card comes to rest where the pointer is.
-    await page.waitForFunction(() => (window as unknown as { movedAt?: number }).movedAt !== undefined, undefined, { polling: 'raf' });
-    // The second press made in time but handled late: the page is busy as it comes in, until a double
-    // click's time after the move has passed (a busy machine, as when the original failure was seen). It
-    // is still the double click's second press: what counts is when it was made (its own time), not when
-    // the page got to it.
-    await page.evaluate(
-      ({ quiet }) => {
-        const w = window as unknown as { movedAt?: number };
-        window.addEventListener(
-          'pointerdown',
-          (e) => {
-            if (!e.isTrusted) return;
-            const until = (w.movedAt ?? performance.now()) + quiet + 30;
-            while (performance.now() < until) {
-              // a busy page
-            }
+    const value = page.locator('.nb-ink text').filter({ hasText: /^2\skΩ$/ }).first();
+    const field = page.getByRole('dialog', { name: /^R2 / }).getByRole('textbox');
+    // A second click this long after the card came to rest is a click on the card (PAGE_MOVE_QUIET_MS in
+    // src/notebook/NotebookCanvas.tsx: about a double click's time), and a double click that ends twice as
+    // long after it is a new one. A machine too busy to deliver the second click that soon (the test's own
+    // round trips) has not tried what this test is about: it tries again. (A little short of the page's own
+    // limit: the page counts from its move, a few milliseconds before this test sees it.)
+    const QUIET_MS = 450;
+    const MARGIN_MS = 25;
+    const tries: string[] = [];
+    for (;;) {
+      await settle(page);
+      const box = (await value.boundingBox())!;
+      const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      await page.mouse.move(at.x, at.y);
+      await page.evaluate(() => {
+        const w = window as unknown as { movedAt?: number; pressedAt?: number; handledAt?: number; doubleAt?: number; closed?: boolean; opened?: boolean };
+        for (const k of ['movedAt', 'pressedAt', 'handledAt', 'doubleAt', 'closed', 'opened'] as const) delete w[k];
+      });
+      // The first click; then a page too busy to make room for the card for 300 ms (a slow machine; on a
+      // quiet one the room is made 55 ms after the press, still before a hand's second click).
+      await page.evaluate(({ x, y }) => {
+        const target = document.elementFromPoint(x, y)!;
+        const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+        target.dispatchEvent(new PointerEvent('pointerdown', { ...base, button: 0, buttons: 1, detail: 1 }));
+        target.dispatchEvent(new PointerEvent('pointerup', { ...base, button: 0, buttons: 0, detail: 1 }));
+        target.dispatchEvent(new MouseEvent('click', { ...base, button: 0, detail: 1 }));
+        const busy = performance.now() + 300;
+        while (performance.now() < busy) {
+          // a busy page
+        }
+      }, at);
+      // The drawing slides up to make room, and R2's card comes to rest where the pointer is.
+      await page.waitForFunction(() => (window as unknown as { movedAt?: number }).movedAt !== undefined, undefined, { polling: 'raf' });
+      // Handled late: the page is busy as the second press comes in, until a double click's time after the
+      // move has passed (a busy machine, as when the original failure was seen).
+      if (late) {
+        await page.evaluate(
+          ({ quiet }) => {
+            const w = window as unknown as { movedAt?: number };
+            window.addEventListener(
+              'pointerdown',
+              (e) => {
+                if (!e.isTrusted) return;
+                const until = (w.movedAt ?? performance.now()) + quiet + 30;
+                while (performance.now() < until) {
+                  // a busy page
+                }
+              },
+              { capture: true, once: true },
+            );
           },
-          { capture: true, once: true },
+          { quiet: QUIET_MS },
         );
-      },
-      { quiet: QUIET_MS },
-    );
-    // The second click of the double click, a real one: it belongs to the first click's place, not to
-    // the card's title that slid under it (which took the focus from the value).
-    await page.mouse.down({ clickCount: 2 });
-    await page.mouse.up({ clickCount: 2 });
-    const [gap, ended] = await page.evaluate(() => {
-      const w = window as unknown as { movedAt?: number; pressedAt?: number; doubleAt?: number };
-      return [(w.pressedAt ?? Number.POSITIVE_INFINITY) - w.movedAt!, (w.doubleAt ?? Number.NEGATIVE_INFINITY) - w.movedAt!];
-    });
-    gaps.push(Math.round(gap));
-    if (gap >= QUIET_MS - MARGIN_MS || ended >= 2 * QUIET_MS - MARGIN_MS) {
-      expect(gaps.length, `the second click never came within ${QUIET_MS} ms of the card coming to rest (${gaps.join(', ')} ms)`).toBeLessThan(5);
-      await page.keyboard.press('Escape');
-      await expect(page.getByRole('dialog')).toHaveCount(0);
-      continue;
+      }
+      // The second click of the double click, a real one: it belongs to the first click's place, not to
+      // the card's title that slid under it (which took the focus from the value).
+      await page.mouse.down({ clickCount: 2 });
+      await page.mouse.up({ clickCount: 2 });
+      const t0 = await page.evaluate(() => {
+        const w = window as unknown as { movedAt?: number; pressedAt?: number; handledAt?: number; doubleAt?: number };
+        const from = (x: number | undefined, none: number): number => (x === undefined ? none : x - w.movedAt!);
+        return { made: from(w.pressedAt, Number.POSITIVE_INFINITY), handled: from(w.handledAt, Number.POSITIVE_INFINITY), ended: from(w.doubleAt, Number.NEGATIVE_INFINITY) };
+      });
+      tries.push(`made ${Math.round(t0.made)} ms, handled ${Math.round(t0.handled)} ms, ended ${Math.round(t0.ended)} ms after the move`);
+      if (t0.made >= QUIET_MS - MARGIN_MS || t0.ended >= 2 * QUIET_MS - MARGIN_MS) {
+        expect(tries.length, `the second click never came within ${QUIET_MS} ms of the card coming to rest (${tries.join('; ')})`).toBeLessThan(5);
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        continue;
+      }
+      await expect(field).toBeFocused();
+      await expect.poll(() => field.evaluate((f: HTMLInputElement) => [f.selectionStart, f.selectionEnd, f.value.length])).toEqual([0, 2, 2]);
+      // The card stayed open through the double click: the second press did not close it under the hand.
+      expect(await page.evaluate(() => (window as unknown as { closed?: boolean }).closed ?? false), 'R2’s card closed during the double click').toBe(false);
+      break;
     }
-    await expect(field).toBeFocused();
-    await expect.poll(() => field.evaluate((f: HTMLInputElement) => [f.selectionStart, f.selectionEnd, f.value.length])).toEqual([0, 2, 2]);
-    break;
-  }
-  test.info().annotations.push({ type: 'second click after the card came to rest', description: gaps.map((g) => `${g} ms`).join(', ') });
-});
+    test.info().annotations.push({ type: 'the second click', description: tries.join('; ') });
+  });
+}
 
 test('a phone: a wide drawing turned to fit is shown as drawn while editing, and turned again after', async ({ page }) => {
   test.skip(!isPhone(page), 'the phone’s turned view');
