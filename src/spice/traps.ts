@@ -1773,8 +1773,9 @@ function checkNodeNames(c: Ctx): void {
  * shows them joined, but nothing said why. Only spellings on part lines count: a directive that writes
  * the node the other way still names the node meant. A part with an end on each spelling has those ends
  * joined: a warning, whose fix gives the µ spelling a plain name of its own, as the netlist reads to a
- * person. Only a resistor, a capacitor or a diode then carries no current for sure, with no voltage
- * across it (non-ascii-node-5, -10); what the joined ends do to another part depends on the part: a
+ * person. Only a resistor, a capacitor (without a starting voltage, ic=) or a diode then carries no
+ * current for sure, with no voltage across it (non-ascii-node-5, -10); what the joined ends do to another
+ * part depends on the part: a capacitor with ic= discharges at the first point under uic (-12), a
  * current source still drives its current, a dependent source or a transistor still works, a voltage
  * source stops ngspice and an inductor makes its matrix singular (non-ascii-node-11; the voltage-loop
  * check says so for those two), so for them the words say only which ends are joined. With no part
@@ -1816,8 +1817,14 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
     const names = across.map(nameOf);
     const at = across[0]!.nodes.find((r) => r.name === info.name && lowerAscii(r.token.text) !== kept[0])!.token;
     const to = others.map(([form, refs]) => [form, refs[0]!.text, freeName(plainLetters(refs[0]!.text, true) || 'n1')] as const);
-    // A resistor, a capacitor or a diode with an end on each spelling has no voltage across it.
-    const still = across.every((e) => (e.letter === 'R' || e.letter === 'C' || e.letter === 'D') && e.nodes.length === 2);
+    // A resistor, a capacitor or a diode with an end on each spelling has no voltage across it; but a
+    // capacitor given a starting voltage (ic=) starts with it under uic, and carries −5000 A at the first
+    // point (non-ascii-node-12; names lane critic 2, 5): no current claim for it.
+    const startsCharged = (e: Element): boolean => e.letter === 'C' && e.fields.some((f) => f.role === 'parameter' && lowerAscii(f.token.text) === 'ic');
+    const twoEnded = (e: Element): boolean => (e.letter === 'R' || e.letter === 'C' || e.letter === 'D') && e.nodes.length === 2;
+    const still = across.every((e) => twoEnded(e) && !startsCharged(e));
+    // Otherwise the facts for the parts there: another part (non-ascii-node-11), a capacitor that starts charged (-12).
+    const cited = ['non-ascii-node-5', ...(across.some((e) => !twoEnded(e)) ? ['non-ascii-node-11'] : []), ...(across.some(startsCharged) ? ['non-ascii-node-12'] : [])];
     const joined = across.map((e) => {
       const k = e.nodes.filter((r) => r.name === info.name).length;
       const many = COUNT_WORDS[k] ?? String(k);
@@ -1831,7 +1838,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
         ? across.every((e) => e.letter === 'R')
           ? `${ngspice}: in one test a resistor with an end on each carried no current. [non-ascii-node-5]`
           : `${ngspice}: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]`
-        : `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}. [non-ascii-node-5, non-ascii-node-11]`,
+        : `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}. [${cited.join(', ')}]`,
       [fix(to.length === 1 ? `Rename ${to[0]![1]} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
     return;
   }

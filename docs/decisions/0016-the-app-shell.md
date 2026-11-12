@@ -346,7 +346,9 @@ Ctrl+K stay as they are.
   transistor, a voltage source (ngspice stops: "shorted VSRC") and an inductor (singular matrix) all
   belie (non-ascii-node-11). Only a resistor, a capacitor or a diode with an end on each has no voltage
   across it and carries no current at any point (non-ascii-node-5, -10), so only for those does the
-  check still say so; for any other part it says which ends the one node joins ("which joins two ends
+  check still say so (not for a capacitor given a starting voltage, `ic=`: under `uic` it carries
+  −5000 A at the first point, as the second critic found; see below); for any other part it says
+  which ends the one node joins ("which joins two ends
   of E1", "both ends of V2") and that ngspice makes the two spellings one node, and still warns, with
   the fix that gives the µ spelling a name of its own. For V2 and L1 the voltage-loop check says the
   rest, as before.
@@ -360,3 +362,10 @@ Ctrl+K stay as they are.
   `circbyline`, `edit`, `snload`), takes saves back (`delete`) or decides which commands run (`if`,
   `while`, `repeat`, `dowhile`, `foreach`, `goto`, `label` …) leaves the claim undecided, so the check
   says only that ngspice finds no such node there (non-ascii-node-7 lists the three).
+- **No current claim for a capacitor that starts charged** (names lane, second critic, 5). With
+  `C1 aµ au 1u ic=5` and `.tran … uic`, ngspice starts C1 at 5 V although both its ends are on one
+  node, and it discharges in the first step: i(@c1[i]) = −5000 A at the first point, then 0 (native
+  47 and 42, and our engine; without uic, or with an `.ic` line, it stays at 0, and a diode with
+  `ic=0.7` stays at 0). The warning said "C1 has both ends on it and carries no current". A capacitor
+  with an `ic=` value now gets the words for the other parts, "which joins both ends of C1", and
+  cites non-ascii-node-12, which records the runs.

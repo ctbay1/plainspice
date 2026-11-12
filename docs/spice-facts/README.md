@@ -85,11 +85,14 @@ words for `Rş` and `Rç`, `Rµ` and `Ru`).
 
 After the critic of the names lane, the same day: in traps.md non-ascii-node-7 to -9 (a save that also
 names something ngspice finds, `save all`, or the currents PlainSpice saves for .op keep the analysis
-running), non-ascii-node-10 and -11 (a capacitor or a diode across `aµ` and `au` carries no current, as
-a resistor does; a current source, a dependent source or a transistor still works, a voltage source
-stops ngspice), and invisible-character-7, -8, look-alike-letter-7, -8, space-character-12, -13 (a
-.print line or a .control block reads a node name with such a character as written, as for a Turkish
-letter).
+running), non-ascii-node-10 and -11 (a capacitor with no starting voltage or a diode across `aµ` and
+`au` carries no current, as a resistor does; a current source, a dependent source or a transistor still
+works, a voltage source stops ngspice), and invisible-character-7, -8, look-alike-letter-7, -8,
+space-character-12, -13 (a .print line or a .control block reads a node name with such a character as
+written, as for a Turkish letter).
+
+After the second critic of the names lane, the same day: in traps.md non-ascii-node-12 (a capacitor
+given a starting voltage, `ic=`, across `aµ` and `au` carries −5000 A at the first point under `uic`).
 
 ## Where the evidence came from
 

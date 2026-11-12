@@ -1337,7 +1337,7 @@ describe('after the final reviews (12 November 2026)', () => {
     const merged = 'ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]';
     // Native ngspice 47 and 42 (non-ascii-node-11): E1 still delivers 666.7 µA, I1 its 1 mA, G1 its 1 mA, Q1 4.15 mA
     // into its collector; V2 stops ngspice ("shorted VSRC") and L1 makes its matrix singular. None "carries no current".
-    const cases: [netlist: string, joined: string][] = [
+    const cases: [netlist: string, joined: string, facts?: string][] = [
       ['V1 in 0 1\nE1 aµ 0 in au 2\nR1 au 0 1k\n.op', 'two ends of E1'],
       ['V1 in 0 12\nR1 in aµ 1k\nV2 aµ au 5\nR2 au 0 2k\n.op', 'both ends of V2'],
       ['V1 in 0 12\nR1 in aµ 1k\nI1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of I1'],
@@ -1346,10 +1346,16 @@ describe('after the final reviews (12 November 2026)', () => {
       ['V1 in 0 12\nR1 in aµ 1k\nL1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of L1'],
       ['V1 in 0 12\nR1 in aµ 1k\nE1 aµ au aµ au 2\nR2 au 0 2k\n.op', 'all four ends of E1'],
       ['V1 in 0 12\nR1 in aµ 1k\nR3 aµ au 1k\nI1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of R3 and both ends of I1'],
+      // A capacitor with a starting voltage: under uic it carries −5000 A at the first point (native 47 and 42,
+      // and our engine: −4999.999999999999, then 0; non-ascii-node-12, names lane critic 2, 5), so no current
+      // is claimed, and the fact for it is cited.
+      ['V1 in 0 12\nR1 in aµ 1k\nC1 aµ au 1u ic=5\nR2 au 0 2k\n.options savecurrents\n.tran 1u 10u uic', 'both ends of C1', 'non-ascii-node-5, non-ascii-node-12'],
+      ['V1 in 0 12\nR1 in aµ 1k\nC1 aµ au 1u IC = 5\nR3 aµ au 1k\nR2 au 0 2k\n.tran 1u 10u uic', 'both ends of C1 and both ends of R3', 'non-ascii-node-5, non-ascii-node-12'],
+      ['V1 in 0 12\nR1 in aµ 1k\nC1 aµ au 1u ic=5\nI1 aµ au 1m\nR2 au 0 2k\n.tran 1u 10u uic', 'both ends of C1 and both ends of I1', 'non-ascii-node-5, non-ascii-node-11, non-ascii-node-12'],
     ];
-    for (const [lines, joined] of cases) {
+    for (const [lines, joined, facts] of cases) {
       const t = first(`* t\n${lines}\n.end\n`, 'non-ascii-node');
-      expect([t.severity, t.why, t.ngspice], lines).toEqual(['warning', why(joined), merged]);
+      expect([t.severity, t.why, t.ngspice], lines).toEqual(['warning', why(joined), facts ? merged.replace('non-ascii-node-5, non-ascii-node-11', facts) : merged]);
       // The fix still gives the µ spelling a name of its own: the two nodes the netlist reads as.
       expect(t.fixes.map((f) => f.label), lines).toEqual(['Rename aµ to au2']);
     }

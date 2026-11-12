@@ -8355,7 +8355,8 @@ Added after the critic of the names lane, 12 November 2026 (2). As for the resis
 both ends of C1 and of D1 are on the one node au, so neither has a voltage across it, and neither
 carries a current at any point of the run, while R1 and R2 carry the source's. So the check says "has
 both ends on it and carries no current" for a resistor, a capacitor or a diode with an end on each
-spelling, and for no other part (non-ascii-node-11).
+spelling, and for no other part (non-ascii-node-11), nor for a capacitor given a starting voltage
+(non-ascii-node-12).
 
 What PlainSpice shows for non-ascii-node-10 (warning, line 4):
 
@@ -8467,6 +8468,62 @@ L1 aµ au 1m, in place of I1 (exit 0, with warnings):
 ```
 
 PlainSpice's checks: `non-ascii-node` (and for V2 and L1 `voltage-loop` too).
+
+### non-ascii-node-12. A capacitor given a starting voltage, with an end on aµ and one on au, carries current at the first point
+
+Added after the second critic of the names lane, 12 November 2026 (5), which found "C1 has both ends on
+it and carries no current" for this netlist. With `ic=5` and `.tran … uic`, ngspice starts C1 at 5 V
+although both its ends are on the one node au, and C1 discharges in the first step: −5000 A at the first
+point (t = 1 ns), then 0, while R1 and R2 carry the source's 4 mA throughout. Without uic, or with an
+`.ic` line in place of `ic=`, it stays at 0, and a diode given `ic=0.7` stays at 0 too (below). So the
+check says "carries no current" for no capacitor with an `ic=` value: it says which ends are joined, as
+for the parts of non-ascii-node-11, and cites this fact.
+
+What PlainSpice shows for non-ascii-node-12 (warning, line 4):
+
+> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins both ends of C1. Give aµ a name of its own in plain letters.
+>
+> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-12]
+>
+> *Fixes:* "Rename aµ to au2"
+
+```spice
+* a capacitor given a starting voltage, with an end on aµ and one on au
+V1 in 0 12
+R1 in aµ 1k
+C1 aµ au 1u ic=5
+R2 au 0 2k
+.options savecurrents
+.tran 1u 10u uic
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1), as for any .tran with no .print line:
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0), 76 points:
+    Operating point simulation skipped by 'uic',
+      now using transient initial conditions.
+    first point: time = 1e-09, v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@c1[i]) = -4999.999999999999, i(@r2[i]) = 0.004
+    i(@c1[i]) = 0 at every later point
+    last point: time = 9.999999999999999e-06, v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@c1[i]) = 0, i(@r2[i]) = 0.004
+ngspice 42, ngspice -b (exit 1): Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0): "Using transient initial conditions", the same 76 points and values
+our engine (wasm), as ngspice -b -r (exit 0): the same 76 points, i(@c1[i]) = -4999.999999999999 at the
+  first point and 0 at every later one, v(au) = 8 and i(@r1[i]) = 0.004 throughout
+```
+
+The same netlist in other forms, native 47 and 42 alike and our engine, `ngspice -b -r` (exit 0):
+
+```text
+.tran 1u 10u, without uic: i(@c1[i]) = 0 at every point (59 points)
+C1 aµ au 1u without ic=, and .ic v(aµ)=5, with .tran 1u 10u: i(@c1[i]) = 0 at every point (59 points)
+D1 aµ au dd ic=0.7 in place of C1, .model dd D, with .tran 1u 10u uic: i(@d1[id]) = 0 at every point (61 points)
+```
+
+PlainSpice's checks: `non-ascii-node`.
 
 ## invisible-character
 

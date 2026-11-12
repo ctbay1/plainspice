@@ -260,6 +260,7 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-9', netlist: "* .op as PlainSpice runs it, with .options savecurrents\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.control\nsave v(\u00e7\u0131k\u0131\u015f)\nrun\n.endc\n.options savecurrents\n.end\n", vectors: { "i(@r1[i])": 0.004, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-10', netlist: "* a capacitor and a diode with an end on a\u00b5 and one on au\nV1 in 0 PULSE(0 12 0 10u 10u 1 2)\nR1 in a\u00b5 1k\nC1 a\u00b5 au 1u\nD1 a\u00b5 au dd\nR2 au 0 2k\n.model dd D\n.options savecurrents\n.tran 10u 50u\n.end\n", last: { "v(au)": 8, "i(@c1[i])": 0, "i(@d1[id])": 0, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-11', netlist: "* a current source with an end on a\u00b5 and one on au\nV1 in 0 12\nR1 in a\u00b5 1k\nI1 a\u00b5 au 1m\nR2 au 0 2k\n.options savecurrents\n.op\n.end\n", vectors: { "v(au)": 8, "i(@i1[current])": 0.001, "i(@r1[i])": 0.004, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-12', netlist: "* a capacitor given a starting voltage, with an end on a\u00b5 and one on au\nV1 in 0 12\nR1 in a\u00b5 1k\nC1 a\u00b5 au 1u ic=5\nR2 au 0 2k\n.options savecurrents\n.tran 1u 10u uic\n.end\n", last: { "v(au)": 8, "i(@c1[i])": 0, "i(@r1[i])": 0.004, "i(@r2[i])": 0.004 }, traps: ['non-ascii-node'] },
   { code: 'duplicate-name-3', netlist: "* two part names that become one\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists"], fails: true, traps: ['duplicate-name'] },
   { code: 'duplicate-name-4', netlist: "* R\u00b5 and Ru are the same name: ngspice reads \u00b5 as u\nV1 a 0 6\nR\u00b5 a 0 2\nRu a 0 3\n.op\n.end\n", prints: ["device already exists", "ru a 0 3"], fails: true, traps: ['duplicate-name'] },
   // Added after the final reviews of 12 Nov 2026: characters that are not what they look like (W16).
@@ -386,6 +387,15 @@ it('non-ascii-node-10: the capacitor and the diode between aµ and au carry no c
   }
   // R1 and R2 carry the source's current all the while.
   expect(Math.max(...vector(r, 'i(@r1[i])')!)).toBe(0.004);
+});
+
+it('non-ascii-node-12: the capacitor given ic=5 between aµ and au carries −5000 A at the first point under uic, then nothing (names lane critic 2, 5)', () => {
+  const r = runs.get('non-ascii-node-12')!;
+  const values = vector(r, 'i(@c1[i])')!;
+  expect(values.length).toBe(76);
+  expect(agrees(values[0]!, -5000), String(values[0])).toBe(true);
+  expect(values.slice(1).every((x) => x === 0)).toBe(true);
+  expect(vector(r, 'i(@r1[i])')!.every((x) => x === 0.004)).toBe(true);
 });
 
 it('runs every offered fix (there are many)', () => {
