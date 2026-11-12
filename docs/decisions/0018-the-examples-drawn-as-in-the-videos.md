@@ -156,10 +156,13 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   fit", "As drawn" and "As in the video" give the other view at its own fit (they went on fitting
   whole, below the readable size, until another circuit was opened). On a phone it waits while a
   sheet or a card is open: in the strip of paper left above a sheet the whole drawing was a stamp
-  (p02-4 at 4.3 px a grid unit), so the More sheet's "Show the whole drawing" keeps the readable
-  size while the sheet is up, and the whole drawing shows when it goes; a card still fits its own
-  part. Zoom out (its buttons and keys) now goes as far as two fingers do, to half the readable
-  size, and never jumps in from a view that is already smaller.
+  (p02-4 at 4.3 px a grid unit). So the More sheet's "Show the whole drawing" closes the sheet, as
+  Export does, and the whole drawing shows at once, the focus back on More; it kept the sheet open,
+  as Zoom in and Zoom out do, and then changed nothing on the screen until the sheet was closed,
+  with the hint above still saying to drag (the critic of these fixes). Zoom in and Zoom out keep
+  the sheet open, their change seen above it; a card still fits its own part. Zoom out (its buttons
+  and keys) now goes as far as two fingers do, to half the readable size, and never jumps in from a
+  view that is already smaller.
 - **As drawn, at the smallest readable size.** A drawing shown as drawn on a phone that needs panning
   ("As in the video", or a drawing that cannot be turned cleanly) opens at the smallest size its
   words can be read (names 10.5 px), from its left end, instead of as tall as the screen allows up to

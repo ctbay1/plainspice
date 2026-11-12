@@ -3202,7 +3202,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             // turned to fit), so no part is off the screen where the student was looking (two fingers
             // zoom in); or the reader asked for it ("Show the whole drawing"). On a phone not while a
             // sheet is open: the paper left above it would make the drawing a stamp (a card fits its
-            // part, More keeps the readable size); the whole fit comes when the sheet goes.
+            // part; More closes to show it); the whole fit comes when the sheet goes.
             // Otherwise a drawing that does not fit (as drawn on a phone) opens at the smallest readable
             // size, from its left end: as much of it as can be read at once.
             fitWhole={editingWhole || (wholeAt === fitCount && !(phone && phoneSheet))}
@@ -3278,7 +3278,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
               canUndo={snap.canUndo}
               canRedo={snap.canRedo}
               onZoom={(how) => {
-                if (how === 'fit') fit();
+                // "Show the whole drawing" closes the sheet, as Export does, so all of the drawing shows at
+                // once (in the strip of paper above the sheet it could only be a stamp). Zoom in and Zoom
+                // out keep it open: their change shows above it.
+                if (how === 'fit')
+                  fromMore(() => {
+                    setMoreSheet(false);
+                    fit();
+                  });
                 else canvas.current?.zoomBy(how === 'in' ? 1.2 : 1 / 1.2);
               }}
               onClose={() => setMoreSheet(false)}
