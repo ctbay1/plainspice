@@ -41,3 +41,18 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - Resolved on 10 November 2026: the site has its own origin, `https://plainspice.com/`, so its
   local storage and the service worker's caches are no longer shared with the account's other
   GitHub Pages sites (the old `ctbay1.github.io` address only forwards).
+
+## After the final reviews (12 November 2026)
+
+- **The same policy on every page of the site** (security review F3). The engine check, the
+  licences page and the design pages (Tarık's three prototypes, the lab, the checkpoint) had no
+  policy, though they run on the app's origin, next to the student's saved netlist and settings, and
+  the prototypes write HTML with innerHTML (no injection was found: they escape or only test what a
+  link gives them). Each now carries the app's policy without the hash of the app page's inline
+  script, which only the app page has; their manifest link is still removed. Under it, two small
+  symbol fonts of a prototype, which Vite had put into its CSS as data: URLs (it inlines files under
+  4 kB), were refused, so fonts are never inlined (`build.assetsInlineLimit` in `vite.config.ts`):
+  they are files like every other font, and the policy stays one for the whole site. Checked: every
+  page works under it with no policy violation, clicking every button of the prototypes and the
+  checkpoint on a computer and a phone (`tests/e2e/words-review.spec.ts` loads each page). Serving
+  the design pages from another origin, the review's other option, was not needed.

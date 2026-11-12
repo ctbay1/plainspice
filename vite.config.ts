@@ -136,11 +136,30 @@ function shipDependencyLicences(): Plugin {
  *   headers. Defence in depth: nothing from a link is ever put into the page as HTML. Styles need
  *   'unsafe-inline' (CodeMirror and React Aria add style elements and attributes), images data:
  *   (CodeMirror's underline), and WebAssembly 'wasm-unsafe-eval'; the inline script above is
- *   allowed by its hash.
+ *   allowed by its hash. The other pages on the site (the engine check, the licences, and the design
+ *   pages Tarık clicks, which write HTML with innerHTML) get the same policy without that hash: they
+ *   share the app's origin, so its saved netlist and settings (security review F3).
  * - The spike and licences pages are not part of the installable app: vite-plugin-pwa's manifest
- *   link (relative, so a 404 there) is removed from them (security review m7).
+ *   link (relative, so a 404 there) is removed from them (security review m7), and from the design
+ *   pages.
  */
 function pageHead(): Plugin {
+  /** The policy of every built page; `scriptHash` allows the app page's one inline script. */
+  const policy = (scriptHash = ''): string =>
+    [
+      "default-src 'none'",
+      `script-src 'self' 'wasm-unsafe-eval'${scriptHash}`,
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "connect-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "base-uri 'none'",
+      "form-action 'none'",
+    ].join('; ');
+  /** The tags right after the charset (which must come first), before anything the policy covers. */
+  const afterCharset = (html: string, tags: readonly string[]): string => html.replace(/(<meta charset="utf-8"\s*\/?>)/i, `$1\n    ${tags.join('\n    ')}`);
   return {
     name: 'plainspice-page-head',
     apply: 'build',
@@ -150,37 +169,27 @@ function pageHead(): Plugin {
       handler(html, ctx) {
         const page = ctx.filename.replace(/\\/g, '/');
         if (/\/(spike|licenses)\/index\.html$/.test(page) || /\/design\//.test(page)) {
-          return html.replace(/\s*<link rel="manifest"[^>]*>/, '');
+          const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy()}" />`];
+          return afterCharset(html, tags).replace(/\s*<link rel="manifest"[^>]*>/, '');
         }
         const files = Object.keys(ctx.bundle ?? {});
         const wasm = files.find((f) => /^engine\/ngspice-[\w-]+\.wasm$/.test(f));
         const worker = files.find((f) => /^assets\/worker-[\w-]+\.js$/.test(f));
-        let script = '';
+        const lines: string[] = [];
         if (wasm && worker) {
-          script =
+          lines.push(
             `if(/(?:^#|&)run=1(?:&|$)/.test(location.hash)){` +
-            `for(const[r,h,a]of[["preload","./${wasm}","fetch"],["prefetch","./${worker}",""]]){` +
-            `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"}document.head.append(l)}}`;
+              `for(const[r,h,a]of[["preload","./${wasm}","fetch"],["prefetch","./${worker}",""]]){` +
+              `const l=document.createElement("link");l.rel=r;l.href=h;if(a){l.as=a;l.type="application/wasm";l.crossOrigin="anonymous"}document.head.append(l)}}`,
+          );
         } else {
           this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
         }
+        const script = lines.join(';');
         const hash = script ? ` 'sha256-${createHash('sha256').update(script).digest('base64')}'` : '';
-        const policy = [
-          "default-src 'none'",
-          `script-src 'self' 'wasm-unsafe-eval'${hash}`,
-          "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data:",
-          "font-src 'self'",
-          "connect-src 'self'",
-          "worker-src 'self'",
-          "manifest-src 'self'",
-          "base-uri 'none'",
-          "form-action 'none'",
-        ].join('; ');
-        const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy}" />`];
+        const tags = [`<meta http-equiv="Content-Security-Policy" content="${policy(hash)}" />`];
         if (script) tags.push(`<script>${script}</script>`);
-        // Right after the charset (which must come first), before anything the policy covers.
-        return html.replace(/(<meta charset="utf-8"\s*\/?>)/i, `$1\n    ${tags.join('\n    ')}`);
+        return afterCharset(html, tags);
       },
     },
   };
@@ -298,6 +307,10 @@ export default defineConfig({
   ],
   build: {
     target: 'es2022',
+    // A font is always its own file, never a data: URL in the CSS (Vite inlines files under 4 kB): the
+    // pages' policy allows fonts only from the site itself ("font-src 'self'", pageHead above), and a
+    // design prototype's small symbol fonts were blocked as data: URLs (security review F3).
+    assetsInlineLimit: (file) => (/\.woff2?$/i.test(file) ? false : undefined),
     rollupOptions: {
       input: {
         main: resolve(root, 'index.html'),
