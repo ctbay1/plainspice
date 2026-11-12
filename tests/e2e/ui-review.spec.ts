@@ -3,7 +3,8 @@
  * Ctrl+K keeps the focus in its field (Tab stays there, a click on a group's name too, Escape closes
  * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); "dependent" lists the
  * dependent sources' Place commands first (words W4); a fix on the video's
- * mistake examples leaves no drawing warning, and the tab and the announcement agree (kept F1); the
+ * mistake examples leaves no drawing warning, and the tab and the announcement agree, and a fix that
+ * renames a part keeps it where it was drawn (kept F1); the
  * starter's why is shown in the hint line (words W9); the Netlist panel a SPICE for Beginners example
  * opened closes with the next video's example (student netlist-panel-stays); a new node never takes a
  * name just said to be ground (student node-name-reused).
@@ -24,7 +25,10 @@ import {
   openApp,
   openPanel,
   panel,
+  partOnDrawing,
   partsToolbar,
+  savedNetlist,
+  setNetlistWithDrawing,
   statusLine,
   RUN_TIMEOUT,
   t,
@@ -118,6 +122,55 @@ test('a fix on the video’s mistake examples leaves no drawing warning; the tab
     await expect(panel(page, 'checks')).not.toContainText(t('checksDrawingTitle'));
     await expect(statusLine(page)).toContainText(/Finished in \d+ ms/, { timeout: RUN_TIMEOUT });
   }
+});
+
+test('a fix that renames a part keeps it where it was drawn: the 0 V source stands in R1’s place (the critic of kept F1)', async ({ page }) => {
+  await openApp(page);
+  // A drawn circuit whose R1 is written as 0 Ω (a wire): the check offers a 0 V source in its place.
+  const drawn = [
+    '* My circuit: R1 as a wire',
+    'V1 n1 0 6',
+    'R1 n1 n2 0',
+    'R2 n2 0 4',
+    'I1 0 n2 3',
+    '.op',
+    '* plainspice-drawing v1',
+    '*@ V1 0 8 0 side=left',
+    '*@ R1 9 0 270 side=above',
+    '*@ R2 17 8 0 side=right',
+    '*@ I1 27 8 180 side=right',
+    '*@ ground 17 15 0',
+    '*@ wire 0,6 0,0 7,0',
+    '*@ wire 11,0 27,0 27,6',
+    '*@ wire 17,6 17,0',
+    '*@ wire 0,10 0,15 27,15 27,10',
+    '*@ wire 17,10 17,15',
+    '*@ label n1 0 0 side=above-left',
+    '*@ label n2 18 0 side=above-left',
+    '.end',
+    '',
+  ].join('\n');
+  await setNetlistWithDrawing(page, drawn);
+  await expect(statusLine(page)).toContainText(/Finished in \d+ ms/, { timeout: RUN_TIMEOUT });
+  const checks = await openPanel(page, 'checks');
+  const fix = 'Use a 0 V source instead (VR1)';
+  await expect(checks.getByRole('button', { name: fix, exact: true })).toBeVisible();
+  const centre = async (name: string): Promise<{ x: number; y: number }> => {
+    const b = (await partOnDrawing(page, name).boundingBox())!;
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  const before = await centre('R1');
+  await checks.getByRole('button', { name: fix, exact: true }).click();
+  await expectAnnounced(page, `${t('fixApplied', { label: fix })}. No traps found.`);
+  // Its position line took the new name (nothing else changed in it), and the tab warns about nothing.
+  await expect.poll(() => savedNetlist(page)).toContain('*@ VR1 9 0 270 side=above\n');
+  expect(await savedNetlist(page)).not.toContain('*@ R1 ');
+  await expect.poll(() => checksCount(page)).toBe(0);
+  await expect(panel(page, 'checks')).not.toContainText(t('checksDrawingTitle'));
+  // VR1 is drawn where R1 was (between n1 and n2), not placed elsewhere with new wires.
+  const after = await centre('VR1');
+  expect(Math.abs(after.x - before.x)).toBeLessThan(4);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(4);
 });
 
 test('the first part on a blank page: why .op and .end were written is shown first in the hint line (words W9)', async ({ page }) => {

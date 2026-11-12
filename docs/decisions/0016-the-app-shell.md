@@ -184,13 +184,18 @@ Ctrl+K stay as they are.
   the catalog's names). So "dependent" lists them first, before the eight examples named with the word,
   in view on a phone too, and Enter places a source rather than opening an example over the open
   circuit (words W4 and its critic); "controlled", the textbook's word, is in their names.
-- **A fix takes with it the drawing lines it leaves with nothing to name** (kept F1). A check's fix
-  changes part lines only; when it renames a node ("Make n3 the ground", "Rename n12 to n2") or takes
-  a part away, the `*@ label` or `*@` position line of that node or part goes in the same step, as the
-  editor's own rename takes a node's name off the drawing, so the Checks tab never warns about a line
-  the student never wrote. A drawing line that already named nothing before the fix stays (the
-  student's, and the panel says what is wrong with it). Every fix offered on every video example now
-  ends with no trap and no drawing warning (`app-fixes.test.ts`).
+- **A fix keeps the drawing lines in step** (kept F1 and its critic). A check's fix changes part lines
+  only. When it renames a node ("Make n3 the ground", "Rename n12 to n2"), the `*@ label` line of the
+  old name goes in the same step, as the editor's own rename takes a node's name off the drawing. When
+  it renames a part whose old name then names nothing (a 0 V source in place of a 0 Ω resistor, "VR1";
+  a 0 V source for a W written as a wire, "VW1"), the part's `*@` position line takes the new name, the
+  rest as written, so the new part stands where the old one was drawn and no wire is redrawn (unless the
+  new name already has a position line of its own). A second part renamed ("Rename it R3") leaves the
+  line to the part that keeps the name, and is placed. No fix takes a part away; a position line whose
+  part a change takes away goes too. So the Checks tab never warns about a line the student never
+  wrote. A drawing line that already named nothing before the fix stays (the student's, and the panel
+  says what is wrong with it). Every fix offered on every video example now ends with no trap and no
+  drawing warning (`app-fixes.test.ts`).
 - **What is said is the number the Checks tab shows**: after a fix and after an edit, the count says
   the checks, the drawing lines PlainSpice cannot use and the dependent sources still to choose, as
   the tab counts them. While everything counted is a trap it is said as before ("1 trap found.": the
