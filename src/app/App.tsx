@@ -1407,8 +1407,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (schematic && !tooBig) {
       list.push({ id: 'add-part', group: gEdit, label: t('paletteAddPart'), keywords: 'add new part form nodes keyboard netlist line', shortcut: 'A' });
       for (const tl of ['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'ground'] as const) {
-        // E to H also by their other names, ranked as their own: "dependent source" (the channel's word, the
-        // examples') and their initials, "vcvs" ... ("controlled" is in their names): final reviews, words W4.
+        // E to H also by their other names, ranked as words of their names: "dependent source" (the channel's
+        // word, the examples') and their initials, "vcvs" ... ("controlled" is in their names): final reviews,
+        // words W4. This group comes before the examples, so "dependent" lists the four first.
         const aliases = toolAliases(tl);
         list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}`}`, ...(aliases.length ? { aliases } : {}), shortcut: tl === 'ground' ? '0' : tl });
       }

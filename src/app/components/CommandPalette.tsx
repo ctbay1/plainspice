@@ -21,7 +21,9 @@ export interface Command {
   keywords?: string;
   /**
    * Other names it has (the channel's word, a textbook's initials: "dependent source", "vcvs"):
-   * found, and ranked, as its own name is, so they bring it to the top, not only into the list.
+   * found, and ranked, as words of its name are, never as its start. So a short query keeps the
+   * command whose name it starts ("v" the voltage source, "d" Draw a wire, "de" Delete R1), and
+   * "dependent" still brings the command above a command found only by its keywords.
    */
   aliases?: readonly string[];
   /** A shortcut to show. */
@@ -46,11 +48,13 @@ export function commandWords(text: string): string[] {
 
 /**
  * The commands whose words start with every typed word (any order: "plain" finds "the plain font",
- * not "explain"; "net" finds "netlist"), best first: a command whose name (or another name it has,
- * its aliases) starts with what was typed, then one whose names have every typed word, then one
- * found by its group or keywords ("open the help" finds Open the help first, not Open the settings
- * in "Settings and help"). Within each rank the list keeps its order, and each group stays in one
- * piece.
+ * not "explain"; "net" finds "netlist"), best first: a command whose name starts with what was
+ * typed, then one whose names (its name and its other names, its aliases) have every typed word,
+ * then one found by its group or keywords ("open the help" finds Open the help first, not Open the
+ * settings in "Settings and help"). Within each rank the list keeps its order, and each group stays
+ * in one piece. Another name never counts as the start of the name: counted so, "vcvs" and
+ * "dependent source" put E first for "v", "d" and "de", ahead of the voltage source, Draw a wire
+ * and Delete (the second critic of words W4).
  */
 export function filterCommands(commands: readonly Command[], query: string): Command[] {
   const typed = commandWords(query);
@@ -58,11 +62,11 @@ export function filterCommands(commands: readonly Command[], query: string): Com
   const phrase = typed.join(' ');
   const ranked: { c: Command; rank: number; i: number }[] = [];
   commands.forEach((c, i) => {
-    const names = [c.label, ...(c.aliases ?? [])].map(commandWords);
-    const name = names.flat();
+    const label = commandWords(c.label);
+    const name = [...label, ...(c.aliases ?? []).flatMap(commandWords)];
     const all = [...name, ...commandWords(c.group), ...commandWords(c.keywords ?? '')];
     if (!typed.every((w) => all.some((x) => x.startsWith(w)))) return;
-    const rank = names.some((n) => n.join(' ').startsWith(phrase)) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
+    const rank = label.join(' ').startsWith(phrase) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
     ranked.push({ c, rank, i });
   });
   // Groups stay whole (the list shows each group once, under its heading): a group goes where its best

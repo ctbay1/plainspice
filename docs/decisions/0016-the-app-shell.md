@@ -179,11 +179,14 @@ Ctrl+K stay as they are.
   letter, a digit, _ or a dot, any case, accents or not. So a command's own name, typed as it is shown
   ("Place a current-controlled current source", "Example 3: short", "(V_Th)"), finds it, and
   "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands have
-  other names of their own (a command's `aliases`, found and ranked as its name is): "dependent
-  source", the channel's word, and their textbook initials, "vcvs", "cccs", "vccs" and "ccvs" (read off
-  the catalog's names). So "dependent" lists them first, before the eight examples named with the word,
-  in view on a phone too, and Enter places a source rather than opening an example over the open
-  circuit (words W4 and its critic); "controlled", the textbook's word, is in their names.
+  other names of their own (a command's `aliases`, found and ranked as words of its name are, never as
+  the start of its name): "dependent source", the channel's word, and their textbook initials, "vcvs",
+  "cccs", "vccs" and "ccvs" (read off the catalog's names). So "dependent" lists them first, before the
+  eight examples named with the word (their group, Edit the drawing, comes before Examples), in view on
+  a phone too, and Enter places a source rather than opening an example over the open circuit (words W4
+  and its critic); "controlled", the textbook's word, is in their names. A short query keeps the
+  command whose name it starts: "v" the voltage source, "d" Draw a wire, "de" Delete R1. (Counted as
+  the start of a name, "vcvs" and "dependent source" put E first for all three: the second critic.)
 - **A fix keeps the drawing lines in step** (kept F1 and its critic). A check's fix changes part lines
   only. When it renames a node ("Make n3 the ground", "Rename n12 to n2"), the `*@ label` line of the
   old name goes in the same step, as the editor's own rename takes a node's name off the drawing. When

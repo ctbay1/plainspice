@@ -109,6 +109,13 @@ describe('Ctrl+K after the final reviews', () => {
       fireEvent.change(input, { target: { value: query } });
       expect(labels(palette)[0], query).toBe(dependentTools[i]);
     }
+    // A short query keeps the command whose name it starts, for Enter (the second critic of W4: the other
+    // names put E first for "v", "d" and "de").
+    for (const [query, label] of [['v', t('palettePlace', { part: toolPhrase('V') })], ['d', t('paletteWire')], ['de', t('paletteDelete', { name: 'R2' })]] as const) {
+      fireEvent.change(input, { target: { value: query } });
+      expect(labels(palette)[0], query).toBe(label);
+      expect(within(palette).getByRole('option', { selected: true }).textContent, query).toContain(label);
+    }
     // Accents or not: the same examples (words W12).
     fireEvent.change(input, { target: { value: 'Thévenin' } });
     const accented = labels(palette);
