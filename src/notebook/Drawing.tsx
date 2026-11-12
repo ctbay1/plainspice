@@ -10,8 +10,8 @@
  * Coordinates: grid units times UNIT_PX user units (20, as TEXT.size assumes), so font sizes are
  * ordinary numbers; NotebookCanvas scales the whole drawing to the window.
  */
-import { memo, type CSSProperties, type ReactNode } from 'react';
-import { GROUND, unionBoxes, type Box, type Direction, type NavItem, type PlacedPart, type Schematic, type TextLine } from '../schematic/index.ts';
+import { memo, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { GROUND, unionBoxes, type Box, type Direction, type NavItem, type PlacedPart, type Scene, type Schematic, type TextLine } from '../schematic/index.ts';
 import { TYPE, widthIn } from './measure.ts';
 import { NOTE_SIZE, WAS_SCALE, type PenNote, type WasMark } from './notes.ts';
 import { markLayout, nameShifts, type DrawingResults, type ResultMark } from './results.ts';
@@ -263,8 +263,26 @@ function sameItem(a: NavItem | undefined, b: NavItem): boolean {
 export const Drawing = memo(function Drawing({ schematic, results, colours, plain, selected, related, hovered, focused, traps, pen }: DrawingProps): ReactNode {
   const sc = schematic.scene;
   // Names written on the left of their point, moved up to it (nameShift).
-  const shifts = nameShifts(sc, results);
+  const shifts = useMemo(() => nameShifts(sc, results), [sc, results]);
   const focusedBox = focused ? focusBox(schematic, focused, shifts) : undefined;
+  // Each layer is drawn again only when what it shows changes: a hover, a selection or the focus
+  // ring changes the highlights and the ring, never the copper, the symbols or the words (second
+  // re-check, P2: a drawing at the format's limits took a second to draw again for each hover).
+  return (
+    <g className={`nb-drawing${plain ? ' is-plain' : ''}`}>
+      <Highlights scene={sc} shifts={shifts} selected={selected} related={related} hovered={hovered} />
+      <Copper scene={sc} colours={colours} />
+      <Symbols scene={sc} colours={colours} traps={traps} />
+      <Labels scene={sc} colours={colours} shifts={shifts} />
+      <Results results={results} plain={plain} shifts={shifts} />
+      {pen ? <Pen pen={pen} schematic={schematic} /> : null}
+      {focusedBox ? <FocusRing box={focusedBox} /> : null}
+    </g>
+  );
+});
+
+/** The highlighter under what is selected, related to it, or under the pointer. */
+const Highlights = memo(function Highlights({ scene: sc, shifts, selected, related, hovered }: { scene: Scene; shifts: readonly number[]; selected: NavItem | undefined; related: readonly NavItem[]; hovered: NavItem | undefined }): ReactNode {
   const isOn = (item: NavItem, list: readonly NavItem[]): boolean => list.some((x) => sameItem(x, item));
   const highlightClass = (item: NavItem): string | undefined => {
     if (sameItem(selected, item)) return 'is-selected';
@@ -272,135 +290,134 @@ export const Drawing = memo(function Drawing({ schematic, results, colours, plai
     if (sameItem(hovered, item)) return 'is-hover';
     return undefined;
   };
-  // Crossings: the horizontal wire hops over the vertical one, in its own colour.
-  const hop = (p: { x: number; y: number }): string | undefined => {
-    for (const w of sc.wires) {
-      for (let i = 1; i < w.points.length; i++) {
-        const a = w.points[i - 1]!;
-        const b = w.points[i]!;
-        if (a.y === b.y && a.y === p.y && Math.min(a.x, b.x) < p.x && p.x < Math.max(a.x, b.x)) return nodeColour(colours, w.node) ?? 'var(--nb-ink)';
-      }
-    }
-    return undefined;
-  };
   return (
-    <g className={`nb-drawing${plain ? ' is-plain' : ''}`}>
-      <g className="nb-highlights" aria-hidden="true">
-        {sc.parts.map((p) => {
-          const cls = highlightClass({ kind: 'part', key: p.key });
-          return cls ? (
-            <g key={p.key} className={`nb-hl ${cls}`}>
-              <Highlight part={p} />
-            </g>
-          ) : null;
-        })}
-        {sc.wires.map((w, i) => {
-          const cls = w.node ? highlightClass({ kind: 'node', name: w.node }) : undefined;
-          return cls ? <polyline key={`w${i}`} className={`nb-hl nb-hl--wire ${cls}`} points={w.points.map((p) => `${u(p.x)},${u(p.y)}`).join(' ')} /> : null;
-        })}
-        {sc.nodeLabels.map((l, i) => {
-          const cls = highlightClass({ kind: 'node', name: l.node });
-          // A highlighter stroke under the name only: its value stays plain to read.
-          const b = l.lines.find((x) => x.role === 'node')?.box ?? l.box;
-          return cls ? <rect key={`l${i}`} className={`nb-hl nb-hl--name ${cls}`} x={u(b.x0 - 0.1 + shifts[i]!)} y={u(b.y0 + 0.08)} width={u(b.x1 - b.x0 + 0.2)} height={u(b.y1 - b.y0 - 0.12)} rx={u(0.2)} /> : null;
-        })}
-        {sc.grounds.map((g) => {
-          const cls = highlightClass({ kind: 'node', name: GROUND });
-          return cls ? <rect key={`g${g.index}`} className={`nb-hl ${cls}`} x={u(g.box.x0 - 0.3)} y={u(g.box.y0 - 0.2)} width={u(g.box.x1 - g.box.x0 + 0.6)} height={u(g.box.y1 - g.box.y0 + 0.5)} rx={u(0.25)} /> : null;
-        })}
-      </g>
-
-      <g className="nb-wires">
-        {sc.wires.map((w, i) => {
-          const c = nodeColour(colours, w.node);
-          return <polyline key={i} className="nb-wire" points={w.points.map((p) => `${u(p.x)},${u(p.y)}`).join(' ')} style={c ? { stroke: c } : undefined} />;
-        })}
-        {sc.crossings.map((p, i) => {
-          const c = hop(p);
-          return (
-            <g key={`x${i}`}>
-              <path className="nb-hop-gap" d={`M${u(p.x - 0.3)},${u(p.y)} H${u(p.x + 0.3)}`} />
-              <path className="nb-wire" d={`M${u(p.x - 0.3)},${u(p.y)} A${u(0.3)},${u(0.3)} 0 0 1 ${u(p.x + 0.3)},${u(p.y)}`} style={c ? { stroke: c } : undefined} />
-            </g>
-          );
-        })}
-      </g>
-
-      <g className="nb-parts">
-        {sc.parts.map((p) => (
-          <Part key={p.key} part={p} colours={colours} trap={traps.has(p.key)} />
-        ))}
-        {sc.grounds.map((g) => (
-          <g key={`g${g.index}`} className="nb-ground" transform={`translate(${u(g.at.x)} ${u(g.at.y)}) rotate(${g.rot}) scale(${UNIT_PX})`} style={SCALED}>
-            <path className="nb-sym" d={`${GROUND_INK.lead} ${GROUND_INK.bars}`} />
+    <g className="nb-highlights" aria-hidden="true">
+      {sc.parts.map((p) => {
+        const cls = highlightClass({ kind: 'part', key: p.key });
+        return cls ? (
+          <g key={p.key} className={`nb-hl ${cls}`}>
+            <Highlight part={p} />
           </g>
-        ))}
-        {sc.junctions.map((j, i) => {
-          const node = sc.wires.find((w) => w.points.some((p, k) => k > 0 && onSegment(j, w.points[k - 1]!, p)))?.node;
-          const c = nodeColour(colours, node);
-          return <circle key={`j${i}`} className="nb-junction" cx={u(j.x)} cy={u(j.y)} r={u(0.17)} style={c ? { fill: c } : undefined} />;
-        })}
-        {sc.terminals.map((t, i) => {
-          const c = nodeColour(colours, t.node);
-          return <circle key={`t${i}`} className="nb-terminal" cx={u(t.at.x)} cy={u(t.at.y)} r={u(0.2)} style={c ? { stroke: c } : undefined} />;
-        })}
-        {sc.stubs.map((t, i) => {
-          const c = nodeColour(colours, t.node);
-          return (
-            <path
-              key={`s${i}`}
-              className="nb-stub"
-              d="M0.05,-0.26 L0.55,0 L0.05,0.26 Z"
-              transform={`translate(${u(t.at.x)} ${u(t.at.y)}) rotate(${ROTATE[t.direction]}) scale(${UNIT_PX})`}
-              style={c ? { ...SCALED, stroke: c } : SCALED}
-            />
-          );
-        })}
-      </g>
-
-      <g className="nb-words">
-        {sc.parts.map((p) => (
-          <g key={p.key} className="nb-part-words">
-            {p.labels.map((l, i) =>
-              l.role === 'name' ? <Words key={i} line={l} className="nb-name" /> : l.role === 'value' ? <Words key={i} line={l} className="nb-value" /> : null,
-            )}
-            <ControlMarks part={p} colours={colours} />
-          </g>
-        ))}
-        {sc.nodeLabels.map((l, i) => (
-          <g key={`n${i}`}>
-            {l.lines.map((line, k) =>
-              line.role === 'node' ? (
-                <g key={k} transform={shifted(shifts[i]!)}>
-                  <NodeName line={line} colour={nodeColour(colours, l.node)} />
-                </g>
-              ) : line.role === 'hidden' ? (
-                <Words key={k} line={line} className="nb-hidden" />
-              ) : null,
-            )}
-          </g>
-        ))}
-      </g>
-
-      <g className="nb-results">
-        {[...results.parts.values()].flatMap((pm) => pm.marks.map((m, i) => <Mark key={`${pm.key}:${i}`} m={m} plain={plain} />))}
-        {results.nodes.map((n) =>
-          n.mark ? (
-            <g key={`node:${n.label}`} transform={shifted(shifts[n.label] ?? 0)}>
-              <Mark m={n.mark} plain={plain} />
-            </g>
-          ) : null,
-        )}
-      </g>
-
-      {pen ? <Pen pen={pen} schematic={schematic} /> : null}
-      {focusedBox ? <FocusRing box={focusedBox} /> : null}
+        ) : null;
+      })}
+      {sc.wires.map((w, i) => {
+        const cls = w.node ? highlightClass({ kind: 'node', name: w.node }) : undefined;
+        return cls ? <polyline key={`w${i}`} className={`nb-hl nb-hl--wire ${cls}`} points={w.points.map((p) => `${u(p.x)},${u(p.y)}`).join(' ')} /> : null;
+      })}
+      {sc.nodeLabels.map((l, i) => {
+        const cls = highlightClass({ kind: 'node', name: l.node });
+        // A highlighter stroke under the name only: its value stays plain to read.
+        const b = l.lines.find((x) => x.role === 'node')?.box ?? l.box;
+        return cls ? <rect key={`l${i}`} className={`nb-hl nb-hl--name ${cls}`} x={u(b.x0 - 0.1 + shifts[i]!)} y={u(b.y0 + 0.08)} width={u(b.x1 - b.x0 + 0.2)} height={u(b.y1 - b.y0 - 0.12)} rx={u(0.2)} /> : null;
+      })}
+      {sc.grounds.map((g) => {
+        const cls = highlightClass({ kind: 'node', name: GROUND });
+        return cls ? <rect key={`g${g.index}`} className={`nb-hl ${cls}`} x={u(g.box.x0 - 0.3)} y={u(g.box.y0 - 0.2)} width={u(g.box.x1 - g.box.x0 + 0.6)} height={u(g.box.y1 - g.box.y0 + 0.5)} rx={u(0.25)} /> : null;
+      })}
     </g>
   );
 });
 
-function onSegment(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): boolean {
-  if (a.x === b.x) return p.x === a.x && p.y >= Math.min(a.y, b.y) && p.y <= Math.max(a.y, b.y);
-  if (a.y === b.y) return p.y === a.y && p.x >= Math.min(a.x, b.x) && p.x <= Math.max(a.x, b.x);
-  return false;
-}
+/** The wires in their nodes' colours, and a hop where two cross: the horizontal wire hops over the vertical one, in its own colour. */
+const Copper = memo(function Copper({ scene: sc, colours }: { scene: Scene; colours: ReadonlyMap<string, string> }): ReactNode {
+  return (
+    <g className="nb-wires">
+      {sc.wires.map((w, i) => {
+        const c = nodeColour(colours, w.node);
+        return <polyline key={i} className="nb-wire" points={w.points.map((p) => `${u(p.x)},${u(p.y)}`).join(' ')} style={c ? { stroke: c } : undefined} />;
+      })}
+      {sc.crossings.map((p, i) => {
+        // The hopping wire's node, which the scene found at the crossing (scene.ts, crossingNodes).
+        const c = nodeColour(colours, sc.crossingNodes[i]) ?? 'var(--nb-ink)';
+        return (
+          <g key={`x${i}`}>
+            <path className="nb-hop-gap" d={`M${u(p.x - 0.3)},${u(p.y)} H${u(p.x + 0.3)}`} />
+            <path className="nb-wire" d={`M${u(p.x - 0.3)},${u(p.y)} A${u(0.3)},${u(0.3)} 0 0 1 ${u(p.x + 0.3)},${u(p.y)}`} style={{ stroke: c }} />
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
+/** The symbols: parts, ground symbols, junction dots, open terminals and stubs. */
+const Symbols = memo(function Symbols({ scene: sc, colours, traps }: { scene: Scene; colours: ReadonlyMap<string, string>; traps: ReadonlySet<string> }): ReactNode {
+  return (
+    <g className="nb-parts">
+      {sc.parts.map((p) => (
+        <Part key={p.key} part={p} colours={colours} trap={traps.has(p.key)} />
+      ))}
+      {sc.grounds.map((g) => (
+        <g key={`g${g.index}`} className="nb-ground" transform={`translate(${u(g.at.x)} ${u(g.at.y)}) rotate(${g.rot}) scale(${UNIT_PX})`} style={SCALED}>
+          <path className="nb-sym" d={`${GROUND_INK.lead} ${GROUND_INK.bars}`} />
+        </g>
+      ))}
+      {sc.junctions.map((j, i) => {
+        // The node of the copper at the dot, which the scene found at its point (scene.ts, junctionNodes).
+        const c = nodeColour(colours, sc.junctionNodes[i]);
+        return <circle key={`j${i}`} className="nb-junction" cx={u(j.x)} cy={u(j.y)} r={u(0.17)} style={c ? { fill: c } : undefined} />;
+      })}
+      {sc.terminals.map((t, i) => {
+        const c = nodeColour(colours, t.node);
+        return <circle key={`t${i}`} className="nb-terminal" cx={u(t.at.x)} cy={u(t.at.y)} r={u(0.2)} style={c ? { stroke: c } : undefined} />;
+      })}
+      {sc.stubs.map((t, i) => {
+        const c = nodeColour(colours, t.node);
+        return (
+          <path
+            key={`s${i}`}
+            className="nb-stub"
+            d="M0.05,-0.26 L0.55,0 L0.05,0.26 Z"
+            transform={`translate(${u(t.at.x)} ${u(t.at.y)}) rotate(${ROTATE[t.direction]}) scale(${UNIT_PX})`}
+            style={c ? { ...SCALED, stroke: c } : SCALED}
+          />
+        );
+      })}
+    </g>
+  );
+});
+
+/** The words: each part's name and values, and each node's name (moved up to its point, `shifts`). */
+const Labels = memo(function Labels({ scene: sc, colours, shifts }: { scene: Scene; colours: ReadonlyMap<string, string>; shifts: readonly number[] }): ReactNode {
+  return (
+    <g className="nb-words">
+      {sc.parts.map((p) => (
+        <g key={p.key} className="nb-part-words">
+          {p.labels.map((l, i) =>
+            l.role === 'name' ? <Words key={i} line={l} className="nb-name" /> : l.role === 'value' ? <Words key={i} line={l} className="nb-value" /> : null,
+          )}
+          <ControlMarks part={p} colours={colours} />
+        </g>
+      ))}
+      {sc.nodeLabels.map((l, i) => (
+        <g key={`n${i}`}>
+          {l.lines.map((line, k) =>
+            line.role === 'node' ? (
+              <g key={k} transform={shifted(shifts[i]!)}>
+                <NodeName line={line} colour={nodeColour(colours, l.node)} />
+              </g>
+            ) : line.role === 'hidden' ? (
+              <Words key={k} line={line} className="nb-hidden" />
+            ) : null,
+          )}
+        </g>
+      ))}
+    </g>
+  );
+});
+
+/** The results of a run, handwritten in the room the scene kept for them. */
+const Results = memo(function Results({ results, plain, shifts }: { results: DrawingResults; plain: boolean; shifts: readonly number[] }): ReactNode {
+  return (
+    <g className="nb-results">
+      {[...results.parts.values()].flatMap((pm) => pm.marks.map((m, i) => <Mark key={`${pm.key}:${i}`} m={m} plain={plain} />))}
+      {results.nodes.map((n) =>
+        n.mark ? (
+          <g key={`node:${n.label}`} transform={shifted(shifts[n.label] ?? 0)}>
+            <Mark m={n.mark} plain={plain} />
+          </g>
+        ) : null,
+      )}
+    </g>
+  );
+});

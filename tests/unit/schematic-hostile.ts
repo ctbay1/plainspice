@@ -1,6 +1,7 @@
 /**
- * Drawings at the format's limits that the schematic tests build (security:F1): not a test file
- * itself, shared by schematic-format.test.ts and schematic-ground-search.test.ts.
+ * Drawings at the format's limits that the schematic tests build (security:F1, and the second
+ * re-check's P2 and P3): not a test file itself, shared by schematic-format.test.ts,
+ * schematic-ground-search.test.ts, schematic-piles.test.ts and notebook-drawing-work.test.tsx.
  */
 
 /**
@@ -33,4 +34,42 @@ export function groundRowsAndWave(K: number, w: number, steps: number, extra: re
   const [[sx, sy], [ex, ey]] = [pts[0]!, pts[pts.length - 1]!];
   out.push(`*@ R1 ${sx - 2} ${sy} 270`, dir > 0 ? `*@ R4 ${ex + 2} ${ey} 270` : `*@ R4 ${ex - 2} ${ey} 90`, `*@ wire ${pts.map(([a, b]) => `${a},${b}`).join(' ')}`, '.end');
   return `${out.join('\n')}\n`;
+}
+
+/**
+ * The second re-check's pile (P3): V1 and R2 … Rn in a chain, every part at one point, as a
+ * 542-character link holds them (no header line, every position "*@ X 0 0 0"), with `extra` drawing
+ * lines after them (names or ground symbols piled there too). Each part's pins sit on pins of other
+ * nodes, so the build moves all but one.
+ */
+export function partsAtOnePoint(n: number, extra: readonly string[] = []): string {
+  const out = ['*', 'V1 1 0 1'];
+  for (let i = 2; i <= n; i++) out.push(`R${i} ${i - 1} ${i} 1`);
+  out.push('.op', '*@ V1 0 0 0');
+  for (let i = 2; i <= n; i++) out.push(`*@ R${i} 0 0 0`);
+  return `${[...out, ...extra].join('\n')}\n`;
+}
+
+/**
+ * `count` drawing lines piled where the parts of partsAtOnePoint(60) are: names of its nodes 1 … 59 in
+ * turn (or of node 1 only, `oneNode`), or ground symbols; at the point (0, 0), or spread over the 16
+ * points of one 4 × 4 square (`spread`, ground symbols turned every way there too).
+ */
+export function piled(kind: 'names' | 'grounds', count: number, { spread = false, oneNode = false } = {}): string[] {
+  const at = (i: number): string => (spread ? `${(i % 4) - 2} ${(Math.floor(i / 4) % 4) - 2}` : '0 0');
+  return Array.from({ length: count }, (_, i) => (kind === 'names' ? `*@ label ${oneNode ? 1 : 1 + (i % 59)} ${at(i)}` : `*@ ground ${at(i)} ${spread ? [0, 90, 180, 270][Math.floor(i / 16) % 4] : 0}`));
+}
+
+/**
+ * A slanted lattice of k × k points (the security reviewer's lat70 at k = 70: 9,666 pieces and 4,898
+ * junctions, a 30 kB link), every point joined, hanging on R2's upper pin (node out) or, `onGround`,
+ * on its lower pin (ground), under a divider.
+ */
+export function slantedLattice(k: number, onGround = false): string {
+  const head = ['* divider', 'V1 in 0 6', 'R1 in out 1k', 'R2 out 0 2k', '.op', '* plainspice-drawing v1', '*@ V1 0 3 0 m', '*@ R1 4 0 270', '*@ R2 7 3 0'];
+  const P = (a: number, b: number): string => (onGround ? `${7 + a + b},${5 + b - a}` : `${7 + a + b},${1 - (b - a)}`);
+  const lines: string[] = [];
+  for (let a = 0; a < k; a++) lines.push(`*@ wire ${Array.from({ length: k }, (_, b) => P(a, b)).join(' ')}`);
+  for (let b = 0; b < k; b++) lines.push(`*@ wire ${Array.from({ length: k }, (_, a) => P(a, b)).join(' ')}`);
+  return `${[...head, ...lines, '.end'].join('\n')}\n`;
 }

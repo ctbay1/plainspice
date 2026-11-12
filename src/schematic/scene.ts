@@ -169,10 +169,18 @@ export interface Scene {
   grounds: PlacedGround[];
   wires: PlacedWire[];
   junctions: Point[];
+  /**
+   * The node of the copper at each junction, in step with `junctions` (undefined where it is no one
+   * node's): its dot's colour, worked out once here, where the copper's islands are known, so a
+   * renderer never looks for the wire under each dot (second re-check, P2).
+   */
+  junctionNodes: (string | undefined)[];
   terminals: Terminal[];
   stubs: Stub[];
   /** Points where two wires cross without connecting (a style may draw a hop). */
   crossings: Point[];
+  /** The node of the wire that hops at each crossing (the horizontal one), in step with `crossings`. */
+  crossingNodes: (string | undefined)[];
   nodeLabels: PlacedNodeLabel[];
   bounds: Box;
 }
@@ -824,7 +832,19 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
       ...stubs.map((t) => t.box),
       ...drawing.wires.flatMap((w) => w.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }))),
     ]) ?? EMPTY_BOX;
-  return { parts, grounds, wires, junctions, terminals, stubs, crossings: wireCrossings(drawing.wires, wireIndex), nodeLabels, bounds };
+  // Each junction's node and each crossing's hopping wire, found once at its point (not by looking
+  // at every wire for each: a slanted lattice at the format's limits has 4,898 junctions and 9,666
+  // pieces of wire).
+  const junctionNodes = junctions.map((j) => {
+    const island = islands.at(j);
+    return island === undefined ? undefined : (islandNode.get(island) ?? undefined);
+  });
+  const crossings = wireCrossings(drawing.wires, wireIndex);
+  const crossingNodes = crossings.map((p) => {
+    const over = wireIndex.at(p).find((t) => t.a.y === t.b.y && Math.min(t.a.x, t.b.x) < p.x && p.x < Math.max(t.a.x, t.b.x));
+    return over ? wires[over.wire]!.node : undefined;
+  });
+  return { parts, grounds, wires, junctions, junctionNodes, terminals, stubs, crossings, crossingNodes, nodeLabels, bounds };
 }
 
 // ------------------------------------------------------------------ overlaps
