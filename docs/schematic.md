@@ -148,7 +148,9 @@ searching or a search area over `MAX_ROUTE_CELLS`, by writing the node's name on
 circuit with ground gets a ground symbol if it has none; every node gets its name written once,
 where it fits. `checkConnectivity` must then find nothing but `hidden` notes: the tests check it on
 every example, fixture, corpus netlist and random circuit, with the model and with an independent
-check that shares no code with it.
+check that shares no code with it. A wire the router adds to join a node's pieces keeps clear of
+other nodes' words but not of the node's own (its name, the words of the parts on it): the scene
+places those again around the new wire, where a detour round them made re-routed wires snake.
 
 Connectivity rules (`connectivity.ts`): wire ends and corners connect where they touch a wire or a
 pin (a T); crossings do not; pins at the same point connect; ground symbols are all node 0; labels
@@ -157,15 +159,56 @@ with the same name connect; a junction dot goes where three or more ends, sides 
 ## Editing (`edit.ts`)
 
 `applyEdit(schematic, op, options?)` → `EditResult { ok, reason?, changes, text, drawing, lines, summary, notes, select? }`.
-Operations: `add-part`, `add-ground`, `move-part`, `move-ground`, `rotate-part`, `mirror-part`,
+Operations: `add-part`, `add-ground`, `move-part` (with an optional `rot` and `mirror`: moved and
+turned on the way, in one edit), `move-ground`, `rotate-part`, `mirror-part`,
 `reverse-part`, `delete-part`, `delete-ground`, `add-wire` (between pins, ground pins or points on
-wires; `via` for an exact route), `delete-wire`, `rename-node`, `move-label` (a new point and/or a
-`side`), `set-side` (where a part's words go, or `'auto'`), `set-value`, `set-control`. What each
-does to nodes is in the module comment. A refused edit (a place taken or off the grid, a pin on
+wires; `via` for an exact route), `delete-wire` (a whole wire, one `segment` of it, or a `piece` of a
+segment: the stretch between two points on it), `rename-node`, `move-label` (a new point and/or a
+`side`), `set-side` (where a part's words go, or `'auto'`), `set-value`, `set-control`, and
+`disconnect-pin` (one end of a part onto a node of its own, with a fresh name, in the part's line;
+refused when that end is already alone on its node). The drawing keeps its lines, except where they
+would still join that end to its old node: an end drawn pin-on-pin on another part's pin drops the
+part's own `*@` line, so the layout draws it apart; a ground symbol on that end, with no wire there,
+is removed. What each does to nodes is in the module comment. A refused edit (a place taken or off the grid, a pin on
 another node, wires that would find no way, a half turn in place, an F or H with no source to read,
 another version's drawing) returns `ok: false` and a reason in plain words. `notes` are what the
 rebuild repaired; `select` is a part, a node, or a netlist line that still names something the edit
 removed. Every sentence is in `EDIT_STRINGS`.
+
+What the reviews of step B pinned down (`tests/unit/schematic-edit-review.test.ts`):
+
+- **A move never changes the netlist**, the ground symbol's included: moved off its wire, the
+  rebuild wires it to ground's copper (as it re-routes a moved part's wires), and a place no wire
+  reaches is refused (`noWay`).
+- **What the lines say is what the drawing shows.** `finish` reads the drawing back from the lines
+  it writes and, where that reading repairs it again (a wire's dead end where a wire doubled back),
+  writes the repaired drawing instead; and an edit whose rebuilt drawing would connect other than the
+  netlist (a piece of a node left apart) is refused (`outOfStep`) rather than written. A drawing
+  left with nothing on it (its last part deleted) takes its lines away, header and all.
+- **Symbols are a body and thin leads** when placing: bodies keep apart from bodies and leads, a lead
+  may not run along or across another, pins meet only pins. So a part may meet another end to end at
+  a shared pin, in line or at a right angle; a wire may end at a pin but not cross a body or a lead.
+- **A new wire keeps clear of other nodes' words, not of the words of the nodes it joins** (they
+  are placed again around it), and never passes through the point another node's name is written
+  at (the name would sit on a crossing of two nodes' wires; the rebuild's joining wires likewise).
+  `wireRoute`'s later legs keep off the earlier ones, so a wire never doubles back at a corner.
+- **Reverse swaps what the ends mean, not their words**: ground is written `0` (gnd at the end of
+  a line is an ordinary node to ngspice, fact W9); a part on a node called gnd that is not ground is
+  refused (`gndNode`), since swapped, gnd would become ground.
+- **Which name stays when nodes become one**: ground, then a node a dot command names, then a name
+  the student chose over one PlainSpice gave (n1, n2 ...), then the lower of two given names, then
+  the first in the netlist; a node called gnd that is not ground never stays (it could not be
+  written elsewhere).
+- **`pinDrawing(text, options)`**: the text with its drawing lines written for the drawing it shows,
+  read back until they agree. The Add a part form uses it when the circuit is drawn by hand, so a
+  part it adds is placed in the same step and never moves when other lines are typed.
+
+For the editor (decision 0017) the module also exports what it needs to show an edit before it is
+made: `wireRoute(schematic, from, to, corners?)` (the route `add-wire` would take, or a point on the
+paper for a wire on its way; each leg between corners may touch only the copper at its own two ends),
+`freshNodeName` and `freshPartName` (the names a new node or part would get), `insertLine` (where a
+new part line goes: before the analyses, the drawing lines and `.end`), `DEFAULT_VALUES` (a new
+part's value) and `mergeChanges`.
 
 ## Keyboard and screen readers (`navigate.ts`)
 

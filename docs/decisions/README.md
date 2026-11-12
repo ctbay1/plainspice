@@ -21,6 +21,7 @@ behind them is in [`../research/`](../research/).
 | [0014](0014-the-look.md) | The look: Notebook, with a named toolbar, Ctrl+K and a plain-font setting | accepted (Tarık) |
 | [0015](0015-notebook-canvas.md) | The Notebook canvas: four voices, exact room for words, results in their own lines, a turned drawing on phones | accepted (the phone's turned drawing waits for Tarık) |
 | [0016](0016-the-app-shell.md) | The app shell: one netlist text with one undo history (only the student's texts saved), a card that types only values SPICE reads, live runs, links and files exactly as written, the paper with panels on demand, every size of screen and text, the Start here first screen | accepted |
+| [0017](0017-the-schematic-editor.md) | The schematic editor: every edit the model's, through the store (one undo step, live runs, said aloud); seen before it is done; place, wire, move, Turn (T), Mirror (M), Reverse (Shift+R), delete by mouse, finger and keyboard; a form and the card's Connections for building without a pointer; a blank page written solvable (`.op`, `.end`); after its reviews: no edit changes the text behind the student's back, square hand-drawn wires, the focus never lost, a finger holds a part to drag it | accepted |
 
 Also: [what we do differently from EEcircuit](../eecircuit-comparison.md) and the
 [fixture results](../fixture-results.md).

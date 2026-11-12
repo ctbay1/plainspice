@@ -416,6 +416,13 @@ export function NoticeCard({ notice, onDismiss }: { notice: NoticeData; onDismis
           ))}
         </ul>
       )}
+      {notice.action ? (
+        <p className="notice__actions">
+          <button type="button" className="button" onClick={notice.action.run}>
+            {notice.action.label}
+          </button>
+        </p>
+      ) : null}
     </section>
   );
 }

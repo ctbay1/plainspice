@@ -1,5 +1,5 @@
 /**
- * Help (lazy-loaded): keyboard shortcuts (the app's, then the netlist editor's own list,
+ * Help (lazy-loaded): keyboard shortcuts (the app's, the drawing's editing keys (decision 0017), then the netlist editor's own list,
  * EDITOR_STRINGS.keys), how to read the results, the sign of a source's current, and the links that
  * were in the old page's footer (the licences and source, the engine check, the source code).
  * The sign convention is the one src/engine/results.ts documents and docs/spice-facts checks
@@ -18,10 +18,23 @@ export default function HelpDialog({ onOpenChange, offlineReady }: { onOpenChang
     { keys: t('helpKeyUndo'), action: t('helpKeyUndoAction') },
     { keys: t('helpKeyDrawing'), action: t('helpKeyDrawingAction') },
     { keys: t('helpKeyOpen'), action: t('helpKeyOpenAction') },
+    { keys: t('helpKeyNode'), action: t('helpKeyNodeAction') },
     { keys: t('helpKeyEscape'), action: t('helpKeyEscapeAction') },
     { keys: t('helpKeyParts'), action: t('helpKeyPartsAction') },
     { keys: t('helpKeyZoom'), action: t('helpKeyZoomAction') },
     { keys: t('helpKeyToolbar'), action: t('helpKeyToolbarAction') },
+  ];
+  // Editing the drawing (decision 0017): single keys, on the drawing or the parts (WCAG 2.1.4).
+  const editing: { keys: string; action: string }[] = [
+    { keys: t('helpKeyTurn'), action: t('helpKeyTurnAction') },
+    { keys: t('helpKeyMirror'), action: t('helpKeyMirrorAction') },
+    { keys: t('helpKeyReverse'), action: t('helpKeyReverseAction') },
+    { keys: t('helpKeyMove'), action: t('helpKeyMoveAction') },
+    { keys: t('helpKeyDelete'), action: t('helpKeyDeleteAction') },
+    { keys: t('helpKeyCard'), action: t('helpKeyCardAction') },
+    { keys: t('helpKeyMoving'), action: t('helpKeyMovingAction') },
+    { keys: t('helpKeyAdd'), action: t('helpKeyAddAction') },
+    { keys: t('helpKeyWireNodes'), action: t('helpKeyWireNodesAction') },
   ];
   // The editor's own keys, less those the whole page has (Run, undo and redo are listed once, above).
   const netlistKeys = EDITOR_STRINGS.keys.filter((k) => !/^Ctrl\+(Enter|Z)\b/.test(k.keys));
@@ -52,6 +65,9 @@ export default function HelpDialog({ onOpenChange, offlineReady }: { onOpenChang
     <DialogFrame title={t('helpTitle')} onOpenChange={onOpenChange} wide>
       <h3>{t('helpKeysHeading')}</h3>
       {table(t('helpKeysCaption'), keys)}
+      <h4>{t('helpKeysEditing')}</h4>
+      {table(t('helpKeysEditing'), editing)}
+      <p>{t('helpScreenReaders')}</p>
       <h4>{t('helpKeysNetlist')}</h4>
       {table(t('helpKeysNetlist'), netlistKeys)}
       <h3>{t('helpResultsHeading')}</h3>

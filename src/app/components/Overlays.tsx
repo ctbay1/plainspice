@@ -7,6 +7,8 @@
  */
 import { lazy, Suspense, type ReactNode, type RefObject } from 'react';
 import type { ResultFont } from '../../notebook/index.ts';
+import type { Schematic } from '../../schematic/index.ts';
+import type { PartForm } from '../editing.ts';
 import type { Settings } from '../settings.ts';
 
 const loadExamples = () => import('../overlays/ExamplesMenu.tsx');
@@ -14,19 +16,21 @@ const loadExport = () => import('../overlays/ExportMenu.tsx');
 const loadShare = () => import('../overlays/ShareDialog.tsx');
 const loadSettings = () => import('../overlays/SettingsDialog.tsx');
 const loadHelp = () => import('../overlays/HelpDialog.tsx');
+const loadAddPart = () => import('../overlays/AddPartDialog.tsx');
 
 const ExamplesMenu = lazy(loadExamples);
 const ExportMenu = lazy(loadExport);
 const ShareDialog = lazy(loadShare);
 const SettingsDialog = lazy(loadSettings);
 const HelpDialog = lazy(loadHelp);
+const AddPartDialog = lazy(loadAddPart);
 
 /** Fetch every overlay's code (called when the browser is idle after start-up). */
 export function preloadOverlays(): Promise<unknown> {
-  return Promise.all([loadExamples(), loadExport(), loadShare(), loadSettings(), loadHelp()]);
+  return Promise.all([loadExamples(), loadExport(), loadShare(), loadSettings(), loadHelp(), loadAddPart()]);
 }
 
-export type OverlayKey = 'examples' | 'export' | 'share' | 'settings' | 'help';
+export type OverlayKey = 'examples' | 'export' | 'share' | 'settings' | 'help' | 'add-part';
 /** Which item a menu focuses when it opens: the last one after ArrowUp, else the first. */
 export type MenuFocus = 'first' | 'last';
 export type ExportKind = 'ngspice' | 'ltspice';
@@ -47,6 +51,8 @@ export interface OverlaysProps {
   onFont: (font: ResultFont) => void;
   /** The service worker has everything: the app works offline (Help says so). */
   offlineReady: boolean;
+  /** The Add a part form: the circuit, the form as it opens, and what adds the part (returning why not). */
+  addPart?: { schematic: Schematic; start: PartForm; onAdd: (form: PartForm) => string | undefined } | undefined;
 }
 
 export function Overlays(p: OverlaysProps): ReactNode {
@@ -61,6 +67,7 @@ export function Overlays(p: OverlaysProps): ReactNode {
       {p.open === 'share' && <ShareDialog onOpenChange={close('share')} getNetlist={p.getShareText} />}
       {p.open === 'settings' && <SettingsDialog onOpenChange={close('settings')} settings={p.settings} onChange={p.onSettings} font={p.font} onFont={p.onFont} />}
       {p.open === 'help' && <HelpDialog onOpenChange={close('help')} offlineReady={p.offlineReady} />}
+      {p.open === 'add-part' && p.addPart && <AddPartDialog schematic={p.addPart.schematic} start={p.addPart.start} onAdd={p.addPart.onAdd} onOpenChange={close('add-part')} />}
     </Suspense>
   );
 }

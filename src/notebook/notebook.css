@@ -90,8 +90,19 @@
   user-select: none;
   -webkit-user-select: none;
 }
+/* The paper takes the focus only from a click (tabindex -1, never from Tab): no ring around the whole page. */
+.nb-canvas:focus {
+  outline: none;
+}
 .nb-canvas.is-placing {
   cursor: crosshair;
+}
+/* The page moved the drawing (room for a card): it slides there, so the eye follows (instant where motion is reduced). */
+.nb-canvas.is-sliding .nb-world {
+  transition: transform 200ms var(--nb-ease-out, ease-out);
+}
+.nb-canvas.is-sliding {
+  transition: background-position 200ms var(--nb-ease-out, ease-out);
 }
 .nb-world {
   position: absolute;
@@ -336,6 +347,126 @@
   }
 }
 
+/* ------------------------------------------------------------------ the editor's marks (decision 0017) */
+/* A part can be picked up and moved; the part in hand and a wire's ends take the crosshair. */
+.nb-canvas.is-select .nb-hit--part {
+  cursor: grab;
+}
+.nb-canvas.is-move,
+.nb-canvas.is-move .nb-hit {
+  cursor: grabbing;
+}
+/* The part in hand: its ink paler (still 3:1 on the paper), its pins marked. */
+.nb-hand__sym,
+.nb-hand__signs {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.62;
+}
+.nb-hand__sym {
+  stroke-width: calc(var(--nb-pen) / var(--nb-k) / var(--nb-s));
+}
+.nb-hand__signs {
+  stroke-width: calc(var(--nb-pen) * 0.85 / var(--nb-k));
+}
+.nb-hand__fill {
+  fill: var(--nb-ink);
+  opacity: 0.62;
+}
+/* A place the model refuses: the symbol in red pen, dashed. */
+.nb-hand.is-refused .nb-hand__sym,
+.nb-hand.is-refused .nb-hand__signs {
+  stroke: var(--nb-red);
+  opacity: 1;
+  stroke-dasharray: calc(5px / var(--nb-k) / var(--nb-s)) calc(3.5px / var(--nb-k) / var(--nb-s));
+}
+.nb-hand.is-refused .nb-hand__signs {
+  stroke-dasharray: none;
+}
+.nb-hand.is-refused .nb-hand__fill {
+  fill: var(--nb-red);
+  opacity: 1;
+}
+/* A pin that would join a node: a dot in the node's colour inside an ink ring; a new node: an open ring. */
+.nb-hand__pin.is-joined {
+  fill: var(--nb-ink);
+  stroke: var(--nb-paper-raised);
+  stroke-width: calc(1.5px / var(--nb-k));
+}
+.nb-hand__halo {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(1.75px / var(--nb-k));
+}
+.nb-hand__pin.is-new {
+  fill: var(--nb-paper-raised);
+  stroke: var(--nb-ink);
+  stroke-width: calc(2px / var(--nb-k));
+}
+.nb-hand.is-refused .nb-hand__pin.is-new {
+  stroke: var(--nb-red);
+}
+.nb-hand__cross {
+  fill: none;
+  stroke: var(--nb-red);
+  stroke-width: calc(var(--nb-pen) * 1.1 / var(--nb-k));
+  stroke-linecap: round;
+}
+/* Where a wire can start or end, and the one under the pointer. */
+.nb-target {
+  fill: var(--nb-paper-raised);
+  stroke: var(--nb-ink);
+  stroke-width: calc(1.75px / var(--nb-k));
+}
+.nb-target-on {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(2.75px / var(--nb-k));
+}
+/* A wire on its way: dashed, in its node's colour; its start a dot, its corners small rings. */
+.nb-draft__line {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(var(--nb-pen) * 1.15 / var(--nb-k));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: calc(7px / var(--nb-k)) calc(5px / var(--nb-k));
+}
+.nb-draft.is-refused .nb-draft__line {
+  stroke: var(--nb-red);
+}
+.nb-draft__start {
+  fill: var(--nb-ink);
+  stroke: var(--nb-paper-raised);
+  stroke-width: calc(1.5px / var(--nb-k));
+}
+.nb-draft__corner {
+  fill: var(--nb-paper-raised);
+  stroke: var(--nb-ink);
+  stroke-width: calc(1.75px / var(--nb-k));
+}
+/* A piece of wire selected: the highlighter along it, and an ink square at each end (3:1 and more). */
+.nb-piece__swipe {
+  stroke: var(--nb-highlighter);
+  stroke-width: calc(14px / var(--nb-k));
+  stroke-linecap: round;
+  mix-blend-mode: multiply;
+  opacity: 0.8;
+}
+.nb-piece__end {
+  fill: var(--nb-paper-raised);
+  stroke: var(--nb-ink);
+  stroke-width: calc(2px / var(--nb-k));
+}
+.nb-piece__outline {
+  fill: none;
+  stroke: var(--nb-ink);
+  stroke-width: calc(1.5px / var(--nb-k));
+  stroke-dasharray: calc(4px / var(--nb-k)) calc(3px / var(--nb-k));
+}
+
 /* ------------------------------------------------------------------ keyboard and screen readers */
 .nb-hits {
   position: absolute;
@@ -435,5 +566,36 @@
   }
   .nb-hl.is-selected {
     opacity: 0.45;
+  }
+  .nb-hand__sym,
+  .nb-hand__signs,
+  .nb-hand__halo,
+  .nb-hand__pin,
+  .nb-target,
+  .nb-target-on,
+  .nb-draft__line,
+  .nb-draft__corner,
+  .nb-piece__end,
+  .nb-piece__outline {
+    stroke: CanvasText !important;
+    opacity: 1;
+  }
+  .nb-hand__cross {
+    stroke: Highlight !important;
+  }
+  .nb-hand__fill,
+  .nb-draft__start,
+  .nb-hand__pin.is-joined {
+    fill: CanvasText !important;
+    opacity: 1;
+  }
+  .nb-hand.is-refused .nb-hand__sym,
+  .nb-target-on {
+    stroke: Highlight !important;
+  }
+  .nb-piece__swipe {
+    stroke: Highlight;
+    mix-blend-mode: normal;
+    opacity: 0.6;
   }
 }

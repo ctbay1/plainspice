@@ -23,9 +23,17 @@ Everything around it is for beginners:
   (tap it on a phone), type a new value, and ngspice runs the circuit again as you type: the new
   numbers appear, the old ones crossed out. A value SPICE would misread ("4,7k", "1 k") is caught on
   the card, with why and a fix, before it reaches the netlist. The first screen invites you to try it.
+- **Build the circuit on the drawing.** Choose a part in the margin (or press its letter: R, C, L,
+  V, I, E, F, G, H, 0 for ground) and click where it goes: before the click you see where its ends
+  land and which nodes they join. Wire pins together (W), drag parts (their wires follow), turn (T),
+  mirror (M) and reverse (Shift+R) them, rename nodes, delete; every change is written to the netlist,
+  ngspice runs it again, and screen readers hear what changed. A blank page comes out solvable: the first part
+  also writes `.op` and `.end`. Without a mouse, Add a part (A) takes a kind, a value and two nodes from
+  lists, and each part's card connects and disconnects its ends; on a phone, tap to place, and hold
+  a part a moment to drag it with a finger.
 - **One netlist, two ways in.** The Netlist panel shows the same circuit as SPICE reads it, on a
-  dark "simulator screen"; type there and the drawing follows, change a value on the drawing and its
-  line changes. One undo covers both.
+  dark "simulator screen"; type there and the drawing follows, change the drawing and the netlist
+  follows (the positions go into `*@` comment lines that ngspice ignores). One undo covers both.
 - **It explains as it simulates.** Each netlist line is shown as a field table in plain words
   (name, + node, − node, value; for a current source: from node, to node, current). Every result is
   also in the Numbers panel's tables, in plain units: `1.200000e+01` becomes **12 V**, and every
@@ -41,6 +49,8 @@ Everything around it is for beginners:
   Circuits video can link "Open this circuit". It works offline and on a phone (a wide drawing
   turns to fit the screen), and exports netlists for ngspice and LTspice.
 
+![Placing a part: Start here with a third resistor in hand, drawn in pencil where the pointer holds it; its left end lands on the ground wire at R2's foot and is marked as joining it, its right end is open (a new node), and the hint line says so before the click: "Click to place a resistor here: it joins ground and a new node · T turns it · M mirrors it · Esc goes back to Select"](docs/screenshot-editing.png)
+
 How it differs from [EEcircuit](https://github.com/eelab-dev/EEcircuit), the closest existing
 tool: [docs/eecircuit-comparison.md](docs/eecircuit-comparison.md).
 
@@ -54,8 +64,12 @@ accessibility, security and speed on phones, and the findings were fixed.
 
 Milestone 2, step A: the app in the Notebook look Tarık chose ([0014](docs/decisions/0014-the-look.md),
 [0015](docs/decisions/0015-notebook-canvas.md), [0016](docs/decisions/0016-the-app-shell.md)): the
-drawing first, solved live as you edit, with every feature of the first app in panels. Placing and
-wiring parts on the drawing is step B. What's next and the open questions: [docs/plan.md](docs/plan.md).
+drawing first, solved live as you edit, with every feature of the first app in panels. Step B: the
+schematic editor ([0017](docs/decisions/0017-the-schematic-editor.md)): place, wire, move, turn, mirror,
+reverse and delete parts on the drawing, by mouse, finger or keyboard, then reviewed for how it
+feels, for keyboards and screen readers, and for keeping the netlist in step, and the findings
+fixed. What's next (step C: the
+examples drawn as in the videos) and the open questions: [docs/plan.md](docs/plan.md).
 
 ## Develop
 
@@ -86,7 +100,7 @@ The engine is committed (`engine/dist/`); to rebuild it from the ngspice source,
 |---|---|
 | `src/spice/` | the netlist model: number reader, parser, trap checks, explanations |
 | `src/engine/` | ngspice in a Web Worker; results and messages |
-| `src/app/` | the user interface (React 19 + React Aria Components): the netlist store, live runs, the shell |
+| `src/app/` | the user interface (React 19 + React Aria Components): the netlist store, live runs, the shell, the schematic editor |
 | `src/schematic/`, `src/notebook/` | the circuit drawn from its netlist; the Notebook page it is drawn on |
 | `src/editor/`, `src/plot/`, `src/share/`, `src/export/` | CodeMirror editor, uPlot plots, share links, export |
 | `engine/` | the reproducible ngspice 47 WebAssembly build |

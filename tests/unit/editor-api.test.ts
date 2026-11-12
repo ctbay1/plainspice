@@ -499,6 +499,49 @@ describe('in the app (decision 0016): one undo history, the store’s text, the 
     expect(editor.drawingFolded()).toBe(false);
   });
 
+  it('never joins a folded drawing line to the line next to it: the block unfolds instead (critique of step B)', async () => {
+    const { deleteCharBackward, deleteCharForward } = await import('@codemirror/commands');
+    const { drawingBlock } = await import('../../src/editor/drawing-fold.ts');
+    const { editor } = make({ doc: DRAWN, foldDrawing: true });
+    const view = editor.view;
+    const block = drawingBlock(view.state.doc)!;
+    // Backspace at the start of .end (the line after the block).
+    view.dispatch({ selection: EditorSelection.cursor(block.to + 1) });
+    deleteCharBackward(view);
+    expect(editor.getDoc()).toBe(DRAWN);
+    expect(editor.drawingFolded()).toBe(false);
+    // Delete at the end of .op (the line before the block).
+    editor.setDrawingFolded(true);
+    view.dispatch({ selection: EditorSelection.cursor(block.from - 1) });
+    deleteCharForward(view);
+    expect(editor.getDoc()).toBe(DRAWN);
+    expect(editor.drawingFolded()).toBe(false);
+    // Typing over a selection that runs into the fold.
+    editor.setDrawingFolded(true);
+    view.dispatch({ selection: EditorSelection.range(block.from - 2, block.from), userEvent: 'select' });
+    view.dispatch(view.state.replaceSelection('X'));
+    expect(editor.getDoc()).toBe(DRAWN);
+    // Deleting the whole block with the lines around it is the student's to do.
+    editor.setDrawingFolded(true);
+    view.dispatch({ changes: { from: block.from - 1, to: block.to } });
+    expect(editor.getDoc()).not.toContain('*@');
+  });
+
+  it('shows the drawing lines while the cursor is in them: a line typed to start with *@ is never folded away unseen', () => {
+    const { editor, parent } = make({ doc: DRAWN, foldDrawing: true });
+    const view = editor.view;
+    const endLine = view.state.doc.line(view.state.doc.lines);
+    // Type *@ at the start of .end: that line joins the block, and the block shows while the cursor is in it.
+    view.dispatch({ selection: EditorSelection.cursor(endLine.from) });
+    view.dispatch(view.state.replaceSelection('*@'));
+    expect(editor.getDoc().endsWith('*@.end')).toBe(true);
+    expect(parent.querySelector('.ps-fold')).toBeNull();
+    expect(editor.drawingFolded()).toBe(true);
+    // The cursor leaves the block: folded again.
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(parent.querySelector('.ps-fold')).not.toBeNull();
+  });
+
   it('the screen look: the dark “simulator screen” of the episodes', () => {
     const { editor } = make({ look: 'screen' });
     expect(editor.view.dom.classList.contains('ps-editor--screen')).toBe(true);

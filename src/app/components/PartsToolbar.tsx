@@ -8,35 +8,18 @@
  * Shortcuts are shown and work while the toolbar or the drawing has the focus (WCAG 2.1.4). One
  * tab stop; arrow keys move along it.
  *
- * Placing parts is the next step of the build (decision 0016): choosing a part tool selects it, and
- * the hint line says plainly that placing comes in the next update; nothing pretends to place.
+ * A part tool puts that part in hand: a click on the paper places it (decision 0017). The last
+ * button, Add a part (A), is not a tool: it opens the form that adds a part between two nodes
+ * chosen from a list, the way to build a circuit without a pointer.
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { t } from '../../i18n/index.ts';
 import type { ToolKind } from '../../notebook/index.ts';
-import type { PartLetter } from '../../schematic/index.ts';
-import { elementInfo } from '../../spice/elements.ts';
+import { CONTROLLED, controlledLine, isControlled, kindName, type Controlled, type Tool } from '../tools.ts';
 import { LineIcon, ToolGlyph } from './Icons.tsx';
 
-export type Tool = 'select' | 'wire' | PartLetter | 'ground';
-export type Controlled = 'E' | 'F' | 'G' | 'H';
-export const CONTROLLED: readonly Controlled[] = ['E', 'F', 'G', 'H'];
-export const isControlled = (tool: Tool): tool is Controlled => tool === 'E' || tool === 'F' || tool === 'G' || tool === 'H';
-
-const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
-
-/** A part's name in the catalog's words: "Resistor", "Current-controlled current source". */
-export const kindName = (letter: PartLetter): string => cap(elementInfo(letter)?.name ?? letter);
-
-/**
- * What a controlled source does, in plain words, from the catalog: "makes a current: gain × the
- * current through a voltage source" (SPICE reads only that current: the ammeter trick, explain.ts).
- */
-export function controlledLine(letter: Controlled): string {
-  const makes = letter === 'E' || letter === 'H' ? t('wordVoltage') : t('wordCurrent');
-  const follows = letter === 'E' || letter === 'G' ? t('controlledReadsVoltage') : t('controlledReadsCurrent');
-  return t('controlledMakes', { makes, gain: elementInfo(letter)?.valueLabel ?? 'gain', follows });
-}
+export { CONTROLLED, controlledLine, isControlled, kindName, toolForKey, toolPhrase } from '../tools.ts';
+export type { Controlled, Tool } from '../tools.ts';
 
 export interface ToolDef {
   id: Tool | 'controlled';
@@ -60,31 +43,15 @@ export const TOOLS: readonly ToolDef[] = [
   { id: 'ground', word: t('toolGround'), key: '0', icon: 'ground', group: 3 },
 ];
 
-/** The tool a key chooses (plain letters, no modifier), or undefined. */
-export function toolForKey(key: string): Tool | undefined {
-  const k = key.toUpperCase();
-  if (k === 'W') return 'wire';
-  if (k === '0') return 'ground';
-  if (k.length === 1 && 'RCLVIEFGH'.includes(k)) return k as PartLetter;
-  return undefined;
-}
-
-/** What a tool is called in sentences ("a resistor", "an inductor", "a ground symbol"). */
-export function toolPhrase(tool: Tool): string {
-  if (tool === 'select') return t('toolSelect');
-  if (tool === 'wire') return t('phraseWire');
-  if (tool === 'ground') return t('phraseGround');
-  const name = elementInfo(tool)?.name ?? tool;
-  return t(/^[aeiou]/i.test(name) ? 'phraseAn' : 'phraseA', { name });
-}
-
 interface ToolbarProps {
   tool: Tool;
   onTool: (tool: Tool) => void;
+  /** Add a part between two nodes (the form). */
+  onAdd?: () => void;
 }
 
 /** The toolbar in the page's margin (a computer). */
-export function PartsToolbar({ tool, onTool }: ToolbarProps): ReactNode {
+export function PartsToolbar({ tool, onTool, onAdd }: ToolbarProps): ReactNode {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const [focusIndex, setFocusIndex] = useState(0);
   const [menu, setMenu] = useState(false);
@@ -93,8 +60,10 @@ export function PartsToolbar({ tool, onTool }: ToolbarProps): ReactNode {
 
   const isOn = (d: ToolDef): boolean => (d.id === 'controlled' ? isControlled(tool) : d.id === tool);
 
+  /** The tools, then Add a part. */
+  const count = TOOLS.length + (onAdd ? 1 : 0);
   const move = (i: number): void => {
-    const n = TOOLS.length;
+    const n = count;
     const j = ((i % n) + n) % n;
     setFocusIndex(j);
     refs.current[j]?.focus();
@@ -103,7 +72,7 @@ export function PartsToolbar({ tool, onTool }: ToolbarProps): ReactNode {
     if (e.key === 'ArrowDown') move(i + 1);
     else if (e.key === 'ArrowUp') move(i - 1);
     else if (e.key === 'Home') move(0);
-    else if (e.key === 'End') move(TOOLS.length - 1);
+    else if (e.key === 'End') move(count - 1);
     else if (e.key === 'ArrowRight' && TOOLS[i]?.id === 'controlled') openControlled(true);
     else return;
     e.preventDefault();
@@ -117,6 +86,20 @@ export function PartsToolbar({ tool, onTool }: ToolbarProps): ReactNode {
     setMenu(false);
     if (focusButton) refs.current[controlledIndex]?.focus();
   };
+
+  // A tool chosen by its key while the toolbar has the focus: the toolbar's one tab stop goes to it,
+  // so Enter or Space next presses that tool, not the one the focus was on.
+  const toolIndex = TOOLS.findIndex((d) => (d.id === 'controlled' ? isControlled(tool) : d.id === tool));
+  const [seenTool, setSeenTool] = useState(tool);
+  if (seenTool !== tool) {
+    setSeenTool(tool);
+    if (toolIndex >= 0) setFocusIndex(toolIndex);
+  }
+  useEffect(() => {
+    const bar = refs.current[0]?.closest('.tools__bar');
+    const button = toolIndex >= 0 ? refs.current[toolIndex] : undefined;
+    if (button && bar && document.activeElement instanceof HTMLElement && bar.contains(document.activeElement) && document.activeElement !== button) button.focus();
+  }, [toolIndex]);
 
   // A click outside the menu closes it.
   useEffect(() => {
@@ -174,6 +157,32 @@ export function PartsToolbar({ tool, onTool }: ToolbarProps): ReactNode {
             </div>
           );
         })}
+        {onAdd ? (
+          <div className="tools__slot">
+            <span className="tools__sep" aria-hidden="true" />
+            <button
+              ref={(el) => {
+                refs.current[TOOLS.length] = el;
+              }}
+              type="button"
+              className="tool tool--add"
+              tabIndex={focusIndex === TOOLS.length ? 0 : -1}
+              aria-keyshortcuts="A"
+              aria-haspopup="dialog"
+              onFocus={() => setFocusIndex(TOOLS.length)}
+              onKeyDown={(e) => onKeyDown(e, TOOLS.length)}
+              onClick={onAdd}
+            >
+              <span className="tool__icon">
+                <LineIcon name="add" className="glyph" />
+                <kbd className="tool__key" aria-hidden="true">
+                  A
+                </kbd>
+              </span>
+              <span className="tool__word">{t('toolAddPart')}</span>
+            </button>
+          </div>
+        ) : null}
       </div>
       {menu ? (
         <div className="tools-menu" ref={menuRef} role="menu" aria-label={t('controlledMenu')}>
@@ -246,8 +255,8 @@ export function ControlledList({ tool, itemRole, onPick, onEscape }: { tool: Too
   );
 }
 
-/** The phone's Parts sheet: every part tool with its name, the ones a first course starts with first. */
-export function PartsSheetList({ tool, onPick }: { tool: Tool; onPick: (tool: Tool) => void }): ReactNode {
+/** The phone's Parts sheet: every part tool with its name, the ones a first course starts with first, then Add a part. */
+export function PartsSheetList({ tool, onPick, onAdd }: { tool: Tool; onPick: (tool: Tool) => void; onAdd?: () => void }): ReactNode {
   const basic: ToolDef[] = TOOLS.filter((d) => d.id !== 'select' && d.id !== 'controlled');
   const row = (id: Tool, icon: ToolKind, name: string, line?: string): ReactNode => (
     <li key={id}>
@@ -276,6 +285,17 @@ export function PartsSheetList({ tool, onPick }: { tool: Tool; onPick: (tool: To
       <ul className="part-list" aria-labelledby="parts-controlled">
         {CONTROLLED.map((k) => row(k, k, kindName(k), controlledLine(k)))}
       </ul>
+      {onAdd ? (
+        <button type="button" className="part-row part-row--add" aria-haspopup="dialog" onClick={onAdd}>
+          <span className="part-row__icon">
+            <LineIcon name="add" className="glyph" />
+          </span>
+          <span className="part-row__text">
+            <span className="part-row__name">{t('partsSheetAdd')}</span>
+            <span className="part-row__line">{t('partsSheetAddLine')}</span>
+          </span>
+        </button>
+      ) : null}
     </>
   );
 }

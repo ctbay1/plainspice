@@ -13,11 +13,15 @@
  * - 'strip', on a phone while the value is typed: one strip above the keyboard (the part, the field,
  *   Put back, Done), so the drawing above it shows the numbers moving.
  *
+ * The drawing side of the card (decision 0017, CardEdit.tsx): Turn, Mirror, Reverse, Move, Delete
+ * and the part's Connections, under its numbers.
+ *
  * Escape (the page's keyboard handler) closes it.
  */
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { t } from '../../i18n/index.ts';
 import type { Side, ToolKind } from '../../notebook/index.ts';
+import { Connections, PartActions, cardBodyId, type PartEditing } from './CardEdit.tsx';
 import { LineIcon, ToolGlyph, WarningIcon } from './Icons.tsx';
 
 export interface Readout {
@@ -84,6 +88,10 @@ export interface CardProps extends CardContent {
   takeFocus?: boolean;
   /** Changes with each opening of a card (the focus goes in again, even for the same part). */
   session?: number;
+  /** Select the value's text when the focus goes into it (a double click on the value). */
+  selectValue?: boolean;
+  /** The drawing side: Turn, Mirror, Reverse, Move, Delete, Connections (not in the strip). */
+  edit?: PartEditing | undefined;
   /** 'pinned': the side of its part the card is on, and where its notch is along that edge (px from the card's corner). */
   side?: Side;
   notch?: number;
@@ -117,13 +125,27 @@ export function IndexCard(p: CardProps): ReactNode {
   const intoField = p.label !== undefined && p.focusField !== false;
   const takeFocus = p.takeFocus !== false;
   useEffect(() => {
-    if (!takeFocus) return;
-    if (intoField) input.current?.focus({ preventScroll: true });
-    else if (p.variant !== 'strip') titleRef.current?.focus({ preventScroll: true });
+    // Opened on its Connections (Ctrl+K): they take the focus.
+    if (!takeFocus || p.edit?.open) return;
+    if (intoField) {
+      input.current?.focus({ preventScroll: true });
+      if (p.selectValue) input.current?.select();
+    } else if (p.variant !== 'strip') titleRef.current?.focus({ preventScroll: true });
+    // The value is selected once, as the card opens on it.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [p.name, intoField, p.variant, takeFocus, p.session]);
 
   const changed = p.value.trim() !== p.start.trim();
   const strip = p.variant === 'strip';
+  /** The value field has the focus: once a value is typed there, the buttons' keys are letters of it. */
+  const [inField, setInField] = useState(false);
+  /** Into the value field, its text selected: typing replaces it (a digit typed on the card, Enter on its title). */
+  const editValue = (): void => {
+    input.current?.focus({ preventScroll: true });
+    input.current?.select();
+  };
+  /** The part in words, under the numbers: not on a pinned card with the drawing side (its actions take that line). */
+  const sentenceShown = !strip && !(p.variant === 'pinned' && p.edit);
   // A value SPICE cannot read: said once typing pauses (the field's text as it was when typing last
   // paused), so the way to "-12" is not a row of errors.
   const [settled, setSettled] = useState(p.value);
@@ -158,16 +180,36 @@ export function IndexCard(p: CardProps): ReactNode {
           spellCheck={false}
           value={p.value}
           aria-invalid={refused ? true : undefined}
+          // Its label is set in capitals by the style; said in sentence case ("R2 · value", not "VALUE").
+          aria-label={`${t('cardFieldPart', { name: p.name })}${p.label ?? ''}`}
           aria-describedby={`${id}-reads${changed ? ` ${id}-was` : ''}`}
           onChange={(e) => p.onValue(e.target.value)}
-          onFocus={() => p.onFieldFocus?.()}
-          onBlur={(e) => p.onFieldBlur?.(e.relatedTarget instanceof Element ? e.relatedTarget : null)}
+          onFocus={() => {
+            setInField(true);
+            p.onFieldFocus?.();
+          }}
+          onBlur={(e) => {
+            setInField(false);
+            p.onFieldBlur?.(e.relatedTarget instanceof Element ? e.relatedTarget : null);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
               if (strip && p.onDone) p.onDone();
               else p.onClose();
+              return;
             }
+            // The value as it opened, all selected (the card opens so): T, M and Shift+R are the
+            // card's keys, as its buttons say, since no value starts with those letters. Once a value is
+            // typed they are letters again (the buttons' keys fade): Esc closes the card, then T turns.
+            const el = e.currentTarget;
+            const whole = el.selectionStart === 0 && el.selectionEnd === el.value.length && el.value.trim() === p.start.trim();
+            if (!whole || !p.edit || e.ctrlKey || e.metaKey || e.altKey) return;
+            const k = e.key.toLowerCase();
+            const act = k === 't' && !e.shiftKey ? p.edit.onTurn : k === 'm' && !e.shiftKey ? p.edit.onMirror : k === 'r' && e.shiftKey ? p.edit.onReverse : undefined;
+            if (!act || ((k === 't' || k === 'm') && !p.edit.drawn)) return;
+            e.preventDefault();
+            act();
           }}
         />
         {p.suffix ? <span className="value-field__suffix">{p.suffix}</span> : null}
@@ -186,8 +228,25 @@ export function IndexCard(p: CardProps): ReactNode {
   const style: CSSProperties & Record<string, string> = p.notch !== undefined ? { '--notch': `${p.notch}px` } : {};
   return (
     // Not modal: the drawing stays usable beside the card (Escape, handled by the page, closes it).
-    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
-    <section className={`index-card index-card--${p.variant}${p.side ? ` index-card--${p.side}` : ''}`} style={style} role="dialog" aria-modal="false" aria-labelledby={`${id}-title`}>
+    // Its keys: a digit typed anywhere on it starts a new value in its field (as in a spreadsheet).
+    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-interactions
+    <section role="dialog"
+      className={`index-card index-card--${p.variant}${p.side ? ` index-card--${p.side}` : ''}${p.edit ? ' has-edit' : ''}${inField && changed ? ' is-typing' : ''}`}
+      style={style}
+      aria-modal="false"
+      aria-labelledby={`${id}-title`}
+      {...(sentenceShown ? {} : { 'aria-describedby': `${id}-sentence` })}
+      onKeyDown={(e) => {
+        // On the card (not in a field): a digit, a point or a sign starts a new value, as in a
+        // spreadsheet; Enter on its title edits the value.
+        const el = e.target as HTMLElement;
+        if (p.label === undefined || strip || el.closest('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === 'Enter' && el === titleRef.current) {
+          e.preventDefault();
+          editValue();
+        } else if (/^[0-9.+\-{]$/.test(e.key)) editValue();
+      }}
+    >
       {p.variant === 'sheet' ? <span className="grab" aria-hidden="true" /> : null}
       <div className="index-card__head">
         <span className="index-card__glyph">
@@ -208,7 +267,13 @@ export function IndexCard(p: CardProps): ReactNode {
           </button>
         )}
       </div>
-      <div className="index-card__body">
+      {p.edit?.open && !strip ? (
+        // The Connections take the numbers' place, so the card keeps its size (nothing on the paper moves).
+        <div className="index-card__body index-card__body--conn" id={cardBodyId(p.session)}>
+          <Connections e={p.edit} />
+        </div>
+      ) : null}
+      <div className="index-card__body" id={p.edit?.open && !strip ? undefined : cardBodyId(p.session)} hidden={!!p.edit?.open && !strip}>
         {p.label !== undefined ? (
           <div className="index-card__field">
             <label className="field-label" htmlFor={`${id}-value`}>
@@ -290,15 +355,21 @@ export function IndexCard(p: CardProps): ReactNode {
           </button>
         ) : null}
       </div>
-      {strip ? null : (
+      {/* On the paper, the drawing side takes the sentence's line (the card keeps its size); a trap keeps its own. */}
+      {sentenceShown ? null : (
+        <p className="visually-hidden" id={`${id}-sentence`}>
+          {p.sentence}
+        </p>
+      )}
+      {strip || (!sentenceShown && !p.trap) ? null : (
         <div className="index-card__foot">
           {p.trap ? (
             <p className="index-card__trap">
               <WarningIcon /> <span>{p.trap}</span>
             </p>
-          ) : (
+          ) : sentenceShown ? (
             <p className="index-card__sentence">{p.sentence}</p>
-          )}
+          ) : null}
           {p.trap && p.onFix ? (
             <p className="index-card__more">
               <button type="button" className="link-button link-button--red" onClick={p.onFix}>
@@ -314,6 +385,7 @@ export function IndexCard(p: CardProps): ReactNode {
           )}
         </div>
       )}
+      {strip || !p.edit ? null : <PartActions e={p.edit} bodyId={cardBodyId(p.session)} />}
     </section>
   );
 }

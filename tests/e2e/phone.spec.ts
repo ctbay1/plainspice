@@ -55,7 +55,7 @@ test('a wide drawing is turned to fit; “As drawn” shows it unturned, with �
   await expect(hintLine(page)).toHaveText(t('hintTurned'));
 });
 
-test('the bottom bar: the Parts sheet says plainly that placing parts comes in the next update', async ({ page }) => {
+test('the bottom bar: the Parts sheet puts a part in hand; a tap shows where it goes, Place places it', async ({ page }) => {
   await openApp(page);
   const bar = page.getByRole('navigation', { name: t('barLabel') });
   await expect(bar.getByRole('button')).toHaveText([t('toolSelect'), t('barParts'), t('panelNetlist'), t('panelChecks'), t('panelExplain'), t('barMore')]);
@@ -64,13 +64,21 @@ test('the bottom bar: the Parts sheet says plainly that placing parts comes in t
   await expect(sheet).toContainText(t('partsSheetSub'));
   await sheet.getByRole('button', { name: /^Resistor/ }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(hintLine(page)).toContainText('Placing a resistor comes in the next update of PlainSpice.');
-  await expect(hintLine(page)).toContainText(t('hintBackPhone'));
-  // Tapping a part does what the hint says: its card opens, and the tool goes back to Select.
-  await partOnDrawing(page, 'R2').click();
-  await expect(page.getByRole('dialog', { name: /^R2 / })).toBeVisible();
+  await expect(hintLine(page)).toHaveText(t('hintPlacePhone', { part: 'a resistor' }));
+  // No hover on a phone: the first tap shows where it would go (and the nodes it would join), Place places it.
+  const hand = page.getByRole('toolbar', { name: t('handLabel', { part: 'Resistor' }) });
+  const place = hand.getByRole('button', { name: t('place') });
+  await expect(place).toBeDisabled();
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  await page.touchscreen.tap(paper.x + paper.width * 0.5, paper.y + paper.height * 0.2);
+  await expect(hintLine(page)).toContainText(/tap Place/);
+  await expect(place).toBeEnabled();
+  await place.click();
+  await expect(page.getByRole('dialog', { name: /^R3 / })).toBeVisible();
+  await expect(bar).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(bar.getByRole('button', { name: t('toolSelect') })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('plainspice:netlist'))).toMatch(/\nR3 n1 n2 1k\n/);
 });
 
 test('a part’s card is a sheet; typing its value makes it a strip, with the part and its numbers in view', async ({ page }) => {

@@ -8,8 +8,11 @@
  * app, so Ctrl+Z undoes the last change wherever it was made. Changes that belong together are one
  * step: keystrokes typed without a pause (`group` 'typing', joined while less than TYPING_PAUSE_MS
  * apart), and every value typed into one part's card while it is open (`group` naming that card,
- * joined however long it stays open; a card that ends where it started leaves no step). A fix, an
- * opened circuit, an undo or a redo is a step of its own.
+ * joined however long it stays open; a card that ends where it started leaves no step), and the
+ * moves of one item made in a row with the keyboard (`group` 'move:…', decision 0017). A fix, an
+ * opened circuit, an edit made on the drawing, an undo or a redo is a step of its own. A change may
+ * say what it did in a few words (`label`, an edit's summary): Undo and Redo can then say what they
+ * undid or redid.
  *
  * Each text in the history remembers whose it is: the student's (typed, changed on the drawing,
  * fixed, or the netlist saved on this device) or a circuit just opened (an example, a link) that
@@ -26,6 +29,8 @@ export interface Change {
   source: ChangeSource;
   /** Changes with the same group, close enough together, are one undo step. */
   group?: string;
+  /** What the change did, in a short sentence ("R3 added between n1 and n4."): said when it is undone or redone. */
+  label?: string;
 }
 
 export interface StoreSnapshot {
@@ -38,6 +43,9 @@ export interface StoreSnapshot {
   last: Change;
   /** The text is the student's (see the module's note); false for a circuit just opened and not changed. */
   mine: boolean;
+  /** What Undo would undo, and what Redo would redo, when those changes said (their label). */
+  undoLabel?: string;
+  redoLabel?: string;
 }
 
 export interface NetlistStore {
@@ -55,8 +63,8 @@ export interface NetlistStore {
 export const TYPING_PAUSE_MS = 750;
 /** The oldest steps are forgotten after this many. */
 export const MAX_UNDO_STEPS = 200;
-/** A group that stays one step however far apart its changes are (a part's card while it is open). */
-export const HELD_GROUP = /^card:/;
+/** A group that stays one step however far apart its changes are (a part's card while it is open, moves of one item in a row). */
+export const HELD_GROUP = /^(card|move):/;
 
 /** Changes that make the text the student's. */
 const STUDENT: ReadonlySet<ChangeSource> = new Set(['editor', 'drawing', 'fix']);
@@ -64,6 +72,8 @@ const STUDENT: ReadonlySet<ChangeSource> = new Set(['editor', 'drawing', 'fix'])
 interface Entry {
   text: string;
   mine: boolean;
+  /** What the change that made this text did (its label). */
+  label?: string;
 }
 
 /**
@@ -80,13 +90,19 @@ export function createNetlistStore(initial: string, options: { mine?: boolean; n
   /** The group of the undo step being written; undefined once it ended (a pause, an undo, a card back where it started). */
   let openGroup: { group: string; source: ChangeSource } | undefined;
   let lastAt = -Infinity;
-  let snap: StoreSnapshot = { text: current.text, canUndo: false, canRedo: false, version, last, mine: current.mine };
+  const snapOf = (): StoreSnapshot => {
+    const out: StoreSnapshot = { text: current.text, canUndo: past.length > 0, canRedo: future.length > 0, version, last, mine: current.mine };
+    if (past.length && current.label !== undefined) out.undoLabel = current.label;
+    if (future[0]?.label !== undefined) out.redoLabel = future[0].label;
+    return out;
+  };
+  let snap: StoreSnapshot = snapOf();
   const listeners = new Set<(text: string, change: Change) => void>();
 
   const publish = (change: Change): void => {
     version += 1;
     last = change;
-    snap = { text: current.text, canUndo: past.length > 0, canRedo: future.length > 0, version, last, mine: current.mine };
+    snap = snapOf();
     for (const l of Array.from(listeners)) l(current.text, change);
   };
 
@@ -121,7 +137,7 @@ export function createNetlistStore(initial: string, options: { mine?: boolean; n
       }
       future = [];
       lastAt = at;
-      current = { text: next, mine };
+      current = change.label === undefined ? { text: next, mine } : { text: next, mine, label: change.label };
       publish(change);
     },
     undo() {

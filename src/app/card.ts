@@ -36,6 +36,8 @@ export interface CardState {
   kept: string;
   /** Move the focus into the card when it opens (not when it follows the drawing's arrow keys). */
   focus?: boolean;
+  /** Select the value's text as the focus goes into it (a part just placed, a double click on its value). */
+  select?: boolean;
 }
 
 /** Where the runs are, for the card: whether ngspice is about to answer, or why it will not without Run. */

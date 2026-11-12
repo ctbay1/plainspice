@@ -18,18 +18,23 @@
  *   body (or the node's name), never across its words.
  * - The page may pan the drawing for a while (`offset`: room for a part's card, critique 1) without
  *   changing its size, and fit a part of it instead of the whole (`frame`: a phone's editing view).
+ * - The schematic editor (decision 0017, `editing`): a press on a part, a ground symbol or a node's
+ *   name that moves becomes a drag the editor takes (the paper still pans from empty paper); a press
+ *   the editor wants as a click (placing a part, a wire's end) comes to it as a tap, and the item's
+ *   own click is then not acted on; the pointer over the paper is reported for previews. What the
+ *   editor shows (`marks`: the part in hand, a wire on its way ...) is drawn over the drawing.
  */
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react';
-import { describeItem, neighbour, readingOrder, GROUND, type Box, type NavItem, type PartLetter, type Schematic } from '../schematic/index.ts';
+import { describeItem, neighbour, readingOrder, GROUND, type Box, type NavItem, type PartLetter, type Point, type Schematic } from '../schematic/index.ts';
 import { DESCRIBE_STRINGS } from '../spice/describe.ts';
 import { elementInfo } from '../spice/elements.ts';
 import { assignNodeColours } from '../theme/nodes.ts';
 import { Drawing, UNIT_PX, itemKey, type PenMarks } from './Drawing.tsx';
+import { EditLayer, type EditMarks } from './EditLayer.tsx';
 import { fitView, zoomAt, type Insets, type Size, type View } from './fit.ts';
 import { TYPE } from './measure.ts';
 import type { DrawingResults } from './results.ts';
 import { NOTEBOOK_STRINGS } from './strings.ts';
-import { GROUND_INK, INK } from './symbols.ts';
 
 export interface CanvasHandle {
   /** Move the keyboard focus to an item of the drawing (and bring it into view). */
@@ -40,6 +45,22 @@ export interface CanvasHandle {
   zoomBy(factor: number): void;
   /** Move the drawing by this many pixels (the reader's own pan: the view stops following the fit). */
   panBy(dx: number, dy: number): void;
+  /**
+   * Keep the view where it is from now on, as if the reader had moved it: the drawing was changed on
+   * the drawing itself, and it must not jump or change size under the hand that changed it (only
+   * Fit, another circuit or `fitKey` fit it again).
+   */
+  keep(): void;
+  /** Where the drawing is now (to go back to after a docked card closes). */
+  viewNow(): View | undefined;
+  /** Show the drawing where it was (a view from viewNow), kept there. */
+  showView(view: View): void;
+  /**
+   * Pan just enough to show a part of the drawing (grid units) in the free part of the window, with
+   * `bottom` more pixels kept free along the bottom (a bar over the paper): something moved with the
+   * keys, or just placed, never goes out of sight (WCAG 2.4.11). The view is the reader's from then on.
+   */
+  reveal(box: Box, bottom?: number): void;
 }
 
 export interface CanvasViewInfo {
@@ -58,6 +79,40 @@ export interface CanvasViewInfo {
 }
 
 export type GhostKind = PartLetter | 'ground';
+
+/** Where the pointer is, for the editor: grid units (not snapped), the drawing item it pressed (its button), Shift, the kind of pointer. */
+export interface PointerInfo {
+  at: Point;
+  item?: NavItem | undefined;
+  shift: boolean;
+  /** 'mouse', 'pen' or 'touch'. */
+  pointer: string;
+  /** Screen pixels per grid unit now (for how near counts as on something). */
+  unit: number;
+}
+
+/**
+ * What a press means to the editor: 'drag' (if the pointer moves, the editor moves something; if not,
+ * it is the item's own click), 'tap' (a click for the editor; moving pans), 'drag-tap' (both: a
+ * thing without a button of its own, such as a part's words), or undefined (the paper pans as it
+ * moves; a click on empty paper lets go of the selection).
+ */
+export type PressClaim = 'drag' | 'tap' | 'drag-tap' | undefined;
+
+/** The schematic editor's side of the pointer (src/app/editing.ts decides what each means). */
+export interface CanvasEditing {
+  /** The pointer moved over the paper with no button pressed (a mouse or a pen); undefined: it left. */
+  hover?(info: PointerInfo | undefined): void;
+  press(info: PointerInfo): PressClaim;
+  /** A drag the editor took has started (the pointer moved), moved on, and ended: dropped, or cancelled (a second finger, the pointer lost). */
+  dragStart?(info: PointerInfo): void;
+  dragMove?(info: PointerInfo): void;
+  dragEnd?(info: PointerInfo | undefined, cancelled: boolean): void;
+  /** A press the editor took as a click came up without moving. */
+  tap?(info: PointerInfo): void;
+  /** A double click on the paper. */
+  doubleClick?(info: PointerInfo): void;
+}
 
 export interface NotebookCanvasProps {
   ref?: Ref<CanvasHandle>;
@@ -105,8 +160,22 @@ export interface NotebookCanvasProps {
   padding?: number;
   /** What to keep in view when the whole drawing does not fit and nothing is selected (grid units). */
   focus?: Box | undefined;
-  /** A part tool in hand: its ghost follows the pointer over the paper. */
+  /** A part tool in hand with no editor (the checkpoint page): its ghost follows the pointer over the paper. */
   ghost?: GhostKind | undefined;
+  /** The schematic editor: what presses, drags and the pointer over the paper mean (decision 0017). */
+  editing?: CanvasEditing | undefined;
+  /** What the editor shows over the drawing: the part in hand, a wire on its way, where wires can end, a piece of wire selected. */
+  marks?: EditMarks | undefined;
+  /** What the pointer does now, for its look: choosing and moving ('select'), placing a part, drawing a wire, putting a picked-up part down. */
+  mode?: 'select' | 'place' | 'wire' | 'move';
+  /** The arrow keys belong to the editor (a part picked up with the keyboard): the drawing's moves along the wires wait. */
+  arrowsTaken?: boolean;
+  /** The selected item keeps the focus but not its highlight (a piece of its wire is selected and marked instead). */
+  quietSelection?: boolean;
+  /** How to use the drawing from the keyboard (the description of its group of buttons). */
+  keysHelp?: string;
+  /** What screen readers call the drawing's buttons together ("circuit drawing"). */
+  roleDescription?: string;
   /** 'height': a wide drawing as tall as the window allows, read from its left end (fit.ts). */
   fill?: 'whole' | 'height';
   /** Fit this part of the drawing (grid units) instead of all of it: a phone's view while a value is typed. */
@@ -128,6 +197,12 @@ export interface NotebookCanvasProps {
 }
 
 const PADDING = 24;
+/** How long a finger holds still on a part before it lifts and can be dragged (shorter, it is a tap; moved sooner, a pan). */
+export const LONG_PRESS_MS = 350;
+/** After the page moves the drawing (a card makes room), presses are not taken for this long: about a double click's time. */
+export const PAGE_MOVE_QUIET_MS = 450;
+/** A move of the page this soon after a press is that press's doing (its card opened); a later one (an undo, Esc) is not. */
+const CAUSED_BY_PRESS_MS = 250;
 /** Insets that move less than this while the view is held are the page's bars resizing, not a new sheet. */
 const HOLD_SLACK = 48;
 const MIN_TARGET_PX = 28;
@@ -161,7 +236,8 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const [whole, setWhole] = useState(true);
   const [hovered, setHovered] = useState<NavItem | undefined>(undefined);
   const [focused, setFocused] = useState<NavItem | undefined>(undefined);
-  const [ghostAt, setGhostAt] = useState<{ x: number; y: number } | undefined>(undefined);
+  /** Where a ghost (`ghost`, no editor) follows the pointer, in grid units. */
+  const [ghostAt, setGhostAt] = useState<Point | undefined>(undefined);
   /** Follow the fit until the reader pans or zooms. */
   const auto = useRef(true);
   const [moved, setMoved] = useState(false);
@@ -169,8 +245,28 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const ox = props.offset?.x ?? 0;
   const oy = props.offset?.y ?? 0;
   const offsetRef = useRef({ x: ox, y: oy });
+  /** When the page last moved the drawing itself (a pan to make room for a card): a click just after it was aimed at where things were. */
+  const pageMovedAt = useRef(0);
+  // A key pressed since: the student is doing something else, and their next click is aimed anew.
+  useEffect(() => {
+    const onKey = (): void => {
+      pageMovedAt.current = 0;
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
+  }, []);
   useLayoutEffect(() => {
+    const was = offsetRef.current;
     offsetRef.current = { x: ox, y: oy };
+    // Only while the view follows the fit is the offset drawn (a view the reader or an edit holds stays).
+    if ((was.x === ox && was.y === oy) || !auto.current) return undefined;
+    // The page's pan slides, so the eye follows it (no slide where motion is reduced: app.css), and
+    // the pointer's next press within a moment is not taken (WCAG 3.2.1: nothing moves under a click).
+    pageMovedAt.current = performance.now();
+    const el = rootRef.current;
+    el?.classList.add('is-sliding');
+    const timer = window.setTimeout(() => el?.classList.remove('is-sliding'), 240);
+    return () => window.clearTimeout(timer);
   }, [ox, oy]);
   const fr = props.frame;
   const [rx0, ry0, rx1, ry1] = fr ? [fr.x0, fr.y0, fr.x1, fr.y1] : [NaN, NaN, NaN, NaN];
@@ -213,6 +309,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const lastInputs = useRef('');
   const heldInsets = useRef<Insets | undefined>(undefined);
   const hold = !!props.hold;
+  const hasView = view !== undefined;
   useLayoutEffect(() => {
     if (!size.width || !size.height) return;
     if (lastFitKey.current !== fitKey) {
@@ -228,7 +325,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     const was = heldInsets.current;
     const insetsMoved = !was || Math.max(Math.abs(was.top - insets.top), Math.abs(was.right - insets.right), Math.abs(was.bottom - insets.bottom), Math.abs(was.left - insets.left)) > HOLD_SLACK;
     if (auto.current) {
-      if (hold && same && view && !insetsMoved) return;
+      if (hold && same && hasView && !insetsMoved) return;
       heldInsets.current = insets;
       applyFit();
       return;
@@ -245,14 +342,21 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       const fx1 = size.width - insets.right - 8;
       const fy0 = insets.top + 8;
       const fy1 = size.height - insets.bottom - 8;
-      const dx = sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
-      const dy = sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
+      // An item larger than the free part (zoomed in on it) stays where the reader put it: moving it
+      // to show one edge would hide the other, and the next look would move it back.
+      const dx = sx1 - sx0 > fx1 - fx0 ? 0 : sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
+      const dy = sy1 - sy0 > fy1 - fy0 ? 0 : sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
       return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
     });
-  }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, minUnit, maxUnit, padding, view]);
+    // Not on every change of the view: the reader's own pan and zoom are not undone while an item is selected.
+  }, [size, insets, fitKey, applyFit, selectedBox, hold, frame, fill, minUnit, maxUnit, padding, hasView]);
 
   // What is drawn: the fitted view, panned by the page's offset while it follows the fit.
   const shown = useMemo((): View | undefined => (view && !moved && (ox || oy) ? { unit: view.unit, x: view.x + ox, y: view.y + oy } : view), [view, moved, ox, oy]);
+  const shownRef = useRef<View | undefined>(undefined);
+  useLayoutEffect(() => {
+    shownRef.current = shown;
+  }, [shown]);
   const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, view: shown, base: view, size, moved } : undefined), [shown, view, whole, size, moved]);
   const { onView } = props;
   useEffect(() => {
@@ -295,6 +399,41 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       panBy(dx: number, dy: number) {
         moveView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
       },
+      viewNow() {
+        return shownRef.current;
+      },
+      showView(v: View) {
+        auto.current = false;
+        setMoved(true);
+        setView((old) => (sameView(old, v) ? old : v));
+      },
+      reveal(box: Box, extraBottom = 0) {
+        if (!size.width || !shownRef.current) return;
+        // Measured against the view as it is when the change is made (several moves can come before
+        // the page draws again: each must not pan for the same distance again).
+        moveView((v) => {
+          const b = grow(box, 0.5);
+          const sx0 = v.x + b.x0 * v.unit;
+          const sx1 = v.x + b.x1 * v.unit;
+          const sy0 = v.y + b.y0 * v.unit;
+          const sy1 = v.y + b.y1 * v.unit;
+          const fx0 = insets.left + 8;
+          const fx1 = size.width - insets.right - 8;
+          const fy0 = insets.top + 8;
+          const fy1 = size.height - insets.bottom - extraBottom - 8;
+          const dx = sx1 - sx0 > fx1 - fx0 ? 0 : sx0 < fx0 ? fx0 - sx0 : sx1 > fx1 ? fx1 - sx1 : 0;
+          const dy = sy1 - sy0 > fy1 - fy0 ? 0 : sy0 < fy0 ? fy0 - sy0 : sy1 > fy1 ? fy1 - sy1 : 0;
+          return dx || dy ? { ...v, x: v.x + dx, y: v.y + dy } : v;
+        });
+      },
+      keep() {
+        if (!auto.current) return;
+        // The page's pan becomes part of the view, so nothing moves now.
+        const o = offsetRef.current;
+        auto.current = false;
+        setMoved(true);
+        setView((v) => (v ? { ...v, x: v.x + o.x, y: v.y + o.y } : v));
+      },
     }),
     [focusItem, applyFit, insets, size, moveView, minUnit, maxUnit],
   );
@@ -329,24 +468,107 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   }, [moveView, minUnit, maxUnit]);
 
   // Dragging the paper pans; two fingers pinch to zoom; a tap on empty paper lets go of the selection.
+  // The editor may take a press (a part to drag, a click to place a part or end a wire).
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const drag = useRef<{ x: number; y: number; moved: boolean } | undefined>(undefined);
+  const gesture = useRef<{ id: number; x: number; y: number; moved: boolean; claim: PressClaim; info: PointerInfo; dragging: boolean; button: boolean; timer?: number | undefined } | undefined>(undefined);
   const pinch = useRef<{ d: number } | undefined>(undefined);
+  /** A drawing item's click is not acted on until then: the pointer gesture before it was the editor's (a drag, a tap). */
+  const quietUntil = useRef(0);
+  /** The last press, and when: a double click whose second press came after the page moved the drawing belongs to the first one's place. */
+  const lastPress = useRef<{ info: PointerInfo; at: number } | undefined>(undefined);
+  /**
+   * Just after the page moved the drawing because of a click (a card made room), the next press is
+   * not taken: it is the second click of a double click, or a click aimed at where things were.
+   */
+  const pageJustMoved = (): boolean => {
+    const now = performance.now();
+    const press = lastPress.current;
+    // Caused by the press: the page moved the drawing within a moment of it (a card opening on a click).
+    return now - pageMovedAt.current < PAGE_MOVE_QUIET_MS && !!press && pageMovedAt.current >= press.at && pageMovedAt.current - press.at < CAUSED_BY_PRESS_MS;
+  };
+  const editing = props.editing;
+  const infoOf = (e: { clientX: number; clientY: number; shiftKey: boolean; pointerType?: string }, item?: NavItem): PointerInfo | undefined => {
+    const el = rootRef.current;
+    if (!el || !shown) return undefined;
+    const r = el.getBoundingClientRect();
+    return { at: { x: (e.clientX - r.left - shown.x) / shown.unit, y: (e.clientY - r.top - shown.y) / shown.unit }, item, shift: e.shiftKey, pointer: e.pointerType || 'mouse', unit: shown.unit };
+  };
+  const itemOf = (target: Element): NavItem | undefined => {
+    const key = target.closest<HTMLElement>('.nb-hit')?.dataset['item'];
+    return key ? items.find((x) => itemKey(x.item) === key)?.item : undefined;
+  };
+  const endGesture = (cancelled: boolean, info?: PointerInfo): void => {
+    const g = gesture.current;
+    gesture.current = undefined;
+    if (g?.timer !== undefined) window.clearTimeout(g.timer);
+    if (g?.dragging) {
+      quietUntil.current = performance.now() + 400;
+      editing?.dragEnd?.(info, cancelled);
+    }
+  };
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>): void => {
-    if ((e.target as Element).closest('button, a, input, [data-nb-own-pointer]')) return;
+    const target = e.target as Element;
+    // The card over the paper, and the page's own controls, keep their pointer.
+    if (target.closest('a, input, select, textarea, [data-nb-own-pointer], .nb-anchored')) return;
+    const onButton = target.closest('.nb-hit');
+    if (target.closest('button') && !onButton) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    e.currentTarget.setPointerCapture(e.pointerId);
     if (pointers.current.size === 2) {
+      // A second finger: a pinch, never a drag.
+      endGesture(true);
       const [a, b] = [...pointers.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
       pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) };
-    } else drag.current = { x: e.clientX, y: e.clientY, moved: false };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
+    const info = infoOf(e, onButton ? itemOf(onButton) : undefined);
+    if (pageJustMoved()) {
+      pointers.current.delete(e.pointerId);
+      quietUntil.current = performance.now() + PAGE_MOVE_QUIET_MS;
+      return;
+    }
+    if (info) lastPress.current = { info, at: performance.now() };
+    let claim = info && editing ? editing.press(info) : undefined;
+    // A finger: a part's words are no handle (a finger meant to pan picked parts up, critique of step
+    // B); they are still a tap.
+    const touch = e.pointerType === 'touch';
+    if (touch && claim === 'drag-tap') claim = 'tap';
+    // A press on a part's button that the editor does not take is that button's own click.
+    if (onButton && claim === undefined) {
+      pointers.current.delete(e.pointerId);
+      return;
+    }
+    if (!info) return;
+    const g: NonNullable<typeof gesture.current> = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, claim, info, dragging: false, button: !!onButton };
+    gesture.current = g;
+    // A finger picks a part up only by holding still on its symbol for a moment (the part lifts: the
+    // drag starts, and a phone that can buzzes); moved sooner, it pans the paper.
+    if (touch && claim === 'drag') {
+      const el = e.currentTarget;
+      const id = e.pointerId;
+      g.timer = window.setTimeout(() => {
+        g.timer = undefined;
+        if (gesture.current !== g || g.moved || g.dragging) return;
+        g.dragging = true;
+        try {
+          el.setPointerCapture(id);
+        } catch {
+          // The pointer may be gone already.
+        }
+        editing?.dragStart?.(g.info);
+        navigator.vibrate?.(12);
+      }, LONG_PRESS_MS);
+    }
+    // Captured now unless the press may still be its button's click (the click would land on the paper instead).
+    if (!onButton) e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>): void => {
     const el = rootRef.current;
-    if (props.ghost && shown && el) {
-      const r = el.getBoundingClientRect();
-      setGhostAt({ x: Math.round((e.clientX - r.left - shown.x) / shown.unit), y: Math.round((e.clientY - r.top - shown.y) / shown.unit) });
+    if (e.buttons === 0 && e.pointerType !== 'touch' && !(e.target as Element).closest('.nb-anchored')) {
+      const info = infoOf(e);
+      if (info && editing?.hover) editing.hover(info);
+      if (info && props.ghost) setGhostAt({ x: Math.round(info.at.x), y: Math.round(info.at.y) });
     }
     if (!pointers.current.has(e.pointerId)) return;
     const prev = pointers.current.get(e.pointerId)!;
@@ -360,10 +582,33 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       moveView((v) => zoomAt(v, factor, { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top }, { minUnit: minUnit * 0.5, maxUnit: maxUnit * 2.5 }));
       return;
     }
-    const dr = drag.current;
-    if (!dr) return;
-    if (!dr.moved && Math.hypot(e.clientX - dr.x, e.clientY - dr.y) < 4) return;
-    dr.moved = true;
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) < (e.pointerType === 'touch' ? 8 : 4)) return;
+    g.moved = true;
+    // A finger that moves before the part lifts pans the paper (and the part's button gets no click).
+    if (e.pointerType === 'touch' && g.claim === 'drag' && !g.dragging) {
+      if (g.timer !== undefined) window.clearTimeout(g.timer);
+      g.timer = undefined;
+      g.claim = undefined;
+      quietUntil.current = performance.now() + 1000;
+      try {
+        el?.setPointerCapture(e.pointerId);
+      } catch {
+        // The pointer may be gone already.
+      }
+    }
+    if (g.claim === 'drag' || g.claim === 'drag-tap') {
+      const info = infoOf(e, g.info.item);
+      if (!info) return;
+      if (!g.dragging) {
+        g.dragging = true;
+        el?.setPointerCapture(e.pointerId);
+        editing?.dragStart?.(g.info);
+      }
+      editing?.dragMove?.(info);
+      return;
+    }
     const dx = e.clientX - prev.x;
     const dy = e.clientY - prev.y;
     moveView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
@@ -372,11 +617,27 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = undefined;
-    const dr = drag.current;
-    if (pointers.current.size === 0) {
-      drag.current = undefined;
-      if (dr && !dr.moved && !props.ghost) onSelect(undefined);
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    if (g.timer !== undefined) {
+      window.clearTimeout(g.timer);
+      g.timer = undefined;
     }
+    if (g.dragging) {
+      endGesture(false, infoOf(e, g.info.item));
+      return;
+    }
+    gesture.current = undefined;
+    if (g.moved) return;
+    if (g.claim === 'tap' || g.claim === 'drag-tap') {
+      quietUntil.current = performance.now() + 400;
+      editing?.tap?.({ ...g.info, shift: e.shiftKey || g.info.shift });
+    } else if (!g.button) onSelect(undefined);
+  };
+  const onPointerCancel = (e: ReactPointerEvent<HTMLDivElement>): void => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = undefined;
+    if (gesture.current?.id === e.pointerId) endGesture(true);
   };
 
   // Words for screen readers.
@@ -417,7 +678,8 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
 
   const onItemKey = (e: KeyboardEvent<HTMLButtonElement>, item: NavItem): void => {
     const dir = ARROW_KEYS[e.key];
-    if (dir) {
+    // Shift+arrows move the selected item (the editor's), and a part picked up takes the arrows too.
+    if (dir && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !props.arrowsTaken) {
       e.preventDefault();
       moveTo(neighbour(s, item, dir));
       return;
@@ -448,18 +710,37 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const vb = { x: (bounds.x0 - margin) * UNIT_PX, y: (bounds.y0 - margin) * UNIT_PX, w: (bounds.x1 - bounds.x0 + 2 * margin) * UNIT_PX, h: (bounds.y1 - bounds.y0 + 2 * margin) * UNIT_PX };
   const minTarget = MIN_TARGET_PX / k;
 
-  const ghost = props.ghost && ghostAt ? props.ghost : undefined;
+  const mode = props.mode ?? (props.ghost ? 'place' : 'select');
+  // The checkpoint's ghost (no editor): the part in hand where the pointer is, upright or lying across.
+  const marks: EditMarks | undefined =
+    props.marks ?? (props.ghost && ghostAt ? { ghost: { kind: props.ghost, at: ghostAt, rot: props.ghost === 'R' || props.ghost === 'C' || props.ghost === 'L' ? 270 : 0, mirror: false, refused: false, pins: [] } } : undefined);
 
   return (
     <div
       ref={rootRef}
-      className={`nb-canvas${props.pending ? ' is-pending' : ''}${props.ghost ? ' is-placing' : ''}${props.className ? ` ${props.className}` : ''}`}
+      className={`nb-canvas${props.pending ? ' is-pending' : ''} is-${mode}${mode === 'place' || mode === 'wire' ? ' is-placing' : ''}${props.className ? ` ${props.className}` : ''}`}
       style={paperStyle}
+      // A click on the paper (a piece of wire, empty paper) gives it the focus, so the drawing's keys
+      // (Delete, T, the arrows) work on what was clicked; Tab goes on to the drawing's buttons. Not in
+      // the Tab order itself (-1): the keyboard has the parts' and nodes' buttons.
+      tabIndex={-1}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onPointerLeave={() => setGhostAt(undefined)}
+      onPointerCancel={onPointerCancel}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== 'touch' && !gesture.current) editing?.hover?.(undefined);
+        setGhostAt(undefined);
+      }}
+      onDoubleClick={(e) => {
+        if ((e.target as Element).closest('.nb-anchored')) return;
+        // The first click opened a card and the page moved the drawing to make room: the double click is
+        // about where the first click was, not what has slid under the pointer since.
+        const first = lastPress.current;
+        const moved = first && pageMovedAt.current > first.at && pageMovedAt.current - first.at < CAUSED_BY_PRESS_MS && performance.now() - pageMovedAt.current < PAGE_MOVE_QUIET_MS * 2;
+        const info = moved ? first.info : infoOf({ clientX: e.clientX, clientY: e.clientY, shiftKey: e.shiftKey }, itemOf(e.target as Element));
+        if (info) editing?.doubleClick?.(info);
+      }}
     >
       <div className="nb-world" style={worldStyle}>
         {/* An SVG picture is read by its title and description only with role="img". */}
@@ -475,11 +756,17 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
         >
           <title id={`${descId}-title`}>{props.pictureLabel ?? props.label}</title>
           <desc id={`${descId}-desc`}>{props.description}</desc>
-          <Drawing schematic={s} results={results} colours={colours} plain={props.plain} selected={selected} related={props.related ?? []} hovered={hovered} focused={focused} traps={props.traps ?? EMPTY} pen={props.pen} />
-          {ghost && ghostAt ? <Ghost kind={ghost} at={ghostAt} /> : null}
+          <Drawing schematic={s} results={results} colours={colours} plain={props.plain} selected={props.quietSelection ? undefined : selected} related={props.related ?? []} hovered={mode === 'select' ? hovered : undefined} focused={focused} traps={props.traps ?? EMPTY} pen={props.pen} />
+          {marks ? <EditLayer marks={marks} colours={colours} /> : null}
         </svg>
-        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- the drawing's parts and nodes, not form fields */}
-        <div className="nb-hits" role="group" aria-label={props.label} aria-describedby={`${descId}-keys`}>
+        {/*
+          The drawing's parts and nodes, and its own keys (arrows along the wires, T, M, Shift+arrows ...):
+          an application to screen readers, so NVDA and JAWS pass those keys to it in focus mode
+          instead of taking them as their own reading commands (critique of step B). Each button keeps
+          its name and description.
+        */}
+        {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- an application of buttons, not form fields */}
+        <div className="nb-hits" role="application" aria-roledescription={props.roleDescription ?? NOTEBOOK_STRINGS.drawingRole} aria-label={props.label} aria-describedby={`${descId}-keys`}>
           {items.map(({ item, box }) => {
             const key = itemKey(item);
             const pad = item.kind === 'part' ? 0.3 : 0.1;
@@ -507,6 +794,8 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
                 {...(isPart ? { 'aria-haspopup': 'dialog' as const, 'aria-expanded': props.open === item.key } : {})}
                 data-item={key}
                 onClick={() => {
+                  // The pointer gesture before this click was the editor's (a drag, a tap): done already.
+                  if (performance.now() < quietUntil.current) return;
                   onSelect(item);
                   onOpen(item);
                 }}
@@ -525,7 +814,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       </div>
       {/* Read only through aria-describedby (hidden, so browsing the page does not read them twice). */}
       <div className="nb-sr" hidden>
-        <p id={`${descId}-keys`}>{NOTEBOOK_STRINGS.keys}</p>
+        <p id={`${descId}-keys`}>{props.keysHelp ?? NOTEBOOK_STRINGS.keys}</p>
         {items.map(({ item }) => (
           <p key={itemKey(item)} id={`${descId}-${itemKey(item)}`}>
             {describeItem(s, item)} {hasResults ? resultsOf(item) : ''}
@@ -553,23 +842,3 @@ function focusVisible(el: Element): boolean {
 const TYPE_VARS: CSSProperties & Record<string, string> = Object.fromEntries(
   Object.entries(TYPE).map(([role, style]) => [`--nb-size-${role}`, `${Math.round(style.size * UNIT_PX * 100) / 100}px`]),
 );
-
-/** The part in hand while a part tool is chosen: a pale symbol under the pointer (placing comes next). */
-function Ghost({ kind, at }: { kind: GhostKind; at: { x: number; y: number } }): ReactNode {
-  const style: CSSProperties & Record<string, string> = { '--nb-s': String(UNIT_PX) };
-  if (kind === 'ground') {
-    return (
-      <g className="nb-ghost" transform={`translate(${at.x * UNIT_PX} ${at.y * UNIT_PX}) scale(${UNIT_PX})`} style={style}>
-        <path className="nb-sym" d={`${GROUND_INK.lead} ${GROUND_INK.bars}`} />
-      </g>
-    );
-  }
-  const ink = INK[kind];
-  const rot = kind === 'R' || kind === 'C' || kind === 'L' ? 270 : 0;
-  return (
-    <g className="nb-ghost" transform={`translate(${at.x * UNIT_PX} ${at.y * UNIT_PX}) rotate(${rot}) scale(${UNIT_PX})`} style={style}>
-      <path className="nb-sym" d={`${ink.leads[0]} ${ink.leads[1]} ${ink.body}`} />
-      {ink.fill ? <path className="nb-sym-fill" d={ink.fill} /> : null}
-    </g>
-  );
-}

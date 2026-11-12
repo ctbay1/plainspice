@@ -5,4 +5,6 @@ export interface Notice {
   title: string;
   text?: string;
   items?: string[];
+  /** A button that does what the message suggests ("Show line 6 in the Netlist panel"). */
+  action?: { label: string; run: () => void };
 }

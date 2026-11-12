@@ -8,8 +8,15 @@
  *
  * The fold follows the text: when the block is written again (a value changed on the drawing), it
  * stays folded.
+ *
+ * Nothing typed goes into the folded lines unseen (critique of step B): the block is shown while the
+ * cursor is inside it (a line just typed to start with "*@" joins it, and stays in view while it
+ * is typed), and a change that would join a folded drawing line to a line around it (Backspace at
+ * the start of the line after the block, Delete at the end of the line before it, typing over a
+ * selection that ends in the fold) is not made: the block unfolds instead, so the student sees
+ * what is there.
  */
-import { StateEffect, StateField, type Text } from '@codemirror/state';
+import { EditorState, StateEffect, StateField, type EditorSelection, type Text, type Transaction } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import { isDrawingLine } from '../schematic/format.ts';
 import { EDITOR_STRINGS } from './strings.ts';
@@ -62,26 +69,56 @@ interface FoldState {
   decorations: DecorationSet;
 }
 
-function build(doc: Text, folded: boolean): DecorationSet {
+/** The selection is inside the block (not just at its edges, where the cursor steps over the fold). */
+function selectionInside(selection: EditorSelection, block: { from: number; to: number }): boolean {
+  return selection.ranges.some((r) => (r.head > block.from && r.head < block.to) || (r.anchor > block.from && r.anchor < block.to));
+}
+
+function build(doc: Text, folded: boolean, selection?: EditorSelection): DecorationSet {
   const block = folded ? drawingBlock(doc) : undefined;
-  if (!block) return Decoration.none;
+  if (!block || (selection && selectionInside(selection, block))) return Decoration.none;
   return Decoration.set([Decoration.replace({ widget: new FoldWidget(block.lines) }).range(block.from, block.to)]);
+}
+
+/**
+ * True when a change would join a folded drawing line to the line before or after the block: it
+ * takes away the line break at either edge of the block without taking the whole block with it.
+ */
+function joinsBlock(tr: Transaction, block: { from: number; to: number }): boolean {
+  const doc = tr.startState.doc;
+  let joins = false;
+  tr.changes.iterChangedRanges((fromA, toA) => {
+    const before = block.from > 0 && fromA <= block.from - 1 && toA >= block.from;
+    const after = block.to < doc.length && fromA <= block.to && toA >= block.to + 1;
+    const whole = fromA <= block.from && toA >= block.to;
+    if ((before || after) && !whole) joins = true;
+  });
+  return joins;
 }
 
 /** The fold, folded from the start unless `folded` is false. */
 export function drawingFold(folded = true): StateField<FoldState> {
-  return StateField.define<FoldState>({
-    create: (state) => ({ folded, decorations: build(state.doc, folded) }),
+  const field: StateField<FoldState> = StateField.define<FoldState>({
+    create: (state) => ({ folded, decorations: build(state.doc, folded, state.selection) }),
     update(value, tr) {
       let next = value.folded;
       for (const e of tr.effects) if (e.is(setDrawingFoldedEffect)) next = e.value;
-      if (!tr.docChanged && next === value.folded) return value;
-      return { folded: next, decorations: build(tr.state.doc, next) };
+      if (!tr.docChanged && !tr.selection && next === value.folded) return value;
+      return { folded: next, decorations: build(tr.state.doc, next, tr.state.selection) };
     },
-    provide: (field) => [
-      EditorView.decorations.from(field, (v) => v.decorations),
+    provide: (f) => [
+      EditorView.decorations.from(f, (v) => v.decorations),
       // The cursor steps over the folded line instead of into the hidden text.
-      EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
+      EditorView.atomicRanges.of((view) => view.state.field(f).decorations),
+      // A change that would join a folded drawing line to its neighbour unfolds the block instead.
+      EditorState.transactionFilter.of((tr) => {
+        if (!tr.docChanged || tr.isUserEvent('sync')) return tr;
+        const state = tr.startState.field(field, false);
+        const block = state?.folded && state.decorations.size ? drawingBlock(tr.startState.doc) : undefined;
+        if (!block || !joinsBlock(tr, block)) return tr;
+        return { effects: setDrawingFoldedEffect.of(false) };
+      }),
     ],
   });
+  return field;
 }

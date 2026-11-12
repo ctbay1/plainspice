@@ -5,7 +5,9 @@
  * (decision 0002). Import './notebook.css' once for the look and its fonts.
  */
 export { NotebookCanvas, itemBox } from './NotebookCanvas.tsx';
-export type { CanvasHandle, CanvasViewInfo, GhostKind, NotebookCanvasProps } from './NotebookCanvas.tsx';
+export type { CanvasEditing, CanvasHandle, CanvasViewInfo, GhostKind, NotebookCanvasProps, PointerInfo, PressClaim } from './NotebookCanvas.tsx';
+export { EditLayer } from './EditLayer.tsx';
+export type { EditMarks } from './EditLayer.tsx';
 export { Drawing, UNIT_PX, itemKey } from './Drawing.tsx';
 export type { PenMarks } from './Drawing.tsx';
 export { MIN_TEXT_PX, NO_INSETS, fitView, minUnitFor, toGrid, toScreen, zoomAt } from './fit.ts';

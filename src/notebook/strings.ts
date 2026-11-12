@@ -9,6 +9,8 @@ export const NOTEBOOK_STRINGS = {
   measures: 'measures',
   /** The drawing's name for screen readers (its parts and nodes, as buttons). */
   drawingLabel: (title: string): string => `Drawing of the circuit: ${title}`,
+  /** What screen readers call the drawing's buttons together (an application: it takes its own keys). */
+  drawingRole: 'circuit drawing',
   /** The picture of the drawing (the SVG), named apart from the group of its buttons. */
   pictureLabel: (title: string): string => `Picture of the circuit: ${title}`,
   /** Before results that are for the netlist as it was (ngspice has not answered the newest text yet). */

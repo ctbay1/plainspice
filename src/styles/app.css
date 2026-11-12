@@ -2078,6 +2078,10 @@ html[data-contrast='more'] .note__text {
   border-top: 0;
   border-left: 0;
 }
+/* Docked along the bottom of the paper (no side): no notch, it points at nothing. */
+.index-card--pinned:not(.index-card--above, .index-card--below, .index-card--left, .index-card--right)::after {
+  content: none;
+}
 .index-card--above::after {
   bottom: -9px;
   left: calc(var(--notch, 50%) - 8px);
@@ -2401,6 +2405,349 @@ html[data-contrast='more'] .note__text {
     opacity: 1;
     transform: none;
   }
+}
+
+/* ------------------------------------------------------------------ the card's drawing side (decision 0017) */
+.card-edit {
+  padding: 0.1875rem 0.5rem 0.25rem;
+  border-top: 1px solid rgb(191 211 230 / 0.9);
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem 0;
+}
+.card-actions__sep {
+  width: 1px;
+  height: 1.375rem;
+  margin: 0 0.125rem;
+  background: var(--nb-paper-edge-strong);
+}
+/* An action: its icon, its word and its key; at least 36 px tall (WCAG 2.5.8 asks 24). */
+.card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.4375rem;
+  border: 1.5px solid transparent;
+  border-radius: 0.625rem;
+  background: transparent;
+  color: var(--nb-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.card-action:hover:not(:disabled) {
+  background: var(--nb-paper-sunk);
+}
+.card-action:disabled {
+  color: var(--nb-pencil);
+  opacity: 0.85;
+}
+.card-action .line-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+.card-action[aria-expanded='true'] {
+  background: #fff6c8;
+  border-color: #e9d679;
+}
+.card-action__words {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+.card-action__word {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+}
+/* What it changes, under its word: the drawing only, or the netlist (Tarık: one word for one idea). */
+.card-action__what {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--nb-pencil);
+}
+.card-action--two {
+  min-height: 2.375rem;
+  text-align: left;
+}
+.card-action__key {
+  padding: 0 0.25rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  color: var(--nb-pencil);
+}
+/* A value being typed: T, M, Shift+R and Del are letters of it until Esc closes the card (the hint line says so). */
+.index-card.is-typing .card-action__key {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+/* A touch screen has no keys to show (the phone's layout on a laptop with large text keeps them). */
+@media (pointer: coarse) {
+  .card-action__key {
+    display: none;
+  }
+}
+.card-action__caret {
+  width: 0.75rem !important;
+  height: 0.75rem !important;
+  transition: transform var(--nb-t-fast) var(--nb-ease-out);
+}
+.card-action__caret.is-open {
+  transform: rotate(180deg);
+}
+.card-edit__why {
+  margin: 0.125rem 0.5625rem 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--nb-pencil);
+}
+.card-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.5rem 0.5625rem 0;
+  font-size: 0.8125rem;
+  color: var(--nb-ink-2);
+}
+.card-select {
+  min-height: 2rem;
+  padding: 0.125rem 0.375rem;
+  border: 1.5px solid #6f737d;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--nb-ink);
+  font: inherit;
+  font-weight: 600;
+}
+.card-control__none {
+  color: var(--nb-red-text);
+  font-weight: 600;
+}
+.index-card__body--conn {
+  display: block;
+}
+.index-card__body[hidden] {
+  display: none;
+}
+.card-conn {
+  margin: 0;
+}
+.card-conn__intro {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--nb-pencil);
+}
+.card-conn__ends {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.375rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.card-conn__end {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, auto) 1fr auto;
+  align-items: center;
+  gap: 0.125rem 0.75rem;
+  padding: 0.125rem 0;
+  font-size: 0.8125rem;
+}
+.card-conn__role {
+  color: var(--nb-pencil);
+  font-weight: 600;
+}
+.card-conn__node {
+  font-weight: 600;
+  color: var(--nb-ink);
+}
+.card-conn__buttons {
+  display: inline-flex;
+  gap: 0.875rem;
+}
+.card-conn__buttons .link-button {
+  min-height: 1.75rem;
+}
+.card-conn__choices {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0.25rem 0 0.25rem 1rem;
+}
+.chip-button {
+  min-height: 2rem;
+  min-width: 2.5rem;
+  padding: 0 0.75rem;
+  border: 1.5px solid var(--nb-paper-edge-strong);
+  border-radius: 999px;
+  background: var(--nb-card);
+  color: var(--nb-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.chip-button:hover {
+  background: var(--nb-paper-sunk);
+  border-color: var(--nb-ink-2);
+}
+
+/* A node's card: its name to change, its voltage, the parts on it. */
+.node-card__body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.node-card__row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.node-card__row .value-field {
+  flex: 1;
+  min-width: 0;
+}
+.node-card__row .button {
+  border-color: var(--nb-paper-edge-strong);
+}
+.node-card__ground {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--nb-ink-2);
+}
+.node-card__facts {
+  display: grid;
+  align-content: start;
+  gap: 0.375rem;
+}
+.node-card__voltage {
+  display: grid;
+  gap: 0.125rem;
+}
+.node-card__voltage .readout__number {
+  font-size: 1.75rem;
+  line-height: 1.1;
+}
+.node-card__voltage .is-pending {
+  color: var(--nb-pencil);
+}
+.node-card__none {
+  font-size: 0.8125rem;
+  color: var(--nb-pencil);
+}
+.node-card__foot {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.25rem;
+  padding-left: 0.625rem;
+}
+
+/* The part in hand, a wire on its way, a part picked up: their buttons over the paper. */
+.hand-bar {
+  position: absolute;
+  z-index: 17;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  pointer-events: none;
+}
+.hand-bar > * {
+  pointer-events: auto;
+}
+.hand-bar {
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.25rem;
+  background: var(--nb-paper-raised);
+  border: 1px solid var(--nb-paper-edge-strong);
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-2);
+  pointer-events: auto;
+}
+.hand-bar--phone {
+  left: 0.75rem;
+  right: 0.75rem;
+}
+.hand-bar__what {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.5rem 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--nb-ink-2);
+}
+.hand-bar__what .glyph {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+.hand-bar__place {
+  min-height: 2.25rem;
+}
+.hand-bar__place:disabled {
+  opacity: 0.45;
+  text-decoration: none;
+}
+
+/* Add a part: the toolbar's last button and the phone's sheet row. */
+.tool--add .glyph {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0.25rem;
+  stroke-width: 1.6;
+}
+.part-row--add {
+  margin-top: 0.75rem;
+  border: 1.5px dashed var(--nb-paper-edge-strong);
+}
+.notice__actions {
+  margin-top: 0.5rem !important;
+}
+
+/* The Add a part form. */
+.add-part__form {
+  display: contents;
+}
+.form-ends {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  align-items: start;
+  gap: 0 1rem;
+}
+.form-end {
+  align-content: start;
+}
+.form-end__new {
+  margin-top: 0.25rem;
+  font-weight: 600 !important;
+}
+.form-control__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.form-line {
+  min-height: 3.5rem;
+  margin-top: 0.75rem;
+}
+.form-line__code {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--nb-screen);
+  color: var(--nb-screen-ink);
+  font-family: var(--nb-font-mono);
+  font-size: 0.9375rem;
+}
+.form-line__why {
+  color: var(--nb-red-text);
+  font-weight: 600;
 }
 
 /* ------------------------------------------------------------------ hint line and status line */
@@ -3370,6 +3717,10 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
   .palette,
   .field__input,
   .value-field,
+  .card-action,
+  .chip-button,
+  .card-select,
+  .hand-bar,
   .checkbox__box,
   .radio__dot {
     border: 1px solid CanvasText;

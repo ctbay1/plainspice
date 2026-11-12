@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveState } from '../../src/app/live.ts';
 import type { RunRecord } from '../../src/app/model.ts';
-import { analysisName, hintWords, statusWords, type EngineStatus, type HintInput } from '../../src/app/words.ts';
+import { analysisName, hintWords, offsetWords, statusWords, type EngineStatus, type HintInput } from '../../src/app/words.ts';
 import { explainLine } from '../../src/app/model.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
@@ -77,7 +77,7 @@ describe('the status line', () => {
     // An empty netlist is never sent to ngspice: the status says to type a part.
     expect(statusWords(READY, live({ outcome: { kind: 'nothing', text: '' } }), '', false, false)).toEqual({
       main: 'Nothing to run yet',
-      detail: 'The netlist has no parts yet: type one in the Netlist panel, such as R1 in out 1k.',
+      detail: 'The netlist has no parts yet: add one on the drawing, or type its line in the Netlist panel (such as R1 in out 1k).',
       tone: 'paused',
     });
   });
@@ -101,7 +101,7 @@ describe('the hint line', () => {
   const base: HintInput = { phone: false, tool: 'select', selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: false };
 
   it('says what to do next on a computer and on a phone', () => {
-    expect(hintWords(base)).toBe('Click a part to see its numbers and change its value · drag the paper to move around · Ctrl K for every command');
+    expect(hintWords(base)).toBe('Click a part to see its numbers and change it · drag a part to move it · choose a part in the margin to add one · Ctrl K for every command');
     expect(hintWords({ ...base, phone: true })).toBe('Tap a part to see its numbers and change it');
     expect(hintWords({ ...base, phone: true, whole: false })).toBe('Drag the paper to see the rest of the circuit');
     expect(hintWords({ ...base, phone: true, invite: 'R1' })).toBe('Tap R1 and type a new value: the numbers move as you type');
@@ -112,14 +112,23 @@ describe('the hint line', () => {
     expect(hintWords({ ...base, phone: true, turned: true, whole: false })).toBe('Turned to fit as well as it can · drag the paper to see the rest');
     expect(hintWords({ ...base, phone: true, asDrawn: true, whole: false })).toBe('As drawn, not turned · drag the paper to see the rest');
     // Nothing to draw yet.
-    expect(hintWords({ ...base, empty: true })).toBe('Type a part in the Netlist panel, or open an example · Ctrl K for every command');
+    expect(hintWords({ ...base, empty: true })).toBe('Choose a part in the margin and click the paper to place it, or press A to add one between two nodes · Ctrl K for every command');
+    expect(hintWords({ ...base, empty: true, phone: true })).toBe('Tap Parts, choose one, then tap the paper where it goes');
   });
 
   it('follows the selection and the card', () => {
-    expect(hintWords({ ...base, selectedName: 'R1' })).toBe('R1 selected · Enter opens its card · arrow keys move along the wires · Esc lets go');
-    expect(hintWords({ ...base, phone: true, selectedName: 'R1' })).toBe('R1 selected · tap it again to change it');
-    expect(hintWords({ ...base, selectedName: 'R1', typeHint: 'Type a value, such as 3, 4.7k or 1meg' })).toBe(
-      'Type a value, such as 3, 4.7k or 1meg: ngspice runs again as you type · Enter or Esc closes the card',
+    expect(hintWords({ ...base, selectedName: 'R1' })).toBe('R1 selected · Enter opens its card · T turns it · Shift+arrows move it · Delete deletes it · Esc lets go');
+    expect(hintWords({ ...base, phone: true, selectedName: 'R1' })).toBe('R1 selected · tap it again to change it · hold it, then drag, to move it');
+    // A node, ground, a piece of wire: what each can do from the keyboard.
+    expect(hintWords({ ...base, selectedNode: 'out' })).toBe('Node out selected · Enter opens its card, to rename it · Shift+arrows move its name · Esc lets go');
+    expect(hintWords({ ...base, selectedGround: true })).toBe('Ground selected · Enter opens its card · Shift+arrows move the symbol · Delete deletes it · Esc lets go');
+    expect(hintWords({ ...base, selectedWire: 'out', selectedNode: 'out' })).toBe('A piece of the wire of out selected · Delete deletes it · Esc lets go');
+    expect(hintWords({ ...base, nodeCard: { name: 'out', ground: false } })).toBe('Type a new name for out, then Enter (or Rename) · Esc closes the card');
+    // A card just opened: its value is selected, so T and M still turn and mirror the part; once a value
+    // is typed, they are letters of it until the card closes.
+    expect(hintWords({ ...base, selectedName: 'R1', typeHint: 'Type a value, such as 3, 4.7k or 1meg' })).toBe('Type a value, such as 3, 4.7k or 1meg · T turns it, M mirrors it · Enter or Esc closes the card');
+    expect(hintWords({ ...base, selectedName: 'R1', typeHint: 'Type a value, such as 3, 4.7k or 1meg', typed: true })).toBe(
+      'Type a value, such as 3, 4.7k or 1meg: ngspice runs again as you type · Enter or Esc closes the card (then T turns it)',
     );
     // Live runs paused: it does not promise numbers that will not come.
     expect(hintWords({ ...base, typeHint: 'Type a value, such as 3, 4.7k or 1meg', paused: true })).toBe(
@@ -127,9 +136,47 @@ describe('the hint line', () => {
     );
   });
 
-  it('says plainly that placing parts and drawing wires come in the next update', () => {
-    expect(hintWords({ ...base, tool: 'R' })).toBe('Placing a resistor comes in the next update of PlainSpice. For now, click a part on the drawing to change its value. Esc goes back to Select.');
-    expect(hintWords({ ...base, tool: 'wire', phone: true })).toBe('Drawing wires comes in the next update of PlainSpice. Tap Select to go back.');
+  it('says, for each tool, what to do now and how to get out (decision 0017)', () => {
+    expect(hintWords({ ...base, tool: 'R' })).toBe('Click the paper to place a resistor · T turns it · M mirrors it · Shift+click places more than one · Esc goes back to Select');
+    expect(hintWords({ ...base, tool: 'I', phone: true })).toBe('Tap the paper where a current source goes · Select goes back');
+    // Where the part would land: the nodes it would join, or the model's reason it cannot go there.
+    expect(hintWords({ ...base, tool: 'R', place: { joins: 'its ends connect to in and a new node' } })).toBe('Click to place a resistor here: its ends connect to in and a new node · T turns it · M mirrors it · Esc goes back to Select');
+    // A ground symbol has no M (it looks the same mirrored).
+    expect(hintWords({ ...base, tool: 'ground' })).toBe('Click the paper to place a ground symbol · T turns it · Shift+click places more than one · Esc goes back to Select');
+    expect(hintWords({ ...base, tool: 'R', place: { refused: 'That place is taken by R2.' } })).toBe('Not here: That place is taken by R2 · T turns it · Esc goes back to Select');
+    expect(hintWords({ ...base, tool: 'R', phone: true, place: { joins: 'its ends connect to in and a new node' } })).toBe('Its ends connect to in and a new node · tap Place (or the part again) to place it here');
+    expect(hintWords({ ...base, tool: 'wire' })).toBe('Click a pin, a wire or a node’s name to start a wire · Esc goes back to Select');
+    expect(hintWords({ ...base, tool: 'wire', wire: { started: true } })).toBe('Click another pin, wire or node’s name to end the wire · click the paper to make a corner · Esc cancels this wire');
+    expect(hintWords({ ...base, tool: 'wire', phone: true, wire: { started: true } })).toBe('Tap another pin, wire or name to end the wire · tap the paper to make a corner');
+    expect(hintWords({ ...base, tool: 'wire', wire: { started: true, refused: 'There is no way for a wire between those two points.' } })).toBe(
+      'There is no way for a wire between those two points · Esc cancels this wire',
+    );
+    // Moving: dragged, picked up with the card's Move, or refused where it is.
+    expect(hintWords({ ...base, moving: { name: 'R2', how: 'drag' } })).toBe('Drop R2 where it goes · Esc puts it back');
+    // A part turns and mirrors while it moves; a ground symbol or a name does not, and is said in lower case mid-sentence.
+    expect(hintWords({ ...base, moving: { name: 'R2', how: 'drag', part: true } })).toBe('Drop R2 where it goes · T turns it · M mirrors it · Esc puts it back');
+    expect(hintWords({ ...base, moving: { name: 'the ground symbol', how: 'drag' } })).toBe('Drop the ground symbol where it goes · Esc puts it back');
+    expect(hintWords({ ...base, moving: { name: 'the ground symbol', how: 'drag', refused: 'A wire runs there.' } })).toBe('The ground symbol can’t go here: A wire runs there · Esc puts it back');
+    // Chosen with the keys, a tool's hint gives the keyboard's way to use it.
+    expect(hintWords({ ...base, tool: 'R', keys: true })).toBe('Enter on a node adds a resistor from that node, in a form (A from anywhere) · or click the paper to place it · Esc goes back to Select');
+    expect(hintWords({ ...base, tool: 'wire', keys: true })).toBe('Enter on a node starts a wire there, Enter on another node ends it · or click a pin · Esc goes back to Select');
+    expect(hintWords({ ...base, tool: 'wire', keys: true, wire: { started: true } })).toBe('Enter on another node ends the wire there · Esc cancels this wire');
+    expect(hintWords({ ...base, moving: { name: 'R2', how: 'pick' } })).toBe('Click where R2 goes · arrow keys move it · Enter puts it down · Esc puts it back');
+    expect(hintWords({ ...base, moving: { name: 'R2', how: 'drag', refused: 'A pin would touch out, another node.' } })).toBe('R2 can’t go here: A pin would touch out, another node · Esc puts it back');
+    // A phone has no Esc key: a finger is lifted, and a refused place sends the part back.
+    expect(hintWords({ ...base, phone: true, moving: { name: 'R2', how: 'drag' } })).toBe('Lift your finger where R2 goes');
+    expect(hintWords({ ...base, phone: true, moving: { name: 'R2', how: 'drag', refused: 'That place is taken by R1.' } })).toBe('R2 can’t go here: That place is taken by R1 · let go here and it goes back');
+    // A phone shows the drawing as drawn while editing, and says so.
+    expect(hintWords({ ...base, tool: 'C', phone: true, editingAsDrawn: true })).toBe('Shown as drawn while you edit · Tap the paper where a capacitor goes · Select goes back');
     expect(hintWords({ ...base, undrawn: true })).toBe('Open the Netlist panel to change the circuit · Ctrl K for every command');
+  });
+});
+
+describe('where a part moved with the keys is', () => {
+  it('says how far it is from where it was, in squares, or that it is back', () => {
+    expect(offsetWords(2, 1)).toBe('2 squares right and 1 square down from where it was');
+    expect(offsetWords(-1, 0)).toBe('1 square left from where it was');
+    expect(offsetWords(0, -3)).toBe('3 squares up from where it was');
+    expect(offsetWords(0, 0)).toBe('back where it was');
   });
 });

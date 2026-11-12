@@ -78,9 +78,9 @@ test('keyboard only on a computer: the drawing, a card, Ctrl+K, panels, a fix, t
   await press('Escape');
   await expect(card).toHaveCount(0);
   await expect(r1).toBeFocused();
-  // Ctrl+Z undoes it from the drawing.
+  // Ctrl+Z undoes it from the drawing, and says what it undid.
   await press('ControlOrMeta+z');
-  await expectAnnounced(page, t('undone'));
+  await expectAnnounced(page, t('undoneWhat', { what: t('valueLabel', { name: 'R1', value: '2k' }) }));
   await expect.poll(() => drawnText(page), { timeout: RUN_TIMEOUT }).toMatch(/=\s4\sV/);
   // Escape lets go of the selection.
   await press('Escape');
@@ -190,8 +190,8 @@ test('keyboard only on a computer: the drawing, a card, Ctrl+K, panels, a fix, t
   await press('Enter');
   await expectSolved(page);
 
-  // The parts: one Tab stop; a letter chooses a part, and the hint says plainly that placing comes
-  // in the next update; Escape goes back to Select.
+  // The parts: one Tab stop; a letter puts a part in hand, and the hint says what to do and how to
+  // get out (decision 0017); Escape goes back to Select.
   await press('Tab');
   const tools = page.getByRole('toolbar', { name: t('partsLabel') });
   await expect(tools.getByRole('button', { name: t('toolSelect') })).toBeFocused();
@@ -199,7 +199,10 @@ test('keyboard only on a computer: the drawing, a card, Ctrl+K, panels, a fix, t
   await expect(tools.getByRole('button', { name: t('toolWire') })).toBeFocused();
   await press('r');
   await expect(tools.getByRole('button', { name: 'Resistor' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(hintLine(page)).toContainText('Placing a resistor comes in the next update of PlainSpice.');
+  // The toolbar's tab stop follows the tool chosen by its key (Enter next is not Select), and the hint
+  // gives the keyboard's way to place it.
+  await expect(tools.getByRole('button', { name: 'Resistor' })).toBeFocused();
+  await expect(hintLine(page)).toHaveText(t('hintPlaceKeys', { part: 'a resistor' }));
   await press('Escape');
   await expect(tools.getByRole('button', { name: t('toolSelect') })).toHaveAttribute('aria-pressed', 'true');
 });

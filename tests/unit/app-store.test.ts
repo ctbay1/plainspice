@@ -165,4 +165,32 @@ describe('the netlist store', () => {
     store.undo();
     expect(store.snapshot()).toMatchObject({ text: '* example 2', mine: false });
   });
+  it('keeps moves of one item made in a row with the keyboard as one step (decision 0017)', () => {
+    let clock = 0;
+    const store = createNetlistStore('* t\nR1 a 0 1k', { now: () => clock });
+    store.set('* t\nR1 a 0 1k\n*@ R1 1 0 0', { source: 'drawing', group: 'move:1', label: 'R1 moved.' });
+    clock += 5_000; // a long pause between two key presses: still one step, held like a card
+    store.set('* t\nR1 a 0 1k\n*@ R1 2 0 0', { source: 'drawing', group: 'move:1', label: 'R1 moved.' });
+    expect(store.undo()).toBe(true);
+    expect(store.get()).toBe('* t\nR1 a 0 1k');
+    // A new run of moves (another selection) is a step of its own.
+    store.redo();
+    store.set('* t\nR1 a 0 1k\n*@ R1 3 0 0', { source: 'drawing', group: 'move:2', label: 'R1 moved.' });
+    store.undo();
+    expect(store.get()).toBe('* t\nR1 a 0 1k\n*@ R1 2 0 0');
+  });
+
+  it('says what Undo would undo and Redo would redo, when the change said what it did', () => {
+    const store = createNetlistStore('* t');
+    expect(store.snapshot().undoLabel).toBeUndefined();
+    store.set('* t\nR1 a 0 1k', { source: 'drawing', label: 'R1 added between a and ground.' });
+    expect(store.snapshot().undoLabel).toBe('R1 added between a and ground.');
+    store.set('* t\nR1 a 0 2k', { source: 'editor', group: 'typing' });
+    expect(store.snapshot().undoLabel).toBeUndefined(); // typing says nothing of itself
+    store.undo();
+    expect(store.snapshot()).toMatchObject({ undoLabel: 'R1 added between a and ground.' });
+    expect(store.snapshot().redoLabel).toBeUndefined();
+    store.undo();
+    expect(store.snapshot()).toMatchObject({ redoLabel: 'R1 added between a and ground.', canUndo: false });
+  });
 });

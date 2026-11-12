@@ -586,10 +586,12 @@ function groupsOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], 
  */
 const ROUTING_STEPS = 250_000;
 
-/** What new wires go around: symbols (walls) and words (avoided), and where pins point. */
+/** What new wires go around: symbols (walls) and words (avoided, with whose words they are), and where pins point. */
 interface Obstacles {
   walls: Box[];
   avoid: Box[];
+  /** For each box of `avoid`: the nodes its words belong to (a node's name; a part's words: the nodes of its pins). */
+  avoidNodes: ReadonlySet<string>[];
   bounds: Box;
   outward: Map<string, { at: Point; outward: Direction; node: string }[]>;
 }
@@ -605,6 +607,7 @@ function obstaclesOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[
   return {
     walls: [...scene.parts.map((p) => p.box), ...scene.grounds.map((g) => g.box)],
     avoid: [...scene.parts.map((p) => p.labelBox), ...scene.nodeLabels.map((l) => l.box)],
+    avoidNodes: [...scene.parts.map((p) => new Set(p.pins.map((q) => q.node))), ...scene.nodeLabels.map((l) => new Set([l.node]))],
     bounds: inflate(scene.bounds, 6),
     outward,
   };
@@ -641,7 +644,9 @@ function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment
   const targets = groups.slice(1).flatMap(ends);
   const ownIslands = new Set(groups.flatMap((g) => [...g.islands]));
   const foreignWires = segs.filter((_, i) => !ownIslands.has(islands.wires[i]!)).map((s) => [s[0], s[1]]);
-  const foreignPins = pins.filter((p) => p.node !== node).map((p) => p.at);
+  // Other nodes' pins, and the points their names are written at (a wire through one would leave the
+  // name on a crossing of two nodes' wires).
+  const foreignPins = [...pins.filter((p) => p.node !== node).map((p) => p.at), ...drawing.labels.filter((l) => l.node !== node).map((l) => l.at)];
   const span = (points: readonly Point[], margin: number): Box => {
     let x0 = Infinity;
     let y0 = Infinity;
@@ -655,6 +660,9 @@ function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment
     }
     return { x0: x0 - margin, y0: y0 - margin, x1: x1 + margin, y1: y1 + margin };
   };
+  // The words of the node itself (its name, the words of the parts on it) are not avoided: the scene
+  // places them again around the new wire, where a detour round them would snake (critique of step B).
+  const avoid = obstacles.avoid.filter((_, i) => !obstacles.avoidNodes[i]!.has(node));
   // First near the two pieces, then over the whole drawing.
   const near = span([...sources, ...targets].map((e) => e.at), 8);
   const all = segs.flatMap(([a, b]) => [a, b]);
@@ -662,7 +670,7 @@ function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment
   for (const bounds of [near, whole]) {
     if (budget.left <= 0) return undefined;
     const limits = { steps: budget.left, used: 0 };
-    const path = findRoute({ walls: obstacles.walls, avoid: obstacles.avoid, foreignWires, foreignPins, bounds }, sources, targets, limits);
+    const path = findRoute({ walls: obstacles.walls, avoid, foreignWires, foreignPins, bounds }, sources, targets, limits);
     budget.left -= limits.used;
     if (path) return path;
   }

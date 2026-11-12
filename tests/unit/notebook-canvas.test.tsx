@@ -5,13 +5,13 @@
  * keys along the wires (navigate.ts), Enter to open, Escape to let go; the results written on it;
  * the plain-font setting switching the results' font at once.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { useState, type ReactNode } from 'react';
+import { createRef, useState, type ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
-import { NO_INSETS, NO_RESULTS, NotebookCanvas, notebookSchematic, placeResults, type CanvasViewInfo, type DrawingResults } from '../../src/notebook/index.ts';
+import { NO_INSETS, NO_RESULTS, NotebookCanvas, notebookSchematic, placeResults, type CanvasHandle, type CanvasViewInfo, type DrawingResults } from '../../src/notebook/index.ts';
 import { describeItem, describeSchematic, neighbour, type NavItem } from '../../src/schematic/index.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -153,7 +153,7 @@ describe('NotebookCanvas', () => {
     fireEvent.focusIn(g1);
     expect(g1.getAttribute('aria-current')).toBe('true');
     // The picture and the group of its buttons have names of their own.
-    expect(screen.getByRole('group', { name: 'p02-4, drawn and solved' })).toBeDefined();
+    expect(screen.getByRole('application', { name: 'p02-4, drawn and solved' })).toBeDefined();
   });
 
   it('reads the red pen with its part, and numbers from before the last change as such', () => {
@@ -223,6 +223,70 @@ describe('NotebookCanvas', () => {
     expect(panned.base).toEqual(rest.view);
     rerender(<NotebookCanvas {...props} />);
     expect(views.at(-1)!.view).toEqual(rest.view);
+  });
+
+  it('leaves the reader’s pan and zoom alone while an item is selected, even zoomed in past the item’s size', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    // Little free room (a phone's sheet): the selected R1, zoomed in, is taller than the room left.
+    const props = { schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: { kind: 'part', key: 'r1' } as NavItem, onSelect: () => undefined, onOpen: () => undefined, insets: { top: 0, right: 0, bottom: 480, left: 0 }, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v) };
+    render(<NotebookCanvas ref={ref} {...props} />);
+    const first = views.at(-1)!;
+    // A pan that takes R1 out of the free part stays: the page does not pull it back.
+    act(() => ref.current!.panBy(0, -400));
+    expect(views.at(-1)!.view.y).toBeCloseTo(first.view.y - 400, 6);
+    // Zoomed in far past R1's size: no tug of war between its two edges (no endless updates).
+    for (let i = 0; i < 6; i++) act(() => ref.current!.zoomBy(1.5));
+    expect(views.at(-1)!.unit).toBeGreaterThan(first.unit * 4);
+  });
+
+  it('a finger pans unless it holds still on a part: held for a moment, the part lifts and the drag is the editor’s', () => {
+    vi.useFakeTimers();
+    try {
+      const views: CanvasViewInfo[] = [];
+      const dragStart = vi.fn();
+      const editing = { press: () => 'drag' as const, dragStart, dragMove: vi.fn(), dragEnd: vi.fn() };
+      const props = { schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: undefined, onSelect: () => undefined, onOpen: () => undefined, insets: NO_INSETS, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v), editing };
+      const { container } = render(<NotebookCanvas {...props} />);
+      const canvas = container.querySelector<HTMLElement>('.nb-canvas')!;
+      canvas.setPointerCapture = () => undefined;
+      const r1 = screen.getByRole('button', { name: /^R1, / });
+      // Moved at once: the paper pans, nothing is picked up.
+      const before = views.at(-1)!.view;
+      fireEvent.pointerDown(r1, { pointerId: 1, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+      fireEvent.pointerMove(r1, { pointerId: 1, pointerType: 'touch', clientX: 340, clientY: 200, buttons: 1 });
+      fireEvent.pointerMove(r1, { pointerId: 1, pointerType: 'touch', clientX: 360, clientY: 200, buttons: 1 });
+      fireEvent.pointerUp(r1, { pointerId: 1, pointerType: 'touch', clientX: 360, clientY: 200 });
+      act(() => vi.advanceTimersByTime(500));
+      expect(dragStart).not.toHaveBeenCalled();
+      expect(views.at(-1)!.view.x).toBeGreaterThan(before.x + 10);
+      // Held still: it lifts (the editor's drag starts), then follows the finger.
+      fireEvent.pointerDown(r1, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+      act(() => vi.advanceTimersByTime(400));
+      expect(dragStart).toHaveBeenCalledTimes(1);
+      fireEvent.pointerMove(r1, { pointerId: 2, pointerType: 'touch', clientX: 340, clientY: 200, buttons: 1 });
+      expect(editing.dragMove).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reveals a part of the drawing just enough, clear of a bar along the bottom, however many moves come before the page draws again', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    const props = { schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: undefined, onSelect: () => undefined, onOpen: () => undefined, insets: NO_INSETS, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v) };
+    render(<NotebookCanvas ref={ref} {...props} />);
+    const v0 = views.at(-1)!.view;
+    // A box below the window: three calls in a row pan once, to put its bottom 8 px above a 60 px bar.
+    const box = { x0: 2, y0: 30, x1: 4, y1: 32 };
+    act(() => {
+      ref.current!.reveal(box, 60);
+      ref.current!.reveal(box, 60);
+      ref.current!.reveal(box, 60);
+    });
+    const v = views.at(-1)!.view;
+    expect(v.unit).toBe(v0.unit);
+    expect(v.y + (box.y1 + 0.5) * v.unit).toBeCloseTo(600 - 60 - 8, 3);
   });
 
   it('writes red pen on the drawing: a note, a crossed-out old value, a circled value', () => {

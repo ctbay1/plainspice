@@ -59,7 +59,17 @@ export type LineIconName =
   | 'parts'
   | 'zoom-in'
   | 'zoom-out'
-  | 'fit';
+  | 'fit'
+  | 'turn'
+  | 'mirror'
+  | 'reverse'
+  | 'move'
+  | 'delete'
+  | 'connect'
+  | 'disconnect'
+  | 'add'
+  | 'place'
+  | 'rename';
 
 const PATHS: Readonly<Record<LineIconName, string>> = {
   close: 'M5.5 5.5l9 9m0-9l-9 9',
@@ -91,6 +101,18 @@ const PATHS: Readonly<Record<LineIconName, string>> = {
   'zoom-in': 'M5 10h10M10 5v10',
   'zoom-out': 'M5 10h10',
   fit: 'M4 7.5V4h3.5M12.5 4H16v3.5M16 12.5V16h-3.5M7.5 16H4v-3.5',
+  // Editing the drawing (decision 0017): a quarter turn clockwise; a flip across a dashed axis; two
+  // ends trading places; four ways to move; a bin; a wire joining two ends, and one let go.
+  turn: 'M15.5 9.5A5.5 5.5 0 1 1 13.3 5.1M13.6 2.6l.1 3.1-3.1.3',
+  mirror: 'M10 3v2.2M10 8v4M10 14.8V17M7.5 5.5L3.5 15h4zM12.5 5.5l4 9.5h-4z',
+  reverse: 'M4.5 7h10.5M12 4l3 3-3 3M15.5 13H5M8 10l-3 3 3 3',
+  move: 'M10 3v14M3 10h14M10 3L7.8 5.2M10 3l2.2 2.2M10 17l-2.2-2.2M10 17l2.2-2.2M3 10l2.2-2.2M3 10l2.2 2.2M17 10l-2.2-2.2M17 10l-2.2 2.2',
+  delete: 'M4 5.5h12M8 5.5V3.8h4v1.7M5.5 5.5l.8 10.7h7.4l.8-10.7M8.5 8.5v5M11.5 8.5v5',
+  connect: 'M3 14.5h4.5V5.5H13M13 5.5a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0M3 14.5a.1.1 0 1 0 0 0',
+  disconnect: 'M3 14.5h4.5V9M7.5 6.5V5.5H13M13 5.5a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0-3.2 0M5.6 8.2l3.8-1.4',
+  add: 'M10 4v12M4 10h12',
+  place: 'M4.5 10.5l3.5 3.5 7.5-8',
+  rename: 'M3.5 16.5h3l8.3-8.3-3-3-8.3 8.3zM10.3 6.7l3 3',
 };
 
 /** A line icon (stroked in currentColor). */

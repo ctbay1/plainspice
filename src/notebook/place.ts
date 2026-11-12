@@ -150,6 +150,8 @@ export interface CardRequest {
   scene: Scene;
   /** The part the card is for. */
   part: string;
+  /** Instead of a part, what the card is for (a node's name): the box it keeps clear of, and the box its notch points at. */
+  target?: { box: Box; body: Box };
   /** Where the drawing is now. */
   view: View;
   /** The free paper: the screen less the page's bars, toolbar and panels (screen pixels). */
@@ -161,6 +163,8 @@ export interface CardRequest {
   gap?: number;
   /** Other things on the paper the card must not cover (the sticky note, say). */
   avoid?: readonly Box[];
+  /** The drawing may be panned once to make room (default true); not when the reader (or an edit) holds the view. */
+  pan?: boolean;
 }
 
 export interface CardPlacement {
@@ -184,10 +188,11 @@ const SIDES_BY_ROOM: readonly Side[] = ['above', 'below', 'right', 'left'];
  * crosses nothing.
  */
 export function placeCard(req: CardRequest): CardPlacement | undefined {
-  const placed = req.scene.parts.find((p) => p.key === req.part);
+  const part = req.scene.parts.find((p) => p.key === req.part);
+  const placed = req.target ?? (part ? { box: unionBoxes([part.box, part.labelBox])!, body: part.body, symbol: part.box } : undefined);
   if (!placed) return undefined;
   const gap = req.gap ?? 14;
-  const own = unionBoxes([placed.box, placed.labelBox])!;
+  const own = placed.box;
   const attempt = (pan: { x: number; y: number }): (CardPlacement & { distance: number }) | undefined => {
     const view: View = { unit: req.view.unit, x: req.view.x + pan.x, y: req.view.y + pan.y };
     const room: Room = { ...drawingRoom(req.scene, view, req.area, req.avoid ?? []), never: [boxOnScreen(view, own)] };
@@ -195,7 +200,7 @@ export function placeCard(req: CardRequest): CardPlacement | undefined {
     // The nearest free place on any side; above or below is worth a little more than beside.
     const p = placeBeside(target, req.width, req.height, room, { gap, sides: SIDES_BY_ROOM, step: 8, sidePenalty: SIDE_PENALTY });
     if (!p) return undefined;
-    const body = boxOnScreen(view, placed.box);
+    const body = boxOnScreen(view, 'symbol' in placed ? placed.symbol : placed.body);
     const notch = notchFor(p.box, p.side, body);
     const leader = leaderFor(notch, p.side, boxOnScreen(view, placed.body), room);
     return { box: p.box, side: p.side, pan, notch, ...(leader ? { leader } : {}), cost: p.cost, distance: gapBetween(p.box, target) };
@@ -211,6 +216,7 @@ export function placeCard(req: CardRequest): CardPlacement | undefined {
   // The band the card needs on its side of the drawing, and a little paper kept on the other side.
   const margin = 4;
   const pans: { x: number; y: number }[] = [];
+  if (req.pan === false) return strip(here);
   const above = content.y0 - req.area.y0;
   const below = req.area.y1 - content.y1;
   const left = content.x0 - req.area.x0;

@@ -90,7 +90,8 @@ test('change R1 on its card: the numbers move as you type, the old ones are cros
   if (undo) await undo.click();
   else await page.keyboard.press('ControlOrMeta+z');
   await expect.poll(() => drawnText(page), { timeout: 30_000 }).toMatch(/=\s4\sV/);
-  await expectAnnounced(page, t('undone'));
+  // Undo says what it undid (the card's change, in its own words).
+  await expectAnnounced(page, t('undoneWhat', { what: t('valueLabel', { name: 'R1', value: '2k' }) }));
   if (!isPhone(page)) {
     await page.getByRole('button', { name: t('redo') }).click();
     await expect.poll(() => drawnText(page), { timeout: 30_000 }).toMatch(/=\s3\sV/);

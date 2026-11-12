@@ -4,11 +4,10 @@
  * the last run went) and the hint line (Playground's: what you can do next, in plain words). One
  * verb for one idea: ngspice "runs" a netlist (Run, live runs, "Running…", "Finished in 5 ms").
  */
-import { t } from '../i18n/index.ts';
+import { t, tn } from '../i18n/index.ts';
 import { withoutResultsPointer } from '../notebook/words.ts';
 import type { LineExplanation, Netlist } from '../spice/types.ts';
-import type { Tool } from './components/PartsToolbar.tsx';
-import { toolPhrase } from './components/PartsToolbar.tsx';
+import { toolPhrase, type Tool } from './tools.ts';
 import type { LiveState } from './live.ts';
 import type { RunRecord } from './model.ts';
 
@@ -101,8 +100,16 @@ export interface HintInput {
   tool: Tool;
   /** The selected part's name. */
   selectedName: string | undefined;
+  /** A node selected (its name as written), ground selected, or a piece of wire selected (its node in words). */
+  selectedNode?: string | undefined;
+  selectedGround?: boolean;
+  selectedWire?: string | undefined;
   /** The open card's "type a value" hint. */
   typeHint: string | undefined;
+  /** A value has been typed on the open card (its keys T, M ... are letters of it until the card closes). */
+  typed?: boolean;
+  /** A node's card is open: its name as written, or ground. */
+  nodeCard?: { name: string; ground: boolean } | undefined;
   /** Live runs will not run what is typed (paused, a link not run yet): say to press Run. */
   paused?: boolean;
   /** The whole drawing is in view. */
@@ -116,23 +123,69 @@ export interface HintInput {
   undrawn?: boolean;
   /** Nothing to draw: the netlist has no parts. */
   empty?: boolean;
+  /** The part in hand, where it would go now: which nodes it would join there, or why it cannot go there. */
+  place?: { joins?: string; refused?: string } | undefined;
+  /** A wire on its way (its first end chosen), or why the last click could not end it. */
+  wire?: { started: boolean; refused?: string } | undefined;
+  /** Something being moved: its name, by dragging or picked up (the card's Move), whether it is a part (it can turn), and why it cannot go where it is now. */
+  moving?: { name: string; how: 'drag' | 'pick'; part?: boolean; refused?: string } | undefined;
+  /** A phone shows the drawing as drawn while an editing tool is chosen (it was turned to fit). */
+  editingAsDrawn?: boolean;
+  /** The tool was chosen with the keys: say the keyboard's way to use it. */
+  keys?: boolean;
 }
+
+const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+
+/** A model's sentence inside the hint line: its last full stop goes, the "·" separates. */
+const clause = (sentence: string): string => sentence.trim().replace(/\.$/, '');
 
 /** The hint line: what you can do now, in plain words. */
 export function hintWords(p: HintInput): string {
-  const back = p.phone ? t('hintBackPhone') : t('hintBackDesk');
-  if (p.tool === 'wire') return t('hintWire', { back });
-  if (p.tool !== 'select') return t('hintPlacing', { part: toolPhrase(p.tool), back });
+  const lead = p.editingAsDrawn ? `${t('hintAsDrawnEditing')} · ` : '';
+  if (p.moving) {
+    const name = p.moving.name;
+    if (p.moving.refused) return t(p.phone ? 'hintDragRefusedPhone' : 'hintDragRefused', { name: cap(name), reason: clause(p.moving.refused) });
+    const turn = p.moving.part ? t('hintMovingTurn') : '';
+    if (p.moving.how === 'pick') return `${lead}${p.phone ? t('hintPickPhone', { name }) : t('hintPick', { name, turn })}`;
+    return p.phone ? t('hintDragPhone', { name }) : t('hintDrag', { name, turn });
+  }
+  if (p.tool === 'wire') {
+    if (p.wire?.refused) return t('hintWireRefused', { reason: clause(p.wire.refused) });
+    if (p.wire?.started) return `${lead}${p.phone ? t('hintWireOnPhone') : p.keys ? t('hintWireOnKeys') : t('hintWireOn')}`;
+    return `${lead}${p.phone ? t('hintWirePhone') : p.keys ? t('hintWireKeys') : t('hintWire')}`;
+  }
+  if (p.tool !== 'select') {
+    const part = toolPhrase(p.tool);
+    if (p.place?.refused) return p.phone ? t('hintPlacePhoneRefused', { reason: clause(p.place.refused) }) : t('hintPlaceRefused', { reason: clause(p.place.refused) });
+    // A ground symbol looks the same mirrored: no M for it.
+    const mirror = p.tool === 'ground' ? '' : t('hintMirrorIt');
+    if (p.place?.joins) return p.phone ? t('hintPlacePhoneHere', { joins: cap(p.place.joins) }) : t('hintPlaceHere', { part, joins: p.place.joins, mirror });
+    return `${lead}${p.phone ? t('hintPlacePhone', { part }) : p.keys && p.tool !== 'ground' ? t('hintPlaceKeys', { part }) : t('hintPlace', { part, mirror })}`;
+  }
   if (p.typeHint) {
     if (p.paused) return p.phone ? `${p.typeHint} · ${t('statusPaused')}: ${pressRun(true)}` : t('hintTypingPaused', { hint: p.typeHint, run: pressRun(false) });
-    return p.phone ? p.typeHint : t('hintTyping', { hint: p.typeHint });
+    if (p.phone) return p.typeHint;
+    return p.typed ? t('hintTyping', { hint: p.typeHint }) : t('hintCardOpen', { hint: p.typeHint });
   }
+  if (p.nodeCard) return p.nodeCard.ground ? t('hintGroundCard') : t('hintNodeCard', { name: p.nodeCard.name });
   if (p.undrawn) return t('hintUndrawn');
   if (p.empty) return p.phone ? t('hintEmptyPhone') : t('hintEmpty');
+  if (p.selectedWire !== undefined) return p.phone ? t('hintWireSelectedPhone', { node: p.selectedWire }) : t('hintWireSelected', { node: p.selectedWire });
+  if (p.selectedGround) return p.phone ? t('hintSelectedPhone', { name: t('groundName') }) : t('hintGroundSelected');
+  if (p.selectedNode !== undefined) return p.phone ? t('hintNodeSelectedPhone', { name: p.selectedNode }) : t('hintNodeSelected', { name: p.selectedNode });
   if (p.selectedName) return p.phone ? t('hintSelectedPhone', { name: p.selectedName }) : t('hintSelected', { name: p.selectedName });
   if (p.invite) return p.phone ? t('hintInvitePhone', { name: p.invite }) : t('hintInviteDesk', { name: p.invite });
   if (p.phone && p.turned) return p.whole ? t('hintTurned') : t('hintTurnedPan');
   if (p.phone && p.asDrawn && !p.whole) return t('hintAsDrawn');
   if (p.phone) return p.whole ? t('hintPhone') : t('hintPhonePan');
   return t('hintDesk');
+}
+
+/** How far something being moved is from where it was, in grid squares: "2 squares right and 1 square down from where it was". */
+export function offsetWords(dx: number, dy: number): string {
+  const parts: string[] = [];
+  if (dx) parts.push(tn(dx > 0 ? 'squaresRight' : 'squaresLeft', Math.abs(dx)));
+  if (dy) parts.push(tn(dy > 0 ? 'squaresDown' : 'squaresUp', Math.abs(dy)));
+  return parts.length ? t('offsetFrom', { offset: parts.join(` ${t('and')} `) }) : t('offsetNone');
 }

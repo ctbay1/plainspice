@@ -134,10 +134,11 @@ describe('<App />', () => {
       'Current source',
       'Controlled source',
       'Ground',
+      'Add a part',
     ]);
     expect(within(screen.getByRole('navigation', { name: 'Panels' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['Netlist', 'Checks', 'Explain', 'Numbers', 'Plot', 'ngspice output']);
     // The drawing: every part and node a button, named.
-    expect(screen.getByRole('group', { name: 'Drawing of the circuit: Start here: change R1 and watch the numbers move' })).toBeTruthy();
+    expect(screen.getByRole('application', { name: 'Drawing of the circuit: Start here: change R1 and watch the numbers move' })).toBeTruthy();
     for (const name of ['V1', 'R1', 'R2']) expect(part(name)).toBeTruthy();
     // The sticky note.
     const note = screen.getByRole('complementary', { name: 'Change R1 and watch the numbers move' });
@@ -531,27 +532,106 @@ describe('<App />', () => {
     fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Escape' });
   }, 30000);
 
-  it('the part tools say plainly that placing parts comes in the next update, and change nothing', async () => {
+  it('the part tools put a part in hand: the hint says what to do now and how to get out; Escape goes back to Select', async () => {
     render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     await solved();
     const tools = screen.getByRole('toolbar', { name: 'Parts and tools' });
     fireEvent.click(within(tools).getByRole('button', { name: /^Resistor/ }));
-    expect(document.querySelector('.hint')!.textContent).toBe(
-      'Placing a resistor comes in the next update of PlainSpice. For now, click a part on the drawing to change its value. Esc goes back to Select.',
-    );
-    await waitFor(() => expect(polite()).toContain('Placing a resistor comes in the next update of PlainSpice.'));
+    expect(document.querySelector('.hint')!.textContent).toBe('Click the paper to place a resistor · T turns it · M mirrors it · Shift+click places more than one · Esc goes back to Select');
+    await waitFor(() => expect(polite()).toContain('A resistor in hand. Click the paper to place a resistor'));
     expect(within(tools).getByRole('button', { name: 'Resistor' }).getAttribute('aria-pressed')).toBe('true');
-    // Escape goes back to Select.
+    // Its buttons, for a pointer without keys: Turn, Mirror, Cancel.
+    const hand = screen.getByRole('toolbar', { name: 'Resistor in hand' });
+    expect(within(hand).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Turn', 'Mirror', 'Cancel']);
     fireEvent.keyDown(document.body, { key: 'Escape' });
     expect(within(tools).getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelector('.hint')!.textContent).toMatch(/^Click a part to see its numbers/);
-    // A click on a part with a part tool does what the hint says: its card opens, back on Select; nothing is added.
+    // The Wire tool: start on a pin, a wire or a node's name (chosen with a pointer: a pointer's words).
+    fireEvent.pointerDown(within(tools).getByRole('button', { name: 'Wire' }));
     fireEvent.click(within(tools).getByRole('button', { name: 'Wire' }));
-    expect(document.querySelector('.hint')!.textContent).toContain('Drawing wires comes in the next update of PlainSpice.');
-    fireEvent.click(part('R2'));
-    expect(screen.getByRole('dialog', { name: /^R2 resistor/ })).toBeTruthy();
-    expect(within(tools).getByRole('button', { name: 'Select' }).getAttribute('aria-pressed')).toBe('true');
-    expect(screen.getAllByRole('button', { name: /^[A-Z]+\d*, / })).toHaveLength(3);
+    expect(document.querySelector('.hint')!.textContent).toBe('Click a pin, a wire or a node’s name to start a wire · Esc goes back to Select');
+    // Chosen with its key, the hint gives the keyboard's way: Enter on a node, then Enter on another.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    fireEvent.keyDown(within(tools).getByRole('button', { name: 'Select' }), { key: 'w' });
+    expect(document.querySelector('.hint')!.textContent).toBe('Enter on a node starts a wire there, Enter on another node ends it · or click a pin · Esc goes back to Select');
+  }, 30000);
+
+  it('adds a resistor across the source from the Add a part form, and ngspice gives its current (no pointer)', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Parts and tools' })).getByRole('button', { name: 'Add a part' }));
+    const form = await screen.findByRole('dialog', { name: 'Add a part' }, { timeout: 5000 });
+    // A part goes between two nodes, chosen in words: a 3 kΩ resistor from in to ground.
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Part' }), { target: { value: 'R' } });
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Value' }), { target: { value: '3k' } });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Node 1' }), { target: { value: 'in' } });
+    fireEvent.change(within(form).getByRole('combobox', { name: 'Node 2' }), { target: { value: '0' } });
+    expect(within(form).getByText('R3 in 0 3k')).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Add R3' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a part' })).toBeNull());
+    await waitFor(() => expect(polite()).toContain('R3 added between in and ground.'));
+    // The drawing places it; ngspice solves it with the rest: 6 V across 3 kΩ is 2 mA.
+    await waitFor(() => expect(part('R3')).toBeTruthy());
+    await waitFor(() => expect(engine.runs.at(-1)).toContain('R3 in 0 3k'), { timeout: 15000 });
+    await solved();
+    await waitFor(() => expect(describedBy(part('R3'))).toMatch(/2 milliamps? flows? from in to ground through R3|2 milliamps/));
+    // One undo takes it away again, and says what it undid.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^R3, / })).toBeNull());
+    await waitFor(() => expect(polite()).toContain('Undone: R3 added between in and ground.'));
+  }, 30000);
+
+  it('turns, reverses, moves and deletes the selected part with the keys, each one undo step with its words', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await solved();
+    const r2 = part('R2');
+    act(() => r2.focus());
+    fireEvent.keyDown(r2, { key: 't' });
+    await waitFor(() => expect(polite()).toContain('R2 turned.'));
+    // Positions now live in the netlist, the student's lines as they were.
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toMatch(/\*@ R2 \S+ \S+ (90|270)/));
+    expect(localStorage.getItem('plainspice:netlist')).toContain('R2 out 0 2k');
+    fireEvent.keyDown(part('R2'), { key: 'ArrowRight', shiftKey: true });
+    fireEvent.keyDown(part('R2'), { key: 'ArrowRight', shiftKey: true });
+    await waitFor(() => expect(polite()).toMatch(/R2 moved\.[\s\S]*R2 moved\./));
+    // Reverse swaps its ends in the netlist (the focus on V1 selects it, as in a browser).
+    act(() => part('V1').focus());
+    fireEvent.keyDown(part('V1'), { key: 'R', shiftKey: true });
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('V1 0 in 6'));
+    // Delete: the part's line goes; the focus goes to a neighbour, never lost.
+    act(() => part('R2').focus());
+    fireEvent.keyDown(part('R2'), { key: 'Delete' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^R2, / })).toBeNull());
+    expect(polite()).toContain('R2 deleted.');
+    await waitFor(() => expect(document.activeElement?.classList.contains('nb-hit')).toBe(true));
+    // Undo goes back step by step: the delete, the reverse, the two moves as one, the turn.
+    for (const what of ['R2 deleted.', 'V1 reversed.', 'R2 moved.', 'R2 turned.']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      await waitFor(() => expect(polite()).toContain(`Undone: ${what}`));
+    }
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toBe(START));
+  }, 30000);
+
+  it('a node\'s card renames it (and to a name that exists, joins them); ground keeps its name', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    fireEvent.click(screen.getByRole('button', { name: 'Node out' }));
+    const card = screen.getByRole('dialog', { name: /^Node out/ });
+    const name = within(card).getByRole('textbox', { name: 'Name of node out' });
+    expect(document.activeElement).toBe(name);
+    fireEvent.change(name, { target: { value: 'my out' } });
+    fireEvent.click(within(card).getByRole('button', { name: 'Rename' }));
+    await waitFor(() => expect(within(card).getByText(/PlainSpice keeps node names to letters, digits and _/)).toBeTruthy());
+    fireEvent.change(name, { target: { value: 'vout' } });
+    fireEvent.submit(name.closest('form')!);
+    await waitFor(() => expect(polite()).toContain('out renamed to vout.'));
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 in vout 1k'));
+    expect(screen.getByRole('button', { name: 'Node vout' })).toBeTruthy();
+    // Ground's card says why it keeps its name.
+    fireEvent.click(screen.getByRole('button', { name: 'Ground, node 0' }));
+    expect(within(screen.getByRole('dialog', { name: /^Ground/ })).getByText('Ground (node 0) keeps its name.')).toBeTruthy();
   }, 30000);
 
   it('Undo and Redo across circuits opened from the Examples never save an example over the student’s netlist', async () => {

@@ -317,7 +317,7 @@ export async function expectAnnounced(page: Page, text: string | RegExp): Promis
 
 /** The drawing: every part and node a button, named ("R1, resistor", "Node out"). */
 export function drawing(page: Page): Locator {
-  return page.getByRole('group', { name: /^Drawing of the circuit: / });
+  return page.getByRole('application', { name: /^Drawing of the circuit: / });
 }
 
 export function partOnDrawing(page: Page, name: string): Locator {
@@ -501,4 +501,41 @@ export async function expectNoAxeViolations(page: Page, state: string): Promise<
 /** How far the page can scroll sideways (0 when everything fits the width). */
 export function sidewaysScroll(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+}
+
+// ------------------------------------------------------------------ the editor (decision 0017)
+
+/**
+ * Where a point of the drawing's grid is on the screen now (the drawing's own coordinates, as the
+ * *@ lines write them): read from the drawing's transform, so a test can click a pin or a place.
+ */
+export async function gridPoint(page: Page, x: number, y: number): Promise<{ x: number; y: number }> {
+  const view = await page.evaluate(() => {
+    const world = document.querySelector<HTMLElement>('.nb-world');
+    const m = /translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(world?.style.transform ?? '');
+    const r = document.querySelector('.nb-canvas')!.getBoundingClientRect();
+    return m ? { x: Number(m[1]) + r.left, y: Number(m[2]) + r.top, unit: Number(m[3]) * 20 } : undefined;
+  });
+  if (!view) throw new Error('the drawing has no view yet');
+  return { x: view.x + x * view.unit, y: view.y + y * view.unit };
+}
+
+/** Start a new circuit on a blank page (Ctrl+K, as the keyboard does it). */
+export async function newCircuit(page: Page): Promise<void> {
+  await page.keyboard.press('ControlOrMeta+k');
+  const palette = page.getByRole('dialog', { name: t('paletteTitle') });
+  await palette.getByRole('combobox').fill('new circuit');
+  await page.keyboard.press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: t('emptyTitle') })).toBeVisible();
+}
+
+/** The netlist as the store has it (the autosave writes it a moment after each change made by the student). */
+export async function savedNetlist(page: Page): Promise<string | null> {
+  return page.evaluate(() => localStorage.getItem('plainspice:netlist'));
+}
+
+/** The parts toolbar in the page's margin (a computer). */
+export function partsToolbar(page: Page): Locator {
+  return page.getByRole('toolbar', { name: t('partsLabel') });
 }

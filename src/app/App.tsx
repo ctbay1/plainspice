@@ -12,6 +12,11 @@
  *     -> live runs (live.ts): ngspice runs the text a moment after each change, never two at once
  *        -> the results on the drawing, the card, the panels, an announcement for screen readers
  *
+ * The schematic editor (decision 0017): the tools place parts and draw wires, parts are dragged,
+ * turned, mirrored, reversed and deleted, nodes renamed, and a part added between two nodes from a
+ * form; src/app/editing.ts turns the pointer and the keys into the model's edits (applyEdit), and
+ * each one goes into the store as one undo step made on the drawing.
+ *
  * Layout on a computer: the top bar, the parts toolbar in the page's margin, the paper (the drawing,
  * the card beside its part, red pen, the sticky note), the divider tabs and their panel on the right,
  * the hint and status lines at the bottom. On a phone (narrower than 900 px): the top bar, the paper
@@ -33,6 +38,7 @@ import {
   boxOnScreen,
   createResultFontStore,
   currentText,
+  coverCost,
   drawingRoom,
   inkBoxes,
   inviteArrow,
@@ -49,8 +55,10 @@ import {
   turnedQuarter,
   wasMarks,
   withoutResultsPointer,
+  type CanvasEditing,
   type CanvasHandle,
   type CanvasViewInfo,
+  type EditMarks,
   type CardPlacement,
   type Insets,
   type PenMarks,
@@ -59,24 +67,96 @@ import {
   type ResultFontStore,
   type Side,
 } from '../notebook/index.ts';
-import { GROUND, NAVIGATE_STRINGS, applyChanges, buildSchematic, describeNode, describeSchematic, inflate, readDrawing, unionBoxes, type Box, type NavItem, type PartLetter, type Schematic } from '../schematic/index.ts';
+import {
+  EDIT_STRINGS,
+  GROUND,
+  NAVIGATE_STRINGS,
+  applyChanges,
+  applyEdit,
+  buildSchematic,
+  describeNode,
+  describeSchematic,
+  inflate,
+  nextRotation,
+  readDrawing,
+  readingOrder,
+  samePoint,
+  segmentsOf,
+  symbolGeometry,
+  unionBoxes,
+  type Box,
+  type DrawingProblem,
+  type EditOp,
+  type EditResult,
+  type NavItem,
+  type PartLetter,
+  type Point,
+  type Rotation,
+  type Schematic,
+} from '../schematic/index.ts';
 import { decodeShare } from '../share/link.ts';
+import { formatSI, speakSI } from '../format/si.ts';
+import { DESCRIBE_STRINGS } from '../spice/describe.ts';
 import { elementInfo } from '../spice/elements.ts';
 import type { Fix, Trap } from '../spice/types.ts';
 import { AnnouncerProvider, useAnnounce } from './announcer.tsx';
-import { cardContent, onValueField, relatedOf, typeHint, type CardRun, type CardState } from './card.ts';
+import { cardContent, noNumbersReason, onValueField, relatedOf, typeHint, type CardRun, type CardState } from './card.ts';
 import { keepDrawing, spotValue, valueSpot, withValue, writeValue, type ValueSpot } from './card-edit.ts';
 import { ChecksPanel } from './components/ChecksPanel.tsx';
 import { CommandPalette, type Command } from './components/CommandPalette.tsx';
 import { ExplainPanel, type ExplainSelection } from './components/ExplainPanel.tsx';
 import { BottomBar, MoreSheet, NoticeCard, PANELS, PanelHead, PanelTabs, ResultsCard, StatusLines, StickyNote, UpdateCard, checksSub, panelTitle, type PanelId } from './components/Frame.tsx';
-import { LineIcon } from './components/Icons.tsx';
+import { LineIcon, ToolGlyph } from './components/Icons.tsx';
 import { IndexCard } from './components/IndexCard.tsx';
 import { NetlistPanel, preloadEditor, type CreateEditor } from './components/NetlistPanel.tsx';
 import { NumbersPanel, tfRows } from './components/NumbersPanel.tsx';
 import { OutputPanel } from './components/OutputPanel.tsx';
 import { Overlays, preloadOverlays, type ExportKind, type MenuFocus, type OverlayKey } from './components/Overlays.tsx';
-import { PartsSheetList, PartsToolbar, toolForKey, toolPhrase, type Tool } from './components/PartsToolbar.tsx';
+import { PartsSheetList, PartsToolbar } from './components/PartsToolbar.tsx';
+import type { ControlEditing, PartEditing } from './components/CardEdit.tsx';
+import { NodeCard, type NodeCardProps } from './components/NodeCard.tsx';
+import {
+  addPartEdit,
+  connectEdit,
+  controlWords,
+  deleteOp,
+  disconnectEdit,
+  dragTarget,
+  editKey,
+  endsOf,
+  formStart,
+  grabAt,
+  grabOf,
+  handFor,
+  hitTest,
+  joinsWords,
+  mirrorHand,
+  movePreview,
+  moveOp,
+  nodeChoices,
+  nodeEnd,
+  nodeWords,
+  placeEdit,
+  placePreview,
+  reverseHand,
+  sourceChoices,
+  stepFrom,
+  symbolEnd,
+  turnHand,
+  wireEdit,
+  wirePreview,
+  wireStartOf,
+  wireTargets,
+  type EditKey,
+  type Grab,
+  type Hand,
+  type MovePreview,
+  type PartForm,
+  type PieceOfWire,
+  type WireDraft,
+  type WireStart,
+} from './editing.ts';
+import { isPartKind, kindName, toolPhrase, type Tool } from './tools.ts';
 import { PlotPanel } from './components/PlotPanel.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
@@ -92,7 +172,7 @@ import { clearShareFragment, type StartupDecision } from './startup.ts';
 import { STORAGE_KEYS, writeStored } from './storage.ts';
 import { createNetlistStore, type Change, type NetlistStore } from './store.ts';
 import { useDebounced, whenIdle } from './timing.ts';
-import { analysisName, hintWords, pressRun, statusWords, type EngineStatus } from './words.ts';
+import { analysisName, hintWords, offsetWords, pressRun, statusWords, type EngineStatus } from './words.ts';
 
 export interface AppProps {
   startup: StartupDecision;
@@ -127,7 +207,9 @@ const PHONE_WIDTH = 900;
 const PHONE_HEIGHT = 521;
 /** The card on a computer: as wide and as tall as its tallest state at the usual text size (it is measured, too). */
 const CARD_W = 680;
-const CARD_H = 204;
+const CARD_H = 218;
+/** A node's card at the usual text size (it is measured, too). */
+const NODE_CARD_H = 190;
 /** Desktop and phone: the most pixels per grid unit at the usual text size (a small circuit does not grow huge). */
 const DESK_MAX_UNIT = 40;
 const PHONE_MAX_UNIT = 30;
@@ -173,6 +255,55 @@ const NO_NOTES: readonly never[] = [];
  * address. An undo or a redo counts when it lands on a text that is the student's (store.ts).
  */
 const STUDENT_CHANGES: ReadonlySet<Change['source']> = new Set(['editor', 'drawing', 'fix']);
+
+/** Something being moved: what, how (dragged, or picked up with the card's Move or Ctrl+K), its offset from the pointer, and where it would go now. */
+interface MoveState {
+  grab: Grab;
+  how: 'drag' | 'pick';
+  /** The pointer's offset from the grab's own point, in grid units. */
+  offset: Point;
+  /** A part turned or mirrored while it moves (T and M): how it lands. */
+  turn?: { rot: Rotation; mirror: boolean };
+  /** Where it would go now, as the model says (the drawing with it there, or why not). */
+  preview: MovePreview | undefined;
+}
+
+/** A move's preview still says where it goes now: for this point, this turn, and the text as it is (never a preview of an older text). */
+const previewFits = (m: MoveState, to: Point, text: string): boolean =>
+  !!m.preview && samePoint(m.preview.to, to) && m.preview.base === text && m.preview.turn?.rot === m.turn?.rot && m.preview.turn?.mirror === m.turn?.mirror;
+
+/** A node's card: which node (ngspice's name), the ground symbol chosen (ground), the name being typed, and why a rename was refused. */
+interface NodeCardState {
+  node: string;
+  /** Just renamed to this: the card moves to it once the drawing has the new name. */
+  renamed?: string;
+  ground: number | undefined;
+  session: number;
+  input: string;
+  refused?: string;
+  focus: boolean;
+}
+
+const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+
+/** How long a refused edit's reason stays in the hint line (it is announced as well). */
+const REFUSAL_SHOWN_MS = 6000;
+
+/** The first sentence of an edit's summary: what Undo and Redo say they undid or redid. */
+const firstSentence = (summary: string): string => summary.split(/(?<=\.)\s/)[0] ?? summary;
+
+/** The 1-based line of a part in a text (the part an edit's summary says still names something). */
+function linePartIn(text: string, key: string): number | undefined {
+  const line = readNetlist(text).netlist.lines.find((l) => l.element?.key === key);
+  return line ? line.number : undefined;
+}
+
+/** A point in grid units to a quarter unit: the pointer's place for the previews (they change at most four times a unit). */
+const quarter = (p: Point): Point => ({ x: Math.round(p.x * 4) / 4, y: Math.round(p.y * 4) / 4 });
+const gridPoint = (p: Point): Point => ({ x: Math.round(p.x), y: Math.round(p.y) });
+
+/** How near the pointer must be to a pin or a wire to be on it, in grid units: half a unit, or 14 screen pixels when that is more. */
+const nearness = (unit: number): number => Math.max(0.45, 14 / Math.max(1, unit));
 
 /** A card open on a part: where its value is written, and the text the card last wrote (to see changes made elsewhere). */
 interface CardEdit {
@@ -287,6 +418,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   }, [netlist]);
   const partCount = useMemo(() => netlist.lines.filter((l) => l.element).length, [netlist]);
   const tooBig = partCount > MAX_DRAWN_PARTS;
+  // A part added or removed in the Netlist panel (or by a fix) fits the drawing again; edits made on
+  // the drawing keep the view where it is (canvas.keep), and so do undo and redo.
+  const fittedParts = useRef(partCount);
+  useEffect(() => {
+    if (partCount === fittedParts.current) return;
+    fittedParts.current = partCount;
+    const source = store.snapshot().last.source;
+    if (source === 'editor' || source === 'fix') setFitCount((n) => n + 1);
+  }, [partCount, store]);
   const schematic = useMemo((): Schematic | undefined => (tooBig ? undefined : buildSchematic(netlist, NOTEBOOK_OPTIONS)), [netlist, tooBig]);
   const title = titleOf(text);
   /** The netlist's first line as written (what Export names its file after). */
@@ -298,28 +438,52 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // the reader. Decided on the opened circuit's own drawing, which follows the text a frame later
   // (`viewFor` waits for it), never on the circuit that was open before.
   const [turnWanted, setTurnWanted] = useState(true);
+  /** The phone's turned view was put aside for editing: offered back when the student returns to Select. */
+  const [turnedForEditing, setTurnedForEditing] = useState(false);
+  /** Something being moved (dragged, or picked up): the drawing shows it where it would go. */
+  const [move, setMove] = useState<MoveState | undefined>(undefined);
+  /** Counts what fits the drawing again: a circuit opened, Fit, a part typed in the Netlist panel. */
+  const [fitCount, setFitCount] = useState(0);
   const [openedText, setOpenedText] = useState(startup.netlist);
   const [viewFor, setViewFor] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (schematic && schematic.netlist.text === openedText && viewFor !== circuitKey) setViewFor(circuitKey);
   }, [schematic, openedText, circuitKey, viewFor]);
   const phoneView = useMemo(() => {
-    if (!phone || !schematic) return { pans: false, turn: false };
+    if (!phone || !schematic) return { pans: false, turn: false, wholeUnit: 0 };
     const w = win.width - 30;
     const h = win.height - 190;
     const unitOf = (b: Box): number => Math.min(w / Math.max(1e-6, b.x1 - b.x0), h / Math.max(1e-6, b.y1 - b.y0));
     const asDrawn = unitOf(schematic.scene.bounds);
     const pans = asDrawn < minUnit;
-    if (!(pans && portrait && isWide(schematic))) return { pans, turn: false };
+    if (!(pans && portrait && isWide(schematic))) return { pans, turn: false, wholeUnit: asDrawn };
     const turnedNow = turnedQuarter(schematic);
-    return { pans, turn: !!turnedNow && unitOf(turnedNow.scene.bounds) > asDrawn * 1.15 };
-    // The circuit (and how many parts it has), not its text as typed.
+    return { pans, turn: !!turnedNow && unitOf(turnedNow.scene.bounds) > asDrawn * 1.15, wholeUnit: asDrawn };
+    // The circuit (and how many parts it has when typed in the Netlist panel: fitCount), not its text
+    // as typed, nor an edit made on the drawing (the view never turns under the hand that edits it).
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, portrait, viewFor, partCount, win.width > win.height, minUnit]);
+  }, [phone, portrait, viewFor, fitCount, win.width > win.height, minUnit]);
   const turned = useMemo(() => (phoneView.turn && schematic ? turnedQuarter(schematic) : undefined), [phoneView.turn, schematic]);
-  const shown = turned && turnWanted ? turned : schematic;
-  const asDrawnOnPhone = phone && !!schematic && shown === schematic;
-  const results = useMemo(() => (shown ? placeResults(shown.scene, answers(record)) : NO_RESULTS), [shown, record]);
+  /** The drawing as the student reads it: turned to fit (a phone), or as drawn. */
+  const seen = turned && turnWanted ? turned : schematic;
+  /** The drawing shown: with the part being moved where it would go, while it moves. */
+  const shown = move?.preview?.ok && move.preview.schematic && seen === schematic ? move.preview.schematic : seen;
+  /** Edits are made on the drawing as drawn: the turned view is another drawing (decision 0015). */
+  const asDrawn = !!schematic && seen === schematic;
+  const asDrawnOnPhone = phone && asDrawn;
+  /** A phone that turned the drawing to fit shows it as drawn while editing: whole, so nothing goes off the screen. */
+  const editingWhole = asDrawnOnPhone && turnedForEditing;
+  // While a circuit is built on the drawing, a run that gives no answers (a part not connected yet,
+  // no path to ground) keeps the last answers of this circuit in pencil, "before your last change",
+  // as while ngspice runs: the numbers do not vanish at every step (critique of step B). The status
+  // line and the red pen say why there are no new ones.
+  const [lastGood, setLastGood] = useState<{ key: number; record: RunRecord } | undefined>(undefined);
+  useEffect(() => {
+    if (record && answers(record)) setLastGood((g) => (g?.record === record && g.key === circuitKey ? g : { key: circuitKey, record }));
+  }, [record, circuitKey]);
+  const building = snap.last.source === 'drawing';
+  const stale = !answers(record) && building && lastGood?.key === circuitKey ? lastGood.record : undefined;
+  const results = useMemo(() => (shown ? placeResults(shown.scene, answers(record) ?? answers(stale)) : NO_RESULTS), [shown, record, stale]);
   const description = useMemo(() => (schematic ? describeSchematic(schematic) : ''), [schematic]);
   const analysis = useMemo(() => analysisName(netlist.analyses.flatMap((i) => [explainLine(netlist, i)].filter((e) => e !== undefined)), netlist), [netlist]);
   const drawingLineCount = useMemo(() => readDrawing(netlist).lineIndexes.length, [netlist]);
@@ -333,6 +497,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   /** The next panel opens without taking the focus (one opened along with an example). */
   const quietPanel = useRef(false);
   const [tool, setTool] = useState<Tool>('select');
+  /** The tool was chosen with the keys: the hint line gives the keyboard's way to use it. */
+  const [toolByKey, setToolByKey] = useState(false);
   const [overlay, setOverlay] = useState<OverlayKey | null>(null);
   const [menuFocus, setMenuFocus] = useState<MenuFocus>('first');
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -346,9 +512,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [noteWanted, setNoteWanted] = useState(startup.source === 'example' && startup.exampleId === START_HERE_ID);
   /** A phone: the card's value field has the focus (the editing strip shows above the keyboard). */
   const [editing, setEditing] = useState(false);
+  /** A touch screen (a coarse pointer): a phone's card becomes the strip above its keyboard while a value is typed. */
+  const coarse = useMedia('(pointer: coarse)');
   /** The netlist is being typed: the drawing keeps its size (only a new part fits it again). */
   const [typingNetlist, setTypingNetlist] = useState(false);
-  const [fitCount, setFitCount] = useState(0);
   const [viewInfo, setViewInfo] = useState<CanvasViewInfo | undefined>(undefined);
   const canvas = useRef<CanvasHandle>(null);
   const editorRef = useRef<PlainSpiceEditor | null>(null);
@@ -358,9 +525,89 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const lastFocus = useRef<HTMLElement | null>(null);
   const drawingNameId = useId();
 
+  // ------------------------------------------------------------------ the editor's state (decision 0017)
+  /** The part (or ground symbol) in hand while a part tool is chosen: its turn and whether it is mirrored. */
+  const [hand, setHand] = useState<Hand | undefined>(undefined);
+  /** Where the pointer is over the paper (grid units, to a quarter unit), for the previews; undefined when it is not. */
+  const [hover, setHover] = useState<Point | undefined>(undefined);
+  /** A touch screen: where the part in hand was put for a look, before Place (or a second tap there) places it. */
+  const [lookAt, setLookAt] = useState<Point | undefined>(undefined);
+  /** A wire on its way: its first end and the corners chosen since. */
+  const [wireDraft, setWireDraft] = useState<WireDraft | undefined>(undefined);
+  /** A piece of wire selected (a click on a wire with Select), and which ground symbol was chosen (one item stands for all of ground). */
+  const [selectedWire, setSelectedWire] = useState<PieceOfWire | undefined>(undefined);
+  const [selectedGround, setSelectedGround] = useState<number | undefined>(undefined);
+  /** A node's card. */
+  const [nodeCard, setNodeCard] = useState<NodeCardState | undefined>(undefined);
+  /** Why the last edit was refused (the model's words): in the hint line until the next thing happens. */
+  const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  /** The part's card shows its connections. */
+  const [connOpen, setConnOpen] = useState(false);
+  /** The Add a part form, as it opens. */
+  const [addForm, setAddForm] = useState<PartForm | undefined>(undefined);
+  /** Controlled sources placed on the drawing that still read what PlainSpice chose for them: red pen until the student chooses. */
+  const [unchosen, setUnchosen] = useState<ReadonlySet<string>>(new Set());
+  const controlChosen = (key: string): void => setUnchosen((u) => (u.has(key) ? new Set([...u].filter((k) => k !== key)) : u));
+  /** An item to focus (and a card to open) once the drawing has caught up with an edit. */
+  const pendingFocus = useRef<{ item: NavItem; open?: 'card' | 'value' } | undefined>(undefined);
+  /** After an edit, undo or redo: once the drawing has caught up, the focus must be somewhere (never the page itself, WCAG 2.4.3). */
+  const focusCheck = useRef(false);
+  /** An item an edit made or moved: brought into view once the drawing has it (never left under a bar, WCAG 2.4.11). */
+  const pendingReveal = useRef<NavItem | undefined>(undefined);
+  /** Moves of one item in a row with the keyboard are one undo step; a new run starts with each selection. */
+  const moveRun = useRef(0);
+  /** Counts what makes the open card find its place again (its part turned, its connections shown). */
+  const [cardLayout, setCardLayout] = useState(0);
+  /** The move as it is now (events come faster than renders), and where the pointer wants it, previewed once a frame. */
+  const moveRef = useRef<MoveState | undefined>(undefined);
+  moveRef.current = move;
+  const moveWanted = useRef<Point | undefined>(undefined);
+  const moveFrame = useRef<number | undefined>(undefined);
+  /** The next preview of a move comes from the arrow keys: the view follows it (WCAG 2.4.11). */
+  const moveReveal = useRef(false);
+  /** A part picked up and moved with the keys or the pointer: where it would go now, said once the moving pauses (WCAG 4.1.3). */
+  const sayWhereSoon = useDebounced(() => {
+    const m = moveRef.current;
+    const s = currentDrawing();
+    if (!m || m.how !== 'pick' || !m.preview || !s) return;
+    const from = grabAt(s, m.grab);
+    const where = from ? offsetWords(m.preview.to.x - from.x, m.preview.to.y - from.y) : '';
+    const name = cap(grabName(s, m.grab));
+    announce(m.preview.ok ? t('moveSayHere', { name, where }) : t('moveSayNot', { name, where, reason: m.preview.reason ?? '' }));
+  }, 500);
+  /** The canvas's side of the editor, as it is in this render (set below); the canvas gets one object that calls the newest. */
+  const editingRef = useRef<CanvasEditing | undefined>(undefined);
+  const canvasEditing = useMemo(
+    (): CanvasEditing => ({
+      hover: (i) => editingRef.current?.hover?.(i),
+      press: (i) => editingRef.current?.press(i),
+      dragStart: (i) => editingRef.current?.dragStart?.(i),
+      dragMove: (i) => editingRef.current?.dragMove?.(i),
+      dragEnd: (i, cancelled) => editingRef.current?.dragEnd?.(i, cancelled),
+      tap: (i) => editingRef.current?.tap?.(i),
+      doubleClick: (i) => editingRef.current?.doubleClick?.(i),
+    }),
+    [],
+  );
+
+  /** Where the part in hand would land: under the pointer, or where a touch put it for a look. */
+  const placeAt = hover ? gridPoint(hover) : lookAt;
+  const placeView = useMemo(() => (hand && schematic && asDrawn && placeAt && !move ? placePreview(schematic, hand, placeAt) : undefined), [hand, schematic, asDrawn, placeAt, move]);
+  /** With the Wire tool: the wire end under the pointer (a pin, a wire, a node's name), or the free point there. */
+  const wireHover = useMemo((): WireStart | Point | undefined => {
+    if (tool !== 'wire' || !schematic || !asDrawn || !hover) return undefined;
+    const tol = nearness(viewInfo?.unit ?? 20);
+    return wireStartOf(hitTest(schematic, hover, tol, 'wire')) ?? symbolEnd(schematic, hover, tol) ?? gridPoint(hover);
+  }, [tool, schematic, asDrawn, hover, viewInfo?.unit]);
+  const wirePath = useMemo(() => (wireDraft && schematic && wireHover ? wirePreview(schematic, wireDraft, wireHover) : undefined), [wireDraft, schematic, wireHover]);
+  const targets = useMemo(() => (tool === 'wire' && schematic && asDrawn ? wireTargets(schematic) : undefined), [tool, schematic, asDrawn]);
+
   const selectedPart = selected?.kind === 'part' && shown ? shown.scene.parts.find((p) => p.key === selected.key) : undefined;
   const related = useMemo(() => relatedOf(selectedPart?.part), [selectedPart]);
   const checks = current ? record.checks : traps;
+  /** What is wrong with the drawing lines (a *@ line PlainSpice cannot read or use): in the Checks panel, counted with the checks. */
+  const drawingWarnings = useMemo(() => (schematic?.problems ?? []).filter((p) => p.severity === 'warning'), [schematic]);
+  const checkCount = checks.length + drawingWarnings.length;
   /** Checks on part lines (not notes): each part's first, which its symbol shows in red pen. */
   const partTraps = useMemo(() => {
     const out = new Map<string, Trap>();
@@ -453,10 +700,19 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     (next: string, how: { run: boolean; manual?: boolean; example?: string | undefined }) => {
       saveSoon.flush(); // the student's last edits, if the autosave is still waiting
       setCard(undefined);
+      setNodeCard(undefined);
       setEditing(false);
       setSelected(undefined);
       setSelectedLine(undefined);
+      setSelectedWire(undefined);
       setTool('select');
+      setHand(undefined);
+      setWireDraft(undefined);
+      setMove(undefined);
+      setLookAt(undefined);
+      setRefusal(undefined);
+      setTurnedForEditing(false);
+      setUnchosen(new Set());
       setNotice(null);
       setExampleId(how.example);
       setNoteWanted(how.example === START_HERE_ID);
@@ -511,18 +767,39 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     [store, read.text, announce],
   );
 
+  /** After an undo or a redo: what was being done on the drawing stops (the text it was for is gone). */
+  const settleAfterHistory = useCallback(() => {
+    setCard(undefined);
+    setNodeCard(undefined);
+    setEditing(false);
+    setMove(undefined);
+    setWireDraft(undefined);
+    setSelectedWire(undefined);
+    setLookAt(undefined);
+    setRefusal(undefined);
+  }, []);
   const undo = useCallback(() => {
-    if (!store.undo()) return;
-    setCard(undefined);
-    setEditing(false);
-    announce(t('undone'));
-  }, [store, announce]);
+    const what = store.snapshot().undoLabel;
+    if (!store.undo()) {
+      announce(t('nothingToUndo'));
+      return;
+    }
+    settleAfterHistory();
+    canvas.current?.keep();
+    focusCheck.current = true;
+    announce(what ? t('undoneWhat', { what }) : t('undone'));
+  }, [store, announce, settleAfterHistory]);
   const redo = useCallback(() => {
-    if (!store.redo()) return;
-    setCard(undefined);
-    setEditing(false);
-    announce(t('redone'));
-  }, [store, announce]);
+    const what = store.snapshot().redoLabel;
+    if (!store.redo()) {
+      announce(t('nothingToRedo'));
+      return;
+    }
+    settleAfterHistory();
+    canvas.current?.keep();
+    focusCheck.current = true;
+    announce(what ? t('redoneWhat', { what }) : t('redone'));
+  }, [store, announce, settleAfterHistory]);
 
   const runNow = useCallback(() => {
     const now = store.get();
@@ -673,7 +950,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   );
 
   const openCard = useCallback(
-    (key: string, focus = true) => {
+    (key: string, focus = true, selectValue = false) => {
       const p = schematic?.circuit.parts.find((x) => x.key === key);
       if (!p) return;
       const now = store.get();
@@ -685,7 +962,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       const refused = spot && start ? refusedOf(spot, start, p.letter) : undefined;
       setSelected({ kind: 'part', key });
       setSelectedLine(p.line + 1);
-      setCard({ key, start, input: start, kept: start, before: current ? record : undefined, session, focus, ...(refused ? { refused } : {}) });
+      setSelectedWire(undefined);
+      setNodeCard(undefined);
+      setConnOpen(false);
+      setCard({ key, start, input: start, kept: start, before: current ? record : undefined, session, focus, ...(refused ? { refused } : {}), ...(selectValue ? { select: true } : {}) });
       setNoteWanted(false);
       setPartsSheet(false);
       setMoreSheet(false);
@@ -695,33 +975,53 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     [schematic, store, current, record, phone, refusedOf],
   );
 
+  /** A node's card: its name to change, its voltage, the parts on it (ground: its symbols). */
+  const openNodeCard = useCallback(
+    (name: string, focus = true, ground?: number) => {
+      cardSession.current += 1;
+      const text = name === GROUND ? '0' : (schematic?.circuit.nodes.get(name)?.text ?? name);
+      setSelected({ kind: 'node', name });
+      setSelectedWire(undefined);
+      setCard(undefined);
+      setNodeCard({ node: name, ground: name === GROUND ? (ground ?? 0) : undefined, session: cardSession.current, input: text, focus });
+      setNoteWanted(false);
+      setPartsSheet(false);
+      setMoreSheet(false);
+      if (phone) setPanel(undefined);
+    },
+    [schematic, phone],
+  );
+  const closeNodeCard = useCallback((focusNode = true) => {
+    setNodeCard((c) => {
+      if (c && focusNode) requestAnimationFrame(() => canvas.current?.focusItem({ kind: 'node', name: c.node }));
+      return undefined;
+    });
+  }, []);
+
   const onSelect = useCallback(
     (item: NavItem | undefined) => {
       setSelected(item);
+      setSelectedWire(undefined);
+      setRefusal(undefined);
+      moveRun.current += 1;
+      if (item?.kind === 'node' && item.name !== GROUND) setSelectedGround(undefined);
       if (item?.kind === 'part') {
         const p = schematic?.circuit.parts.find((x) => x.key === item.key);
         if (p) setSelectedLine(p.line + 1);
         // Moving along the drawing with a card open: the card follows, the focus stays on the drawing.
         if (card && card.key !== item.key) openCard(item.key, false);
-      } else if (card) closeCard(false);
-    },
-    [schematic, card, openCard, closeCard],
-  );
-
-  // With a part tool chosen a click on a part still opens its card, as the hint says: placing parts
-  // comes in the next update, so the tool goes back to Select rather than pretend.
-  const onOpen = useCallback(
-    (item: NavItem) => {
-      if (tool !== 'select') setTool('select');
-      if (item.kind === 'part') openCard(item.key);
-      else {
-        setSelected(item);
-        setPanel('explain');
-        setNoteWanted(false);
+        else if (nodeCard) setNodeCard(undefined);
+      } else if (item?.kind === 'node') {
+        if (card) closeCard(false);
+        if (nodeCard && nodeCard.node !== item.name) openNodeCard(item.name, false);
+      } else {
+        if (card) closeCard(false);
+        if (nodeCard) setNodeCard(undefined);
       }
     },
-    [openCard, tool],
+    [schematic, card, nodeCard, openCard, closeCard, openNodeCard],
   );
+
 
   /** Write a value from the card (or keep it in the field, with why), as typed or put back. */
   const cardWrite = useCallback(
@@ -741,7 +1041,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         const next = keepDrawing(edit.drawn, r.text);
         const now = store.get();
         edit.written = next;
-        if (next !== now) store.set(next, { source: 'drawing', group: `card:${card.session}` });
+        const name = schematic?.circuit.parts.find((x) => x.key === card.key)?.name ?? card.key;
+        if (next !== now) store.set(next, { source: 'drawing', group: `card:${card.session}`, label: t('valueLabel', { name, value: value.trim() }) });
         kept = value.trim();
       }
       const refused = r.kind === 'refused' ? { reason: r.reason, ...(r.fix ? { fix: r.fix } : {}) } : how === 'put-back' && value ? refusedOf(edit.spot, value, letter) : undefined;
@@ -844,16 +1145,37 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
 
   const chooseTool = useCallback(
     (next: Tool) => {
+      const byKey = lastInput.current === 'key';
+      setToolByKey(byKey);
       setTool(next);
-      if (next !== 'select') {
-        setCard(undefined);
-        setEditing(false);
-        setNoteWanted(false);
-        announce(next === 'wire' ? t('hintWire', { back: phone ? t('hintBackPhone') : t('hintBackDesk') }) : t('hintPlacing', { part: toolPhrase(next), back: phone ? t('hintBackPhone') : t('hintBackDesk') }));
-      }
+      setHand(isPartKind(next) ? handFor(next) : undefined);
+      setWireDraft(undefined);
+      setLookAt(undefined);
+      setRefusal(undefined);
+      setMove(undefined);
       setPartsSheet(false);
+      if (next === 'select') {
+        // The phone's turned view was put aside for editing: offered back (the status line's Turn to fit).
+        if (turnedForEditing) {
+          setTurnedForEditing(false);
+          announce(t('turnBack'));
+        }
+        return;
+      }
+      setCard(undefined);
+      setNodeCard(undefined);
+      setEditing(false);
+      setNoteWanted(false);
+      setSelectedWire(undefined);
+      // A phone's turned view is another drawing than the netlist's: the tools work on it as drawn.
+      if (phone && turned && turnWanted) {
+        setTurnWanted(false);
+        setTurnedForEditing(true);
+      }
+      const hint = hintWords({ phone, tool: next, selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: true, keys: byKey });
+      announce(next === 'wire' ? hint : t('toolInHand', { part: cap(toolPhrase(next)), hint }));
     },
-    [announce, phone],
+    [announce, phone, turned, turnWanted, turnedForEditing],
   );
 
   const fit = useCallback(() => {
@@ -907,7 +1229,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     setOverlay((o) => (o === key ? null : key));
     setMoreSheet(false);
   }, []);
-  const closeOverlay = useCallback((key: OverlayKey) => setOverlay((o) => (o === key ? null : o)), []);
+  const closeOverlay = useCallback((key: OverlayKey) => {
+    // A dialog gives the focus back to what opened it; where that is gone (the Add a part form opened
+    // from Ctrl+K), the focus rule finds it a place.
+    focusCheck.current = true;
+    setOverlay((o) => (o === key ? null : o));
+  }, []);
 
   const openPalette = useCallback(() => {
     lastFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -915,70 +1242,40 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   }, []);
   const closePalette = useCallback(() => {
     setPaletteOpen(false);
-    // Back where it was, unless the command took the focus somewhere (a panel's heading, a card's field, a dialog).
+    // Back where it was, unless the command took the focus somewhere (a panel's heading, a card's field,
+    // a dialog); where that is gone too (a new circuit), the focus rule below finds it a place.
     requestAnimationFrame(() => {
       const active = document.activeElement;
       const lost = !active || active === document.body || !active.isConnected;
       if (lost && lastFocus.current?.isConnected && !document.querySelector('.modal-overlay, .popover')) lastFocus.current.focus({ preventScroll: true });
+      else if (lost) focusCheck.current = true;
     });
   }, []);
 
   // ------------------------------------------------------------------ the keyboard
+  /** The page's keys as they are in this render (set with the editor, below); one listener calls the newest. */
+  const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => undefined);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const target = e.target instanceof HTMLElement ? e.target : null;
-      const inEditor = !!target?.closest('.cm-editor');
-      const typing = !!target?.closest('input, textarea, select') || inEditor;
-      const mod = e.ctrlKey || e.metaKey;
-      const inOverlay = !!target?.closest('.modal-overlay, .popover, [role=menu]');
-      if (mod && !e.altKey && e.key.toLowerCase() === 'k') {
-        if (inOverlay) return;
-        e.preventDefault();
-        if (paletteOpen) closePalette();
-        else openPalette();
-        return;
-      }
-      if (paletteOpen || inOverlay) return;
-      if (e.key === 'Escape') {
-        // A part tool in hand goes back to Select first, as the hint line says.
-        if (partsSheet) setPartsSheet(false);
-        else if (moreSheet) setMoreSheet(false);
-        else if (card) closeCard();
-        else if (tool !== 'select') setTool('select');
-        else if (panel && !inEditor) setPanel(undefined);
-        else if (selected && !inEditor) setSelected(undefined);
-        else return;
-        e.preventDefault();
-        return;
-      }
-      if (typing) return;
-      if (mod && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      if (mod || e.altKey) return;
-      // Single keys work while the drawing or the toolbar has the focus (WCAG 2.1.4).
-      if (!target?.closest('.nb-canvas, .tools')) return;
-      if (e.key === '+' || e.key === '=') canvas.current?.zoomBy(1.2);
-      else if (e.key === '-') canvas.current?.zoomBy(1 / 1.2);
-      else if (e.key === '!') fit();
-      else {
-        const next = e.key.length === 1 ? toolForKey(e.key) : undefined;
-        if (!next) return;
-        chooseTool(next);
-      }
-      e.preventDefault();
-    };
+    const onKey = (e: KeyboardEvent): void => onKeyRef.current(e);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [paletteOpen, partsSheet, moreSheet, card, panel, tool, selected, closeCard, closePalette, openPalette, undo, redo, chooseTool, fit]);
+  }, []);
+  /** How the student last used the page: the keys, or a pointer (the hint line then says the keyboard's way to place and wire). */
+  const lastInput = useRef<'key' | 'pointer'>('pointer');
+  useEffect(() => {
+    const key = (e: KeyboardEvent): void => {
+      if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Meta' && e.key !== 'Alt') lastInput.current = 'key';
+    };
+    const pointer = (): void => {
+      lastInput.current = 'pointer';
+    };
+    window.addEventListener('keydown', key, { capture: true });
+    window.addEventListener('pointerdown', pointer, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', key, { capture: true });
+      window.removeEventListener('pointerdown', pointer, { capture: true });
+    };
+  }, []);
 
   // Ctrl+Enter (Cmd+Enter) runs from anywhere on the page, as the Run button says (aria-keyshortcuts).
   // Caught before anything else sees it (capture phase); menus and dialogs keep their keys. The
@@ -1012,11 +1309,34 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     list.push({ id: 'share', group: gCircuit, label: t('paletteShare'), keywords: 'link copy' });
     list.push({ id: 'export:ngspice', group: gCircuit, label: t('exportNgspice'), keywords: 'export save download file cir' });
     list.push({ id: 'export:ltspice', group: gCircuit, label: t('exportLtspice'), keywords: 'export save download file net' });
+    list.push({ id: 'new', group: gCircuit, label: t('newCircuit'), keywords: 'new blank empty clear start fresh circuit' });
     const gDrawing = t('paletteGroupDrawing');
     list.push({ id: 'fit', group: gDrawing, label: t('zoomFit'), keywords: 'zoom screen whole', shortcut: 'Shift 1' });
     list.push({ id: 'zoom-in', group: gDrawing, label: t('zoomIn'), keywords: 'bigger', shortcut: '+' });
     list.push({ id: 'zoom-out', group: gDrawing, label: t('zoomOut'), keywords: 'smaller', shortcut: '−' });
     if (phone && turned) list.push({ id: 'turn', group: gDrawing, label: turnWanted ? t('paletteAsDrawn') : t('paletteTurnToFit'), keywords: 'turn rotate upright phone' });
+    // Editing the drawing (decision 0017): every tool by name, the form, and what the selection can do.
+    const gEdit = t('paletteGroupEdit');
+    if (schematic && !tooBig) {
+      list.push({ id: 'add-part', group: gEdit, label: t('paletteAddPart'), keywords: 'add new part form nodes keyboard netlist line', shortcut: 'A' });
+      for (const tl of ['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'ground'] as const) {
+        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}`}`, shortcut: tl === 'ground' ? '0' : tl });
+      }
+      list.push({ id: 'tool:wire', group: gEdit, label: t('paletteWire'), keywords: 'wire draw line', shortcut: 'W' });
+      const sel = selected?.kind === 'part' ? schematic.circuit.parts.find((p) => p.key === selected.key) : undefined;
+      if (sel) {
+        const name = sel.name;
+        list.push({ id: `turn:${sel.key}`, group: gEdit, label: t('paletteTurn', { name }), keywords: 'turn rotate quarter', shortcut: 'T' });
+        list.push({ id: `mirror:${sel.key}`, group: gEdit, label: t('paletteMirror', { name }), keywords: 'mirror flip', shortcut: 'M' });
+        list.push({ id: `reverse:${sel.key}`, group: gEdit, label: t('paletteReverse', { name }), keywords: 'reverse swap ends nodes polarity', shortcut: 'Shift R' });
+        list.push({ id: `move:${sel.key}`, group: gEdit, label: t('paletteMove', { name }), keywords: 'move drag pick place', shortcut: 'Shift ←↑→↓' });
+        list.push({ id: `conn:${sel.key}`, group: gEdit, label: t('paletteConnections', { name }), keywords: 'connect disconnect wire node ends connections' });
+        list.push({ id: `delete:${sel.key}`, group: gEdit, label: t('paletteDelete', { name }), keywords: 'delete remove erase', shortcut: 'Del' });
+      }
+      if (selectedWire) list.push({ id: 'delete-wire', group: gEdit, label: t('paletteDeleteWire'), keywords: 'delete remove wire', shortcut: 'Del' });
+      if (selected?.kind === 'node' && selected.name !== GROUND) list.push({ id: `rename:${selected.name}`, group: gEdit, label: t('paletteRename', { name: nodeWords(schematic, selected.name) }), keywords: 'rename node name label' });
+      if (selected?.kind === 'node' && selected.name === GROUND && schematic.drawing.grounds.length) list.push({ id: 'delete-ground', group: gEdit, label: t('paletteDeleteGround'), keywords: 'delete remove ground', shortcut: 'Del' });
+    }
     for (const p of shown?.scene.parts ?? []) {
       list.push({ id: `part:${p.key}`, group: t('paletteGroupParts'), label: t('paletteChangePart', { name: p.name, kind: elementInfo(p.letter)?.name ?? p.letter }), keywords: `select open card ${p.letter} value` });
     }
@@ -1033,7 +1353,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       list.push({ id: `example:${e.id}`, group: t('paletteGroupExamples'), label, keywords: `${e.id} example circuit video ${plainWords(`${video ?? ''} ${e.name}`)}` });
     }
     return list;
-  }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, shown, plain, exampleId]);
+  }, [liveState.running?.slow, snap.canUndo, snap.canRedo, panel, phone, turned, turnWanted, shown, plain, exampleId, schematic, tooBig, selected, selectedWire]);
 
   const runCommand = (id: string): void => {
     const [kind, arg] = id.split(/:(.*)/s) as [string, string | undefined];
@@ -1047,9 +1367,23 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     else if (kind === 'fit') fit();
     else if (kind === 'zoom-in') canvas.current?.zoomBy(1.2);
     else if (kind === 'zoom-out') canvas.current?.zoomBy(1 / 1.2);
-    else if (kind === 'turn') setTurnWanted((w) => !w);
+    else if (kind === 'turn' && !arg) setTurnWanted((w) => !w);
     else if (kind === 'part' && arg) openCard(arg);
-    else if (kind === 'font') setFont(plain ? 'handwriting' : 'plain');
+    else if (kind === 'add-part') openAddForm();
+    else if (kind === 'tool' && arg) chooseTool(arg as Tool);
+    else if ((kind === 'turn' || kind === 'mirror' || kind === 'reverse') && arg) turnPart(kind, arg);
+    else if (kind === 'move' && arg) startMove({ kind: 'part', key: arg }, 'pick');
+    else if (kind === 'delete' && arg) deleteNow({ part: arg });
+    else if (kind === 'delete-wire' || kind === 'delete-ground') deleteNow();
+    else if (kind === 'rename' && arg) openNodeCard(arg);
+    else if (kind === 'conn' && arg) {
+      openCard(arg);
+      setConnOpen(true);
+    } else if (kind === 'new') {
+      load('', { run: true });
+      focusCheck.current = true;
+      announce(t('newCircuitDone'));
+    } else if (kind === 'font') setFont(plain ? 'handwriting' : 'plain');
     else if (kind === 'settings') setOverlay('settings');
     else if (kind === 'help') setOverlay('help');
     else if (kind === 'example' && arg) onExample(arg);
@@ -1065,22 +1399,47 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [stackRef, stackRect] = useRect<HTMLElement>();
   const [noteRef, noteRect] = useRect<HTMLElement>();
   const [cardRef, cardRect] = useRect<HTMLDivElement>();
+  /** The bar of what is in hand (Turn, Mirror, Place, Cancel): red pen keeps clear of it. */
+  const [handRef, handRect] = useRect<HTMLDivElement>();
   const firstScreenInvite = shown?.scene.parts.find((p) => p.key === 'r1') ?? shown?.scene.parts.find((p) => p.letter === 'R');
-  const noteShown = !phone && noteWanted && tool === 'select' && !card && !panel && !paletteOpen && !!firstScreenInvite && !!schematic;
-  const phoneSheet: 'card' | 'parts' | 'more' | 'panel' | undefined = phone ? (card ? 'card' : partsSheet ? 'parts' : moreSheet ? 'more' : panel ? 'panel' : undefined) : undefined;
-  const strip = phone && !!card && editing;
+  const noteShown = !phone && noteWanted && tool === 'select' && !card && !nodeCard && !panel && !paletteOpen && !!firstScreenInvite && !!schematic;
+  const phoneSheet: 'card' | 'parts' | 'more' | 'panel' | undefined = phone ? (card || nodeCard ? 'card' : partsSheet ? 'parts' : moreSheet ? 'more' : panel ? 'panel' : undefined) : undefined;
+  // The strip (the field held above the on-screen keyboard) is for a touch screen; the phone's layout
+  // on a laptop (large text, zoom) keeps the sheet and its actions, which Tab reaches (WCAG 2.1.1).
+  const strip = phone && !!card && editing && (keyboard > 0 || coarse);
   const vw = win.width;
   const vh = win.height;
   const rightEdge = !phone ? Math.min(tabsRect.width ? tabsRect.left : vw, panel && sheetRect.width ? sheetRect.left : vw) : vw;
   const stackBottom = stackRect.height ? stackRect.bottom : 0;
   /** The free paper on a computer, where the card and the note may go (screen pixels). */
   const area: Box = { x0: toolsRect.right + 12, y0: Math.max(topRect.bottom, stackBottom) + 8, x1: rightEdge - 12, y1: (bottomRect.height ? bottomRect.top : vh) - 6 };
-  // A card on a computer: its height when it opened, and whether it is docked along the bottom (below).
+  // A card on a computer (a part's, or a node's): its height when it opened (the tallest since: its
+  // Connections may open), and whether it is docked along the bottom (below).
+  const openSession = card?.session ?? nodeCard?.session;
   const [cardMeasure, setCardMeasure] = useState<{ session: number; height: number } | undefined>(undefined);
   const [dockedSession, setDockedSession] = useState<number | undefined>(undefined);
-  const measured = !!card && cardMeasure?.session === card.session;
-  const cardH = Math.ceil(Math.max(CARD_H * textScale, measured ? cardMeasure.height : 0));
-  const docked = !phone && !!card && dockedSession === card.session;
+  const measured = openSession !== undefined && cardMeasure?.session === openSession;
+  const cardH = Math.ceil(Math.max((nodeCard && !card ? NODE_CARD_H : CARD_H) * textScale, measured ? cardMeasure.height : 0));
+  const docked = !phone && openSession !== undefined && dockedSession === openSession;
+  /** What the open card points at on the drawing: its part (symbol and words), or a node's name (ground: the symbol chosen). */
+  const cardTarget = useMemo((): { box: Box; body: Box } | undefined => {
+    if (!shown) return undefined;
+    if (card) {
+      const p = shown.scene.parts.find((x) => x.key === card.key);
+      return p ? { box: unionBoxes([p.box, p.labelBox])!, body: p.box } : undefined;
+    }
+    if (!nodeCard) return undefined;
+    if (nodeCard.node === GROUND) {
+      const g = shown.scene.grounds[nodeCard.ground ?? 0] ?? shown.scene.grounds[0];
+      return g ? { box: g.box, body: g.body } : undefined;
+    }
+    const l = shown.scene.nodeLabels.find((x) => x.node === nodeCard.node) ?? shown.scene.nodeLabels.find((x) => x.node === nodeCard.renamed);
+    const name = l?.lines.find((x) => x.role === 'node')?.box ?? l?.box;
+    if (l && name) return { box: l.box, body: name };
+    // A node whose name is not drawn: the card points at its copper (a pin), else it is docked.
+    const pin = shown.scene.parts.flatMap((p) => p.pins).find((q) => q.node === nodeCard.node || q.node === nodeCard.renamed);
+    return pin ? { box: inflate({ x0: pin.at.x, y0: pin.at.y, x1: pin.at.x, y1: pin.at.y }, 0.5), body: inflate({ x0: pin.at.x, y0: pin.at.y, x1: pin.at.x, y1: pin.at.y }, 0.3) } : undefined;
+  }, [shown, card, nodeCard]);
   // As wide as the text needs (larger text, a wider card: it wraps less and stays short).
   const cardWidth = Math.min(CARD_W * textScale, Math.max(320, area.x1 - area.x0));
   const insets: Insets = phone
@@ -1118,26 +1477,73 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // and the drawing fits above it, so it never covers the part or the numbers it changes.
   const base = viewInfo?.base;
   const [placement, setPlacement] = useState<CardPlacement | undefined>(undefined);
+  /** What the card was last placed for (all but its height): when only its height changed, it grew. */
+  const placedFor = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (!card || phone || !cardRect.height) return;
-    setCardMeasure((m) => (m?.session === card.session ? m : { session: card.session, height: cardRect.height }));
-  }, [card, phone, cardRect.height]);
+    if (openSession === undefined || phone || !cardRect.height) return;
+    // The tallest it has been (a refusal's words, its Connections shown).
+    setCardMeasure((m) => (m?.session === openSession && m.height >= cardRect.height - 1 ? m : { session: openSession, height: cardRect.height }));
+  }, [openSession, phone, cardRect.height]);
   useLayoutEffect(() => {
-    if (phone || !card || !base || !topRect.height || !bottomRect.height || !shown || !measured) {
+    if (phone || openSession === undefined || !base || !topRect.height || !bottomRect.height || !shown || !measured) {
       setPlacement(undefined);
+      placedFor.current = undefined;
       return;
     }
-    if (dockedSession === card.session) return;
-    const p = placeCard({ scene: shown.scene, part: card.key, view: base, area, width: cardWidth, height: cardH });
+    if (dockedSession === openSession) return;
+    if (!cardTarget) {
+      // Nothing on the drawing to put it beside (yet): docked, never left unseen (WCAG 2.4.7).
+      setPlacement(undefined);
+      setDockedSession(openSession);
+      return;
+    }
+    // The drawing is panned for the card only while it follows the fit: a view the reader (or an edit)
+    // holds stays (decision 0015: the card never covers the numbers it changes). The pan slides (where
+    // motion is not reduced) and a click just after it is not taken for an aimed one (NotebookCanvas).
+    const pan = !viewInfo?.moved;
+    const what = [openSession, card?.key, nodeCard?.node, cardLayout, base.unit, base.x, base.y, circuitKey, turnWanted, area.x0, area.x1, win.width, win.height].join('|');
+    // Grown (a value refused, its Connections shown): it keeps its place, its edge away from its part
+    // where it was, while it still fits there covering nothing; else it finds a new place.
+    if (placedFor.current === what && placement) {
+      const b = placement.box;
+      const grown = placement.side === 'above' ? { ...b, y0: b.y1 - cardH } : { ...b, y1: b.y0 + cardH };
+      const view = { unit: base.unit, x: base.x + placement.pan.x, y: base.y + placement.pan.y };
+      if (grown.y0 >= area.y0 && grown.y1 <= area.y1 && coverCost(grown, drawingRoom(shown.scene, view, area)) === 0) {
+        if (grown.y0 !== b.y0 || grown.y1 !== b.y1) setPlacement({ ...placement, box: grown });
+        return;
+      }
+    }
+    placedFor.current = what;
+    const p = card
+      ? placeCard({ scene: shown.scene, part: card.key, view: base, area, width: cardWidth, height: cardH, pan })
+      : placeCard({ scene: shown.scene, part: '', target: cardTarget, view: base, area, width: cardWidth, height: cardH, pan });
     if (!p || p.cost > 0) {
       setPlacement(undefined);
-      setDockedSession(card.session);
+      setDockedSession(openSession);
     } else setPlacement(p);
     // Not on every keystroke (shown changes as the value is typed), nor for the hint or the status line
-    // changing height: only a new card, a new window size, or a panel opening or closing beside it.
+    // changing height: only a new card, its part edited (turned, connected) or its card grown, a new
+    // window size, or a panel opening or closing beside it.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, card?.key, card?.session, measured, base?.unit, base?.x, base?.y, circuitKey, turnWanted, area.x0, area.x1, win.width, win.height]);
+  }, [phone, card?.key, nodeCard?.node, openSession, measured, cardH, cardLayout, base?.unit, base?.x, base?.y, circuitKey, turnWanted, area.x0, area.x1, win.width, win.height, !!cardTarget]);
   const offset = placement && (placement.pan.x || placement.pan.y) ? placement.pan : undefined;
+  // A card docked while the view is held (after an edit): the drawing makes room above it, and goes
+  // back where it was when the card closes, so placing part after part never walks it off the screen.
+  const freeView = useRef<{ x: number; y: number; unit: number } | undefined>(undefined);
+  const wasDocked = useRef(false);
+  useLayoutEffect(() => {
+    if (docked) {
+      wasDocked.current = true;
+      return;
+    }
+    if (wasDocked.current) {
+      wasDocked.current = false;
+      const v = freeView.current;
+      if (v && viewInfo?.moved) canvas.current?.showView(v);
+      return;
+    }
+    if (viewInfo?.moved) freeView.current = viewInfo.view;
+  }, [docked, viewInfo]);
 
   // On a computer a small drawing is drawn at most so large that a part's card fits above or below
   // it, so the card never has to cover it (decision 0015); the size is kept while a card is open.
@@ -1155,18 +1561,16 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
 
   /** Where the card is now: where it was placed, moved with its part if the reader has moved the drawing since. */
   const cardNow = useMemo(() => {
-    if (!placement || !viewInfo || !card || !shown) return undefined;
+    if (!placement || !viewInfo || openSession === undefined || !cardTarget) return undefined;
     const planned = { unit: viewInfo.base.unit, x: viewInfo.base.x + placement.pan.x, y: viewInfo.base.y + placement.pan.y };
-    const part = shown.scene.parts.find((p) => p.key === card.key);
-    if (!part) return undefined;
-    const a = boxOnScreen(planned, part.box);
-    const b = boxOnScreen(viewInfo.view, part.box);
+    const a = boxOnScreen(planned, cardTarget.body);
+    const b = boxOnScreen(viewInfo.view, cardTarget.body);
     const dx = (b.x0 + b.x1) / 2 - (a.x0 + a.x1) / 2;
     const dy = (b.y0 + b.y1) / 2 - (a.y0 + a.y1) / 2;
     const move = <T extends { x: number; y: number }>(p: T): T => ({ ...p, x: p.x + dx, y: p.y + dy });
     const box = { x0: placement.box.x0 + dx, y0: placement.box.y0 + dy, x1: placement.box.x1 + dx, y1: placement.box.y1 + dy };
     return { box, side: placement.side, notch: move(placement.notch), ...(placement.leader ? { leader: { from: move(placement.leader.from), to: move(placement.leader.to) } } : {}) };
-  }, [placement, viewInfo, card, shown]);
+  }, [placement, viewInfo, openSession, cardTarget]);
 
   // Red pen on the drawing: traps next to their part (the misread value circled), "No single answer
   // at node n1" next to the node, and while a card is open, the old node voltages crossed out.
@@ -1177,27 +1581,39 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const visible = boxOnGrid(viewInfo.base, phone ? { x0: insets.left, y0: insets.top, x1: viewInfo.size.width - insets.right, y1: viewInfo.size.height - insets.bottom } : area);
     const within: Box = { x0: Math.max(visible.x0, sc.bounds.x0 - 4), y0: Math.max(visible.y0, sc.bounds.y0 - 4), x1: Math.min(visible.x1, sc.bounds.x1 + 4), y1: Math.min(visible.y1, sc.bounds.y1 + 4) };
     const avoid: Box[] = cardNow ? [inflate(boxOnGrid(viewInfo.view, cardNow.box), 0.3)] : [];
+    if (handRect.height) avoid.push(inflate(boxOnGrid(viewInfo.view, { x0: handRect.left, y0: handRect.top, x1: handRect.right, y1: handRect.bottom }), 0.3));
     const notes: PenNote[] = [];
     const circled = new Set<string>();
-    for (const [key, trap] of [...partTraps].slice(0, 2)) {
-      const about = partBox(sc, key);
+    // While a circuit is built on the drawing: one note in all, about the part being worked on if it
+    // has one (every step of a half-built circuit has some check: the status line says the first, the
+    // Checks panel lists them all). Else up to two checks and the node with no single answer.
+    const sel = selected?.kind === 'part' ? selected.key : undefined;
+    const most = building ? 1 : 3;
+    const add = (about: Box | undefined, text: string): void => {
+      if (!about || notes.length >= most) return;
+      const note = placeNote(sc, about, text, { area: within, avoid: [...avoid, ...notes.map((n) => n.box)] });
+      if (note) notes.push(note);
+    };
+    // A controlled source just placed reads what PlainSpice chose for it: said first while it is selected.
+    for (const key of [...unchosen].sort((a, b) => Number(b === sel) - Number(a === sel))) {
       const part = schematic.circuit.parts.find((p) => p.key === key);
-      if (!about || !part) continue;
+      const control = part ? controlWords(part) : undefined;
+      if (part && control && (!building || key === sel)) add(partBox(sc, key), t('controlNote', { name: part.name, control }));
+    }
+    const ordered = [...partTraps].sort((a, b) => Number(b[0] === sel) - Number(a[0] === sel));
+    for (const [key, trap] of ordered.slice(0, 2)) {
+      const part = schematic.circuit.parts.find((p) => p.key === key);
+      if (!part) continue;
       if (onValueField(trap, part, schematic.netlist)) circled.add(key);
-      const note = placeNote(sc, about, trap.title, { area: within, avoid: [...avoid, ...notes.map((n) => n.box)] });
-      if (note) notes.push(note);
+      add(partBox(sc, key), trap.title);
     }
-    const ns = current ? record.noSingleAnswer : undefined;
-    const about = ns ? nodeBox(sc, ns.at) : undefined;
-    if (ns && about) {
-      const note = placeNote(sc, about, ns.title, { area: within, avoid: [...avoid, ...notes.map((n) => n.box)] });
-      if (note) notes.push(note);
-    }
+    const ns = current && !building ? record.noSingleAnswer : undefined;
+    if (ns) add(nodeBox(sc, ns.at), ns.title);
     const was = card && current ? wasMarks(sc, results, beforeResults, [...avoid, ...notes.map((n) => n.box)]) : [];
     return notes.length || was.length || circled.size ? { notes, was, circled } : undefined;
     // insets and area by their numbers
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewInfo?.base, viewInfo?.view, viewInfo?.size, shown, schematic, current, partTraps, record, card, results, beforeResults, cardNow?.box.x0, cardNow?.box.y0, phone]);
+  }, [viewInfo?.base, viewInfo?.view, viewInfo?.size, shown, schematic, current, partTraps, record, card, results, beforeResults, cardNow?.box.x0, cardNow?.box.y0, phone, handRect, unchosen, building, selected]);
 
   // The sticky note on a computer: beside the part it invites you to change, with a pen arrow to it.
   const notePlace = useMemo(() => {
@@ -1234,11 +1650,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
   const cardProps = cardPart && card && schematic ? cardContent(cardPart, card, schematic, record, text, cardRun) : undefined;
   const empty = !tooBig && !!schematic && schematic.scene.parts.length === 0;
-  const hint = hintWords({
+  const movingName = move && schematic ? (move.grab.kind === 'part' ? (schematic.circuit.parts.find((p) => p.key === (move.grab as { key: string }).key)?.name ?? '') : move.grab.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(schematic, move.grab.node) })) : '';
+  const hintNow = hintWords({
     phone,
     tool,
     selectedName: selectedPart?.name,
+    selectedNode: selected?.kind === 'node' && selected.name !== GROUND && schematic ? nodeWords(schematic, selected.name) : undefined,
+    selectedGround: selected?.kind === 'node' && selected.name === GROUND && !selectedWire,
+    selectedWire: selectedWire && schematic ? nodeWords(schematic, schematic.scene.wires[selectedWire.wire]?.node ?? GROUND) : undefined,
     typeHint: cardProps?.label ? cardProps.typeHint : undefined,
+    typed: !!card && card.input.trim() !== card.start.trim(),
+    nodeCard: nodeCard && schematic ? { name: nodeCard.node === GROUND ? t('groundName') : nodeWords(schematic, nodeCard.node), ground: nodeCard.node === GROUND } : undefined,
     paused: status.tone === 'paused',
     whole: viewInfo?.whole ?? true,
     turned: !!turned && shown === turned,
@@ -1246,7 +1668,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     invite: ((phone && noteWanted) || noteNoRoom) && firstScreenInvite ? firstScreenInvite.name : undefined,
     undrawn: tooBig,
     empty,
+    place: placeView && schematic ? (placeView.ok ? { joins: joinsWords(schematic, placeView) } : { refused: placeView.reason ?? '' }) : refusal && hand ? { refused: refusal } : undefined,
+    wire: tool === 'wire' ? { started: !!wireDraft, ...(refusal ? { refused: refusal } : {}) } : undefined,
+    keys: toolByKey,
+    moving: move ? { name: movingName, how: move.how, part: move.grab.kind === 'part', ...(move.preview && !move.preview.ok ? { refused: move.preview.reason ?? '' } : {}) } : undefined,
+    editingAsDrawn: phone && turnedForEditing && (tool !== 'select' || !!move),
   });
+  // A refused edit's reason is in the hint line until the next thing happens, or for a few seconds
+  // (it was said aloud too): then the hint says again what can be done now.
+  const hint = refusal && !hand && tool !== 'wire' && !move ? refusal : hintNow;
+  useEffect(() => {
+    if (!refusal) return undefined;
+    const timer = window.setTimeout(() => setRefusal(undefined), REFUSAL_SHOWN_MS);
+    return () => window.clearTimeout(timer);
+  }, [refusal]);
   const plotAvailable = hasSweeps(record);
   /** The netlist's sweep lines (.dc, .tran), by name. */
   const sweepNames = useMemo(() => [...new Set(netlist.analyses.map((i) => netlist.lines[i]?.directive?.name).filter((n): n is string => n === '.dc' || n === '.tran'))], [netlist]);
@@ -1280,19 +1715,64 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
    * The card on a computer, beside its part (place.ts), with its notch, and a leader only when it
    * crosses nothing; docked along the bottom of the paper when no side has room.
    */
+  /** A node's card, from the model's words and the last run. */
+  const nodeCardProps = ((): Omit<NodeCardProps, 'variant'> | undefined => {
+    if (!nodeCard || !schematic) return undefined;
+    const ground = nodeCard.node === GROUND;
+    const info = schematic.circuit.nodes.get(nodeCard.node) ?? (nodeCard.renamed !== undefined ? schematic.circuit.nodes.get(nodeCard.renamed) : undefined);
+    if (!ground && !info) return undefined;
+    const name = ground ? t('groundName') : (info?.text ?? nodeCard.node);
+    const n = results.nodes.find((x) => x.node === nodeCard.node);
+    const label = schematic.drawing.labels.some((l) => l.node === nodeCard.node);
+    const voltage = ground
+      ? { text: formatSI(0, 'V'), speech: DESCRIBE_STRINGS.valueIsSpeech(EDIT_STRINGS.ground, speakSI(0, 'V')), pending: false }
+      : n
+        ? { text: n.mark ? n.mark.text.replace(/^=\s*/, '') : n.words.text, speech: DESCRIBE_STRINGS.valueIsSpeech(name, n.words.speech), pending: !current }
+        : undefined;
+    return {
+      name,
+      ground,
+      input: nodeCard.input,
+      ...(nodeCard.refused ? { refused: nodeCard.refused } : {}),
+      groundName: EDIT_STRINGS.groundName,
+      voltage,
+      // No voltage from a run that found an error: why (the check), not "in a moment".
+      ...(!voltage && current && record ? { noVoltage: noNumbersReason(record) } : {}),
+      sentence: describeNode(schematic, nodeCard.node),
+      session: nodeCard.session,
+      takeFocus: nodeCard.focus,
+      onInput: (value: string) => setNodeCard((c) => (c ? { node: c.node, ...(c.renamed !== undefined ? { renamed: c.renamed } : {}), ground: c.ground, session: c.session, input: value, focus: c.focus } : c)),
+      onRename: () => renameNow(),
+      onMove: asDrawn && (ground ? schematic.drawing.grounds.length > 0 : label) ? () => startMove(ground ? { kind: 'ground', ground: Math.min(nodeCard.ground ?? 0, schematic.drawing.grounds.length - 1) } : { kind: 'label', node: nodeCard.node }, 'pick') : undefined,
+      onDeleteGround: ground && schematic.drawing.grounds.length ? () => deleteNow({ ground: Math.min(nodeCard.ground ?? 0, schematic.drawing.grounds.length - 1) }) : undefined,
+      onClose: () => closeNodeCard(),
+    };
+  })();
+
   const overlayOnPaper = (info: CanvasViewInfo): ReactNode => {
-    if (!cardProps || phone || !card) return null;
-    const own = { ...cardProps, ...cardHandlers, takeFocus: card.focus !== false, session: card.session };
+    if (phone || (!card && !nodeCard)) return null;
+    if (!card && nodeCardProps) return pinnedCard(info, <NodeCard {...nodeCardProps} variant="pinned" {...cardWhere()} />);
+    if (!cardProps || !card) return null;
+    // The value opens selected: typing replaces it, and T, M and Shift+R act on the part until a value is typed.
+    const own = { ...cardProps, ...cardHandlers, takeFocus: card.focus !== false, session: card.session, selectValue: true, edit: cardEditing };
+    return pinnedCard(info, <IndexCard {...own} variant="pinned" {...cardWhere()} />);
+  };
+  /** Which side of its part (or node) the pinned card is on, and where its notch points. */
+  const cardWhere = (): { side?: Side; notch?: number } => {
+    if (docked || !cardNow) return {};
+    const { box, side, notch } = cardNow;
+    return { side, notch: side === 'above' || side === 'below' ? notch.x - box.x0 : notch.y - box.y0 };
+  };
+  /** A card pinned on the paper: beside what it is for, or docked along the bottom. */
+  const pinnedCard = (info: CanvasViewInfo, body: ReactNode): ReactNode => {
     let style: CSSProperties;
-    let where: { side?: Side; notch?: number } = {};
     let leader: { from: { x: number; y: number }; to: { x: number; y: number } } | undefined;
     if (docked) {
       style = { left: area.x0 + Math.max(0, (area.x1 - area.x0 - cardWidth) / 2), bottom: info.size.height - area.y1, width: cardWidth };
     } else if (cardNow) {
-      const { box, side, notch } = cardNow;
+      const { box, side } = cardNow;
       leader = cardNow.leader;
       style = side === 'above' ? { left: box.x0, bottom: info.size.height - box.y1, width: cardWidth } : { left: box.x0, top: box.y0, width: cardWidth };
-      where = { side, notch: side === 'above' || side === 'below' ? notch.x - box.x0 : notch.y - box.y0 };
     } else {
       // Measured before it is placed: unseen for that moment (the focus is already in it).
       style = { left: Math.max(12, area.x0), top: Math.max(12, area.y0), width: cardWidth };
@@ -1306,7 +1786,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           </svg>
         ) : null}
         <div ref={cardRef} className={`pinned${docked ? ' is-docked' : cardNow ? '' : ' is-placing'}`} style={style}>
-          <IndexCard {...own} variant="pinned" {...where} />
+          {body}
         </div>
       </>
     );
@@ -1394,6 +1874,839 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     return { kind: 'line', line: selectedLine, ...(c ? { current: currentText(c, nodeText) } : {}), ...(c?.power ? { power: c.power.text } : {}) };
   }, [schematic, selected, selectedLine, current, record, results]);
 
+
+  // ------------------------------------------------------------------ the editor (decision 0017)
+  // Plain functions, made again each render: every edit reads the state as it is now. The model
+  // decides (src/app/editing.ts and src/schematic applyEdit); this only wires it to the page.
+
+  /** The drawing of the text as it is now: the one shown, unless the store has moved on this very frame. */
+  const currentDrawing = (): Schematic | undefined => {
+    if (tooBig) return undefined;
+    const now = store.get();
+    return schematic && schematic.netlist.text === now ? schematic : buildSchematic(now, NOTEBOOK_OPTIONS);
+  };
+  /** The phone's turned view is another drawing than the netlist's: editing shows it as drawn (and the hint says so). */
+  const asDrawnForEditing = (): void => {
+    if (phone && turned && turnWanted) {
+      setTurnWanted(false);
+      setTurnedForEditing(true);
+    }
+  };
+  /**
+   * One edit made on the drawing: its text into the store as one undo step (source 'drawing', the
+   * summary's first sentence as what Undo says), the summary announced, and the view kept still
+   * (`fit`: fitted again instead, for a part the form adds where the drawing finds room).
+   */
+  const commit = (text: string, summary: string, how: { group?: string; select?: NavItem; focus?: boolean; open?: 'card' | 'value'; fit?: boolean; notes?: readonly DrawingProblem[] } = {}): void => {
+    setRefusal(undefined);
+    focusCheck.current = true;
+    if (text !== store.get()) {
+      if (how.fit) setFitCount((n) => n + 1);
+      else canvas.current?.keep();
+      store.set(text, { source: 'drawing', label: firstSentence(summary), ...(how.group ? { group: how.group } : {}) });
+    }
+    // What PlainSpice also did to the drawing that the student should know (lines of parts the netlist
+    // no longer has removed, a line it could not use): said after the summary.
+    const said = (how.notes ?? []).filter((n) => n.severity === 'warning' || n.kind === 'orphans-dropped').map((n) => n.message);
+    announce([summary, ...said].join(' '));
+    setNoteWanted(false);
+    if (how.select) {
+      setSelected(how.select);
+      setSelectedWire(undefined);
+      pendingReveal.current = how.select;
+      if (how.focus || how.open) pendingFocus.current = { item: how.select, ...(how.open ? { open: how.open } : {}) };
+    }
+  };
+  /** An edit refused: the model's reason in the hint line and for screen readers. */
+  const refuse = (reason: string): void => {
+    setRefusal(reason);
+    announce(reason);
+  };
+  /** A model edit on the drawing as it is now: done (one undo step), or refused with the model's reason. */
+  const edit = (op: EditOp | ((s: Schematic) => EditResult), how: Parameters<typeof commit>[2] = {}): EditResult | undefined => {
+    const s = currentDrawing();
+    if (!s) return undefined;
+    const r = typeof op === 'function' ? op(s) : applyEdit(s, op);
+    if (!r.ok) {
+      refuse(r.reason ?? EDIT_STRINGS.failed);
+      return r;
+    }
+    commit(r.text, r.summary, { ...how, notes: r.notes });
+    return r;
+  };
+  /** The item an edit's result says to select: a part or a node. */
+  const selectOf = (r: EditResult): NavItem | undefined => (r.select && 'part' in r.select ? { kind: 'part', key: r.select.part } : r.select && 'node' in r.select ? { kind: 'node', name: r.select.node } : undefined);
+  /** What a grab is called in the hint line ("R1", "the ground symbol", "the name out"). */
+  const grabName = (s: Schematic, g: Grab): string => (g.kind === 'part' ? (s.circuit.parts.find((p) => p.key === g.key)?.name ?? g.key) : g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeWords(s, g.node) }));
+  const grabItem = (g: Grab): NavItem => (g.kind === 'part' ? { kind: 'part', key: g.key } : g.kind === 'ground' ? { kind: 'node', name: GROUND } : { kind: 'node', name: g.node });
+
+  /** Turn, Mirror or Reverse: the part in hand, the part being moved, else the selected part (or the one named). */
+  const turnPart = (kind: 'turn' | 'mirror' | 'reverse', key?: string): void => {
+    if (key === undefined && hand) {
+      setHand(kind === 'turn' ? turnHand(hand) : kind === 'mirror' ? mirrorHand(hand) : reverseHand(hand));
+      return;
+    }
+    const m = moveRef.current;
+    if (m) {
+      // Something being moved: a part turns or mirrors where it will land (one step with the move);
+      // Reverse changes the netlist, so it waits until the part is put down.
+      const s = currentDrawing();
+      if (!s) return;
+      const name = cap(grabName(s, m.grab));
+      const placed = m.grab.kind === 'part' ? s.drawing.parts.get(m.grab.key) : undefined;
+      if (!placed) return refuse(t('turnOnlyParts'));
+      if (kind === 'reverse') return refuse(t('reverseWhileMoving', { name }));
+      const was = m.turn ?? { rot: placed.rot, mirror: placed.mirror };
+      const next: MoveState = { ...m, turn: kind === 'turn' ? { ...was, rot: nextRotation(was.rot) } : { ...was, mirror: !was.mirror } };
+      moveRef.current = next;
+      setMove(next);
+      moveTo(moveWanted.current ?? m.preview?.to ?? placed.at);
+      announce(t(kind === 'turn' ? 'turnedMoving' : 'mirroredMoving', { name }));
+      return;
+    }
+    const part = key ?? (selected?.kind === 'part' ? selected.key : undefined);
+    if (!part) return;
+    const op: EditOp = kind === 'turn' ? { kind: 'rotate-part', part } : kind === 'mirror' ? { kind: 'mirror-part', part } : { kind: 'reverse-part', part };
+    const r = edit(op, { select: { kind: 'part', key: part } });
+    if (r?.ok && card?.key === part) setCardLayout((n) => n + 1);
+  };
+
+  /** Shift+arrow: the selected part, ground symbol or node name one grid step that way (moves in a row: one undo step). */
+  const stepSelected = (dir: 'up' | 'down' | 'left' | 'right'): void => {
+    const s = currentDrawing();
+    if (!s || !selected) return;
+    const g = grabOf(s, selected, selectedGround);
+    const to = g ? stepFrom(s, g, dir) : undefined;
+    if (!g || !to) return refuse(t('moveNoName'));
+    asDrawnForEditing();
+    edit(moveOp(g, to), { group: `move:${moveRun.current}`, select: selected });
+  };
+
+  /** Delete: the selection (or the part or ground symbol named); the focus goes to a neighbour, never lost. */
+  const deleteNow = (what?: { part?: string; ground?: number }): void => {
+    const s = currentDrawing();
+    if (!s) return;
+    const op: EditOp | undefined =
+      what?.part !== undefined ? { kind: 'delete-part', part: what.part } : what?.ground !== undefined ? { kind: 'delete-ground', ground: what.ground } : deleteOp(s, selected, selectedWire, selectedGround);
+    if (!op) return;
+    const r = applyEdit(s, op);
+    if (!r.ok) return refuse(r.reason ?? EDIT_STRINGS.failed);
+    // The neighbour: the node the part was on, ground for a ground symbol, a wire's own node.
+    let next: NavItem | undefined;
+    if (op.kind === 'delete-part') {
+      const p = s.circuit.parts.find((x) => x.key === op.part);
+      if (p) next = { kind: 'node', name: p.nodes[0] };
+    } else if (op.kind === 'delete-ground') next = { kind: 'node', name: GROUND };
+    else if (op.kind === 'delete-wire') {
+      const node = s.scene.wires[op.wire]?.node;
+      if (node !== undefined) next = { kind: 'node', name: node };
+    }
+    setCard(undefined);
+    setNodeCard(undefined);
+    setEditing(false);
+    setSelectedWire(undefined);
+    setSelectedGround(undefined);
+    commit(r.text, r.summary, next ? { select: next, focus: true, notes: r.notes } : { notes: r.notes });
+    if (!next) setSelected(undefined);
+    // A line still names what went (an F reading a deleted V2, a .tf line): the summary says which; offer it.
+    const line = r.select && 'line' in r.select ? r.select.line : r.select && 'part' in r.select ? linePartIn(r.text, r.select.part) : undefined;
+    if (line !== undefined) {
+      const head = firstSentence(r.summary);
+      setNotice({ tone: 'info', title: head, text: r.summary.slice(head.length).trim(), action: { label: t('goToLine', { line }), run: () => goToLine(line) } });
+    }
+  };
+
+  /** The Wire tool: the first click (or Enter on a node) starts a wire; a click on empty paper makes a corner; the next end finishes it. */
+  const wireAt = (end: WireStart | undefined, at: Point | undefined): void => {
+    const s = currentDrawing();
+    if (!s) return;
+    asDrawnForEditing();
+    if (!wireDraft) {
+      if (!end) return refuse(t('wireStartHere'));
+      setWireDraft({ start: end, corners: [] });
+      setRefusal(undefined);
+      announce(t('wireStarted', { node: end.node === undefined ? t('joinsNew') : nodeWords(s, end.node) }));
+      return;
+    }
+    if (end) {
+      const r = wireEdit(s, wireDraft, end);
+      if (!r.ok) return refuse(r.reason ?? EDIT_STRINGS.failed);
+      setWireDraft(undefined);
+      const item = selectOf(r);
+      // Ended from the keyboard (Enter on a node): the focus goes to the node the wire joined (the
+      // button it was on may be gone with its old name).
+      commit(r.text, r.summary, item ? { select: item, focus: lastInput.current === 'key', notes: r.notes } : { notes: r.notes });
+      return;
+    }
+    if (at) {
+      // A corner only where the wire can get to: else it could never be finished from there.
+      const corner = gridPoint(at);
+      if (!wirePreview(s, wireDraft, corner)) return refuse(t('wireNoCorner'));
+      setWireDraft({ ...wireDraft, corners: [...wireDraft.corners, corner] });
+      setRefusal(undefined);
+      announce(t('wireCorner'));
+    }
+  };
+
+  /** Places the part in hand at a grid point: back to Select with it selected and its card open on its value (Shift: the tool stays). */
+  const placeHere = (at: Point, keep: boolean): void => {
+    const s = currentDrawing();
+    if (!s || !hand) return;
+    const r = placeEdit(s, hand, at);
+    if (!r.ok) return refuse(r.reason ?? EDIT_STRINGS.failed);
+    const item = selectOf(r) ?? (hand.kind === 'ground' ? { kind: 'node' as const, name: GROUND } : undefined);
+    setLookAt(undefined);
+    // A controlled source reads what the model chose for it to start from: said, and marked in red pen
+    // until the student chooses on its card.
+    let summary = r.summary;
+    if (item?.kind === 'part' && (hand.kind === 'E' || hand.kind === 'F' || hand.kind === 'G' || hand.kind === 'H')) {
+      const placed = buildSchematic(r.text, NOTEBOOK_OPTIONS).circuit.parts.find((p) => p.key === item.key);
+      const control = placed ? controlWords(placed) : undefined;
+      if (placed && control) {
+        summary = `${summary} ${t('controlPlaced', { name: placed.name, control })}`;
+        setUnchosen((u) => new Set([...u, item.key]));
+      }
+    }
+    if (keep) {
+      commit(r.text, summary);
+      return;
+    }
+    chooseTool('select');
+    commit(r.text, summary, item ? { select: item, focus: true, ...(item.kind === 'part' ? { open: 'value' as const } : {}) } : {});
+  };
+
+  /** Picks something up to move it: dragged (the pointer holds it) or picked (the card's Move: a click or Enter puts it down). */
+  const startMove = (g: Grab, how: 'drag' | 'pick', pointer?: Point): void => {
+    const s = currentDrawing();
+    const at = s ? grabAt(s, g) : undefined;
+    if (!s || !at) return;
+    asDrawnForEditing();
+    setCard(undefined);
+    setNodeCard(undefined);
+    setEditing(false);
+    setRefusal(undefined);
+    setSelectedWire(undefined);
+    const m: MoveState = { grab: g, how, offset: pointer ? { x: pointer.x - at.x, y: pointer.y - at.y } : { x: 0, y: 0 }, preview: { grab: g, to: at, base: s.netlist.text, ok: true, schematic: s } };
+    moveRef.current = m;
+    moveWanted.current = at;
+    setMove(m);
+    const item = grabItem(g);
+    setSelected(item);
+    if (how === 'pick') {
+      // On the drawing at once (the arrow keys move it from the very next key), and again once the card has gone.
+      canvas.current?.focusItem(item);
+      requestAnimationFrame(() => canvas.current?.focusItem(item));
+      announce(t('pickedUp', { name: cap(grabName(s, g)), hint: hintWords({ phone, tool: 'select', selectedName: undefined, typeHint: undefined, whole: true, turned: false, asDrawn: true, moving: { name: grabName(s, g), how: 'pick', part: g.kind === 'part' } }) }));
+    }
+  };
+  /** The moving thing wanted at a point: previewed once a frame (the model's move, the drawing it gives). */
+  const moveTo = (to: Point): void => {
+    moveWanted.current = to;
+    if (moveFrame.current !== undefined) return;
+    moveFrame.current = requestAnimationFrame(() => {
+      moveFrame.current = undefined;
+      const m = moveRef.current;
+      const want = moveWanted.current;
+      const s = currentDrawing();
+      if (!m || !want || !s || previewFits(m, want, s.netlist.text)) return;
+      const next = { ...m, preview: movePreview(s, m.grab, want, m.turn) };
+      moveRef.current = next;
+      setMove(next);
+      if (m.how === 'pick') sayWhereSoon();
+      if (moveReveal.current) {
+        moveReveal.current = false;
+        const box = moveBox(s, next);
+        if (box) canvas.current?.reveal(box, handRect.height ? handRect.height + 12 : 0);
+      }
+    });
+  };
+  /** Where a thing being moved is drawn now (grid units): its symbol and words where it would land, or its ghost where it cannot. */
+  const moveBox = (s: Schematic, m: MoveState): Box | undefined => {
+    const p = m.preview;
+    if (!p) return undefined;
+    const sc = p.ok ? p.schematic?.scene : undefined;
+    const g = m.grab;
+    if (g.kind === 'part') {
+      const part = sc?.parts.find((x) => x.key === g.key);
+      if (part) return unionBoxes([part.box, part.labelBox]);
+      const placed = s.drawing.parts.get(g.key);
+      const letter = s.circuit.parts.find((x) => x.key === g.key)?.letter;
+      return placed && letter ? symbolGeometry(letter, p.to, m.turn?.rot ?? placed.rot, m.turn?.mirror ?? placed.mirror).box : undefined;
+    }
+    if (g.kind === 'ground') return symbolGeometry('ground', p.to, s.drawing.grounds[g.ground]?.rot ?? 0, false).box;
+    return sc?.nodeLabels.find((l) => l.node === g.node)?.box ?? { x0: p.to.x - 1, y0: p.to.y - 1, x1: p.to.x + 1, y1: p.to.y + 1 };
+  };
+  /** Puts it down where it is wanted: one undo step, or back where it was with the model's reason. */
+  const dropMove = (): void => {
+    const m = moveRef.current;
+    moveRef.current = undefined;
+    if (moveFrame.current !== undefined) {
+      cancelAnimationFrame(moveFrame.current);
+      moveFrame.current = undefined;
+    }
+    setMove(undefined);
+    const s = currentDrawing();
+    if (!m || !s) return;
+    // Made again when the text has changed since (typed in the Netlist panel, a fix, a key): a preview
+    // of an older text would put that text back.
+    const want = moveWanted.current ?? m.preview?.to;
+    const preview = want && !previewFits(m, want, s.netlist.text) ? movePreview(s, m.grab, want, m.turn) : m.preview;
+    const item = grabItem(m.grab);
+    if (!preview || !preview.ok) {
+      setSelected(item);
+      return refuse(preview?.reason ?? EDIT_STRINGS.failed);
+    }
+    if (m.grab.kind === 'ground') setSelectedGround(m.grab.ground);
+    if (!preview.result) {
+      setSelected(item);
+      if (m.how === 'pick') requestAnimationFrame(() => canvas.current?.focusItem(item));
+      return;
+    }
+    commit(preview.result.text, preview.result.summary, { select: item, focus: m.how === 'pick', notes: preview.result.notes });
+  };
+  const cancelMove = (): void => {
+    const m = moveRef.current;
+    moveRef.current = undefined;
+    setMove(undefined);
+    const s = currentDrawing();
+    if (m && s) {
+      announce(t('putBack', { name: cap(grabName(s, m.grab)) }));
+      if (m.how === 'pick') requestAnimationFrame(() => canvas.current?.focusItem(grabItem(m.grab)));
+    }
+  };
+
+  /** The Add a part form: the part in hand's kind (else a resistor), between the node selected and a new one. */
+  const openAddForm = (letter?: PartLetter, near?: string): void => {
+    const s = currentDrawing();
+    if (!s) return;
+    const kind = letter ?? (hand && hand.kind !== 'ground' ? hand.kind : 'R');
+    setAddForm(formStart(s, kind, near ?? (selected?.kind === 'node' ? selected.name : undefined)));
+    openOverlay('add-part');
+  };
+  const addFromForm = (form: PartForm): string | undefined => {
+    const s = currentDrawing();
+    if (!s) return EDIT_STRINGS.failed;
+    const r = addPartEdit(s, form);
+    if (!r.ok) return r.reason;
+    if (tool !== 'select') chooseTool('select');
+    commit(r.text, r.summary, { select: { kind: 'part', key: r.key }, focus: true, fit: true });
+    return undefined;
+  };
+
+  /** A node's card: renamed with the model's rename-node (a name another node has joins the two). */
+  const renameNow = (): void => {
+    const c = nodeCard;
+    const s = currentDrawing();
+    if (!c || !s) return;
+    const r = applyEdit(s, { kind: 'rename-node', node: c.node, name: c.input });
+    if (!r.ok) {
+      setNodeCard({ ...c, refused: r.reason ?? EDIT_STRINGS.failed });
+      announce(r.reason ?? EDIT_STRINGS.failed);
+      return;
+    }
+    const name = r.select && 'node' in r.select ? r.select.node : c.node;
+    commit(r.text, r.summary, { select: { kind: 'node', name }, notes: r.notes });
+    // The card stays open, on the node as it is now named (the drawing follows the text a frame
+    // later: until then it shows the old name's card, never none), and the focus stays in its field.
+    setNodeCard({ node: c.node, renamed: name, ground: c.ground, session: c.session, input: c.input.trim(), focus: false });
+  };
+
+  /** The open card's drawing side: Turn, Mirror, Reverse, Move, Delete, Connections, and what a dependent source reads. */
+  const cardEditing = ((): PartEditing | undefined => {
+    if (!card || !schematic) return undefined;
+    const part = schematic.circuit.parts.find((p) => p.key === card.key);
+    if (!part) return undefined;
+    const key = part.key;
+    const written = (n: string): string => (n === GROUND ? '0' : (schematic.circuit.nodes.get(n)?.text ?? n));
+    const keep = { group: `card:${card.session}`, select: { kind: 'part' as const, key } };
+    let control: ControlEditing | undefined;
+    if (part.control?.kind === 'voltage') {
+      control = {
+        kind: 'voltage',
+        plus: part.control.plus,
+        minus: part.control.minus,
+        nodes: nodeChoices(schematic, true),
+        onChange: (plus, minus) => {
+          if (edit({ kind: 'set-control', part: key, plus: written(plus), minus: written(minus) }, keep)?.ok) controlChosen(key);
+        },
+      };
+    } else if (part.control?.kind === 'current') {
+      const sources = sourceChoices(schematic, key);
+      const onChange = (source: string): void => {
+        const name = schematic.circuit.parts.find((p) => p.key === source)?.name;
+        if (name && edit({ kind: 'set-control', part: key, source: name }, keep)?.ok) controlChosen(key);
+      };
+      control = sources.length ? { kind: 'current', source: part.control.source, sources, onChange } : { kind: 'current', source: '', sources, onChange, none: EDIT_STRINGS.noSource(part.letter) };
+    }
+    return {
+      name: part.name,
+      drawn: asDrawn && schematic.drawing.parts.has(key),
+      onTurn: () => turnPart('turn', key),
+      onMirror: () => turnPart('mirror', key),
+      onReverse: () => turnPart('reverse', key),
+      onMove: () => startMove({ kind: 'part', key }, 'pick'),
+      onDelete: () => deleteNow({ part: key }),
+      ends: endsOf(schematic, key),
+      nodes: nodeChoices(schematic, true),
+      onConnect: (pin, node) => {
+        if (edit((s) => connectEdit(s, key, pin, node), { select: { kind: 'part', key } })?.ok) setCardLayout((n) => n + 1);
+      },
+      onDisconnect: (pin) => {
+        if (edit((s) => disconnectEdit(s, key, pin), { select: { kind: 'part', key } })?.ok) setCardLayout((n) => n + 1);
+      },
+      ...(control ? { control } : {}),
+      open: connOpen,
+      onOpen: (open) => setConnOpen(open),
+    };
+  })();
+
+  /** What the editor shows on the paper now: the part in hand, one that cannot go where it is dragged, a wire on its way and where wires can end, a piece of wire selected. */
+  const marks = ((): EditMarks | undefined => {
+    if (!schematic || !asDrawn) return undefined;
+    const out: EditMarks = {};
+    if (placeView) out.ghost = { kind: placeView.hand.kind, at: placeView.at, rot: placeView.hand.rot, mirror: placeView.hand.mirror, refused: !placeView.ok, pins: placeView.pins };
+    const m = move;
+    if (m?.preview && !m.preview.ok) {
+      if (m.grab.kind === 'part') {
+        const key = m.grab.key;
+        const placed = schematic.drawing.parts.get(key);
+        const part = schematic.circuit.parts.find((x) => x.key === key);
+        if (placed && part) out.ghost = { kind: part.letter, at: m.preview.to, rot: placed.rot, mirror: placed.mirror, refused: true, pins: [] };
+      } else if (m.grab.kind === 'ground') {
+        const g = schematic.drawing.grounds[m.grab.ground];
+        if (g) out.ghost = { kind: 'ground', at: m.preview.to, rot: g.rot, mirror: false, refused: true, pins: [] };
+      }
+    }
+    if (targets) out.targets = targets;
+    if (wireHover && 'end' in wireHover) out.target = wireHover.at;
+    if (wireDraft) {
+      // No way there: the straight legs to the pointer in red pen, so the student sees where it fails (not nothing).
+      const last = wireDraft.corners[wireDraft.corners.length - 1] ?? wireDraft.start.at;
+      const to = wireHover ? ('end' in wireHover ? wireHover.at : wireHover) : undefined;
+      const tried = to ? [wireDraft.start.at, ...wireDraft.corners, { x: to.x, y: last.y }, to] : [wireDraft.start.at];
+      out.wire = { points: wirePath ?? tried, node: wireDraft.start.node, start: wireDraft.start.at, corners: wireDraft.corners, refused: !!wireHover && !wirePath };
+    }
+    if (selectedWire) {
+      const w = schematic.scene.wires[selectedWire.wire];
+      const seg = w ? segmentsOf(w.points)[selectedWire.segment] : undefined;
+      if (w && seg) out.piece = { from: selectedWire.piece?.from ?? seg[0], to: selectedWire.piece?.to ?? seg[1], node: w.node };
+    }
+    return out.ghost || out.targets || out.wire || out.piece || out.target ? out : undefined;
+  })();
+
+  /** The part in hand, a wire on its way, a part picked up: their buttons (Turn, Mirror, Place, Cancel), for a pointer without keys. */
+  // A piece of wire selected: its Delete button (a phone has no Delete key; a mouse needs no key).
+  const pieceSelected = !!selectedWire && tool === 'select' && !move && !card && !nodeCard;
+  const handBar =
+    !tooBig && (hand || wireDraft || move?.how === 'pick' || pieceSelected) ? (
+      // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a few buttons, not a form
+      <div
+        ref={handRef}
+        className={`hand-bar${phone ? ' hand-bar--phone' : ''}`}
+        role="toolbar"
+        aria-label={hand ? t('handLabel', { part: hand.kind === 'ground' ? t('toolGround') : kindName(hand.kind) }) : move ? t('editMove') : wireDraft ? t('wireLabel') : t('pieceLabel')}
+        style={phone ? { bottom: insets.bottom + 6 } : { bottom: (bottomRect.height ? vh - bottomRect.top : 0) + 10, left: area.x0, right: vw - area.x1 }}
+      >
+        {hand ? (
+          <>
+            <span className="hand-bar__what">
+              <ToolGlyph kind={hand.kind} />
+              <span className={phone ? 'visually-hidden' : undefined}>{hand.kind === 'ground' ? t('toolGround') : kindName(hand.kind)}</span>
+            </span>
+            <button type="button" className="card-action" aria-keyshortcuts="T" onClick={() => turnPart('turn')}>
+              <LineIcon name="turn" />
+              <span className="card-action__word">{t('handTurn')}</span>
+            </button>
+            {hand.kind !== 'ground' ? (
+              <button type="button" className="card-action" aria-keyshortcuts="M" onClick={() => turnPart('mirror')}>
+                <LineIcon name="mirror" />
+                <span className="card-action__word">{t('handMirror')}</span>
+              </button>
+            ) : null}
+            {phone ? (
+              <button type="button" className="button button--primary hand-bar__place" disabled={!placeView?.ok || !lookAt} onClick={() => lookAt && placeHere(lookAt, false)}>
+                <LineIcon name="place" />
+                {t('place')}
+              </button>
+            ) : null}
+            <button type="button" className="card-action" onClick={() => chooseTool('select')} aria-label={t('cancel')}>
+              <LineIcon name="close" />
+              {phone ? null : <span className="card-action__word">{t('cancel')}</span>}
+            </button>
+          </>
+        ) : null}
+        {wireDraft ? (
+          <button
+            type="button"
+            className="card-action"
+            onClick={() => {
+              setWireDraft(undefined);
+              setRefusal(undefined);
+              announce(t('wireCancelled'));
+            }}
+          >
+            <LineIcon name="close" />
+            <span className="card-action__word">{t('cancelWire')}</span>
+          </button>
+        ) : null}
+        {pieceSelected && !hand && !wireDraft && !move ? (
+          <button type="button" className="card-action" aria-keyshortcuts="Delete" onClick={() => deleteNow()}>
+            <LineIcon name="delete" />
+            <span className="card-action__word">{t('paletteDeleteWire')}</span>
+          </button>
+        ) : null}
+        {move?.how === 'pick' ? (
+          <>
+            <button type="button" className="button button--primary hand-bar__place" onClick={() => dropMove()}>
+              <LineIcon name="place" />
+              {t('place')}
+            </button>
+            <button type="button" className="card-action" onClick={() => cancelMove()}>
+              <LineIcon name="close" />
+              <span className="card-action__word">{t('cancel')}</span>
+            </button>
+          </>
+        ) : null}
+      </div>
+    ) : null;
+
+  /** Enter (or a click without a pointer) on an item: its card; with a part in hand, the Add a part form; with the Wire tool, a wire's end at a node. */
+  const onOpen = (item: NavItem): void => {
+    if (tool === 'wire') {
+      const s = currentDrawing();
+      if (!s) return;
+      if (item.kind !== 'node') return refuse(t('wireOnNode'));
+      wireAt(nodeEnd(s, item.name, wireDraft?.start.at), undefined);
+      return;
+    }
+    if (hand) {
+      if (hand.kind === 'ground') return refuse(t('groundByKeys'));
+      openAddForm(hand.kind, item.kind === 'node' ? item.name : undefined);
+      return;
+    }
+    if (move?.how === 'pick') return dropMove();
+    if (item.kind === 'part') openCard(item.key);
+    else openNodeCard(item.name);
+  };
+
+  // The canvas's side: what a press, a drag, a tap, the pointer over the paper and a double click mean now.
+  editingRef.current = {
+    hover: (info) => {
+      const q = info ? quarter(info.at) : undefined;
+      setHover((h) => ((h && q && h.x === q.x && h.y === q.y) || (!h && !q) ? h : q));
+      const m = moveRef.current;
+      const s = m?.how === 'pick' && info ? currentDrawing() : undefined;
+      if (m && s && info) moveTo(dragTarget(s, m.grab, info.at, m.offset));
+    },
+    press: (info) => {
+      if (tooBig || !schematic) return undefined;
+      if (moveRef.current?.how === 'pick' || tool !== 'select') return 'tap';
+      // The turned view is another drawing: it pans; its parts open their cards.
+      if (!asDrawn) return undefined;
+      if (info.item) return grabOf(schematic, info.item) ? 'drag' : undefined;
+      const hit = hitTest(schematic, info.at, nearness(info.unit), 'select');
+      if (!hit) return undefined;
+      return hit.kind === 'wire' ? 'tap' : 'drag-tap';
+    },
+    dragStart: (info) => {
+      const s = currentDrawing();
+      if (!s) return;
+      const hit = info.item ?? hitTest(s, info.at, nearness(info.unit), 'select');
+      const ground = hit?.kind === 'node' && hit.name === GROUND ? (hitTest(s, info.at, nearness(info.unit), 'select') as { kind: string; ground?: number } | undefined) : undefined;
+      const g = hit ? grabOf(s, hit, ground?.kind === 'ground' ? ground.ground : undefined) : undefined;
+      if (g) startMove(g, 'drag', info.at);
+    },
+    dragMove: (info) => {
+      const m = moveRef.current;
+      const s = currentDrawing();
+      if (m && s) moveTo(dragTarget(s, m.grab, info.at, m.offset));
+    },
+    dragEnd: (info, cancelled) => {
+      const m = moveRef.current;
+      if (!m) return;
+      if (cancelled) return cancelMove();
+      const s = currentDrawing();
+      if (info && s) moveWanted.current = dragTarget(s, m.grab, info.at, m.offset);
+      dropMove();
+    },
+    tap: (info) => {
+      const s = currentDrawing();
+      if (!s) return;
+      const m = moveRef.current;
+      if (m?.how === 'pick') {
+        moveWanted.current = dragTarget(s, m.grab, info.at, m.offset);
+        dropMove();
+        return;
+      }
+      if (hand) {
+        const at = gridPoint(info.at);
+        // A touch has no pointer to follow: the first tap shows where it would go, Place (or a second tap there) places it.
+        if (info.pointer === 'touch' && !(lookAt && samePoint(lookAt, at))) {
+          setLookAt(at);
+          setRefusal(undefined);
+          return;
+        }
+        placeHere(at, info.shift);
+        return;
+      }
+      if (tool === 'wire') {
+        const tol = nearness(info.unit) * (info.pointer === 'touch' ? 1.6 : 1);
+        // A click on a part's symbol (or a ground symbol) means that part: its nearer pin, never a corner inside it.
+        wireAt(wireStartOf(hitTest(s, info.at, tol, 'wire')) ?? symbolEnd(s, info.at, tol), info.at);
+        return;
+      }
+      // Select: what has no button of its own (a part's words, a second ground symbol, a piece of wire).
+      const hit = hitTest(s, info.at, nearness(info.unit), 'select');
+      if (hit?.kind === 'wire') {
+        setCard(undefined);
+        setNodeCard(undefined);
+        setRefusal(undefined);
+        const node: NavItem | undefined = hit.node !== undefined ? { kind: 'node', name: hit.node } : undefined;
+        setSelected(node);
+        setSelectedWire({ wire: hit.wire, segment: hit.segment, piece: hit.piece });
+        // The keys (Delete) work from the drawing: the focus goes to the wire's node.
+        if (node) requestAnimationFrame(() => canvas.current?.focusItem(node));
+      } else if (hit?.kind === 'part') openCard(hit.key);
+      else if (hit?.kind === 'ground') {
+        setSelectedGround(hit.ground);
+        openNodeCard(GROUND, true, hit.ground);
+      } else if (hit?.kind === 'label') openNodeCard(hit.node);
+    },
+    doubleClick: (info) => {
+      if (tool !== 'select' || !schematic || moveRef.current) return;
+      const hit = info.item?.kind === 'part' ? info.item : hitTest(schematic, info.at, nearness(info.unit), 'select');
+      if (hit?.kind === 'part') openCard(hit.key, true, true);
+    },
+  };
+
+  /** What an editing key does here: true when it did something. Single keys work only while the drawing (or, for the part in hand, the toolbar) has the focus (WCAG 2.1.4). */
+  const runEditKey = (k: EditKey, onDrawing: boolean): boolean => {
+    switch (k.kind) {
+      case 'tool':
+        chooseTool(k.tool);
+        return true;
+      case 'turn':
+      case 'mirror':
+      case 'reverse':
+        if (hand || move || (onDrawing && selected?.kind === 'part')) {
+          turnPart(k.kind);
+          return true;
+        }
+        // On a node, or nothing selected: say why nothing happens.
+        if (onDrawing) {
+          refuse(t('turnPartFirst'));
+          return true;
+        }
+        return false;
+      case 'move':
+        if (!onDrawing || !selected || move) return false;
+        stepSelected(k.dir);
+        return true;
+      case 'delete':
+        if (!onDrawing) return false;
+        if (!selected && !selectedWire) {
+          refuse(t('deleteNothing'));
+          return true;
+        }
+        if (selected?.kind === 'node' && selected.name !== GROUND && !selectedWire) {
+          refuse(t('deleteNodeWhy'));
+          return true;
+        }
+        if (move) {
+          const s = currentDrawing();
+          if (s) refuse(t('deleteWhileMoving', { name: cap(grabName(s, move.grab)) }));
+          return true;
+        }
+        deleteNow();
+        return true;
+      case 'add':
+        openAddForm();
+        return true;
+    }
+  };
+
+  // The page's keys (the one listener above calls this).
+  onKeyRef.current = (e: KeyboardEvent): void => {
+    const target = e.target instanceof HTMLElement ? e.target : null;
+    const inEditor = !!target?.closest('.cm-editor');
+    const typing = !!target?.closest('input, textarea, select') || inEditor;
+    const mod = e.ctrlKey || e.metaKey;
+    const inOverlay = !!target?.closest('.modal-overlay, .popover, [role=menu]');
+    if (mod && !e.altKey && e.key.toLowerCase() === 'k') {
+      if (inOverlay) return;
+      e.preventDefault();
+      if (paletteOpen) closePalette();
+      else openPalette();
+      return;
+    }
+    if (paletteOpen || inOverlay) return;
+    if (e.key === 'Escape') {
+      // What is in progress stops first, then the tool goes back to Select, as the hint line says.
+      if (move) cancelMove();
+      else if (wireDraft) {
+        setWireDraft(undefined);
+        setRefusal(undefined);
+        announce(t('wireCancelled'));
+      } else if (partsSheet) setPartsSheet(false);
+      else if (moreSheet) setMoreSheet(false);
+      else if (card) closeCard();
+      else if (nodeCard) closeNodeCard();
+      else if (tool !== 'select') chooseTool('select');
+      else if (panel && !inEditor) setPanel(undefined);
+      else if (selectedWire && !inEditor) setSelectedWire(undefined);
+      else if (selected && !inEditor) setSelected(undefined);
+      else return;
+      e.preventDefault();
+      return;
+    }
+    if (typing) return;
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    if (mod || e.altKey) return;
+    // A card's buttons: T, M, Shift+R and Delete act on its part, as its buttons say (and Delete on a
+    // ground symbol's card deletes the symbol); no other single key does anything there, so a letter
+    // never switches the tool under the card (WCAG 2.1.4).
+    const onCard = target?.closest('.index-card');
+    if (onCard) {
+      const k = editKey(e);
+      if (!k || (k.kind !== 'turn' && k.kind !== 'mirror' && k.kind !== 'reverse' && k.kind !== 'delete')) return;
+      // Only the Delete key deletes from a card (its button says Del): Backspace there is too easily pressed.
+      if (k.kind === 'delete' && e.key !== 'Delete') return;
+      e.preventDefault();
+      if (card && k.kind === 'delete') deleteNow({ part: card.key });
+      else if (card && k.kind !== 'delete') turnPart(k.kind, card.key);
+      else if (nodeCard?.node === GROUND && k.kind === 'delete' && schematic?.drawing.grounds.length) deleteNow({ ground: Math.min(nodeCard.ground ?? 0, schematic.drawing.grounds.length - 1) });
+      else refuse(k.kind === 'delete' ? t('deleteNodeWhy') : t('turnPartFirst'));
+      return;
+    }
+    // The drawing: its parts' and nodes' buttons, or the paper itself (a click on a piece of wire or on
+    // empty paper gives the paper the focus).
+    const onDrawing = !!target?.closest('.nb-hits') || !!target?.classList.contains('nb-canvas');
+    // A part picked up (the card's Move): the arrow keys move it, Enter puts it down (from the drawing,
+    // or from nowhere while the focus is on its way there).
+    const lost = !target || target === document.body || !target.isConnected;
+    const picked = moveRef.current;
+    if (picked?.how === 'pick' && (onDrawing || lost)) {
+      const dir = ({ ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' } as const)[e.key as 'ArrowUp'];
+      if (dir) {
+        e.preventDefault();
+        const from = moveWanted.current ?? picked.preview?.to;
+        const v = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir];
+        moveReveal.current = true;
+        if (from) moveTo({ x: from.x + v[0]!, y: from.y + v[1]! });
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        dropMove();
+        return;
+      }
+    }
+    // Single keys work while the drawing or the toolbar has the focus (WCAG 2.1.4), not in what is
+    // shown over the paper (a card, a notice).
+    if (!target?.closest('.nb-canvas, .tools, .empty-card') || target.closest('.nb-anchored')) return;
+    if (e.key === '+' || e.key === '=') canvas.current?.zoomBy(1.2);
+    else if (e.key === '-') canvas.current?.zoomBy(1 / 1.2);
+    else if (e.key === '!') fit();
+    else {
+      const k = editKey(e);
+      if (!k || !runEditKey(k, onDrawing)) return;
+    }
+    e.preventDefault();
+  };
+
+  // A node just renamed: its card goes over to the new name once the drawing has it.
+  useEffect(() => {
+    if (!nodeCard?.renamed || !schematic || !schematic.circuit.nodes.has(nodeCard.renamed)) return;
+    const { renamed, ...rest } = nodeCard;
+    setNodeCard({ ...rest, node: renamed });
+  }, [nodeCard, schematic]);
+
+  // The text changed while something is being moved (typed in the Netlist panel, a fix): the preview
+  // is made again from the text as it is, or the move ends when what it moves is gone.
+  useEffect(() => {
+    const m = moveRef.current;
+    if (!m || !schematic || schematic.netlist.text !== store.get() || m.preview?.base === schematic.netlist.text) return;
+    if (!grabAt(schematic, m.grab)) {
+      moveRef.current = undefined;
+      setMove(undefined);
+      return;
+    }
+    moveTo(moveWanted.current ?? m.preview?.to ?? grabAt(schematic, m.grab)!);
+    // Only when the drawing changes under a move.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [schematic]);
+
+  // The focus rule: after an edit, an undo or a redo, a closed palette or a new circuit, once the
+  // drawing has caught up, the focus is somewhere: where it was if that is still there, else the
+  // selected item, else the drawing's first item, else (a blank page) the blank page's Add a part.
+  useEffect(() => {
+    if (!focusCheck.current || (schematic && schematic.netlist.text !== store.get())) return;
+    focusCheck.current = false;
+    const s = schematic;
+    const item = s && selected && (selected.kind === 'part' ? s.scene.parts.some((p) => p.key === selected.key) : selected.name === GROUND ? s.scene.grounds.length > 0 : s.circuit.nodes.has(selected.name)) ? selected : s ? readingOrder(s)[0] : undefined;
+    // A dialog closing may still be on the page for a few frames (and gives the focus back as it goes).
+    let tries = 0;
+    const look = (): void => {
+      const active = document.activeElement;
+      if (active && active !== document.body && active.isConnected) return;
+      if (document.querySelector('.modal-overlay, .popover, .palette')) {
+        if (tries++ < 30) requestAnimationFrame(look);
+        return;
+      }
+      if (item) canvas.current?.focusItem(item);
+      else document.querySelector<HTMLElement>('.empty-card .button--primary')?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(look);
+  });
+
+  // After an edit, once the drawing has caught up: the item it made or moved, with its words, is in
+  // view (panned just enough, clear of the bars over the paper).
+  useEffect(() => {
+    const item = pendingReveal.current;
+    if (!item || !schematic || schematic.netlist.text !== store.get()) return;
+    pendingReveal.current = undefined;
+    const sc = schematic.scene;
+    const box =
+      item.kind === 'part'
+        ? (() => {
+            const p = sc.parts.find((x) => x.key === item.key);
+            return p ? unionBoxes([p.box, p.labelBox]) : undefined;
+          })()
+        : item.name === GROUND
+          ? sc.grounds[0]?.box
+          : sc.nodeLabels.find((l) => l.node === item.name)?.box;
+    if (box) requestAnimationFrame(() => canvas.current?.reveal(box, handRect.height ? handRect.height + 12 : 0));
+    // Only when the drawing changes after an edit.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [schematic]);
+
+  // After an edit, once the drawing has caught up: the focus goes to the item it named (a card opens on a part just placed).
+  useEffect(() => {
+    const want = pendingFocus.current;
+    if (!want || !schematic || schematic.netlist.text !== store.get()) return;
+    pendingFocus.current = undefined;
+    const item = want.item;
+    const there = item.kind === 'part' ? schematic.scene.parts.some((p) => p.key === item.key) : item.name === GROUND ? schematic.scene.grounds.length > 0 : schematic.circuit.nodes.has(item.name);
+    if (!there) {
+      const first = readingOrder(schematic)[0];
+      setSelected(first);
+      if (first) requestAnimationFrame(() => canvas.current?.focusItem(first));
+      return;
+    }
+    if (want.open && item.kind === 'part') openCard(item.key, true, want.open === 'value');
+    else requestAnimationFrame(() => canvas.current?.focusItem(item));
+  }, [schematic, store, openCard]);
+
   const panelBody = (id: PanelId): ReactNode => {
     switch (id) {
       case 'netlist':
@@ -1426,8 +2739,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         return (
           <ChecksPanel
             traps={traps}
+            drawing={drawingWarnings}
             partOfLine={(line) => schematic?.circuit.parts.find((p) => p.line + 1 === line)?.name}
             onGoToLine={(trap) => goToLine(trap.line)}
+            onGoToDrawingLine={(line) => {
+              // A drawing line is folded away in the Netlist panel: shown, at that line.
+              setFolded(false);
+              goToLine(line);
+            }}
             onFix={(fix) => applyFix(fix, 'panel')}
             headingRef={panelHeading}
           />
@@ -1477,7 +2796,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const panelSection = panel ? (
     <section id="panel" className={`sheet sheet--${panel}`} ref={sheetRef} aria-labelledby={`panel-${panel}-title`}>
       {phone ? <span className="grab" aria-hidden="true" /> : null}
-      <PanelHead id={panel} {...(panel === 'checks' && checks.length ? { sub: checksSub(checks.length)! } : {})} onClose={() => setPanel(undefined)} headingRef={panelHeading} />
+      <PanelHead id={panel} {...(panel === 'checks' && checkCount ? { sub: checksSub(checkCount)! } : {})} onClose={() => setPanel(undefined)} headingRef={panelHeading} />
       {panel === 'netlist' ? (
         <div className="card-body">{panelBody(panel)}</div>
       ) : (
@@ -1508,7 +2827,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         </button>
       </div>
       <div className="card-body parts-sheet">
-        <PartsSheetList tool={tool} onPick={chooseTool} />
+        <PartsSheetList
+          tool={tool}
+          onPick={chooseTool}
+          onAdd={() => {
+            setPartsSheet(false);
+            openAddForm();
+          }}
+        />
       </div>
     </section>
   );
@@ -1559,7 +2885,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         onClick={(e) => {
           e.preventDefault();
           if (selected) canvas.current?.focusItem(selected);
-          else document.querySelector<HTMLElement>('.nb-hit[tabindex="0"]')?.focus();
+          else (document.querySelector<HTMLElement>('.nb-hit[tabindex="0"]') ?? document.querySelector<HTMLElement>('.empty-card .button--primary'))?.focus();
         }}
       >
         {t('skipToDrawing')}
@@ -1591,7 +2917,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
 
       {!phone ? (
         <nav className="margin" ref={toolsRef} inert={inert} aria-label={t('partsLabel')}>
-          <PartsToolbar tool={tool} onTool={chooseTool} />
+          <PartsToolbar tool={tool} onTool={chooseTool} onAdd={() => openAddForm()} />
         </nav>
       ) : null}
 
@@ -1599,16 +2925,20 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         <h2 className="visually-hidden" id={drawingNameId}>
           {t('drawingHeading')}
         </h2>
-        {empty ? (
-          // Nothing to draw yet: where to start, on the paper itself.
+        {empty && tool === 'select' && !move ? (
+          // Nothing drawn yet: where to start, on the paper itself (out of the way once a tool is chosen).
           <section className="empty-card" aria-labelledby="empty-title" style={{ left: area.x0, top: area.y0, right: vw - area.x1, bottom: vh - area.y1 }}>
             <div className="empty-card__body">
               <h2 className="empty-card__title" id="empty-title">
                 {t('emptyTitle')}
               </h2>
-              <p>{t('emptyText')}</p>
+              <p>{phone ? t('emptyTextPhone') : t('emptyText')}</p>
               <p className="empty-card__actions">
-                <button type="button" className="button button--primary" onClick={() => openPanel('netlist')}>
+                <button type="button" className="button button--primary" onClick={() => openAddForm()}>
+                  <LineIcon name="add" />
+                  {t('emptyAdd')}
+                </button>
+                <button type="button" className="button" onClick={() => openPanel('netlist')}>
                   {t('emptyNetlist')}
                 </button>
                 <button type="button" className="button" onClick={() => openOverlay('examples')}>
@@ -1623,7 +2953,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             ref={canvas}
             schematic={shown}
             results={results}
-            pending={!!record && !current}
+            pending={(!!record && !current) || !!stale}
             plain={plain}
             colours={colours}
             label={NOTEBOOK_STRINGS.drawingLabel(title)}
@@ -1636,23 +2966,33 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             open={card?.key}
             pen={pen}
             onSelect={onSelect}
-            onOpen={onOpen}
+            onOpen={(item) => onOpen(item)}
             onEscape={() => {
-              if (card) closeCard();
-              else setSelected(undefined);
+              // The page's own Escape (in the keys above) handles a move, a wire, a tool or a card.
+              if (move || wireDraft || tool !== 'select' || card || nodeCard) return;
+              setSelected(undefined);
             }}
+            editing={schematic && !tooBig ? canvasEditing : undefined}
+            marks={marks}
+            mode={move ? 'move' : tool === 'select' ? 'select' : tool === 'wire' ? 'wire' : 'place'}
+            arrowsTaken={move?.how === 'pick'}
+            quietSelection={!!selectedWire}
+            keysHelp={t('drawingKeys')}
+            roleDescription={t('drawingRole')}
             insets={insets}
             // A computer keeps its fit when a card opens; a phone fits again above the card's sheet,
             // and again above the strip while a value is typed.
-            fitKey={`${circuitKey}:${fitCount}:${phone ? 'phone' : 'desk'}:${shown === turned ? 'turned' : 'as-drawn'}:${phone && card ? `card:${card.key}` : ''}:${strip ? 'edit' : ''}:${shown.scene.parts.length}`}
-            minUnit={minUnit}
+            fitKey={`${circuitKey}:${fitCount}:${phone ? 'phone' : 'desk'}:${seen === turned ? 'turned' : 'as-drawn'}:${phone && card ? `card:${card.key}` : ''}:${phone && nodeCard ? `node:${nodeCard.node}` : ''}:${strip ? 'edit' : ''}`}
+            // A phone shown as drawn while editing (it was turned to fit): the whole drawing, smaller,
+            // so no part is off the screen where the student was looking; two fingers zoom in.
+            minUnit={editingWhole ? Math.max(4, Math.min(minUnit, phoneView.wholeUnit)) : minUnit}
             maxUnit={maxUnit}
             padding={phone ? 10 : 24}
-            fill={asDrawnOnPhone && phoneView.pans ? 'height' : 'whole'}
+            fill={asDrawnOnPhone && phoneView.pans && !editingWhole ? 'height' : 'whole'}
             focus={cardFocus}
             frame={frame}
             offset={offset}
-            hold={!!card || typingNetlist}
+            hold={!!card || !!nodeCard || typingNetlist || !!move || tool !== 'select'}
             onView={setViewInfo}
             overlay={overlayOnPaper}
           />
@@ -1662,6 +3002,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
           </div>
         )}
         <div className="margin-line" aria-hidden="true" />
+        {handBar}
         {edges.left ? (
           <button type="button" className="more-edge more-edge--left" style={{ top: edgeTop, left: phone ? 4 : insets.left - 14 }} onClick={() => panSideways(-1)}>
             <LineIcon name="chevron-left" />
@@ -1727,13 +3068,22 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
               sheetRef={sheetRef}
             />
           ) : null}
+          {phoneSheet === 'card' && !card && nodeCardProps ? (
+            <div className="sheet sheet--card" ref={sheetRef as (el: HTMLDivElement | null) => void}>
+              <NodeCard {...nodeCardProps} variant="sheet" />
+            </div>
+          ) : null}
           {phoneSheet === 'card' && cardProps ? (
             <div className="sheet sheet--card" ref={sheetRef as (el: HTMLDivElement | null) => void}>
               <IndexCard
                 {...cardProps}
                 {...cardHandlers}
+                edit={cardEditing}
                 variant={strip ? 'strip' : 'sheet'}
                 focusField={false}
+                // The arrow keys on the drawing move the card along without taking the focus into it.
+                takeFocus={card?.focus !== false}
+                {...(card ? { session: card.session } : {})}
                 onFieldFocus={() => setEditing(true)}
                 onFieldBlur={(next) => {
                   if (!next?.closest('.index-card')) setEditing(false);
@@ -1753,7 +3103,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
               partsOpen={partsSheet}
               panel={panel}
               moreOpen={moreSheet}
-              checks={checks.length}
+              checks={checkCount}
               onSelectTool={() => chooseTool('select')}
               onParts={() => {
                 setPartsSheet((o) => !o);
@@ -1772,7 +3122,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       ) : (
         <>
           <div className="right" inert={inert}>
-            <PanelTabs open={panel} checks={checks.length} onToggle={togglePanel} tabsRef={tabsRef} />
+            <PanelTabs open={panel} checks={checkCount} onToggle={togglePanel} tabsRef={tabsRef} />
             {panelSection}
           </div>
           <footer className="bottom" ref={bottomRef} inert={inert} style={{ right: Math.max(14, insets.right - 4) }}>
@@ -1795,6 +3145,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         font={font}
         onFont={setFont}
         offlineReady={offlineReady}
+        addPart={addForm && schematic ? { schematic: currentDrawing() ?? schematic, start: addForm, onAdd: addFromForm } : undefined}
       />
       {paletteOpen ? <CommandPalette commands={commands} onRun={runCommand} onClose={closePalette} /> : null}
     </div>

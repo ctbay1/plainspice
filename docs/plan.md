@@ -1,6 +1,6 @@
 # Plan
 
-*Updated 10 November 2026: milestone 1 is done; milestone 2 (drawing circuits) has started.*
+*Updated 11 November 2026: milestone 1 is done; milestone 2 (drawing circuits): steps A and B are done, step C is next.*
 
 ## Done: the first milestone
 
@@ -117,8 +117,32 @@ Done so far:
   Windows High Contrast in a dark theme shows the drawing; traps are read out with each part;
   "This line" is back under the netlist; the empty netlist, a part ngspice leaves out, and the Plot
   panel say what is going on.
-- **Next: step B**, the schematic editor (item 4): place, move and wire parts with the toolbar;
-  until then the part tools say plainly that placing comes in the next update.
+- **Step B: the schematic editor** (item 4, decision 0017): parts are placed, wired, moved,
+  turned, mirrored, reversed and deleted on the drawing, with a mouse, a finger or only the keyboard,
+  each change one undo step in the netlist (its `*@` lines), run live and said aloud. What a click
+  would do is shown before it: the part in hand with the nodes it would join (or why it cannot go
+  there), a wire's route, a part dragged with its wires following. After placing, the new part's card
+  opens on its value; the first part on a blank page also writes `.op` and `.end`, and says so. T
+  turns, M mirrors, Shift+R reverses, Shift+arrows move, Delete deletes, W wires, A opens the Add a
+  part form; the keys are on the buttons, in the hint line, in Help and in Ctrl+K. Without a pointer,
+  the form (a kind, a value, two nodes from lists) and each card's Connections (Connect to…,
+  Disconnect) build and rewire a circuit; a node's card renames it, and a name another node has joins
+  the two. On a phone: the Parts sheet, a tap to see where a part goes and Place, a finger to drag,
+  two to zoom, wires by taps, and a turned drawing shown as drawn while editing. Start here was built
+  on a blank page with the mouse and again with the keys only, and ngspice gives out = 4 V both times
+  (end-to-end tests on a computer and a phone, axe in every editing state).
+  Three reviews (interaction, accessibility, the netlist kept in step) then tried it hard, and their
+  findings were fixed the same day (decision 0017, "After the reviews of step B"): no edit loses or
+  changes the student's text behind their back (a move during typing, moving the ground symbol, the
+  folded `*@` lines, Reverse with `gnd`, a part added with the form to a drawn circuit, a drawing
+  that would connect other than the netlist); hand-drawn wires stay square; a piece of wire is the
+  stretch between junctions; the card's keys act on its part; the focus is never lost after an edit;
+  a finger pans unless it holds still on a part; the drawing is an application to screen readers;
+  a part moved with the keys stays in view and is said; calmer red pen and pencil numbers while
+  building. New tests: `schematic-edit-review.test.ts` (with a seeded run of random edits on every
+  example) and `tests/e2e/editor-review.spec.ts`.
+- **Next: step C**, the examples drawn as in the videos (their own `*@` lines, so "As in the video"
+  can replace "As drawn" on phones), and the final reviews of milestone 2.
 
 ## Next
 
@@ -138,6 +162,12 @@ Done so far:
   tab"; both are in src/spice and src/schematic and need a spoken variant there. Text-spacing
   overrides (WCAG 1.4.12) can make a result touch its arrow on the drawing. Netlist and another
   panel side by side on wide screens. The Plot panel is drawn again each time it opens.
+- **Step B's known gaps**: a piece of wire can be deleted but not dragged; what a controlled source
+  reads is chosen from lists, not by tapping the drawing; turning a part in a crowded drawing can put
+  its words on a wire (the scene finds no free side), and a node's name keeps room for its result,
+  so before there is one it can look far from its pin; a new circuit's title line is `* circuit`
+  (a name for Tarık to choose). The drawing is an application to screen readers, which NVDA and JAWS
+  should take as focus mode: to be tried with them (above), as are browsers other than Chromium.
 - **Small known gaps**: the editor colours a word after an R, C or L value as a model name even
   when no `.model` defines it (the check underlines it as an error and explains it; the colour
   would need the netlist's model names inside CodeMirror's line-by-line highlighter); a

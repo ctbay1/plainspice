@@ -43,12 +43,17 @@ export function SeverityLabel({ severity }: { severity: Trap['severity'] }): Rea
 
 export function ChecksPanel({
   traps,
+  drawing = [],
   partOfLine,
   onGoToLine,
+  onGoToDrawingLine,
   onFix,
   headingRef,
 }: {
   traps: readonly Trap[];
+  /** What is wrong with the drawing lines (*@): a line PlainSpice cannot read or use, said with its line. */
+  drawing?: readonly { message: string; line?: number | undefined }[];
+  onGoToDrawingLine?: (line: number) => void;
   /** The name of the part on a line ("R1"), for the "Line 3" buttons' words. */
   partOfLine?: (line: number) => string | undefined;
   onGoToLine: (trap: Trap) => void;
@@ -75,9 +80,34 @@ export function ChecksPanel({
 
   // Each trap's place in reading order, across the severity groups.
   const placeOf = new Map(groups.flatMap((g) => g.traps).map((trap, i) => [trap, i]));
+  const drawingSection = drawing.length ? (
+    <section className="trap-group" aria-labelledby="traps-drawing">
+      <h3 id="traps-drawing" className="trap-group__title">
+        {t('checksDrawingTitle')}
+      </h3>
+      <p className="muted">{t('checksDrawingIntro')}</p>
+      <ul className="trap-list">
+        {drawing.slice(0, SHOWN_PER_GROUP).map((d, i) => (
+          <li key={`${d.line ?? 0}-${i}`} className="trap trap--warning">
+            <h4 className="trap__title" tabIndex={-1}>
+              <SeverityLabel severity="warning" />
+              <span className="visually-hidden">:</span> <span className="trap__text">{d.message}</span>
+            </h4>
+            {d.line !== undefined && onGoToDrawingLine ? (
+              <p className="trap__line">
+                <button type="button" className="link-button" onClick={() => onGoToDrawingLine(d.line!)}>
+                  {t('goToLine', { line: d.line })}
+                </button>
+              </p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  ) : null;
   return (
     <div className="checks" ref={panel}>
-      {traps.length === 0 ? (
+      {traps.length === 0 && !drawing.length ? (
         <div className="checks-ok">
           <svg className="checks-ok__tick" viewBox="0 0 44 44" aria-hidden="true" focusable="false">
             <path d="M7 24.5c3.2 2.4 6.4 5.6 9.4 10.2C21.8 23 28.6 14.4 38 7.5" />
@@ -140,6 +170,7 @@ export function ChecksPanel({
               {g.traps.length > SHOWN_PER_GROUP && <p className="muted">{tn('checksMore', g.traps.length - SHOWN_PER_GROUP)}</p>}
             </section>
           ))}
+          {drawingSection}
         </>
       )}
     </div>
