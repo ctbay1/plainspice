@@ -1050,6 +1050,12 @@ function checkMidlineComment(c: Ctx, i: number): void {
   );
 }
 
+/** The runs of a word where each part's value goes (unknown-word-13 to -21; a name in braces with .param: unknown-word-23). */
+const VALUE_PLACE_CLAIMS: Readonly<Record<string, string>> = {
+  R: 'unknown-word-13', C: 'unknown-word-14', L: 'unknown-word-15', V: 'unknown-word-16', I: 'unknown-word-17',
+  E: 'unknown-word-18', F: 'unknown-word-19', G: 'unknown-word-20', H: 'unknown-word-21',
+};
+
 /**
  * A word after a part's value that ngspice can't use there: not a parameter of the part, a value
  * the part can only report, or one number too many. ngspice stops at it (unknown-word-1 ... -11).
@@ -1066,6 +1072,33 @@ function checkUnknownWord(c: Ctx, i: number): void {
   const name = nameOf(e);
   const kind = { R: 'a resistor', C: 'a capacitor', L: 'an inductor', V: 'a voltage source', I: 'a current source', E: 'an E line', F: 'an F line', G: 'a G line', H: 'an H line' }[e.letter as 'R'];
   const efgh = 'EFGH'.includes(e.letter);
+  // A word where the value goes, with no value before it (re-check S6): a name from a .param line is
+  // that value, as ngspice reads it (unknown-word-22, -23); any other word is no number, and ngspice
+  // stops there, on E, F, G and H lines too (no polynomial: nothing came before it). Its words are
+  // not a setting's, and there is no fix that comments it out, which would leave the part with no value.
+  if (!e.value && e.fields.slice(0, k).every((x) => x.role !== 'parameter' && x.role !== 'source-function' && x.role !== 'model')) {
+    if (c.params.has(lowerAscii(word))) return;
+    const what = efgh ? (e.letter === 'E' || e.letter === 'F' ? 'gain' : 'value') : 'value';
+    // A sign with a space after it (- 5): two words, and a sign alone is no number (space-character-13).
+    const sign = cleanWord(word, true).clean;
+    const next = e.fields[k + 1];
+    if (/^[+-]$/.test(sign) && next && readNumber(next.token.text) && /^[ \t]+$/.test(c.text.slice(f.token.to, next.token.from))) {
+      const joined = `${sign}${next.token.text}`;
+      add(c, 'unknown-word', 'error', f.token, `${name}'s ${what} is not a number`,
+        `The ${word} and the ${next.token.text} are two words for SPICE: a space after a sign splits the value in two, and a sign alone is no number, so SPICE stops there. Write ${joined}.`,
+        `ngspice stops: 'unknown parameter (${ngspiceSpelling(word)})'. [space-character-13]`,
+        [fix(`Write ${joined} (${amount(readNumber(joined)!.value, e.letter)})`, change(f.token.from, next.token.to, joined))]);
+      return;
+    }
+    const model = e.letter === 'R' || e.letter === 'C' || e.letter === 'L';
+    const named = /^[A-Za-z_][A-Za-z0-9_]*$/.test(word);
+    add(c, 'unknown-word', 'error', f.token, `${name}'s ${what} is not a number`,
+      named
+        ? `${word} stands where ${name}'s ${what} goes, but it is not a number, and no .param line gives it a value, so SPICE stops there. Write the number itself, or give ${word} a value on a .param line and write it in braces: {${word}}.`
+        : `${word} stands where ${name}'s ${what} goes, but it is not a number for SPICE, so SPICE stops there. Write the number with the plain digits 0 to 9.`,
+      `${model ? `ngspice looks for a model called ${lowerAscii(word)}, warns 'can't find model', and stops` : 'ngspice stops'}: 'unknown parameter (${ngspiceSpelling(word)})'. [${VALUE_PLACE_CLAIMS[e.letter]}${named ? ', unknown-word-23' : ''}]`);
+    return;
+  }
   const prev = e.fields[k - 1];
   const glued = prev !== undefined && prev.token.to === f.token.from && /^[+-]/.test(word);
   const number = readNumber(word) !== undefined;
@@ -1204,10 +1237,8 @@ function checkIncomplete(c: Ctx, i: number): void {
           : `A G line is: name, from node, to node, control + node, control ${MINUS} node, amps per volt.`,
         `${notEnough} PlainSpice's engine (built without XSPICE) misreads the line instead, for example taking a number for a node, and its results can't be used. [missing-fields-4, missing-fields-5]`);
     } else if (!e.value) {
-      add(c, 'missing-value', 'error', span, `${name} has no ${L === 'E' ? 'gain' : 'value'}`,
-        L === 'E' ? 'An E line ends with its gain: E1 out 0 c 0 2 makes the voltage at out 2 x the voltage at c.'
-          : 'A G line ends with its value in amps per volt: G1 0 out c 0 0.5 pushes 0.5 amps for every volt at c.',
-        `${notEnough} PlainSpice's engine (built without XSPICE) reads the missing value as 0 and says nothing. [missing-value-4, missing-value-5, missing-value-6, missing-value-7]`);
+      noGain(c, i, L === 'E' ? 'An E line ends with its gain: E1 out 0 c 0 2 makes the voltage at out 2 x the voltage at c.'
+        : 'A G line ends with its value in amps per volt: G1 0 out c 0 0.5 pushes 0.5 amps for every volt at c.');
     }
     return;
   }
@@ -1218,10 +1249,28 @@ function checkIncomplete(c: Ctx, i: number): void {
       `${L === 'F' ? 'An F line is: name, from node, to node, control source, gain' : `An H line is: name, + node, ${MINUS} node, control source, volts per amp`}. F and H read a current, and SPICE can only read the current through a voltage source, so the control source is the name of a voltage source.`,
       `${notEnough} PlainSpice's engine stops: '${lowerAscii(name)}: unknown controlling source'. [missing-fields-6, missing-fields-7, missing-fields-8]`);
   } else if (!e.value) {
-    add(c, 'missing-value', 'error', span, `${name} has no ${L === 'F' ? 'gain' : 'value'}`,
-      L === 'F' ? 'An F line ends with its gain: F1 0 out Vs 3 pushes 3 x the current in Vs.' : 'An H line ends with its value in volts per amp: H1 out 0 Vs 4 makes 4 volts for every amp in Vs.',
-      `${notEnough} PlainSpice's engine (built without XSPICE) reads the missing value as 0 and says nothing. [missing-value-4, missing-value-5, missing-value-6, missing-value-7]`);
+    noGain(c, i, L === 'F' ? 'An F line ends with its gain: F1 0 out Vs 3 pushes 3 x the current in Vs.' : 'An H line ends with its value in volts per amp: H1 out 0 Vs 4 makes 4 volts for every amp in Vs.');
   }
+}
+
+/**
+ * An E, F, G or H line with no gain (or value), told apart by what follows the nodes and the control
+ * source (re-check S6). Nothing at all: native ngspice 47 stops, and PlainSpice's engine reads 0
+ * (missing-value-4 to -7). Settings but no number ("gain", "m=2"): native 47, 42 and our engine all run
+ * with 0 and say nothing (missing-value-11, -12). A word ngspice cannot read where the gain goes is no
+ * missing gain: the character checks or unknown-word say what it is.
+ */
+function noGain(c: Ctx, i: number, line: string): void {
+  const e = el(c, i);
+  if (e.fields.some((f) => f.role === 'other')) return;
+  const name = nameOf(e);
+  const gain = e.letter === 'E' || e.letter === 'F';
+  const nothing = e.fields.length === (e.letter === 'E' || e.letter === 'G' ? 5 : 4);
+  add(c, 'missing-value', 'error', e.name, `${name} has no ${gain ? 'gain' : 'value'}`,
+    nothing ? line : `${line} ${name} has settings but no ${gain ? 'gain' : 'value'}, so its output is 0.`,
+    nothing
+      ? "Native ngspice 47 stops: 'not enough parameters in line'. PlainSpice's engine (built without XSPICE) reads the missing value as 0 and says nothing. [missing-value-4, missing-value-5, missing-value-6, missing-value-7]"
+      : `ngspice uses 0 and says nothing: in one test ${name}'s output stayed at 0. [missing-value-11, missing-value-12]`);
 }
 
 function checkControlSource(c: Ctx, i: number): void {

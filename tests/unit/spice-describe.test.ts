@@ -879,6 +879,21 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
 });
 
 describe('after the re-check of the fixes (12 November 2026)', () => {
+  it('a source whose value word ngspice cannot read is no ammeter: ngspice stops there, it measures nothing (C3)', () => {
+    for (const value of ['−5', '-\u200b5', '－5', '-\u20095', '–5', 'five', 'DC −5']) {
+      const text = `* t\nV1 a 0 ${value}\nR1 a 0 1k\n.op\n.end\n`;
+      const said = describeCircuit(parseNetlist(text));
+      expect(said, value).not.toMatch(/0 V source|ammeter|measures the current/);
+      expect(said, value).toContain('V1: a voltage source with its + side at node a and its − side at ground.');
+    }
+    // A source with no value word, or a 0, is one: ngspice runs it at 0 V and measures its current (P9, P16, P16b).
+    for (const value of ['', ' 0', ' DC 0', ' dc']) {
+      expect(describeCircuit(parseNetlist(`* t\nV1 a 0${value}\nR1 a 0 1k\n.op\n.end\n`)), value).toContain('V1: a 0 V source from node a to ground: a wire, through which ngspice measures the current (the ammeter trick).');
+    }
+    // A .param name where the value goes is that value, so no ammeter either (unknown-word-22).
+    expect(describeCircuit(parseNetlist('* t\n.param Vs=5\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n'))).not.toContain('ammeter');
+  });
+
   it('a .dc line\'s "Bad syntax!" is its step only when the step is missing or 0; a word that is no number is "ngspice cannot read this line" (S5)', () => {
     const title = (line: string): string => {
       const net = parseNetlist(`* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n${line}\n.end\n`);

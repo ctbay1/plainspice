@@ -215,6 +215,8 @@ export const EXPLAIN_STRINGS = {
   missingValueKept: (what: string, quantity: string): string => `This ${what} has settings but no value, so ngspice keeps it without any ${quantity}, and says nothing.`,
   missingValueSource: (unit: string): string =>
     `This source has no DC value, so in .op ngspice uses 0 ${unit} and says so in a note ("has no value, DC 0 assumed"). An AC value alone is not a DC value.`,
+  // P16b: "dc" with no number after it is a DC value of 0 as far as ngspice is concerned: no note.
+  dcNoNumber: (unit: string): string => `This source has dc but no number after it, so in .op ngspice uses 0 ${unit}, without a message.`,
   timeZeroValue: (fn: string, value: string): string =>
     `It has no DC value, so in .op ngspice uses the ${fn} source's value at time 0: ${value}.`,
   timeZeroValueUnknown: (fn: string): string => `It has no DC value, so in .op ngspice uses the ${fn} source's value at time 0.`,
@@ -277,6 +279,8 @@ export const EXPLAIN_STRINGS = {
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
   noGainNote: (word: string): string =>
     `This line has no ${word}. PlainSpice's engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".`,
+  // missing-value-11, -12: settings ("gain" with no number, "m=2") but no value: 0 in native 47, 42 and our engine.
+  settingsNoGainNote: (word: string): string => `This line has settings but no ${word}, so ngspice uses 0 and says nothing: the output is 0.`,
   gainRatio: (gain: string, what: string): string => `${gain}: the output ${what} is ${gain} × the ${what} it reads`,
   gmMeaning: (gm: string): string => `${gm} for every volt it reads (amps per volt)`,
   rmMeaning: (r: string): string => `${r} for every amp it reads (volts per amp, which is ohms)`,
@@ -1367,6 +1371,12 @@ function partFields(p: PartContext): FieldExplanation[] {
           if (!found) addNote(p.notes, S.kMissingNote(f.token.text));
           return;
         }
+        if (valuePlaceWord(el) === f) {
+          // Where the value goes: a name from .param is that value (unknown-word-22); any other word stops
+          // ngspice, on E, F, G and H lines too (unknown-word-13 to -21; re-check S6).
+          rows.push(fieldOf(labelFor(el.letter, 'value', 0), f.token, paramValue(netlist, el)?.text ?? S.unknownWord));
+          return;
+        }
         rows.push(fieldOf(label, f.token, otherWordMeaning(el.letter, f.token.text)));
         return;
       default:
@@ -1398,6 +1408,38 @@ function partFields(p: PartContext): FieldExplanation[] {
     rows.push(fieldOf(label, f.token, f.token.text));
   });
   return rows;
+}
+
+/**
+ * The word where a part's value goes when it is no number (Av, −5, -<zero-width space>5 ...): the first
+ * word the parser could not place, with no value and no setting before it (re-check S6, C3).
+ */
+function valuePlaceWord(el: Element): Field | undefined {
+  if (el.value) return undefined;
+  const k = el.fields.findIndex((f) => f.role === 'other');
+  if (k < 0 || el.fields.slice(0, k).some((x) => x.role === 'parameter' || x.role === 'source-function' || x.role === 'model')) return undefined;
+  return el.fields[k];
+}
+
+/**
+ * A part's value written as a bare name from a .param line where the value goes (E1 b 0 a 0 Av with
+ * .param Av=10): ngspice uses the parameter's value (unknown-word-22). Undefined for anything else.
+ */
+function paramValue(netlist: Netlist, el: Element): ValueWords | undefined {
+  const f = valuePlaceWord(el);
+  const p = f ? contextOf(netlist).params.get(lowerAscii(f.token.text)) : undefined;
+  if (!f || !p) return undefined;
+  return { text: S.expressionParam(f.token.text, plain(p.reading.value, unitForValue(el.letter)), p.line + 1), value: p.reading.value, notes: [], trap: false };
+}
+
+/**
+ * The note for an E, F, G or H line with no gain, by what follows its nodes (re-check S6): nothing at
+ * all (missing-value-4 to -7), or settings but no number (missing-value-11, -12). A word ngspice cannot
+ * read where the gain goes gets no note: its row says that ngspice stops there.
+ */
+function noGainNoteOf(el: Element, word: string): string | undefined {
+  if (el.fields.some((f) => f.role === 'other')) return undefined;
+  return el.fields.length === (el.letter === 'E' || el.letter === 'G' ? 5 : 4) ? S.noGainNote(word) : S.settingsNoGainNote(word);
 }
 
 /**
@@ -1517,7 +1559,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
   const fields = partFields(p);
   const heading = S.partHeading(el.name.text, partWhat(info), info?.code);
   const [a, b, c, d] = el.nodes;
-  const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : undefined;
+  const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : paramValue(netlist, el);
   const sentences: string[] = [];
   const ctx = contextOf(netlist);
   switch (el.letter) {
@@ -1563,8 +1605,9 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         } else if (fn) {
           const t0 = valueAtTimeZero(fn);
           sentences.push(t0 === undefined ? S.timeZeroValueUnknown(fn.token.text) : S.timeZeroValue(fn.token.text, formatSI(t0, 'V'))); // P17
-        } else if (!el.value) {
-          addNote(p.notes, S.missingValueSource('V')); // P16
+        } else if (!el.value && !el.fields.some((f) => f.role === 'other')) {
+          // P16, P16b. A word ngspice cannot read stops it instead (its row says so; re-check C3).
+          addNote(p.notes, el.fields.some((f) => f.role === 'value') ? S.dcNoNumber('V') : S.missingValueSource('V'));
         }
       }
       // C1, C1b, C2: which sign means "delivers power" depends on which side is the higher one.
@@ -1582,7 +1625,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       if (v === undefined && el.sourceFunction) {
         const t0 = valueAtTimeZero(el.sourceFunction);
         sentences.push(t0 === undefined ? S.timeZeroValueUnknown(el.sourceFunction.token.text) : S.timeZeroValue(el.sourceFunction.token.text, formatSI(t0, 'A')));
-      } else if (!el.value && !el.sourceFunction) addNote(p.notes, S.missingValueSource('A')); // P16
+      } else if (!el.value && !el.sourceFunction && !el.fields.some((f) => f.role === 'other')) {
+        // P16, P16b. A word ngspice cannot read stops it instead (its row says so; re-check C3).
+        addNote(p.notes, el.fields.some((f) => f.role === 'value') ? S.dcNoNumber('A') : S.missingValueSource('A'));
+      }
       break;
     }
     case 'E': {
@@ -1591,7 +1637,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         const gain = value.value !== undefined ? formatNumber(value.value) : value.text;
         sentences.push(S.eSentence(voltagePhrase(a, b), gain, voltagePhrase(c, d)));
         sentences.push(S.eReads(nodeFormula(a), nodeFormula(b), gain, nodeFormula(c), nodeFormula(d)));
-      } else if (d && !value) addNote(p.notes, S.noGainNote('gain')); // missing-value-4 in traps.md
+      } else if (d && !value) addNote(p.notes, noGainNoteOf(el, 'gain')); // missing-value-4, -11 in traps.md
       else addNote(p.notes, S.eFieldsNote); // M9
       break;
     }
@@ -1603,7 +1649,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         sentences.push(capitalise(S.gSentence(gm, control, nodePhrase(a), nodePhrase(b))));
         const g = value.value !== undefined ? formatNumber(value.value) : value.text;
         sentences.push(S.gReads(g, nodeFormula(c), nodeFormula(d), nodeProse(a), el.name.text, nodeProse(b)));
-      } else if (d && !value) addNote(p.notes, S.noGainNote('value in amps per volt')); // missing-value-5
+      } else if (d && !value) addNote(p.notes, noGainNoteOf(el, 'value in amps per volt')); // missing-value-5, -12
       else addNote(p.notes, S.eFieldsNote); // M9
       break;
     }
@@ -1626,7 +1672,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
           sentences.push(S.controlCurrentSign(control.text, nodeProse(tl.nodes[0]), nodeProse(tl.nodes[1])));
         }
       } else if (a && b && control && !value && !readNumber(control.text)) {
-        addNote(p.notes, S.noGainNote(el.letter === 'F' ? 'gain' : 'value in volts per amp')); // missing-value-6, -7
+        addNote(p.notes, noGainNoteOf(el, el.letter === 'F' ? 'gain' : 'value in volts per amp')); // missing-value-6, -7, -11, -12
       }
       addNote(p.notes, S.ammeterTrick); // P9, P10
       break;

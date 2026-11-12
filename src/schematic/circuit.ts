@@ -171,6 +171,19 @@ function acText(el: Element): string | undefined {
   return words.join(' ');
 }
 
+/**
+ * A plain name where a part's value goes (V1 a 0 Vs): with .param Vs=5, ngspice uses that value
+ * (unknown-word-22), so the part shows the name, as it shows {Vs}, and a source written so is no 0 V
+ * meter. Without a .param line the checks flag it (unknown-word-16). A word with other characters
+ * stays unshown ('?'): the checks name what is wrong with it.
+ */
+function nameAsValue(el: Element): string | undefined {
+  const k = el.fields.findIndex((f) => f.role === 'other');
+  const f = el.fields[k];
+  if (!f || el.fields.slice(0, k).some((x) => x.role === 'parameter' || x.role === 'source-function' || x.role === 'model')) return undefined;
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(f.token.text) ? f.token.text : undefined;
+}
+
 function partOf(netlist: Netlist, line: NetlistLine, el: Element, letter: PartLetter): CircuitPart {
   const [a, b, c, d] = el.nodes;
   const part: CircuitPart = {
@@ -180,7 +193,7 @@ function partOf(netlist: Netlist, line: NetlistLine, el: Element, letter: PartLe
     line: line.index,
     nodes: [a!.name, b!.name],
     nodeText: [a!.token.text, b!.token.text],
-    valueText: el.value?.token.text ?? '',
+    valueText: el.value?.token.text ?? nameAsValue(el) ?? '',
     built: isBuilt(el),
     coupled: [],
     sensedBy: [],

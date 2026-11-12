@@ -614,10 +614,13 @@ export function acValue(el: Element): number | undefined {
 /**
  * A voltage source whose DC value is 0 (written or missing), with no transient function and no AC
  * value: an ammeter (P9, P16). A source with an AC value is the input of an .ac analysis, though it is
- * 0 V in .op (critic of the fixes: "V1 in 0 AC 1" is no wire).
+ * 0 V in .op (critic of the fixes: "V1 in 0 AC 1" is no wire). Nor is a source whose value word ngspice
+ * cannot read (−5 with a minus sign from a document, -<zero-width space>5): ngspice stops there and
+ * measures nothing (look-alike-letter-2, invisible-character-6, space-character-12; re-check C3).
  */
 function isAmmeter(el: Element): boolean {
   if (el.letter !== 'V' || el.sourceFunction || acValue(el) !== undefined) return false;
+  if (el.fields.some((f) => f.role === 'other')) return false;
   if (!el.value) return true;
   return el.value.number?.value === 0;
 }

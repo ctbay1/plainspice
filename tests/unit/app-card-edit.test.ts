@@ -85,8 +85,9 @@ describe('typing a value', () => {
       ['1 k', '1 k: the space splits the value in two', '1k'],
       ['2 kohm', '2 kohm: the space splits the value in two', '2k'],
       ['1d-3', '1d-3: SPICE reads two numbers, 1d and −3', '1e-3'],
-      ['abc', 'SPICE can’t use abc on this line', undefined],
-      ['-', 'SPICE can’t use - on this line', undefined],
+      // A word where the value goes is said as that (re-check S6), not as a setting after a value.
+      ['abc', 'R1’s value is not a number', undefined],
+      ['-', 'R1’s value is not a number', undefined],
     ];
     for (const [typed, reason, fixed] of cases) {
       const r = typeInto(START, 'r1', typed);

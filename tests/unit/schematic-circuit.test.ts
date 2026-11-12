@@ -3,6 +3,7 @@
  * controls, the lines the drawing cannot show (never lost), and the dot lines.
  */
 import { describe, expect, it } from 'vitest';
+import { isAmmeter } from '../../src/notebook/index.ts';
 import { circuitFromNetlist, controlText, valueLabel, valueLines } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
@@ -27,6 +28,17 @@ describe('parts', () => {
       ['x', 'x', 2],
     ]);
     expect(c.hasGround).toBe(true);
+  });
+
+  it('a .param name where a source\'s value goes is shown as written, and that source is no 0 V meter (re-check S6; unknown-word-22)', () => {
+    const c = circuit('* t\n.param Vs=5 Av=10\nV1 a 0 Vs\nR1 a 0 1k\nE1 b 0 a 0 Av\nR2 b 0 1k\nV2 c 0\nR3 c 0 1k\nV3 d 0 \u22125\nR4 d 0 1k\n.op\n.end\n');
+    const by = (k: string) => c.parts.find((p) => p.key === k)!;
+    expect([by('v1').valueText, by('v1').value]).toEqual(['Vs', undefined]);
+    expect(isAmmeter(by('v1'))).toBe(false);
+    expect(sp(valueLabel(by('e1')))).toBe('Av × V(a)');
+    // A source with no value word is one, and a word with other characters stays unshown: the checks name it.
+    expect(isAmmeter(by('v2'))).toBe(true);
+    expect(by('v3').valueText).toBe('');
   });
 
   it('reads what controls E, F, G and H (the control is a label, not a wire)', () => {

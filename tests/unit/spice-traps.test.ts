@@ -1188,6 +1188,49 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     expect(first('* t\nI1 0 a 1u\nR1 a 0 10M\n.op\n.end\n', 'mega-as-milli').fixes.map((f) => f.label)).toEqual(['Make it 10meg (10\u00a0MΩ)', 'Keep milli: write 10m']);
   });
 
+  it('an E, F, G or H value ngspice cannot read is no missing gain: the character check alone (S6; invisible-character-26, look-alike-letter-14)', () => {
+    const lines = ['E1 b 0 a 0 {w}', 'G1 0 b a 0 {w}', 'F1 0 b V1 {w}', 'H1 b 0 V1 {w}'];
+    for (const line of lines) {
+      for (const [w, id] of [['\u200b2', 'invisible-character'], ['−2', 'look-alike-letter'], ['２', 'look-alike-letter'], ['\u00a02', 'nbsp'], ['\u20092', 'space-character'], ['-\u20092', 'space-character']] as const) {
+        const text = `* t\nV1 a 0 1\nR0 a 0 1k\n${line.replace('{w}', w)}\nR1 b 0 1k\n.op\n.end\n`;
+        const found = traps(text);
+        expect(found.map((t) => t.id), text).toEqual([id]);
+        expect(found[0]!.ngspice, text).not.toContain('not enough parameters');
+        expect(ids(applyFix(text, found[0]!.fixes[0]!)), text).toEqual([]);
+      }
+    }
+  });
+
+  it('a textbook symbol where a value goes: one error, ngspice\'s own message, no comment fix; a .param name is that value (S6; unknown-word-13 to -23)', () => {
+    const net = (line: string, param = ''): string => `* t\n${param}V1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`;
+    for (const [line, word, said] of [['E1 b 0 a 0 Av', 'Av', 'av'], ['F1 0 b V1 beta', 'beta', 'beta'], ['G1 0 b a 0 gm', 'gm', 'gm'], ['H1 b 0 V1 rm', 'rm', 'rm']] as const) {
+      const found = traps(net(line));
+      expect(found.map((t) => t.id), line).toEqual(['unknown-word']);
+      const t = found[0]!;
+      expect(t.ngspice, line).toMatch(new RegExp(`^ngspice stops: 'unknown parameter \\(${said}\\)'\\. \\[unknown-word-(18|19|20|21), unknown-word-23\\]$`));
+      expect(t.ngspice, line).not.toMatch(/MIF-ERROR|polynomial|PlainSpice's engine/);
+      expect(t.why, line).toContain(`${word} stands where`);
+      expect(t.fixes, line).toEqual([]);
+      // Given on a .param line, it is the value: no trap at all (unknown-word-22).
+      expect(ids(net(line, `.param ${word}=2\n`)), line).toEqual([]);
+    }
+    const r = first('* t\nV1 a 0 1\nR1 a 0 Rload\n.op\n.end\n', 'unknown-word');
+    expect([r.title, r.ngspice]).toEqual(["R1's value is not a number", "ngspice looks for a model called rload, warns 'can't find model', and stops: 'unknown parameter (rload)'. [unknown-word-13, unknown-word-23]"]);
+    expect(ids('* t\n.param Vs=5\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n')).toEqual([]);
+    // After a value, a word is still a setting that is not one (unknown-word-1), with its comment fix.
+    expect(first('* t\nV1 a 0 5\nR1 a 0 1k load\n.op\n.end\n', 'unknown-word').fixes.map((f) => f.label)).toEqual(['Make load and the rest of the line a comment']);
+  });
+
+  it('settings but no gain run with 0, silently, in native 47 too: missing-value says so (S6; missing-value-11 to -14)', () => {
+    for (const line of ['E1 b 0 a 0 gain', 'G1 0 b a 0 m=2', 'F1 0 b V1 m=2', 'H1 b 0 V1 gain']) {
+      const t = first(`* t\nV1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`, 'missing-value');
+      expect(t.ngspice, line).toMatch(/^ngspice uses 0 and says nothing: in one test [EFGH]1's output stayed at 0\. \[missing-value-11, missing-value-12\]$/);
+      expect(t.why, line).toContain('has settings but no');
+    }
+    // Nothing after the nodes keeps native 47's "not enough parameters" (missing-value-4).
+    expect(first('* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0\nR1 b 0 1k\n.op\n.end\n', 'missing-value').ngspice).toContain("Native ngspice 47 stops: 'not enough parameters in line'.");
+  });
+
   it('a sign then a character that looks like a space: one error whose fix writes the value, no glue warning, no comment fix (C2; space-character-12 to -14, nbsp-3)', () => {
     const spaces = ['\u00a0', '\u1680', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009', '\u200a', '\u202f', '\u205f', '\u3000'];
     for (const ch of spaces) {
@@ -1210,6 +1253,12 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     const minus = first('* t\nV1 a 0 −\u20095\nR1 a 0 1k\n.op\n.end\n', 'space-character');
     expect([minus.why.startsWith('It starts with a minus sign (U+2212), which looks like -, then a thin space (U+2009)'), minus.fixes.map((f) => f.label)]).toEqual([true, ['Write -5 (−5\u00a0V)']]);
     expect(first('* t\nV1 a 0 -\u20095\u2009V\nR1 a 0 1k\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Write -5 (−5\u00a0V)']);
+  });
+
+  it('a sign with a normal space after it is a word of its own: Write -5, not a comment that leaves 0 V (C2; space-character-13)', () => {
+    const plain = first('* t\nV1 a 0 - 5\nR1 a 0 1k\n.op\n.end\n', 'unknown-word');
+    expect([plain.ngspice, plain.fixes.map((f) => f.label)]).toEqual(["ngspice stops: 'unknown parameter (-)'. [space-character-13]", ['Write -5 (−5\u00a0V)']]);
+    expect(applyFix('* t\nV1 a 0 - 5\nR1 a 0 1k\n.op\n.end\n', plain.fixes[0]!)).toBe('* t\nV1 a 0 -5\nR1 a 0 1k\n.op\n.end\n');
   });
 
   it('the letter O where a zero belongs is flagged narrowly, and a unit after a number never is (C4; look-alike-letter-10, -11)', () => {

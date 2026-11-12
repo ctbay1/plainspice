@@ -836,6 +836,37 @@ describe('after the final reviews (12 November 2026)', () => {
 describe('after the re-check of the fixes (12 November 2026)', () => {
   const allNotes = (e: LineExplanation): string => e.notes.map(sp).join(' ');
 
+  it('a source whose value ngspice cannot read gets no note about a missing value: ngspice stops there (C3; look-alike-letter-2)', () => {
+    for (const value of ['−5', '-\u200b5', '－5', '-\u20095', 'five']) {
+      for (const [letter, nodes] of [['V', 'a 0'], ['I', '0 a']] as const) {
+        const e = line(`* t\n${letter}1 ${nodes} ${value}\nR1 a 0 1k\n.op\n.end\n`, 2);
+        expect(allNotes(e), `${letter} ${value}`).not.toMatch(/has no DC value|says so in a note|uses 0/);
+      }
+    }
+    // With nothing after the nodes, or an AC value alone, ngspice notes it (P16); with dc and no number it does not (P16b).
+    expect(allNotes(line('* t\nV1 a 0\n.op\n.end\n', 2))).toContain('says so in a note ("has no value, DC 0 assumed")');
+    expect(allNotes(line('* t\nV1 a 0 AC 1\n.op\n.end\n', 2))).toContain('says so in a note');
+    expect(allNotes(line('* t\nV1 a 0 dc\n.op\n.end\n', 2))).toContain('This source has dc but no number after it, so in .op ngspice uses 0 V, without a message.');
+    expect(allNotes(line('* t\nI1 0 a dc\n.op\n.end\n', 2))).toContain('so in .op ngspice uses 0 A, without a message.');
+  });
+
+  it('an E, F, G or H line: no gain at all, settings but no number, or a word ngspice cannot read are three different notes (S6)', () => {
+    const net = (l: string): LineExplanation => line(`* t\nV1 a 0 1\nR0 a 0 1k\n${l}\nR1 b 0 1k\n.op\n.end\n`, 4);
+    expect(allNotes(net('E1 b 0 a 0'))).toContain('native ngspice 47 stops: "not enough parameters in line"');
+    for (const l of ['E1 b 0 a 0 gain', 'G1 0 b a 0 m=2', 'F1 0 b V1 m=2', 'H1 b 0 V1 gain']) {
+      expect(allNotes(net(l)), l).toContain('has settings but no');
+      expect(allNotes(net(l)), l).toContain('so ngspice uses 0 and says nothing: the output is 0.');
+      expect(allNotes(net(l)), l).not.toContain('not enough parameters');
+    }
+    for (const l of ['E1 b 0 a 0 Av', 'E1 b 0 a 0 \u200b2', 'G1 0 b a 0 −1m', 'F1 0 b V1 beta', 'H1 b 0 V1 rm']) {
+      const e = net(l);
+      expect(allNotes(e), l).not.toMatch(/has no (gain|value)|not enough parameters|settings but no/);
+      // The word where the gain goes: ngspice stops there, native 47 too (unknown-word-18 to -21), never "a polynomial".
+      const word = e.fields[e.fields.length - 1]!;
+      expect(sp(word.meaning), l).toBe('ngspice cannot use this word here and stops: "unknown parameter"');
+    }
+  });
+
   it('a .dc number ngspice cannot read is said to stop ngspice 47, never read as a sweep that runs (S5; dc-sweep-problems-9)', () => {
     for (const [dc, label] of [['.dc V1 \u22125 5 1', 'start'], ['.dc V1 0 \u200b5 1', 'stop'], ['.dc V1 O 5 1', 'start'], ['.dc V1 0 V1 1', 'stop']] as const) {
       const e = line(`* t\nV1 in 0 1\nR1 in 0 1k\n${dc}\n.end\n`, 4);
@@ -846,6 +877,15 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     }
     // A plain sweep keeps its words.
     expect(meaningOf(line('* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 -5 5 1\n.end\n', 4), 'start')).toBe('start: \u22125 V');
+  });
+
+  it('a .param name where a value goes is that value: Explain says so and uses it (unknown-word-22)', () => {
+    const e = line('* t\n.param Av=10\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 Av\nR1 b 0 1k\n.op\n.end\n', 5);
+    expect(sp(e.summary)).toContain('is 10 × the voltage at node a');
+    expect(rows(e).find((r) => r[1] === 'Av')).toEqual(['gain', 'Av', '10 (Av, from .param on line 2)']);
+    const v = line('* t\n.param Vs=5\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n', 3);
+    expect(sp(v.summary)).toContain('SPICE reads that as V(a) − V(0) = 5 V.');
+    expect(allNotes(v)).not.toContain('no DC value');
   });
 
   it('a character outside ASCII inside a number is named, never "Don\'t type units" (C5; look-alike-letter-9, -12)', () => {
