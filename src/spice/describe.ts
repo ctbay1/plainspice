@@ -805,6 +805,8 @@ export const VNTOL = 1e-6;
  * (ulp, the step between two neighbouring doubles). It is a rule of thumb, not a law: a balanced
  * bridge leaves 1 (C9) or 2 (C9b), but other balanced circuits leave 7, 9 or more (C9m), and a real
  * current can be smaller than the rounding (C9l). The circuits PlainSpice solves exactly never use it.
+ * On 1,000 random circuits with diodes, 2 instead of 4 showed 4 fewer real currents as 0 and 16 more
+ * values that are 0 with ngspice's noise: more wrong values in all (decision 0015).
  */
 export const SAME_VOLTAGE_ULPS = 4;
 /**
