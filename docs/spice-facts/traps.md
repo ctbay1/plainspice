@@ -6343,11 +6343,22 @@ Lines after `.end` that are not blank or comments. Warning. Fix: move `.end` to 
 
 What PlainSpice shows for after-end-1 (warning, line 6):
 
-> **Lines after .end.** Everything after .end looks ignored, but ngspice still reads these lines when it runs a file, so they are part of the circuit. Keep .end as the last line.
+> **Lines after .end.** ngspice does not stop reading at .end: it still reads these lines when it runs a file, so they are part of the circuit. Keep .end as the last line.
 >
 > *ngspice:* ngspice still reads the lines after .end from a file and builds them into the circuit, without a message: in one test a resistor after .end changed the source current from −2 A to −5 A. [after-end-1]
 >
 > *Fixes:* "Move .end to the bottom"
+
+What PlainSpice shows for after-end-2 (warning, line 6):
+
+> **Lines after .end.** ngspice stops reading at this .end, so it skips the lines after it. Keep .end as the last line.
+>
+> *ngspice:* ngspice stops reading at a .end with a comment glued to it (.end;...) and skips every line after it, without a message. [after-end-2]
+>
+> *Fixes:* "Move .end to the bottom"
+
+Whole lines ngspice does not read are lines it "skips", as Explain says for the same lines (decision
+0017, W11; words re-check 10); after a plain .end it reads them, so those are never said to be skipped.
 
 ### after-end-1. A part after .end is still read from a file
 
@@ -7043,7 +7054,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 PlainSpice's checks: `missing-value`, `lost-continuation`.
 
-### lost-continuation-3. A + line right after the title is ignored silently
+### lost-continuation-3. A + line right after the title is skipped silently
 
 ```spice
 * a + line right after the title

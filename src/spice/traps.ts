@@ -1099,7 +1099,7 @@ function checkTitle(c: Ctx): void {
   const at = title.span.from + (title.text.length - title.text.trimStart().length);
   if (l.kind === 'directive' && l.directive && DOT_COMMANDS.has(l.directive.name)) {
     const word = l.directive.token.text;
-    add(c, 'missing-title', 'warning', { from: at, to: at + word.length }, `Line 1 is the title, so ${word} is ignored`,
+    add(c, 'missing-title', 'warning', { from: at, to: at + word.length }, `Line 1 is the title, so ${word} never runs`,
       'SPICE always skips the first line, so make it a title. A command written there is never run.',
       `ngspice reads line 1 as the title and never runs ${word}; it says nothing about it. [missing-title-2]`, [addTitle]);
     return;
@@ -2236,10 +2236,10 @@ function checkEnd(c: Ctx): void {
   const endText = endLine.text.trim();
   add(c, 'after-end', 'warning', first.span, 'Lines after .end',
     glued
-      ? 'ngspice stops reading at this .end, so the lines after it are ignored. Keep .end as the last line.'
-      : 'Everything after .end looks ignored, but ngspice still reads these lines when it runs a file, so they are part of the circuit. Keep .end as the last line.',
+      ? 'ngspice stops reading at this .end, so it skips the lines after it. Keep .end as the last line.'
+      : 'ngspice does not stop reading at .end: it still reads these lines when it runs a file, so they are part of the circuit. Keep .end as the last line.',
     glued
-      ? 'ngspice stops reading at a .end with a comment glued to it (.end;...) and ignores everything after it, without a message. [after-end-2]'
+      ? 'ngspice stops reading at a .end with a comment glued to it (.end;...) and skips every line after it, without a message. [after-end-2]'
       : 'ngspice still reads the lines after .end from a file and builds them into the circuit, without a message: in one test a resistor after .end changed the source current from −2 A to −5 A. [after-end-1]',
     [fix('Move .end to the bottom', change(endLine.span.from, next.span.from, ''), change(c.text.length, c.text.length, `${tail}${endText}\n`))]);
 }
@@ -2485,7 +2485,7 @@ function checkContinuations(c: Ctx): void {
     if (l.continues === undefined) {
       add(c, 'lost-continuation', 'warning', { from: plus, to: plus + 1 }, 'This + line has nothing to continue',
         'A line starting with + continues the line above it. Right after the title there is nothing to continue, so this line is lost. If it is a part, remove the +.',
-        'ngspice has no line to join it to and ignores it silently. [lost-continuation-3]',
+        'ngspice has no line to join it to and skips it silently. [lost-continuation-3]',
         [fix('Remove the +', change(plus, plus + 1, ''))]);
       continue;
     }

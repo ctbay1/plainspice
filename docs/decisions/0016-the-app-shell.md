@@ -301,3 +301,12 @@ Ctrl+K stay as they are.
   "capital letters or not" by the key, which already reads µ as u, and its fix for `Ru` then `Rµ` was
   "Rename it Rµ", which changed nothing; new names are now compared as ngspice reads them (`Ru2`).
   The run's one-line summary keeps such a title's capitals ("… error: Rş and Rç are the same name …").
+- **"skips" in the Checks panel too** (words re-check 10). Explain said "skips" for whole lines
+  ngspice does not read (W11, above), but the checks still said the lines after `.end;done` "are
+  ignored" and "ignores everything after it", a + line right after the title "ignores it silently",
+  and a command on line 1 "is ignored": now "so it skips the lines after it", "skips every line after
+  it", "skips it silently", and "Line 1 is the title, so .op never runs", as its own text says. After
+  a plain .end ngspice does read the lines, so that check no longer says they "look ignored": it says
+  Explain's words for .end, "ngspice does not stop reading at .end: it still reads these lines …". The
+  W11 test (`tests/unit/app-words-review.test.tsx`) now reads these checks too, and that Explain says
+  "skips" for the same lines.
