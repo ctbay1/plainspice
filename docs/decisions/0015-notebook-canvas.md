@@ -240,10 +240,10 @@ that a phone left no room to watch the numbers move; this record says what the c
   point), and the note puts only the points it names into words. The Numbers panel then shows
   "v(a,b)/V1 = 0 (V/V)" with ngspice's −5.551115e-17 in its "In ngspice's format" column; the Plot
   panel draws the sweep's noise points at 0 and its table has a column "… as ngspice gave it" with
-  ngspice's values. A sweep point ngspice gives as exactly 0 for a real value stays as ngspice gives
-  it: a sweep holds node voltages and the currents of V sources (others only with savecurrents), which
-  ngspice solves for directly. A sweep of two sources, and a .tran run, are shown as ngspice gives
-  them: a .tran's values come from ngspice's own time steps and their error, not from one solution
+  ngspice's values. A sweep point ngspice gives as exactly 0 for a real value is still shown as 0:
+  the exact value would cost a fraction at each such point, and a sweep can have 99,999 of them (a
+  1 aA current that ngspice gives as 0 at every point of a sweep of its source); it is left open. A
+  sweep of two sources, and a .tran run, are shown as ngspice gives them: a .tran's values come from ngspice's own time steps and their error, not from one solution
   PlainSpice can repeat exactly.
 - **Other circuits keep a rule** (a diode, a transistor, a subcircuit, a switch, a part with settings,
   .param, other .options lines, more than 150 unknowns, or more work than the limit below). It is
