@@ -15,9 +15,11 @@
  *   function, a part with settings (m=, tc1=, r=, ...), .param and expressions, .options and .temp
  *   lines, a .control block, a value below ngspice's smallest resistance, too many unknowns.
  * - `solveExact` solves the circuit's nodal equations with fractions, for several right-hand sides at
- *   once (the operating point, a swept source at 1, a .tf input at 1).
+ *   once (the operating point, a swept source at 1, a .tf input at 1), within a counted amount of work.
  * - `agrees` checks that ngspice simulated that same circuit: its node voltages and branch currents,
  *   put into the exact equations, leave only what its own rounding can leave.
+ * - `answersAgree` checks that ngspice solved it to the digits the page shows: its answers are the
+ *   exact ones to within 5e-5, where they are not tiny beside the others of their kind.
  */
 import type { NumberReading } from './types.ts';
 import { isSpaceCode, numberWordEnd } from './numbers.ts';
@@ -836,12 +838,14 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
 
 /**
  * How much ngspice's own rounding may leave of the equations, as a share of the largest sum of the
- * sizes of an equation's terms (Shares.equations). ngspice solves the equations of a circuit of these
- * parts once, with an LU factorisation in doubles (its Newton iterations of a linear circuit repeat the
- * same solution), and such a solution leaves a few units in the last place of the whole system, times a
- * growth factor that is small in practice. Measured on 7,756 circuits run in our engine (the repository's
- * netlists and the re-check's 8,500 generated ones, with wires of 1 µΩ, meters of 1e20 Ω and gains of
- * 1e9): at most 4.4e-14 (2^-44.4), most below 2^-52. 2^-30 (about 9.3e-10) leaves room above that.
+ * sizes of an equation's terms of the same kind (Shares.equations). ngspice solves the equations of a
+ * circuit of these parts once, with an LU factorisation in doubles (its Newton iterations of a linear
+ * circuit repeat the same solution), and such a solution leaves a few units in the last place of the
+ * whole system, times a growth factor that is small in practice. Measured on the 11,645 netlists of the
+ * repository and the re-check's corpora run in our engine (wires of 1 µΩ, meters of 1e20 Ω, gains of
+ * 1e9): at most 3.8e-15 for the nodes and 4.4e-11 for the branches, most below 2^-52. 2^-30 (about
+ * 9.3e-10) leaves room above that. It says nothing of how far ngspice's answers are from the exact
+ * ones where a tiny wire makes the equations ill-conditioned: `answersAgree` does.
  * A circuit other than ngspice's leaves more, measured on one with every kind of part: a node or part
  * it does not have fails at the names; a 9 V source, a gain of an E or of an H 1 ppm off leave 5e-7,
  * 1.8e-7 and 8.8e-9 here; an R, F, G or I value 1 ppm off leaves 1e-6 in its product (PRODUCT_SHARE).

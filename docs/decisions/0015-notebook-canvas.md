@@ -130,19 +130,20 @@ that a phone left no room to watch the numbers move; this record says what the c
   connection with the parts of the app it downloads once the first run is done (menus, dialogs, the
   Netlist panel's editor). Nothing moves when the face changes.
 - **Rounding noise is written as 0 A, but only where the circuit makes 0** (student review; corrected
-  after the critic of the fixes, after the critic of round 2, and after the re-check of 12 November).
-  Where a current is 0, ngspice's arithmetic can leave about 10⁻¹⁸ A (C9, C9b in
-  `docs/spice-facts/explanations.md`), which the drawing wrote with an arrow ("R5 ← 8.882e-19 A") and
-  as power ("V1 delivers 20.82 aW"). The first fix compared each current with the circuit's largest
-  one, and zeroed the 2 aA of a source written 2A next to a 4 mA divider (C9e). The second decided
-  part by part from ngspice's own numbers, by rules (two ends at most 4 steps of a double apart are at
-  the same voltage, "the only current left at a node" is 0, a node below 1 µV joined to ground is at
-  0 V), and the re-check showed that ngspice's numbers alone cannot tell a 0 from a tiny real value:
-  that rule wrote a ladder node read by a 1 TΩ voltmeter as 0 V, though it is at a real 732.4 nV with
-  61.04 nA flowing from it (C9n; a 1e20 Ω meter on a divider and a node set by a 1 nV source the
-  same); it drew the link between two equal arms with its noise, because ngspice left its ends 7 or 9
-  steps apart (C9m); it drew 193.5 pA, the noise of a 0 that an H of 1 GΩ lifts, next to a node it
-  wrote as 0 V (C9o); and it drew the loads of an F or a G that copies or reads a 0 (C9r).
+  after the critic of the fixes, after the critic of round 2, after the re-check of 12 November, and
+  after the critic of the re-check's fixes). Where a current is 0, ngspice's arithmetic can leave about
+  10⁻¹⁸ A (C9, C9b in `docs/spice-facts/explanations.md`), which the drawing wrote with an arrow
+  ("R5 ← 8.882e-19 A") and as power ("V1 delivers 20.82 aW"). The first fix compared each current with
+  the circuit's largest one, and zeroed the 2 aA of a source written 2A next to a 4 mA divider (C9e).
+  The second decided part by part from ngspice's own numbers, by rules (two ends at most 4 steps of a
+  double apart are at the same voltage, "the only current left at a node" is 0, a node below 1 µV
+  joined to ground is at 0 V), and the re-check showed that ngspice's numbers alone cannot tell a 0
+  from a tiny real value: that rule wrote a ladder node read by a 1 TΩ voltmeter as 0 V, though it is
+  at a real 732.4 nV with 61.04 nA flowing from it (C9n; a 1e20 Ω meter on a divider and a node set by
+  a 1 nV source the same); it drew the link between two equal arms with its noise, because ngspice
+  left its ends 7 or 9 steps apart (C9m); it drew 193.5 pA, the noise of a 0 that an H of 1 GΩ lifts,
+  next to a node it wrote as 0 V (C9o); and it drew the loads of an F or a G that copies or reads a 0
+  (C9r).
 - **So PlainSpice solves the circuit exactly where it can, and shows as 0 only what is exactly 0**
   (`src/spice/exact.ts`, `roundingNoise` in `src/spice/describe.ts`). It solves a circuit of
   resistors, capacitors (open in .op), inductors (wires), V and I sources with a plain DC value or
@@ -151,21 +152,67 @@ that a phone left no room to watch the numbers move; this record says what the c
   milli), but as the exact decimal the netlist writes, and the double ngspice makes of the word (as
   `readNumber` computes it) must be within 4 units in the last place of that decimal; unit tests hold
   every value word of our netlists to that, and the decimals of the suffix corpus to native ngspice
-  47's own doubles. The equations are solved with whole numbers only (Bareiss's
-  elimination: every division is exact, and the sizes stay those of the determinants). Then
-  PlainSpice checks that ngspice simulated that same circuit: it names the same nodes and parts, its
-  values put into the exact equations leave at most 2⁻³⁰ of the largest sum of the sizes of an
-  equation's terms (measured: at most 4.4e−14 over 7,756 circuits, most below 2⁻⁵²), and each current
-  it reports is its own numbers' product to 2⁻⁴⁰ (measured: at most 3.4e−16). In a circuit with every
-  kind of part, any value 1 ppm off fails one or the other (a unit test keeps it so); a source is
-  weighed against the circuit's largest voltage, so a 1 pV source read as 1 nV in a 9 V circuit
-  passes. The check is there for a part ngspice simulates differently from the model: the values are
-  read by ngspice's own grammar. Its values are not compared one by one with the exact ones: in a
-  circuit with a 10 mΩ wire beside attoamps, rounding makes a source's current 21 fA where the exact
-  one is 4 aA, and that is still ngspice's arithmetic on this circuit. Then a current or node voltage
-  whose exact value is 0 is rounding noise of a 0, whatever its size (193.5 pA in C9o), and one whose
-  exact value is not 0 is real and shown as ngspice gives it, however tiny (732.4 nV in C9n, 2 aA in
-  C9q). Two nodes are at the same voltage when their exact voltages are equal.
+  47's own doubles. A word no double can be (outside 10^−325 to 10^310, which ngspice reads as 0 or as
+  infinity, such as 1e-999999999), or with more than 100 significant digits, is not read exactly, and
+  no power of ten is built for it: 10^999999999 alone took half a minute, then failed, and the page
+  froze for 66 s and lost every current (the critic of the re-check's fixes). The equations are solved
+  with whole numbers only (Bareiss's elimination: every division is exact, and the sizes stay those of
+  the determinants).
+- **ngspice must have simulated that circuit, and solved it to the digits the page shows.** It names
+  the same nodes and parts; its values put into the exact equations leave at most 2⁻³⁰ of the largest
+  sum of the sizes of an equation's terms, Kirchhoff's law at the nodes weighed against the nodes'
+  own sizes (in amps) and the branches' own equations against theirs (in volts): weighed together, a
+  9 V source's equation hid a node's misread nanoamps (measured over the 11,645 netlists of the
+  re-check's corpora and the repository: at most 3.8e−15 for the nodes, 4.4e−11 for the branches);
+  and each current it reports is its own numbers' product to 2⁻⁴⁰ (measured: at most 3.4e−16). In a
+  circuit with every kind of part any value 1 ppm off fails one or the other, and so does a .dc
+  point's value 1 ppm off (unit tests keep it so); a source is weighed against the circuit's largest
+  voltage, so a 1 pV source read as 1 nV in a 9 V circuit passes. Those checks alone passed runs that
+  ngspice solved far from the exact answer: a wire far smaller than the resistors around it makes the
+  equations ill-conditioned, its huge terms hide what ngspice's values leave of them, and with a
+  1e−12 Ω wire in a balanced bridge ngspice gives 4.321 V and 4.374 V where the circuit makes 4.5 V
+  (C9s). PlainSpice then wrote 0 A between nodes it wrote 53 mV apart, with a note saying both were at
+  4.5 V; with a G of 1000 it wrote 0 A next to ngspice's 16.61 V. So ngspice's answers must also be
+  the exact ones: each node voltage and each V, E, H and L current whose exact value is not 0 and not
+  below 1e−3 of the largest of its kind must be within 5e−5 of its exact value (exact.ts
+  `answersAgree`). 5e−5 is less than half a unit in the last of the 4 significant digits the page
+  shows, whatever the first digits (half a unit of 9.999 is 5e−5 of it), so where ngspice is within it
+  its numbers carry the exact value's digits (or one unit off in the last, where the exact value lies
+  that close to a rounding boundary), and the 0s the exact solution puts beside them agree with them.
+  A smaller value is not compared: there ngspice's rounding can be as large as the value with nothing
+  wrong (a 10 mΩ wire beside attoamps leaves a source's 4 aA at 21 fA), and such a value is shown as
+  ngspice gives it. Nor is a resistor's, G's or F's current: ngspice works it out from those answers,
+  a resistor's from the voltages at its ends, which can cancel to a few digits, and the product check
+  holds it to that. Of the 9,565 linear circuits of the corpora PlainSpice models exactly, 317 give
+  answers farther off than 5e−5 (yA none, gA 155, rA 132, pA 30); 1e−6 would send 389, 5e−4 253.
+- **Then a value whose exact value is 0 is noise, and one whose exact value is not 0 is real.** A
+  current or node voltage whose exact value is 0 is rounding noise of a 0, whatever its size (193.5 pA
+  in C9o), and one whose exact value is not 0 is real and shown as ngspice gives it, however tiny
+  (732.4 nV in C9n, 2 aA in C9q). Two nodes are at the same voltage when their exact voltages are
+  equal.
+- **A real value that ngspice gives as exactly 0 is shown exactly** (the critic of the re-check's
+  fixes). A 1 nΩ wire in series with 10 MΩ carries 454.1 pA, as the 10 MΩ does, but the 4.5e−19 V
+  across it is about half a step of a double at the 4.541 mV of its ends, which come out as the same
+  double, so ngspice gives the wire exactly 0 A; the page read "no current through R3" next to "R4
+  454.1 pA" in series with it (C9n.4; so did C9n's 1 µΩ wire). Such a 0 has no correct digit, as
+  noise of a 0 has none, so it is the second place PlainSpice's numbers differ from ngspice's: the
+  exact 454.1 pA, with ngspice's 0 in the Numbers panel's ngspice column (`CurrentWords.given`,
+  `NodeVoltageWords.given`) and a note: "ngspice gave R3 exactly 0 A. But a current flows through R3:
+  the 4.541e-19 V across it is too small beside the 4.541 mV at its ends, node d2 and node p3, for
+  ngspice's arithmetic (about 16 significant digits), so both ends come out as the same number. Solved
+  exactly, with fractions, from the netlist's values, R3 carries 454.1 pA, so PlainSpice shows
+  454.1 pA." For several values the reason is one true of each ("each is too small beside the larger
+  numbers ngspice works it out from"). A resistor's card says the exact voltage across it
+  (`CurrentWords.across`), so it keeps Ohm's law. The other choice, keeping ngspice's 0 and saying it
+  is too small for ngspice, would still show a 0 for a real current. A value below the smallest double
+  (about 4.9e−324, the far end of a long ladder, C9k) has no number to show, and stays 0.
+- **Where ngspice's answers are farther off, the rule decides, helped by the exact solution.** A 0 from
+  the exact solution next to ngspice's imprecise numbers breaks Ohm's law on the page, so the rule for
+  other circuits (below) decides from ngspice's own numbers, which agree with each other; the exact
+  solution keeps it from calling a value noise whose exact value is not 0, keeps a level only for
+  nodes whose exact voltages are equal, and gives the real values ngspice gave as exactly 0, shown
+  exactly as above. So the 1e−12 Ω wire's bridge shows 4.321 V, 4.374 V and R5's 53.56 µA, as ngspice
+  gives them, with no note.
 - **What the page shows for a value that is noise of a 0.** A current: no arrow, no "delivers" or
   "absorbs", "0 A" at the end of its line and "no current flows" in speech; a node voltage: 0 V. A
   part's card says 0 V across it when its two ends are at the same voltage, and so does the crossed-out
@@ -181,63 +228,80 @@ that a phone left no room to watch the numbers move; this record says what the c
   the source s, so one more exact solution, with that source at 1 V or 1 A and the others at 0, gives
   the .tf ratio (b of the output) and every point of a .dc sweep of one V or I source. ngspice's .tf
   gives no node voltages to check its circuit against, so its input and output resistances must be
-  the exact ones within its reltol, 10⁻³, and a ratio shown as 0 must be smaller than 2⁻³⁰ of the
-  largest change the input makes in a value of the output's kind. A .dc sweep
-  is checked at 5 of its points (its first, its last, and three between). The Numbers panel then shows
-  "v(a,b)/V1 = 0 (V/V)" with ngspice's −5.551115e-17 in its "In ngspice's format" column; the Plot panel
-  draws the sweep's noise points at 0 and its table has a column "… as ngspice gave it" with ngspice's
-  values. A sweep of two sources, and a .tran run, are shown as ngspice gives them: a .tran's values
-  come from ngspice's own time steps and their error, not from one solution PlainSpice can repeat
-  exactly.
+  the exact ones to within 5e−5, as an operating point's answers, and a ratio shown as 0 must be
+  smaller than 2⁻³⁰ of the largest change the input makes in a value of the output's kind. A .dc
+  sweep is checked at 5 of its points (its first, its last, and three between), each as an operating
+  point is. Each point is judged at the value ngspice swept the source to, its own x read exactly:
+  ngspice adds the step in doubles, so "-1 1 0.1" reaches −1.39e−16 V where the student wrote 0, and
+  a node that follows the source is a real −1.39e−16 V there, as the Plot panel's x says; judged at
+  the student's 0 it was called noise (C9p.5). So a + b·s is 0 at every point when a and b are, and
+  otherwise only where ngspice's x is −a/b exactly: a search through the doubles, with no fractions at
+  each point, so a sweep of 99,999 points takes a few milliseconds (it took 705 ms, about 7 µs a
+  point), and the note puts only the points it names into words. The Numbers panel then shows
+  "v(a,b)/V1 = 0 (V/V)" with ngspice's −5.551115e-17 in its "In ngspice's format" column; the Plot
+  panel draws the sweep's noise points at 0 and its table has a column "… as ngspice gave it" with
+  ngspice's values. A sweep point ngspice gives as exactly 0 for a real value stays as ngspice gives
+  it: a sweep holds node voltages and the currents of V sources (others only with savecurrents), which
+  ngspice solves for directly. A sweep of two sources, and a .tran run, are shown as ngspice gives
+  them: a .tran's values come from ngspice's own time steps and their error, not from one solution
+  PlainSpice can repeat exactly.
 - **Other circuits keep a rule** (a diode, a transistor, a subcircuit, a switch, a part with settings,
-  .param, other .options lines, more than 150 unknowns, or more work than the limits below). It is
+  .param, other .options lines, more than 150 unknowns, or more work than the limit below). It is
   the rule above with the false zeros of C9n removed: a resistor's current that ngspice gives as exactly
   0 proves nothing (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV) and joins nothing; only a
   source, never a resistor or a capacitor, is 0 as "the only current left at a node"; and a node below
-  1 µV is shown as 0 V only when every current at it is shown as 0 A. So the bridge of C9d with a
-  diode added is drawn with ngspice's noise: Vm −2.2e−19 A, F1 and R6 −2.2e−16 A, out −216.8 fV, since
-  R5's 0 there cannot be told from the wire's 0 in C9n. What it gives up, measured on
-  1,000 random circuits with diodes (991 ran; judged by solving each exactly with every diode replaced
-  by the current ngspice gives it): 13 real currents are still shown as 0 A, all where ngspice's own
-  number is more than 1 % off the exact one, so ngspice does not resolve them either (19 at cd20fe9);
-  303 of the 1,340 currents that are exactly 0 are shown with ngspice's noise (204 at cd20fe9), 8 of
-  them above 1 pA and 14 with a power; 90 node voltages that are exactly 0 are shown with ngspice's
-  noise (57); and no node is at 0 V next to a real current (18 at cd20fe9). Taking two ends as the
-  same only within 2 steps of a double would show 4 fewer real currents as 0 and 16 more noise values,
-  more wrong values in all (328 against 316), so the 4 steps stay.
-- **Measured on circuits generated at random** (each solved exactly in Python, from the netlist, as
-  the judge; a diode replaced by the current ngspice gives it). In every circuit decided by the exact
-  solution, nothing is left: no real value shown as 0, no exact 0 shown as a current or a voltage.
-  2,000 linear circuits of equal arms, symmetric networks, dependent sources driving loads and tiny
-  sources (19,150 currents, 5,340 of them exactly 0), all decided exactly: cd20fe9 drew 634 of those
-  zeros as currents (37 above 1 pA) and 209 as node voltages, and put 12 nodes at 0 V next to a real
-  current. 3,000 mixed circuits (104,400 currents; 613 with a diode): cd20fe9 showed 368 real
-  currents as 0 A (24 that ngspice resolves to 1 %) and 37 real node voltages as 0 V, drew 682 zeros
-  as currents, and put 21 nodes at 0 V next to a real current; now 36 real currents are shown as 0 A
-  (none that ngspice resolves), 412 zeros as currents and no node at 0 V next to a real current, every
-  one in a circuit with a diode or above the limits. 4,000 circuits of tiny real values beside noise
-  (ladders, dividers and bridges read by meters of up to 1e20 Ω; 193 with a diode): cd20fe9 showed 19
-  real currents as 0 A and 4 real node voltages as 0 V; now none, and the 52 zeros still drawn as
-  currents (178 at cd20fe9) are all in circuits with a diode or above the limits. 1,500 circuits where
-  a meter or a probe reads a node of a ladder or a divider: cd20fe9 showed 37 real currents as 0 A
-  and 50 real node voltages as 0 V; now none.
+  1 µV is shown as 0 V only when every current at it is shown as 0 A. Its levels agree with what the
+  page shows (the critic of the re-check's fixes): a node of ground's group has ground's level only
+  when it is shown as 0 V, and a group with a resistor between two of its nodes whose current is shown
+  as real has no level, so an H of 1 GΩ reading a balanced bridge, with a diode, leaves out at
+  −193.5 nV beside Rl's 193.5 pA, and Rl's card says the 193.5 nV across it, not 0 V (C9o.4). The
+  bridge of C9d with a diode added is drawn with ngspice's noise: Vm −2.2e−19 A, F1 and R6 −2.2e−16 A,
+  out −216.8 fV, since R5's 0 there cannot be told from the wire's 0 in C9n. Taking two ends as the
+  same only within 2 steps of a double showed more wrong values in all (328 against 316 on 1,000
+  circuits with diodes), so the 4 steps stay.
+- **Measured on circuits generated at random** (re-judged after the critic of the re-check's fixes:
+  each circuit solved exactly in Python, from the netlist, as the judge, a diode replaced by the
+  current ngspice gives it; a "real value shown as 0" counts every 0 the page shows for a value whose
+  exact value is not 0, ngspice's own 0s too, which the earlier count left out). Of 11,500 circuits
+  (yA, gA, rA, pA, yD; 11,487 ran), 9,248 are decided by the exact solution. No real value is shown
+  as 0 there, but 15 in one ladder of rA whose far end is below the smallest double; no exact 0 is
+  shown as a number; no two parts in series show 0 A beside a current; and a resistor is shown as 0 A
+  between voltages written differently 3 times: once at a rounding boundary (0.3437 and 0.3438 V),
+  once between two values too tiny beside the others to be compared (9.99e-21 and 9.987e-21 V), once
+  below the smallest double. ngspice's own 0s for real values are shown exactly: 324 values in gA,
+  242 in rA and 203 in pA; 112 of them sit next to a part in series whose tiny current ngspice gives
+  with no correct digit, so the two disagree (they read "0 A" beside that number before). In these
+  same circuits cd20fe9 showed 1,238 real values as 0 and drew 984 exact 0s as currents and 241 as
+  node voltages, and 69515dc showed 784 real values as 0. 317 linear circuits are decided by the rule
+  with the exact solution (their answers farther off): no real value is shown as 0 (cd20fe9: 313),
+  and 96 exact 0s are drawn with ngspice's numbers (18 above 1 pA, 8 with a power) and 7 node
+  voltages, as ngspice's own numbers show them, where 69515dc wrote 0 next to numbers that
+  contradicted it (15 resistors at 0 A between nodes written differently). 125 circuits are past
+  150 unknowns and 1,797 have a diode, decided by the rule as before: in those with a diode 187 real
+  values are still shown as 0 (cd20fe9: 235), and 750 exact 0s are drawn as currents (619) and 223
+  as node voltages (183).
 - **Its speed.** The exact solution is worked out once per netlist (and kept for its .tf and .dc), on
-  the main thread after each run. It stops at a counted amount of work, the same on every computer: at
-  most 150 unknowns, 600 row combinations, 12,000 entry combinations and whole numbers of 4,096
-  bits; beyond, the rule decides. Measured with `describeResults` (processor time, best of 5, the
-  worst of 5 random circuits of each kind, under load): 3 to 5 ms for 60 parts, 6 to 23 ms for 150,
-  at most 39 ms for 400 parts that go past the limits (a random network of resistors); with a .dc
-  sweep of 1001 points 10 to 18 ms for 60 parts and up to 53 ms for 150. cd20fe9 took up to 4 ms. The
-  exact solve alone, over 840 random networks of 40 to 600 resistors of six densities: at most 30 ms
-  where it solves, 45 ms where it stops at the limits. A unit test keeps 60 parts under 50 ms and the
-  limits under 200 ms.
+  the main thread after each run. It stops at a counted amount of work, the same on every computer
+  (`MAX_WORK`): each combination of two rows counts, and each entry it writes counts more the larger
+  its numbers are (the square of their size in 64-bit words, which is what multiplying and dividing
+  them costs), the back substitution too, before it starts; at most 150 unknowns, and whole numbers of
+  4,096 bits. The old limits counted rows and entries alone, and grids of resistors with 3-digit
+  values took up to 165 ms within them (the critic's 9 × 9 grid with .op, .dc and .tf: 226 ms).
+  Measured on 174 grids, meshes, ladders and networks of E and G of up to 146 unknowns with values of
+  1, 3 and 7 digits, on a machine shared with other builds (processor time): a solve takes at most
+  43 ms, the work until it stops at most 62 ms, between 2.6e−6 and 9.1e−6 ms a unit of work. The
+  checks no longer search for common factors in thousands of bits (Euclid's algorithm took 2 ms a step
+  there): `describeResults` takes 45 to 81 ms near the limits with .op, a 1001-point .dc and a .tf
+  (grids of 9 × 9 to 12 × 12, meshes of 60 to 145 nodes), 8 ms for a 99,901-point sweep of a bridge.
+  Unit tests keep 60 parts under 50 ms, the limits and grids of 3-digit values under 200 ms, and a
+  99,999-point sweep under 50 ms.
 - **Our own netlists.** The words of all 210 netlists we have (the examples, the fixtures, the trap
   and letter corpora, the engine settings' goldens and the channel's episode netlists; 186 of them
-  with `.op`) are the same, letter for letter, as at cd20fe9, and no point of a sweep is drawn
-  differently; so are the cards of every part of the 186, also with a crossed-out number from before
-  a change of every resistor by 20 % (633 such readouts): none of them has rounding noise that
-  cd20fe9 decided wrongly. The floors are ngspice's defaults: a netlist's `.options abstol` or `vntol`
-  does not move them.
+  with `.op`), their line notes too, are the same, letter for letter, as at cd20fe9, and no point of a
+  sweep is drawn differently; so are the cards of every part of the 186, also with a crossed-out
+  number from before a change of every resistor by 20 % (633 such readouts): none of them has
+  rounding noise that cd20fe9 decided wrongly, nor a real value ngspice gives as 0. The floors are
+  ngspice's defaults: a netlist's `.options abstol` or `vntol` does not move them.
 - **A 0 V source is "a wire, through which ngspice measures the current (the ammeter trick)"** in the
   circuit's description and on its card (student review): true of every 0 V source (P9), the
   turned-off source of a Thevenin example too, where "used as an ammeter" claimed a purpose the
