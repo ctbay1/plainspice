@@ -61,7 +61,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [sign-in-value](#sign-in-value) | `1k-2`, `1d-3` on R, C or L | warning | keeps the second number: −2 Ω, silently (C, L: a model warning) |
 | [space-before-suffix](#space-before-suffix) | `1 k`, `5 V`, `1 m` | error | stops, or silently takes the word as a setting |
 | [midline-comment](#midline-comment) | `R1 a b 2 * load` | error | stops |
-| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number silently; after a sign: stops |
+| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number silently (on C and L, ngspice warns it can't find a model); after a sign: stops |
 | [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` | error, warning | R, C, L left out; V, I are 0; E-H: see text |
 | [missing-fields](#missing-fields) | `R1 a`, `V1 a`, `E1 a 0 2`, `F1 0 a 5` | error, warning | R, C, L left out; others stop or misread |
 | [control-source](#control-source) | `F1 0 a V9 2` with no V9, or a control with no current to read (R, L, C, I, F, G, a B line with I=) | error | stops |
