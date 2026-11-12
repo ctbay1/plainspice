@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { abs, add, agrees, compare, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, mul, neg, ONE, operatingPoint, partCurrent, readExact, RESIDUAL_SHARE, solveExact, sub, toDouble, unitSource, ZERO, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
+import { agrees, ANSWER_GAP, answersAgree, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, neg, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, unitSource, ZERO, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -1079,9 +1079,6 @@ function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
 
 // ---- .tf and .dc in a circuit solved exactly (S8)
 
-/** ngspice's relative tolerance, reltol (C9c): how far a .tf resistance it gives may be from the exact one. */
-const RELTOL = 1e-3;
-
 /**
  * ngspice's .tf ratio when it is rounding noise of a ratio the circuit makes exactly 0, else undefined
  * (decision 0015, C9p). In a circuit PlainSpice solves exactly every value is a + b·s in the input s,
@@ -1098,44 +1095,52 @@ function transferNoise(netlist: Netlist, results: AnalysisResults, reading: Extr
   if (!ex?.tf) return undefined;
   const { model, tf: t } = ex;
   const input = model.parts[t.part]!;
-  const v = (n: number): Fraction => (n < 0 ? ZERO : t.slope[n]!);
-  let ratio: Fraction;
+  // Whole numbers over one denominator (overCommon): no common factor is searched for in numbers of thousands of bits.
+  const { num, den } = overCommon(t.slope);
+  const v = (n: number): bigint => (n < 0 ? 0n : num[n]!);
+  /** top / den × f as a double, f = fn / fd. */
+  const double = (top: bigint, fn = 1n, fd = 1n): number => {
+    const [n, d] = [top * fn, den * fd];
+    return n === 0n ? 0 : toDouble(d < 0n ? { n: -n, d: -d } : { n, d });
+  };
+  let ratio: bigint;
   let scale = 0;
   if (reading.outputKind === 'voltage') {
     const [a, b] = reading.outputNames.map((n) => nodeIndex(model, ex.node, n));
     if (a === undefined || a === -2 || b === -2) return undefined;
-    ratio = sub(v(a), b === undefined ? ZERO : v(b));
-    for (let k = 0; k < model.nodes.length; k++) scale = Math.max(scale, Math.abs(toDouble(t.slope[k]!)));
+    ratio = v(a) - (b === undefined ? 0n : v(b));
+    for (let k = 0; k < model.nodes.length; k++) scale = Math.max(scale, Math.abs(double(num[k]!)));
   } else {
     const k = ex.part.get(ngspiceSpelling(reading.outputNames[0] ?? ''));
     if (k === undefined || model.parts[k]!.branch < 0) return undefined;
-    ratio = t.slope[model.parts[k]!.branch]!;
-    model.parts.forEach((_, j) => (scale = Math.max(scale, Math.abs(toDouble(partCurrent(model, t.slope, j, j === t.part ? ONE : ZERO))))));
+    ratio = num[model.parts[k]!.branch]!;
+    model.parts.forEach((_, j) => (scale = Math.max(scale, Math.abs(currentDouble(model, num, den, j, j === t.part ? ONE : ZERO)))));
   }
-  const near = (given: number | undefined, exact: Fraction | undefined): boolean => {
-    if (given === undefined || exact === undefined || isZero(exact)) return true;
-    const e = toDouble(exact);
-    return Number.isFinite(e) && Math.abs(given - e) <= RELTOL * Math.abs(e);
+  const near = (given: number | undefined, exact: number | undefined): boolean => {
+    if (given === undefined || exact === undefined) return true;
+    return Number.isFinite(exact) && Math.abs(given - exact) <= ANSWER_GAP * Math.abs(exact);
   };
   // The input resistance: the input source's own voltage over its current, every other source at 0.
-  const through = input.kind === 'V' ? t.slope[input.branch]! : sub(v(input.b), v(input.a));
-  const inputR = isZero(through) ? undefined : input.kind === 'V' ? div(ONE, neg(through)) : through;
+  const through = input.kind === 'V' ? v(input.branch) : v(input.b) - v(input.a);
+  const inputR = through === 0n ? undefined : input.kind === 'V' ? toDouble(through < 0n ? { n: den, d: -through } : { n: -den, d: through }) : double(through);
   const outputR = t.into && reading.outputKind === 'voltage' ? (() => {
+    const into = overCommon(t.into!);
     const [a, b] = reading.outputNames.map((n) => nodeIndex(model, ex.node, n));
-    const at = (n: number | undefined): Fraction => (n === undefined || n < 0 ? ZERO : t.into![n]!);
-    return sub(at(a), at(b));
+    const at = (n: number | undefined): bigint => (n === undefined || n < 0 ? 0n : into.num[n]!);
+    const top = at(a) - at(b);
+    return top === 0n ? undefined : toDouble({ n: top, d: into.den });
   })() : undefined;
-  if (!near(tf.inputImpedance?.value, inputR) || !near(tf.outputImpedance?.value, outputR) || !near(given, ratio)) return undefined;
-  if (!isZero(ratio) || Math.abs(given) > RESIDUAL_SHARE * scale) return undefined;
+  if (ratio !== 0n || !near(tf.inputImpedance?.value, inputR) || !near(tf.outputImpedance?.value, outputR)) return undefined;
+  if (Math.abs(given) > RESIDUAL_SHARE * scale) return undefined;
   return given;
 }
 
 /** A .dc sweep in a circuit solved exactly: by series, the points where ngspice gave rounding noise of an exact 0. */
 interface SweepNoise {
+  /** By series index, the points in order (an index into the sweep's values). */
   zero: Map<number, number[]>;
-  /** The swept source as written, and each point's value as the student wrote it (start + k·step). */
+  /** The swept source as written. */
   source: string;
-  points: number[];
 }
 
 const sweepCache = new WeakMap<AnalysisResults, { netlist: Netlist; noise: SweepNoise | undefined }>();
@@ -1146,11 +1151,16 @@ const SWEEP_CHECKS = 5;
 /**
  * The points of a .dc sweep where ngspice gave rounding noise of a value the circuit makes exactly 0
  * (decision 0015, C9p), once per run. In a circuit PlainSpice solves exactly every value is a + b·s in
- * the swept source s, so the operating point and one more exact solution give every point, at the
- * values the student wrote (start + k·step, in exact fractions; ngspice adds the step up in doubles).
- * ngspice's values at the first point, the last and a few between must solve the exact equations as
- * closely as its rounding can (exact.ts `agrees`), as for an operating point. Undefined for a sweep of
- * two sources, of a resistor or of the temperature, and for a circuit not solved exactly.
+ * the swept source s, so the operating point and one more exact solution give every point. Each point
+ * is judged at the value ngspice swept the source to, the sweep's own x, read exactly: ngspice adds the
+ * step up in doubles, so "-1 1 0.1" reaches −1.39e-16 V where the student wrote 0, and a node that
+ * follows the source is a real −1.39e-16 V there, as the Plot panel's x says (the critic of the
+ * re-check's fixes). So a + b·s is 0 at every point when a and b are, and otherwise only where ngspice's
+ * x is −a/b exactly: a search through the doubles, with no fractions at each point (a sweep can have
+ * 99,999 points). ngspice's values at the first point, the last and three between must solve the exact
+ * equations as closely as its rounding can (exact.ts `agrees`), and be the exact answers to the page's
+ * digits (`answersAgree`), as for an operating point. Undefined for a sweep of two sources, of a resistor
+ * or of the temperature, and for a circuit not solved exactly.
  */
 function sweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise | undefined {
   const cached = sweepCache.get(results);
@@ -1167,53 +1177,61 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const sweep = r?.kind === 'dc' && r.sweeps.length === 1 ? r.sweeps[0]! : undefined;
-  const start = sweep?.start ? readExact(sweep.start.text) : undefined;
-  const step = sweep?.step ? readExact(sweep.step.text) : undefined;
-  if (!sweep || !start || !step) return undefined;
+  if (!sweep) return undefined;
   const { model, sweep: sw } = ex;
   const swept = model.parts[sw.part]!;
-  // The unknowns with the swept source at 0, and how much they change for 1 V or 1 A of it.
-  const at0 = ex.op.map((x, i) => sub(x, mul(swept.value, sw.slope[i]!)));
-  const n = dc.scale.values.length;
-  const points = Array.from({ length: n }, (_, k) => add(start, mul(fraction(BigInt(k)), step)));
-  // ngspice's points are the student's, to its rounding.
-  for (let k = 0; k < n; k++) {
-    const given = dc.scale.values[k]!;
-    if (!Number.isFinite(given)) return undefined;
-    const gap = abs(sub(fromDouble(given), points[k]!));
-    if (compare(gap, mul(fromDouble(RESIDUAL_SHARE), add(abs(start), abs(mul(fraction(BigInt(k)), step))))) > 0) return undefined;
-  }
-  // Each series as a + b·s: a node's voltage, a branch's current, or a part's current (savecurrents).
-  const affine: ([Fraction, Fraction] | undefined)[] = [];
-  const kinds: ({ kind: 'voltage' | 'branch' | 'device'; name: string } | undefined)[] = [];
+  // Whole numbers over one denominator (the operating point and the slope share solveExact's): with the
+  // swept source at s, unknown i is (a[i] + b[i]·s) / den, a with the source at 0, b its change for 1 V or 1 A.
+  const op = overCommon(ex.op);
+  const slope = overCommon(sw.slope);
+  if (op.num.some((v) => v !== 0n) && slope.num.some((v) => v !== 0n) && op.den !== slope.den) return undefined;
+  const den = (op.num.some((v) => v !== 0n) ? op.den : slope.den) * swept.value.d;
+  const a = op.num.map((v, i) => v * swept.value.d - swept.value.n * slope.num[i]!);
+  const b = slope.num.map((v) => v * swept.value.d);
+  const xs = dc.scale.values;
+  const n = xs.length;
+  for (let k = 0; k < n; k++) if (!Number.isFinite(xs[k]!)) return undefined;
+  // Each series as a + b·s, up to a factor that is not 0 (a resistor's 1/R, a G's gain): a node's
+  // voltage, a branch's current, or a part's current (savecurrents). `null` for a series that is 0 at
+  // every point (a capacitor, a G or F of gain 0).
+  const affine: ([bigint, bigint] | null)[] = [];
+  const kinds: { kind: 'voltage' | 'branch' | 'device'; name: string }[] = [];
+  const at = (n: number): [bigint, bigint] => (n < 0 ? [0n, 0n] : [a[n]!, b[n]!]);
+  const minus = (x: [bigint, bigint], y: [bigint, bigint]): [bigint, bigint] => [x[0] - y[0], x[1] - y[1]];
   for (const s of dc.series) {
     const m = /^([vi])\((.*)\)$/i.exec(s.name);
     const inner = m?.[2] ?? '';
     const device = /^@([^[\]]+)\[(?:i|current)\]$/i.exec(inner);
-    let pair: [Fraction, Fraction] | undefined;
+    let pair: [bigint, bigint] | null | undefined;
     if (m?.[1] === 'v' && !inner.includes(',')) {
       const k = ex.node.get(inner);
       if (k !== undefined) {
-        pair = [at0[k]!, sw.slope[k]!];
+        pair = at(k);
         kinds.push({ kind: 'voltage', name: inner });
       }
     } else if (m?.[1] === 'i' && device) {
       const k = ex.part.get(device[1]!);
-      if (k !== undefined) {
-        pair = [partCurrent(model, at0, k, k === sw.part ? ZERO : model.parts[k]!.value), partCurrent(model, sw.slope, k, k === sw.part ? ONE : ZERO)];
-        kinds.push({ kind: 'device', name: device[1]! });
+      const p = k === undefined ? undefined : model.parts[k]!;
+      if (p) {
+        if (p.kind === 'R') pair = minus(at(p.a), at(p.b));
+        else if (p.kind === 'G') pair = isZero(p.value) ? null : minus(at(p.c), at(p.d));
+        else if (p.kind === 'F') pair = isZero(p.value) ? null : at(model.parts[p.control]!.branch);
+        else if (p.kind === 'I') pair = p === swept ? [0n, 1n] : isZero(p.value) ? null : [1n, 0n];
+        else if (p.kind === 'C') pair = null;
+        else if (p.branch >= 0) pair = at(p.branch);
+        if (pair !== undefined) kinds.push({ kind: 'device', name: device[1]! });
       }
     } else if (m?.[1] === 'i') {
       const k = ex.part.get(inner);
       if (k !== undefined && model.parts[k]!.branch >= 0) {
-        pair = [at0[model.parts[k]!.branch]!, sw.slope[model.parts[k]!.branch]!];
+        pair = at(model.parts[k]!.branch);
         kinds.push({ kind: 'branch', name: inner });
       }
     }
-    if (!pair) return undefined;
+    if (pair === undefined) return undefined;
     affine.push(pair);
   }
-  // ngspice's values at a few points solve the exact equations as closely as its rounding can.
+  // ngspice's values at a few points solve the exact equations as closely as its rounding can, and are the exact answers to the page's digits.
   const checks = new Set([0, n - 1, ...Array.from({ length: SWEEP_CHECKS - 2 }, (_, i) => Math.round(((i + 1) * (n - 1)) / (SWEEP_CHECKS - 1)))]);
   for (const k of checks) {
     if (k < 0 || k >= n) continue;
@@ -1224,23 +1242,29 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       const what = kinds[j]!;
       (what.kind === 'voltage' ? nodes : what.kind === 'branch' ? branch : device).set(what.name, s.values[k]!);
     });
-    const level = fromDouble(dc.scale.values[k]!);
-    if (!agrees(model, ngspiceValues(nodes, branch, device), (p) => (p === swept ? level : p.value))) return undefined;
+    const x = fromDouble(xs[k]!);
+    const level = (p: ExactModel['parts'][number]): Fraction => (p === swept ? x : p.value);
+    const ng = ngspiceValues(nodes, branch, device);
+    const unknowns = a.map((ai, i) => ({ n: ai * x.d + b[i]! * x.n, d: den * x.d }));
+    if (!agrees(model, ng, level) || !answersAgree(model, unknowns, ng)) return undefined;
   }
-  // a + b·s is 0 at every point when a and b are, else at most at one: s = −a/b, the point k = (s − start)/step.
+  // a + b·s is 0 at every point when a and b are, else only at s = −a/b, where ngspice's x must be that number exactly.
   const zero = new Map<number, number[]>();
   dc.series.forEach((s, j) => {
-    const [a, b] = affine[j]!;
-    let at: number[];
-    if (isZero(b)) at = isZero(a) ? Array.from({ length: n }, (_, k) => k) : [];
-    else {
-      const k = div(sub(neg(div(a, b)), start), step);
-      at = k.d === 1n && k.n >= 0n && k.n < BigInt(n) ? [Number(k.n)] : [];
+    const pair = affine[j]!;
+    const values = s.values;
+    const points: number[] = [];
+    if (pair === null || (pair[0] === 0n && pair[1] === 0n)) {
+      for (let k = 0; k < n; k++) if (values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
+    } else if (pair[1] !== 0n) {
+      const [p, q] = pair;
+      const root = toDouble(q < 0n ? { n: p, d: -q } : { n: -p, d: q });
+      const r = Number.isFinite(root) ? fromDouble(root) : undefined;
+      if (r && p * r.d + q * r.n === 0n) for (let k = 0; k < n; k++) if (xs[k] === root && values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
     }
-    const noisy = at.filter((k) => s.values[k] !== 0 && Number.isFinite(s.values[k]!));
-    if (noisy.length) zero.set(j, noisy);
+    if (points.length) zero.set(j, points);
   });
-  return { zero, source: sweep.source.text, points: points.map(toDouble) };
+  return { zero, source: sweep.source.text };
 }
 
 /**
@@ -1795,7 +1819,9 @@ function finals(netlist: Netlist, sweep: Sweep, zero?: SweepNoise['zero']): Swee
   const last = sweep.scale.values.length - 1;
   return sweep.series.map((s, j) => {
     const given = s.values[s.values.length - 1] ?? Number.NaN;
-    const noise = s.values.length - 1 === last && zero?.get(j)?.includes(last);
+    // The points are in order: the last point is noise when it ends the list.
+    const at = zero?.get(j);
+    const noise = s.values.length - 1 === last && at !== undefined && at[at.length - 1] === last;
     const value = noise ? 0 : given;
     const unit = s.unit === '°C' || s.unit === 's' ? s.unit : s.unit;
     const f: SweepWords['final'][number] = {
@@ -2079,16 +2105,23 @@ function sweepNoiseNote(netlist: Netlist, results: AnalysisResults): MessageWord
   if (!results.dc || !noise?.zero.size) return undefined;
   const dc = results.dc;
   const unit = dc.scale.unit;
-  const gave: string[] = [];
   const names: string[] = [];
+  // Only the points the note names are put in words: a series can be noise at each of 99,999 points.
+  const gave: string[] = [];
+  let count = 0;
   for (const [j, points] of noise.zero) {
     const s = dc.series[j]!;
-    names.push(netlistVector(netlist, s.name));
-    for (const k of points) gave.push(S.noiseSweepGave(netlistVector(netlist, s.name), formatLikeNgspice(s.values[k]!), s.unit, S.sweepAt(noise.source, formatSI(noise.points[k]!, unit))));
+    const name = netlistVector(netlist, s.name);
+    names.push(name);
+    count += points.length;
+    for (const k of points) {
+      if (gave.length > NOTE_LIST) break;
+      gave.push(S.noiseSweepGave(name, formatLikeNgspice(s.values[k]!), s.unit, S.sweepAt(noise.source, formatSI(dc.scale.values[k]!, unit))));
+    }
   }
-  const list = gave.length <= NOTE_LIST + 1 ? listWords(gave) : S.noiseSweepMore(gave.slice(0, NOTE_LIST).join(', '), gave.length - NOTE_LIST);
+  const list = count <= NOTE_LIST + 1 ? listWords(gave) : S.noiseSweepMore(gave.slice(0, NOTE_LIST).join(', '), count - NOTE_LIST);
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
-  const m: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseSweepTitle(names, 'DC sweep'), why: S.noiseSweepWhy(list, gave.length === 1) };
+  const m: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseSweepTitle(names, 'DC sweep'), why: S.noiseSweepWhy(list, count === 1) };
   if (line !== undefined) m.line = line + 1;
   return m;
 }

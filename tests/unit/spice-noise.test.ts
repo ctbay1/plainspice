@@ -13,7 +13,7 @@ import { plotSpecs } from '../../src/app/components/PlotPanel.tsx';
 import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { describeResults, roundingNoise, type ResultsInWords } from '../../src/spice/describe.ts';
+import { describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 import { agrees, exactModel, shares, toDouble, type ExactModel } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -290,6 +290,28 @@ describe('speed: the exact solve keeps describeResults, which runs on the main t
     }
   });
 
+  it('grids of resistors with 3-digit values, the slowest kind measured (the critic of the re-check\'s fixes: 226 ms for 9 × 9 with .op, .dc and .tf): under 200 ms, solved exactly or stopped by the counted work', async () => {
+    let x = 11;
+    const rnd = (): number => (x = (x * 16807) % 2147483647) / 2147483647;
+    const value = (): string => `${(1 + rnd() * 8.99).toFixed(2)}${['', 'k', 'k', 'meg', 'm'][Math.floor(rnd() * 5)]}`;
+    const grid = (side: number): string => {
+      const l = ['V1 g0_0 0 10'];
+      for (let i = 0; i < side; i++) for (let j = 0; j < side; j++) {
+        if (i + 1 < side) l.push(`Rv${i}_${j} g${i}_${j} g${i + 1}_${j} ${value()}`);
+        if (j + 1 < side) l.push(`Rh${i}_${j} g${i}_${j} g${i}_${j + 1} ${value()}`);
+      }
+      return [...l, `Rg g${side - 1}_${side - 1} 0 ${value()}`].join('\n');
+    };
+    const ways: string[] = [];
+    for (const side of [9, 10, 12]) {
+      const op = await timed(`* grid\n${grid(side)}\n.op\n.dc V1 0 10 0.01\n.tf v(g0_1) V1\n.end\n`);
+      expect(op.ms, String(side)).toBeLessThan(200);
+      ways.push(op.by);
+    }
+    // The 12 × 12 grid is past the counted work.
+    expect(ways[2]).toBe('rule');
+  });
+
   it('at the limits of the exact solve (a random network of 400 resistors on 133 nodes, about a second of work) it stops in time: under 200 ms, then the other rule decides', async () => {
     for (const seed of [7, 11]) {
       const { mesh } = circuits(400, seed);
@@ -329,5 +351,55 @@ describe('the same-circuit check (exact.ts agrees), measured with the real engin
     const nano = await check({ V2: '1n' });
     expect([nano.agrees, nano.equations < 1e-10]).toEqual([true, true]);
     expect((await check({ V2: '1u' })).agrees).toBe(false);
+  });
+});
+
+describe('after the critic of the re-check\'s fixes: what the exact solution may decide, and how fast', () => {
+  const bridge = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k'];
+  const run = (...l: string[]): Promise<Awaited<ReturnType<typeof solveText>>> => solveText(`* t\n${l.join('\n')}\n.end\n`, ngspice);
+
+  it('a .dc point is judged at the value ngspice swept the source to: "-1 1 0.1" reaches −1.39e-16 V, where v(a) follows V1 and is real, so no note (it said v(a) was noise at "V1 = 0 V")', async () => {
+    const r = await run('V1 a 0 0', 'R1 a b 1k', 'R2 b 0 2k', '.dc V1 -1 1 0.1');
+    expect(r.results.dc!.scale.values[10]).toBe(-1.3877787807814457e-16);
+    expect(r.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+    const spec = plotSpecs(r.results, r.netlist)[0]!;
+    expect(spec.series.find((s) => s.label === 'v(a)')!.values[10]).toBe(-1.3877787807814457e-16);
+    expect(spec.series.some((s) => s.given)).toBe(false);
+  });
+  it('a sweep of 99,999 points is decided with no fractions at each point: describeResults stays well under 50 ms (it took 705 ms at 100,000)', async () => {
+    const r = await run(...bridge, 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9.9998 0.0001');
+    const points = r.results.dc!.scale.values.length;
+    expect(points).toBeGreaterThan(99_990);
+    const text = `* t\n${[...bridge, 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9.9998 0.0001'].join('\n')}\n.end\n`;
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), structuredClone(r.results), r.run)], 3);
+    expect(ms).toBeLessThan(50);
+    const why = sp(r.words.warnings.find((m) => m.code === 'rounding-noise')!.why);
+    expect(why).toMatch(/^ngspice gave i\(vm\) \S+ A at V1 = 100 µV, i\(vm\) \S+ A at V1 = 200 µV, i\(vm\) \S+ A at V1 = 300 µV, i\(vm\) \S+ A at V1 = 400 µV and \d+ more, each in the Plot panel's table\. /);
+    expect(r.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0 });
+  });
+  it('doctored .dc results are not this circuit\'s: a point shifted by 1e-6 V or a value 1 ppm off keeps ngspice\'s numbers', async () => {
+    const r = await run(...bridge, 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9 3');
+    expect(shownSweep(r.netlist, r.results)).not.toBe(r.results.dc);
+    const shifted = structuredClone(r.results);
+    shifted.dc!.scale.values[3] = 9.000001;
+    expect(shownSweep(r.netlist, shifted)).toBe(shifted.dc);
+    const off = structuredClone(r.results);
+    const va = off.dc!.series.find((s) => s.name === 'v(a)')!;
+    va.values[3] = va.values[3]! * (1 + 1e-6);
+    expect(shownSweep(r.netlist, off)).toBe(off.dc);
+  });
+  it('doctored .tf results are not this circuit\'s: an input or output resistance 1 % off, or a ratio far above what rounding leaves, keeps ngspice\'s ratio', async () => {
+    const r = await run(...bridge, 'R5 a b 1k', '.tf v(a,b) V1');
+    const ratio = (results: typeof r.results): number | undefined => describeResults(r.netlist, results, r.run).tf!.transferFunction!.noise;
+    expect(ratio(structuredClone(r.results))).toBe(-5.551115123125783e-17);
+    const inR = structuredClone(r.results);
+    inR.tf!.inputImpedance!.value *= 1.01;
+    expect(ratio(inR)).toBeUndefined();
+    const outR = structuredClone(r.results);
+    outR.tf!.outputImpedance!.value *= 1.01;
+    expect(ratio(outR)).toBeUndefined();
+    const big = structuredClone(r.results);
+    big.tf!.transferFunction = 1e-3;
+    expect(ratio(big)).toBeUndefined();
   });
 });
