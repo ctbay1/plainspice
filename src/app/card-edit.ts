@@ -184,6 +184,19 @@ function readsAsOneNumber(text: string, spot: ValueSpot, v: string): boolean {
   return !!only && VALUE_ROLES.has(only.role) && only.token.text === v && el.value?.token.from === only.token.from && el.value.number !== undefined;
 }
 
+/** The schematic keepDrawing built last, for the page's own build of the same text (schematicOf). */
+let lastBuilt: Schematic | undefined;
+
+/**
+ * The Notebook's schematic of a netlist: the one keepDrawing has just built when it is of the same
+ * text, else built now. A value typed on a card is then drawn from one build, not two (second
+ * re-check, P3: keepDrawing built the new text, and the page built it again a frame later).
+ */
+export function schematicOf(netlist: Netlist): Schematic {
+  const s = lastBuilt;
+  return s && s.netlist.text === netlist.text ? s : buildSchematic(netlist, NOTEBOOK_OPTIONS);
+}
+
 /**
  * `next` as it should be written: unchanged when its parts are drawn where they were in `drawn`
  * (the drawing of the text the card opened on), or with `drawn`'s positions written in (the *@
@@ -193,6 +206,7 @@ export function keepDrawing(drawn: Schematic, next: string): string {
   if (drawn.foreign.length) return next;
   const was = serializeDrawing(drawn.circuit, drawn.drawing, drawn.kept);
   const after = buildSchematic(next, NOTEBOOK_OPTIONS);
+  lastBuilt = after;
   const now = serializeDrawing(after.circuit, after.drawing, after.kept);
   if (was.length === now.length && was.every((l, i) => l === now[i])) return next;
   return applyChanges(next, drawingBlockChanges(after.netlist, was));
