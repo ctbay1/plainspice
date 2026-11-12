@@ -98,3 +98,76 @@ the same way for all 20 examples and again whenever a video's drawing changes.
   `video-drawings.test.ts` fails when a block is not what the converter makes.
 - Some of the videos' name spots have no match in the format (centred above a point): those names go
   above and to one side, and the report says so for each.
+
+## After the final reviews (12 November 2026)
+
+The final reviews of milestone 2 (the phone review, with one finding each from the accessibility and
+the first-year student's reviews) found the phone's view of the drawing hard to use in several places,
+most of them on the examples this record made: they open turned but need a drag, or as drawn. What
+changed, each with a test that fails without it (`tests/e2e/phone.spec.ts`,
+`tests/unit/notebook-canvas.test.tsx`, `notebook-fit.test.ts`, `app-words.test.ts`). The phone's
+view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer decision
+[0017](0017-the-schematic-editor.md)'s; the changes are recorded here, with the examples that showed them.
+
+- **A finger moves the paper from anywhere.** In the turned view (another drawing, which the editor
+  does not change) a press on a part, a node's name or the ground was only that item's tap: a finger
+  that moved from there did nothing, and a second finger did not pinch, so the drag the hint asks for
+  failed on p02-4, the checkpoint circuit. Now such a press is the item's tap while it holds still,
+  and as soon as it moves (8 px for a finger, 4 px for a mouse or a pen) it pans the paper, as from
+  empty paper, and the item gets no click; with a second finger it is a pinch (0017: a finger pans
+  unless it holds still). The turned view also gets "more" at an edge where the drawing is cut off,
+  as the view as drawn has.
+- **A sheet leaves the drawing where it found it.** When a sheet or a panel opens over the selected
+  item, the drawing is still moved just enough to keep that item in view (WCAG 2.4.11). When the sheet
+  goes (its ×, or a tool chosen in it) the drawing goes back to where it was, unless the reader moved
+  it in the meantime, and at once rather than sliding, so a tap made just after (a pin, once Wire is
+  chosen) lands on what is under it. It used to stay moved, with the top of the circuit under the top
+  bar, where a tap opened the Examples menu instead.
+- **The drawing never leaves the screen.** A drag, a scroll or a zoom stops where a third of the free
+  paper (at least 48 px) still shows the drawing, or all of it when it is smaller than that
+  (`keepInView`). Considered: 48 px only, as the skeptic proposed; that leaves a sliver at the edge of
+  the screen, while a third keeps the circuit recognisable and still lets a student push it aside to
+  place a part on free paper. A part the page brings into view (one moved with the keys, in hand away
+  from the drawing) is shown wherever it is. On a phone, once the drawing has been moved partly out of
+  view (not by a sheet, which covers it only for a while), the status line offers "Show the whole
+  drawing", the same as Fit, which is at the end of the More sheet.
+- **"Whole" means what is drawn.** The canvas says the drawing is whole when everything drawn (the
+  symbols, the wires, the words and numbers as written, not the room kept around them for longer
+  numbers) is in the free paper, wherever the fit or the reader put it. The hint says "drag the paper
+  to see the rest" only when something drawn is cut off: at 360 px, four turned examples shown whole
+  (sp01-4, sp01-5, p01-2, p02-3) told the student to drag; now they say "Turned to fit the screen".
+- **Fit shows the whole drawing.** Fit ("Fit the drawing to the window" in the More sheet, Ctrl+K,
+  Shift+1, the computer's zoom bar, and the phone's "Show the whole drawing") fits all of the drawing,
+  smaller than its words' readable size if it must be, down to 4 px a grid unit (as the phone's view
+  while editing already did); it stays so until something else fits the drawing again (another
+  circuit, a part typed in the Netlist panel), and a phone's card still fits its own part. Before, Fit
+  stopped at the readable size, so it changed nothing for a drawing too long for the screen. Zoom out
+  (its buttons and keys) now goes as far as two fingers do, to half the readable size, and never jumps
+  in from a view that is already smaller.
+- **As drawn, at the smallest readable size.** A drawing shown as drawn on a phone that needs panning
+  ("As in the video", or a drawing that cannot be turned cleanly) opens at the smallest size its
+  words can be read (names 10.5 px), from its left end, instead of as tall as the screen allows up to
+  30 px a grid unit: most of the circuit shows at once. A ladder built with the mouse and shared to a
+  Pixel 7 showed V1 and half of R1; it now shows all five parts, F1's words cut at the edge, and Fit
+  shows all of it. This changes how "As in the video" looked at Tarık's checkpoint (decision 0015: 30
+  px a unit); it is one line of `App.tsx` (the canvas's `fill`) to take back.
+- **Old numbers only when there are some.** A paused status adds "The numbers are from before your last
+  change." only when the last run gave answers, which the drawing keeps in pencil; after a run that gave
+  none (a check found an error) the paper shows none, and the sentence only made the status longer.
+- **A keyboard on a touch screen.** The editing strip (the value field held above the on-screen
+  keyboard) is for a field tapped on a touch screen, or for any field while an on-screen keyboard is
+  up. A value field reached with the keys (a tablet with a keyboard, switch access) keeps the card's
+  sheet, so Tab goes on to Explain, Turn, Mirror, Reverse, Move, Connections and Delete (WCAG 2.4.3);
+  the strip took them all out of the page. Not by the keyboard's inset alone, as the reviewer first
+  proposed: with `interactive-widget=resizes-content` Chrome for Android may report none, and a tapped
+  field must still get the strip there.
+- **A very short window.** Below 300 px of height (a laptop at 300 % or 400 %), a calm status
+  ("Finished in 32 ms") folds to its dot, in the paper's margin left of the red line where the drawing
+  never goes, its words still read by screen readers; with buttons on it (Undo, Show the whole
+  drawing) it keeps them. Running, paused or an error keep their words, their reason and their buttons.
+  The status line keeps its height, so the drawing does not move as runs come and go.
+
+Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
+a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the
+drawing is going, not where it is (seen in the tests, which wait for the drawing to settle; a sheet
+going away no longer slides). The ladder above still opens as drawn: its turn is the schematic's to fix.
