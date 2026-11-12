@@ -37,7 +37,7 @@ import {
 import { isKnownDotCommand, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -162,6 +162,8 @@ interface Ctx {
   spaced: Set<number>;
   /** The drawing's `*@ label` lines, by the node name they write (lower-case), read on the first rename (labelChanges). */
   labels?: Map<string, Span[]>;
+  /** The node names inside v(...) on .control lines, by node, read on the first use (controlNodes). */
+  controlNodes?: Map<string, { token: Token; command: string }[]>;
 }
 
 const GROUND = '0';
@@ -1457,6 +1459,72 @@ function labelChanges(c: Ctx, key: string, to: string): TextChange[] {
 }
 
 /**
+ * The node names inside v(...) on the lines of a .control block (`save v(out)`, `print v(a, b)` ...), by
+ * node as the parser keys them, with the command, read once. ngspice reads these lines as written, so a
+ * name it spells with underscores is no node there (non-ascii-node-4); a fix that renames such a node
+ * renames it there too.
+ */
+function controlNodes(c: Ctx): Map<string, { token: Token; command: string }[]> {
+  if (c.controlNodes) return c.controlNodes;
+  const out = new Map<string, { token: Token; command: string }[]>();
+  for (const l of c.n.lines) {
+    if (l.kind !== 'control') continue;
+    const command = lowerAscii(/^\s*(?:\*#|##)?\s*([^\s(]*)/.exec(l.text)?.[1] ?? '');
+    for (const m of l.text.matchAll(/\bv(?:m|p|r|i|db)?\s*\(([^)]*)\)/gi)) {
+      const inside = l.span.from + m.index + m[0].indexOf('(') + 1;
+      for (const w of m[1]!.matchAll(/[^\s,]+/g)) {
+        const token = { from: inside + w.index, to: inside + w.index + w[0].length, text: w[0] };
+        const key = ngspiceName(w[0]);
+        const list = out.get(key);
+        if (list) list.push({ token, command });
+        else out.set(key, [{ token, command }]);
+      }
+    }
+  }
+  c.controlNodes = out;
+  return out;
+}
+
+/** The line a token is on, or for a continuation line the line it continues (a card's first line). */
+function cardOf(c: Ctx, t: Token): NetlistLine {
+  const l = lineAt(c.n, t.from);
+  return l.kind === 'continuation' && l.continues !== undefined ? c.n.lines[l.continues]! : l;
+}
+
+/**
+ * What ngspice does with a node name it spells with underscores, said only as far as it holds in every
+ * run (S10): it spells the node so in its printout and results (non-ascii-node-1). A .print or .plot
+ * line keeps the letters as written, so there ngspice finds no such node, run as ngspice -b; PlainSpice
+ * runs it with a results file, which makes ngspice skip those lines (non-ascii-node-3). A command for
+ * ngspice (.control, *#) keeps them too, and a save of the node there stops the analysis, in PlainSpice
+ * as well (non-ascii-node-4). The last two are said only when such a line names the node.
+ */
+function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
+  const printed = info.refs.find((t) => {
+    const d = cardOf(c, t).directive?.name;
+    return d === '.print' || d === '.plot';
+  });
+  const control = controlNodes(c).get(info.name) ?? [];
+  const out = [`ngspice spells the node ${spelled} in its printout and results${printed || control.length ? '.' : ', without a message.'}`];
+  const facts = ['non-ascii-node-1'];
+  if (printed) {
+    out.push(
+      `On a .print or .plot line it reads the name as written, so it finds no node ${printed.text} there: run as ngspice -b, it warns "can't parse '${printed.text}'" and prints nothing for it. PlainSpice's run skips those lines.`,
+    );
+    facts.push('non-ascii-node-3');
+  }
+  if (control.length) {
+    const save = control.find((x) => x.command === 'save');
+    const star = /^\s*(\*#|##)/.exec(lineAt(c.n, control[0]!.token.from).text)?.[1];
+    out.push(
+      `In a command for ngspice (${star ? `a ${star} line` : '.control'}) it reads the name as written too, so it finds no node ${control[0]!.token.text} there${save ? `, and save v(${save.token.text}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too` : ''}.`,
+    );
+    facts.push('non-ascii-node-4');
+  }
+  return `${out.join(' ')} [${facts.join(', ')}]`;
+}
+
+/**
  * New names for nodes, each `wanted` when ngspice spells it like no name in `taken`, else wanted2,
  * wanted3 ... (and then taken too). Never ground's own names, 0 and gnd (W8), which would join the node
  * to ground, nor a name that reads as ground (GROUND_LIKE: ground, earth, 00 ...), which the
@@ -1505,7 +1573,11 @@ function checkNodeNames(c: Ctx): void {
   }
   const freeName = nodeNamer(new Set(groups.keys()));
   const plainFor = (info: NodeInfo): string => freeName(plainLetters(info.refs[0]!.text, true) || 'n1');
-  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to)];
+  const renaming = (info: NodeInfo, to: string): TextChange[] => [
+    ...renameNode(info, to),
+    ...labelChanges(c, info.name, to),
+    ...(controlNodes(c).get(info.name) ?? []).map((x) => replace(x.token, to)),
+  ];
   for (const [spelled, infos] of groups) {
     if (infos.length > 1) {
       const odd = infos.filter((i) => !isPlainName(i.name));
@@ -1527,7 +1599,7 @@ function checkNodeNames(c: Ctx): void {
     const to = plainFor(info);
     add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells the node ${written} as ${spelled}`,
       `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
-      `ngspice runs it and spells the node ${spelled}, without a message. [non-ascii-node-1]`,
+      spelledNodeSentence(c, info, spelled),
       [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
   }
 }

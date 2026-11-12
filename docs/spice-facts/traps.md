@@ -7795,7 +7795,7 @@ What PlainSpice shows for non-ascii-node-1 (warning, line 2):
 
 > **ngspice spells the node giriş as giri__.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ş as __), so its printout and results call this node giri__, and two names can become one node. A name in plain letters avoids both.
 >
-> *ngspice:* ngspice runs it and spells the node giri__, without a message. [non-ascii-node-1]
+> *ngspice:* ngspice spells the node giri__ in its printout and results, without a message. [non-ascii-node-1]
 >
 > *Fixes:* "Rename giriş to giris"
 
@@ -7856,6 +7856,146 @@ ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(__) = 12, i(v1) = -0.006
 ```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-3. A .print or .plot line keeps the letters as written: ngspice -b finds no node çıkış there
+
+Added after the re-check of the merged build, 12 November 2026 (S10). ngspice leaves .print and .plot
+lines out of the step that writes the letters outside ASCII as `_` (`inp_casefix`, skipped for them in
+its `src/frontend/inp.c`; the micro sign is still read as u, earlier), so there `çıkış` is not
+`____k____`, the node it built: run as `ngspice -b`, it warns "can't parse 'çıkış'" and prints nothing
+for that name. With a results file (`-b -r`, as PlainSpice runs it),
+ngspice skips .print and .plot lines, and the run is not affected. So the check says "without a
+message" only when no such line names the node, and says this when one does. The one-click rename
+writes the plain name on that line too; the fixed netlist runs under `ngspice -b` and prints its table
+(exit 0, native 47 and 42). With ngspice's own spelling, `.print dc v(____k____)`, the table prints; a
+name with only the micro sign, `.print dc v(aµ)`, prints as `v(au)`.
+
+What PlainSpice shows for non-ascii-node-3 (warning, line 3):
+
+> **ngspice spells the node çıkış as ____k____.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so its printout and results call this node ____k____, and two names can become one node. A name in plain letters avoids both.
+>
+> *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for it. PlainSpice's run skips those lines. [non-ascii-node-1, non-ascii-node-3]
+>
+> *Fixes:* "Rename çıkış to cikis"
+
+```spice
+* a .print line naming a node with Turkish letters
+V1 in 0 12
+R1 in çıkış 1k
+R2 çıkış 0 2k
+.dc V1 0 12 6
+.print dc v(çıkış)
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Warning: can't parse 'çıkış': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: .print: no dc analysis found.
+  ngspice -b -r out.raw (exit 0), which prints instead:
+    .print line ignored since rawfile was produced.
+    rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    .print line ignored since rawfile was produced.
+    vectors: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(____k____) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+```
+
+The same in other forms, native 47 and 42 alike, `ngspice -b`:
+
+```text
+.plot dc v(çıkış) (exit 1):
+    Warning: can't parse 'çıkış': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    ...
+    Error: .plot: no dc analysis found.
+  ngspice -b -r: .plot line ignored since rawfile was produced. (exit 0)
+.print tran v(çıkış), with .tran 10u 20u (exit 1):
+    Warning: can't parse 'çıkış': ignored
+    Error: no data saved for Transient analysis; analysis not run
+    ...
+    Error: .print: no tran analysis found.
+.print dc v(çıkış) i(V1) (exit 0, and no table at all):
+    Warning: can't parse 'çıkış': ignored
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+.print op v(çıkış), with .op (exit 0; the operating point's own printout still lists ____k____ = 8):
+    Warning: can't parse 'çıkış': ignored
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-4. A command for ngspice keeps the letters as written too: save v(çıkış) stops the analysis, in PlainSpice too
+
+Added after the re-check of the merged build, 12 November 2026 (S10). The lines of a `.control` block
+(and a `*#` line) are commands for ngspice, and it reads them as written: `print v(çıkış)` finds no
+vector çıkış, although the run just made `____k____`, and `save v(çıkış)` leaves the next run nothing to
+save, so the analysis does not run, also with a results file, as PlainSpice runs it: our engine gives
+no results. The one-click rename writes the plain name inside `v(...)` on these lines too; the fixed
+netlist runs (exit 0, native 47 and 42, and our engine: v(cikis) = 0, 4, 8). `let`, `meas` and `write`
+find no vector `çıkış` either (native 47 and 42: 'RHS "v(çıkış)" invalid', 'no such vector as v(çıkış)',
+'no writable vector found').
+
+What PlainSpice shows for non-ascii-node-4 (warning, line 3):
+
+> **ngspice spells the node çıkış as ____k____.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so its printout and results call this node ____k____, and two names can become one node. A name in plain letters avoids both.
+>
+> *ngspice:* ngspice spells the node ____k____ in its printout and results. In a command for ngspice (.control) it reads the name as written too, so it finds no node çıkış there, and save v(çıkış) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too. [non-ascii-node-1, non-ascii-node-4]
+>
+> *Fixes:* "Rename çıkış to cikis"
+
+```spice
+* commands in a .control block naming a node with Turkish letters
+V1 in 0 12
+R1 in çıkış 1k
+R2 çıkış 0 2k
+.dc V1 0 12 6
+.control
+run
+print v(çıkış)
+save v(çıkış)
+run
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1):
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    rawfile: (no rawfile data)
+ngspice 42, ngspice -b (exit 1):
+    Warning from checkvalid: vector çıkış is not available or has zero length.
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+A `*# save v(çıkış)` line in place of the .control block does the same (native 47 and 42, `-b -r`,
+exit 1: "Error: no data saved for D.C. Transfer curve analysis; analysis not run").
 
 PlainSpice's checks: `non-ascii-node`.
 

@@ -251,6 +251,8 @@ const FACTS: Fact[] = [
   // Added after the final reviews of 12 Nov 2026: names ngspice spells with underscores (W16-W18).
   { code: 'non-ascii-node-1', netlist: "* node names with Turkish letters\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n", vectors: { "v(giri__)": 12, "v(____k____)": 8, "i(v1)": -0.004 }, traps: ['non-ascii-node', 'non-ascii-node'] },
   { code: 'non-ascii-node-2', netlist: "* two node names that become one\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n", vectors: { "v(__)": 12, "i(v1)": -0.006 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-3', netlist: "* a .print line naming a node with Turkish letters\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.dc V1 0 12 6\n.print dc v(\u00e7\u0131k\u0131\u015f)\n.end\n", vectors: { "v(____k____)": [0, 4, 8], "i(v1)": [0, -0.002, -0.004] }, prints: [".print line ignored since rawfile was produced."], traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-4', netlist: "* commands in a .control block naming a node with Turkish letters\nV1 in 0 12\nR1 in \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.dc V1 0 12 6\n.control\nrun\nprint v(\u00e7\u0131k\u0131\u015f)\nsave v(\u00e7\u0131k\u0131\u015f)\nrun\n.endc\n.end\n", prints: ["vector \u00e7\u0131k\u0131\u015f is not available or has zero length", "no data saved for D.C. Transfer curve analysis; analysis not run"], fails: true, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-6', netlist: "* g\u00f1d is not ground, and neither is gnd2: gnd is\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\nR3 a gnd2 1k\nR4 gnd2 0 1k\nR5 a gnd 1k\nR6 gnd 0 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(g__d)": 2.5, "v(gnd2)": 2.5, "i(@r2[i])": 0.0025, "i(@r5[i])": 0.005, "i(@r6[i])": 0, "i(v1)": -0.009999999999999998 }, traps: ['non-ascii-node'] },
   { code: 'duplicate-name-3', netlist: "* two part names that become one\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists"], fails: true, traps: ['duplicate-name'] },
   // Added after the final reviews of 12 Nov 2026: characters that are not what they look like (W16).
@@ -344,6 +346,14 @@ it('non-ascii-node-6: the fix keeps gñd off ground: gnd3 is 2.5 V, as g__d was 
   expect(f!.label).toBe('non-ascii-node: Rename g\u00f1d to gnd3');
   expect(vector(f!.run, 'v(gnd3)')).toEqual([2.5]);
   expect(vector(f!.run, 'i(@r2[i])')).toEqual([0.0025]);
+});
+
+it('non-ascii-node-3, -4: the rename writes the plain name on the .print line and in the .control block too, and the run then gives v(cikis) (S10)', () => {
+  for (const code of ['non-ascii-node-3', 'non-ascii-node-4']) {
+    const [f] = fixed.get(code)!;
+    expect(f!.netlist, code).not.toContain('\u00e7\u0131k\u0131\u015f');
+    expect(vector(f!.run, 'v(cikis)'), code).toEqual([0, 4, 8]);
+  }
 });
 
 it('runs every offered fix (there are many)', () => {

@@ -266,3 +266,15 @@ Ctrl+K stay as they are.
   names side by side, "ngspice calls the node çıkış ____k____", and for a one-letter name "… ç __"
   read like a blank to fill in; the card, the red pen and the announcement show the title alone. It
   now says "as", as the check's other sentences do ("ngspice spells ş and ç as __").
+- **What ngspice does with such a name, as far as it holds in every run** (SPICE re-check S10). The
+  warning said "ngspice runs it and spells the node ____k____, without a message", recorded on an .op
+  netlist. But ngspice reads a .print or .plot line as written (it leaves those lines out of the step
+  that writes such letters as `_`): run as `ngspice -b`, as a student may run the exported file, it
+  warns "can't parse 'çıkış'" and prints nothing for it, and runs no .dc or .tran when that was all it
+  had to print (non-ascii-node-3). A command for ngspice (a .control line, a `*#` line) reads the name
+  as written too, so `save v(çıkış)` there stops the analysis, in PlainSpice's own run as well
+  (non-ascii-node-4). Now the sentence says only "ngspice spells the node ____k____ in its printout and
+  results" (and "without a message" when nothing else names the node), and adds a sentence for each
+  kind of line only when such a line names the node; .save, .tf, .ic and .meas lines are read like part
+  lines and work, so they get none. The rename fix also writes the plain name inside `v(...)` on the
+  .control lines (it already did on .print lines): without that, the fixed netlist still stopped.

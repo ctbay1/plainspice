@@ -1132,6 +1132,28 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(first('* t\nV1 \u00e7 0 12\nR1 \u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').title).toBe('ngspice spells the node \u00e7 as __');
   });
 
+  it('says what ngspice does with the name only as far as it holds in every run, and names a .print, .plot or .control line that names the node (S10; non-ascii-node-1, -3, -4)', () => {
+    const name = '\u00e7\u0131k\u0131\u015f';
+    const net = (extra: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n${extra}.end\n`;
+    // No such line: what holds in every run (it said "ngspice runs it", which a .print line in ngspice -b belies).
+    expect(first(net(''), 'non-ascii-node').ngspice).toBe('ngspice spells the node ____k____ in its printout and results, without a message. [non-ascii-node-1]');
+    // .save, .tf and .ic lines are read like part lines: nothing more to say (they work, natively too).
+    expect(first(net(`.save v(${name})\n.tf v(${name}) V1\n`), 'non-ascii-node').ngspice).toBe('ngspice spells the node ____k____ in its printout and results, without a message. [non-ascii-node-1]');
+    const printed =
+      `ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node ${name} there: run as ngspice -b, it warns "can't parse '${name}'" and prints nothing for it. PlainSpice's run skips those lines. [non-ascii-node-1, non-ascii-node-3]`;
+    expect(first(net(`.print dc v(${name})\n`), 'non-ascii-node').ngspice).toBe(printed);
+    expect(first(net(`.plot dc v(${name})\n`), 'non-ascii-node').ngspice).toBe(printed);
+    // A save in a .control block stops the analysis, in PlainSpice's run too; the rename reaches inside v(...) there.
+    const control = net(`.control\nrun\nprint v(${name})\nsave v(${name})\nrun\n.endc\n`);
+    const t = first(control, 'non-ascii-node');
+    expect(t.ngspice).toBe(
+      `ngspice spells the node ____k____ in its printout and results. In a command for ngspice (.control) it reads the name as written too, so it finds no node ${name} there, and save v(${name}) leaves nothing to save: the analysis does not run ("no data saved"), in PlainSpice too. [non-ascii-node-1, non-ascii-node-4]`,
+    );
+    expect(applyFix(control, t.fixes[0]!)).toBe(net('.control\nrun\nprint v(cikis)\nsave v(cikis)\nrun\n.endc\n').replaceAll(name, 'cikis'));
+    expect(first(net(`.control\nrun\nprint v(${name})\n.endc\n`), 'non-ascii-node').ngspice).toContain(`(.control) it reads the name as written too, so it finds no node ${name} there. [non-ascii-node-1, non-ascii-node-4]`);
+    expect(first(net(`*# save v(${name})\n`), 'non-ascii-node').ngspice).toContain('In a command for ngspice (a *# line) it reads the name as written too');
+  });
+
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {
     const merged = first('* t\nV1 \u0130 0 6\nR1 \u0130 \u015f 1k\nR2 \u015f 0 1k\n.op\n.end\n', 'non-ascii-node');
     expect(merged).toMatchObject({ severity: 'error', title: '\u0130 and \u015f are one node for ngspice' });
