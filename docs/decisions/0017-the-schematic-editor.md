@@ -338,3 +338,6 @@ browsers other than Chromium.
   same way. Left bare, because they are not sentences: the short notes at the end of netlist lines
   ("3 A, n1 → 0"), the value beside a node's name on the drawing ("s = 12 V") and the names listed after
   the counts ("2 nodes besides ground (in, out)").
+- **The missing-end check says what the blank page's sentence says** (words review W1): .end is the
+  netlist's last line, new lines go above it, and ngspice still reads lines written after .end
+  (missing-end-1, after-end-1, S25); nothing about other SPICE programs, which no fact here backs.

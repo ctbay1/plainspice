@@ -20,7 +20,7 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 | File | What it covers | Relied on by | Test |
 |---|---|---|---|
 | [numbers-and-syntax.md](numbers-and-syntax.md) | How ngspice reads numbers (scale letters, `M` is milli, units ignored, decimal commas, exponents), lines (the title, comments, continuation lines, `.end`, `@`, `.control`), words, node names and ground, which number a part line uses, and what each first letter means | `src/spice/numbers.ts`, `src/spice/parse.ts`, `src/spice/elements.ts` | `tests/golden/facts-numbers.test.ts` (and the unit tests `tests/unit/spice-numbers.test.ts`, `tests/unit/spice-parse.test.ts`) |
-| [traps.md](traps.md) | What ngspice does with each beginner trap PlainSpice checks for (the scale letters, ground, floating nodes, current sources with no path, loops of voltage sources, duplicate names, unknown first letters, missing values, `.tf`/`.dc` on names that don't exist, words and dot commands ngspice doesn't know …), so each check says what really happens and its fix changes only what it should | `src/spice/traps.ts`, `src/spice/graph.ts` | `tests/golden/facts-traps.test.ts` (and `tests/unit/spice-traps.test.ts`) |
+| [traps.md](traps.md) | What ngspice does with each beginner trap PlainSpice checks for (the scale letters, ground, floating nodes, current sources with no path, loops of voltage sources, duplicate names, unknown first letters, missing values, `.tf`/`.dc` on names that don't exist, words and dot commands ngspice doesn't know, invisible characters and look-alike letters, node names ngspice spells with underscores …), so each check says what really happens and its fix changes only what it should | `src/spice/traps.ts`, `src/spice/graph.ts` | `tests/golden/facts-traps.test.ts` (and `tests/unit/spice-traps.test.ts`) |
 | [explanations.md](explanations.md) | What each kind of line means (parts, sources and their waveforms, dot commands), what each analysis computes and saves, which way currents and powers are counted, and what ngspice's messages mean | `src/spice/explain.ts`, `src/spice/describe.ts` | `tests/golden/facts-explain.test.ts` (and `tests/unit/spice-explain.test.ts`, `tests/unit/spice-describe.test.ts`) |
 | [drawing.md](drawing.md) | That ngspice ignores the drawing lines PlainSpice keeps in a netlist (`* plainspice-drawing v1` and the `*@` lines, with their `side=` fields, fields PlainSpice does not know, and another version's block): same printout, same results file byte for byte, no warning | `src/schematic/format.ts`, and `src/spice/explain.ts` (Explain's one entry for the drawing lines) | `tests/golden/facts-drawing.test.ts`, the drawing case in `tests/golden/facts-explain.test.ts` (and `tests/unit/schematic-format.test.ts`) |
 
@@ -46,6 +46,16 @@ and fixed what it found: [review.md](review.md) lists each finding with its evid
 added (control-source-4 to -9, unknown-word-1 to -11, unknown-dot-command-1 to -3, unknown-letter-17, missing-value-8 to -10,
 missing-model-7, fatal-syntax-10 and -11, space-before-suffix-15, include-not-available-3, P10d, A2b,
 A29b, A29c) were run the same way, on 10 November 2026, and are in the same tests.
+
+## The final reviews of 12 November 2026
+
+Claims added for the fixes after the final reviews of milestone 2, each run the same way (native
+ngspice 47 and 42, and our engine) on 12 November 2026 and asserted by the same tests: C9, C9b, C9c
+(a current that is 0 can come out as rounding noise; ngspice's current tolerance abstol is 1 pA) in
+explanations.md; W16, W17, W18 (each byte of a letter outside ASCII in a name becomes `_`, so two
+names can become one) in numbers-and-syntax.md; and in traps.md non-ascii-node-1, -2,
+duplicate-name-3, invisible-character-1 to -5, look-alike-letter-1, -2, unknown-word-12 and
+space-before-suffix-16, -17. drawing-1 is now relied on by Explain too.
 
 ## Where the evidence came from
 

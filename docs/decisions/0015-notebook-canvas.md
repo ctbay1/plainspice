@@ -117,3 +117,7 @@ that a phone left no room to watch the numbers move; this record says what the c
   column. The floor is fixed at the default abstol: a netlist's `.options abstol` does not move it.
   Across the 184 netlists with `.op` we have (the examples, the fixtures, the trap corpus and the
   channel's episode netlists) no current is shown as noise.
+- **A 0 V source is "a wire, through which ngspice measures the current (the ammeter trick)"** in the
+  circuit's description and on its card (student review): true of every 0 V source (P9), the
+  turned-off source of a Thevenin example too, where "used as an ammeter" claimed a purpose the
+  circuit does not have. The drawing keeps "measures".
