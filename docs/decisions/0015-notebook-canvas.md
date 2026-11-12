@@ -194,7 +194,9 @@ that a phone left no room to watch the numbers move; this record says what the c
   the rule above with the false zeros of C9n removed: a resistor's current that ngspice gives as exactly
   0 proves nothing (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV) and joins nothing; only a
   source, never a resistor or a capacitor, is 0 as "the only current left at a node"; and a node below
-  1 µV is shown as 0 V only when every current at it is shown as 0 A. What it gives up, measured on
+  1 µV is shown as 0 V only when every current at it is shown as 0 A. So the bridge of C9d with a
+  diode added is drawn with ngspice's noise: Vm −2.2e−19 A, F1 and R6 −2.2e−16 A, out −216.8 fV, since
+  R5's 0 there cannot be told from the wire's 0 in C9n. What it gives up, measured on
   1,000 random circuits with diodes (991 ran; judged by solving each exactly with every diode replaced
   by the current ngspice gives it): 13 real currents are still shown as 0 A, all where ngspice's own
   number is more than 1 % off the exact one, so ngspice does not resolve them either (19 at cd20fe9);
