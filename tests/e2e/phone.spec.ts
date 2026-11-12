@@ -824,7 +824,7 @@ async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<numb
     await page.keyboard.press('Tab');
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
-      if (!el || el === document.body) return { key: 'the page', why: '' };
+      if (!el || el === document.body) return { key: 'the page', name: 'the page', why: '' };
       let why = '';
       for (let p: Element | null = el; p; p = p.parentElement) {
         const s = getComputedStyle(p);
@@ -834,11 +834,15 @@ async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<numb
       const r = el.getBoundingClientRect();
       if (!why && (r.width < 1 || r.height < 1)) why = 'no size';
       const name = (el.getAttribute('aria-label') ?? el.textContent ?? el.tagName).trim().replace(/\s+/g, ' ').slice(0, 40);
-      return { key: `${name} at ${Math.round(r.left)}, ${Math.round(r.top)}`, why };
+      // Each element by itself (a list may have several of one name, scrolled to one place).
+      const w = window as unknown as { tabStops?: WeakMap<Element, number>; tabStopCount?: number };
+      w.tabStops ??= new WeakMap();
+      if (!w.tabStops.has(el)) w.tabStops.set(el, (w.tabStopCount = (w.tabStopCount ?? 0) + 1));
+      return { key: `${w.tabStops.get(el)}`, name: `${name} at ${Math.round(r.left)}, ${Math.round(r.top)}`, why };
     });
     if (seen.has(stop.key)) break;
     seen.add(stop.key);
-    expect(stop.why, `${what}: the Tab stop ${stop.key} can be seen`).toBe('');
+    expect(stop.why, `${what}: the Tab stop ${stop.name} can be seen`).toBe('');
   }
   return seen.size;
 }

@@ -1616,25 +1616,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [hintBoxRef, hintSqueezed] = useOverflowing<HTMLDivElement>();
   const [barRef, barRect] = useRect<HTMLElement>();
   // A sheet open on a phone (Parts, More, a panel), the hint and status lines above it. They give way to
-  // the sheet in two steps, each kept for this sheet and this window (not measured again, or the lines
-  // would come back and go again), never a sliver of half a line over the sheet:
+  // the sheet in two steps, each kept for this sheet and the room around it (not measured again, or the
+  // lines would come back and go again), never a sliver of half a line over the sheet:
   // 1. When the hint and the status do not both fit above the sheet at its full height, the hint steps
   //    out of sight (screen readers keep it), as it does in a short window (whatever the sheet is about,
   //    the hint is about the drawing); the status line stays whole above the sheet, which gives way below
   //    it and scrolls, down to its head and about two rows (SHEET_ROWS_KEPT_REM).
   // 2. When even the status would leave the sheet less, the lines step out of sight too, until the sheet
-  //    closes or the window changes: their words for screen readers, none of their buttons (Undo, As
+  //    closes or the room changes: their words for screen readers, none of their buttons (Undo, As
   //    drawn), which would be Tab stops nobody can see (WCAG 2.4.7); More keeps Undo at hand.
-  const sheetKey = phone && phoneSheet && phoneSheet !== 'card' ? `${phoneSheet === 'panel' ? panel : phoneSheet}|${vw}|${vh}|${textScale}` : undefined;
-  const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
-  const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
-  const hintAside = linesStep >= 1;
-  const linesAside = linesStep === 2;
+  const sheetOpen = phone && phoneSheet && phoneSheet !== 'card' ? (phoneSheet === 'panel' ? panel : phoneSheet) : undefined;
   // How far down the open sheet its head ends (its grab and head: a long title wraps with large text);
   // the sheet keeps its rows below that.
   const [sheetHead, setSheetHead] = useState(0);
   useLayoutEffect(() => {
-    if (!sheetKey) return undefined;
+    if (!sheetOpen) return undefined;
     const sheet = document.querySelector<HTMLElement>('.phone-bottom > .sheet');
     const head = sheet?.querySelector<HTMLElement>(':scope > .card-head');
     if (!sheet || !head) return undefined;
@@ -1646,7 +1642,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
     ro?.observe(head);
     return () => ro?.disconnect();
-  }, [sheetKey]);
+  }, [sheetOpen, vw, vh, textScale]);
+  // A step is kept for this sheet and the room around it: the window, the text size, the stack's
+  // greatest height, the bar and the sheet's head. (Measured while one of them was still out of date, as
+  // just after a phone is turned, a step would be kept that the room does not call for.)
+  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}` : undefined;
+  const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
+  const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
+  const hintAside = linesStep >= 1;
+  const linesAside = linesStep === 2;
   /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows. */
   const linesMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - SHEET_ROWS_KEPT_REM * 16 * textScale)) : undefined;
   const linesBox = useRef<HTMLElement | null>(null);
