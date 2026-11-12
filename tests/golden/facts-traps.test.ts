@@ -390,6 +390,10 @@ const FACTS: Fact[] = [
   { code: 'tran-problems-8', netlist: "* .tran with a stop time of 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['tran-problems'] },
   { code: 'tran-problems-9', netlist: "* .tran with a negative stop time\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m -1m\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['tran-problems'] },
   { code: 'look-alike-letter-15', netlist: "* the letter O for a zero, with a unit, meg or two Os\nI1 0 a 1\nR1 a 0 1Ok\u03a9\nI2 0 b 1\nR2 b 0 1Omeg\nI3 0 c 1\nR3 c 0 1OOk\nI4 0 d 1\nR4 d 0 1OkOhm\nI5 0 e 1OA\nR5 e 0 1\nV6 f 0 1\nC6 f 0 1OuF\n.op\n.end\n", vectors: { "v(a)": 1, "v(b)": 1, "v(c)": 1, "v(d)": 1, "v(e)": 1 }, prints: ["can't find model '1ouf'"], traps: ['look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter'] },
+  // A thin space glued inside a number of an analysis line: one number for ngspice, cut short (CR1-2).
+  { code: 'space-character-16', netlist: "* a thin space inside a .dc step: it reads 0\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 0\u2009.5\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-17', netlist: "* a thin space inside .tran's stop time: it reads 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\u2009.5\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['space-character'] },
+  { code: 'space-character-18', netlist: "* a thin space inside a .dc stop: it reads 1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 1\u20090 1\n.end\n", vectors: { "v(v-sweep)": [0, 1] }, traps: ['space-character'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');

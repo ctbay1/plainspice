@@ -56,12 +56,12 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [mega-as-milli](#mega-as-milli) | `1M`, `4.7M`, `1MOhm` as a value | warning | reads milli, silently |
 | [unit-letter](#unit-letter) | `3A` (atto), `1F` on a capacitor (femto) | warning, info | reads atto or femto, silently |
 | [greek-mu](#greek-mu) | the Greek letter μ in a value | warning | ignores it; silently, except a model warning on C and L |
-| [rkm-notation](#rkm-notation) | `2k2`, `4k7`, `1M5`, `4R7` | warning | ignores the digits after the letter, silently |
+| [rkm-notation](#rkm-notation) | `2k2`, `4k7`, `1M5`, `4R7` | warning | ignores the digits after the letter, silently (`0R47` is 0 Ω: see zero-ohm) |
 | [decimal-comma](#decimal-comma) | `1,5k` | error, warning | R, C, L: keeps the second number; V, I: stops |
 | [sign-in-value](#sign-in-value) | `1k-2`, `1d-3` on R, C or L | warning | keeps the second number: −2 Ω, silently (C, L: a model warning) |
 | [space-before-suffix](#space-before-suffix) | `1 k`, `5 V`, `1 m` | error | stops, or silently takes the word as a setting |
 | [midline-comment](#midline-comment) | `R1 a b 2 * load` | error | stops |
-| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number silently (on C and L, ngspice warns it can't find a model); after a sign: stops |
+| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number (on C and L ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); after a sign: stops |
 | [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` | error, warning | R, C, L left out; V, I are 0; E-H: see text |
 | [missing-fields](#missing-fields) | `R1 a`, `V1 a`, `E1 a 0 2`, `F1 0 a 5` | error, warning | R, C, L left out; others stop or misread |
 | [control-source](#control-source) | `F1 0 a V9 2` with no V9, or a control with no current to read (R, L, C, I, F, G, a B line with I=) | error | stops |
@@ -77,22 +77,22 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [missing-model](#missing-model) | D, Q, J, M without a .model line | error | stops |
 | [missing-subcircuit](#missing-subcircuit) | X without a .subckt | error | stops |
 | [model-not-in-engine](#model-not-in-engine) | BSIM, HiSIM, SOI, HICUM, JFET2 levels, and O lines (LTRA) | error | our engine stops; native 47 runs it |
-| [dc-sweep-problems](#dc-sweep-problems) | `.dc` with a zero or missing step, the wrong direction, a step past the end, a source not in the circuit, a word that is no number where a number goes | error, warning | stops, hangs (42), or no points |
-| [tran-problems](#tran-problems) | `.tran` with one number, a step of 0 or less, a start after the stop, a step longer than the run | error, info | stops; or runs anyway (info) |
+| [dc-sweep-problems](#dc-sweep-problems) | `.dc` with a zero or missing step, the wrong direction, a step past the end, a source not in the circuit, a word that is no number where a number goes, a sweep missing its numbers, a number too many, a name with a hidden character | error, warning | stops, hangs (42), or no points |
+| [tran-problems](#tran-problems) | `.tran` with one number, a step or a stop time of 0 or less, a start after the stop, a step longer than the run | error, info | stops; or runs anyway (info) |
 | [tf-problems](#tf-problems) | `.tf` of a missing node, i( ) of a non-source, a missing or wrong input | error | silent wrong answers, or stops |
 | [no-analysis](#no-analysis) | no analysis line | error | runs nothing |
 | [missing-end](#missing-end) | no `.end` | info | fine from a file |
 | [after-end](#after-end) | lines after `.end` | warning | still read from a file (unless `.end;...`) |
-| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω | warning, error | 47: 1e-12 Ω with a warning; 42: 1 mΩ silently; across a source: absurd currents |
+| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω (a 0 another check explains is that check's, with the same words) | warning, error | 47: 1e-12 Ω with a warning; 42: 1 mΩ silently; across a source: absurd currents |
 | [fatal-syntax](#fatal-syntax) | an unclosed `{` or `'`, an undefined parameter, a malformed B line | error | stops with a fatal error |
 | [include-not-available](#include-not-available) | `.include`, `.lib file section`, `.lib` with one word | error | stops: the file is not there, or `.lib` is not recognised |
 | [lost-continuation](#lost-continuation) | a `+` line that ngspice loses | warning | loses it, silently |
-| [unknown-word](#unknown-word) | a word after a part's value that is no setting of the part: `R1 a 0 1k load`, `V1 a 0 5 battery`, `1d-3` on a source; a word where the value goes that is no number and no `.param` name: `E1 b 0 a 0 Av` | error | stops ("unknown parameter") |
+| [unknown-word](#unknown-word) | a word after a part's value that is no setting of the part: `R1 a 0 1k load`, `V1 a 0 5 battery`, `1d-3` on a source; a word where the value goes that is no number and no top-level `.param` name: `E1 b 0 a 0 Av`; a sign with a space after it: `- 5` | error | stops ("unknown parameter"; E-H natively: a polynomial error) |
 | [unknown-dot-command](#unknown-dot-command) | a dot command ngspice does not know: `.tarn`, `.pss` | error | stops before anything runs |
 | [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
-| [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`), or a number of `.tran`, `.dc`, `.ac` or `.noise` | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model); another node; at the start of a value: stops; at the start of an analysis line's number: as the place says |
-| [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash from a document (`1e−3`, `−5`), a document's decimal point (`4·7k`), the letter O for the digit 0 (`1Ok`, `O.47k`), another character outside ASCII inside a number (`4。7k`) | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model); at the start of a value: stops |
-| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), right after a sign (`-<THIN>5`), in a node name (`o<THIN>ut`) or between two words | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model); another node; glues two words, silently; at the start of a value or right after a sign: stops |
+| [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`), a number of `.tran`, `.dc`, `.ac` or `.noise`, of a source's function, AC value or setting | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; at the start of a value: stops; elsewhere: as the place does with the number read |
+| [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash from a document (`1e−3`, `−5`), a document's decimal point (`4·7k`), the letter O for the digit 0 (`1Ok`, `1OkΩ`, `1OOk`, `1OA`, `O.47k`), another character outside ASCII inside a number (`4。7k`) | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); at the start of a value: stops; elsewhere: as the place does with the number read |
+| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), right after a sign (`-<THIN>5`), in a node name (`o<THIN>ut`) or between two words | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; glues two words, silently (on an analysis line the glued word is one number: as its place does with it); at the start of a value or right after a sign: stops |
 
 ## mega-as-milli
 
@@ -5700,7 +5700,7 @@ PlainSpice's checks: no trap.
 
 ## dc-sweep-problems
 
-Each sweep of a `.dc` line (a second, nested one too), read by place as ngspice 47 reads it: a name, then the start, the stop and the step. After the re-check of the fixes (12 November 2026, S5): a word that is no number where a number goes is said there (dc-sweep-problems-9, -10), never taken for the name of another sweep, and a word one of the character checks explains (`−5` with a minus sign from a document) leaves the line to that check, so no fix rewrites the sweep around it. Errors, except a step bigger than the range (warning: one point). Fixes: ten steps across the range, swap the ends, or flip the step's sign; a sweep of a missing source gets the circuit's only source.
+Each sweep of a `.dc` line (a second, nested one too), read by place as ngspice 47 reads it: a name, then the start, the stop and the step. After the re-check of the fixes (12 November 2026, S5): a word that is no number where a number goes is said there (dc-sweep-problems-9, -10), never taken for the name of another sweep, and a word one of the character checks explains (`−5` with a minus sign from a document) leaves the line to that check, so no fix rewrites the sweep around it. Errors, except a step bigger than the range (warning: one point). Fixes: ten steps across the range, swap the ends, or flip the step's sign; a sweep of a missing source gets the circuit's only source. After the critic of those fixes (12 November 2026, CR1-2, CR1-4, CR1-6, CR1-8, CR1-12): the check that explains a word says what its place does with the number read (a step read as 0 stops ngspice 47: invisible-character-32); a sweep missing its numbers gets one error (dc-sweep-problems-11, -12); a number where a second sweep's name goes is one number too many, and the fix deletes it, never "Sweep V1 instead" (-13, -14); a name with a character that is not what it looks like is said with the character named, quoted as ngspice spells it (-15, -16); a word in braces or quotes is a number numparam works out, so the sweep runs (-17), while a `.param` name without braces stops ngspice 47 (-18); words after the second sweep are ignored (-19); and a letter O gets "Write 0" where the start and the stop go, never the step.
 
 What PlainSpice shows for dc-sweep-problems-1 (error, line 5):
 
@@ -5969,6 +5969,38 @@ What PlainSpice shows for dc-sweep-problems-10 (error, line 4):
 > *ngspice:* ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]
 >
 > *Fixes:* none
+
+What PlainSpice shows for dc-sweep-problems-11 (error, line 4):
+
+> **.dc needs a start, a stop and a step for V1.** .dc sweeps a source from a start to a stop in steps, three numbers after its name: .dc V1 0 5 1 sweeps it from 0 to 5 in steps of 1. Here V1 has only 0 after it.
+>
+> *ngspice:* ngspice 47 stops: 'Bad syntax!'. ngspice 42 never finishes. [dc-sweep-problems-11]
+>
+> *Fixes:* none
+
+What PlainSpice shows for dc-sweep-problems-13 (error, line 4):
+
+> **One number too many on this .dc line.** .dc V1 0 5 1 is a whole sweep: the source, the start, the stop and the step. SPICE takes the next word, 2, for the name of a second source to sweep, and there is no part called 2.
+>
+> *ngspice:* ngspice 47 stops: 'Bad syntax!'. ngspice 42 takes 2 for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "2" is not in the circuit'. [dc-sweep-problems-13]
+>
+> *Fixes:* "Delete 2"
+
+What PlainSpice shows for dc-sweep-problems-15 (error, line 4):
+
+> **A zero-width space (U+200B) hides in the name V1.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so .dc names no part of the circuit: not V1.
+>
+> *ngspice:* ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named "___v1" is not in the circuit'. [dc-sweep-problems-15]
+>
+> *Fixes:* "Take it out: sweep V1"
+
+What PlainSpice shows for dc-sweep-problems-18 (error, line 5):
+
+> **The step of this sweep is not a number.** .dc V1 needs three numbers after the name: the start, the stop and the step, for example .dc V1 0 5 1. Here st stands where the step goes. To use the value st has on its .param line, write it in braces: {st}.
+>
+> *ngspice:* ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10, dc-sweep-problems-18]
+>
+> *Fixes:* "Write {st}"
 
 ### dc-sweep-problems-9. A word that is no number where the start goes: ngspice 47 says 'Bad syntax!'
 
@@ -6345,7 +6377,7 @@ PlainSpice's checks: none.
 
 ## tran-problems
 
-The numbers of a `.tran` line (`uic` aside): step, stop, start. Errors, except a step longer than the whole run (info: ngspice chooses its own steps). Fixes: a step of a hundredth of the stop time, or remove the start time.
+The numbers of a `.tran` line (`uic` aside): step, stop, start. Errors, except a step longer than the whole run (info: ngspice chooses its own steps). Fixes: a step of a hundredth of the stop time, or remove the start time. After the critic of the re-check fixes (12 November 2026, CR1-13): a stop time of 0 or less stops ngspice too (tran-problems-8, -9; a negative one gets "Make it" with the sign taken off), and a word one of the character checks explains (`0<ZWSP>.5`) is left to that check, which says what ngspice does with the number it reads there (invisible-character-28 to -31), so no fix here reads it as 0 or shows the character.
 
 What PlainSpice shows for tran-problems-1 (error, line 5):
 
@@ -6354,6 +6386,14 @@ What PlainSpice shows for tran-problems-1 (error, line 5):
 > *ngspice:* ngspice stops: 'TSTOP is invalid, must be greater than zero.' [tran-problems-1]
 >
 > *Fixes:* "Use 5m as the stop time: .tran 50u 5m"
+
+What PlainSpice shows for tran-problems-8 (error, line 5):
+
+> **The stop time of .tran must be more than 0.** .tran 0.1m 0 means: steps of 0.1m up to 0. The stop time has to be a positive time, the length of the run.
+>
+> *ngspice:* ngspice stops: 'TSTOP is invalid, must be greater than zero.' [tran-problems-8]
+>
+> *Fixes:* none
 
 ### tran-problems-1. .tran with one number
 
@@ -7028,7 +7068,7 @@ PlainSpice's checks: `after-end`.
 
 ## zero-ohm
 
-A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3). An error, with no fix, when the resistor sits straight across a voltage source, or a chain of voltage sources and inductors whose voltages need not add up to 0: its current then has no finite answer, and ngspice's stand-in gives an absurd one (zero-ohm-2: 6e12 A from a 6 V source). After the re-check of the fixes (12 November 2026, C1), a 0 that another check already explains (`0<ZWSP>.47`, `0R47`, `0k47`, `0．47`: 470 mΩ was meant) is that check's, whose fix writes what was meant; the 0 V source would make a short. The error across a source stays.
+A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3). An error, with no fix, when the resistor sits straight across a voltage source, or a chain of voltage sources and inductors whose voltages need not add up to 0: its current then has no finite answer, and ngspice's stand-in gives an absurd one (zero-ohm-2: 6e12 A from a 6 V source). After the re-check of the fixes (12 November 2026, C1), a 0 that another check already explains (`0<ZWSP>.47`, `0R47`, `0k47`, `0．47`: 470 mΩ was meant) is that check's, whose fix writes what was meant; the 0 V source would make a short. The error across a source stays. After the critic of those fixes (12 November 2026, CR1-1), that check says what this one says of a 0, from the runs of zero-ohm-4: ngspice 47 uses 1e-12 Ω and warns, ngspice 42 used 1 mΩ without a word; never "without a message" or "says nothing".
 
 What PlainSpice shows for zero-ohm-1 (warning, line 3):
 
@@ -7045,6 +7085,22 @@ What PlainSpice shows for zero-ohm-2 (error, line 3):
 > *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor r1 is too small, set to 1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2]
 >
 > *Fixes:* none
+
+What PlainSpice shows for zero-ohm-4 (warning, line 3):
+
+> **R1's value is read as 0 Ω, not 470 mΩ.** A zero-width space (U+200B) sits between 0 and .47: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the .47 after it does not count. Write 0.47.
+>
+> *ngspice:* ngspice stops reading the number at the zero-width space and ignores the rest of the word: it reads 0 Ω, which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12' (ngspice 42 used 0.001 Ω without a word). [invisible-character-1, invisible-character-2, zero-ohm-1, zero-ohm-4]
+>
+> *Fixes:* "Write 0.47 (470 mΩ)"
+
+What PlainSpice shows for zero-ohm-4 (warning, line 4):
+
+> **0R47 is read as 0, not 0.47.** On resistor codes and schematics 0R47 means 0.47: the letter stands for the decimal point. SPICE stops reading the number at the letter and ignores the 47 after it. Write 0.47.
+>
+> *ngspice:* ngspice reads 0R47 as 0 Ω (R2), which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to 1.000000e-12' (ngspice 42 used 0.001 Ω without a word). [rkm-notation-1, zero-ohm-1, zero-ohm-4]
+>
+> *Fixes:* "Write 0.47 (470 mΩ)"
 
 ### zero-ohm-1. A 0 Ω resistor: 47 uses 1e-12 Ω and warns, 42 used 1 mΩ silently
 
@@ -7788,7 +7844,7 @@ PlainSpice's checks: no trap.
 
 ## unknown-word
 
-A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24).
+A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24). After the critic of those fixes (12 November 2026): a sign with a space after it is said part by part (CR1-3): on E, F, G and H lines native 47 and 42 read a polynomial and stop with a MIF-ERROR while our engine says "unknown parameter (-)" (unknown-word-25 to -28), on C and L ngspice first warns that it can't find a model called `-` (-29, -30), and R, V and I stop at the sign (-31, -32, space-character-13). Only a top-level `.param` line's names are values outside a subcircuit, after `.end` too, as ngspice reads them (-36, -37); a subcircuit's own parameter, a `.param` inside a subcircuit and a `.func`'s name are not, and ngspice stops (-33 to -35), so the words say where the name has its value (CR1-7).
 
 What PlainSpice shows for unknown-word-1 (error, line 3):
 
@@ -8357,6 +8413,38 @@ What PlainSpice shows for space-character-13 (error, line 2):
 > *ngspice:* ngspice stops: 'unknown parameter (-)'. [space-character-13]
 >
 > *Fixes:* "Write -5 (−5 V)"
+
+What PlainSpice shows for unknown-word-25 (error, line 4):
+
+> **E1's gain is not a number.** The - and the 2 are two words for SPICE: a space after a sign splits the value in two, and a sign alone is no number, so SPICE stops there. Write -2.
+>
+> *ngspice:* PlainSpice's engine stops: 'unknown parameter (-)'. Native ngspice 47 and 42 read the line as a polynomial and stop: 'MIF-ERROR ... Bad real value'. [unknown-word-25]
+>
+> *Fixes:* "Write -2 (a gain of −2)"
+
+What PlainSpice shows for unknown-word-29 (error, line 4):
+
+> **C1's value is not a number.** The - and the 5u are two words for SPICE: a space after a sign splits the value in two, and a sign alone is no number, so SPICE stops there. Write -5u.
+>
+> *ngspice:* ngspice looks for a model called -, warns 'can't find model', and stops: 'unknown parameter (-)'. [unknown-word-29]
+>
+> *Fixes:* "Write -5u (−5 µF)"
+
+What PlainSpice shows for unknown-word-33 (error, line 5):
+
+> **V1's value is not a number.** Vs stands where V1's value goes, but it has a value only inside the subcircuit foo, and this line is outside it, so SPICE stops there. Write the number itself, or give Vs a value on a .param line outside the subcircuit and write it in braces: {Vs}.
+>
+> *ngspice:* ngspice stops: 'unknown parameter (vs)'. [unknown-word-16, unknown-word-23, unknown-word-33, unknown-word-34]
+>
+> *Fixes:* none
+
+What PlainSpice shows for unknown-word-35 (error, line 3):
+
+> **V1's value is not a number.** f stands where V1's value goes, but it is the name of a function (on a .func line), not a number, so SPICE stops there. Write the number itself.
+>
+> *ngspice:* ngspice stops: 'unknown parameter (f)'. [unknown-word-16, unknown-word-35]
+>
+> *Fixes:* none
 
 ### unknown-word-13. A word where a resistor's value goes: ngspice looks for a model with its name, warns, and stops
 
@@ -9668,7 +9756,14 @@ default-ignorable characters, with the line and paragraph separators and the nex
 that it can't find a model with the word's name (invisible-character-7), so the words say so there; and
 on an analysis line ngspice never says "unknown parameter": what it does with a word it cannot read
 depends on the place of the word, and the words say it place by place (invisible-character-8 to -21),
-or leave out a place no run shows.
+or leave out a place no run shows. After the critic of those fixes (12 November 2026, CR1-1, CR1-2,
+CR1-5): what ngspice does with a number it reads short depends on the place too, weighed with the line's
+other numbers (invisible-character-28 to -44): a `.tran` step or stop time of 0 stops it, a `.dc` step of
+0 stops ngspice 47, `.ac` and `.noise` warn or stop, and the words say so there, "without a message" only
+where ngspice runs on with the number (-22, -44); a resistor read as 0 gets zero-ohm's words
+(zero-ohm-4); and a word in a source's function (PULSE, SIN, PWL, EXP, SFFM), its AC value or phase, or
+a setting's value (`m=`, `dc=`, `ic=`) has a place of its own, with what ngspice says there (-45 to -53),
+and is never called the part's value.
 
 What PlainSpice shows for invisible-character-1 (warning, line 3):
 
@@ -9947,6 +10042,38 @@ What PlainSpice shows for invisible-character-23 (warning, line 3):
 > *ngspice:* ngspice stops reading the number at the line separator and ignores the rest of the word, without a message: it reads 4 Ω. [invisible-character-1, invisible-character-23]
 >
 > *Fixes:* "Write 4.7k (4.7 kΩ)"
+
+What PlainSpice shows for invisible-character-28 (error, line 5):
+
+> **This value is read as 0, not 0.1m.** A zero-width space (U+200B) sits between 0 and .1m: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the .1m after it does not count. Write 0.1m.
+>
+> *ngspice:* ngspice stops reading the number at the zero-width space and ignores the rest of the word: it reads 0, and ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-1, invisible-character-2, invisible-character-28]
+>
+> *Fixes:* "Write 0.1m"
+
+What PlainSpice shows for invisible-character-32 (error, line 4):
+
+> **This value is read as 0, not 0.5.** A zero-width space (U+200B) sits between 0 and .5: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the .5 after it does not count. Write 0.5.
+>
+> *ngspice:* ngspice stops reading the number at the zero-width space and ignores the rest of the word: it reads 0, and a step of 0 stops ngspice 47: 'Bad syntax!'. ngspice 42 never finishes. [invisible-character-1, invisible-character-2, invisible-character-32, dc-sweep-problems-1]
+>
+> *Fixes:* "Write 0.5"
+
+What PlainSpice shows for invisible-character-45 (error, line 2):
+
+> **A word in V1's PULSE is not a number for SPICE.** It starts with a zero-width space (U+200B), a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write 0.
+>
+> *ngspice:* ngspice stops: 'parameter value out of range or the wrong type'. [invisible-character-45]
+>
+> *Fixes:* "Write 0"
+
+What PlainSpice shows for invisible-character-50 (error, line 3):
+
+> **R1's m value is not a number for SPICE.** It starts with a zero-width space (U+200B), a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write 2.
+>
+> *ngspice:* ngspice stops with a fatal error: 'Undefined parameter [___2]'. [invisible-character-50, invisible-character-52, invisible-character-53]
+>
+> *Fixes:* "Write 2"
 
 ### invisible-character-7. On a capacitor or an inductor ngspice also warns that it can't find a model: 2<ZWSP>u is 2 F, 3<ZWSP>m is 3 H
 
@@ -10536,9 +10663,9 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `invisible-character`.
 
-### invisible-character-22. Inside a number of an analysis line each character ends the number there, without a message, as in a value: 5<ZWSP>0 is 5, 20к is 20, 2<THIN>m is 2
+### invisible-character-22. Inside the stop of .dc, .ac or .tran a character ends the number there, as in a value, and a stop still past the start runs without a message: 5<ZWSP>0 is 5, 20к is 20, 2<THIN>m is 2
 
-What the warnings say of a word on an analysis line: the .dc sweep goes to 5 (6 points), the .ac sweep to 20 Hz (14 points) and the .tran run to 2 s. The three analyses run in one netlist, as nothing stops ngspice. Native 47's time grid differs from 42's and from our engine's (2066, 2066 and 2017 points); the last time is 2 s in all three.
+Narrowed after the critic of the re-check fixes (12 November 2026, CR1-2): this run shows three stops read short but still past their start, and no more. A number read as 0, or read past the line's other numbers, does what its place does with it (invisible-character-28 to -43), and the other places where ngspice runs on with the number are invisible-character-44. What the warnings say of a word on an analysis line: the .dc sweep goes to 5 (6 points), the .ac sweep to 20 Hz (14 points) and the .tran run to 2 s. The three analyses run in one netlist, as nothing stops ngspice. Native 47's time grid differs from 42's and from our engine's (2066, 2066 and 2017 points); the last time is 2 s in all three.
 
 ```spice
 * characters inside the numbers of analysis lines
@@ -11794,7 +11921,11 @@ value is it read as one; the letter O where the digit 0 belongs ends the number 
 (look-alike-letter-10, -11), flagged only where nothing else can be meant (an O between digits, before
 a scale letter that ends the word, or at the start before a decimal point; never before a unit, so
 100Ом stays as meant); and any other character outside ASCII inside a number, with a digit after it,
-ends it as well (look-alike-letter-12), said without a fix, as what was meant is not clear.
+ends it as well (look-alike-letter-12), said without a fix, as what was meant is not clear. After the
+critic of those fixes (12 November 2026, CR1-8, CR1-9): the letter O is caught with a unit after the
+scale letter, with meg, and as a run of Os (`1OkΩ`, `1Omeg`, `1OOk`: look-alike-letter-15), and a lone
+A or F after it is the unit, not atto or femto (`1OA` is meant as 10 A), as space-before-suffix reads
+them; the words of a resistor read as 0 are zero-ohm's (zero-ohm-4).
 
 What PlainSpice shows for look-alike-letter-1 (warning, line 3):
 
@@ -12097,7 +12228,7 @@ What PlainSpice shows for look-alike-letter-10 (warning, line 3):
 
 > **R1's value is read as 1 Ω, not 10 kΩ.** The value has the letter O after the 1, not the digit 0. SPICE stops reading the number at a letter, so it ignores it and the k after it. Write 10k.
 >
-> *ngspice:* ngspice stops reading the number at the letter O, without a message: it reads 1 Ω. [look-alike-letter-10]
+> *ngspice:* ngspice stops reading the number at the letter O, without a message: it reads 1 Ω. [look-alike-letter-10, look-alike-letter-15]
 >
 > *Fixes:* "Write 10k (10 kΩ)"
 
@@ -12105,7 +12236,7 @@ What PlainSpice shows for look-alike-letter-10 (warning, line 7):
 
 > **R3's value is read as 1 Ω, not 1 kΩ.** The value has the Cyrillic letter О after the 1, not the digit 0. SPICE stops reading the number at a letter, so it ignores it and the 00 after it. Write 1000.
 >
-> *ngspice:* ngspice stops reading the number at the Cyrillic letter О, without a message: it reads 1 Ω. [look-alike-letter-10]
+> *ngspice:* ngspice stops reading the number at the Cyrillic letter О, without a message: it reads 1 Ω. [look-alike-letter-10, look-alike-letter-15]
 >
 > *Fixes:* "Write 1000 (1 kΩ)"
 
@@ -12124,6 +12255,30 @@ What PlainSpice shows for look-alike-letter-12 (warning, line 3):
 > *ngspice:* ngspice stops reading the number at the character 。 (U+3002), without a message: it reads 4 Ω. [look-alike-letter-12]
 >
 > *Fixes:* none
+
+What PlainSpice shows for look-alike-letter-15 (warning, line 3):
+
+> **R1's value is read as 1 Ω, not 10 kΩ.** The value has the letter O after the 1, not the digit 0. SPICE stops reading the number at a letter, so it ignores it and the kΩ after it. Write 10kΩ.
+>
+> *ngspice:* ngspice stops reading the number at the letter O, without a message: it reads 1 Ω. [look-alike-letter-10, look-alike-letter-15]
+>
+> *Fixes:* "Write 10kΩ (10 kΩ)"
+
+What PlainSpice shows for look-alike-letter-15 (warning, line 7):
+
+> **R3's value is read as 1 Ω, not 100 kΩ.** The value has the letters OO after the 1, not the digits 00. SPICE stops reading the number at a letter, so it ignores them and the k after them. Write 100k.
+>
+> *ngspice:* ngspice stops reading the number at the letters OO, without a message: it reads 1 Ω. [look-alike-letter-10, look-alike-letter-15]
+>
+> *Fixes:* "Write 100k (100 kΩ)"
+
+What PlainSpice shows for look-alike-letter-15 (warning, line 10):
+
+> **I5's value is read as 1 A, not 10 A.** The value has the letter O after the 1, not the digit 0. SPICE stops reading the number at a letter, so it ignores it and the A after it. Write 10.
+>
+> *ngspice:* ngspice stops reading the number at the letter O, without a message: it reads 1 A. [look-alike-letter-10, look-alike-letter-15]
+>
+> *Fixes:* "Write 10 (10 A)"
 
 ### look-alike-letter-7. On a capacitor or an inductor ngspice also warns that it can't find a model: 2к is 2 F, 3Μ is 3 H
 
@@ -12528,6 +12683,23 @@ never "Replace it with a normal space", since `- 5` with a normal space stops ng
 (space-character-12 to -14, nbsp-3). After a capital M the milli fix says what it writes, "Make it 1m
 (1 mΩ)": ngspice reads neither mega nor milli there.
 
+After the critic of the re-check fixes (12 November 2026, CR1-1, CR1-2): a resistor's value read as 0
+gets zero-ohm's words (zero-ohm-4), and on an analysis line a word glued by such a character is one number
+for ngspice, cut short at the character, so the glue check says what the place does with the number read
+(a `.dc` step of `0<THIN>.5` reads 0: ngspice 47 stops, space-character-16, -17; elsewhere it runs with
+it, -18), never "says nothing about it". Its fix is the one that can make the line run: a normal space
+where the line lacks a word and the number read does no harm (`.dc V1 0 5<THIN>1`), else taking the
+character out (`.dc V1 0 5 0.5`), as a normal space would leave the same number at that place, or one
+word too many.
+
+What PlainSpice shows for space-character-16 (error, line 4):
+
+> **A thin space (U+2009) glues "0 .5" into one word.** This line has a thin space (U+2009), which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one, so the words on either side become one word.
+>
+> *ngspice:* ngspice reads the thin space as part of the word, so its number ends there: it reads 0, and a step of 0 stops ngspice 47: 'Bad syntax!'. ngspice 42 never finishes. [space-character-16, space-character-17, invisible-character-32, dc-sweep-problems-1]
+>
+> *Fixes:* "Take it out: write 0.5"
+
 What PlainSpice shows for space-character-1 (warning, line 3):
 
 > **R1's value is read as 4.7 Ω, not 4.7 kΩ.** A thin space (U+2009) sits between 4.7 and kΩ, as documents write a number and its unit. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the kΩ after it does not count. SPICE needs no space and no units: write 4.7k.
@@ -12636,7 +12808,7 @@ What PlainSpice shows for space-character-11 (warning, line 3):
 
 > **R1's value is read as 0 Ω.** A thin space (U+2009) sits between 0.000 and 001 (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 001 after it does not count. Without it, the value reads 0.000001.
 >
-> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 0 Ω. [space-character-11]
+> *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word: it reads 0 Ω, which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12' (ngspice 42 used 0.001 Ω without a word). [space-character-11, zero-ohm-1, zero-ohm-4]
 >
 > *Fixes:* "Take it out: write 0.000001 (1 µΩ)"
 
@@ -13046,7 +13218,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(n1) = 9.99999999999e-13, v(n2) = 1
 ```
 
-PlainSpice's checks: `space-character`, `zero-ohm`, `space-character`.
+PlainSpice's checks: `space-character`, `space-character`.
 
 What PlainSpice shows for space-character-12 (error, line 2):
 
@@ -13219,6 +13391,109 @@ ngspice 42, ngspice -b (exit 1):
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-16. Inside a number of an analysis line a thin space ends the number: a .dc step of 0<THIN>.5 reads 0, so ngspice 47 says 'Bad syntax!' and ngspice 42 never finishes
+
+Added after the critic of the re-check fixes (12 November 2026, CR1-2). On an analysis line the glue check's words said that ngspice says nothing about the character; but ngspice reads the glued word as one number, cut short at the character, here 0, and a step of 0 stops it as a zero-width space does (invisible-character-32). So on an analysis line the glue check says what the place does with the number read, as the character checks do (invisible-character-28 to -44), and its fix takes the character out: a normal space would keep the 0 at that place.
+
+```spice
+* a thin space inside a .dc step: it reads 0
+V1 in 0 1
+R1 in 0 1k
+.dc V1 0 5 0<THIN>.5
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .dc v1 0 5 0___.5
+    Bad syntax!
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit null)
+    rawfile: (did not finish in 15 s: stopped)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-17. At .tran's stop time the same: 0<THIN>.5 reads 0, 'TSTOP is invalid'
+
+```spice
+* a thin space inside .tran's stop time: it reads 0
+V1 in 0 PULSE(0 1 0 1n 1n 1 2)
+R1 in out 1k
+C1 out 0 1u
+.tran 0.1m 0<THIN>.5
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      .tran 0.1m 0___.5
+    TSTOP is invalid, must be greater than zero.
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      .tran 0.1m 0___.5
+    TSTOP is invalid, must be greater than zero.
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-18. Where the number read can be used, ngspice runs with it: a .dc stop of 1<THIN>0 reads 1, two points
+
+The sweep goes from 0 to 1 in steps of 1, not to 10.
+
+```spice
+* a thin space inside a .dc stop: it reads 1
+V1 in 0 1
+R1 in 0 1k
+.dc V1 0 1<THIN>0 1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(v-sweep) = 0, 1, v(in) = 0, 1, i(v1) = 0, -0.001
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(v-sweep) = 0, 1, v(in) = 0, 1, i(v1) = 0, -0.001
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(v-sweep) = 0, 1, v(in) = 0, 1, i(v1) = 0, -0.001
 ```
 
 PlainSpice's checks: `space-character`.

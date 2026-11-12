@@ -906,7 +906,7 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
 
 describe('after the critic of the re-check fixes (12 November 2026)', () => {
   it('a .dc line ngspice 47 stops at is no sweep in the circuit\'s words (CR1-11)', () => {
-    for (const dc of ['.dc V1 −5 5 1', '.dc V1 0 5 0​.5', '.dc V1 0', '.dc V1 0 5 1 2']) {
+    for (const dc of ['.dc V1 \u22125 5 1', '.dc V1 0 5 0\u200b.5', '.dc V1 0', '.dc V1 0 5 1 2']) {
       const said = describeCircuit(parseNetlist(`* t\nV1 in 0 1\nR1 in 0 1k\n${dc}\n.end\n`));
       expect(said, dc).toContain('Analysis: a DC sweep at which ngspice 47 stops ("Bad syntax!"): see Checks.');
       expect(said, dc).not.toContain('Analysis: DC sweep of');
@@ -924,5 +924,18 @@ describe('after the critic of the re-check fixes (12 November 2026)', () => {
     expect(title('.param lo=0\n', '.dc V1 {lo} 5 0')).toBe('.dc needs a step that is not 0');
     expect(title('.param lo=0\n', '.dc V1 {lo} 5 x')).toBe('ngspice cannot read this line');
     expect(title('', '.dc V1 0')).toBe('ngspice cannot read this line');
+  });
+
+  it('"TSTOP is invalid" on a .tran line with a stop time is a stop of 0 or less, not one number (CR1-13; tran-problems-8, invisible-character-29)', () => {
+    const said = (tran: string): { title: string; why: string } => {
+      const net = parseNetlist(`* t\nV1 in 0 1\nR1 in 0 1k\n${tran}\n.end\n`);
+      return explainDiagnostic({ severity: 'error', code: 'bad-tran-arguments', text: 'TSTOP is invalid, must be greater than zero.', subject: 'TSTOP', line: 4 }, net);
+    };
+    for (const tran of ['.tran 0.1m 0', '.tran 0.1m -1m', '.tran 0.1m 0\u200b.5', '.tran 0.1m 0 uic']) {
+      expect(said(tran).title, tran).toBe('The .tran stop time must be more than 0');
+      expect(said(tran).why, tran).not.toContain('With one number');
+    }
+    expect(said('.tran 5m').title).toBe('.tran needs a step and a stop time');
+    expect(said('.tran 5m uic').title).toBe('.tran needs a step and a stop time');
   });
 });

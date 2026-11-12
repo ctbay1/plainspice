@@ -434,6 +434,8 @@ export const DESCRIBE_STRINGS = {
   badSyntaxWhy: 'ngspice stopped at this line ("Bad syntax!").',
   tstopTitle: '.tran needs a step and a stop time',
   tstopWhy: 'With one number, ngspice has no stop time ("TSTOP is invalid"). Write a step and then the stop time, like .tran 10u 5m.',
+  tstopZeroTitle: 'The .tran stop time must be more than 0',
+  tstopZeroWhy: 'ngspice stops when the stop time it reads is 0 or less ("TSTOP is invalid"). The stop time is the length of the run, like 5m.',
   tstepTitle: 'The .tran step must be more than 0',
   tstepWhy: 'ngspice stops when the step is 0 ("TSTEP is invalid").',
   tstartTitle: 'tstart must come before tstop',
@@ -1691,6 +1693,12 @@ function dcStepIsTheProblem(netlist: Netlist, line: number | undefined): boolean
   return expressionStep;
 }
 
+/** Whether the .tran line (1-based) has a word where the stop time goes, uic aside. */
+function tranHasStop(netlist: Netlist, line: number | undefined): boolean {
+  const d = line === undefined ? undefined : netlist.lines[line - 1]?.directive;
+  return d?.name === '.tran' && d.args.filter((t) => lowerAscii(t.text) !== 'uic').length >= 2;
+}
+
 function lineText(netlist: Netlist, line: number | undefined): string {
   return line === undefined ? '' : (netlist.lines[line - 1]?.text ?? '');
 }
@@ -1850,8 +1858,12 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
     }
     case 'bad-tran-arguments': {
       const which = (d.subject ?? '').toUpperCase();
-      const w = which === 'TSTEP' ? { title: S.tstepTitle, why: S.tstepWhy } : which === 'TSTART' ? { title: S.tstartTitle, why: S.tstartWhy } : { title: S.tstopTitle, why: S.tstopWhy };
-      return withLine(w, d.line ?? dotLine(netlist, '.tran')); // M14, M15, M15b
+      const at = d.line ?? dotLine(netlist, '.tran');
+      // With a word where the stop time goes, "TSTOP is invalid" means a stop of 0 or less, not one number
+      // (tran-problems-8, -9, invisible-character-29; re-check critic CR1-13).
+      const stop = tranHasStop(netlist, at) ? { title: S.tstopZeroTitle, why: S.tstopZeroWhy } : { title: S.tstopTitle, why: S.tstopWhy };
+      const w = which === 'TSTEP' ? { title: S.tstepTitle, why: S.tstepWhy } : which === 'TSTART' ? { title: S.tstartTitle, why: S.tstartWhy } : stop;
+      return withLine(w, at); // M14, M15, M15b
     }
     case 'missing-inductor': {
       // M16: "coupling to non-existent inductor l2."

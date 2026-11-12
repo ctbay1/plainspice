@@ -140,6 +140,12 @@ interface Ctx {
    * unknown-word-33 to -35).
    */
   topParams: Set<string>;
+  /**
+   * Names params has from inside a subcircuit (its .subckt line or a .param line in it), lower-case, to the
+   * subcircuit's name as written, and the names of .func lines: why such a name is no value outside it.
+   */
+  innerParams: Map<string, string>;
+  funcs: Set<string>;
   /** Lower-case name of each element outside subcircuits, to its first line. */
   byKey: Map<string, number>;
   /** Every element name in use (subcircuits included), lower-case: new names must avoid them. */
@@ -356,6 +362,8 @@ function context(n: Netlist): Ctx {
     subckts: new Set(),
     params: new Set(),
     topParams: new Set(),
+    innerParams: new Map(),
+    funcs: new Set(),
     byKey: new Map(),
     names: new Set(n.elements.map((i) => n.lines[i]!.element!.key)),
     opNeeded: true,
@@ -373,6 +381,7 @@ function context(n: Netlist): Ctx {
     if (l.continues !== undefined) c.lastContinuation.set(l.continues, Math.max(l.index, c.lastContinuation.get(l.continues) ?? 0));
   }
   let depth = 0;
+  const within: string[] = [];
   for (const l of n.lines) {
     if (l.kind === 'invalid' && /^[\s\ufeff]*@/.test(l.text) && c.atLine === undefined) c.atLine = l.index;
     // A .param line after .end is read too, even after .end;comment (unknown-word-36, -37).
@@ -381,10 +390,19 @@ function context(n: Netlist): Ctx {
     }
     const d = l.directive;
     if (!d) continue;
-    if (d.name === '.subckt' || d.name === '.macro') depth += 1;
-    else if (d.name === '.ends' || d.name === '.eom') depth = Math.max(0, depth - 1);
-    else if (d.name === '.param' && depth === 0) {
+    if (d.name === '.subckt' || d.name === '.macro') {
+      depth += 1;
+      within.push(d.args[0]?.text ?? '');
+    } else if (d.name === '.ends' || d.name === '.eom') {
+      depth = Math.max(0, depth - 1);
+      within.pop();
+    } else if (d.name === '.param' && depth === 0) {
       for (const t of d.args) if (/^[ \t]*=/.test(c.text.slice(t.to, cardEnd(c, l.index)))) c.topParams.add(lowerAscii(t.text));
+    }
+    if (depth > 0 && (d.name === '.subckt' || d.name === '.macro' || d.name === '.param')) {
+      for (const t of d.args.slice(d.name === '.param' ? 0 : 1)) {
+        if (/^[ \t]*=/.test(c.text.slice(t.to, cardEnd(c, l.index))) && !c.innerParams.has(lowerAscii(t.text))) c.innerParams.set(lowerAscii(t.text), within.at(-1) ?? '');
+      }
     }
     const first = d.args[0];
     if (d.name === '.model' && first) {
@@ -400,6 +418,7 @@ function context(n: Netlist): Ctx {
       paramNames(c, d.args, l.index);
     } else if (d.name === '.func' && first) {
       c.params.add(lowerAscii(first.text));
+      c.funcs.add(lowerAscii(first.text));
     }
   }
   const analyses = n.analyses.map((i) => n.lines[i]!.directive!);
@@ -827,7 +846,8 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const the = what.replace(/, which .*$/, '').replace(/^an? /, 'the ');
   const claim = isLetter && /[Ͱ-ӿＡ-Ｚａ-ｚ]/.test(ch) ? 'look-alike-letter-1' : like === '.' && ch !== '．' ? 'look-alike-letter-9' : 'look-alike-letter-3';
   const tail = reads(hidden ? (INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-1, invisible-character-2' : 'invisible-character-1, invisible-character-23') : claim);
-  add(c, id, tail.stops ? 'error' : 'warning', t, `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
+  // Away from a part's value the number meant is said as written (0.1m, not 1e-4), as its fix writes it.
+  add(c, id, tail.stops ? 'error' : 'warning', t, `${subject} is read as ${shown(read.value)}, not ${letter && unit !== undefined ? shown(meant.value) : clean}`,
     hidden
       ? `${capital(what)} sits between ${before} and ${after}: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the ${after} after it does not count. Write ${clean}.`
       : `The value has ${what}. SPICE knows only ${plain}, so it ignores this one like a unit${after ? `, and the ${after} after it` : ''}. Write ${clean}.`,
@@ -850,11 +870,15 @@ function checkLetterO(c: Ctx, t: Token, letter: ElementLetter, name: string): bo
   if (!meantText || !meant) return false;
   const read = readNumber(t.text);
   if (read && read.value === meant.value) return false;
-  // The first O that is read as a letter, as the student sees it.
+  // The first O that is read as a letter, as the student sees it, with the Os right after it (1OOk).
   const chars = [...t.text];
-  const at = chars.findIndex((ch) => /[Oo]/.test(cleanWord(ch, true).clean));
+  const isO = (ch: string): boolean => /^[Oo]$/.test(cleanWord(ch, true).clean);
+  const at = chars.findIndex(isO);
+  let end = at;
+  while (end < chars.length && isO(chars[end]!)) end += 1;
+  const many = end - at > 1 && chars.slice(at, end).every((x) => /[Oo]/.test(x));
   const ch = chars[at]!;
-  const the = /[Oo]/.test(ch) ? `the letter ${ch}` : describeCharacter(ch).replace(/, which .*$/, '');
+  const the = many ? `the letters ${chars.slice(at, end).join('')}` : /[Oo]/.test(ch) ? `the letter ${ch}` : describeCharacter(ch).replace(/, which .*$/, '');
   const what = valueWord(letter);
   const fixes = [fix(`Write ${meantText} (${amount(meant.value, letter)})`, replace(t, meantText))];
   if (!read) {
@@ -865,10 +889,11 @@ function checkLetterO(c: Ctx, t: Token, letter: ElementLetter, name: string): bo
     return true;
   }
   const before = withoutInvisible(chars.slice(0, at).join(''));
-  const after = cleanWord(chars.slice(at + 1).join(''), true).clean.replace(/^[Oo]+/, '');
+  const after = cleanWord(chars.slice(many ? end : at + 1).join(''), true).clean;
+  const them = many ? 'them' : 'it';
   const tail = readTail(read.value, amount(read.value, letter), 'look-alike-letter-10, look-alike-letter-15', { letter, name, model: 'look-alike-letter-7' });
   add(c, 'look-alike-letter', 'warning', t, `${name}'s ${what} is read as ${amount(read.value, letter)}, not ${amount(meant.value, letter)}`,
-    `The ${what} has ${the} after the ${before}, not the digit 0. SPICE stops reading the number at a letter, so it ignores it${after ? ` and the ${after} after it` : ''}. Write ${meantText}.`,
+    `The ${what} has ${the} after the ${before}, not ${many ? `the digits ${'0'.repeat(end - at)}` : 'the digit 0'}. SPICE stops reading the number at a letter, so it ignores ${them}${after ? ` and the ${after} after ${them}` : ''}. Write ${meantText}.`,
     `ngspice stops reading the number at ${the}${tail.text}`,
     fixes);
   return true;
@@ -1011,7 +1036,7 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
     : `Write the number without ${meant.spaces > 1 ? 'them' : 'it'}: ${meant.spice}.`;
   const said = stops(claim);
   add(c, id, said.stops ? 'error' : 'warning', t,
-    meant.milli && !big ? `${subject} is read as ${shown(read.value)}` : `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
+    meant.milli && !big ? `${subject} is read as ${shown(read.value)}` : `${subject} is read as ${shown(read.value)}, not ${main ? shown(meant.value) : meant.spice}`,
     `${capital(what)} sits between ${meant.before} and ${meant.next}, as documents ${digits ? 'group digits' : 'write a number and its unit'}. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${meant.after} after it does not count. ${write}`,
     said.text,
     fixes);
@@ -1327,11 +1352,19 @@ function checkUnknownWord(c: Ctx, i: number): void {
     }
     const model = e.letter === 'R' || e.letter === 'C' || e.letter === 'L';
     const named = /^[A-Za-z_][A-Za-z0-9_]*$/.test(word);
+    // A name with a value only inside a subcircuit, or a .func's, is said as what it is (unknown-word-33 to -35).
+    const inner = c.innerParams.get(lowerAscii(word));
+    const func = c.funcs.has(lowerAscii(word));
+    const more = !named ? '' : func ? ', unknown-word-35' : inner !== undefined ? ', unknown-word-23, unknown-word-33, unknown-word-34' : ', unknown-word-23';
     add(c, 'unknown-word', 'error', f.token, `${name}'s ${what} is not a number`,
-      named
-        ? `${word} stands where ${name}'s ${what} goes, but it is not a number, and no .param line gives it a value, so SPICE stops there. Write the number itself, or give ${word} a value on a .param line and write it in braces: {${word}}.`
-        : `${word} stands where ${name}'s ${what} goes, but it is not a number for SPICE, so SPICE stops there. Write the number with the plain digits 0 to 9.`,
-      `${model ? `ngspice looks for a model called ${lowerAscii(word)}, warns 'can't find model', and stops` : 'ngspice stops'}: 'unknown parameter (${ngspiceSpelling(word)})'. [${VALUE_PLACE_CLAIMS[e.letter]}${named ? ', unknown-word-23' : ''}]`);
+      !named
+        ? `${word} stands where ${name}'s ${what} goes, but it is not a number for SPICE, so SPICE stops there. Write the number with the plain digits 0 to 9.`
+        : func
+          ? `${word} stands where ${name}'s ${what} goes, but it is the name of a function (on a .func line), not a number, so SPICE stops there. Write the number itself.`
+          : inner !== undefined
+            ? `${word} stands where ${name}'s ${what} goes, but it has a value only inside the subcircuit ${inner}, and this line is outside it, so SPICE stops there. Write the number itself, or give ${word} a value on a .param line outside the subcircuit and write it in braces: {${word}}.`
+            : `${word} stands where ${name}'s ${what} goes, but it is not a number, and no .param line gives it a value, so SPICE stops there. Write the number itself, or give ${word} a value on a .param line and write it in braces: {${word}}.`,
+      `${model ? `ngspice looks for a model called ${lowerAscii(word)}, warns 'can't find model', and stops` : 'ngspice stops'}: 'unknown parameter (${ngspiceSpelling(word)})'. [${VALUE_PLACE_CLAIMS[e.letter]}${more}]`);
     return;
   }
   const prev = e.fields[k - 1];
@@ -1365,10 +1398,46 @@ function checkUnknownWord(c: Ctx, i: number): void {
 }
 
 /**
+ * A glued word on an analysis line is one number for ngspice, read up to the character: what its place
+ * does with that number (analysisPlace), never "says nothing" where ngspice stops or warns (`.dc V1 0 5
+ * 0<thin space>.5`; space-character-16, -17; re-check critic CR1-2). Elsewhere on an analysis line no run
+ * shows what follows, so nothing is said of it. The fix is the one that can make the line run: a
+ * normal space keeps the number read at this place, so it is offered only when that number does no harm
+ * and the line lacks a word (`.dc V1 0 5<thin space>1`, `.tran 1u<thin space>2m`); otherwise the fix takes
+ * the character out and writes one number (`.dc V1 0 5 0.5`), as a normal space would leave one word too
+ * many or the same number.
+ */
+function gluedOnAnalysis(c: Ctx, l: NetlistLine, t: Token, bare: string): { says: string; stops: boolean; whole: Fix | undefined; space: boolean } | undefined {
+  const d = l.directive;
+  if (!d || !c.n.analyses.includes(l.index)) return undefined;
+  const k = d.args.findIndex((x) => x.from === t.from);
+  const place = k >= 0 ? analysisPlace(d, k) : undefined;
+  const read = place ? readNumber(t.text) : undefined;
+  if (!place || !read) return { says: `ngspice reads the ${bare} as part of the word, so the words on either side are one word for it. [space-character-2, space-character-16]`, stops: false, whole: undefined, space: true };
+  const out = place.read(read.value);
+  const chars = [...t.text];
+  const before = withoutInvisible(chars.slice(0, chars.findIndex((x) => SPACE_LIKE.test(x))).join(''));
+  const shown = readNumber(before)?.value === read.value ? before : formatNumber(read.value);
+  const whole = withoutSpaces(t.text);
+  const asOne = readNumber(whole);
+  // Whether the line has all the words its analysis takes, so that a normal space would make one too many.
+  const kind = d.args.findIndex((x) => /^(dec|oct|lin)$/i.test(x.text));
+  const complete =
+    d.name === '.dc' ? d.args.length % 4 === 0 : d.name === '.tran' ? d.args.filter((x) => lowerAscii(x.text) !== 'uic').length >= 2 : kind >= 0 && d.args.length >= kind + 4;
+  return {
+    says: `ngspice reads the ${bare} as part of the word, so its number ends there: it reads ${shown}${out ? `, ${out.says} [${claimList('space-character-16, space-character-17', out.claims)}]` : '. [space-character-18]'}`,
+    stops: out?.stops === true,
+    whole: asOne && !asOne.rest && asOne.value !== read.value && (out !== undefined || complete) ? fix(`Take it out: write ${whole}`, replace(t, whole)) : undefined,
+    space: out === undefined && !complete,
+  };
+}
+
+/**
  * A character that looks like a space but is none for SPICE, between two words of a line (nbsp-1,
  * space-character-4): ngspice reads it as part of the word, so the words on either side become one.
  * One trap per line, named by its first such character; its fix writes a space for each. A value word
  * read as a number and a unit (checkSpaceInValue) is left out: the space was not meant between words.
+ * On an analysis line, what ngspice does with the word is its place's (gluedOnAnalysis).
  */
 function checkSpaces(c: Ctx): void {
   for (const l of c.n.lines) {
@@ -1380,16 +1449,20 @@ function checkSpaces(c: Ctx): void {
     for (const x of tokens) for (let k = 0; k < x.text.length; k++) if (SPACE_LIKE.test(x.text[k]!)) changes.push(change(x.from + k, x.from + k + 1, ' '));
     const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
     const shown = withSpaces(t.text);
-    const fixes = [fix('Replace it with a normal space', ...changes)];
+    const bare = nameOfCharacter(ch, false)!.replace(/^an? /, '');
+    const glued = gluedOnAnalysis(c, l, t, bare);
+    const replaceAll = fix('Replace it with a normal space', ...changes);
+    const fixes = !glued ? [replaceAll] : [...(glued.whole ? [glued.whole] : []), ...(glued.space ? [replaceAll] : [])];
+    const severity: TrapSeverity = glued?.stops ? 'error' : 'warning';
     if (ch === '\u00a0') {
       add(
         c,
         'nbsp',
-        'warning',
+        severity,
         t,
         `A no-break space glues "${shown}" into one word`,
         'This line has a no-break space (it often comes with text copied from a web page or a PDF). It looks like a space, but SPICE does not treat it as one, so the words on either side become one word.',
-        'ngspice reads the no-break space as part of the word and says nothing about it; in one test R1 n1 0<no-break space>2 became a resistor with the node "0 2" and no value, which ngspice then left out. [nbsp-1]',
+        glued?.says ?? 'ngspice reads the no-break space as part of the word and says nothing about it; in one test R1 n1 0<no-break space>2 became a resistor with the node "0 2" and no value, which ngspice then left out. [nbsp-1]',
         fixes,
       );
       continue;
@@ -1398,11 +1471,11 @@ function checkSpaces(c: Ctx): void {
     add(
       c,
       'space-character',
-      'warning',
+      severity,
       t,
       `${capital(what)} glues "${shown}" into one word`,
       `This line has ${what}, which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one, so the words on either side become one word.`,
-      `ngspice reads the ${nameOfCharacter(ch, false)!.replace(/^an? /, '')} as part of the word and says nothing about it; in one test R1 n1 0<thin space>2 became a resistor with the node "0 2" and no value, which ngspice then left out. [space-character-2, space-character-4]`,
+      glued?.says ?? `ngspice reads the ${bare} as part of the word and says nothing about it; in one test R1 n1 0<thin space>2 became a resistor with the node "0 2" and no value, which ngspice then left out. [space-character-2, space-character-4]`,
       fixes,
     );
   }
@@ -2361,7 +2434,7 @@ function checkDc(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
       // A name from a .param line is that number only in braces (dc-sweep-problems-17, -18).
       const param = c.topParams.has(lowerAscii(t.text)) && KEYWORD.test(t.text);
       add(c, 'dc-sweep-problems', 'error', t, `The ${place} of this sweep is not a number`,
-        `.dc ${name} needs three numbers after the name: the start, the stop and the step, for example .dc ${name} 0 5 1. Here ${shownWord(t.text)} stands where the ${place} goes${letterO ? ', with a letter O where the digit 0 belongs' : ''}.${param ? ` To use the value ${t.text} has on its .param line, write it in braces: {${t.text}}.` : ''}`,
+        `.dc ${name} needs three numbers after the name: the start, the stop and the step, for example .dc ${name} 0 5 1. Here ${shownWord(t.text)} stands where the ${place} goes${!letterO ? '' : bad === 2 ? ': a letter O, not a number, and the digit 0 would not do either: a step of 0 never moves away from the start' : ', with a letter O where the digit 0 belongs'}.${param ? ` To use the value ${t.text} has on its .param line, write it in braces: {${t.text}}.` : ''}`,
         `ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10${param ? ', dc-sweep-problems-18' : ''}]`,
         zero !== undefined ? [fix(`Write ${zero}`, replace(t, zero))] : param ? [fix(`Write {${t.text}}`, replace(t, `{${t.text}}`))] : []);
       return;
