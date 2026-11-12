@@ -73,6 +73,7 @@ describe('a wide drawing turned for a phone held upright', () => {
     expect(s.scene.parts.map((p) => p.rot)).not.toEqual(t!.scene.parts.map((p) => p.rot));
   });
 
+  // About 0.3 s alone (30 circuits laid out, turned and checked, twice each); 1.6 s at load 20 on 4 cores: 30 s.
   it('is offered for circuits that turn clean (most do)', () => {
     let turned = 0;
     for (const c of CIRCUITS) {
@@ -88,7 +89,7 @@ describe('a wide drawing turned for a phone held upright', () => {
     }
     // 25 of the 30 laid out automatically; the rest are shown as drawn (and a phone pans them).
     expect(turned).toBeGreaterThanOrEqual(25);
-  });
+  }, 30_000);
 
   it('is worked out once per drawing: a phone asks whether it fits better, then shows the same one', () => {
     const s = notebookSchematic(stripDrawing(readFileSync(resolve(root, 'examples/p02/p02-4-open.cir'), 'utf8')));

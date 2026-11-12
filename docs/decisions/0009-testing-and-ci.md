@@ -52,3 +52,37 @@ Playwright is pinned to the version whose browsers are installed in Claude's clo
 - `.tran` comparisons need the same ngspice version (time grids differ between 42 and 47).
 - Screen-reader behaviour beyond the accessibility tree needs a manual pass with real screen
   readers (NVDA, VoiceOver, TalkBack): listed in the plan.
+
+## After the final reviews (12 November 2026)
+
+Some tests failed only on a busy machine: the checks ran on 4 cores shared with other builds and
+tests, at a load of 14 to 25. Each was tried again with busy processes beside it (`node -e
+"for(;;){}"`, 6 to 10 of them: load 8 to 20), ten or twenty times before and after.
+
+- **What the page did wrong, fixed in the page**, each with a test that sends the events in the order a
+  busy page meets them and fails without the fix (decisions 0016 and 0017): a wire started at the end the
+  pointer had left (the Wire tool read the preview drawn for the pointer's last move, which a busy page
+  had not drawn yet); the second click of a double click landed on the card that had come to rest under
+  the pointer; the service worker answered the design pages with a broken copy of the app. A test is
+  never made to wait longer or expect less instead.
+- **A test made to wait for what it is about**: the double click's own test sends its second click once
+  the card has come to rest; a machine too slow to send it within a double click's time (450 ms) has not
+  tried what the test is about, so it tries again, up to five times, and says so if it never could. It
+  also keeps the page busy as that second press comes in, until a double click's time after the move
+  has passed, so the press is handled late though made in time: the critic of these fixes showed the
+  test passed with the press timed by when the page got to it, the case seen failing under load (it
+  fails 3 of 3 that way now). A double click that ended too late to be one is tried again too.
+- **Heavy unit tests have their own time limit**, written next to them with what they cost: those that
+  take 0.4 to 1.5 s alone (the converter for each video's drawing, random edits and turns of every
+  example, 160 random circuits laid out, 1500 random netlists checked, Node started six times) ran 6 to
+  10 times slower at load 16, past vitest's 5 s; at load 20 tests of 0.1 to 0.4 s alone took up to
+  15 times as long (the whole app mounted in jsdom: 5.7 s), so those that came near the limit there have
+  one too. 30 s each, as the app's own slow tests already had.
+- **A speed check times the work, not the wait** (`tests/unit/work-time.ts`): by the thread's own
+  processor time where Node counts it (`process.threadCpuUsage`), else the clock, the least of several
+  tries taken in turns. By the clock, at load 25 the parser's 10 000 lines came out 30 times slower than
+  1 000 (the larger netlist waits for a processor more often), and the trap checks took 740 ms for a
+  limit of 500 at load 16. The checks of how time grows with length compare equal work, 10 000 lines at
+  once against ten netlists of 1 000, since the processor time is counted in steps of 4 ms; their limits
+  are the ones they had (2.5 times, as 25 times one netlist of 1 000). A parser made quadratic in a
+  scratch copy fails it (at the limit of 400 ms, or, made only mildly quadratic, by how its time grows).

@@ -456,3 +456,28 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
 - **The missing-end check says what the blank page's sentence says** (words review W1): .end is the
   netlist's last line, new lines go above it, and ngspice still reads lines written after .end
   (missing-end-1, after-end-1, S25); nothing about other SPICE programs, which no fact here backs.
+
+Two of the pointer's ways went wrong when the page drew late (end-to-end tests on a busy machine, load
+10 to 20 on 4 cores, and a quick hand). Each has a test now that sends the events in the order a busy
+page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
+
+- **A click acts on where the pointer is, not on the last preview drawn.** With the Wire tool, a click
+  on a part's symbol takes the end its preview showed (at the symbol's middle both ends are about as
+  near, and the pointer's last move chose). The preview is drawn a moment after the move; when the
+  press came first (a busy page, or a quick move from one end of a part to its other end and a click),
+  the wire started at the end the pointer had left, and the hint offered to join two nodes ("Click to
+  end the wire here: node n4 and node n6 become one node"). The end is now found from where the
+  pointer last moved, kept as it moves, not from the preview the page last drew.
+- **A double click on a part's words opens its card on the value, wherever the card comes to rest.**
+  The first click opens the card beside the part and the page moves the drawing to make room (55 ms
+  after the press on a quiet machine). Where the card came to rest under the pointer (R2's value on
+  Start here, at 1280 × 800), the second click landed on the card's title, took the focus from the
+  value, and the double click was lost: at a hand's pace on a quiet machine, at once on a busy one. Now,
+  for about a double click's time after a move a press caused (450 ms, `PAGE_MOVE_QUIET_MS`, counted
+  from the move to the next press's own time, not to when a busy page got to it), the card lets a press
+  through to the drawing, which sets the press aside and gives the double click the first click's
+  place, as it already did for a press on the drawing. A move is a press's doing when no other press
+  and no key came between them, however long the page took: a time limit (250 ms) took a slow
+  machine's move for nobody's, and the second click was then taken where the drawing had slid to.
+  Considered: a card that never comes to rest under the pointer; its place is decided by the drawing
+  and the window (decision 0015), and a keyboard opens it with no pointer at all.

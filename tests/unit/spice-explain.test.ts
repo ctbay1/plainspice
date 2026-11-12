@@ -23,6 +23,7 @@ import {
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { isDrawingLine } from '../../src/schematic/format.ts';
 import type { LineExplanation } from '../../src/spice/types.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const MINUS = '−';
 /** formatSI writes a no-break space between number and unit; expectations here use a plain space. */
@@ -726,16 +727,17 @@ describe('robustness', () => {
     }
   });
 
+  // Timed as the work it is (work-time.ts: the processor time, not the clock, which on a busy machine
+  // counts the wait for a processor), the least of three tries; 1.9 s for the whole test at load 20 on 4
+  // cores, so its own limit is 30 s.
   it('explains 10,000 lines in well under a second', () => {
     const body = Array.from({ length: 2500 }, (_, i) => `V${i} n${i} 0 ${i}\nR${i} n${i} n${i + 1} 1k\n* comment ${i}\n.dc V${i} 0 1 0.1`).join('\n');
     const n = parseNetlist(`* big\n${body}\n.end\n`);
-    explainNetlist(n);
-    const t0 = performance.now();
     const all = explainNetlist(n);
-    const ms = performance.now() - t0;
     expect(all.length).toBe(n.lines.length);
+    const [ms] = leastWorkMs([() => explainNetlist(n)], 3);
     expect(ms).toBeLessThan(1500);
-  });
+  }, 30_000);
 
   const channel = '/home/user/solved-circuits/design';
   const channelFiles = existsSync(channel)

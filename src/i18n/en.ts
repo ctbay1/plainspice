@@ -69,6 +69,8 @@ export const en = {
   partsGroupBasic: 'Parts and wires',
 
   // ---------------------------------------------------------------- hint line
+  /** A phone's hint while too little room makes it scroll (large text on a small phone): a region the keys can scroll. */
+  hintScrollLabel: 'What to do next',
   hintDesk: 'Click a part to see its numbers and change it · drag a part to move it · choose a part in the margin to add one · Ctrl+K for every command',
   hintPhone: 'Tap a part to see its numbers and change it',
   hintPhonePan: 'Drag the paper to see the rest of the circuit',
@@ -144,6 +146,8 @@ export const en = {
   pressRunPhone: 'tap Run',
 
   // ---------------------------------------------------------------- status line
+  /** A phone's hint and status lines while even the status is taller than the room left (large text on a small phone): a region the keys can scroll. */
+  linesLabel: 'What to do next, and how the run went',
   statusLoading: 'Loading ngspice…',
   statusLoadingDetail: 'The first visit downloads it; after that it loads from this device.',
   statusSolving: 'Running…',

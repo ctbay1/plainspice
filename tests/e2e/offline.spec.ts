@@ -2,8 +2,10 @@
  * 9. Offline (the PWA): after the first visit the service worker has the page, the scripts, the
  * fonts, the engine's Worker and ngspice.wasm, so the app opens and solves with no connection at all.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { drawnText, expectFinished, expectSolved, nodeTable, openApp, openHelp, openPanel, readPlain, rowNamed, shownText, t } from './helpers.ts';
+import { drawnText, expectFinished, expectSolved, isPhone, nodeTable, openApp, openHelp, openPanel, readPlain, rowNamed, shownText, t } from './helpers.ts';
 
 test('offline after the first visit: the app opens, ngspice loads from the cache and solves the first screen', async ({ page, context }) => {
   await openApp(page);
@@ -48,5 +50,39 @@ test('offline after the first visit: the app opens, ngspice loads from the cache
     await openHelp(page);
   } finally {
     await context.setOffline(false);
+  }
+});
+
+test('the service worker leaves the site’s other pages alone: once it is installed, the design pages, the engine check and the licences open as themselves', async ({ page }) => {
+  test.skip(isPhone(page), 'one service worker for every device: checked once, on the computer');
+  await openApp(page);
+  // Installed and active: from now on it answers every page in its scope it takes on.
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  const root = resolve(import.meta.dirname, '../..');
+  const titleOf = (file: string): string => /<title>([^<]*)<\/title>/.exec(readFileSync(resolve(root, file), 'utf8'))![1]!;
+  // Each page, and whether the service worker keeps it for offline use (the licences do; the design pages
+  // and the engine check do not, so they come from the site).
+  const pages: [string, string, boolean][] = [
+    ['./design/', 'design/index.html', false],
+    ['./design/lab/', 'design/lab/index.html', false],
+    ['./design/checkpoint/', 'design/checkpoint/index.html', false],
+    ...['notebook', 'playground', 'studio'].map((name): [string, string, boolean] => [`./design/prototypes/${name}/`, `design/prototypes/${name}/index.html`, false]),
+    ['./spike/', 'spike/index.html', false],
+    ['./licenses/', 'licenses/index.html', true],
+  ];
+  for (const [path, file, offline] of pages) {
+    const response = await page.goto(path);
+    // The page itself, not the app's page from the service worker's cache (which the design pages were: a
+    // broken copy of the app, its scripts looked for under design/).
+    await expect(page, path).toHaveTitle(titleOf(file));
+    if (!offline) expect(response?.fromServiceWorker(), `${path} comes from the site`).toBe(false);
+  }
+  // The same pages without their closing slash, as a link typed by hand gives them: the site answers
+  // (GitHub Pages sends each on to the address with the slash; this test's server, vite preview, answers
+  // with the app's page itself, so only where the answer came from is checked here), not the service
+  // worker with its copy of the app.
+  for (const path of ['./design', './design/checkpoint', './spike', './licenses']) {
+    const response = await page.goto(path);
+    expect(response?.fromServiceWorker(), `${path} comes from the site`).toBe(false);
   }
 });

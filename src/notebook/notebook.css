@@ -514,6 +514,11 @@
 .nb-anchored > * {
   pointer-events: auto;
 }
+/* Just after a press made the page move the drawing (its card opened): the card lets the next press through
+   to the drawing, which sets it aside (NotebookCanvas: is-just-moved, about a double click's time). */
+.nb-canvas.is-just-moved .nb-anchored > * {
+  pointer-events: none;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .nb-world,

@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { ELEMENTS, EXPLAINED_LETTERS, elementInfo, fieldLabel } from '../../src/spice/elements.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist, partParameter } from '../../src/spice/parse.ts';
 import type { Element, FieldRole, LineKind, Netlist } from '../../src/spice/types.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -582,6 +583,7 @@ describe('robustness', () => {
     'é', '\u{1f642}', '\ud800', '\u0000', '\f', 'k', 'meg', 'e-3', 'd-3', 'pulse', 'dc', 'ac', 'params:', '//', 'ı', 'İ',
   ];
 
+  // About 0.4 s alone (random netlists, every span checked); 1.8 s at load 20 on 4 cores: 30 s.
   it('never throws, and every span is exact, on random netlists', () => {
     let seed = 20261109;
     const rnd = (): number => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -593,7 +595,7 @@ describe('robustness', () => {
       expect(n.lines).toHaveLength(text.split('\n').length);
       expectExactSpans(n);
     }
-  });
+  }, 30_000);
 
   it('copes with empty input, a lone newline, unicode and very long lines', () => {
     expect(kinds(parseNetlist(''))).toEqual(['title']);
@@ -604,9 +606,14 @@ describe('robustness', () => {
     expectExactSpans(long);
   });
 
-  // About 55 ms here and twice that on GitHub's runners, so the time limit is generous; the
-  // scaling check catches a parser that slows down with length (quadratic work would make
-  // 10 000 lines about 100 times slower than 1 000) on any machine.
+  // About 30 ms of work here for 10 000 lines and twice that on GitHub's runners, so the time limit is
+  // generous; the scaling check catches a parser that slows down with length: quadratic work makes 10 000
+  // lines at once about ten times the work of ten netlists of 1 000 lines, and here it may be at most 2.5
+  // times (as before: 25 times the work of one netlist of 1 000). Timed as the work it is (work-time.ts:
+  // the processor time, not the clock, which on a busy machine counts the wait for a processor), the
+  // least of five tries of each, taken in turns. Not by the clock: at load 25 the larger netlist,
+  // waiting more often, came out 30 times slower than one tenth of it (190 ms against 158).
+  // Five tries of 20 000 lines: 0.3 s alone, 3.2 s at load 20 on 4 cores: 30 s.
   it('parses 10 000 lines quickly, in time proportional to their number', () => {
     const netlist = (count: number): string => {
       const lines = ['* many lines'];
@@ -617,22 +624,26 @@ describe('robustness', () => {
       }
       return lines.join('\n');
     };
-    const bestOf3 = (text: string, elements: number): number => {
-      let best = Number.POSITIVE_INFINITY;
-      for (let k = 0; k < 3; k++) {
-        const t0 = performance.now();
-        const n = parseNetlist(text);
-        best = Math.min(best, performance.now() - t0);
-        expect(n.elements).toHaveLength(elements);
-      }
-      return best;
-    };
+    const small = netlist(1000);
+    const large = netlist(10_000);
+    const parsed: Netlist[] = [];
     parseNetlist('* warm-up\nR1 a 0 1k\nV1 a 0 PULSE(0 5 0 1u 1u 1 2)\n.op\n.end');
-    const small = bestOf3(netlist(1000), 500);
-    const large = bestOf3(netlist(10_000), 5000);
-    expect(large).toBeLessThan(400);
-    expect(large).toBeLessThan(25 * Math.max(small, 1));
-  });
+    const [tenSmall, oneLarge] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) parsed.push(parseNetlist(small));
+        },
+        () => {
+          parsed.push(parseNetlist(large));
+        },
+      ],
+      5,
+    );
+    // Each parse is whole: 500 parts in each small netlist, 5000 in the large one.
+    expect(new Set(parsed.map((n) => n.elements.length))).toEqual(new Set([500, 5000]));
+    expect(oneLarge).toBeLessThan(400);
+    expect(oneLarge).toBeLessThan(2.5 * tenSmall);
+  }, 30_000);
 });
 
 describe('lowerAscii', () => {

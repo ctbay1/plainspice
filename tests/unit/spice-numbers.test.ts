@@ -251,6 +251,7 @@ describe('formatSpiceNumber: netlist-safe spellings for one-click fixes', () => 
     }
   });
 
+  // About 0.3 s alone (20 000 numbers written and read back); 1.6 s at load 20 on 4 cores: 30 s.
   it('always reads back within 2 units in the last place, as one clean word', () => {
     // ngspice computes digits × 10^n, so even "3.3" reads as 3.3000000000000003: the shortest
     // spelling of a double can come back one unit in the last place away.
@@ -264,7 +265,7 @@ describe('formatSpiceNumber: netlist-safe spellings for one-click fixes', () => 
       expect(r!.ignored ?? r!.rest, spelling).toBeUndefined();
       expect(Math.abs(r!.value - v) / Math.abs(v), spelling).toBeLessThanOrEqual(2 * Number.EPSILON);
     }
-  });
+  }, 30_000);
 
   it('never uses the letters that trap beginners (M, F, A, capitals)', () => {
     for (const v of [1e6, 3.3e6, 1e-15, 4.7e-15, 3e-18, 1e-13, 2e15]) {

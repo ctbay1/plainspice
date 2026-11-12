@@ -165,6 +165,20 @@ Ctrl+K stay as they are.
 
 ## After the final reviews (12 November 2026)
 
+- **The service worker leaves the site's other pages alone.** It answers a page it does not keep with
+  the app's own (share links live in the fragment, so every link is that page), except the pages on
+  its list. The design pages (design/, its lab, the checkpoint Tarık approved and the three
+  prototypes) were not on it, as the engine check, the licences and the engine's files were: once a
+  student had opened the app, they opened as a broken copy of it, its scripts looked for under design/.
+  The end-to-end policy test saw it whenever the service worker was installed before it got there
+  (on a busy machine its checkpoint never said "Solved in"). They are on the list now, with or without
+  their closing slash (a link typed as …/design was still answered with the app; the site sends it on to
+  …/design/), as are the engine check and the licences; they are still not kept offline (`vite.config.ts`,
+  `navigateFallbackDenylist`; `tests/e2e/offline.spec.ts`). A browser that already has the old service
+  worker keeps its answers until the new one takes over: a new version waits (`registerType: 'prompt'`,
+  above) until every PlainSpice tab has been closed once, or the student reloads from the app's "new
+  version" message. Not changed for this: a new version that took over at once could leave an open
+  page with scripts that are no longer there.
 - **Ctrl+K keeps the focus in its field** (a11y A1). The field is the dialog's one Tab stop: Tab and
   Shift+Tab stay in it, as in every other dialog here (React Aria keeps Tab inside), so the focus
   never reaches the page behind (the skip link is inert too while Ctrl+K is open). The list is never
