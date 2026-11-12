@@ -2719,7 +2719,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(in) = 12, v(a) = 11.999999999999998, v(x) = 11.999999999999998, v(gnd) = 11.999999999999998, v(b) = 11.999999999999995, i(v1) = -1.734723475976807e-18, i(vm) = 0, i(@r1[i]) = 1.7763568394002505e-18, i(@r2[i]) = 0, i(@r3[i]) = 1.1842378929335003e-18, i(@f1[i]) = -3.469446951953614e-18
 ```
 
-A tiny current is not always noise: `I1 0 n1 3A` is a 3 aA source (unit-letter-1 in traps.md), and ngspice gives v(n1) = 1.2e−17 V across 4 Ω, a real 3 aA. So is a tiny current next to large ones (C9e to C9g), and one that flows on from a real tiny current, though the ends of the part it flows through are as close as R1's here (C9h to C9l). PlainSpice never compares a current with the circuit's other currents: it decides from the circuit's own numbers, first which currents are real, then which of the others are 0 (C9d).
+A tiny current is not always noise: `I1 0 n1 3A` is a 3 aA source (unit-letter-1 in traps.md), and ngspice gives v(n1) = 1.2e−17 V across 4 Ω, a real 3 aA. So is a tiny current next to large ones (C9e to C9g), and one that flows on from a real tiny current, though the ends of the part it flows through are as close as R1's here (C9h to C9l). PlainSpice never compares a current with the circuit's other currents: it solves the circuit exactly, with fractions, and shows as 0 only what the circuit makes exactly 0 (C9d).
 
 ### C9c. ngspice's current tolerance, abstol, is 1e-12 A (1 pA) by default, and its voltage tolerance, vntol, 1e-6 V (1 µV)
 
@@ -2756,7 +2756,7 @@ our engine (wasm), as ngspice -b -r (exit 0, no results file: the .control block
 
 Added after the critic of the fixes for the final reviews (12 November 2026). The bridge of C9 with a 0 V source Vm in R5's branch, and F1 copying 1000 × Vm's current into R6. R5 carries exactly 0 A here; Vm, the only other current at node m, gives −2.17e−19 A. F1 and R6 then give −2.17e−16 A, and node out −2.17e−13 V: all noise of a 0, because a current that is 0 copied 1000 times is still 0, and a resistor that carries no current has no voltage across it. The same doubles in native 47, native 42 and our engine.
 
-PlainSpice decides this from the circuit's own numbers, never by comparing a current with the circuit's other currents (decision 0015, `roundingNoise` in `src/spice/describe.ts`). First it finds the currents that are real: one of at least 1 pA, ngspice's current tolerance (abstol, C9c); a current source's own value (C9e); a resistor with a real voltage across it, at least 1 µV and more than 4 steps of a double (C9f, C9l), and a G that reads one; an F that copies a real current; a part next to one whose current PlainSpice does not read (a diode, a transistor, a subcircuit, a switch), which may carry that part's current; and, since the currents at a node add up to 0, the parts that carry the difference where the real currents at a node do not add up to 0, and a part in series with a real current (C9h to C9k). A current below 1 pA that is not real is noise when the circuit makes it 0: a resistor whose two ends are at the same voltage (at most 4 steps of a double apart; a balanced circuit leaves 1 or 2, C9, C9b, C9l); a part that carries the only current left at one of its nodes; an F that copies, or a G that reads, something that is 0. A number below the smallest normal double, 2⁻¹⁰²² (about 2.2e−308), is never noise (C9k). A node voltage below 1 µV, ngspice's voltage tolerance (vntol, C9c), is noise when the node is joined to ground through parts with no voltage across them (here R6). PlainSpice shows each as 0 A or 0 V, and says what ngspice gave in a note.
+PlainSpice decides this exactly, never by comparing a current with the circuit's other currents (decision 0015, `roundingNoise` in `src/spice/describe.ts`, `src/spice/exact.ts`). For a circuit of resistors, capacitors (open in .op, P11), inductors (wires), V and I sources with plain values (0 when they have none, P9, P16), and E, F, G and H with plain gains, it solves the netlist's own values with fractions, read as ngspice reads each word (its scale letters, 2A as 2 attoamps, 10M as 10 milli), but as the exact decimal the netlist writes. It first checks that ngspice simulated that same circuit: its node voltages and branch currents must solve the exact equations as closely as its own rounding can (at most 2⁻³⁰ of the largest sizes of the terms of an equation; at most 4.4e−14 over 7,756 circuits measured), and every part's current it reports must be its own numbers' product, to within its rounding. Then a current or node voltage whose exact value is 0 is noise of a 0, whatever its size (C9o), and one whose exact value is not 0 is real, however tiny (C9n): here R5's ends are exactly at the same voltage, Vm's current is exactly 0, F1 copies 1000 × 0, and R6 carries 0 into node out, which is at exactly 0 V. Two nodes are at the same voltage when their exact voltages are equal, whatever ngspice's last bits say (4.499999999999999 against 4.5 in C9): a balanced circuit can leave 7 steps of a double or more (C9m). The .tf ratio and each point of a .dc sweep are decided the same way (C9p). For other circuits (a diode, a transistor, a subcircuit, a part with settings, .param, other .options, a circuit too large to solve within a fixed amount of work), PlainSpice keeps a rule that decides from ngspice's own numbers: a current below 1 pA (C9c) that nothing real flows through is noise when the part's two ends are within 4 steps of a double, or it copies or reads a 0, or it is a source that carries the only current left at a node; a resistor's current that ngspice gives as exactly 0 proves nothing there (C9n), and a node voltage below 1 µV is shown as 0 V only when every current at the node is shown as 0. PlainSpice shows each value that is noise of a 0 as 0 A or 0 V, and says what ngspice gave in a note.
 
 ```spice
 * a balanced bridge with a 0 V ammeter in R5, and an F that reads it
@@ -2909,7 +2909,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### C9i. A resistor in series with one 10¹³ times larger carries the same real current: 10 Ω and 100 TΩ across 12 V each carry 1.2e−13 A
 
-R2 has 12 V across it, so it lets 1.2e−13 A through (as in C9f), and R1 is the only other part at node a, so it carries the same current, though it has only 1.2e−12 V across it, 10⁻¹³ of 12 V. Its two ends are 675 steps of a double apart (12 against 11.9999999999988): far more than the 1 or 2 steps a balanced circuit leaves (C9, C9b). The same doubles in native 47, native 42 and our engine.
+R2 has 12 V across it, so it lets 1.2e−13 A through (as in C9f), and R1 is the only other part at node a, so it carries the same current, though it has only 1.2e−12 V across it, 10⁻¹³ of 12 V. Its two ends are 675 steps of a double apart (12 against 11.9999999999988): far more than the 1 or 2 steps the balanced bridges of C9 and C9b leave (other balanced circuits leave 7 or 9, C9m). The same doubles in native 47, native 42 and our engine.
 
 ```spice
 * 12 V across 10 ohms in series with 100 T ohms
@@ -3029,7 +3029,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### C9l. Ends more than a few steps of a double apart carry a real current: a 1e15 Ω voltmeter across R2 of the balanced bridge makes 2.7 fA flow through R5
 
-The bridge of C9 with a 1e15 Ω resistor from a to ground, as an ideal voltmeter is often drawn. It takes 4.5e−15 A from node a, so a sinks by 9e−12 V and b by 6.3e−12 V, and R5 carries 2.696e−15 A from b to a; solving the netlist's equations exactly, with fractions, gives −2.6946e−15 A. R5's two ends are 3035 steps of a double apart (4.499999999990972 against 4.499999999993667), where the balanced bridge's are 1 apart (C9) and C9b's 1 and 2. Over 300 bridges with random values (resistors written to 15 digits; native 47, native 42 and our engine give the same doubles for all 300; each also solved exactly, with fractions, from the doubles its values are), wherever ngspice's R5 current was rounding noise (at least twice the exact current, or less than half of it), its two ends were at most 2 steps apart, in 104 bridges; wherever they were more than 4 steps apart, in 42, ngspice's current was the circuit's own, within a factor of 2 of the exact one. So PlainSpice takes two voltages as the same only when they are at most 4 steps of a double apart. The same doubles in native 47, native 42 and our engine.
+The bridge of C9 with a 1e15 Ω resistor from a to ground, as an ideal voltmeter is often drawn. It takes 4.5e−15 A from node a, so a sinks by 9e−12 V and b by 6.3e−12 V, and R5 carries 2.696e−15 A from b to a; solving the netlist's equations exactly, with fractions, gives −2.6946e−15 A. R5's two ends are 3035 steps of a double apart (4.499999999990972 against 4.499999999993667), where the balanced bridge's are 1 apart (C9) and C9b's 1 and 2. Over 300 bridges with random values (resistors written to 15 digits; native 47, native 42 and our engine give the same doubles for all 300; each also solved exactly, with fractions, from the doubles its values are), wherever ngspice's R5 current was rounding noise (at least twice the exact current, or less than half of it), its two ends were at most 2 steps apart, in 104 bridges; wherever they were more than 4 steps apart, in 42, ngspice's current was the circuit's own, within a factor of 2 of the exact one. That held for those bridges, not as a rule: two equal arms of three resistors leave 7 or 9 steps of a double where the circuit makes no current (C9m). So PlainSpice decides from the exact solution where it can (C9d): here R5's exact current is −2.6946e−15 A, a real current, shown as ngspice gives it; the 4-step rule is left only for circuits it does not solve exactly. The same doubles in native 47, native 42 and our engine.
 
 ```spice
 * the balanced bridge of C9 with a 1e15 ohm voltmeter across R2
@@ -3061,6 +3061,510 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(top) = 9, v(a) = 4.499999999990972, v(b) = 4.499999999993667, i(v1) = -0.0014074468085128885, i(@r1[i]) = 0.00045000000000090286, i(@r2[i]) = 0.00044999999999909717, i(@r3[i]) = 0.0009574468085119857, i(@r4[i]) = 0.0009574468085092909, i(@r5[i]) = -2.6956215037898802e-15, i(@rvm[i]) = 4.499999999990972e-15
+```
+
+### C9m. A balanced circuit can leave the ends of a part 7, 9 or more steps of a double apart: two equal arms of three resistors and a link carry no current through the link
+
+Added after the re-check of 12 November 2026 (spice S1). The two arms are the same resistors in the same order, so n3 and n5 sit at exactly the same voltage, 9 × 33 kΩ / 48.33 kΩ = 6.14525139664804... V, and R7 carries no current. ngspice's arithmetic leaves n3 about 4.5 steps of a double above that value and n5 about 2.5 below: 7 steps apart, so @r7[i] = 6.2e−20 A. With arms of 4.7 kΩ, 100 Ω and 150 kΩ and a 3.3 kΩ link the ends come out 9 steps apart, and R7 gives −4.8e−18 A. So "a balanced circuit leaves 1 or 2 steps" (C9, C9b) holds for those bridges, not as a rule: a rule that takes ends at most 4 steps apart as the same voltage would draw both as currents with an arrow. PlainSpice solves such a circuit exactly (C9d): R7's current is exactly 0, so it shows 0 A, with a note that gives ngspice's number. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* two equal arms of three resistors and a link: no current through R7
+V1 n1 0 9
+R1 n1 n2 15k
+R2 n2 n3 330
+R3 n3 0 33k
+R4 n1 n4 15k
+R5 n4 n5 330
+R6 n5 0 33k
+R7 n3 n5 100k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n5                               6.145251e+00
+        n4                               6.206704e+00
+        n3                               6.145251e+00
+        n2                               6.206704e+00
+        n1                               9.000000e+00
+        @r7[i]                           6.217249e-20
+        @r6[i]                           1.862197e-04
+        @r5[i]                           1.862197e-04
+        @r4[i]                           1.862197e-04
+        @r3[i]                           1.862197e-04
+        @r2[i]                           1.862197e-04
+        @r1[i]                           1.862197e-04
+        v1#branch                        -3.72439e-04
+  rawfile from ngspice -b -r (exit 0): v(n1) = 9, v(n2) = 6.206703910614529, v(n3) = 6.145251396648049, v(n4) = 6.2067039106145225, v(n5) = 6.145251396648042, i(v1) = -0.00037243947858473, i(@r1[i]) = 0.00018621973929236477, i(@r2[i]) = 0.00018621973929236395, i(@r3[i]) = 0.00018621973929236512, i(@r4[i]) = 0.00018621973929236517, i(@r5[i]) = 0.00018621973929236395, i(@r6[i]) = 0.00018621973929236493, i(@r7[i]) = 6.217248937900877e-20
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 9, v(n2) = 6.206703910614529, v(n3) = 6.145251396648049, v(n4) = 6.2067039106145225, v(n5) = 6.145251396648042, i(v1) = -0.00037243947858473, i(@r1[i]) = 0.00018621973929236477, i(@r2[i]) = 0.00018621973929236395, i(@r3[i]) = 0.00018621973929236512, i(@r4[i]) = 0.00018621973929236517, i(@r5[i]) = 0.00018621973929236395, i(@r6[i]) = 0.00018621973929236493, i(@r7[i]) = 6.217248937900877e-20
+```
+
+```spice
+* two equal arms of three resistors and a 3.3 k link: no current through R7
+V1 n1 0 15
+R1 n1 n2 4.7k
+R2 n2 n3 100
+R3 n3 0 150k
+R4 n1 n4 4.7k
+R5 n4 n5 100
+R6 n5 0 150k
+R7 n3 n5 3.3k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n5                               1.453488e+01
+        n4                               1.454457e+01
+        n3                               1.453488e+01
+        n2                               1.454457e+01
+        n1                               1.500000e+01
+        @r7[i]                           -4.84461e-18
+        @r6[i]                           9.689922e-05
+        @r5[i]                           9.689922e-05
+        @r4[i]                           9.689922e-05
+        @r3[i]                           9.689922e-05
+        @r2[i]                           9.689922e-05
+        @r1[i]                           9.689922e-05
+        v1#branch                        -1.93798e-04
+  rawfile from ngspice -b -r (exit 0): v(n1) = 15, v(n2) = 14.54457364341081, v(n3) = 14.534883720930189, v(n4) = 14.544573643410827, v(n5) = 14.534883720930205, i(v1) = -0.0001937984496124174, i(@r1[i]) = 0.00009689922480621051, i(@r2[i]) = 0.00009689922480621505, i(@r3[i]) = 0.00009689922480620126, i(@r4[i]) = 0.0000968992248062071, i(@r5[i]) = 0.00009689922480621505, i(@r6[i]) = 0.00009689922480620137, i(@r7[i]) = -4.8446095620006835e-18
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 15, v(n2) = 14.54457364341081, v(n3) = 14.534883720930189, v(n4) = 14.544573643410827, v(n5) = 14.534883720930205, i(v1) = -0.0001937984496124174, i(@r1[i]) = 0.00009689922480621051, i(@r2[i]) = 0.00009689922480621505, i(@r3[i]) = 0.00009689922480620126, i(@r4[i]) = 0.0000968992248062071, i(@r5[i]) = 0.00009689922480621505, i(@r6[i]) = 0.00009689922480620137, i(@r7[i]) = -4.8446095620006835e-18
+```
+
+### C9n. A real voltage below 1 µV is real: a ladder node read by a 1 TΩ voltmeter through a 1 µΩ wire is at 732.4 nV, though ngspice gives the wire's current as exactly 0
+
+Added after the re-check of 12 November 2026 (noise N1). The ladder's third node sits at 732.4 nV, and R6 carries 61.04 nA from it to ground: both real. So does the voltmeter Rvm, 7.324e−19 A, and so does the 1 µΩ wire Rw in series with it; but the wire's 7.3e−25 V drop is below one step of a double at 7.3e−7 V (1.06e−22 V), so n3 and p come out as the same double and ngspice gives Rw exactly 0 A. Solved exactly, every one of these values is real, so PlainSpice shows each as ngspice gives it, with no note. A rule that took Rw's 0 as proof would make Rvm "the only current left at p" and draw n3 and p as 0 V next to R6's 61.04 nA: by ngspice's numbers alone, Rw's 0 cannot be told from the 0 of R5 in C9d, which is the circuit's own. The same holds for a 1 GΩ over 10 Ω divider read by a 1e20 Ω voltmeter through a 100 Ω probe (mid is at 240 nV, R2 carries 24 nA, the probe's current comes out exactly 0), and for a node that a 1 nV source sets (37.04 fA flow from it through R3). The same doubles in native 47, native 42 and our engine.
+
+```spice
+* a ladder from 1.5 V, node n3 read by a 1 T voltmeter through a 1 u wire
+V1 n0 0 1.5
+R1 n0 n1 1.5k
+R2 n1 0 12
+R3 n1 n2 1.5k
+R4 n2 0 12
+R5 n2 n3 1.5k
+R6 n3 0 12
+R7 n3 n4 1.5k
+R8 n4 0 12
+Rw n3 p 1u
+Rvm p 0 1t
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        p                                7.324215e-07
+        n4                               5.812869e-09
+        n3                               7.324215e-07
+        n2                               9.301172e-05
+        n1                               1.181176e-02
+        n0                               1.500000e+00
+        @rvm[i]                          7.324215e-19
+        @rw[i]                           0.000000e+00
+        @r8[i]                           4.844058e-10
+        @r7[i]                           4.844058e-10
+        @r6[i]                           6.103513e-08
+        @r5[i]                           6.151953e-08
+        @r4[i]                           7.750977e-06
+        @r3[i]                           7.812496e-06
+        @r2[i]                           9.843130e-04
+        @r1[i]                           9.921255e-04
+        v1#branch                        -9.92125e-04
+  rawfile from ngspice -b -r (exit 0): v(n0) = 1.5, v(n1) = 0.011811755997793995, v(n2) = 0.00009301171983709262, v(n3) = 7.324215167679476e-7, v(n4) = 5.812869180697998e-9, v(p) = 7.324215167679476e-7, i(v1) = -0.0009921254960014707, i(@r1[i]) = 0.0009921254960014707, i(@r2[i]) = 0.0009843129998161663, i(@r3[i]) = 0.000007812496185304601, i(@r4[i]) = 0.000007750976653091051, i(@r5[i]) = 6.151953221354978e-8, i(@r6[i]) = 6.103512639732897e-8, i(@r7[i]) = 4.844057650581663e-10, i(@r8[i]) = 4.844057650581665e-10, i(@rw[i]) = 0, i(@rvm[i]) = 7.324215167679475e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n0) = 1.5, v(n1) = 0.011811755997793995, v(n2) = 0.00009301171983709262, v(n3) = 7.324215167679476e-7, v(n4) = 5.812869180697998e-9, v(p) = 7.324215167679476e-7, i(v1) = -0.0009921254960014707, i(@r1[i]) = 0.0009921254960014707, i(@r2[i]) = 0.0009843129998161663, i(@r3[i]) = 0.000007812496185304601, i(@r4[i]) = 0.000007750976653091051, i(@r5[i]) = 6.151953221354978e-8, i(@r6[i]) = 6.103512639732897e-8, i(@r7[i]) = 4.844057650581663e-10, i(@r8[i]) = 4.844057650581665e-10, i(@rw[i]) = 0, i(@rvm[i]) = 7.324215167679475e-19
+```
+
+```spice
+* a 1 G over 10 ohm divider read by a 1e20 ohm voltmeter through a 100 ohm probe
+V1 in 0 24
+R1 in mid 1g
+R2 mid 0 10
+Rp mid p 100
+Rvm p 0 1e20
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        p                                2.400000e-07
+        mid                              2.400000e-07
+        in                               2.400000e+01
+        @rvm[i]                          2.400000e-27
+        @rp[i]                           0.000000e+00
+        @r2[i]                           2.400000e-08
+        @r1[i]                           2.400000e-08
+        v1#branch                        -2.40000e-08
+  rawfile from ngspice -b -r (exit 0): v(in) = 24, v(mid) = 2.3999999760000004e-7, v(p) = 2.3999999760000004e-7, i(v1) = -2.3999999760000007e-8, i(@r1[i]) = 2.3999999760000004e-8, i(@r2[i]) = 2.3999999760000007e-8, i(@rp[i]) = 0, i(@rvm[i]) = 2.3999999760000002e-27
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(in) = 24, v(mid) = 2.3999999760000004e-7, v(p) = 2.3999999760000004e-7, i(v1) = -2.3999999760000007e-8, i(@r1[i]) = 2.3999999760000004e-8, i(@r2[i]) = 2.3999999760000007e-8, i(@rp[i]) = 0, i(@rvm[i]) = 2.3999999760000002e-27
+```
+
+```spice
+* a 1 nV source
+V1 top 0 1n
+R1 top s 1
+R2 s 0 1e20
+Vm top v 0
+R3 v 0 27k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        v                                1.000000e-09
+        s                                1.000000e-09
+        top                              1.000000e-09
+        @r3[i]                           3.703704e-14
+        @r2[i]                           1.000000e-29
+        @r1[i]                           0.000000e+00
+        v1#branch                        -3.70370e-14
+        vm#branch                        3.703704e-14
+  rawfile from ngspice -b -r (exit 0): v(top) = 1e-9, v(s) = 1e-9, v(v) = 1e-9, i(vm) = 3.703703703703704e-14, i(v1) = -3.703703703703704e-14, i(@r1[i]) = 0, i(@r2[i]) = 1e-29, i(@r3[i]) = 3.703703703703704e-14
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 1e-9, v(s) = 1e-9, v(v) = 1e-9, i(vm) = 3.703703703703704e-14, i(v1) = -3.703703703703704e-14, i(@r1[i]) = 0, i(@r2[i]) = 1e-29, i(@r3[i]) = 3.703703703703704e-14
+```
+
+### C9o. Rounding noise of a 0 that a large gain lifts above 1 pA is still 0: an H of 1 GΩ reading a balanced bridge's ammeter gives 193.5 pA through 1 kΩ
+
+Added after the re-check of 12 November 2026 (noise N2). The bridge is balanced (180 kΩ over 3.9 MΩ and 18 kΩ over 390 kΩ, both 3/65), so the 0 V source Vm carries no current, H1 makes 1 GΩ × 0 A = 0 V, node out is at 0 V and Rl carries no current. ngspice leaves −1.9e−16 A in Vm, and H1 multiplies it by 10⁹: out = −1.935e−7 V and Rl −193.5 pA, above ngspice's 1 pA current tolerance (C9c). The circuit makes each of them exactly 0, and the size is what H1's gain makes of ngspice's rounding, so PlainSpice shows 0 V and 0 A, with a note that gives ngspice's numbers. An E of 10⁶ reading the bridge of C9 into 100 Ω does the same (out −931.3 pV, Rl −9.3 pA). Fed from 5 V through 1 kΩ, the same E carries a real 5 mA at exactly 0 V: PlainSpice shows its 5 mA and node out as 0 V, and no power for E1 (no voltage across it). The same doubles in native 47, native 42 and our engine.
+
+```spice
+* a balanced bridge whose ammeter an H of 1 G reads
+V1 top 0 9
+R1 top a 180k
+R2 a 0 3.9meg
+R3 top b 18k
+R4 b 0 390k
+R5 a m 4.7
+Vm m b 0
+H1 out 0 Vm 1g
+Rl out 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              -1.93510e-07
+        m                                8.602941e+00
+        b                                8.602941e+00
+        a                                8.602941e+00
+        top                              9.000000e+00
+        @rl[i]                           -1.93510e-10
+        @r5[i]                           -3.77948e-16
+        @r4[i]                           2.205882e-05
+        @r3[i]                           2.205882e-05
+        @r2[i]                           2.205882e-06
+        @r1[i]                           2.205882e-06
+        v1#branch                        -2.42647e-05
+        vm#branch                        -1.93510e-16
+        h1#branch                        1.935098e-10
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 8.602941176467256, v(b) = 8.602941176467258, v(m) = 8.602941176467258, v(out) = -1.9350975899792844e-7, i(h1) = 1.9350975899792844e-10, i(vm) = -1.9350975899792844e-16, i(v1) = -0.000024264705882556586, i(@r1[i]) = 0.0000022058823529596873, i(@r2[i]) = 0.000002205882352940322, i(@r3[i]) = 0.000022058823529596775, i(@r4[i]) = 0.000022058823529403225, i(@r5[i]) = -3.7794826370218095e-16, i(@rl[i]) = -1.9350975899792844e-10
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 8.602941176467256, v(b) = 8.602941176467258, v(m) = 8.602941176467258, v(out) = -1.9350975899792844e-7, i(h1) = 1.9350975899792844e-10, i(vm) = -1.9350975899792844e-16, i(v1) = -0.000024264705882556586, i(@r1[i]) = 0.0000022058823529596873, i(@r2[i]) = 0.000002205882352940322, i(@r3[i]) = 0.000022058823529596775, i(@r4[i]) = 0.000022058823529403225, i(@r5[i]) = -3.7794826370218095e-16, i(@rl[i]) = -1.9350975899792844e-10
+```
+
+```spice
+* the balanced bridge of C9 read by an E of 1e6 into 100 ohms
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+E1 out 0 a b 1e6
+Rl out 0 100
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              -9.31323e-10
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @rl[i]                           -9.31323e-12
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+        e1#branch                        9.313226e-12
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, v(out) = -9.313225746154785e-10, i(e1) = 9.313225746154785e-12, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@rl[i]) = -9.313225746154785e-12
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, v(out) = -9.313225746154785e-10, i(e1) = 9.313225746154785e-12, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@rl[i]) = -9.313225746154785e-12
+```
+
+```spice
+* the same E, its output fed from 5 V through 1 k
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+E1 out 0 a b 1e6
+V2 x 0 5
+Rx x out 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        x                                5.000000e+00
+        out                              -9.31323e-10
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @rx[i]                           5.000000e-03
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+        v2#branch                        -5.00000e-03
+        e1#branch                        5.000000e-03
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, v(out) = -9.313225746154785e-10, v(x) = 5, i(e1) = 0.005000000000931323, i(v2) = -0.005000000000931323, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@rx[i]) = 0.005000000000931323
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, v(out) = -9.313225746154785e-10, v(x) = 5, i(e1) = 0.005000000000931323, i(v2) = -0.005000000000931323, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@rx[i]) = 0.005000000000931323
+```
+
+### C9p. The .tf ratio and the .dc points of a balanced bridge are rounding noise of a 0 too
+
+Added after the re-check of 12 November 2026 (spice S8). ".tf v(a,b) V1" on the bridge of C9 prints transfer_function = −5.55112e−17: v(a) and v(b) are both exactly half of V1, so the ratio is exactly 0. ".tf i(Vm) V1" gives −2.71e−20 A/V for a current that is 0. ".dc V1 0 9 3" of the bridge with Vm gives i(vm) = −5.4e−20, −1.08e−19 and −2.17e−19 A at 3, 6 and 9 V, exactly 0 at each point. In a circuit PlainSpice solves exactly every value is a + b·V1, so one more exact solution gives the ratio and every point, at the values the student wrote (start + k·step): PlainSpice shows 0 V/V and 0 A, in its words, on the card and in the Plot panel, with a note that gives ngspice's numbers, which the Numbers panel's printed column and the Plot panel's table and CSV keep. A real ratio far smaller than that noise stays as it is: 1 MΩ over 1e−12 Ω gives 1e−18 V/V. With no .print line, ngspice −b runs no .dc (record-native.ts), so the .dc block gives the rawfile values. .tran is left as ngspice gives it. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the balanced bridge of C9 with .tf v(a,b) V1
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+.tf v(a,b) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        transfer_function = -5.55112e-17
+        output_impedance_at_v(a,b) = 8.802395e+02
+        v1#input_impedance = 6.394558e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = -5.551115123125783e-17, v(v1#Input_impedance) = 6394.557823129251, v(output_impedance_at_V(a,b)) = 880.2395209580839
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = -5.551115123125783e-17, v(v1#Input_impedance) = 6394.557823129251, v(output_impedance_at_V(a,b)) = 880.2395209580839
+```
+
+```spice
+* the bridge of C9d with .tf i(Vm) V1
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a m 1k
+Vm m b 0
+.tf i(Vm) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        transfer_function = -2.71051e-20
+        v1#input_impedance = 6.394558e+03
+        vm#output_impedance = 1.000000e+20
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = -2.710505431213761e-20, v(v1#Input_impedance) = 6394.557823129248, v(vm#Output_impedance) = 100000000000000000000
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = -2.710505431213761e-20, v(v1#Input_impedance) = 6394.557823129248, v(vm#Output_impedance) = 100000000000000000000
+```
+
+```spice
+* the bridge of C9d swept by .dc V1 0 9 3
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a m 1k
+Vm m b 0
+.dc V1 0 9 3
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+  rawfile from ngspice -b -r (exit 0): v(v-sweep) = [0, 3, 6, 9], v(top) = [0, 3, 6, 9], v(a) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], v(b) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], v(m) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], i(vm) = [0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19], i(v1) = [0, -0.000469148936170213, -0.000938297872340426, -0.0014074468085106388]
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  rawfile from ngspice -b -r (exit 0): v(v-sweep) = [0, 3, 6, 9], v(top) = [0, 3, 6, 9], v(a) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], v(b) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], v(m) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], i(vm) = [0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19], i(v1) = [0, -0.000469148936170213, -0.000938297872340426, -0.0014074468085106388]
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(v-sweep) = [0, 3, 6, 9], v(top) = [0, 3, 6, 9], v(a) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], v(b) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], v(m) = [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], i(vm) = [0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19], i(v1) = [0, -0.000469148936170213, -0.000938297872340426, -0.0014074468085106388]
+```
+
+```spice
+* a real ratio far smaller than noise: 1 Meg over 1e-12 ohm
+V1 in 0 1
+R1 in out 1meg
+R2 out 0 1e-12
+.tf v(out) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        transfer_function = 1.000000e-18
+        output_impedance_at_v(out) = 1.000000e-12
+        v1#input_impedance = 1.000000e+06
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 9.999999999999999e-19, v(v1#Input_impedance) = 1000000, v(output_impedance_at_V(out)) = 1e-12
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 9.999999999999999e-19, v(v1#Input_impedance) = 1000000, v(output_impedance_at_V(out)) = 1e-12
+```
+
+### C9q. Noise of a 0 below 1 pA everywhere: the bridge of C9 fed by a current source written 2A (2 attoamps)
+
+Added after the re-check of 12 November 2026 (noise N3). `2A` is 2 attoamps (unit-letter-1 in traps.md), so every current here is below 1 pA, and every one but R5's is real: the arms carry their share of I1's 2 aA. R5's ends are both exactly at 6.395 fV, so it carries no current; ngspice gives a and b one step of a double apart and R5 −7.9e−34 A. A rule that makes every part at a node real when the real tiny currents there do not add up showed it as a current with an arrow; solved exactly, it is 0, so PlainSpice shows 0 A with a note, and I1 and the arms as ngspice gives them. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the balanced bridge of C9 fed by a current source written 2A (2 attoamps)
+I1 0 top 2A
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                6.394558e-15
+        a                                6.394558e-15
+        top                              1.278912e-14
+        @r5[i]                           -7.88861e-34
+        @r4[i]                           1.360544e-18
+        @r3[i]                           1.360544e-18
+        @r2[i]                           6.394558e-19
+        @r1[i]                           6.394558e-19
+        @i1[current]                     2.000000e-18
+  rawfile from ngspice -b -r (exit 0): v(top) = 1.2789115646258505e-14, v(a) = 6.394557823129253e-15, v(b) = 6.394557823129254e-15, i(@i1[current]) = 2e-18, i(@r1[i]) = 6.394557823129252e-19, i(@r2[i]) = 6.394557823129254e-19, i(@r3[i]) = 1.3605442176870746e-18, i(@r4[i]) = 1.3605442176870753e-18, i(@r5[i]) = -7.888609052210118e-34
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 1.2789115646258505e-14, v(a) = 6.394557823129253e-15, v(b) = 6.394557823129254e-15, i(@i1[current]) = 2e-18, i(@r1[i]) = 6.394557823129252e-19, i(@r2[i]) = 6.394557823129254e-19, i(@r3[i]) = 1.3605442176870746e-18, i(@r4[i]) = 1.3605442176870753e-18, i(@r5[i]) = -7.888609052210118e-34
+```
+
+### C9r. A source that copies or reads a 0 drives loads that carry 0: an F into two resistors side by side, a G into two
+
+Added after the re-check of 12 November 2026 (spice S3). F1 copies 1000 × Vm's current, which is 0 in the bridge of C9d, into R6 and R7 side by side; G1 reads the voltage between a and b of the bridge of C9, which is 0, into 1 kΩ and 2 kΩ side by side. Every load's current and node out's voltage are 0. ngspice gives F1 −2.17e−16 A, R6 and R7 −1.08e−16 A each and out −1.08e−13 V; G1 −8.9e−19 A, R6 −8.9e−19 A, R7 −4.4e−19 A and out −8.9e−16 V. PlainSpice shows every one of them as 0 (the exact solution), so the drawing keeps Kirchhoff's current law at out: a rule that needed the "only current left" at out zeroed F1 or G1 but left the loads' attoamps. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the bridge of C9d, its F feeding two resistors side by side
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a m 1k
+Vm m b 0
+F1 0 out Vm 1000
+R6 out 0 1k
+R7 out 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              -1.08420e-13
+        m                                4.500000e+00
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @r7[i]                           -1.08420e-16
+        @r6[i]                           -1.08420e-16
+        @f1[i]                           -2.16840e-16
+        @r5[i]                           0.000000e+00
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+        vm#branch                        -2.16840e-19
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.499999999999999, v(m) = 4.499999999999999, v(out) = -1.0842021724855044e-13, i(vm) = -2.168404344971009e-19, i(v1) = -0.0014074468085106388, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106385, i(@r4[i]) = 0.0009574468085106381, i(@r5[i]) = 0, i(@f1[i]) = -2.1684043449710089e-16, i(@r6[i]) = -1.0842021724855044e-16, i(@r7[i]) = -1.0842021724855044e-16
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.499999999999999, v(m) = 4.499999999999999, v(out) = -1.0842021724855044e-13, i(vm) = -2.168404344971009e-19, i(v1) = -0.0014074468085106388, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106385, i(@r4[i]) = 0.0009574468085106381, i(@r5[i]) = 0, i(@f1[i]) = -2.1684043449710089e-16, i(@r6[i]) = -1.0842021724855044e-16, i(@r7[i]) = -1.0842021724855044e-16
+```
+
+```spice
+* the balanced bridge of C9 read by a G feeding two resistors side by side
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+G1 0 out a b 1m
+R6 out 0 1k
+R7 out 0 2k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              -8.88178e-16
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @r7[i]                           -4.44089e-19
+        @r6[i]                           -8.88178e-19
+        @g1[i]                           -8.88178e-19
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, v(out) = -8.881784197001252e-16, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@g1[i]) = -8.881784197001253e-19, i(@r6[i]) = -8.881784197001253e-19, i(@r7[i]) = -4.440892098500626e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, v(out) = -8.881784197001252e-16, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@g1[i]) = -8.881784197001253e-19, i(@r6[i]) = -8.881784197001253e-19, i(@r7[i]) = -4.440892098500626e-19
 ```
 
 ## 4. Messages

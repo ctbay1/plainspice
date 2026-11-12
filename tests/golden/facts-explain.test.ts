@@ -23,7 +23,7 @@ import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import { interpretPlots, type AnalysisResults } from '../../src/engine/results.ts';
 import type { RawPlot, RunResult } from '../../src/engine/types.ts';
 import { formatSI } from '../../src/format/si.ts';
-import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
+import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import type { Netlist } from '../../src/spice/types.ts';
@@ -142,6 +142,21 @@ const FACTS: Fact[] = [
   { code: 'C9i', id: 'cur-tiny-series', netlist: "* 12 V across 10 ohms in series with 100 T ohms\nV1 in 0 12\nR1 in a 10\nR2 a 0 1e14\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.9999999999988, "i(v1)": -1.2012613126444194e-13, "i(@r1[i])": 1.2008172234345695e-13, "i(@r2[i])": 1.19999999999988e-13 } },
   { code: 'C9j', id: 'cur-tiny-side-by-side', netlist: "* the loop of C9h with two 1 k resistors side by side\nV1 a 0 12\nR1 a b 1k\nR2 a b 1k\nI1 0 b 2A\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": 12.000000000000002, "i(v1)": 3.469446951953614e-18, "i(@r1[i])": -1.7763568394002505e-18, "i(@r2[i])": -1.7763568394002505e-18, "i(@i1[current])": 2e-18 } },
   { code: 'C9l', id: 'cur-bridge-voltmeter', netlist: "* the balanced bridge of C9 with a 1e15 ohm voltmeter across R2\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nRvm a 0 1e15\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999990972, "v(b)": 4.499999999993667, "i(v1)": -0.0014074468085128885, "i(@r1[i])": 0.00045000000000090286, "i(@r2[i])": 0.00044999999999909717, "i(@r3[i])": 0.0009574468085119857, "i(@r4[i])": 0.0009574468085092909, "i(@r5[i])": -2.6956215037898802e-15, "i(@rvm[i])": 4.499999999990972e-15 } },
+  { code: 'C9m', id: 'cur-noise-arms', netlist: "* two equal arms of three resistors and a link: no current through R7\nV1 n1 0 9\nR1 n1 n2 15k\nR2 n2 n3 330\nR3 n3 0 33k\nR4 n1 n4 15k\nR5 n4 n5 330\nR6 n5 0 33k\nR7 n3 n5 100k\n.options savecurrents\n.op\n.end\n", vectors: {"v(n1)": 9, "v(n2)": 6.206703910614529, "v(n3)": 6.145251396648049, "v(n4)": 6.2067039106145225, "v(n5)": 6.145251396648042, "i(v1)": -0.00037243947858473, "i(@r1[i])": 0.00018621973929236477, "i(@r2[i])": 0.00018621973929236395, "i(@r3[i])": 0.00018621973929236512, "i(@r4[i])": 0.00018621973929236517, "i(@r5[i])": 0.00018621973929236395, "i(@r6[i])": 0.00018621973929236493, "i(@r7[i])": 6.217248937900877e-20} },
+  { code: 'C9m.2', id: 'cur-noise-arms-9-steps', netlist: "* two equal arms of three resistors and a 3.3 k link: no current through R7\nV1 n1 0 15\nR1 n1 n2 4.7k\nR2 n2 n3 100\nR3 n3 0 150k\nR4 n1 n4 4.7k\nR5 n4 n5 100\nR6 n5 0 150k\nR7 n3 n5 3.3k\n.options savecurrents\n.op\n.end\n", vectors: {"v(n1)": 15, "v(n2)": 14.54457364341081, "v(n3)": 14.534883720930189, "v(n4)": 14.544573643410827, "v(n5)": 14.534883720930205, "i(v1)": -0.0001937984496124174, "i(@r1[i])": 0.00009689922480621051, "i(@r2[i])": 0.00009689922480621505, "i(@r3[i])": 0.00009689922480620126, "i(@r4[i])": 0.0000968992248062071, "i(@r5[i])": 0.00009689922480621505, "i(@r6[i])": 0.00009689922480620137, "i(@r7[i])": -4.8446095620006835e-18} },
+  { code: 'C9n', id: 'cur-real-ladder-meter', netlist: "* a ladder from 1.5 V, node n3 read by a 1 T voltmeter through a 1 u wire\nV1 n0 0 1.5\nR1 n0 n1 1.5k\nR2 n1 0 12\nR3 n1 n2 1.5k\nR4 n2 0 12\nR5 n2 n3 1.5k\nR6 n3 0 12\nR7 n3 n4 1.5k\nR8 n4 0 12\nRw n3 p 1u\nRvm p 0 1t\n.options savecurrents\n.op\n.end\n", vectors: {"v(n0)": 1.5, "v(n1)": 0.011811755997793995, "v(n2)": 0.00009301171983709262, "v(n3)": 7.324215167679476e-7, "v(n4)": 5.812869180697998e-9, "v(p)": 7.324215167679476e-7, "i(v1)": -0.0009921254960014707, "i(@r1[i])": 0.0009921254960014707, "i(@r2[i])": 0.0009843129998161663, "i(@r3[i])": 0.000007812496185304601, "i(@r4[i])": 0.000007750976653091051, "i(@r5[i])": 6.151953221354978e-8, "i(@r6[i])": 6.103512639732897e-8, "i(@r7[i])": 4.844057650581663e-10, "i(@r8[i])": 4.844057650581665e-10, "i(@rw[i])": 0, "i(@rvm[i])": 7.324215167679475e-19} },
+  { code: 'C9n.2', id: 'cur-real-divider-meter', netlist: "* a 1 G over 10 ohm divider read by a 1e20 ohm voltmeter through a 100 ohm probe\nV1 in 0 24\nR1 in mid 1g\nR2 mid 0 10\nRp mid p 100\nRvm p 0 1e20\n.options savecurrents\n.op\n.end\n", vectors: {"v(in)": 24, "v(mid)": 2.3999999760000004e-7, "v(p)": 2.3999999760000004e-7, "i(v1)": -2.3999999760000007e-8, "i(@r1[i])": 2.3999999760000004e-8, "i(@r2[i])": 2.3999999760000007e-8, "i(@rp[i])": 0, "i(@rvm[i])": 2.3999999760000002e-27} },
+  { code: 'C9n.3', id: 'cur-real-1n-source', netlist: "* a 1 nV source\nV1 top 0 1n\nR1 top s 1\nR2 s 0 1e20\nVm top v 0\nR3 v 0 27k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 1e-9, "v(s)": 1e-9, "v(v)": 1e-9, "i(vm)": 3.703703703703704e-14, "i(v1)": -3.703703703703704e-14, "i(@r1[i])": 0, "i(@r2[i])": 1e-29, "i(@r3[i])": 3.703703703703704e-14} },
+  { code: 'C9o', id: 'cur-noise-gain-h', netlist: "* a balanced bridge whose ammeter an H of 1 G reads\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 8.602941176467256, "v(b)": 8.602941176467258, "v(m)": 8.602941176467258, "v(out)": -1.9350975899792844e-7, "i(h1)": 1.9350975899792844e-10, "i(vm)": -1.9350975899792844e-16, "i(v1)": -0.000024264705882556586, "i(@r1[i])": 0.0000022058823529596873, "i(@r2[i])": 0.000002205882352940322, "i(@r3[i])": 0.000022058823529596775, "i(@r4[i])": 0.000022058823529403225, "i(@r5[i])": -3.7794826370218095e-16, "i(@rl[i])": -1.9350975899792844e-10} },
+  { code: 'C9o.2', id: 'cur-noise-gain-e', netlist: "* the balanced bridge of C9 read by an E of 1e6 into 100 ohms\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nE1 out 0 a b 1e6\nRl out 0 100\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -9.313225746154785e-10, "i(e1)": 9.313225746154785e-12, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@rl[i])": -9.313225746154785e-12} },
+  { code: 'C9o.3', id: 'cur-real-e-fed', netlist: "* the same E, its output fed from 5 V through 1 k\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nE1 out 0 a b 1e6\nV2 x 0 5\nRx x out 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -9.313225746154785e-10, "v(x)": 5, "i(e1)": 0.005000000000931323, "i(v2)": -0.005000000000931323, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 0.005000000000931323} },
+  { code: 'C9p', id: 'cur-noise-tf', netlist: "* the balanced bridge of C9 with .tf v(a,b) V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.tf v(a,b) V1\n.end\n", vectors: {"v(Transfer_function)": -5.551115123125783e-17, "v(v1#Input_impedance)": 6394.557823129251, "v(output_impedance_at_V(a,b))": 880.2395209580839} },
+  { code: 'C9p.2', id: 'cur-noise-tf-current', netlist: "* the bridge of C9d with .tf i(Vm) V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n.tf i(Vm) V1\n.end\n", vectors: {"v(Transfer_function)": -2.710505431213761e-20, "v(v1#Input_impedance)": 6394.557823129248, "v(vm#Output_impedance)": 100000000000000000000} },
+  { code: 'C9p.3', id: 'cur-noise-dc', netlist: "* the bridge of C9d swept by .dc V1 0 9 3\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n.dc V1 0 9 3\n.end\n", vectors: {"v(v-sweep)": [0,3,6,9], "v(top)": [0,3,6,9], "v(a)": [0,1.4999999999999996,2.999999999999999,4.499999999999999], "v(b)": [0,1.4999999999999996,2.999999999999999,4.499999999999999], "v(m)": [0,1.4999999999999996,2.999999999999999,4.499999999999999], "i(vm)": [0,-5.421010862427522e-20,-1.0842021724855044e-19,-2.168404344971009e-19], "i(v1)": [0,-0.000469148936170213,-0.000938297872340426,-0.0014074468085106388]} },
+  { code: 'C9p.4', id: 'cur-real-tf-tiny', netlist: "* a real ratio far smaller than noise: 1 Meg over 1e-12 ohm\nV1 in 0 1\nR1 in out 1meg\nR2 out 0 1e-12\n.tf v(out) V1\n.end\n", vectors: {"v(Transfer_function)": 9.999999999999999e-19, "v(v1#Input_impedance)": 1000000, "v(output_impedance_at_V(out))": 1e-12} },
+  { code: 'C9q', id: 'cur-noise-2a-bridge', netlist: "* the balanced bridge of C9 fed by a current source written 2A (2 attoamps)\nI1 0 top 2A\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 1.2789115646258505e-14, "v(a)": 6.394557823129253e-15, "v(b)": 6.394557823129254e-15, "i(@i1[current])": 2e-18, "i(@r1[i])": 6.394557823129252e-19, "i(@r2[i])": 6.394557823129254e-19, "i(@r3[i])": 1.3605442176870746e-18, "i(@r4[i])": 1.3605442176870753e-18, "i(@r5[i])": -7.888609052210118e-34} },
+  { code: 'C9r', id: 'cur-noise-f-two-loads', netlist: "* the bridge of C9d, its F feeding two resistors side by side\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\nR7 out 0 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.499999999999999, "v(m)": 4.499999999999999, "v(out)": -1.0842021724855044e-13, "i(vm)": -2.168404344971009e-19, "i(v1)": -0.0014074468085106388, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106385, "i(@r4[i])": 0.0009574468085106381, "i(@r5[i])": 0, "i(@f1[i])": -2.1684043449710089e-16, "i(@r6[i])": -1.0842021724855044e-16, "i(@r7[i])": -1.0842021724855044e-16} },
+  { code: 'C9r.2', id: 'cur-noise-g-two-loads', netlist: "* the balanced bridge of C9 read by a G feeding two resistors side by side\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nG1 0 out a b 1m\nR6 out 0 1k\nR7 out 0 2k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -8.881784197001252e-16, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@g1[i])": -8.881784197001253e-19, "i(@r6[i])": -8.881784197001253e-19, "i(@r7[i])": -4.440892098500626e-19} },
   { code: 'M1', id: 'msg-no-ground', netlist: "* no ground\nV1 a b 6\nR1 a b 2\n.op\n.end\n", vectors: { "v(a)": 9.00033307426206, "v(b)": 3.0003330742710626, "i(v1)": -2.9999999999924993 }, prints: ["singular matrix:  check node b","Transient op started"], codes: ["singular-matrix","gmin-stepping-failed","source-stepping-failed","transient-op-fallback"], unreliable: true },
   { code: 'M2', id: 'msg-cap-node', netlist: "* T15b: a node connected only to capacitors, with a resistor elsewhere\nV1 a 0 6\nR1 a c 1k\nC1 c b 1u\nC2 b 0 2u\nR2 c 0 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(c)": 0.08866339997380636, "v(b)": 0.029554466657885997, "i(v1)": -0.005911336600014282 }, prints: ["singular matrix:  check node b"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M2b', id: 'msg-isource-cap', netlist: "* T05a: a current source in series with a capacitor\nI1 0 a 1m\nC1 a b 1u\nR1 b 0 1k\n.op\n.end\n", vectors: { "v(a)": 1.0099999979842442, "v(b)": 0.9999999979942681 }, codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
@@ -836,5 +851,80 @@ describe('after the final reviews (12 November 2026): rounding noise is 0 A (stu
       ['R1', 3.0000000000000002e-18, undefined],
     ]);
     expect(d.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+  });
+});
+
+describe('after the re-check of 12 November 2026: what the circuit makes exactly 0 is 0, and nothing else (C9m-C9r; decision 0015)', () => {
+  /** Exactly, bit for bit, as in the block above. */
+  const exactly = (code: string): void => {
+    const f = fact(code);
+    const r = runs.get(f.id)!;
+    for (const [name, want] of Object.entries(f.vectors ?? {})) expect(vectorValues(r.plots, name), `${code} ${name}`).toEqual(Array.isArray(want) ? want : [want]);
+  };
+  /** The parts and nodes said as 0 because ngspice gave rounding noise of a 0. */
+  const noise = (d: Described): string[] => [...d.words.currents.filter((c) => c.noise !== undefined).map((c) => c.name), ...d.words.nodes.filter((n) => n.noise !== undefined).map((n) => `node ${n.node}`)];
+  const note = (d: Described): string => plain(d.words.warnings.find((m) => m.code === 'rounding-noise')?.why) ?? '';
+  const node = (d: Described, name: string): string | undefined => plain(d.words.nodes.find((n) => n.node === name)?.text);
+
+  it('C9m-C9r: our engine gives these values as native ngspice 47 does, to the last bit', () => {
+    for (const code of ['C9m', 'C9m.2', 'C9n', 'C9n.2', 'C9n.3', 'C9o', 'C9o.2', 'C9o.3', 'C9p', 'C9p.2', 'C9p.3', 'C9p.4', 'C9q', 'C9r', 'C9r.2']) exactly(code);
+  });
+
+  it('C9m: two equal arms and a link: the link carries 0 A, though ngspice leaves its ends 7 and 9 steps of a double apart (spice S1)', () => {
+    for (const [code, given] of [['C9m', 6.217248937900877e-20], ['C9m.2', -4.8446095620006835e-18]] as const) {
+      const d = ofFact(code);
+      expect(noise(d), code).toEqual(['R7']);
+      expect(d.words.currents.find((c) => c.name === 'R7'), code).toMatchObject({ value: 0, noise: given, text: 'no current through R7' });
+      expect(note(d), code).toContain('the two ends of R7, node n3 and node n5, are at the same voltage');
+    }
+  });
+
+  it('C9n: a real voltage below 1 µV and the currents beside it are shown as ngspice gives them, with no note (noise N1)', () => {
+    const ladder = ofFact('C9n');
+    expect(noise(ladder)).toEqual([]);
+    expect([node(ladder, 'n3'), node(ladder, 'p'), node(ladder, 'n4')]).toEqual(['732.4 nV', '732.4 nV', '5.813 nV']);
+    expect(plain(currentText(ladder, 'R6'))).toBe('61.04 nA from node n3 to ground through R6');
+    expect(plain(currentText(ladder, 'Rvm'))).toBe('7.324e-19 A from node p to ground through Rvm');
+    expect(note(ladder)).toBe('');
+    const divider = ofFact('C9n.2');
+    expect([noise(divider), node(divider, 'mid'), node(divider, 'p')]).toEqual([[], '240 nV', '240 nV']);
+    const source = ofFact('C9n.3');
+    expect([noise(source), node(source, 'top'), plain(currentText(source, 'R3'))]).toEqual([[], '1 nV', '37.04 fA from node v to ground through R3']);
+  });
+
+  it('C9o: noise of a 0 that a gain of 1e9 lifts to 193.5 pA is 0, with every part it drives; a real 5 mA at 0 V is kept, with no power (noise N2)', () => {
+    const h = ofFact('C9o');
+    expect(noise(h)).toEqual(['R5', 'Vm', 'H1', 'Rl', 'node out']);
+    expect(note(h)).toContain('Rl -1.935098e-10 A and node out -1.935098e-07 V.');
+    expect(note(h)).not.toContain('below 1 pA');
+    expect(noise(ofFact('C9o.2'))).toEqual(['R5', 'E1', 'Rl', 'node out']);
+    const fed = ofFact('C9o.3');
+    expect(noise(fed)).toEqual(['R5', 'node out']);
+    const e1 = fed.words.currents.find((c) => c.name === 'E1')!;
+    expect([e1.value, e1.power]).toEqual([0.005000000000931323, undefined]);
+  });
+
+  it('C9p: the .tf ratio and the .dc points of the balanced bridge are 0, with ngspice\'s numbers in the note; a real 1e-18 V/V is kept (spice S8)', () => {
+    expect(ofFact('C9p').words.tf!.transferFunction).toMatchObject({ value: 0, noise: -5.551115123125783e-17, text: 'v(a,b)/V1 = 0 (V/V)' });
+    expect(ofFact('C9p.2').words.tf!.transferFunction).toMatchObject({ value: 0, noise: -2.710505431213761e-20 });
+    const dc = ofFact('C9p.3');
+    expect(dc.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0, noise: -2.168404344971009e-19 });
+    expect(Array.from(shownSweep(dc.netlist, dc.results)!.series.find((s) => s.name === 'i(vm)')!.values)).toEqual([0, 0, 0, 0]);
+    expect(note(dc)).toContain('ngspice gave i(vm) -5.421011e-20 A at V1 = 3 V');
+    const tiny = ofFact('C9p.4').words.tf!.transferFunction!;
+    expect([tiny.value, tiny.noise]).toEqual([9.999999999999999e-19, undefined]);
+  });
+
+  it('C9q: the bridge fed by 2 aA: R5 is 0 A, the source and the arms keep their attoamps (noise N3)', () => {
+    const d = ofFact('C9q');
+    expect(noise(d)).toEqual(['R5']);
+    expect(d.words.currents.find((c) => c.name === 'R5')!.noise).toBe(-7.888609052210118e-34);
+    expect(plain(currentText(d, 'I1'))).toBe('2 aA from ground to node top through I1');
+  });
+
+  it('C9r: an F or a G that copies or reads a 0 into two loads side by side: every load is 0 A and node out 0 V (spice S3)', () => {
+    expect(noise(ofFact('C9r'))).toEqual(['Vm', 'F1', 'R6', 'R7', 'node out']);
+    expect(noise(ofFact('C9r.2'))).toEqual(['R5', 'G1', 'R6', 'R7', 'node out']);
+    for (const code of ['C9r', 'C9r.2']) expect(roundingNoise(ofFact(code).netlist, ofFact(code).results).by, code).toBe('exact');
   });
 });
