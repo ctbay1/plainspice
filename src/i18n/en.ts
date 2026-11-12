@@ -270,12 +270,20 @@ export const en = {
   squaresDown_one: '{count} square down',
   squaresDown_other: '{count} squares down',
   turnOnlyParts: 'Only a part turns, mirrors or reverses (and a ground symbol turns while it is in hand): a placed ground symbol, a node’s name and a piece of wire stay as they are.',
-  /** As deleteWhileMoving: where the part can't go (a half turn), Esc puts it back, as noHalfTurn says. */
+  /** As deleteWhileMoving: Shift+R on a part being moved where it can go. */
   reverseWhileMoving: 'Put {name} down first (Esc puts it back), then Reverse swaps its two ends in the netlist.',
+  /**
+   * Shift+R on a part being moved where it can't go (the move's preview is refused: a half turn where it
+   * stands, as noHalfTurn says, or a place taken): it can only go back first, so the sentence never asks
+   * to put it down there (words re-check 11).
+   */
+  reverseWhileRefused: '{name} can’t go here: Esc puts it back, then Reverse swaps its two ends in the netlist.',
   /** T and M on a part being moved: the next sentence (moveSayHere, moveSayNot) says whether it can land there. */
   turnedMoving: '{name} turned.',
   mirroredMoving: '{name} mirrored.',
   deleteWhileMoving: 'Put {name} down first (Esc puts it back), then Delete deletes it.',
+  /** Delete on a part being moved where it can't go, as reverseWhileRefused. */
+  deleteWhileRefused: '{name} can’t go here: Esc puts it back, then Delete deletes it.',
   putBack: '{name} put back.',
   toolInHand: '{part} in hand. {hint}',
   /** T, M and Shift+R on the part in hand (it is drawn turned; said too). */

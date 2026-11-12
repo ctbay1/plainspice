@@ -10,6 +10,8 @@
  *   the card's close button; ground (node 0) stays "ground".
  * - S7 and words re-check 8: the Numbers panel names a node outside ASCII as first written (GİRİŞ, aµ),
  *   never half lower-cased, and keeps ngspice's own spelling in its ngspice column.
+ * - words re-check 11: Shift+R and Delete on a part being moved follow the move's preview: where it
+ *   can't go they never ask to put it down there.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -23,6 +25,7 @@ import { START_HERE_ID } from '../../src/app/examples.ts';
 import { solveText } from '../../src/app/model.ts';
 import type { StartupDecision } from '../../src/app/startup.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
+import { t } from '../../src/i18n/index.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const START = readFileSync(resolve(root, 'examples/start-here.cir'), 'utf8');
@@ -170,5 +173,50 @@ describe('S7: the Numbers panel names a node outside ASCII as first written', ()
 
   it('aµ as written, au in ngspice\'s column (W16: ngspice reads µ as u)', async () => {
     expect((await panelRows('* micro\nV1 aµ 0 5\nR1 aµ 0 1k\n.op\n.end\n', /node/i)).map((r) => [r[0], r[2]])).toEqual([['aµ', 'v(au) = 5.000000e+00']]);
+  }, 30000);
+});
+
+describe('words re-check 11: Shift+R and Delete on a part being moved say what can be done where it is', () => {
+  const part = (name: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^${name}, `) });
+  /** R1 picked up with its card's Move, as the e2e tests do (the keys then go to R1 on the drawing). */
+  async function pickUp(): Promise<void> {
+    fireEvent.click(part('R1'));
+    fireEvent.click(await screen.findByRole('button', { name: t('editMoveLabel', { name: 'R1' }) }));
+    await waitFor(() => expect(polite()).toContain('R1 picked up'));
+  }
+  const key = (k: string, shift = false): void => {
+    fireEvent.keyDown(part('R1'), { key: k, shiftKey: shift });
+  };
+
+  it('a half turn where it stands is refused: "R1 can’t go here: Esc puts it back, then …", for Shift+R and for Delete', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await pickUp();
+    key('t');
+    key('t');
+    await waitFor(() => expect(polite()).toContain('R1, back where it was: not here.'));
+    key('R', true);
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Reverse swaps its two ends in the netlist.'));
+    expect(polite()).not.toContain('Put R1 down first');
+    key('Delete');
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Delete deletes it.'));
+    // As the sentence says: Esc puts it back, and then Reverse swaps its ends.
+    key('Escape');
+    await waitFor(() => expect(polite()).toContain('R1 put back.'));
+    key('R', true);
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 out in 1k'));
+  }, 30000);
+
+  it('where it can go, both still say to put it down first', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await pickUp();
+    key('ArrowUp');
+    await waitFor(() => expect(polite()).toContain('it can go here'));
+    key('R', true);
+    await waitFor(() => expect(polite()).toContain('Put R1 down first (Esc puts it back), then Reverse swaps its two ends in the netlist.'));
+    key('Delete');
+    await waitFor(() => expect(polite()).toContain('Put R1 down first (Esc puts it back), then Delete deletes it.'));
+    expect(polite()).not.toContain('can’t go here');
   }, 30000);
 });

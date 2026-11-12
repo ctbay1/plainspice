@@ -2260,6 +2260,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const grabName = (s: Schematic, g: Grab): string => (g.kind === 'part' ? (s.circuit.parts.find((p) => p.key === g.key)?.name ?? g.key) : g.kind === 'ground' ? t('theGround') : t('labelName', { node: nodeSaid(s, g.node) }));
   const grabItem = (g: Grab): NavItem => (g.kind === 'part' ? { kind: 'part', key: g.key } : g.kind === 'ground' ? { kind: 'node', name: GROUND } : { kind: 'node', name: g.node });
 
+  /**
+   * Whether the thing being moved can go where it is wanted now, by the model's preview: made again when
+   * the one drawn is of an older place, turn or text (a key pressed before the next frame), as dropMove does.
+   */
+  const canGoNow = (m: MoveState, s: Schematic): boolean => {
+    const want = moveWanted.current ?? m.preview?.to;
+    const preview = want && !previewFits(m, want, s.netlist.text) ? movePreview(s, m.grab, want, m.turn) : m.preview;
+    return !preview || preview.ok;
+  };
   /** Turn, Mirror or Reverse: the part in hand, the part being moved, else the selected part (or the one named). */
   const turnPart = (kind: 'turn' | 'mirror' | 'reverse', key?: string): void => {
     if (key === undefined && hand) {
@@ -2278,7 +2287,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       const name = cap(grabName(s, m.grab));
       const placed = m.grab.kind === 'part' ? s.drawing.parts.get(m.grab.key) : undefined;
       if (!placed) return refuse(t('turnOnlyParts'));
-      if (kind === 'reverse') return refuse(t('reverseWhileMoving', { name }));
+      // Where it cannot go (a half turn where it stands, a place taken ...) it can only go back first:
+      // the sentence follows the move's preview, as the hint line does (words re-check 11).
+      if (kind === 'reverse') return refuse(t(canGoNow(m, s) ? 'reverseWhileMoving' : 'reverseWhileRefused', { name }));
       const was = m.turn ?? { rot: placed.rot, mirror: placed.mirror };
       const next: MoveState = { ...m, turn: kind === 'turn' ? { ...was, rot: nextRotation(was.rot) } : { ...was, mirror: !was.mirror } };
       moveRef.current = next;
@@ -2887,7 +2898,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         }
         if (move) {
           const s = currentDrawing();
-          if (s) refuse(t('deleteWhileMoving', { name: cap(grabName(s, move.grab)) }));
+          if (s) refuse(t(canGoNow(moveRef.current ?? move, s) ? 'deleteWhileMoving' : 'deleteWhileRefused', { name: cap(grabName(s, move.grab)) }));
           return true;
         }
         deleteNow();
