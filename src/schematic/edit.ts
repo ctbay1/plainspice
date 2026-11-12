@@ -231,8 +231,8 @@ export const EDIT_STRINGS = {
    * each byte of such a letter as '_'), and the name in plain letters (words re-check 9). `letter` as
    * the check names it ("ç", "the Cyrillic letter о, which looks like o").
    */
-  badLetter: (name: string, letter: string, letterSpelled: string, spelled: string, plain: string): string =>
-    `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter}${letter.includes(', which') ? ',' : ''} as ${letterSpelled}), so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
+  badLetter: (name: string, letter: string, letterSpelled: string, spelled: string, plain: string, micro = false): string =>
+    `ngspice ${micro ? 'reads the micro sign µ as u and writes the other letters outside a to z (or A to Z)' : 'writes each letter other than a to z (or A to Z)'} in a node name as underscores (${letter}${letter.includes(', which') ? ',' : ''} as ${letterSpelled}), so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
   /** The micro sign, which ngspice reads as u (W16), so a name with it is another name to ngspice. */
   badMicro: (name: string, spelled: string, plain: string): string =>
     `ngspice reads the micro sign µ in a node name as u, so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
@@ -285,8 +285,11 @@ export function badNodeName(s: Schematic, name: string, own?: string): string {
   for (let k = 2; taken.has(lowerAscii(free)); k++) free = `${plain}${k}`;
   if (!NODE_NAME.test(free)) return S.badName(name);
   const spelled = ngspiceSpelling(name);
-  if (odd === MICRO) return S.badMicro(name, spelled, free);
-  return S.badLetter(name, lookAlikeOf(odd) !== undefined ? describeCharacter(odd) : odd, ngspiceSpelling(odd), spelled, free);
+  // The letter shown is one ngspice writes as underscores; µ, which it reads as u, is said apart, as the
+  // non-ascii-node check says it (critic of the fix: "şµ" was "underscores (ş as __) … __u").
+  const letter = [...name].find((ch) => ch.codePointAt(0)! > 0x7e && ch !== MICRO);
+  if (letter === undefined) return S.badMicro(name, spelled, free);
+  return S.badLetter(name, lookAlikeOf(letter) !== undefined ? describeCharacter(letter) : letter, ngspiceSpelling(letter), spelled, free, name.includes(MICRO));
 }
 const MICRO = '\u00b5';
 

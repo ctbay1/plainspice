@@ -568,6 +568,12 @@ describe('words re-check 9: a node name with a letter outside a to z is refused 
     expect(rename(START, 'out', 'aµ')).toBe('ngspice reads the micro sign µ in a node name as u, so PlainSpice can\'t use "aµ": ngspice would call it au. Write au.');
   });
 
+  it('µ beside another letter: the rule says both, as the non-ascii-node check does (critic of the fix)', () => {
+    // Native ngspice 47 and 42: şµ is the node __u, µş the node u__ (ş as __, µ as u).
+    expect(rename(START, 'out', 'şµ')).toBe('ngspice reads the micro sign µ as u and writes the other letters outside a to z (or A to Z) in a node name as underscores (ş as __), so PlainSpice can\'t use "şµ": ngspice would call it __u. Write su.');
+    expect(rename(START, 'out', 'µş')).toBe('ngspice reads the micro sign µ as u and writes the other letters outside a to z (or A to Z) in a node name as underscores (ş as __), so PlainSpice can\'t use "µş": ngspice would call it u__. Write us.');
+  });
+
   it('a look-alike letter is named as the checks name it; a hidden character is named, never shown in quotes', () => {
     expect(rename(START, 'out', '\u043eut')).toBe('ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (the Cyrillic letter \u043e, which looks like o, as __), so PlainSpice can\'t use "\u043eut": ngspice would call it __ut. Write out.');
     expect(rename(START, 'out', 'ou\u200bt')).toBe('PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can\'t use out (written with a zero-width space in it).');

@@ -515,6 +515,10 @@ what they look like):
   it ____k____. Write cikis.' (W16). The suggestion is never a name another node already has, nor 0,
   gnd, ground or 00, which would join it to ground or set off the ground-misnamed check: a number goes
   after it (cikis2, gnd2 for gñd). The micro sign has its own why (ngspice reads µ as u: "Write au."),
+  and beside another such letter both are said, as the non-ascii-node check says them ("ngspice reads
+  the micro sign µ as u and writes the other letters outside a to z (or A to Z) in a node name as
+  underscores (ş as __), so PlainSpice can't use "şµ": ngspice would call it __u. Write su.", where the
+  rule said only underscores: critic of the fix),
   a look-alike letter is named as the checks name it, and a hidden character is named, never shown in
   quotes. `badNodeName` in `src/schematic/edit.ts`, PlainSpice's own rule; the check's fix
   (`freeNodeName` in traps.ts) is another lane's.
