@@ -71,7 +71,9 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
 - **Heavy unit tests have their own time limit**, written next to them with what they cost: those that
   take 0.4 to 1.5 s alone (the converter for each video's drawing, random edits and turns of every
   example, 160 random circuits laid out, 1500 random netlists checked, Node started six times) ran 6 to
-  10 times slower at load 16, past vitest's 5 s. 30 s each, as the app's own slow tests already had.
+  10 times slower at load 16, past vitest's 5 s; at load 20 tests of 0.1 to 0.4 s alone took up to
+  15 times as long (the whole app mounted in jsdom: 5.7 s), so those that came near the limit there have
+  one too. 30 s each, as the app's own slow tests already had.
 - **A speed check times the work, not the wait** (`tests/unit/work-time.ts`): by the thread's own
   processor time where Node counts it (`process.threadCpuUsage`), else the clock, the least of several
   tries taken in turns. By the clock, at load 25 the parser's 10 000 lines came out 30 times slower than

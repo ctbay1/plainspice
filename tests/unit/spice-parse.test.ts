@@ -583,6 +583,7 @@ describe('robustness', () => {
     'é', '\u{1f642}', '\ud800', '\u0000', '\f', 'k', 'meg', 'e-3', 'd-3', 'pulse', 'dc', 'ac', 'params:', '//', 'ı', 'İ',
   ];
 
+  // About 0.4 s alone (random netlists, every span checked); 1.8 s at load 20 on 4 cores: 30 s.
   it('never throws, and every span is exact, on random netlists', () => {
     let seed = 20261109;
     const rnd = (): number => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -594,7 +595,7 @@ describe('robustness', () => {
       expect(n.lines).toHaveLength(text.split('\n').length);
       expectExactSpans(n);
     }
-  });
+  }, 30_000);
 
   it('copes with empty input, a lone newline, unicode and very long lines', () => {
     expect(kinds(parseNetlist(''))).toEqual(['title']);
@@ -612,6 +613,7 @@ describe('robustness', () => {
   // the processor time, not the clock, which on a busy machine counts the wait for a processor), the
   // least of five tries of each, taken in turns. Not by the clock: at load 25 the larger netlist,
   // waiting more often, came out 30 times slower than one tenth of it (190 ms against 158).
+  // Five tries of 20 000 lines: 0.3 s alone, 3.2 s at load 20 on 4 cores: 30 s.
   it('parses 10 000 lines quickly, in time proportional to their number', () => {
     const netlist = (count: number): string => {
       const lines = ['* many lines'];
@@ -641,7 +643,7 @@ describe('robustness', () => {
     expect(new Set(parsed.map((n) => n.elements.length))).toEqual(new Set([500, 5000]));
     expect(oneLarge).toBeLessThan(400);
     expect(oneLarge).toBeLessThan(2.5 * tenSmall);
-  });
+  }, 30_000);
 });
 
 describe('lowerAscii', () => {

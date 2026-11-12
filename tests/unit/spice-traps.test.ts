@@ -555,6 +555,7 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
     }
   });
 
+  // Three tries of 4000 lines parsed, checked and explained: 0.25 s alone, 1.8 s at load 20 on 4 cores: 30 s.
   it('parses, checks and explains a 2000-line netlist quickly, in time proportional to its length', () => {
     const ladder = (n: number): string => {
       const out = ['* ladder', 'V1 n0 0 DC 12'];
@@ -582,7 +583,7 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
     );
     expect(large).toBeLessThan(300);
     expect(large).toBeLessThan(3 * tenSmall);
-  });
+  }, 30_000);
 
   it('stays fast on netlists with thousands of problems (each was quadratic: seconds)', () => {
     const build = (n: number, line: (i: number) => string, head: string[]): string => [...head, ...Array.from({ length: n }, (_, i) => line(i)), '.op', '.end'].join('\n');

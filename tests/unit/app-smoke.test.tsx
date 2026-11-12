@@ -307,6 +307,7 @@ describe('<App />', () => {
     await waitFor(() => expect(editorText()).toContain('R1 n1 n2 1meg'));
   }, 30000);
 
+  // The whole app in jsdom, as above (0.1 s alone): 30 s.
   it('a netlist without an analysis line is not run; the app says why and the checks offer one', async () => {
     const engine = realEngine();
     render(<App startup={start('* no analysis\nV1 a 0 6\nR1 a 0 2\n.end\n')} engine={engine} serviceWorker={false} />);
@@ -316,7 +317,7 @@ describe('<App />', () => {
     expect(engine.runs).toEqual([]);
     fireEvent.click(tab('Checks'));
     expect(screen.getByRole('button', { name: /Add \.op/ })).toBeTruthy();
-  });
+  }, 30000);
 
   it('when ngspice’s DC solution fails, the numbers are not shown as answers', async () => {
     // "ground" is an ordinary node name (docs/spice-facts W13): ngspice warns "singular matrix".
@@ -445,6 +446,7 @@ describe('<App />', () => {
     await waitFor(() => expect(drawingText()).toMatch(/=\s*3\sV/), { timeout: 15000 });
   }, 30000);
 
+  // The whole app in jsdom, as above: 30 s.
   it('a netlist that asks for very many points is not run on its own: the status line says why', async () => {
     const engine = realEngine();
     render(<App startup={start('* long\nV1 a 0 1\nR1 a b 1k\nC1 b 0 1n\n.tran 1n 1 0 1n\n.end\n')} engine={engine} serviceWorker={false} />);
@@ -452,8 +454,10 @@ describe('<App />', () => {
     expect(statusLine()).toMatch(/This netlist asks for about [\d,]+ points, so ngspice does not run after every change/);
     await new Promise((r) => setTimeout(r, 400));
     expect(engine.runs).toEqual([]);
-  });
+  }, 30000);
 
+  // Every test here mounts the whole app in jsdom: 0.1 to 0.5 s alone, but at load 20 on 4 cores this one
+  // took 5.7 s, past vitest's 5 s: 30 s, as the other tests here have.
   it('Settings: the text size applies to <html> and is remembered; the results’ font switches between handwriting and plain', async () => {
     render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
@@ -468,7 +472,7 @@ describe('<App />', () => {
     fireEvent.click(within(dialog).getByRole('radio', { name: /Plain/ }));
     expect(document.querySelector('.app')!.classList.contains('nb-plain')).toBe(true);
     await waitFor(() => expect(polite()).toContain('Results are now written in the plain font.'));
-  });
+  }, 30000);
 
   it('Examples: Start here comes first; choosing one opens it, solves it and announces it; the student’s last edits stay saved', async () => {
     const engine = realEngine();
