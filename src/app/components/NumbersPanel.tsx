@@ -111,9 +111,6 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
   if (!description.currents.length) return null;
   const showPower = description.currents.some((c) => c.power !== undefined);
   const vectorOf = (element: string): string => results.op?.currents.find((c) => c.element === element)?.vector ?? `i(${element})`;
-  // A node by its key, named as the node table names it (S7: GİRİŞ as written).
-  const names = new Map(description.nodes.map((n) => [n.node, n.name]));
-  const named = (node: string): string => names.get(node) ?? node;
   return (
     <TableWrap label={t('currentsCaption')}>
       <table className="table table--results">
@@ -136,8 +133,8 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
               <td className="num">
                 <Quantity text={formatSI(Math.abs(c.value), 'A')} speech={speakSI(Math.abs(c.value), 'A')} />
               </td>
-              {/* Ground called "ground", as on the drawing and the card. */}
-              <td>{c.value === 0 ? t('flowsNone') : t('flowsFromTo', { from: nodeWord(c.from, named), to: nodeWord(c.to, named) })}</td>
+              {/* Ground called "ground", as on the drawing and the card; a node as the words name it (S7: GİRİŞ as written). */}
+              <td>{c.value === 0 ? t('flowsNone') : t('flowsFromTo', { from: nodeWord(c.fromName), to: nodeWord(c.toName) })}</td>
               {showPower && (
                 <td>
                   {c.power && (

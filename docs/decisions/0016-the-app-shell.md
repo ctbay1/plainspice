@@ -259,7 +259,10 @@ Ctrl+K stay as they are.
   currents, the sweeps, the Plot and the overview's list, beside the drawing's GİRİŞ, and `aµ` was
   "au", ngspice's spelling. `NodeVoltageWords.name` (and `shownNode` in `describe.ts`, for the other
   words) is the node's name as first written (its first reference in the netlist) when it has a
-  character outside printable ASCII, else the key. The key, `node`, stays for every lookup: the
+  character outside printable ASCII, else the key; `CurrentWords.fromName` and `toName` are a current's
+  two nodes so named, which the Numbers panel's current table uses (it took the names from the node
+  rows, and said "from ground to gİrİŞ" for results with no node voltage, a `.save` of a current only:
+  critic of the fix). The key, `node`, stays for every lookup: the
   Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
   with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
   (g__r____, au). The .tf check's fix offers such a node as first written too ("Use ÇIKIŞ", never

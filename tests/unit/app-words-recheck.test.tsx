@@ -175,6 +175,16 @@ describe('S7: the Numbers panel names a node outside ASCII as first written', ()
   it('aµ as written, au in ngspice\'s column (W16: ngspice reads µ as u)', async () => {
     expect((await panelRows('* micro\nV1 aµ 0 5\nR1 aµ 0 1k\n.op\n.end\n', /node/i)).map((r) => [r[0], r[2]])).toEqual([['aµ', 'v(au) = 5.000000e+00']]);
   }, 30000);
+
+  it('the current table names them so when the results hold no node voltage (a .save of a current only: critic of the fix)', async () => {
+    const SAVED = '* Turkish capitals, a current saved\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\n.save i(v1)\n.op\n.end\n';
+    expect((await panelRows(SAVED, /current/i)).map((r) => [r[0], r[2]])).toEqual([
+      ['V1', 'from ground to GİRİŞ'],
+      ['R1', 'from GİRİŞ to ÇIKIŞ'],
+      ['R2', 'from ÇIKIŞ to ground'],
+    ]);
+    expect(screen.queryAllByRole('table').some((t) => /node/i.test(t.querySelector('caption')?.textContent ?? ''))).toBe(false);
+  }, 30000);
 });
 
 describe('S11, critic of its fix: a .tf on a node written with a hidden or look-alike character gives no answers', () => {

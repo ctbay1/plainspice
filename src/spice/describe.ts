@@ -98,6 +98,12 @@ export interface CurrentWords {
   from: string;
   /** Node it flows to. */
   to: string;
+  /**
+   * `from` and `to` as the words name them (S7): as first written for a name outside ASCII ("GİRİŞ",
+   * never the key's "gİrİŞ"), else the key; ground is "0". For a page that names them apart from `text`.
+   */
+  fromName: string;
+  toName: string;
   /** A 0 V source: it measures the current (the ammeter trick) and makes no power claim. */
   ammeter: boolean;
   /** "3 A from n1 to 0 through R1", "Vx measures 1 A flowing from a to x" */
@@ -1208,8 +1214,9 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   let text: string;
   let speech: string;
   // The nodes as the results' words name them (S7): GİRİŞ as written, never half lower-cased.
-  const f = said(shownNode(netlist, from));
-  const t = said(shownNode(netlist, to));
+  const [fromName, toName] = [shownNode(netlist, from), shownNode(netlist, to)];
+  const f = said(fromName);
+  const t = said(toName);
   if (ammeter) {
     text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, f, t);
     speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, f, t);
@@ -1220,7 +1227,7 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
     text = S.amps(a, f, t, name);
     speech = S.ampsSpeech(as, flows(as), f, t, name);
   }
-  const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, ammeter, text, speech };
+  const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, fromName, toName, ammeter, text, speech };
   if (noise) words.noise = c.value;
   if (!ammeter && SOURCE_LETTERS.has(el.letter)) {
     const vp = volts.get(first);
