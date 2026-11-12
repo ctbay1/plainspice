@@ -6,7 +6,8 @@
  *
  * - Fit: the whole drawing in the free part of the window (`insets` say what the page covers),
  *   never so small that its words are too small to read (`minUnit`, fit.ts); then the reader can
- *   pan (drag the paper, or scroll) and zoom (Ctrl + wheel, pinch, zoomBy). `fitKey` fits again.
+ *   pan (drag the paper, from a part or a name too, or scroll) and zoom (Ctrl + wheel, pinch,
+ *   zoomBy). `fitKey` fits again.
  * - Keyboard and screen readers: every part and node is a real button over the drawing, with one
  *   tab stop for the drawing (roving focus). Arrow keys move along the wires (navigate.ts:
  *   neighbour), Home and End go to the first and last item in reading order, Enter opens the
@@ -21,8 +22,10 @@
  * - The schematic editor (decision 0017, `editing`): a press on a part, a ground symbol or a node's
  *   name that moves becomes a drag the editor takes (the paper still pans from empty paper); a press
  *   the editor wants as a click (placing a part, a wire's end) comes to it as a tap, and the item's
- *   own click is then not acted on; the pointer over the paper is reported for previews. What the
- *   editor shows (`marks`: the part in hand, a wire on its way ...) is drawn over the drawing.
+ *   own click is then not acted on; a press on an item the editor does not take (the turned view's
+ *   parts) is the item's click if it holds still and pans the paper if it moves; the pointer over
+ *   the paper is reported for previews. What the editor shows (`marks`: the part in hand, a wire on
+ *   its way ...) is drawn over the drawing.
  */
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react';
 import { describeItem, neighbour, readingOrder, GROUND, type Box, type NavItem, type PartLetter, type Point, type Schematic } from '../schematic/index.ts';
@@ -525,8 +528,9 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 2) {
-      // A second finger: a pinch, never a drag.
+      // A second finger: a pinch, never a drag, and no click for the button the first finger is on.
       endGesture(true);
+      gestureClick.current = true;
       const [a, b] = [...pointers.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
       pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) };
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -544,11 +548,10 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     // B); they are still a tap.
     const touch = e.pointerType === 'touch';
     if (touch && claim === 'drag-tap') claim = 'tap';
-    // A press on a part's button that the editor does not take is that button's own click.
-    if (onButton && claim === undefined) {
-      pointers.current.delete(e.pointerId);
-      return;
-    }
+    // A press on an item's button that the editor does not take (a part of the turned view, which is
+    // another drawing) is that button's own click while it holds still. Once it moves it pans the
+    // paper, as from empty paper, and a second finger makes it a pinch (decision 0017: a finger that
+    // moves pans): it is followed, not captured yet (onPointerMove).
     if (!info) return;
     const g: NonNullable<typeof gesture.current> = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, claim, info, dragging: false, button: !!onButton };
     gesture.current = g;
@@ -595,6 +598,15 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     const g = gesture.current;
     if (!g || g.id !== e.pointerId) return;
     if (!g.moved && Math.hypot(e.clientX - g.x, e.clientY - g.y) < (e.pointerType === 'touch' ? 8 : 4)) return;
+    // A press on a button that nobody took, moving: a pan of the paper from now on, and the button gets no click.
+    if (!g.moved && g.button && g.claim === undefined) {
+      gestureClick.current = true;
+      try {
+        el?.setPointerCapture(e.pointerId);
+      } catch {
+        // The pointer may be gone already.
+      }
+    }
     g.moved = true;
     // A finger that moves before the part lifts pans the paper (and the part's button gets no click).
     if (e.pointerType === 'touch' && g.claim === 'drag' && !g.dragging) {

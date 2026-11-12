@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { stripDrawing } from '../../src/schematic/index.ts';
 import { encodeShare } from '../../src/share/link.ts';
-import { chooseExample, closePanel, drawnText, expectSolved, hintLine, isPhone, openApp, openCard, partOnDrawing, setNetlist, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
+import { chooseExample, closePanel, drawing, drawnText, expectSolved, gridPoint, hintLine, isPhone, openApp, openCard, partOnDrawing, setNetlist, settle, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
 
 test.beforeEach(({ page }) => {
   test.skip(!isPhone(page), 'the phone’s layout');
@@ -207,6 +207,59 @@ test('the Parts and More sheets take the focus to their heading and give it back
 });
 
 // ------------------------------------------------------------------ after the final reviews (12 November 2026)
+
+type Pt = { x: number; y: number };
+
+/** Real fingers (CDP touch): from `from` to `to` in small steps, one finger or two. */
+async function fingers(page: Page, from: readonly Pt[], to: readonly Pt[]): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', points: readonly Pt[]): Promise<unknown> =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points.map((p, id) => ({ x: p.x, y: p.y, id })) });
+  await touch('touchStart', from);
+  for (let i = 1; i <= 12; i++) await touch('touchMove', from.map((a, k) => ({ x: a.x + ((to[k]!.x - a.x) * i) / 12, y: a.y + ((to[k]!.y - a.y) * i) / 12 })));
+  await touch('touchEnd', []);
+  await cdp.detach();
+}
+
+/** The middle of a drawing item's button on the screen ("R3, resistor", "Node n1", "Ground, node 0"), once the drawing has slid to where it goes. */
+async function middleOf(page: Page, name: RegExp): Promise<Pt> {
+  await settle(page);
+  const box = (await drawing(page).getByRole('button', { name }).boundingBox())!;
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/** Screen pixels per grid unit now. */
+async function unitNow(page: Page): Promise<number> {
+  return (await gridPoint(page, 1, 0)).x - (await gridPoint(page, 0, 0)).x;
+}
+
+test('the turned drawing: a finger that starts on a part, a node’s name or the ground pans it, two fingers zoom, a tap opens the card, and “more” marks a cut edge', async ({ page }) => {
+  await openApp(page);
+  await chooseExample(page, 'Example 3: open circuit (V_Th)');
+  await expectSolved(page);
+  await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
+  // R1 and R2 are cut off at the right: the edge says there is more, as the drawing as drawn does.
+  await expect(page.getByRole('button', { name: t('moreRight') })).toBeVisible();
+  for (const name of [/^R3, /, /^Node n1$/, /^Ground, /]) {
+    const start = await middleOf(page, name);
+    const before = await gridPoint(page, 0, 0);
+    await fingers(page, [start], [{ x: start.x - 120, y: start.y }]);
+    await expect.poll(async () => (await gridPoint(page, 0, 0)).x, `a swipe from ${String(name)} pans the paper`).toBeLessThan(before.x - 80);
+    await expect(page.getByRole('dialog', { name: /^R3 / })).toHaveCount(0);
+    // Back again, from empty paper.
+    const paper = (await page.locator('.nb-canvas').boundingBox())!;
+    await fingers(page, [{ x: paper.x + 30, y: paper.y + 130 }], [{ x: paper.x + 150, y: paper.y + 130 }]);
+  }
+  // Two fingers, the first on R3, spread apart: it zooms in.
+  const unit = await unitNow(page);
+  const r3 = await middleOf(page, /^R3, /);
+  await fingers(page, [r3, { x: r3.x, y: r3.y + 60 }], [{ x: r3.x, y: r3.y - 40 }, { x: r3.x, y: r3.y + 160 }]);
+  await expect.poll(() => unitNow(page)).toBeGreaterThan(unit * 1.5);
+  // A finger that holds still on R3 is a tap: R3's card opens.
+  const still = await middleOf(page, /^R3, /);
+  await page.touchscreen.tap(still.x, still.y);
+  await expect(page.getByRole('dialog', { name: /^R3 / })).toBeVisible();
+});
 
 test('the status line speaks of numbers from before the last change only when there are some', async ({ page }) => {
   await openApp(page);

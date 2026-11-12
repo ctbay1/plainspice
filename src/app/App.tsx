@@ -1889,8 +1889,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     );
   };
 
-  // A drawing wider than the window (as drawn on a phone, a long circuit on a laptop): the edges say
-  // there is more, judged by the ink on the paper (not the room kept around it for longer numbers).
+  // A drawing wider than the window (on a phone, as drawn or turned as well as it can be; a long circuit
+  // on a laptop): the edges say there is more, judged by the ink on the paper (not the room kept around
+  // it for longer numbers).
   const inkParts = useMemo((): Box[] => {
     if (!shown) return [];
     const wires = shown.scene.wires.map((w) => unionBoxes(w.points.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })))).filter((b): b is Box => !!b);
@@ -1899,7 +1900,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const ink = useMemo(() => unionBoxes(inkParts), [inkParts]);
   const edges = useMemo(() => {
     const none = { left: false, right: false, top: 0 };
-    if (!viewInfo || strip || !ink || !shown || (phone && !asDrawnOnPhone)) return none;
+    if (!viewInfo || strip || !ink || !shown) return none;
     const c = boxOnScreen(viewInfo.view, ink);
     const left = c.x0 < insets.left - 4;
     const right = c.x1 > viewInfo.size.width - insets.right + 4;
@@ -1915,7 +1916,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     return { left, right, top: tries.find(clear) ?? middle };
     // insets by their numbers
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [phone, asDrawnOnPhone, viewInfo, ink, inkParts, shown, strip, insets.left, insets.right, insets.top, insets.bottom]);
+  }, [viewInfo, ink, inkParts, shown, strip, insets.left, insets.right, insets.top, insets.bottom]);
   /** The edge buttons: small, and where they cover none of the drawing's words if they can. */
   const edgeTop = edges.top;
   const panSideways = (dir: 1 | -1): void => {

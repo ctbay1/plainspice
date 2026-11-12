@@ -331,3 +331,42 @@ describe('NotebookCanvas', () => {
   });
 });
 
+
+describe('NotebookCanvas after the final reviews (the phone lane)', () => {
+  const base = (views: CanvasViewInfo[]) => ({ schematic: s, results: NO_RESULTS, plain: false, label: 'p02-4', description: '', selected: undefined as NavItem | undefined, onSelect: () => undefined, onOpen: () => undefined as void, insets: NO_INSETS, fitKey: 'k', minUnit: 10, maxUnit: 40, onView: (v: CanvasViewInfo) => views.push(v) });
+
+  it('a press on a part the editor does not take (the turned view): held still it is the part’s click, moving it pans, two fingers pinch (F1)', () => {
+    const views: CanvasViewInfo[] = [];
+    const onOpen = vi.fn();
+    // The turned view is another drawing: the editor takes nothing on it.
+    const editing = { press: () => undefined };
+    const { container } = render(<NotebookCanvas {...base(views)} onOpen={onOpen} editing={editing} />);
+    const canvas = container.querySelector<HTMLElement>('.nb-canvas')!;
+    canvas.setPointerCapture = () => undefined;
+    const r3 = screen.getByRole('button', { name: /^R3, / });
+    // A finger that moves from R3: the paper pans, and the click the browser may still send is not acted on.
+    const before = views.at(-1)!.view;
+    fireEvent.pointerDown(r3, { pointerId: 1, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+    fireEvent.pointerMove(r3, { pointerId: 1, pointerType: 'touch', clientX: 280, clientY: 200, buttons: 1 });
+    fireEvent.pointerMove(r3, { pointerId: 1, pointerType: 'touch', clientX: 150, clientY: 200, buttons: 1 });
+    fireEvent.pointerUp(r3, { pointerId: 1, pointerType: 'touch', clientX: 150, clientY: 200 });
+    fireEvent.click(r3, { detail: 1 });
+    expect(views.at(-1)!.view.x).toBeLessThan(before.x - 100);
+    expect(onOpen).not.toHaveBeenCalled();
+    // Held still, it is R3's own click: its card opens.
+    fireEvent.pointerDown(r3, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+    fireEvent.pointerUp(r3, { pointerId: 2, pointerType: 'touch', clientX: 300, clientY: 200 });
+    fireEvent.click(r3, { detail: 1 });
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // Two fingers, the first on R3, spread apart: the drawing grows.
+    const unit = views.at(-1)!.unit;
+    fireEvent.pointerDown(r3, { pointerId: 3, pointerType: 'touch', clientX: 300, clientY: 200, buttons: 1 });
+    fireEvent.pointerDown(canvas, { pointerId: 4, pointerType: 'touch', clientX: 300, clientY: 260, buttons: 1 });
+    fireEvent.pointerMove(canvas, { pointerId: 4, pointerType: 'touch', clientX: 300, clientY: 380, buttons: 1 });
+    fireEvent.pointerUp(canvas, { pointerId: 4, pointerType: 'touch', clientX: 300, clientY: 380 });
+    fireEvent.pointerUp(r3, { pointerId: 3, pointerType: 'touch', clientX: 300, clientY: 200 });
+    fireEvent.click(r3, { detail: 1 });
+    expect(views.at(-1)!.unit).toBeGreaterThan(unit * 1.5);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
