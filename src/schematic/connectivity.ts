@@ -15,7 +15,7 @@ import { UnionFind } from '../spice/graph.ts';
 import type { Circuit } from './circuit.ts';
 import { GROUND } from './circuit.ts';
 import { groundGeometry, partGeometry, type Drawing } from './drawing.ts';
-import { pointKey, pointOnSegment, samePoint, segmentsOf, type Point } from './geometry.ts';
+import { pointKey, pointOnSegment, samePoint, segmentCrossesBox, segmentsOf, type Box, type Point } from './geometry.ts';
 
 interface Seg {
   wire: number;
@@ -66,6 +66,23 @@ class Line {
     this.reach = this.hi.map((h) => (far = Math.max(far, h)));
   }
 
+  /** The segments that cover some of the open stretch from `lo` to `hi` along the line (any order). */
+  overlapping(lo: number, hi: number): Seg[] {
+    let a = 0;
+    let b = this.lo.length - 1;
+    let last = -1;
+    while (a <= b) {
+      const mid = (a + b) >> 1;
+      if (this.lo[mid]! < hi) {
+        last = mid;
+        a = mid + 1;
+      } else b = mid - 1;
+    }
+    const out: Seg[] = [];
+    for (let j = last; j >= 0 && this.reach[j]! > lo; j--) if (this.hi[j]! > lo) out.push(this.segs[j]!);
+    return out;
+  }
+
   /** The segments through `v` (a position along the line), in the order they were given. */
   at(v: number): Seg[] {
     let a = 0;
@@ -100,6 +117,8 @@ export class SegmentIndex {
   /** Slanted segments with an end off the grid (none that PlainSpice draws): checked one by one. */
   private readonly loose: Seg[] = [];
   readonly segments: Seg[] = [];
+  /** For `crosses`, made when first asked: the rows and columns in order, and the slanted segments by square. */
+  private byArea?: { rows: number[]; cols: number[]; squares: Map<number, Seg[]>; wide: Seg[] };
 
   constructor(wires: readonly (readonly Point[])[]) {
     const line = (m: Map<number, Line>, k: number): Line => {
@@ -127,6 +146,51 @@ export class SegmentIndex {
     for (const l of this.cols.values()) l.done((p) => p.y);
   }
 
+  /**
+   * True when a segment runs through the inside of the box (segmentCrossesBox), looking only at the
+   * rows and columns inside it and at the slanted segments filed under the squares it covers.
+   */
+  crosses(box: Box): boolean {
+    const area = (this.byArea ??= this.fileByArea());
+    const inside = (keys: readonly number[], lo: number, hi: number): number[] => {
+      let a = 0;
+      let b = keys.length;
+      while (a < b) {
+        const mid = (a + b) >> 1;
+        if (keys[mid]! <= lo) a = mid + 1;
+        else b = mid;
+      }
+      const out: number[] = [];
+      for (let i = a; i < keys.length && keys[i]! < hi; i++) out.push(keys[i]!);
+      return out;
+    };
+    const hit = (list: readonly Seg[]): boolean => list.some((t) => segmentCrossesBox(t.a, t.b, box));
+    for (const y of inside(area.rows, box.y0, box.y1)) if (hit(this.rows.get(y)!.overlapping(box.x0, box.x1))) return true;
+    for (const x of inside(area.cols, box.x0, box.x1)) if (hit(this.cols.get(x)!.overlapping(box.y0, box.y1))) return true;
+    if (hit(area.wide) || hit(this.loose)) return true;
+    const cells = squaresOf(box);
+    if (!cells) return hit(this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y));
+    for (const k of cells) if (hit(area.squares.get(k) ?? [])) return true;
+    return false;
+  }
+
+  private fileByArea(): { rows: number[]; cols: number[]; squares: Map<number, Seg[]>; wide: Seg[] } {
+    const squares = new Map<number, Seg[]>();
+    const wide: Seg[] = [];
+    const filed = new Set<Seg>();
+    for (const list of this.slanted.values()) {
+      for (const t of list) {
+        if (filed.has(t)) continue;
+        filed.add(t);
+        const cells = squaresOf({ x0: Math.min(t.a.x, t.b.x), y0: Math.min(t.a.y, t.b.y), x1: Math.max(t.a.x, t.b.x), y1: Math.max(t.a.y, t.b.y) });
+        if (!cells) wide.push(t);
+        else for (const k of cells) push(squares, k, t);
+      }
+    }
+    const sorted = (m: Map<number, Line>): number[] => [...m.keys()].sort((a, b) => a - b);
+    return { rows: sorted(this.rows), cols: sorted(this.cols), squares, wide };
+  }
+
   /** Segments that pass through or end at p. */
   at(p: Point): readonly Seg[] {
     const h = this.rows.get(p.y)?.at(p.x) ?? [];
@@ -141,6 +205,23 @@ export class SegmentIndex {
     if (!h.length && !v.length) return s;
     return [...h, ...v, ...s];
   }
+}
+
+/** The side of the squares slanted segments are filed in for `crosses`, in grid units. */
+const SQUARE = 4;
+/** A box covering more squares than this is filed (or looked up) in no square: it is checked against everything. */
+const MAX_SQUARES = 256;
+
+/** The squares a box covers, or undefined when it covers more than MAX_SQUARES (or is not finite). */
+function squaresOf(b: Box): number[] | undefined {
+  const x0 = Math.floor(b.x0 / SQUARE);
+  const x1 = Math.floor(b.x1 / SQUARE);
+  const y0 = Math.floor(b.y0 / SQUARE);
+  const y1 = Math.floor(b.y1 / SQUARE);
+  if (!((x1 - x0 + 1) * (y1 - y0 + 1) <= MAX_SQUARES)) return undefined;
+  const out: number[] = [];
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push(x * 65536 + y);
+  return out;
 }
 
 function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {

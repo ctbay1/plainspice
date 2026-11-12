@@ -14,9 +14,13 @@ import {
   normalizeWires,
   pruneDangling,
   ROUTE_COSTS,
+  segmentCrossesBox,
+  segmentsOf,
+  type Box,
   type Point,
   type RouteWorld,
 } from '../../src/schematic/index.ts';
+import { SegmentIndex } from '../../src/schematic/connectivity.ts';
 
 const p = (x: number, y: number): Point => ({ x, y });
 const world = (extra: Partial<RouteWorld> = {}): RouteWorld => ({
@@ -309,6 +313,45 @@ describe('wire over wire, slanted wire and long chains (security:F1)', () => {
     expect(performance.now() - t0).toBeLessThan(2000);
     expect(isl.count).toBe(1);
     expect(junctionPoints(wires, [])).toEqual([p(1, 0), p(0, 0)]);
+  });
+
+  it('finds a wire through a box exactly as checking every wire would, looking only near the box (security:F1, the ground symbol\'s place)', () => {
+    let seed = 11;
+    const rnd = (n: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const any = (): Point => p(rnd(21) - 10, rnd(21) - 10);
+    for (let round = 0; round < 300; round++) {
+      const wires: Point[][] = Array.from({ length: 1 + rnd(30) }, () => {
+        const a = any();
+        switch (rnd(6)) {
+          case 0:
+            return [a, p(a.x + rnd(11) - 5, a.y), p(a.x + rnd(11) - 5, a.y + rnd(11) - 5)];
+          case 1:
+            return [a, p(a.x, a.y + rnd(11) - 5)];
+          case 2:
+            return [a, any()];
+          case 3:
+            // Long and slanted: filed under no square, checked by every look.
+            return [p(-1000 + rnd(9), -1000), p(1000, 999 - rnd(9))];
+          case 4:
+            // Off the grid (never drawn by PlainSpice, but readable): checked one by one.
+            return [a, p(a.x + (rnd(9) - 4) / 2, a.y + (rnd(9) - 4) / 4)];
+          default:
+            return [a, a, p(a.x + rnd(3), a.y)];
+        }
+      });
+      const index = new SegmentIndex(wires);
+      for (let q = 0; q < 40; q++) {
+        const x0 = (rnd(48) - 24) / 2;
+        const y0 = (rnd(48) - 24) / 2;
+        // Small boxes (a symbol, a name), boxes on grid lines, and boxes too wide to file.
+        const box: Box = { x0, y0, x1: x0 + rnd(30) / 4 + (rnd(5) ? 0 : 3000), y1: y0 + rnd(30) / 4 };
+        const every = wires.some((w) => segmentsOf(w).some(([a, b]) => segmentCrossesBox(a, b, box)));
+        expect(index.crosses(box), JSON.stringify({ wires, box })).toBe(every);
+      }
+    }
   });
 
   it('says where two islands cross which one a point is on: the horizontal wire first, then the vertical, then the slanted', () => {

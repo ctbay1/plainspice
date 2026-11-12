@@ -456,9 +456,18 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   let named = false;
   const budget = { left: ROUTING_STEPS };
   let obstacles: Obstacles | undefined;
+  // The islands, found again only when a route adds wire or a ground symbol is added (segs only grows here).
+  let found: { wires: number; grounds: number; pins: DrawnPin[]; islands: Islands } | undefined;
+  const islandsNow = (): { pins: DrawnPin[]; islands: Islands } => {
+    if (found?.wires !== segs.length || found.grounds !== drawing.grounds.length) {
+      const pins = drawnPins(circuit, drawing);
+      found = { wires: segs.length, grounds: drawing.grounds.length, pins, islands: findIslands(segs, pins.map((p) => p.at)) };
+    }
+    return found;
+  };
   for (const node of circuit.nodes.keys()) {
     for (let guard = 0; guard < 64; guard++) {
-      const { groups, islands } = groupsOf(circuit, drawing, segs, node);
+      const { groups, islands } = groupsOf(drawing, node, islandsNow());
       if (groups.length <= 1) break;
       obstacles ??= obstaclesOf(circuit, drawing, segs, options);
       const path = budget.left > 0 ? routeBetween(circuit, drawing, segs, node, groups, obstacles, budget, islands) : undefined;
@@ -503,10 +512,13 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     const pins = pinsOf();
     const missing = [...circuit.nodes.values()].filter((n) => !n.ground && !labelled.has(n.name));
     if (missing.length) {
-      const scene = buildScene(circuit, { ...drawing, wires: normalizeWires(segs) }, options);
+      const wires = normalizeWires(segs);
+      const scene = buildScene(circuit, { ...drawing, wires }, options);
+      const islands = findIslands(segs, pins.map((p) => p.at));
+      const index = new SegmentIndex(wires);
       const taken: Box[] = [];
       for (const node of missing) {
-        const at = labelPoint(circuit, node.name, pins, segs, scene, taken, options);
+        const at = labelPoint(circuit, node.name, pins, segs, islands, scene, index, taken, options);
         drawing.labels.push({ node: node.name, at });
         const lines = nodeLabelLines(node.text, at, 'above-right', options.results ?? true, [], options.measure, options.nodeResultInline);
         const box = unionBoxes(lines.map((l) => l.box));
@@ -612,10 +624,8 @@ interface Group {
   labelled: boolean;
 }
 
-/** The pieces of a node: islands of its pins, joined where ground symbols or labels join them by name (and the islands they were found from). */
-function groupsOf(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string): { groups: Group[]; islands: Islands } {
-  const pins = drawnPins(circuit, drawing);
-  const islands = findIslands(segs, pins.map((p) => p.at));
+/** The pieces of a node: islands of its pins, joined where ground symbols or labels join them by name (and the islands they were found from: of the segments and the drawing's pins). */
+function groupsOf(drawing: Drawing, node: string, { pins, islands }: { pins: readonly DrawnPin[]; islands: Islands }): { groups: Group[]; islands: Islands } {
   const named = new Set<number>();
   for (const l of drawing.labels) {
     if (l.node !== node) continue;
@@ -752,6 +762,13 @@ function groundRotAt(circuit: Circuit, drawing: Drawing, pin: DrawnPin): 0 | 90 
 }
 
 /**
+ * How many places groundSpot tries at most, lowest first (and as many ends for a lead): a drawing has
+ * a few dozen points of ground's copper; a drawing line can give twenty thousand, each with a wire
+ * through it, and trying them all made a 31 kB link take half a minute on a phone (security:F1).
+ */
+const GROUND_TRIES = 100;
+
+/**
  * A place for a ground symbol (bars down) on node 0's copper: below its lowest free pin or wire
  * point, clear of symbols and words, and with no wire through it. When no point is clear (a ground
  * rail drawn straight through the pins and then turned for a phone stands upright, so it runs through
@@ -763,29 +780,34 @@ function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]
   const wires = normalizeWires(segs);
   const scene = buildScene(circuit, { ...drawing, wires }, options);
   const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box)];
-  const lines = wires.flatMap((w) => segmentsOf(w));
+  // The wires indexed once: a place is checked against the wires near it only (security:F1, critic).
+  const index = new SegmentIndex(wires);
   const symbols: Box[] = [...scene.parts.map((p) => p.box), ...scene.grounds.map((g) => g.box)];
   /** Clear of the symbols, of words too unless `wordsMove` (words are placed afresh around a new symbol), and of the wires. */
   const symbolClear = (at: Point, wordsMove = false): boolean => {
     const box = symbolGeometry('ground', at, 0, false).box;
-    return !(wordsMove ? symbols : boxes).some((b) => boxesOverlap(inflate(box, 0.1), b)) && !lines.some(([a, b]) => segmentCrossesBox(a, b, box));
+    return !(wordsMove ? symbols : boxes).some((b) => boxesOverlap(inflate(box, 0.1), b)) && !index.crosses(box);
   };
-  const candidates: Point[] = [];
-  for (const part of scene.parts) for (const pin of part.pins) if (pin.node === GROUND && pin.outward === 'down') candidates.push(pin.at);
   const copper = copperOf(circuit, drawing, segs).get(GROUND) ?? [];
-  candidates.push(...copper);
+  // Each point once, lowest first; at most GROUND_TRIES of them are tried.
+  const seen = new Set<string>();
+  const candidates: Point[] = [];
+  const consider = (p: Point): void => {
+    const k = pointKey(p);
+    if (seen.has(k)) return;
+    seen.add(k);
+    candidates.push(p);
+  };
+  for (const part of scene.parts) for (const pin of part.pins) if (pin.node === GROUND && pin.outward === 'down') consider(pin.at);
+  for (const p of copper) consider(p);
   candidates.sort((a, b) => b.y - a.y || a.x - b.x);
-  for (const c of candidates) if (symbolClear(c)) return { at: c };
+  for (const c of candidates.slice(0, GROUND_TRIES)) if (symbolClear(c)) return { at: c };
   // A lead from an end of ground's copper: its wire ends and its pins, where nothing runs on below.
-  const index = new SegmentIndex(wires);
   const pinAt = new Set(scene.parts.flatMap((p) => p.pins.map((q) => pointKey(q.at))));
   const pinDown = new Set(scene.parts.flatMap((p) => p.pins.filter((q) => q.outward === 'down').map((q) => pointKey(q.at))));
   const ends: { at: Point; straight: boolean }[] = [];
-  const seen = new Set<string>();
-  for (const e of copper) {
+  for (const e of candidates) {
     const k = pointKey(e);
-    if (seen.has(k)) continue;
-    seen.add(k);
     const here = index.at(e);
     // Not the middle of a wire, and nothing below already.
     if (here.some((t) => !samePoint(t.a, e) && !samePoint(t.b, e))) continue;
@@ -798,7 +820,7 @@ function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]
   }
   ends.sort((a, b) => Number(b.straight) - Number(a.straight) || b.at.y - a.at.y || a.at.x - b.at.x);
   // The words around are placed again once the symbol is there, so only symbols and wires are in its way.
-  for (const { at: e } of ends) {
+  for (const { at: e } of ends.slice(0, GROUND_TRIES)) {
     const at = pt(e.x, e.y + 1);
     const lead: Segment = [e, at];
     if (symbols.some((b) => segmentCrossesBox(e, at, b)) || !symbolClear(at, true)) continue;
@@ -812,9 +834,8 @@ function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]
  * (top left first), the middles of its wires and its pins where the name fits clear of everything
  * (scene.ts places it at the freest spot around the point); else the first of them.
  */
-function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], segs: readonly Segment[], scene: Scene, taken: readonly Box[], options: LayoutOptions): Point {
+function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], segs: readonly Segment[], islands: Islands, scene: Scene, wires: SegmentIndex, taken: readonly Box[], options: LayoutOptions): Point {
   const own = pins.filter((p) => p.node === node);
-  const islands = findIslands(segs, pins.map((p) => p.at));
   const mine = new Set(pins.map((p, i) => (p.node === node ? islands.anchors[i]! : -1)).filter((i) => i >= 0));
   const points: Point[] = [];
   const middles: Point[] = [];
@@ -837,18 +858,17 @@ function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], s
     return true;
   });
   const text = circuit.nodes.get(node)?.text ?? node;
-  for (const at of candidates.slice(0, 40)) if (labelFits(scene, text, at, taken, options)) return at;
+  const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box), ...taken];
+  for (const at of candidates.slice(0, 40)) if (labelFits(boxes, wires, text, at, options)) return at;
   return candidates[0] ?? pt(0, 0);
 }
 
-/** True when a node's name fits at one of its spots around a point, clear of the scene and of `taken`. */
-function labelFits(scene: Scene, text: string, at: Point, taken: readonly Box[], options: LayoutOptions): boolean {
-  const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box), ...taken];
-  const segments = scene.wires.flatMap((w) => segmentsOf(w.points));
+/** True when a node's name fits at one of its spots around a point, clear of the boxes and the wires (indexed: the scene's). */
+function labelFits(boxes: readonly Box[], wires: SegmentIndex, text: string, at: Point, options: LayoutOptions): boolean {
   return NODE_SPOTS.some((spot) => {
     const lines = nodeLabelLines(text, at, spot, options.results ?? true, [], options.measure, options.nodeResultInline);
     const box = unionBoxes(lines.map((l) => l.box));
-    return box !== undefined && !boxes.some((b) => boxesOverlap(box, b)) && !segments.some(([a, b]) => segmentCrossesBox(a, b, box));
+    return box !== undefined && !boxes.some((b) => boxesOverlap(box, b)) && !wires.crosses(box);
   });
 }
 
