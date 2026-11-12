@@ -426,3 +426,46 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   check of their own. A word glued by a character that looks like a space between digits (`.dc V1 0 5<thin
   space>1`) still leaves the line to the glue check. On a `.dc` line with a missing source and a step of 0,
   each card says what each version does, as the runs show.
+- **Such a character in a node name is named on every line** (re-check S11). Explain named an
+  invisible character in a node name on part lines only. On .tf, .ic, .save and .print lines (and in
+  the .tf note for a node that is not in the circuit) it wrote the name with the character hidden in
+  it ("the output resistance at node ou<ZWSP>t", which reads as the node out); it never named a
+  look-alike letter in a node name; and the circuit overview and the results' words did the same. Now
+  one function, `nodeNameInWords` (`src/spice/explain.ts`), names it wherever a sentence names the
+  node (and, after the critic of the fix, the floating-node and dangling-node checks and the
+  no-single-answer message, which wrote "ou<ZWSP>t has no DC path to ground" and "ou___t"): "node out
+  (written with a zero-width space in it)", "node o ut (one word for SPICE: written with a thin space,
+  not a space)", "node оut (written with the Cyrillic letter о, which looks like o)". On .ic, .save
+  and .print lines such a voltage is said in words ("the voltage at node out (written with a
+  zero-width space in it) starts at 1 V"), and the .tf formula leaves the character out, the words
+  after it naming it (in the summary, the box on the paper and the Numbers panel's .tf table, which
+  wrote "v(ou<ZWSP>t)" until the critic of the fix). So does the card's formula, "V(in) − V(out) = 2
+  V", whose spoken form names it after the formula ("V(in) minus V(out) is 2 volts, where out is node
+  out (written with a zero-width space in it)") unless the words before it, "node … is higher", name
+  it already (critic of the fix: a screen reader heard V(out), the node it is not). A name all in
+  another alphabet (α) or with a Turkish letter is meant as written, and not named. The .tf check
+  keeps an error on a name that is a node of the circuit but for such a character, as on any node no
+  part connects to: ngspice's numbers for it are a transfer function of 0 and an output impedance of 1
+  Ω (tf-problems-8), so the run is "Not reliable" and the paper draws no .tf box, as for a typo (the
+  critic of the S11 fix found that leaving it to the character's warning made the run a green
+  "Finished", with "Transfer function v(out) / V1: 0 V/V" drawn as an answer). Its words name the
+  character and never say "There is no node called out" with a button "Use out": ".tf asks about a
+  node with a zero-width space (U+200B) in its name, not the node out", and the fix "Take it out: use
+  out" ("Write the plain letter o: out" for a look-alike), as the character's own warning offers it
+  for the whole node. For a name that is no node either, the error names the character too. After
+  the second critic of the fix: that error names the node as the other words do ('not the node
+  "ground"', "not node1", 'Take it out: use "ground"'; none for an ordinary node called gnd, which
+  v( ) reads as ground); a name with characters of more than one kind has each one named, in the
+  error and wherever `nodeNameInWords` names it ("оut (written with the Cyrillic letter о, which
+  looks like o, and a zero-width space)"), where only the first kind was; with the character in the
+  parts' node and not in the .tf, the check says so (".tf asks about node out, but the parts are on
+  another node: out (written with a zero-width space in it)", tf-problems-9), never "There is no node
+  called out", and offers no button, since its "Use out" wrote the character into the .tf (no near
+  name the check offers has such a character); a part's name in i( ) or as the input is named the
+  same way, ngspice's message quoted in its own spelling ("v___1", tf-problems-10); and a .tf after
+  .end, which ngspice runs, is checked as one above it, its words naming the node as written, not as
+  ngspice spells it (tf-problems-11). Known gap:
+  the short forms still write such a name as it is written, so the character is there unseen: a
+  sweep's "v(out) = 3.5 V", the Plot's legend, the Numbers panel's Node column and the notes at the
+  end of netlist lines (the checks warn about the node, and the sentences beside them name the
+  character).

@@ -404,9 +404,16 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   it says whether it can go there (it said "it lands that way" before a refusal); the ground
   symbol's hint over empty paper keeps one colon: "it touches nothing yet (draw a wire to it)".
   Shift+R on a part being moved says "Put R1 down first (Esc puts it back), then Reverse swaps its
-  two ends in the netlist.", as Delete does: where a half turn is refused the part can only go back,
-  and the refusal says "use Reverse once R1 is back in place" (decision 0013), so the two never
-  disagree (done when the lanes were merged).
+  two ends in the netlist.", as Delete does, where the part can go. Where it can't (a half turn where
+  it stands, which the refusal answers with "use Reverse once R1 is back in place", decision 0013; a
+  place taken), both say so instead of asking to put it down there: "R1 can’t go here: Esc puts it
+  back, then Reverse swaps its two ends in the netlist." and "…, then Delete deletes it." (words
+  re-check 11: until then Shift+R said "Put R1 down first" beside the hint's "R1 can’t go here"). The
+  sentence follows the move's preview, made again when the one drawn is of an older place, turn or
+  text, as Enter's is, so a key pressed before the next frame gets the right one. Delete on the ground
+  symbol in hand says the same with its name in lower case where it does not start the sentence: "Put
+  the ground symbol down first (Esc puts it back), then Delete deletes it." (it said "Put The ground
+  symbol": critic of the fix), and "The ground symbol can’t go here: …" where it can't go.
 - **"node in" on the card** (W8). The card's "in is higher", and its spoken "2 volts across R1, in is
   higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
   stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button was
@@ -430,9 +437,11 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   part descriptions, the cards and the run summary are built from `DESCRIBE_STRINGS`
   (`src/spice/describe.ts`), and its templates now write a node the way the editor does: "R1: a 1 kΩ
   resistor between node in and node out.", "3 A from node n1 to ground through R1", "Simulation
-  finished: node in is 6 volts"; ground stays "ground". The templates add the word themselves, so a
-  page that builds a sentence from them (`src/schematic/navigate.ts`, `src/app/card.ts`) says it the
-  same way. Left bare, because they are not sentences: the short notes at the end of netlist lines
+  finished: node in is 6 volts"; ground stays "ground". The templates add the word; a page that
+  builds a sentence from them passes the name through `sentenceNode` first (`src/schematic/navigate.ts`,
+  `src/app/card.ts`, `src/notebook/NotebookCanvas.tsx`), so it says it the same way (words re-check 2:
+  the node's own sentences, its description on the drawing and its card, said the bare name, "in is 6
+  volts", until then). Left bare, because they are not sentences: the short notes at the end of netlist lines
   ("3 A, n1 → 0"), the value beside a node's name on the drawing ("s = 12 V") and the names listed after
   the counts ("2 nodes besides ground (in, out)"). After the critic of this fix: a terminal at ground
   loses the word "node" ("D1: a diode (+ node a, − side at ground)", as the V sentence says "its − side
@@ -452,10 +461,96 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   that as V(in) − V(0) = 6 V"); ground stays "ground (node 0)" ("ground" in the sentences after a
   formula: "flowing from ground, through G1, into node c"); a name like ground stays quoted (the node
   "ground"); a label that already says node keeps the name alone ("D1 is a diode: + node a and − node
-  ground (node 0)"), and other labels say where ("collector at node c").
+  ground (node 0)"), a name like ground quoted on its own ('+ node "00"', never '+ node the node "00"':
+  words re-check 5), and other labels say where ("collector at node c").
 - **The missing-end check says what the blank page's sentence says** (words review W1): .end is the
   netlist's last line, new lines go above it, and ngspice still reads lines written after .end
   (missing-end-1, after-end-1, S25); nothing about other SPICE programs, which no fact here backs.
+
+The words re-check of the merged fixes found sentences that still named a node another way than the
+ones beside them (`tests/unit/words-recheck.test.ts` and `tests/unit/app-words-recheck.test.tsx`
+check each; decision 0016 has the names outside ASCII, decision 0012 the characters that are not
+what they look like):
+
+- **"node1", never "node node1"** (words re-check 4). The word "node" goes before a name because a
+  name may be an ordinary word, but not before a name that already says it is a node: one rule,
+  `nameSaysNode` in `src/spice/node-words.ts` (the name starts with "node" and goes on: node1,
+  Node_A, nodeB), which each page's own template applies, so a translation keeps its own word:
+  `DESCRIBE_STRINGS.node`, `labelled`, `EXPLAIN_STRINGS.nodeWord`, `labelledNode`, `EDIT_STRINGS.node`
+  and the app's `nodeInSentence` (Connections, the card, the hints, Ctrl+K); the .tf check says it the
+  same way (".tf asks about node5, which is not in the circuit"). So "node1 is 6 volts",
+  "between node1 and node2", "+ node1", "Type a new name for node1", "Rename node1", and at the start
+  of a sentence the name keeps its own letters ("node1 connects V1 and R1.", never "Node1"). A node
+  called just "node" keeps the word ("node node is 6 volts"), or nothing would say what "node" is.
+  Kept as labels, a kind and a name: the node's button on the drawing and its card's title ("Node
+  node1", as a part's is "R1, resistor"). Not changed here (another lane's, or rare): the rounding-noise
+  note's "node node1 −2.2e-13 V", the check "R1 has both ends on node …", and the notes about drawing
+  lines PlainSpice moved or dropped ("The name of node … was moved onto its node's wire").
+- **A node named like ground is quoted wherever the editor says it** (words re-check 3), as the
+  model's sentences do: the Disconnect button ('Disconnect the end 2 of R1 from node "ground"'), the
+  editor's sentences ('R3 added between node in and node "ground"', the joins), and the rename
+  summary, which says such a name is an ordinary node, in Explain's words: 'Node out renamed to
+  "ground", an ordinary node name: only 0 and gnd are ground (node 0).' (ground, GROUND and 00, W13,
+  W14; gnd is ground, and says so: "Node out is now ground (node 0)").
+- **The .tf words name each output node one way** (code review 1, 4, 5; words re-check 3). The .tf
+  reading carries its output nodes as the parser reads them (`outputNodes`): a gnd before ')' or ','
+  is ground, as ngspice makes it (A3b: `.tf v(out,gnd) V1` is v(out,0), even beside an ordinary node
+  called gnd), so the text, the speech and Explain say "between node out and ground", never "node
+  gnd" nor 'node "gnd"'; an ordinary node named like ground is quoted in the text and the speech alike
+  ('the output resistance at node "ground"'; Explain: 'at the node "ground"'), where the text said "at
+  ground", the word for node 0, and so is it in the .tf check when no part connects to it ('.tf asks
+  about node "ground", which is not in the circuit'); and a .tf written after .end, which ngspice runs (S25, A3c) but
+  PlainSpice does not read as a dot command, takes its nodes from ngspice's own name for the output,
+  as the netlist writes them: "between node out and node mid", "at node çıkış", never "at node
+  v(out,mid)"; its source is named as written ("V1"), and so is the part a current output reads
+  ("i(Vm)", "the current in Vm", never "the current in i(vm)": A3e), and the input's kind comes from
+  that part's letter, so a current source gives V/A or A/A after `.end` as above it (A3d: "1 volt per
+  amp, which is an ohm", where it said "1 volt per volt"; critic of the fix). The .tf check never offers "Use gnd" for a
+  typo of an ordinary node called gnd: written in v( ), gnd is ground (`.tf v(gnd) V1` gives
+  output_impedance_at_V(0), A3b), so the fix would measure ground; a name like ground is offered
+  quoted ('Use "ground"'). After the second critic of the fix: a .tf in a subcircuit no X line uses,
+  which ngspice ignores (A3f: it ran the .tf after .ends, whose 0.5 and 500 Ω were labelled
+  "Transfer function v(a,gnd) / V1"), is left out of the .tf words, the check, the missing-node
+  message and the overview's analyses, and Explain says that ngspice ignores it (so for a .op, .dc,
+  .tran, .ac or .noise line there, which A3f ran too); in a subcircuit an X line uses, ngspice runs the
+  line as the main circuit's, so it is
+  read as before. A .tf after .end is checked as one above it is, and its words take its nodes from
+  that line as written when ngspice spells them otherwise ("node out (written with a zero-width space
+  in it)", never "node ou___t"). The .tf box and the Numbers panel's .tf table say a ratio of 1 in the
+  singular, "1 volt per amp", as the live region does, where they said "1 volts per amp".
+- **A node name with a letter outside a to z** (words re-check 9). The card's rename and the Add a
+  part form keep node names to the letters a to z (or A to Z), digits and _, and now say it in those
+  words, the non-ascii-node check's ("PlainSpice keeps node names to letters" refused çıkış, whose ç,
+  ı and ş are letters). For such a letter the refusal gives the why in the check's words and the name
+  in plain letters, which the card then takes: 'ngspice writes each letter other than a to z (or A
+  to Z) in a node name as underscores (ç as __), so PlainSpice can't use "çıkış": ngspice would call
+  it ____k____. Write cikis.' (W16). The suggestion is never a name another node already has, nor 0,
+  gnd, ground or 00, which would join it to ground or set off the ground-misnamed check: a number goes
+  after it (cikis2, gnd2 for gñd). The micro sign has its own why (ngspice reads µ as u: "Write au."),
+  and beside another such letter both are said, as the non-ascii-node check says them ("ngspice reads
+  the micro sign µ as u and writes the other letters outside a to z (or A to Z) in a node name as
+  underscores (ş as __), so PlainSpice can't use "şµ": ngspice would call it __u. Write su.", where the
+  rule said only underscores: critic of the fix),
+  a look-alike letter is named as the checks name it, and a hidden character is named, never shown in
+  quotes. `badNodeName` in `src/schematic/edit.ts`, PlainSpice's own rule; the check's fix
+  (`freeNodeName` in traps.ts) is another lane's.
+- **A source with a negative value** (words re-check 12). Explain said "So node a sits −3 V above node
+  b." for `V2 a b -3`, a signed statement a beginner reads backwards; it says the size and the word
+  that fits, "So node a sits 3 V below node b.", as the card says the size and which end is higher,
+  the formula before it keeping the sign ("V(a) − V(b) = −3 V"). A current source with a negative value
+  is said the way its current flows: "Its value is negative, so the current flows the other way: I1
+  pushes 3 mA from node a, through the source, into ground (node 0)." (P3 and P4 now run both.) The
+  overview and the drawing's description of the part say it the same way, "I1: a −2 mA current
+  source: its value is negative, so it pushes 2 mA from ground into node a.", where they said "pushing
+  current from node a into ground" beside Explain's sentence (critic of the fix). Those sentences are
+  about the source's value, and the second critic of the fix found them where no run uses it: a
+  current source that .dc sweeps is said as a swept voltage source is ("I1: a current source pushing
+  current from node a into ground, swept by .dc."; Explain: "The .dc on line 4 sweeps this source, so
+  in that analysis its value changes.", P4b, where at 5 mA the current flows from a into ground), and a
+  value beside a transient function is said to be .op's, since .tran follows the function from time 0
+  ("In .op the source has that value; in .tran it follows its SIN from time 0 instead."; the overview:
+  "so in .op it pushes 2 mA", P3b, P4c), for a voltage source too ("So node a sits 3 V below node b"
+  was true of .op only); a 0 V source with a SIN is no ammeter there.
 
 Two of the pointer's ways went wrong when the page drew late (end-to-end tests on a busy machine, load
 10 to 20 on 4 cores, and a quick hand). Each has a test now that sends the events in the order a busy

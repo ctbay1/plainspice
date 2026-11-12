@@ -16,9 +16,11 @@
 import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../engine/results.ts';
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { withoutInvisible } from './characters.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, dcStopsNgspice, isExpression, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, dcStopsNgspice, ignoredAnalysis, isExpression, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
+import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -30,10 +32,16 @@ const ARROW = '→';
 
 export interface NodeVoltageWords {
   /**
-   * The node's name as the netlist writes it, lower-case ASCII letters ("giriş"), and as ngspice
-   * reports it for every other name; ngspice writes each byte of a letter outside ASCII as '_' (W16).
+   * The node's key, for every lookup: the netlist's name with its ASCII letters in lower case
+   * ("giriş", "gİrİŞ" for GİRİŞ), µ as u ("au" for aµ), which is ngspice's own spelling for every name
+   * in plain ASCII; ngspice writes each byte of a letter outside ASCII as '_' (W16).
    */
   node: string;
+  /**
+   * The node's name in words (S7): as first written when it has a character outside ASCII ("GİRİŞ",
+   * "aµ"), else the key, ngspice's own spelling ("in" for IN, W6). Never lower-cased by hand.
+   */
+  name: string;
   /** ngspice's own spelling, when it is not `node` ("giri__" for "giriş", W16). */
   ngspice?: string;
   /** ngspice's value; 0 when it is rounding noise (C9d), which `noise` keeps. */
@@ -90,6 +98,12 @@ export interface CurrentWords {
   from: string;
   /** Node it flows to. */
   to: string;
+  /**
+   * `from` and `to` as the words name them (S7): as first written for a name outside ASCII ("GİRİŞ",
+   * never the key's "gİrİŞ"), else the key; ground is "0". For a page that names them apart from `text`.
+   */
+  fromName: string;
+  toName: string;
   /** A 0 V source: it measures the current (the ammeter trick) and makes no power claim. */
   ammeter: boolean;
   /** "3 A from n1 to 0 through R1", "Vx measures 1 A flowing from a to x" */
@@ -105,7 +119,10 @@ export interface QuantityWords {
 }
 
 export interface TransferFunctionWords {
-  /** The .tf output and input as written ("v(a)", "V1"). */
+  /**
+   * The .tf output and input as written ("v(a)", "V1"), every label's formula: never with an invisible
+   * character in it, which reads as another name (S11: "v(ou<ZWSP>t)" is "v(out)"; the words name it).
+   */
   output: string;
   input: string;
   /** "V/V", "V/A", "A/V" or "A/A". */
@@ -180,12 +197,14 @@ export interface DiagnosticWords {
 
 /**
  * A node in a sentence, the way the editor says it (EDIT_STRINGS.node, decision 0017): "node in",
- * because a name may be an ordinary word; ground stays "ground" (written "0" in results). Inside the
- * templates below, so every page that builds a sentence from them (the overview, the drawing's
- * descriptions, the cards) says it the same way.
+ * because a name may be an ordinary word; a name that already says node goes alone ("node1", never
+ * "node node1": node-words.ts); ground stays "ground" (written "0" in results). Inside the templates
+ * below, so every page that builds a sentence from them (the overview, the drawing's descriptions,
+ * the cards) says it the same way. Callers pass a name through `said` first, so a node named like
+ * ground arrives quoted.
  */
 function nodeIn(n: string): string {
-  return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' ? n : `node ${n}`;
+  return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' || nameSaysNode(n) ? n : `node ${n}`;
 }
 
 /** Names that look like ground but are ordinary nodes where they are not ground (W9, W13, W14). */
@@ -194,9 +213,11 @@ const GROUND_LIKE = /^(gnd|ground|00)$/i;
 /**
  * A node's name for the sentences: ground ("0") is "ground"; an ordinary node named like ground is
  * quoted, as Explain quotes it, so 'node "ground"' never reads as ground (words review W8, critic of
- * its fix). The templates above read "ground" as ground, as the drawing's and the cards' words pass it.
+ * its fix); a character in the name that is not what it looks like is named, never shown hidden in it
+ * ("out (written with a zero-width space in it)", S11), as Explain names it. The templates above read
+ * "ground" as ground, as the drawing's and the cards' words pass it.
  */
-const said = (n: string): string => (n === '0' ? 'ground' : GROUND_LIKE.test(n) ? `"${n}"` : n);
+const said = (n: string): string => (n === '0' ? 'ground' : GROUND_LIKE.test(n) ? `"${n}"` : nodeNameInWords(n));
 /** said, for the other modules that build sentences from these templates (the drawing's, the cards'). */
 export const sentenceNode = said;
 
@@ -232,6 +253,14 @@ export const DESCRIBE_STRINGS = {
   swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}, swept by .dc.`,
   iSource: (name: string, v: string, a: string, b: string): string =>
     `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
+  /** A negative value (P4): its size, pushed the way the current really flows, from the second node into the first (critic of words re-check 12). */
+  iSourceBack: (name: string, v: string, size: string, a: string, b: string): string =>
+    `${name}: ${articleBefore(v)} ${v} current source: its value is negative, so it pushes ${size} from ${nodeIn(b)} into ${nodeIn(a)}.`,
+  /** The same with a transient function too: so it pushes in .op, where .tran follows the function (P4c; critic of its fix). */
+  iSourceBackOp: (name: string, v: string, size: string, a: string, b: string): string =>
+    `${name}: ${articleBefore(v)} ${v} current source: its value is negative, so in .op it pushes ${size} from ${nodeIn(b)} into ${nodeIn(a)}.`,
+  /** A current source a .dc line sweeps: no one value there, as for V (P4b). */
+  iSwept: (name: string, a: string, b: string): string => `${name}: a current source pushing current from ${nodeIn(a)} into ${nodeIn(b)}, swept by .dc.`,
   iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
   vcvs: (name: string, out: string, gain: string, control: string): string =>
     `${name}: a voltage-controlled voltage source: ${out}, is ${gain} × ${control}.`,
@@ -243,14 +272,20 @@ export const DESCRIBE_STRINGS = {
     `${name}: a current-controlled voltage source: ${out}, is ${r} for every amp in ${control}.`,
   voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
   at: (n: string): string => `at ${nodeIn(n)}`,
+  /** A .tf output that is no node's name (ngspice's own words for it, when they do not read as v(...)). */
+  atVector: (v: string): string => `at ${v}`,
   between: (a: string, b: string): string => `between ${nodeIn(a)} and ${nodeIn(b)}`,
   coupling: (name: string, l1: string, l2: string, k: string): string => `${name}: couples ${l1} and ${l2} (coupling ${k}).`,
   otherPart: (name: string, what: string, nodes: string): string => `${name}: ${what}${nodes ? ` (${nodes})` : ''}.`,
   // "+ node a" already says "node"; a terminal reads "collector at node c", "emitter at ground". At
   // ground a "node" label loses the word: "− side at ground", as the V sentence says, "from ground",
-  // or "ground" alone (critic of the W8 fix: no "− node at ground").
+  // or "ground" alone (critic of the W8 fix: no "− node at ground"); so it does before a name that
+  // says node itself: "+ node1", "node1 and ground" (re-check of W8: no "+ node node1").
   labelled: (label: string, n: string): string => {
-    if (nodeIn(n) !== 'ground') return label.endsWith('node') ? `${label} ${n}` : `${label} at ${nodeIn(n)}`;
+    if (nodeIn(n) !== 'ground') {
+      if (!label.endsWith('node')) return `${label} at ${nodeIn(n)}`;
+      return nameSaysNode(n) ? `${label.replace(/\s*node$/, '')} ${n}`.trim() : `${label} ${n}`;
+    }
     const rest = label.replace(/\s*node$/, '');
     if (rest === label) return `${label} at ground`;
     if (!rest) return 'ground';
@@ -264,6 +299,8 @@ export const DESCRIBE_STRINGS = {
   noAnalysis: 'No analysis line (.op, .dc, .tran, .tf or .ac), so ngspice will run nothing.',
   noAnalysisControl: 'No analysis line (.op, .dc, .tran, .tf or .ac): ngspice runs the commands in the .control block instead.',
   analysisAfterEnd: 'The analysis is written after .end, where ngspice still reads it.',
+  /** A3f: the only analysis lines are in a subcircuit no X line uses. */
+  analysisIgnored: 'Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.',
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
@@ -358,21 +395,21 @@ export const DESCRIBE_STRINGS = {
     `${name} has another voltage source, a 0 V source or a wire across it, so the current in ${name} has no single answer (a singular matrix). Two voltage sources cannot sit across the same two nodes.`,
   loopWhyL: (name: string): string =>
     `In .op an inductor is a short circuit, and ${name} sits across a voltage source (or in a loop of them), so its current has no single answer (a singular matrix). ngspice's fallback numbers for it can't be trusted.`,
-  capNodeTitle: (n: string): string => `Node ${n} has no DC path to ground`,
+  capNodeTitle: (n: string): string => `${atSentenceStart(nodeIn(said(n)))} has no DC path to ground`,
   capNodeWhy: (n: string, what: string): string =>
-    `In .op a capacitor is an open circuit, so node ${n}, which connects only to ${what}, is cut off: its voltage has no single answer (a singular matrix). ngspice's fallback numbers can be wrong, even for other nodes.`,
+    `In .op a capacitor is an open circuit, so ${nodeIn(said(n))}, which connects only to ${what}, is cut off: its voltage has no single answer (a singular matrix). ngspice's fallback numbers can be wrong, even for other nodes.`,
   onlyCapacitors: 'capacitors',
   onlyCurrentSources: 'current sources',
   capacitorsAndCurrentSources: 'capacitors and current sources',
-  floatingTitle: (n: string): string => `Node ${n} is not connected to the rest of the circuit`,
+  floatingTitle: (n: string): string => `${atSentenceStart(nodeIn(said(n)))} is not connected to the rest of the circuit`,
   floatingWhy: (n: string): string =>
-    `Node ${n} has no path to ground (node 0), so its voltage has no single answer (a singular matrix). Connect it to the rest of the circuit, or remove the part.`,
+    `${atSentenceStart(nodeIn(said(n)))} has no path to ground (node 0), so its voltage has no single answer (a singular matrix). Connect it to the rest of the circuit, or remove the part.`,
   shortLineTitle: (name: string): string => `${name} is missing fields`,
   shortLineWhy: (name: string): string =>
     `An E or G line needs four nodes and a number, and ${name} has fewer, so PlainSpice's engine finds no single answer (a singular matrix) and gives no results. (Native ngspice says "not enough parameters".)`,
-  singularTitle: (n: string): string => `No single answer at node ${n}`,
+  singularTitle: (n: string): string => `No single answer at ${nodeIn(said(n))}`,
   singularWhy: (n: string): string =>
-    `ngspice's equations have no single answer (a singular matrix), so the numbers it prints can't be trusted. ngspice points at ${n}: check that it has a DC path to ground (node 0).`,
+    `ngspice's equations have no single answer (a singular matrix), so the numbers it prints can't be trusted. ngspice points at ${nodeIn(said(n))}: check that it has a DC path to ground (node 0).`,
   steppingTitle: "ngspice's other ways to find a DC solution failed too",
   steppingWhy: 'After the singular matrix, ngspice tried gmin stepping and source stepping, ways to approach the solution gradually. They failed as well.',
   fallbackTitle: 'The numbers come from a fallback and can be wrong',
@@ -590,9 +627,9 @@ function partsOf(netlist: Netlist): Parts {
 /** A node in written results: ngspice's name; ground is "0". */
 const nodeName = (ref: NodeRef): string => (ref.ground ? '0' : ref.name);
 /**
- * A node in the circuit overview, as written; ground is "ground". The part sentences are the drawing's
- * too (src/schematic/navigate.ts builds the same ones), so a node named like ground is not quoted
- * here until both quote it (sentenceNode).
+ * A node in the circuit overview, as written; ground is "ground", and an ordinary node named like
+ * ground is quoted (said). The drawing's part descriptions are these same sentences
+ * (src/schematic/navigate.ts calls partSentenceFor).
  */
 const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.ground ? S.ground : said(ref.token.text));
 /** A node in a short note at the end of a line: its bare name, "0" for ground, quoted when it is named like ground. */
@@ -665,7 +702,9 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
       }
       return S.vSource(name, fmt('V'), nodeWritten(a), nodeWritten(b));
     case 'I':
+      if (sweptSource(netlist, el.key)) return S.iSwept(name, nodeWritten(a), nodeWritten(b));
       if (el.sourceFunction && v === undefined) return S.iFunction(name, el.sourceFunction.token.text.toUpperCase(), nodeWritten(a), nodeWritten(b));
+      if (v !== undefined && v < 0) return (el.sourceFunction ? S.iSourceBackOp : S.iSourceBack)(name, fmt('A'), formatSI(-v, 'A'), nodeWritten(a), nodeWritten(b));
       return S.iSource(name, fmt('A'), nodeWritten(a), nodeWritten(b));
     case 'E':
       return S.vcvs(name, S.voltageAt(nodeWritten(a), nodeWritten(b)), v === undefined ? '?' : formatNumber(v), S.voltageAt(nodeWritten(c), nodeWritten(d)));
@@ -697,8 +736,14 @@ function analysisPhrase(netlist: Netlist, r: AnalysisReading): string {
   switch (r.kind) {
     case 'op':
       return S.opName;
-    case 'tf':
-      return S.tfName(r.output, r.input?.text ?? '?');
+    case 'tf': {
+      // A node whose name has a character that is not what it looks like is said in words, the character
+      // named (S11), never as "v(out)", which reads as another node.
+      const [a, b] = r.outputNodes.map((n) => said(n.ground ? '0' : n.token.text));
+      const odd = r.outputNodes.some((n) => nodeNameInWords(n.token.text) !== n.token.text);
+      const out = !odd || a === undefined ? r.output : b === undefined ? S.voltageOf(a) : S.voltageBetween(a, b);
+      return S.tfName(out, r.input?.text ?? '?');
+    }
     case 'dc': {
       if (dcStopsNgspice(r)) return S.dcStopsName;
       const sweeps = r.sweeps.map((s) => S.dcSweep(sweepName(s), sweepValue(s, s.startValue, s.start?.text), sweepValue(s, s.stopValue, s.stop?.text), sweepValue(s, s.stepValue, s.step?.text)));
@@ -742,18 +787,23 @@ export function describeCircuit(netlist: Netlist): string {
   const parts = partsOf(netlist);
   const out: string[] = [];
   const nodes = [...netlist.nodes.values()].filter((n) => !n.ground && n.connections.length > 0);
-  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => bare(n.name)).join(', ');
+  // The names as the results' words say them (S7), a name like ground quoted and a hidden character named (S11).
+  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => said(shownNode(netlist, n.name))).join(', ');
   const grounded = netlist.nodes.get('0')?.connections.length ?? 0;
   if (parts.lines.length === 0) out.push(S.noParts);
   else out.push(grounded > 0 ? S.counts(parts.lines.length, nodes.length, names) : S.countsNoGround(parts.lines.length, nodes.length, names));
   for (const line of parts.lines.slice(0, DESCRIBED_PARTS)) out.push(partSentence(netlist, line));
   if (parts.lines.length > DESCRIBED_PARTS) out.push(S.moreParts(parts.lines.length - DESCRIBED_PARTS));
   if (parts.subckts.length) out.push(S.subcircuits(parts.subckts.length, parts.subckts.join(', ')));
-  const analyses = netlist.analyses.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
+  // A3f: an analysis line in a subcircuit no X line uses is ignored, so it is not among the analyses.
+  const run = netlist.analyses.filter((i) => !ignoredAnalysis(netlist, i));
+  const analyses = run.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
   if (analyses.length === 0) {
     // M20; A36: a .control block runs; S25: so does an analysis written after a plain .end.
+    const control = netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text));
     if (readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) out.push(S.analysisAfterEnd);
-    else out.push(netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text)) ? S.noAnalysisControl : S.noAnalysis);
+    else if (run.length < netlist.analyses.length && !control) out.push(S.analysisIgnored);
+    else out.push(control ? S.noAnalysisControl : S.noAnalysis);
   } else {
     const list = analyses.map((r) => analysisPhrase(netlist, r)).join('; ');
     out.push(analyses.length === 1 ? S.analysis(list) : S.analyses(list));
@@ -1122,8 +1172,21 @@ function spellingsOf(netlist: Netlist): Spellings {
   return out;
 }
 
-/** A node ngspice names in its results, as the netlist writes it (W16). */
-function netlistNode(netlist: Netlist, name: string): string {
+/**
+ * A node's name in the results' words (S7, words re-check 8): as first written when it has a character
+ * outside ASCII ("GİRİŞ", "aµ", which ngspice spells g__r____ and au, and the key keeps half lower-cased
+ * or as au), else its key, which is ngspice's own spelling ("in" for IN, W6); ground is "0". Keys stay
+ * for every lookup.
+ */
+function shownNode(netlist: Netlist, key: string): string {
+  if (key === '0') return key;
+  const written = netlist.nodes.get(key)?.refs[0]?.text;
+  return written !== undefined && !PRINTABLE_ASCII.test(written) ? written : key;
+}
+const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
+
+/** A node ngspice names in its results or messages, as the netlist writes it (W16): its key ("ÇikiŞ" for ngspice's "__iki__"). */
+export function netlistNode(netlist: Netlist, name: string): string {
   const key = lowerAscii(name);
   return spellingsOf(netlist).nodes.get(key) ?? key;
 }
@@ -1181,17 +1244,21 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   const as = speakSI(Math.abs(v), 'A');
   let text: string;
   let speech: string;
+  // The nodes as the results' words name them (S7): GİRİŞ as written, never half lower-cased.
+  const [fromName, toName] = [shownNode(netlist, from), shownNode(netlist, to)];
+  const f = said(fromName);
+  const t = said(toName);
   if (ammeter) {
-    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, said(from), said(to));
-    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, said(from), said(to));
+    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, f, t);
+    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, f, t);
   } else if (v === 0) {
     text = S.noCurrent(name);
     speech = S.noCurrentSpeech(name);
   } else {
-    text = S.amps(a, said(from), said(to), name);
-    speech = S.ampsSpeech(as, flows(as), said(from), said(to), name);
+    text = S.amps(a, f, t, name);
+    speech = S.ampsSpeech(as, flows(as), f, t, name);
   }
-  const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, ammeter, text, speech };
+  const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, fromName, toName, ammeter, text, speech };
   if (noise) words.noise = c.value;
   if (!ammeter && SOURCE_LETTERS.has(el.letter)) {
     const vp = volts.get(first);
@@ -1243,7 +1310,7 @@ function nodesOf(netlist: Netlist, results: AnalysisResults): NodeVoltageWords[]
   return list.map(({ n, node }) => {
     // C9d: rounding noise of a 0 is 0 V; `noise` keeps what ngspice gave.
     const value = noisy.has(node) ? 0 : n.value;
-    const w: NodeVoltageWords = { node: node === lowerAscii(n.node) ? n.node : node, value, text: formatSI(value, 'V'), speech: speakSI(value, 'V') };
+    const w: NodeVoltageWords = { node: node === lowerAscii(n.node) ? n.node : node, name: shownNode(netlist, node), value, text: formatSI(value, 'V'), speech: speakSI(value, 'V') };
     if (value !== n.value) w.noise = n.value;
     if (node !== lowerAscii(n.node)) w.ngspice = n.node;
     const c = colour.get(node);
@@ -1255,19 +1322,26 @@ function nodesOf(netlist: Netlist, results: AnalysisResults): NodeVoltageWords[]
 function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords | undefined {
   const tf = results.tf;
   if (!tf) return undefined;
-  const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
+  // Not a .tf in a subcircuit no X line uses, which ngspice ignores (A3f: its words named v(out)'s numbers v(a,gnd)).
+  const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf' && !unusedSubcircuit(netlist, i));
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const reading = r?.kind === 'tf' ? r : undefined;
-  const output = reading?.output ?? tf.outputImpedance?.at ?? '?';
-  const input = reading?.input?.text ?? tf.inputImpedance?.source ?? '?';
+  // A .tf after .end, which ngspice runs (S25, A3c, A3d), has no reading: ngspice's names, as the netlist
+  // writes them (W16, W18), its input's kind by the part's letter (a current source: V/A, A4) and a
+  // current output by its part ("i(Vm)", "the current in Vm").
+  const part = (name: string): Element | undefined => partsOf(netlist).byKey.get(netlistPart(netlist, name))?.element;
+  const inPart = reading || !tf.inputImpedance ? undefined : part(tf.inputImpedance.source);
+  const outPart = reading || !tf.outputImpedance?.at.startsWith('i(') ? undefined : part(tf.outputImpedance.at.slice(2, -1));
+  const output = withoutInvisible(reading?.output ?? (outPart ? `i(${outPart.name.text})` : tf.outputImpedance ? tfVector(netlist, tf.outputImpedance.at) : '?'));
+  const input = reading?.input?.text ?? inPart?.name.text ?? tf.inputImpedance?.source ?? '?';
   const outKind = reading?.outputKind ?? (tf.outputImpedance?.at.startsWith('i(') ? 'current' : 'voltage');
-  const inKind = reading?.inputKind === 'current' ? 'current' : 'voltage';
+  const inKind = (reading ? reading.inputKind === 'current' : inPart?.letter === 'I') ? 'current' : 'voltage';
   const ratio = `${outKind === 'current' ? 'A' : 'V'}/${inKind === 'current' ? 'A' : 'V'}`;
   const words: TransferFunctionWords = { output, input, ratio };
   if (tf.transferFunction !== undefined) {
     const v = formatNumber(tf.transferFunction);
-    const [n1, n2] = reading?.outputNames ?? [];
-    const outSpeech = outKind === 'current' ? S.currentIn(n1 ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(said(n1)) : S.voltageBetween(said(n1), said(n2));
+    const [n1, n2] = tfNodes(netlist, reading, tf);
+    const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? outPart?.name.text ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
     words.transferFunction = {
       value: tf.transferFunction,
       text: S.transfer(output, input, v, ratio),
@@ -1284,8 +1358,8 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
       // A5: for a current output ngspice reports 1e20 Ω, which is not a resistance of the circuit.
       words.outputResistance = { value: tf.outputImpedance.value, text: S.outputRCurrent(output, o.text), speech: S.outputRCurrentSpeech(output, o.speech) };
     } else {
-      const [a, b] = reading?.outputNames ?? [];
-      const at = b ? S.between(a ?? '?', b) : S.at(a ?? tf.outputImpedance.at);
+      const [a, b] = tfNodes(netlist, reading, tf);
+      const at = b ? S.between(a ?? '?', b) : a !== undefined ? S.at(a) : S.atVector(tf.outputImpedance.at);
       words.at = at;
       words.outputResistance = { value: tf.outputImpedance.value, text: S.outputR(at, o.text), speech: S.outputRSpeech(at, o.speech) };
     }
@@ -1293,13 +1367,44 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   return words;
 }
 
+/**
+ * A voltage output's nodes in the .tf words, each said one way in the text and in the speech (code
+ * review 1, 4, 5): ground is "ground", a gnd that ngspice makes 0 there included (A3b); an
+ * ordinary node named like ground is quoted (W13). With no reading of the line (a .tf written after
+ * .end, which ngspice runs: S25, A3c), the nodes in ngspice's own name for the output, "v(out,mid)", as the
+ * netlist writes them (W16), never "node v(out)".
+ */
+function tfNodes(netlist: Netlist, reading: Extract<AnalysisReading, { kind: 'tf' }> | undefined, tf: NonNullable<AnalysisResults['tf']>): string[] {
+  if (reading) return reading.outputNodes.map((n) => said(n.ground ? '0' : n.token.text));
+  const m = /^v\((.*)\)$/i.exec(tf.outputImpedance?.at ?? '');
+  return m ? m[1]!.split(',').map((x) => said(afterEndNode(netlist, x) ?? shownNode(netlist, netlistNode(netlist, x)))) : [];
+}
+
+/**
+ * A node of a .tf written after .end (S25, A3c) as that line writes it, for ngspice's spelling of it,
+ * when it has a character outside ASCII ("ou<zero-width space>t" for ou___t, which no other line may
+ * name: critic of the S11 fix, round 2); undefined otherwise, and ngspice's own name in lower case
+ * stays for a plain one (W6).
+ */
+function afterEndNode(netlist: Netlist, spelling: string): string | undefined {
+  const line = readAfterEnd(netlist).find((l) => /^\s*\.tf\b/i.test(l.text));
+  const word = line?.tokens.slice(1).find((t) => ngspiceSpelling(t.text) === spelling)?.text;
+  return word !== undefined && !/^[\x20-\x7e]*$/.test(word) ? word : undefined;
+}
+
+/** A .tf output's formula from ngspice's name for it, as netlistVector writes it, with the nodes of a .tf after .end as written. */
+function tfVector(netlist: Netlist, name: string): string {
+  const m = /^v\((.*)\)$/i.exec(name);
+  return m ? `v(${m[1]!.split(',').map((x) => afterEndNode(netlist, x) ?? shownNode(netlist, netlistNode(netlist, x))).join(',')})` : netlistVector(netlist, name);
+}
+
 /** "the voltage at out" / "the current in V1" for a sweep result's name. */
 function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   const m = /^([vi])\((.*)\)$/i.exec(s.name);
   if (!m) return s.name;
   if (m[1]!.toLowerCase() === 'v') {
-    const [a, b] = m[2]!.split(',').map((x) => netlistNode(netlist, x));
-    return b === undefined ? S.voltageOf(said(a!)) : S.voltageBetween(said(a!), said(b));
+    const [a, b] = m[2]!.split(',').map((x) => said(shownNode(netlist, netlistNode(netlist, x))));
+    return b === undefined ? S.voltageOf(a!) : S.voltageBetween(a!, b);
   }
   // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents.
   const inner = /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
@@ -1309,12 +1414,12 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
 
 /**
  * A results vector's name with the netlist's names in it: "v(giriş)" for ngspice's "v(giri__)" (W16,
- * W18). The Plot panel names its lines with it too.
+ * W18), "v(GİRİŞ)" and "v(aµ)" as written (S7). The Plot panel names its lines with it too.
  */
 export function netlistVector(netlist: Netlist, name: string): string {
   const m = /^([vi])\((.*)\)$/i.exec(name);
   if (!m) return name;
-  if (m[1]!.toLowerCase() === 'v') return `${m[1]}(${m[2]!.split(',').map((x) => netlistNode(netlist, x)).join(',')})`;
+  if (m[1]!.toLowerCase() === 'v') return `${m[1]}(${m[2]!.split(',').map((x) => shownNode(netlist, netlistNode(netlist, x))).join(',')})`;
   const device = /^@([^[\]]+)(\[.*)$/.exec(m[2]!);
   return device ? `${m[1]}(@${netlistPart(netlist, device[1]!)}${device[2]})` : `${m[1]}(${netlistPart(netlist, m[2]!)})`;
 }
@@ -1453,11 +1558,14 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
   if (results.tf) {
     for (const i of netlist.analyses) {
       const r = readAnalysis(netlist, i);
-      if (r?.kind !== 'tf' || r.outputKind !== 'voltage') continue;
-      for (const n of r.outputNames) {
-        const key = lowerAscii(n);
-        const info = netlist.nodes.get(key === 'gnd' ? '0' : key);
-        if (!info || info.connections.length === 0) push({ code: 'tf-node-missing', severity: 'warning', title: S.tfNodeTitle(n), why: S.tfNodeWhy(n), line: i + 1 });
+      // A3f: ngspice ignores a .tf in a subcircuit no X line uses, so its nodes are no message's.
+      if (r?.kind !== 'tf' || r.outputKind !== 'voltage' || unusedSubcircuit(netlist, i)) continue;
+      // The nodes as the parser reads them (a gnd ngspice makes 0 is ground: A3b), named as said.
+      for (const n of r.outputNodes) {
+        // Ground is always a node; a circuit with nothing on it gets ngspice's own message (M1).
+        const info = netlist.nodes.get(n.name);
+        const name = said(n.token.text);
+        if (!n.ground && (!info || info.connections.length === 0)) push({ code: 'tf-node-missing', severity: 'warning', title: S.tfNodeTitle(name), why: S.tfNodeWhy(name), line: i + 1 });
       }
     }
   }
@@ -1493,7 +1601,7 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   const parts: string[] = [];
   if (words.nodes.length) {
     // "node in is 6 volts": a node's name may be an ordinary word (W8, decision 0017).
-    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(said(n.node)), n.speech) : S.valueIs(S.node(said(n.node)), n.text)));
+    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(said(n.name)), n.speech) : S.valueIs(S.node(said(n.name)), n.text)));
     parts.push(S.summaryNodes(shown.join(', '), words.nodes.length - shown.length));
   }
   if (words.currents.length) parts.push(S.summaryCurrents(words.currents.length));
@@ -1613,7 +1721,7 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
     if (!isBuilt(el)) continue;
     const c = byKey.get(el.key);
     if (c) {
-      out.push(sourceOrPartNote(line, el, c));
+      out.push(sourceOrPartNote(line, el, c, (key) => shownNode(netlist, key)));
       continue;
     }
     const [p, n] = el.nodes;
@@ -1627,14 +1735,16 @@ export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: 
   return out;
 }
 
-function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): LineAnnotation {
+/** `shown`: a node's key as the results' words name it (S7). */
+function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords, shown: (key: string) => string): LineAnnotation {
   const a = formatSI(Math.abs(c.value), 'A');
   const as = speakSI(Math.abs(c.value), 'A');
+  const [from, to] = [shown(c.from), shown(c.to)];
   if (c.ammeter) {
     return {
       line: line.number,
-      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, bare(c.from), bare(c.to)),
-      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, said(c.from), said(c.to)),
+      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, bare(from), bare(to)),
+      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, said(from), said(to)),
     };
   }
   const voltageType = el.letter === 'V' || el.letter === 'E' || el.letter === 'H';
@@ -1650,8 +1760,8 @@ function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): Line
     };
   }
   if (c.value === 0) return { line: line.number, text: S.noteNoCurrent, speech: S.noteNoCurrentSpeech };
-  const base = S.noteAmps(a, bare(c.from), bare(c.to));
-  const baseSpeech = S.noteAmpsSpeech(as, flows(as), said(c.from), said(c.to));
+  const base = S.noteAmps(a, bare(from), bare(to));
+  const baseSpeech = S.noteAmpsSpeech(as, flows(as), said(from), said(to));
   if (c.power) {
     const w = formatSI(c.power.watts, 'W');
     const ws = speakSI(c.power.watts, 'W');
@@ -1736,7 +1846,11 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
     if (part) w.line = part.number;
     return w;
   }
-  const node = netlist.nodes.get(lowerAscii(subject));
+  // ngspice points at the node in its own spelling ("__iki__" for ÇIKIŞ, "ou___t": W16, M2d): its key finds
+  // it, and the words name it as the results' words do, as first written, the character named (S7, S11).
+  const key = netlistNode(netlist, subject);
+  const node = netlist.nodes.get(key);
+  const shown = shownNode(netlist, key);
   // M9: an E or G line with fewer than four nodes leaves a node with no single answer in our engine.
   // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count.
   const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && l.element.nodes.length < 4);
@@ -1745,16 +1859,16 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
     const letters = node.connections.map((c) => partsOf(netlist).byKey.get(c.element)?.element?.letter);
     if (letters.every((l) => l === 'C' || l === 'I')) {
       const what = letters.every((l) => l === 'C') ? S.onlyCapacitors : letters.every((l) => l === 'I') ? S.onlyCurrentSources : S.capacitorsAndCurrentSources;
-      return { title: S.capNodeTitle(subject), why: S.capNodeWhy(subject, what) }; // M2, M2b
+      return { title: S.capNodeTitle(shown), why: S.capNodeWhy(shown, what) }; // M2, M2b, M2d
     }
     // A node whose parts lead nowhere else: every part on it has its other end on nodes with nothing more (M2c).
     const isolated = node.connections.every((c) => {
       const el = partsOf(netlist).byKey.get(c.element)?.element;
       return el !== undefined && el.nodes.every((r) => !r.ground && (netlist.nodes.get(r.name)?.connections.length ?? 0) <= 1);
     });
-    if (isolated) return { title: S.floatingTitle(subject), why: S.floatingWhy(subject) };
+    if (isolated) return { title: S.floatingTitle(shown), why: S.floatingWhy(shown) };
   }
-  return { title: S.singularTitle(subject), why: S.singularWhy(subject) };
+  return { title: S.singularTitle(shown), why: S.singularWhy(shown) };
 }
 
 const SCALE_WORDS = new Set(['t', 'g', 'meg', 'k', 'm', 'u', 'n', 'p', 'f', 'a', 'mil']);

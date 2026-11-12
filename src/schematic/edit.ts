@@ -37,8 +37,11 @@
  * drawing lines, only edits that change part lines are done: changing the drawing would leave that
  * version's lines behind, out of step.
  */
+import { describeCharacter, hasInvisible, hasSpaceLike, lookAlikeOf, plainLetters } from '../spice/characters.ts';
 import { elementInfo } from '../spice/elements.ts';
-import { lowerAscii, parseNetlist } from '../spice/parse.ts';
+import { nodeNameInWords } from '../spice/explain.ts';
+import { atSentenceStart, nameSaysNode } from '../spice/node-words.ts';
+import { lowerAscii, ngspiceSpelling, parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange, Token } from '../spice/types.ts';
 import { GROUND, circuitFromNetlist, labelNode, type Circuit, type CircuitPart } from './circuit.ts';
 import { checkConnectivity, drawnPins, findIslands } from './connectivity.ts';
@@ -114,8 +117,20 @@ export interface EditResult {
   select?: { part: string } | { node: string } | { line: number };
 }
 
-/** The first letter in capitals: a sentence that starts with a node said as "node out". */
-const cap = (words: string): string => words.charAt(0).toUpperCase() + words.slice(1);
+/** The first letter in capitals: a sentence that starts with a node said as "node out" (a name that says node, "node1", keeps its letters). */
+const cap = atSentenceStart;
+/** Names that look like ground but name an ordinary node where they are written as a name (W13, W14; gnd at the end of a line, W9). */
+const GROUND_LIKE = /^(gnd|ground|00)$/i;
+/**
+ * A node's name on its own in a sentence: as written, quoted when it is named like ground ('"ground"'),
+ * and a character in it that is not what it looks like named, never shown hidden in it (S11).
+ */
+const quoted = (name: string): string => (GROUND_LIKE.test(name) ? `"${name}"` : nodeNameInWords(name));
+/** A node in a sentence: "node out", 'node "ground"'; a name that already says node goes alone ("node1", never "node node1"). */
+const called = (name: string): string => {
+  const said = quoted(name);
+  return nameSaysNode(said) ? said : `node ${said}`;
+};
 /** "R1", "R1 and R2", "R1, R2 and R3". */
 const listOf = (items: readonly string[]): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 /** Parts whose ends left a node: "R2 no longer connects to ground: that end is now on a node of its own, n1". */
@@ -125,13 +140,15 @@ const leftNode = (parts: readonly string[], ends: number, node: string, piece: s
 /**
  * Every sentence the editor says, in one object so a Turkish UI can replace it later. A node is said
  * with the word "node" before its name ("R3 added between node in and node n1."), since a name may be
- * an ordinary word (in, out, s); ground is "ground". A bare name only follows "one node," or "called".
+ * an ordinary word (in, out, s), but not before a name that says node itself ("node1": node-words.ts);
+ * ground is "ground", and an ordinary node named like ground is quoted ('node "ground"', W13). A bare
+ * name only follows "one node," or "called".
  */
 export const EDIT_STRINGS = {
   ground: 'ground',
   theGround: 'the ground symbol',
-  /** A node in a sentence (not ground): "node out". */
-  node: (name: string): string => `node ${name}`,
+  /** A node in a sentence (not ground): "node out", "node1". */
+  node: called,
   added: (name: string, a: string, b: string): string => `${name} added between ${a} and ${b}.`,
   groundAdded: 'Ground symbol added.',
   nowGround: (node: string): string => `${cap(node)} is now ground (node 0).`,
@@ -158,11 +175,18 @@ export const EDIT_STRINGS = {
   /** The same when a ground symbol is still drawn, cut off from every part (no-ground-1). */
   groundCutOff: (parts: readonly string[], ends: number, piece: string): string =>
     `No part connects to a ground symbol any more, so ${leftNode(parts, ends, 'ground', piece)}, and the circuit has no ground (node 0) until a part connects to a ground symbol again.`,
-  renamed: (old: string, name: string): string => `Node ${old} renamed to ${name}.`,
-  joinedByName: (name: string): string => `A node called ${name} was already there, so the two are now one node, ${name}.`,
+  renamed: (old: string, name: string): string => `${cap(called(old))} renamed to ${name}.`,
+  /**
+   * Renamed to a name like ground, which is an ordinary node (W13, W14; Explain's own words): quoted, and
+   * said to be no ground, as the check that follows says.
+   */
+  renamedGroundLike: (old: string, name: string): string =>
+    `${cap(called(old))} renamed to "${name}", an ordinary node name: only 0 and gnd are ground (node 0).`,
+  joinedByName: (name: string): string => `A node called ${quoted(name)} was already there, so the two are now one node, ${quoted(name)}.`,
   /** W6: a name typed with other capital letters than an existing node's is that node; `name` as the node is written. */
-  joinedByCase: (typed: string, name: string): string => `SPICE ignores capital letters in node names, so ${typed} is node ${name}, which was already there: the two are now one node, ${name}.`,
-  labelMoved: (node: string): string => `The name of node ${node} moved.`,
+  joinedByCase: (typed: string, name: string): string =>
+    `SPICE ignores capital letters in node names, so ${quoted(typed)} is ${called(name)}, which was already there: the two are now one node, ${quoted(name)}.`,
+  labelMoved: (node: string): string => `The name of ${called(node)} moved.`,
   wordsMoved: (name: string): string => `${name}'s words moved.`,
   valueSet: (name: string, value: string): string => `${name} is now ${value}.`,
   controlSet: (name: string, control: string): string => `${name} now reads ${control}.`,
@@ -177,7 +201,7 @@ export const EDIT_STRINGS = {
   noPart: (name: string): string => `There is no part ${name} in the drawing.`,
   noGround: 'There is no such ground symbol.',
   noWire: 'There is no such wire.',
-  noNode: (name: string): string => `There is no node ${name} in the drawing.`,
+  noNode: (name: string): string => `There is no ${called(name)} in the drawing.`,
   taken: (what: string): string => `That place is taken by ${what}.`,
   onWire: "A wire runs there, and nothing can lie across a wire. To put a part in its place, select that piece of wire and delete it, then wire the part's ends.",
   /** The same for a ground symbol, placed or moved: it connects by its pin, so only its pin may meet a wire. */
@@ -197,7 +221,21 @@ export const EDIT_STRINGS = {
   sameTurn: (name: string): string => `${name} is already turned that way.`,
   samePlace: (name: string): string => `${name} is already there.`,
   groundThere: 'The ground symbol is already there.',
-  badName: (name: string): string => (name ? `PlainSpice keeps node names to letters, digits and _ (32 at most), so it can't use "${name}".` : 'A node needs a name.'),
+  // "Letters a to z (or A to Z)", as the non-ascii-node check says it: ç, ı and ş are letters too (words re-check 9).
+  badName: (name: string): string =>
+    name ? `PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can't use "${name}".` : 'A node needs a name.',
+  /** The same for a name with a character in it that can't be seen or looks like a space, named, never shown in quotes (decision 0012). */
+  badNameWords: (words: string): string => `PlainSpice keeps node names to the letters a to z (or A to Z), digits and _ (32 at most), so it can't use ${words}.`,
+  /**
+   * A name with a letter outside a to z: why, in the non-ascii-node check's words (W16: ngspice writes
+   * each byte of such a letter as '_'), and the name in plain letters (words re-check 9). `letter` as
+   * the check names it ("ç", "the Cyrillic letter о, which looks like o").
+   */
+  badLetter: (name: string, letter: string, letterSpelled: string, spelled: string, plain: string, micro = false): string =>
+    `ngspice ${micro ? 'reads the micro sign µ as u and writes the other letters outside a to z (or A to Z)' : 'writes each letter other than a to z (or A to Z)'} in a node name as underscores (${letter}${letter.includes(', which') ? ',' : ''} as ${letterSpelled}), so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
+  /** The micro sign, which ngspice reads as u (W16), so a name with it is another name to ngspice. */
+  badMicro: (name: string, spelled: string, plain: string): string =>
+    `ngspice reads the micro sign µ in a node name as u, so PlainSpice can't use "${name}": ngspice would call it ${spelled}. Write ${plain}.`,
   badSource: (name: string): string => `PlainSpice keeps part names to a letter followed by letters, digits and _, so it can't use "${name}".`,
   // W8: 0 (and gnd) is what makes a node ground; every voltage is measured from it (the Help's results).
   groundName: 'Ground (node 0) keeps its name: in SPICE, the name 0 is what makes a node ground, the node every voltage is measured from.',
@@ -207,7 +245,7 @@ export const EDIT_STRINGS = {
   // P7, P8: F and H read the current through a voltage source; P10b: an E or H works too (both are voltage sources).
   noSource: (letter: string): string => `A ${elementInfo(letter)?.name ?? letter} (${letter}) reads the current through a voltage source, and this circuit has none yet: add a voltage source first.`,
   notDrawable: (letter: string): string => `The drawing has no symbol for ${letter}: it draws R, C, L, V, I, E, F, G and H.`,
-  labelOff: (node: string): string => `The name of node ${node} goes only on its own wires and pins: move it along them.`,
+  labelOff: (node: string): string => `The name of ${called(node)} goes only on its own wires and pins: move it along them.`,
   /** `node` and `other` as said ("node out", "ground"). */
   labelCrossing: (node: string, other: string): string => `Here a wire of ${other} crosses a wire of ${node}: the name could be read as either node's.`,
   noPin: 'A part has two ends: 0 and 1.',
@@ -230,6 +268,31 @@ export const DEFAULT_VALUES: Readonly<Record<PartLetter, string>> = { R: '1k', C
 const NODE_NAME = /^[A-Za-z0-9_]{1,32}$/;
 const PART_NAME = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
 
+/**
+ * Why PlainSpice can't use a node name it refuses (NODE_NAME): for a letter outside a to z, why, in the
+ * non-ascii-node check's words, and the name in plain letters (plainLetters), never one another node
+ * or ground already has: 0, gnd, and ground and 00, which the ground-misnamed check would flag, are
+ * taken, and a name taken gets a number after it (words re-check 9). `own`: the node being renamed,
+ * whose own name is free.
+ */
+export function badNodeName(s: Schematic, name: string, own?: string): string {
+  if (hasInvisible(name) || hasSpaceLike(name)) return S.badNameWords(nodeNameInWords(name));
+  const odd = [...name].find((ch) => ch.codePointAt(0)! > 0x7e);
+  const plain = odd && /\p{L}/u.test(odd) ? plainLetters(name) : undefined;
+  if (!odd || plain === undefined || !NODE_NAME.test(plain)) return S.badName(name);
+  const taken = new Set(['0', 'gnd', 'ground', '00', ...[...s.circuit.nodes.keys()].filter((k) => k !== own), ...[...s.netlist.nodes.keys()].filter((k) => k !== own)]);
+  let free = plain;
+  for (let k = 2; taken.has(lowerAscii(free)); k++) free = `${plain}${k}`;
+  if (!NODE_NAME.test(free)) return S.badName(name);
+  const spelled = ngspiceSpelling(name);
+  // The letter shown is one ngspice writes as underscores; µ, which it reads as u, is said apart, as the
+  // non-ascii-node check says it (critic of the fix: "şµ" was "underscores (ş as __) … __u").
+  const letter = [...name].find((ch) => ch.codePointAt(0)! > 0x7e && ch !== MICRO);
+  if (letter === undefined) return S.badMicro(name, spelled, free);
+  return S.badLetter(name, lookAlikeOf(letter) !== undefined ? describeCharacter(letter) : letter, ngspiceSpelling(letter), spelled, free, name.includes(MICRO));
+}
+const MICRO = '\u00b5';
+
 // ------------------------------------------------------------------ helpers
 
 const replaceToken = (t: Token, insert: string): TextChange => ({ from: t.from, to: t.to, insert });
@@ -249,9 +312,9 @@ export function mergeChanges(text: string, changes: readonly TextChange[]): Text
   return out.filter((c) => c.from !== c.to || c.insert !== '');
 }
 
-/** A node's name as written, "ground" for node 0 (after "one node," or "another node,"). */
+/** A node's name as written, "ground" for node 0 (after "one node," or "another node,"); quoted when it is named like ground. */
 function said(circuit: Circuit, node: string): string {
-  return node === GROUND ? S.ground : (circuit.nodes.get(node)?.text ?? node);
+  return node === GROUND ? S.ground : quoted(circuit.nodes.get(node)?.text ?? node);
 }
 
 /** How a node is said in a sentence: "node out", "ground" for node 0. */
@@ -1226,7 +1289,7 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
   if (!info) return refuse(s, S.noNode(nodeName));
   if (node === GROUND) return refuse(s, S.groundName);
   const name = wanted.trim();
-  if (!NODE_NAME.test(name)) return refuse(s, S.badName(name));
+  if (!NODE_NAME.test(name)) return refuse(s, badNodeName(s, name, node));
   const target = lowerAscii(name) === 'gnd' ? GROUND : lowerAscii(name);
   // A name that differs from another node's only in capital letters is that node (W6): it is written
   // as that node is, so the netlist (and what describes it) never has the two spellings.
@@ -1235,7 +1298,9 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
   const changes = renameRefs(s.netlist, node, written);
   const next = cloneDrawing(s.drawing);
   next.labels = next.labels.map((l) => (l.node === node ? { ...cloneLabel(l), node: target } : l));
-  if (target === node) return finish(s, changes, next, { summary: S.renamed(info.text, name), select: { node: target } }, options);
+  // A name like ground that is no ground (ground, 00: W13, W14) is quoted and said to be an ordinary node.
+  const renamed = target !== GROUND && GROUND_LIKE.test(name) ? S.renamedGroundLike(info.text, name) : S.renamed(info.text, name);
+  if (target === node) return finish(s, changes, next, { summary: renamed, select: { node: target } }, options);
   const exists = s.circuit.nodes.has(target);
   if (exists || target === GROUND) {
     // Joined by name: every piece of both nodes carries the name (ground: a ground symbol).
@@ -1260,10 +1325,10 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
     });
     if (target === GROUND) next.labels = next.labels.filter((l) => l.node !== GROUND);
     const joined = existing && existing.text !== name ? S.joinedByCase(name, existing.text) : S.joinedByName(name);
-    const summary = target === GROUND ? `${S.renamed(info.text, name)} ${S.nowGround(S.node(info.text))}` : `${S.renamed(info.text, name)} ${joined}`;
+    const summary = target === GROUND ? `${renamed} ${S.nowGround(S.node(info.text))}` : `${renamed} ${joined}`;
     return finish(s, changes, next, { summary, select: { node: target } }, options);
   }
-  return finish(s, changes, next, { summary: S.renamed(info.text, name), select: { node: target } }, options);
+  return finish(s, changes, next, { summary: renamed, select: { node: target } }, options);
 }
 
 /** A ground symbol at a pin points away from the part (its bars outward). */
@@ -1353,7 +1418,7 @@ function setControl(s: Schematic, op: Extract<EditOp, { kind: 'set-control' }>, 
     ] as const) {
       if (wanted === undefined) continue;
       const n = wanted.trim();
-      if (!NODE_NAME.test(n)) return refuse(s, S.badName(n));
+      if (!NODE_NAME.test(n)) return refuse(s, badNodeName(s, n));
       const token = el.nodes[i]?.token;
       if (token) changes.push(replaceToken(token, n));
       else {

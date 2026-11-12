@@ -416,3 +416,38 @@ Ctrl+K stay as they are.
   and the W11 test checks both panels' words for a .print and a .plot line. Explain's ".meas" sentence
   ("ngspice skips .meas", with ngspice's own "No .measure possible …") is the same case, left to the
   words lane.
+- **A node name outside ASCII is said as first written** (re-check S7 and words re-check 8). The
+  results' words named a node by its key, the name with lowerAscii applied, which lower-cases only A
+  to Z: `GİRİŞ` was "gİrİŞ" in the Numbers panel's Node column, the summary and the live region, the
+  currents, the sweeps, the Plot and the overview's list, beside the drawing's GİRİŞ, and `aµ` was
+  "au", ngspice's spelling. `NodeVoltageWords.name` (and `shownNode` in `describe.ts`, for the other
+  words) is the node's name as first written (its first reference in the netlist) when it has a
+  character outside printable ASCII, else the key; `CurrentWords.fromName` and `toName` are a current's
+  two nodes so named, which the Numbers panel's current table uses (it took the names from the node
+  rows, and said "from ground to gİrİŞ" for results with no node voltage, a `.save` of a current only:
+  critic of the fix). So does the no-single-answer message: ngspice points at a node in its own
+  spelling ("singular matrix: check node __iki__", M2d), which the message said as it came ("No single
+  answer at node __iki__"); it is mapped back to the node (`netlistNode`), which finds it and its
+  parts, so the words say "Node ÇIKIŞ has no DC path to ground" and the drawing writes that note at
+  ÇIKIŞ. The checks that name a node by its key do the same (floating-dc, current-source-no-path,
+  dangling-node; they belong to no lane, and the critic of the fix found "ÇikiŞ has no DC path to
+  ground"): "ÇIKIŞ has no DC path to ground", "Did you mean ÇIKIŞ?", a name like ground quoted, a hidden
+  character named; their fixes write the node as first written ("Rename ÇIKIŞS to ÇIKIŞ", "Rdc1 ÇIKIŞ
+  0 1g", the same node for ngspice), and ngspice's warning is quoted as it prints it ("singular
+  matrix: check node __iki__", M2d) only when that node is the only node with no DC path: ngspice
+  names one node, and in a group of two or more, or beside another such group, it may name any of
+  them, not the group's first (node1 and x: "check node x", floating-dc-7; a and b apart: "check node
+  a" only, floating-dc-8, -10), so the check then says it names one of the nodes with no DC path (the
+  second critic of the fix found "check node node1" beside the Numbers panel's "ngspice points at node
+  x"). Control inputs joined by a resistor are no longer said to stop ngspice: its transient op
+  finishes there and prints numbers that mean nothing (floating-dc-9), so the check says it either
+  stops or prints such numbers. The key, `node`, stays for every lookup: the
+  Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
+  with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
+  (g__r____, au). The .tf check's fix offers such a node as first written too ("Use ÇIKIŞ", never
+  "Use ÇikiŞ"), and writes it so: the same node for ngspice. Chosen for this release: a name in plain ASCII keeps ngspice's own spelling, in
+  lower case ("in" for IN, as W6 says SPICE reads it), as these words always said it; every name as
+  written, which would make the words agree with the drawing for capitals too, changes the words of
+  every circuit written in capitals, and is left for after the release. Nothing is lower-cased with
+  toLowerCase, which turns İ into i with a combining dot and knows no Turkish ı. Known gap: the
+  rounding-noise note (another lane's) still names a node by its key.

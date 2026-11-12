@@ -48,6 +48,12 @@ interface Fact {
    * and the fixes, applied one after another as the traps then offer them, must give a clean run.
    */
   several?: true;
+  /**
+   * Two traps of the same kind, each with its own fix (two nodes with no DC path, floating-dc-8): a fix
+   * mends its own trap only, so the fixes are applied in turn, each to the netlist the one before made,
+   * and the last netlist must run cleanly.
+   */
+  fixInTurn?: true;
 }
 
 const FACTS: Fact[] = [
@@ -132,6 +138,10 @@ const FACTS: Fact[] = [
   { code: 'floating-dc-4', netlist: "* a control node with nothing else\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c 0 2\nR2 out 0 1\n.op\n.end\n", prints: ["singular matrix:  check node c", "operating point could not be simulated"], fails: true, unreliable: true, traps: ['floating-dc'] },
   { code: 'floating-dc-5', netlist: "* a MOSFET with a floating gate\nV1 d 0 5\nR1 d dd 1k\nM1 dd g 0 0 nm\n.model nm nmos level=1\n.op\n.end\n", prints: ["singular matrix:  check node g"], unreliable: true, traps: ['floating-dc'] },
   { code: 'floating-dc-6', netlist: "* a capacitor-only node, tran with uic\nV1 a 0 6\nC1 a b 1u\nC2 b 0 1u\n.tran 1u 10u uic\n.end\n", last: { "v(b)": 2.9999999999999996 }, traps: [] },
+  { code: 'floating-dc-7', netlist: "* a floating group of two nodes: ngspice names x, not node1\nV1 in 0 5\nC1 in node1 1u\nR1 node1 x 1k\nC2 x 0 1u\n.op\n.end\n", vectors: { "v(in)": 4.9999999999949996, "v(node1)": 4.950496683061028, "v(x)": 0.04950331688396305, "i(v1)": -0.0049009933711090525 }, prints: ["singular matrix:  check node x"], unreliable: true, traps: ['floating-dc'] },
+  { code: 'floating-dc-8', netlist: "* two capacitor-only nodes\nV1 in 0 6\nC1 in a 1u\nC2 a 0 1u\nC3 in b 1u\nC4 b 0 1u\n.op\n.end\n", vectors: { "v(in)": 5.9999999999939995, "v(a)": 2.9999999999819513, "v(b)": 2.9999999999819513, "i(v1)": -4.888534022029489e-12 }, prints: ["singular matrix:  check node a"], unreliable: true, traps: ['floating-dc', 'floating-dc'], fixInTurn: true },
+  { code: 'floating-dc-9', netlist: "* a control input on two nodes joined only by a resistor\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\nR3 c d 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(out)": 0, "v(c)": 0, "v(d)": 0, "i(e1)": 0, "i(v1)": -2.9999999999939995 }, prints: ["singular matrix:  check node c", "Transient op finished successfully"], unreliable: true, traps: ['floating-dc'] },
+  { code: 'floating-dc-10', netlist: "* a control input on two nodes with nothing else on them\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\n.op\n.end\n", prints: ["singular matrix:  check node d", "operating point could not be simulated"], fails: true, unreliable: true, traps: ['floating-dc', 'floating-dc'] },
   { code: 'current-source-no-path-1', netlist: "* a current source in series with a capacitor\nV1 a 0 5\nR1 a c 1k\nI1 c b 1m\nC1 b 0 1u\n.op\n.end\n", vectors: { "v(b)": 0.009999999999950042 }, prints: ["singular matrix:  check node b"], unreliable: true, traps: ['current-source-no-path'] },
   { code: 'current-source-no-path-2', netlist: "* two different current sources in series\nI1 0 n1 1m\nI2 n1 0 2m\nR1 n2 0 1k\nV1 n2 0 1\n.op\n.end\n", vectors: { "v(n1)": -0.001 }, traps: ['current-source-no-path'] },
   { code: 'current-source-no-path-3', netlist: "* a current source into a node with nothing else\nI1 0 n1 1\nV1 n2 0 1\nR1 n2 0 1\n.op\n.end\n", vectors: { "v(n1)": 1 }, traps: ['current-source-no-path'] },
@@ -201,6 +211,20 @@ const FACTS: Fact[] = [
   { code: 'tf-problems-5', netlist: "* .tf with the current of a resistor as the output\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\n.tf i(R1) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(r1#Output_impedance)": 100000000000000000000 }, traps: ['tf-problems'] },
   { code: 'tf-problems-6', netlist: "* .tf with no input source\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\n.tf v(n1)\n.end\n", prints: ["Transfer function source  not in circuit"], fails: true, traps: ['tf-problems'] },
   { code: 'tf-problems-7', netlist: "* .tf with the current of a missing source as the output\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\n.tf i(V9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v9#Output_impedance)": 100000000000000000000 }, traps: ['tf-problems'] },
+  { code: 'tf-problems-8', netlist: "* .tf on a node written with a zero-width space\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(ou​t) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(ou___t))": 1 }, traps: ['invisible-character', 'tf-problems'] },
+  { code: 'tf-problems-8-cyrillic', netlist: "* .tf on a node written with a Cyrillic o\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(оut) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(__ut))": 1 }, traps: ['look-alike-letter', 'tf-problems'] },
+  { code: 'tf-problems-8-thin', netlist: "* .tf on a node written with a thin space\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(o ut) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(o___ut))": 1 }, traps: ['space-character', 'tf-problems'] },
+  { code: 'tf-problems-8-two', netlist: "* .tf on a node written with a Cyrillic o and a zero-width space\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(\u043e\u200but) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(_____ut))": 1 }, traps: ['invisible-character', 'tf-problems'] },
+  { code: 'tf-problems-8-second', netlist: "* .tf with a second output node written with a zero-width space\nV1 in 0 6\nR1 in out 1k\nR2 out mid 2k\nR3 mid 0 1k\n.tf v(out,mi\u200bd) V1\n.end\n", vectors: { "v(Transfer_function)": 0.75, "v(v1#Input_impedance)": 4000, "v(output_impedance_at_V(out,mi___d))": 751 }, traps: ['invisible-character', 'tf-problems'] },
+  { code: 'tf-problems-8-ground', netlist: "* .tf on ground written with a zero-width space\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(​0) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(___0))": 1 }, traps: ['invisible-character', 'tf-problems'] },
+  { code: 'tf-problems-8-gnd-second', netlist: "* .tf with gnd written with a zero-width space as the second node\nV1 in gnd 6\nR1 in out 1k\nR2 out gnd 2k\n.tf v(out,gn​d) V1\n.end\n", vectors: { "v(Transfer_function)": 0.6666666666666666, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out,gn___d))": 667.6666666666666 }, traps: ['invisible-character', 'tf-problems'] },
+  { code: 'tf-problems-9', netlist: "* .tf v(out) with the parts on a node written with a zero-width space\nV1 in 0 6\nR1 in ou\u200bt 1k\nR2 ou\u200bt 0 2k\n.tf v(out) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out))": 1 }, traps: ['invisible-character', 'tf-problems'] },
+  { code: 'tf-problems-9-cyrillic', netlist: "* .tf v(out) with the parts on a node written with a Cyrillic o\nV1 in 0 6\nR1 in \u043eut 1k\nR2 \u043eut 0 2k\n.tf v(out) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out))": 1 }, traps: ['look-alike-letter', 'tf-problems'] },
+  { code: 'tf-problems-10', netlist: "* .tf i( ) of a source written with a zero-width space\nV1 in 0 6\nR1 in out 1k\nVm out mid 0\nR2 mid 0 2k\n.tf i(V\u200bm) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 3000.0000000000005, "v(v___m#Output_impedance)": 100000000000000000000 }, traps: ['tf-problems'] },
+  { code: 'tf-problems-10-input', netlist: "* .tf with its input written with a zero-width space\nV1 in 0 6\nR1 in out 1k\nVm out mid 0\nR2 mid 0 2k\n.tf i(Vm) V\u200b1\n.end\n", prints: ["Transfer function source v___1 not in circuit"], fails: true, traps: ['tf-problems'] },
+  { code: 'tf-problems-11', netlist: "* .tf after .end on a node written with a zero-width space\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.end\n.tf v(ou\u200bt) V1\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(ou___t))": 1 }, traps: ['after-end', 'tf-problems'] },
+  { code: 'tf-problems-11-typo', netlist: "* .tf after .end on a node that does not exist\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.end\n.tf v(outt) V1\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(outt))": 1 }, traps: ['after-end', 'tf-problems'] },
+  { code: 'tf-problems-11-part', netlist: "* .tf after .end on a node a part after .end makes\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.end\nR3 out x 1k\n.tf v(x) V1\n", vectors: { "v(Transfer_function)": 0.6666666666666666, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(x))": 1666.6666666666665 }, traps: ['after-end'] },
   { code: 'no-analysis-1', netlist: "* no analysis line\nV1 a 0 6\nR1 a 0 2\n.end\n", fails: true, traps: ['no-analysis'] },
   { code: 'missing-end-1', netlist: "* no .end line\nV1 n1 0 6\nR1 n1 0 2\n.op\n", vectors: { "v(n1)": 6, "i(v1)": -3 }, traps: ['missing-end'] },
   { code: 'after-end-1', netlist: "* a part after .end\nV1 n1 0 6\nR2 n1 0 3\n.op\n.end\nR1 n1 0 2\n", vectors: { "i(v1)": -5 }, traps: ['after-end'] },
@@ -468,10 +492,22 @@ beforeAll(async () => {
   for (const f of FACTS) {
     runs.set(f.code, await engine.run(f.netlist));
     const list: { label: string; netlist: string; run: RunResult }[] = [];
-    for (const t of checkTraps(parseNetlist(f.netlist))) {
-      for (const fix of t.fixes) {
-        const netlist = applyFix(f.netlist, fix);
-        list.push({ label: `${t.id}: ${fix.label}`, netlist, run: await engine.run(netlist) });
+    if (f.fixInTurn) {
+      let netlist = f.netlist;
+      const labels: string[] = [];
+      for (let k = 0; k < f.traps.length; k++) {
+        const t = checkTraps(parseNetlist(netlist)).find((x) => x.fixes.length > 0);
+        if (!t) break;
+        labels.push(`${t.id}: ${t.fixes[0]!.label}`);
+        netlist = applyFix(netlist, t.fixes[0]!);
+      }
+      list.push({ label: labels.join(', then '), netlist, run: await engine.run(netlist) });
+    } else {
+      for (const t of checkTraps(parseNetlist(f.netlist))) {
+        for (const fix of t.fixes) {
+          const netlist = applyFix(f.netlist, fix);
+          list.push({ label: `${t.id}: ${fix.label}`, netlist, run: await engine.run(netlist) });
+        }
       }
     }
     fixed.set(f.code, list);

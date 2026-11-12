@@ -6,6 +6,8 @@
  */
 import { t, tn } from '../i18n/index.ts';
 import { withoutResultsPointer } from '../notebook/words.ts';
+import { sentenceNode } from '../spice/describe.ts';
+import { atSentenceStart, nameSaysNode } from '../spice/node-words.ts';
 import type { LineExplanation, Netlist } from '../spice/types.ts';
 import { toolPhrase, type Tool } from './tools.ts';
 import type { LiveState } from './live.ts';
@@ -18,6 +20,15 @@ export interface StatusWords {
   detail?: string;
   /** ok: finished; busy: working on it; paused: waiting for Run; bad: no answers. */
   tone: 'ok' | 'busy' | 'paused' | 'bad';
+}
+
+/**
+ * A node's name, as a sentence writes it (`sentenceNode`: a name like ground quoted), with the word
+ * node before it (`nodeNamed`: a name may be an ordinary word), but not before a name that says node
+ * itself: "node out", 'node "ground"', "node1" (never "node node1": src/spice/node-words.ts).
+ */
+export function nodeInSentence(name: string): string {
+  return nameSaysNode(name) ? name : t('nodeNamed', { name });
 }
 
 const seconds = (ms: number): string => (ms / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 });
@@ -213,12 +224,15 @@ export function hintWords(p: HintInput): string {
     if (p.phone) return p.typeHint;
     return p.typed ? t('hintTyping', { hint: p.typeHint }) : t('hintCardOpen', { hint: p.typeHint });
   }
-  if (p.nodeCard) return p.nodeCard.ground ? t('hintGroundCard') : t('hintNodeCard', { name: p.nodeCard.name });
+  if (p.nodeCard) return p.nodeCard.ground ? t('hintGroundCard') : t('hintNodeCard', { node: nodeInSentence(sentenceNode(p.nodeCard.name)) });
   if (p.undrawn) return t('hintUndrawn');
   if (p.empty) return p.phone ? t('hintEmptyPhone') : t('hintEmpty');
   if (p.selectedWire !== undefined) return p.phone ? t('hintWireSelectedPhone', { node: p.selectedWire, button: t('paletteDeleteWire') }) : t('hintWireSelected', { node: p.selectedWire });
   if (p.selectedGround) return p.phone ? t('hintSelectedPhone', { name: t('groundName') }) : t('hintGroundSelected');
-  if (p.selectedNode !== undefined) return p.phone ? t('hintNodeSelectedPhone', { name: p.selectedNode }) : t('hintNodeSelected', { name: p.selectedNode });
+  if (p.selectedNode !== undefined) {
+    const node = atSentenceStart(nodeInSentence(sentenceNode(p.selectedNode)));
+    return p.phone ? t('hintNodeSelectedPhone', { node }) : t('hintNodeSelected', { node });
+  }
   if (p.selectedName) return p.phone ? t('hintSelectedPhone', { name: p.selectedName }) : t('hintSelected', { name: p.selectedName });
   if (p.invite) return p.phone ? t('hintInvitePhone', { name: p.invite }) : t('hintInviteDesk', { name: p.invite });
   // "Drag the paper to see the rest" only when the fit itself cuts something off: a drawing the reader

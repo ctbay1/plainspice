@@ -52,8 +52,13 @@ interface Fact {
 const FACTS: Fact[] = [
   { code: 'P1', id: 'part-either-way', netlist: "* a resistor works either way round\nV1 a 0 6\nR1 a 0 2\nV2 b 0 6\nR2 0 b 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 6, "v(b)": 6, "i(v1)": -3, "i(v2)": -3, "i(@r1[i])": 3, "i(@r2[i])": -3 } },
   { code: 'P2', id: 'part-line-order', netlist: "* the order of the lines does not matter\nF1 0 n1 Vx 2\nR1 n1 0 4\nR2 x n1 2\nVx a x 0\nItest 0 a 1\n.op\n.end\n", vectors: { "v(a)": 14, "v(x)": 14, "v(n1)": 12, "i(vx)": 1 } },
-  { code: 'P3', id: 'part-vsource', netlist: "* a voltage source sets V(+) - V(-)\nV1 n1 0 6\nR1 n1 0 2\nV2 0 n2 6\nR2 n2 0 2\nV3 a 0 10\nV4 a b 6\nR3 b 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "v(n2)": -6, "v(a)": 10, "v(b)": 4 } },
-  { code: 'P4', id: 'part-isource', netlist: "* a current source pushes current from its first node to its second\nI1 0 a 3\nR1 a 0 4\nI2 b 0 3\nR2 b 0 4\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": -12 } },
+  { code: 'P3', id: 'part-vsource', netlist: "* a voltage source sets V(+) - V(-)\nV1 n1 0 6\nR1 n1 0 2\nV2 0 n2 6\nR2 n2 0 2\nV3 a 0 10\nV4 a b 6\nR3 b 0 2\nV5 c 0 6\nV6 c d -3\nR4 d 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "v(n2)": -6, "v(a)": 10, "v(b)": 4, "v(c)": 6, "v(d)": 9 } },
+  { code: 'P3b', id: 'part-vsource-sin-op', netlist: "* a voltage source of -3 V with a SIN, in .op\nV1 a b -3 SIN(0 1 1k)\nR1 a 0 1k\nR2 b 0 1k\n.op\n.end\n", vectors: { "v(a)": -1.5, "v(b)": 1.5, "i(v1)": 0.0015 }, prints: ["v1: dc value used for op instead of transient time=0 value."] },
+  { code: 'P3b', id: 'part-vsource-sin-tran', netlist: "* a voltage source of -3 V with a SIN, in .tran\nV1 a b -3 SIN(0 1 1k)\nR1 a 0 1k\nR2 b 0 1k\n.tran 0.1m 2m\n.end\n", summaries: { "time": { points: 59, first: 0, last: 0.002, maxStep: 0.00004 } }, at: { vector: "v(a)", times: [0, 0.00025, 0.00075], values: [0, 0.4995426745460798, -0.49607160000231176] }, prints: ["v1: dc value used for op instead of transient time=0 value."] },
+  { code: 'P4', id: 'part-isource', netlist: "* a current source pushes current from its first node to its second\nI1 0 a 3\nR1 a 0 4\nI2 b 0 3\nR2 b 0 4\nI3 0 c -3\nR3 c 0 4\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": -12, "v(c)": -12 } },
+  { code: 'P4b', id: 'part-isource-swept', netlist: "* a current source of -2 mA swept by .dc\nI1 a 0 -2m\nR1 a 0 1k\n.dc I1 -5m 5m 1m\n.end\n", vectors: { "i(i-sweep)": [-0.005, -0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002, 0.003, 0.004, 0.005], "v(a)": [5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5] } },
+  { code: 'P4c', id: 'part-isource-sin-op', netlist: "* a current source of -2 mA with a SIN, in .op\nI1 a 0 -2m SIN(0 1m 1k)\nR1 a 0 1k\n.op\n.end\n", vectors: { "v(a)": 2 }, prints: ["i1: dc value used for op instead of transient time=0 value."] },
+  { code: 'P4c', id: 'part-isource-sin-tran', netlist: "* a current source of -2 mA with a SIN, in .tran\nI1 a 0 -2m SIN(0 1m 1k)\nR1 a 0 1k\n.tran 0.1m 2m\n.end\n", summaries: { "time": { points: 59, first: 0, last: 0.002, maxStep: 0.00004 } }, at: { vector: "v(a)", times: [0, 0.00025, 0.00075], values: [0, -0.9990853490921596, 0.9921432000046235] }, prints: ["i1: dc value used for op instead of transient time=0 value."] },
   { code: 'P5', id: 'part-vcvs', netlist: "* E: the voltage at out1 is 2 x the voltage at c\nV1 c 0 2\nE1 out1 0 c 0 2\nR1 out1 0 1\nE2 out2 0 0 c 2\nR2 out2 0 1\n.op\n.end\n", vectors: { "v(c)": 2, "v(out1)": 4, "v(out2)": -4 } },
   { code: 'P6', id: 'part-vccs', netlist: "* G: 0.5 amps for every volt at c, pushed from ground into out2\nV1 c 0 2\nG1 0 out2 c 0 0.5\nR2 out2 0 1\nG2 out3 0 c 0 0.5\nR3 out3 0 1\n.op\n.end\n", vectors: { "v(c)": 2, "v(out2)": 1, "v(out3)": -1 } },
   { code: 'P7', id: 'part-cccs', netlist: "* F: 3 x the current in Vs, pushed from ground into out3\nV1 c 0 2\nVs c d 0\nRd d 0 1\nF1 0 out3 Vs 3\nR3 out3 0 1\n.op\n.end\n", vectors: { "i(vs)": 2, "v(out3)": 6 } },
@@ -86,6 +91,23 @@ const FACTS: Fact[] = [
   { code: 'A2', id: 'an-savecurrents', netlist: "* .op with .options savecurrents\nV1 a 0 10\nR1 a b 2\nL1 b c 1m\nR2 c 0 3\nC1 c 0 1u\nI1 0 c 1\nE1 e 0 c 0 2\nRE e 0 4\nVs c d 0\nRD d 0 5\nF1 0 f Vs 3\nRF f 0 1\nG1 0 g c 0 0.1\nRG g 0 1\nH1 h 0 Vs 7\nRH h 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 10, "v(b)": 5.806451612903226, "v(c)": 5.806451612903226, "v(e)": 11.612903225806452, "v(d)": 5.806451612903226, "v(f)": 3.483870967741936, "v(g)": 0.5806451612903226, "v(h)": 8.129032258064516, "i(vs)": 1.1612903225806452, "i(h1)": -8.129032258064516, "i(l1)": 2.096774193548387, "i(e1)": -2.903225806451613, "i(v1)": -2.096774193548387, "i(@r1[i])": 2.096774193548387, "i(@l1[i])": 2.096774193548387, "i(@r2[i])": 1.935483870967742, "i(@c1[i])": 0, "i(@i1[current])": 1, "i(@re[i])": 2.903225806451613, "i(@rd[i])": 1.1612903225806452, "i(@f1[i])": 3.483870967741936, "i(@rf[i])": 3.483870967741936, "i(@g1[i])": 0.5806451612903226, "i(@rg[i])": 0.5806451612903226, "i(@rh[i])": 8.129032258064516 } },
   { code: 'A2b', id: 'an-savecurrents-semiconductors', netlist: "* savecurrents with a diode, a BJT and a MOSFET\nV1 a 0 5\nR1 a b 1k\nD1 b 0 dmod\n.model dmod D\nVc c 0 5\nVb bb 0 0.7\nQ1 c bb 0 qm\n.model qm npn\nM1 c bb 0 0 nm\n.model nm nmos\n.options savecurrents\n.op\n.end\n", vectors: { "i(@d1[id])": 0.004307674725988779, "i(@q1[ic])": 0.00005670347201442283, "i(@m1[id])": 0.0000049000050100000015 } },
   { code: 'A3', id: 'an-tf', netlist: "* F4: output impedance at v(a) with .tf\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n.end\n", vectors: { "v(Transfer_function)": 0.33333333333333337, "v(v1#Input_impedance)": 9, "v(output_impedance_at_V(a))": 4 } },
+  { code: 'A3b', id: 'an-tf-gnd', netlist: "* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(out,gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(out,0))": 500 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'A3b-op', id: 'an-tf-gnd-op', netlist: "* .op beside the .tf of a3b: the ordinary node gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "v(x)": 2.5, "v(gnd)": 2.5, "i(vx)": 0, "i(v1)": -0.004999999999999999 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'A3b-alone', id: 'an-tf-gnd-alone', netlist: "* .tf v(gnd): the voltage at ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(0))": 0 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'A3c', id: 'an-tf-after-end', netlist: "* a .tf written after .end\nV1 in 0 5\nR1 in out 1k\nR2 out mid 1k\nR3 mid 0 1k\n.end\n.tf v(out,mid) V1\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out,mid))": 666.6666666666667 } },
+  { code: 'A3d', id: 'an-tf-isource-after-end', netlist: "* .tf with a current source as the input, written after .end\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.end\n.tf v(b) I1\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
+  { code: 'A3e', id: 'an-tf-current-after-end', netlist: "* .tf from a current source to a current, written after .end\nI1 0 a 1\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.end\n.tf i(Vm) I1\n", vectors: { "v(Transfer_function)": 0.6666666666666667, "v(i1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
+  { code: 'A3f', id: 'an-tf-subckt', netlist: "* a .tf inside a subcircuit, and one in the main circuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.tf v(out) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 2000, "v(output_impedance_at_V(out))": 500 } },
+  { code: 'A3f', id: 'an-tf-subckt-op', netlist: "* a .tf only inside a subcircuit, with .op in the main circuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3f', id: 'an-tf-subckt-alone', netlist: "* a .tf only inside a subcircuit, and no other analysis\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-op-subckt', netlist: "* .op only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-dc-subckt', netlist: "* .dc only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.dc V1 0 5 1\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-tran-subckt', netlist: "* .tran only inside a subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 1m 5m\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-ac-subckt', netlist: "* .ac only inside a subcircuit\nV1 in 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.ac dec 1 1k 10k\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-noise-subckt', netlist: "* .noise only inside a subcircuit\nV1 in 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.noise v(out) V1 dec 1 1k 10k\n.ends\n.end\n", fails: true },
+  { code: 'A3f', id: 'an-tf-subckt-used', netlist: "* a .tf inside a used subcircuit naming a top node\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.op\n.end\n", vectors: { "v(out)": 1.6666666666666665, "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out))": 333.3333333333333 } },
+  { code: 'A3f', id: 'an-tf-subckt-port', netlist: "* a .tf on a port node inside a used subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(a) V1\n.ends\n.op\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a))": 1 } },
+  { code: 'A3f', id: 'an-tf-subckt-twice', netlist: "* a .tf inside a subcircuit used twice\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\nX2 in 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.op\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 600, "v(output_impedance_at_V(out))": 333.3333333333333 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -147,6 +169,8 @@ const FACTS: Fact[] = [
   { code: 'M2', id: 'msg-cap-node', netlist: "* T15b: a node connected only to capacitors, with a resistor elsewhere\nV1 a 0 6\nR1 a c 1k\nC1 c b 1u\nC2 b 0 2u\nR2 c 0 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(c)": 0.08866339997380636, "v(b)": 0.029554466657885997, "i(v1)": -0.005911336600014282 }, prints: ["singular matrix:  check node b"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M2b', id: 'msg-isource-cap', netlist: "* T05a: a current source in series with a capacitor\nI1 0 a 1m\nC1 a b 1u\nR1 b 0 1k\n.op\n.end\n", vectors: { "v(a)": 1.0099999979842442, "v(b)": 0.9999999979942681 }, codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M2c', id: 'msg-floating-r', netlist: "* T04b: a resistor whose both nodes connect to nothing else\nV1 n1 0 6\nR1 n1 0 2\nR2 n3 n4 3\n.op\n.end\n", vectors: { "v(n1)": 5.9999999999939995, "v(n3)": 0, "v(n4)": 0, "i(v1)": -2.9999999999939995 }, prints: ["singular matrix:  check node n3"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
+  { code: 'M2d', id: 'msg-cap-node-zw', netlist: "* t\nV1 in 0 5\nC1 in ou\u200bt 1u\nC2 ou\u200bt 0 1u\n.op\n.end\n", vectors: { "v(in)": 4.9999999999949996, "v(ou___t)": 2.4999999999849893, "i(v1)": -1.5702994460298214e-12 }, prints: ["singular matrix:  check node ou___t"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
+  { code: 'M2d-tr', id: 'msg-cap-node-tr', netlist: "* t\nV1 G\u0130R\u0130\u015e 0 5\nC1 G\u0130R\u0130\u015e \u00c7IKI\u015e 1u\nC2 \u00c7IKI\u015e 0 1u\n.op\n.end\n", vectors: { "v(g__r____)": 4.9999999999949996, "v(__iki__)": 2.4999999999849893, "i(v1)": -1.5702994460298214e-12 }, prints: ["singular matrix:  check node __iki__"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M3', id: 'msg-parallel-v', netlist: "* T06a: two different voltage sources in parallel\nV1 n1 0 5\nV2 n1 0 3\nR1 n1 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node v1#branch","Transient op failed, timestep too small"], codes: ["singular-matrix","transient-op-failed","op-failed"], fails: true, unreliable: true },
   { code: 'M3b', id: 'msg-v-shorted-0v', netlist: "* T06b: a voltage source shorted by a 0 V source\nV1 n1 0 5\nVx n1 0 0\nR1 n1 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node"], codes: ["singular-matrix","op-failed"], fails: true, unreliable: true },
   { code: 'M3c', id: 'msg-v-shorted-l', netlist: "* a voltage source with an inductor across it\nV1 a 0 5\nL1 a 0 1m\nR1 a 0 1k\n.op\n.end\n", vectors: { "v(a)": 4.9999999999949996, "i(l1)": 0.049999999999950126, "i(v1)": -0.05499999999989012 }, prints: ["singular matrix:  check node l1#branch"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
@@ -300,6 +324,9 @@ describe.each(FACTS)('$code ($id)', (f) => {
 // ------------------------------------------------------------------ 2. predictions
 
 describe('what the explanations predict matches the run', () => {
+  /** A line Explain says ngspice ignores: an analysis in a subcircuit no X line uses (A3f). */
+  const ignoredLine = (n: Netlist, i: number): boolean => /^ngspice ignores this line/.test(explainLine(n, i)?.notes[0] ?? '');
+
   it('counts the .dc points as ngspice does (A7–A15, A31)', () => {
     let checked = 0;
     for (const f of FACTS) {
@@ -307,6 +334,11 @@ describe('what the explanations predict matches the run', () => {
       for (const i of n.analyses) {
         const a = readAnalysis(n, i);
         if (a?.kind !== 'dc' || a.points === undefined) continue;
+        // A3f: in a subcircuit no X line uses, ngspice runs no point of it.
+        if (ignoredLine(n, i)) {
+          expect(interpretPlots(runs.get(f.id)!.plots).dc, f.id).toBeUndefined();
+          continue;
+        }
         const dc = interpretPlots(runs.get(f.id)!.plots).dc;
         expect(dc?.scale.values.length ?? 0, f.code).toBe(a.points);
         checked += 1;
@@ -322,6 +354,11 @@ describe('what the explanations predict matches the run', () => {
       for (const i of n.analyses) {
         const a = readAnalysis(n, i);
         if (a?.kind !== 'ac' || a.points === undefined) continue;
+        // A3f: in a subcircuit no X line uses, ngspice runs no point of it.
+        if (ignoredLine(n, i)) {
+          expect(vectorValues(runs.get(f.id)!.plots, 'frequency'), f.id).toBeUndefined();
+          continue;
+        }
         expect(vectorValues(runs.get(f.id)!.plots, 'frequency')?.length, f.code).toBe(a.points);
         checked += 1;
       }
@@ -383,6 +420,50 @@ describe('what the explanations predict matches the run', () => {
     expect(explainLine(n, 6)!.summary).toContain('So node a sits 6 V above node b.');
     expect(v('a')).toBe('10 V');
     expect(v('b')).toBe('4 V');
+    // A negative value between two nodes: its size and "below", as the run finds it (words re-check 12).
+    expect(plain(explainLine(n, 9)!.summary)).toContain('SPICE reads that as V(c) − V(d) = −3 V. So node c sits 3 V below node d.');
+    expect(explainLine(n, 9)!.summary).not.toContain('above');
+    expect(plain(v('c'))).toBe('6 V');
+    expect(plain(v('d'))).toBe('9 V');
+  });
+
+  it('says which way a current source with a negative value pushes its current, as the run finds it (P4)', () => {
+    const f = fact('P4');
+    const n = parseNetlist(f.netlist);
+    const v = (node: string): number => interpretPlots(runs.get(f.id)!.plots).op!.nodes.find((x) => x.node === node)!.value;
+    expect(plain(explainLine(n, 1)!.summary)).toContain('So I1 pushes 3 A from ground (node 0), through the source, into node a.');
+    // I3 0 c -3: 3 A from c into ground, so c is below ground, as b is (words re-check 12).
+    expect(plain(explainLine(n, 5)!.summary)).toContain('Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).');
+    // The overview (and the drawing's description) say it the same way (critic of words re-check 12).
+    expect(plain(describeCircuit(n))).toContain('I3: a −3 A current source: its value is negative, so it pushes 3 A from node c into ground.');
+    expect(plain(describeCircuit(n))).toContain('I2: a 3 A current source pushing current from node b into ground.');
+    expect(v('a')).toBe(12);
+    expect(v('c')).toBe(-12);
+    expect(v('c')).toBe(v('b'));
+  });
+
+  it('says a source .dc sweeps has no one value there, and that a value beside a SIN is .op\'s, as the runs find it (P3b, P4b, P4c)', () => {
+    // P4b: the sweep sets I1 from −5 mA to 5 mA; at 5 mA the current goes from a into ground, a = −5 V.
+    const swept = parseNetlist(fact('P4b').netlist);
+    const sweep = interpretPlots(runs.get('part-isource-swept')!.plots).dc!;
+    expect(sweep.series.find((x) => x.name === 'v(a)')!.values.at(-1)).toBe(-5);
+    expect(plain(explainLine(swept, 1)!.summary)).toContain('So I1 pushes its current from node a, through the source, into ground (node 0). The .dc on line 4 sweeps this source, so in that analysis its value changes.');
+    expect(explainLine(swept, 1)!.summary).not.toMatch(/negative|pushes 2 mA/);
+    expect(plain(describeCircuit(swept))).toContain('I1: a current source pushing current from node a into ground, swept by .dc.');
+    // P4c: .op uses −2 mA (a = 2 V); .tran follows the SIN from time 0 (a starts at 0, never 2 V).
+    const isin = parseNetlist(fact('P4c').netlist);
+    expect(interpretPlots(runs.get('part-isource-sin-op')!.plots).op!.nodes.find((x) => x.node === 'a')!.value).toBe(2);
+    const tran = interpretPlots(runs.get('part-isource-sin-tran')!.plots).tran!.series.find((x) => x.name === 'v(a)')!.values;
+    expect(tran[0]).toBe(0);
+    expect(Math.max(...tran)).toBeLessThan(1);
+    expect(plain(explainLine(isin, 1)!.summary)).toContain('Its value is negative, so the current flows the other way: I1 pushes 2 mA from ground (node 0), through the source, into node a. In .op the source has that value; in .tran it follows its SIN from time 0 instead.');
+    expect(plain(describeCircuit(isin))).toContain('I1: a −2 mA current source: its value is negative, so in .op it pushes 2 mA from ground into node a.');
+    // P3b: the same for a voltage source: in .op a sits 3 V below b; .tran starts V(a) − V(b) at 0.
+    const vsin = parseNetlist(fact('P3b').netlist);
+    const op = interpretPlots(runs.get('part-vsource-sin-op')!.plots).op!;
+    expect(op.nodes.find((x) => x.node === 'b')!.value - op.nodes.find((x) => x.node === 'a')!.value).toBe(3);
+    expect(interpretPlots(runs.get('part-vsource-sin-tran')!.plots).tran!.series.find((x) => x.name === 'v(a)')!.values[0]).toBe(0);
+    expect(plain(explainLine(vsin, 1)!.summary)).toContain('So node a sits 3 V below node b. In .op the source has that value; in .tran it follows its SIN from time 0 instead.');
   });
 
   it('says what E, G, F and H do in the channel\'s words (P5–P8)', () => {
@@ -451,6 +532,59 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(plain(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
     expect(plain(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thévenin resistance seen at node a (ngspice calls it the output impedance)');
     expect(tf.outputResistance?.speech).toBe('the output resistance at node a is 4 ohms, the Thévenin resistance');
+  });
+
+  it('.tf words on real runs name each output node one way: a gnd in v( ) is ground (A3b); a .tf after .end takes ngspice\'s names (A3c)', () => {
+    const gnd = describeRun(fact('A3b').netlist, runs.get('an-tf-gnd')!);
+    expect(gnd.words.tf?.at).toBe('between node out and ground');
+    expect(plain(gnd.words.tf?.outputResistance?.text)).toBe('output resistance between node out and ground: 500 Ω, the Thévenin resistance seen between node out and ground (ngspice calls it the output impedance)');
+    expect(gnd.words.tf?.transferFunction?.speech).toBe('the transfer function from V1 to the voltage between node out and ground is 0.5 volts per volt');
+    expect(explainLine(gnd.netlist, 7)!.fields.find((f) => f.label === 'output')?.meaning).toBe('the output: the voltage at node out, measured from ground');
+    // The .op of the same circuit: the ordinary node gnd the .tf's gnd is not.
+    expect(describeRun(fact('A3b-op').netlist, runs.get('an-tf-gnd-op')!).words.nodes.find((n) => n.node === 'gnd')?.value).toBe(2.5);
+    // v(gnd) alone is the voltage at ground (ngspice: output_impedance_at_V(0)), so the .tf check never
+    // offers "Use gnd" for a typo of that ordinary node: it would measure ground.
+    const alone = describeRun(fact('A3b-alone').netlist, runs.get('an-tf-gnd-alone')!);
+    expect(alone.words.tf?.at).toBe('at ground');
+    expect(alone.words.tf?.transferFunction?.speech).toBe('the transfer function from V1 to the voltage at ground is 0 volts per volt');
+    const after = describeRun(fact('A3c').netlist, runs.get('an-tf-after-end')!);
+    expect(after.words.tf?.at).toBe('between node out and node mid');
+    expect(plain(after.words.tf?.transferFunction?.text)).toBe('v(out,mid)/V1 = 0.3333 (V/V)');
+    expect(plain(after.words.tf?.inputResistance?.text)).toBe('input resistance seen by V1: 3 kΩ (ngspice calls it the input impedance)');
+    expect(after.words.tf?.outputResistance?.speech).toBe('the output resistance between node out and node mid is 666.7 ohms, the Thévenin resistance');
+    // A4's netlist with its .tf after .end: a current source as the input, V/A as above .end (A3d).
+    const a4 = describeRun(fact('A3d').netlist, runs.get('an-tf-isource-after-end')!).words.tf!;
+    const a4Above = ofFact('A4').words.tf!;
+    expect([a4.ratio, plain(a4.transferFunction?.text), a4.transferFunction?.speech]).toEqual(['V/A', 'v(b)/I1 = 1 (V/A)', 'the transfer function from I1 to the voltage at node b is 1 volt per amp, which is an ohm']);
+    expect([a4.transferFunction?.speech, a4.outputResistance?.text, a4.inputResistance?.text]).toEqual([a4Above.transferFunction?.speech, a4Above.outputResistance?.text, a4Above.inputResistance?.text]);
+    // A current output after .end is the current in its part, named as written (A3e).
+    const a3e = describeRun(fact('A3e').netlist, runs.get('an-tf-current-after-end')!).words.tf!;
+    expect([a3e.output, a3e.ratio, plain(a3e.transferFunction?.text), a3e.transferFunction?.speech]).toEqual(['i(Vm)', 'A/A', 'i(Vm)/I1 = 0.6667 (A/A)', 'the transfer function from I1 to the current in Vm is 0.6667 amps per amp']);
+    expect(plain(a3e.outputResistance?.text)).toBe("ngspice's output impedance for i(Vm): 1e+20 Ω, a stand-in number rather than a resistance of your circuit");
+  });
+
+  it('a .tf in a subcircuit no X line uses is left out, as ngspice leaves it out; one an X line uses is the main circuit\'s (A3f)', () => {
+    // Only the .tf v(out) after .ends runs: its numbers are v(out)'s, never named v(a,gnd).
+    const sub = describeRun(fact('A3f').netlist, runs.get('an-tf-subckt')!);
+    expect(plain(sub.words.tf?.transferFunction?.text)).toBe('v(out)/V1 = 0.5 (V/V)');
+    expect(sub.words.tf?.at).toBe('at node out');
+    expect(sub.words.warnings.map((w) => w.code)).not.toContain('tf-node-missing');
+    expect(describeCircuit(sub.netlist)).toContain('Analysis: transfer function from V1 to v(out).');
+    expect(explainLine(sub.netlist, 6)!.notes).toEqual(['ngspice ignores this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.']);
+    // With nothing else, nothing runs, whatever the analysis.
+    for (const id of ['an-tf-subckt-alone', 'an-op-subckt', 'an-dc-subckt', 'an-tran-subckt', 'an-ac-subckt', 'an-noise-subckt']) {
+      const f = FACTS.find((x) => x.id === id)!;
+      expect(runs.get(id)!.plots, id).toEqual([]);
+      expect(describeCircuit(parseNetlist(f.netlist)), id).toContain('Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.');
+      const line = parseNetlist(f.netlist).lines.findIndex((l) => l.directive && ['.tf', '.op', '.dc', '.tran', '.ac', '.noise'].includes(l.directive.name));
+      expect(explainLine(parseNetlist(f.netlist), line)!.notes[0], id).toMatch(/^ngspice ignores this line/);
+    }
+    // Used by an X line, the .tf is the main circuit's: v(out) is the main circuit's out (1/3, 333.3 Ω).
+    const used = describeRun(FACTS.find((x) => x.id === 'an-tf-subckt-used')!.netlist, runs.get('an-tf-subckt-used')!);
+    expect(plain(used.words.tf?.transferFunction?.text)).toBe('v(out)/V1 = 0.3333 (V/V)');
+    expect(explainLine(used.netlist, 7)!.notes.join(' ')).not.toContain('ngspice ignores this line');
+    // Once for each X line that uses it.
+    expect(runs.get('an-tf-subckt-twice')!.plots.filter((p) => /transfer function/i.test(p.plotname)).length).toBe(2);
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {
@@ -589,6 +723,8 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     ['M2', 'unreliable', 'Node b has no DC path to ground'],
     ['M2b', 'unreliable', 'Node a has no DC path to ground'],
     ['M2c', 'unreliable', 'Node n3 is not connected to the rest of the circuit'],
+    ['M2d', 'unreliable', 'Node out (written with a zero-width space in it) has no DC path to ground'],
+    ['M2d-tr', 'unreliable', 'Node \u00c7IKI\u015e has no DC path to ground'],
     ['M3', 'failed', 'V1 is in a loop of voltage sources or shorts', 2],
     ['M3b', 'failed', 'V1 is in a loop of voltage sources or shorts', 2],
     ['M3c', 'unreliable', 'L1 is in a loop of voltage sources or shorts', 3],

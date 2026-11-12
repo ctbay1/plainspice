@@ -15,11 +15,12 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
-import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces, zeroForLetterO } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeName, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withoutSpaces, withSpaces, zeroForLetterO } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
+import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -29,6 +30,7 @@ import type {
   LineExplanation,
   Netlist,
   NetlistLine,
+  NodeInfo,
   NodeRef,
   NumberReading,
   Span,
@@ -52,8 +54,11 @@ const EXACT_LOOP_LIMIT = 100_000;
 export const EXPLAIN_STRINGS = {
   ground: 'ground (node 0)',
   groundShort: 'ground',
-  /** A node in a sentence: "node in", as the editor, the overview and the cards say it (words review W8). */
-  nodeWord: (name: string): string => `node ${name}`,
+  /**
+   * A node in a sentence: "node in", as the editor, the overview and the cards say it (words review W8);
+   * a name that already says node goes alone: "node1", never "node node1" (node-words.ts).
+   */
+  nodeWord: (name: string): string => (nameSaysNode(name) ? name : `node ${name}`),
 
   // ---- lines that are not parts
   titleHeading: 'Title line',
@@ -133,6 +138,8 @@ export const EXPLAIN_STRINGS = {
   groundWordNode: (n: string): string => `the node "${n}", which is not ground: only 0 and gnd are ground (node 0)`,
   quotedNode: (n: string): string => `the node "${n}"`,
   gndIsGround: 'ground: gnd is another name for node 0',
+  /** A name like ground on its own, after a label that already says node: '+ node "ground"'. */
+  quotedName: (n: string): string => `"${n}"`,
   gndLastWordNote: (name: string): string =>
     `ngspice reads gnd as ground except as the last word of a line, so here ${name} goes to an ordinary node called gnd, not to ground. Write 0 instead.`,
   groundWordNote: (n: string): string =>
@@ -206,6 +213,15 @@ export const EXPLAIN_STRINGS = {
   spaceWriteDigits: (spice: string, several: boolean): string => `Write the number without ${several ? 'them' : 'it'}: ${spice}.`,
   spaceHarmless: (what: string): string => `There is ${what} in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.`,
   nodeWithSpace: (shown: string, what: string): string => `${shown} (one word for SPICE: written with ${what}, not a space)`,
+  // S11: a letter from another alphabet that looks like a Latin one is named in a node's name too, as in a value (look-alike-letter-5).
+  nodeWithLookAlike: (shown: string, what: string): string => `${shown} (written with ${what})`,
+  /** Characters of more than one kind, or more than one character, each named (critic of the S11 fix, round 2). */
+  nodeWithSeveral: (shown: string, whats: string[], space: boolean): string => {
+    const last = whats[whats.length - 1]!;
+    const rest = whats.slice(0, -1);
+    const list = rest.length === 1 ? `${rest[0]!}${rest[0]!.includes(',') ? ',' : ''} and ${last}` : `${rest.join(', ')}, and ${last}`;
+    return `${shown} (${space ? 'one word for SPICE: ' : ''}written with ${list})`;
+  },
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
     `ngspice read two numbers for the value, ${first} and ${second}, and uses the last one: ${used}.${why ? ` ${why}` : ''}`,
   twoNumbersComma: 'A comma separates words in SPICE: use a decimal point.',
@@ -244,9 +260,14 @@ export const EXPLAIN_STRINGS = {
   vReads: (plus: string, minusNode: string, value: string): string => `SPICE reads that as V(${plus}) ${MINUS} V(${minusNode}) = ${value}.`,
   vGround: (node: string, value: string): string => `Ground is 0 V, so ${node} sits at ${value}.`,
   vAbove: (plus: string, minusNode: string, value: string): string => `So ${plus} sits ${value} above ${minusNode}.`,
+  /** A negative value between two nodes: its size and the word that fits (P3), never "−3 V above" (words re-check 12). */
+  vBelow: (plus: string, minusNode: string, value: string): string => `So ${plus} sits ${value} below ${minusNode}.`,
   vZero: (plus: string, minusNode: string, name: string): string =>
     `So ${plus} and ${minusNode} are at the same voltage: ${name} works like a wire. A 0 V source is how SPICE measures a current: the ammeter trick.`,
+  /** A7, P4b: a source a .dc line sweeps, V or I: its own value is not the one that analysis uses. */
   vSwept: (line: number): string => `The .dc on line ${line} sweeps this source, so in that analysis its value changes.`,
+  /** P3b, P4c: a source with a transient function as well as a value: .op uses the value, .tran the function (critic of words re-check 12's fix). */
+  dcValueInOp: (fn: string): string => `In .op the source has that value; in .tran it follows its ${fn} from time 0 instead.`,
   vZeroCurrent: (name: string, plus: string, minusNode: string): string =>
     `Its current is the current in this branch, positive when it flows from ${plus}, through ${name}, to ${minusNode}.`,
   sourceSign: "SPICE counts a source's current as positive when it enters at the first node, here the + side, and flows through the source to the second.",
@@ -258,9 +279,14 @@ export const EXPLAIN_STRINGS = {
     "A current source has its own pattern: name, from node, to node, current. The current flows from the first node, through the source, into the second, the way the arrow points.",
   iPushes: (name: string, value: string, from: string, to: string): string =>
     `So ${name} pushes ${value} from ${from}, through the source, into ${to}.`,
+  /** A negative value (P4): the size, and the current the way it flows, from the second node into the first (words re-check 12). */
+  iPushesBack: (name: string, value: string, from: string, to: string): string =>
+    `Its value is negative, so the current flows the other way: ${name} pushes ${value} from ${from}, through the source, into ${to}.`,
   iPushesNoValue: (name: string, from: string, to: string): string =>
     `So ${name} pushes its current from ${from}, through the source, into ${to}.`,
   voltageAt: (node: string, ref: string): string => `the voltage at ${node}, measured from ${ref}`,
+  voltageOfNode: (node: string): string => `the voltage at ${node}`,
+  voltageBetweenNodes: (a: string, b: string): string => `the voltage between ${a} and ${b}`,
   eSentence: (out: string, gain: string, control: string): string => `${capitalise(out)}, is ${gain} × ${control}.`,
   eReads: (p: string, n: string, gain: string, cp: string, cn: string): string =>
     `SPICE reads it as V(${p}) ${MINUS} V(${n}) = ${gain} × (V(${cp}) ${MINUS} V(${cn})).`,
@@ -312,14 +338,17 @@ export const EXPLAIN_STRINGS = {
   bCurrent: 'I=: the current from the + node, through the source, to the − node is the expression that follows',
   bExpression: 'part of the expression ngspice works out',
   bNoExpression: 'a word with no V= or I= before it: ngspice stops with a fatal error',
-  /** A label that already says node: "+ node c". */
-  labelledNode: (label: string, n: string): string => `${label} ${n}`,
+  /** A label that already says node: "+ node c"; before a name that says node itself, the label without it: "+ node1". */
+  labelledNode: (label: string, n: string): string => (nameSaysNode(n) ? `${label.replace(/\s*node$/, '')} ${n}`.trim() : `${label} ${n}`),
   /** Any other label: "collector at node c". */
   labelledAt: (label: string, n: string): string => `${label} at ${n}`,
   listJoin: (items: readonly string[]): string =>
     items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`,
   insideSubcircuit: (name: string, line: number): string =>
     `This part belongs to the subcircuit ${name} (from line ${line}): its nodes are the subcircuit's own.`,
+  /** A3f: an analysis line in a subcircuit no X line uses does not run (critic of the words re-check's fix, round 2). */
+  analysisInUnusedSubcircuit: (name: string, line: number): string =>
+    `ngspice ignores this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
 
   // ---- dot commands
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
@@ -780,16 +809,63 @@ function numberPart(text: string): string {
 /** Names that look like ground but are ordinary nodes (W9, W13, W14). */
 const groundLike = (ref: NodeRef): boolean => ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00';
 
-/** A node's name alone, where a label already says "node" ("+ node c"): "in", "ground (node 0)". */
+/**
+ * A node's name alone, where a label already says "node" ("+ node c"): "in", "ground (node 0)", and a
+ * name like ground quoted on its own ('+ node "ground"', never '+ node the node "ground"': words
+ * re-check 5).
+ */
 function nodeName(ref: NodeRef): string {
   if (ref.ground) return S.ground;
   // W9, W13, W14: names that look like ground but are ordinary nodes are quoted, so "ground" never reads as ground.
-  if (groundLike(ref)) return S.quotedNode(ref.token.text);
-  // invisible-character-3: the character is named, not hidden in the sentence.
-  if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
-  // space-character-4, nbsp-1: one word for SPICE, though it reads as two.
-  if (hasSpaceLike(ref.token.text)) return S.nodeWithSpace(withSpaces(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
-  return ref.token.text;
+  if (groundLike(ref)) return S.quotedName(ref.token.text);
+  return nodeNameInWords(ref.token.text);
+}
+
+/**
+ * A node's name as written, with a character in it that is not what it looks like named, never shown
+ * (security review F2; S11: on every line that names a node, and in the results' words too): "out
+ * (written with a zero-width space in it)" (invisible-character-3), "o ut (one word for SPICE: written
+ * with a thin space, not a space)" (space-character-4, nbsp-1), "оut (written with the Cyrillic letter
+ * о, which looks like o)" (look-alike-letter-5). Any other name as written.
+ */
+export function nodeNameInWords(text: string): string {
+  // A name has no space in it (SPICE splits words at spaces): words with one were said already.
+  if (text.includes(' ')) return text;
+  const odd = oddCharacters(text);
+  if (odd.length > 1) {
+    // Each one named, in the order they come: "out (written with a zero-width space and the Cyrillic
+    // letter о, which looks like o)", never only the first kind (critic of the S11 fix, round 2).
+    const whats = odd.map((ch) => (INVISIBLE.test(ch) ? nameOfCharacter(ch, false)! : SPACE_LIKE.test(ch) ? `${nameOfCharacter(ch, false)!}, not a space` : describeCharacter(ch)));
+    return S.nodeWithSeveral(withSpaces(withoutInvisible(text)), whats, odd.some((ch) => SPACE_LIKE.test(ch)));
+  }
+  if (hasInvisible(text)) return S.nodeWithInvisible(withoutInvisible(text), nameOfCharacter([...text].find((ch) => INVISIBLE.test(ch))!, false)!);
+  if (hasSpaceLike(text)) return S.nodeWithSpace(withSpaces(text), nameOfCharacter([...text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
+  if (lookAlikeName(text) !== undefined) return S.nodeWithLookAlike(text, describeCharacter(cleanWord(text).odd[0]!));
+  return text;
+}
+
+/**
+ * The characters of a name that are not what they look like, each once, in the order they come: the
+ * invisible ones, those that look like a space, and letters from another alphabet that look like Latin
+ * ones in a Latin word (look-alike-letter-5; a name all in another alphabet is meant as written).
+ */
+export function oddCharacters(text: string): string[] {
+  const base = withoutSpaces(withoutInvisible(text));
+  const looks = new Set(lookAlikeName(base) !== undefined ? cleanWord(base).odd : []);
+  return [...new Set([...text].filter((ch) => INVISIBLE.test(ch) || SPACE_LIKE.test(ch) || looks.has(ch)))];
+}
+
+/**
+ * The names a name written with such characters may have meant, in turn: without its invisible
+ * characters, then without those that look like a space too, then with its look-alike letters written
+ * as the Latin ones (the last is the plain name: "out" for о<zero-width space>ut). Each differs from the
+ * name and from the one before; none for a name without such characters.
+ */
+export function plainForms(text: string): string[] {
+  const a = withoutInvisible(text);
+  const b = withoutSpaces(a);
+  const c = lookAlikeName(b) ?? b;
+  return [...new Set([a, b, c])].filter((x) => x !== text);
 }
 
 /**
@@ -798,7 +874,9 @@ function nodeName(ref: NodeRef): string {
  * 0)", and a name like ground is quoted: the node "ground".
  */
 function nodeText(ref: NodeRef): string {
-  return ref.ground || groundLike(ref) ? nodeName(ref) : S.nodeWord(nodeName(ref));
+  if (ref.ground) return nodeName(ref);
+  if (groundLike(ref)) return S.quotedNode(ref.token.text);
+  return S.nodeWord(nodeName(ref));
 }
 
 /** How a node of a part reads in a sentence: "node n1", "ground (node 0)". */
@@ -809,11 +887,6 @@ function nodePhrase(ref: NodeRef | undefined): string {
 /** A node in the sentences that follow a formula: "node in"; ground is just "ground" there. */
 function nodeProse(ref: NodeRef | undefined): string {
   return !ref ? '?' : ref.ground ? S.groundShort : nodeText(ref);
-}
-
-/** A node named on an analysis line (.tf v(a,b)), in a sentence: "node a"; 0 is ground. */
-function nodeNameProse(text: string): string {
-  return text === '0' ? S.groundShort : text === '' || text === '?' ? text : S.nodeWord(text);
 }
 
 /** The node's name in a formula: as written; ground as written too ("0", "gnd"). */
@@ -1010,6 +1083,12 @@ export type AnalysisReading =
       outputKind: 'voltage' | 'current';
       /** Output nodes (voltage output) or the source (current output), as written. */
       outputNames: string[];
+      /**
+       * A voltage output's nodes as the parser reads them (empty for a current output): ground ('0')
+       * for 0, and for gnd where ngspice makes it 0, before ')' or ',' (inp_fix_gnd_name: `.tf v(out,gnd)`
+       * is v(out,0), A3b), so the words never call that gnd a node (code review 1).
+       */
+      outputNodes: NodeRef[];
       input?: Token;
       inputKind?: 'voltage' | 'current' | 'other' | 'missing';
     }
@@ -1124,9 +1203,68 @@ export function dcStopsNgspice(r: Extract<AnalysisReading, { kind: 'dc' }>): boo
   });
 }
 
+/** For each word the parser read as a node on a dot command's line (the words in v(...)), the node it filed it under, by where the word starts. */
+const wordNodes = new WeakMap<Netlist, Map<number, NodeInfo>>();
+
+/**
+ * A word inside v(...) on a dot command's line as the node the parser read it as: ground for 0, and
+ * for a gnd that ngspice turns into 0 there (gndIsGround in parse.ts); otherwise the node of that name.
+ */
+function nodeOfWord(netlist: Netlist, token: Token): NodeRef {
+  let byStart = wordNodes.get(netlist);
+  if (!byStart) {
+    byStart = new Map();
+    for (const info of netlist.nodes.values()) for (const t of info.refs) byStart.set(t.from, info);
+    wordNodes.set(netlist, byStart);
+  }
+  const info = byStart.get(token.from);
+  if (info) return { token, name: info.name, ground: info.ground };
+  const name = ngspiceName(token.text);
+  return { token, name, ground: name === '0' };
+}
+
 /** The first .dc line (0-based) that sweeps the part with lower-case name `key`, if any. */
 export function sweptBy(netlist: Netlist, key: string): number | undefined {
   return contextOf(netlist).swept.get(key);
+}
+
+/** The analyses A3f ran inside a subcircuit no X line uses: ngspice ignores each of them there. */
+const RUN_ANALYSES: ReadonlySet<string> = new Set(['.op', '.tf', '.dc', '.tran', '.ac', '.noise']);
+
+const usedCache = new WeakMap<Netlist, Set<string>>();
+
+/** The subcircuits an X line uses, by lower-case name: X lines anywhere, those after a plain .end too (S25). */
+function usedSubcircuits(netlist: Netlist): Set<string> {
+  const cached = usedCache.get(netlist);
+  if (cached) return cached;
+  const used = new Set<string>();
+  const add = (el: Element | undefined): void => {
+    const model = el?.letter === 'X' ? el.fields.find((f) => f.role === 'model') : undefined;
+    if (model) used.add(lowerAscii(model.token.text));
+  };
+  for (const l of netlist.lines) add(l.element);
+  for (const l of readAfterEnd(netlist)) add(parseNetlist(`*\n${l.text}`).lines[1]?.element);
+  usedCache.set(netlist, used);
+  return used;
+}
+
+/**
+ * The subcircuit a line is in (its name as written and its .subckt line, 0-based) when no X line uses
+ * that subcircuit; undefined for any other line. ngspice ignores such a subcircuit, an analysis line in
+ * it too (A3f: .op, .tf, .dc, .tran, .ac and .noise run nothing there); in a subcircuit an X line uses, it runs
+ * an analysis line as if the main circuit had it, once for each such X line.
+ */
+export function unusedSubcircuit(netlist: Netlist, index: number): { name: string; line: number } | undefined {
+  const at = contextOf(netlist).insideSubckt.get(index);
+  const name = at === undefined ? undefined : netlist.lines[at]?.directive?.args[0];
+  if (at === undefined || !name || usedSubcircuits(netlist).has(lowerAscii(name.text))) return undefined;
+  return { name: name.text, line: at };
+}
+
+/** An analysis line A3f found ngspice ignores: one of those it ran, in a subcircuit no X line uses. */
+export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
+  const name = netlist.lines[index]?.directive?.name;
+  return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;
 }
 
 function partKind(netlist: Netlist, name: string): { line?: number; letter?: ElementLetter } {
@@ -1212,6 +1350,7 @@ export function readAnalysis(netlist: Netlist, lineIndex: number): AnalysisReadi
         output: out?.text ?? d.args[0]?.text ?? '',
         outputKind: out?.kind ?? 'voltage',
         outputNames: (out?.names ?? []).map((t) => t.text),
+        outputNodes: out?.kind === 'voltage' ? out.names.map((t) => nodeOfWord(netlist, t)) : [],
       };
       if (input) {
         reading.input = input;
@@ -1654,12 +1793,14 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
           const swept = sweptBy(netlist, el.key);
           if (swept !== undefined) {
             sentences.push(S.vSwept(swept + 1)); // A7
-          } else if (v === 0) {
+          } else if (v === 0 && !fn) {
             sentences.push(S.vZero(nodePhrase(a), nodePhrase(b), el.name.text)); // P9
             addNote(p.notes, S.vZeroCurrent(el.name.text, nodeProse(a), nodeProse(b)));
           } else if (b.ground && !a.ground) sentences.push(S.vGround(nodeProse(a), shown));
           else if (a.ground && !b.ground) sentences.push(S.vGround(nodeProse(b), formatSI(-v, 'V')));
-          else if (!a.ground && !b.ground) sentences.push(S.vAbove(nodeProse(a), nodeProse(b), shown));
+          else if (!a.ground && !b.ground) sentences.push(v < 0 ? S.vBelow(nodeProse(a), nodeProse(b), formatSI(-v, 'V')) : S.vAbove(nodeProse(a), nodeProse(b), shown));
+          // P3b: the "so" above is .op's; .tran follows the function from time 0, never this value.
+          if (swept === undefined && fn) sentences.push(S.dcValueInOp(fn.token.text));
         } else if (fn) {
           const t0 = valueAtTimeZero(fn);
           sentences.push(t0 === undefined ? S.timeZeroValueUnknown(fn.token.text) : S.timeZeroValue(fn.token.text, formatSI(t0, 'V'))); // P17
@@ -1676,9 +1817,17 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
     case 'I': {
       sentences.push(S.iPattern); // P4
       const v = value?.value;
+      // P4b: a source a .dc line sweeps pushes no one value there, so only its direction is said, and
+      // that the .dc sweeps it, as for V (critic of words re-check 12's fix: "its value is negative, so
+      // it pushes 2 mA" while the sweep's 5 mA flowed the other way).
+      const swept = sweptBy(netlist, el.key);
       if (a && b) {
-        if (v !== undefined) sentences.push(S.iPushes(el.name.text, formatSI(v, 'A'), nodePhrase(a), nodePhrase(b)));
+        if (v !== undefined && swept === undefined && v < 0) sentences.push(S.iPushesBack(el.name.text, formatSI(-v, 'A'), nodePhrase(b), nodePhrase(a)));
+        else if (v !== undefined && swept === undefined) sentences.push(S.iPushes(el.name.text, formatSI(v, 'A'), nodePhrase(a), nodePhrase(b)));
         else sentences.push(S.iPushesNoValue(el.name.text, nodePhrase(a), nodePhrase(b)));
+        if (swept !== undefined) sentences.push(S.vSwept(swept + 1));
+        // P4c: with a transient function too, the value is .op's; .tran follows the function from time 0.
+        else if (v !== undefined && el.sourceFunction) sentences.push(S.dcValueInOp(el.sourceFunction.token.text));
       }
       if (v === undefined && el.sourceFunction) {
         const t0 = valueAtTimeZero(el.sourceFunction);
@@ -1794,12 +1943,15 @@ function commandRow(token: Token, what: string): FieldExplanation {
 function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation {
   const d = line.directive!;
   const name = d.name;
+  // A3f: ngspice ignores an analysis line in a subcircuit no X line uses, so what the line would make
+  // ngspice do (a missing node's 0, a stop) is not said: only that it is ignored.
+  const unused = RUN_ANALYSES.has(name) ? unusedSubcircuit(netlist, line.index) : undefined;
   const out = (what: string, summary: string, fields: FieldExplanation[] = [], notes: string[] = []): LineExplanation => ({
     line: line.number,
     heading: S.dotHeading(d.token.text, what),
     summary,
     fields: [commandRow(d.token, what), ...fields],
-    notes,
+    notes: unused ? [S.analysisInUnusedSubcircuit(unused.name, unused.line + 1)] : notes,
   });
   const ctx = contextOf(netlist);
   switch (name) {
@@ -1871,10 +2023,10 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
       return out(S.libWhat, S.lib, d.args.map((a, k) => fieldOf(k === 0 ? 'file' : 'section', a, k === 0 ? S.fileName(a.text) : S.libSection(a.text))), d.args.length < 2 ? [S.libOneWord] : []); // A33, include-not-available-3
     case '.print':
     case '.plot':
-      return out(S.printWhat(name), S.print(name), vectorFields(netlist, d.args)); // A25, A25b
+      return out(S.printWhat(name), S.print(name), vectorFields(netlist, d.args).map((f) => f.field)); // A25, A25b
     case '.save': {
       const fields = vectorFields(netlist, d.args);
-      return out(S.saveWhat, S.save(fields.map((f) => f.text).join(', ')), fields); // A24
+      return out(S.saveWhat, S.save(fields.map((f) => f.said).join(', ')), fields.map((f) => f.field)); // A24
     }
     case '.control':
       return out(S.controlWhat, S.control); // S31, A27
@@ -1887,7 +2039,7 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
         if (g) {
           const v = d.args[k + g.used];
           const r = v ? readNumber(v.text) : undefined;
-          fields.push({ label: 'node voltage', text: g.text, span: g.span, meaning: S.icField(g.text, r ? formatSI(r.value, 'V') : (v?.text ?? '?')) });
+          fields.push({ label: 'node voltage', text: g.text, span: g.span, meaning: S.icField(vectorWords(netlist, g), r ? formatSI(r.value, 'V') : (v?.text ?? '?')) });
           if (v) fields.push(fieldOf('value', v, r ? formatSI(r.value, 'V') : v.text));
           k += g.used + (v ? 1 : 0);
         } else {
@@ -1919,21 +2071,34 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
   }
 }
 
-function vectorFields(netlist: Netlist, args: readonly Token[]): FieldExplanation[] {
-  const fields: FieldExplanation[] = [];
+/** The rows of a .save or .print line, each with the result as the line's sentence names it (vectorWords). */
+function vectorFields(netlist: Netlist, args: readonly Token[]): { field: FieldExplanation; said: string }[] {
+  const fields: { field: FieldExplanation; said: string }[] = [];
   for (let k = 0; k < args.length; ) {
     const g = vectorAt(netlist, args, k);
     if (g) {
-      fields.push({ label: 'result', text: g.text, span: g.span, meaning: S.vectorField(g.text) });
+      const said = vectorWords(netlist, g);
+      fields.push({ field: { label: 'result', text: g.text, span: g.span, meaning: S.vectorField(said) }, said });
       k += g.used;
     } else {
       const t = args[k]!;
       const isType = k === 0 && /^(dc|ac|tran|op|tf|noise|disto)$/i.test(t.text);
-      fields.push(fieldOf(isType ? 'analysis' : 'result', t, isType ? S.analysisField(t.text) : S.vectorField(t.text)));
+      fields.push({ field: fieldOf(isType ? 'analysis' : 'result', t, isType ? S.analysisField(t.text) : S.vectorField(t.text)), said: t.text });
       k += 1;
     }
   }
   return fields;
+}
+
+/**
+ * A v(...) group as a sentence names it: as written ("v(out)"), unless a node's name in it has a
+ * character that is not what it looks like, which is never shown hidden in it (S11): then in words,
+ * with the character named ("the voltage at node out (written with a zero-width space in it)").
+ */
+function vectorWords(netlist: Netlist, g: VectorGroup): string {
+  if (g.kind !== 'voltage' || g.names.every((t) => nodeNameInWords(t.text) === t.text)) return g.text;
+  const [a, b] = g.names.map((t) => nodeProse(nodeOfWord(netlist, t)));
+  return b ? S.voltageBetweenNodes(a!, b) : S.voltageOfNode(a ?? '?');
 }
 
 type Out = (what: string, summary: string, fields?: FieldExplanation[], notes?: string[]) => LineExplanation;
@@ -1948,15 +2113,16 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
   const fields: FieldExplanation[] = [];
   const notes: string[] = [];
   const g = vectorAt(netlist, d.args, 0);
+  // The output's nodes as the parser reads them, each said one way here and in the results: a gnd that
+  // ngspice makes 0 is ground (A3b), a name like ground is quoted (W13), a hidden character named.
+  const [n1, n2] = r.outputNodes;
   if (g) {
-    const meaning =
-      g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(nodeNameProse(g.names[0]?.text ?? ''), nodeNameProse(g.names[1]?.text ?? ''));
+    const meaning = g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(nodeProse(n1), n2 ? nodeProse(n2) : '');
     fields.push({ label: 'output', text: g.text, span: g.span, meaning });
-    if (g.kind === 'voltage') {
-      for (const n of g.names) {
-        const info = netlist.nodes.get(lowerAscii(n.text) === 'gnd' ? '0' : lowerAscii(n.text));
-        if (!info || info.connections.length === 0) addNote(notes, S.tfNodeMissingNote(n.text)); // A6
-      }
+    for (const n of r.outputNodes) {
+      // Ground is always a node (every voltage is measured from it); a circuit with nothing on it has its own check.
+      const info = netlist.nodes.get(n.name);
+      if (!n.ground && (!info || info.connections.length === 0)) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
     }
   }
   const input = r.input;
@@ -1972,10 +2138,10 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     } else meaning = S.tfInput(input.text, part.line! + 1, partWord(netlist, part.line!));
     fields.push(fieldOf('input source', input, meaning));
   }
-  const outText = r.output;
+  // The formula keeps the line's words, but never a character hidden in them (S11): the words after it name it.
+  const outText = withoutInvisible(r.output);
   const inText = input?.text ?? '?';
-  const [o1, o2] = r.outputNames;
-  const at = o2 ? S.tfBetween(nodeNameProse(o1 ?? '?'), nodeNameProse(o2)) : S.tfAt(nodeNameProse(o1 ?? '?'));
+  const at = n2 ? S.tfBetween(nodeProse(n1), nodeProse(n2)) : S.tfAt(nodeProse(n1));
   const ratio = `${r.outputKind === 'current' ? 'A' : 'V'}/${r.inputKind === 'current' ? 'A' : 'V'}`;
   const ratioWords = ratio === 'V/A' ? 'V/A, which is ohms' : ratio;
   let summary = r.outputKind === 'current' ? S.tfCurrent(outText, inText) : S.tf(outText, inText, at); // A3, A4

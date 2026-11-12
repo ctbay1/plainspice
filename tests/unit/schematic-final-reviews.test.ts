@@ -144,7 +144,7 @@ function seriesWithGap(gap: number): Schematic {
 function writtenAfterRun(s: Schematic, volts: Readonly<Record<string, number | string>>): { node: string; boxes: Box[] }[] {
   const nodes = Object.entries(volts).map(([node, v]) => {
     const text = typeof v === 'number' ? formatSI(v, 'V') : v;
-    return { node, value: typeof v === 'number' ? v : 0, text, speech: text };
+    return { node, name: node, value: typeof v === 'number' ? v : 0, text, speech: text };
   });
   const words: ResultsInWords = { status: 'ok', ngspiceError: false, nodes, currents: [], sweeps: [], warnings: [], summary: '', summarySpeech: '' };
   const results = placeResults(s.scene, words);

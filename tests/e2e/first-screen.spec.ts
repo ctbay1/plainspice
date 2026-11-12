@@ -26,8 +26,9 @@ test('a first visit opens Start here already solved, inviting a change to R1', a
   expect(drawn).toMatch(/=\s6\sV/);
   expect(drawn).toMatch(/=\s4\sV/);
   expect(drawn).toMatch(/2\smA/);
-  await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription(/out is 4 volts/);
-  await expectAnnounced(page, /out is 4 volts/);
+  // The node's own sentence names it as a node, as the announcement does (words re-check 2).
+  await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription('Node out connects R1 and R2. Node out is 4 volts.');
+  await expectAnnounced(page, /node out is 4 volts/);
   // No Run was needed, and nothing is saved for a circuit just opened.
   expect(await page.evaluate(() => localStorage.getItem('plainspice:netlist'))).toBeNull();
 

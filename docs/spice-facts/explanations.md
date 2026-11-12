@@ -42,8 +42,10 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 
 - A resistor works either way round, and the part lines can come in any order (P1, P2); line 1 is
   always the title (S1 in numbers-and-syntax.md).
-- `V1 n1 0 6` means V(n1) − V(0) = 6 V; written `V1 0 n1 6` it makes n1 −6 V (P3). `I1 0 a 3` pushes
-  3 A from node 0, through the source, into a (P4).
+- `V1 n1 0 6` means V(n1) − V(0) = 6 V; written `V1 0 n1 6` it makes n1 −6 V; `V6 c d -3` holds c 3 V
+  below d (P3). `I1 0 a 3` pushes 3 A from node 0, through the source, into a; `I3 0 c -3` pushes 3 A the
+  other way, from c into node 0 (P4). A source .dc sweeps has no one value there (P4b, A7); beside a SIN,
+  .op uses the source's value and .tran follows the SIN from time 0 (P3b, P4c).
 - E: V(+) − V(−) = gain × (V(c+) − V(c−)). G: gain × (V(c+) − V(c−)) amps from its first node into its
   second. F: gain × the current in its control source, the same way. H: V(+) − V(−) = gain × that
   current (P5–P8). The control source of F and H must be a voltage source: V, E, H or a B line
@@ -63,9 +65,12 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 - `.op` saves every node voltage and the current of every V, E, H and L; `.options savecurrents` adds
   every R, C, L, F, G and I current (A1, A2).
 - `.tf v(a) V1` gives v(a)/V1, the input resistance seen by V1 and the output (Thévenin) resistance
-  at a, which ngspice calls impedances (A3); the input can be a current source (A4); for a current
+  at a, which ngspice calls impedances (A3); a gnd inside `v( )` there is ground, even beside an ordinary
+  node called gnd (A3b); a `.tf` written after `.end` runs too, and ngspice names its output in its
+  own words, `v(out,mid)` (A3c); the input can be a current source (A4); for a current
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
-  0 without a message (A6).
+  0 without a message (A6). An analysis line in a subcircuit no X line uses is ignored; in one an X
+  line uses, it runs as the main circuit's, once for each X line (A3f).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -161,7 +166,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### P3. A voltage source sets V(+ node) − V(− node) to its value
 
-`V1 n1 0 6` makes n1 6 V above ground; written `V2 0 n2 6`, the source makes ground 6 V above n2, so n2 is −6 V. Between two nodes, `V4 a b 6` holds a 6 V above b: a = 10 V, so b = 4 V.
+`V1 n1 0 6` makes n1 6 V above ground; written `V2 0 n2 6`, the source makes ground 6 V above n2, so n2 is −6 V. Between two nodes, `V4 a b 6` holds a 6 V above b: a = 10 V, so b = 4 V. A negative value between two nodes holds the + node below the − node by its size: `V6 c d -3` with c = 6 V gives d = 9 V, so c sits 3 V below d (Explain says "So node c sits 3 V below node d.", never "−3 V above": words re-check 12, 12 November 2026).
 
 ```spice
 * a voltage source sets V(+) - V(-)
@@ -172,12 +177,17 @@ R2 n2 0 2
 V3 a 0 10
 V4 a b 6
 R3 b 0 2
+V5 c 0 6
+V6 c d -3
+R4 d 0 2
 .op
 .end
 ```
 
 ```text
 ngspice 47, ngspice -b (exit 0):
+        d                                9.000000e+00
+        c                                6.000000e+00
         b                                4.000000e+00
         a                                1.000000e+01
         n2                               -6.00000e+00
@@ -186,15 +196,75 @@ ngspice 47, ngspice -b (exit 0):
         v2#branch                        -3.00000e+00
         v3#branch                        -2.00000e+00
         v4#branch                        2.000000e+00
-  rawfile from ngspice -b -r (exit 0): v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4
+        v5#branch                        -4.50000e+00
+        v6#branch                        4.500000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4, v(c) = 6, v(d) = 9
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
-  vectors: v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4
+  vectors: v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4, v(c) = 6, v(d) = 9
+```
+
+### P3b. With a SIN as well, .op uses the source's value and .tran follows the SIN from time 0
+
+`V1 a b -3 SIN(0 1 1k)` has a DC value, −3 V, and a transient function. In .op ngspice uses the
+value: a = −1.5 V and b = 1.5 V, so a sits 3 V below b, as P3 says it (ngspice notes that it uses
+the DC value for the operating point). In .tran the value is not used, not even at the start: the
+SIN starts at its offset, 0, so V(a) − V(b) starts at 0 and swings between about −1 and 1 V. So
+Explain's "So node a sits 3 V below node b." is followed by "In .op the source has that value; in
+.tran it follows its SIN from time 0 instead." (critic of words re-check 12's fix, 12 November
+2026: with .tran only, that "so" was backed by no run).
+
+```spice
+* a voltage source of -3 V with a SIN, in .op
+V1 a b -3 SIN(0 1 1k)
+R1 a 0 1k
+R2 b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Note: v1: dc value used for op instead of transient time=0 value.
+        b                                1.500000e+00
+        a                                -1.50000e+00
+        v1#branch                        1.500000e-03
+  rawfile from ngspice -b -r (exit 0): v(a) = -1.5, v(b) = 1.5, i(v1) = 0.0015
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = -1.5, v(b) = 1.5, i(v1) = 0.0015
+```
+
+```spice
+* a voltage source of -3 V with a SIN, in .tran
+V1 a b -3 SIN(0 1 1k)
+R1 a 0 1k
+R2 b 0 1k
+.tran 0.1m 2m
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r (exit 0):
+    Note: v1: dc value used for op instead of transient time=0 value.
+    Initial Transient Solution
+    --------------------------
+    Node                                   Voltage
+    ----                                   -------
+    a                                            0
+    b                                            0
+    v1#branch                                    0
+    No. of Data Rows : 59
+  rawfile: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, 0.49954267455, -0.49607160000 (v(b) the opposite)
+ngspice 42: the same output and rawfile values as ngspice 47, except one time point near the end (0.0019712 s where 47 has 0.0019656 s)
+our engine (wasm), as ngspice -b -r (exit 0):
+  the same note and initial solution as ngspice 47
+  vectors: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, 0.49954267455, -0.49607160000
 ```
 
 ### P4. A current source pushes its current from its first node, through the source, into its second
 
-`I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V.
+`I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V. A negative value pushes the current the other way: `I3 0 c -3` pulls 3 A out of c and pushes it into ground, so c = −12 V, as for I2 (Explain says "Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).": words re-check 12, 12 November 2026; and the overview "I3: a −3 A current source: its value is negative, so it pushes 3 A from node c into ground.", where it said "pushing current from ground into node c" until the critic of that fix).
 
 ```spice
 * a current source pushes current from its first node to its second
@@ -202,18 +272,100 @@ I1 0 a 3
 R1 a 0 4
 I2 b 0 3
 R2 b 0 4
+I3 0 c -3
+R3 c 0 4
 .op
 .end
 ```
 
 ```text
 ngspice 47, ngspice -b (exit 0):
+        c                                -1.20000e+01
         b                                -1.20000e+01
         a                                1.200000e+01
-  rawfile from ngspice -b -r (exit 0): v(a) = 12, v(b) = -12
+  rawfile from ngspice -b -r (exit 0): v(a) = 12, v(b) = -12, v(c) = -12
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
-  vectors: v(a) = 12, v(b) = -12
+  vectors: v(a) = 12, v(b) = -12, v(c) = -12
+```
+
+### P4b. A current source a .dc line sweeps has no one value there
+
+`.dc I1 -5m 5m 1m` sets I1 to −5 mA, −4 mA, ..., 5 mA in turn; its own −2 mA is not used. At 5 mA
+the current goes from a, through I1, into ground, so a = −5 V; at −5 mA it goes the other way and a
+= 5 V. So Explain says only which way I1 pushes its current, and "The .dc on line 4 sweeps this
+source, so in that analysis its value changes.", as for a swept voltage source (A7), and the
+overview says "I1: a current source pushing current from node a into ground, swept by .dc." (critic
+of words re-check 12's fix, 12 November 2026: they said "its value is negative, so it pushes 2 mA
+from ground into node a", which no point of the sweep does at 5 mA).
+
+```spice
+* a current source of -2 mA swept by .dc
+I1 a 0 -2m
+R1 a 0 1k
+.dc I1 -5m 5m 1m
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r (exit 0):
+    No. of Data Rows : 11
+  rawfile: i(i-sweep) = [-0.005, -0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002, 0.003, 0.004, 0.005], v(a) = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5]
+ngspice 42: the same output, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    No. of Data Rows : 11
+  vectors: i(i-sweep) = [-0.005, -0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002, 0.003, 0.004, 0.005], v(a) = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5]
+```
+
+### P4c. With a SIN as well, .op uses the current source's value and .tran follows the SIN
+
+`I1 a 0 -2m SIN(0 1m 1k)`: in .op ngspice uses −2 mA, so 2 mA flow from ground into a and a = 2 V,
+as P4 says it. In .tran it follows the SIN from time 0: a starts at 0 and swings between about −1
+and 1 V, and is never 2 V. So Explain's sentence about the negative value is followed by "In .op the
+source has that value; in .tran it follows its SIN from time 0 instead.", and the overview says "so
+in .op it pushes 2 mA from ground into node a" (critic of words re-check 12's fix, 12 November
+2026).
+
+```spice
+* a current source of -2 mA with a SIN, in .op
+I1 a 0 -2m SIN(0 1m 1k)
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Note: i1: dc value used for op instead of transient time=0 value.
+        a                                2.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(a) = 2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 2
+```
+
+```spice
+* a current source of -2 mA with a SIN, in .tran
+I1 a 0 -2m SIN(0 1m 1k)
+R1 a 0 1k
+.tran 0.1m 2m
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r (exit 0):
+    Note: i1: dc value used for op instead of transient time=0 value.
+    Initial Transient Solution
+    --------------------------
+    Node                                   Voltage
+    ----                                   -------
+    a                                            0
+    No. of Data Rows : 59
+  rawfile: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, -0.99908534909, 0.99214320000; between -0.999971575673983 and 0.9930314824871339
+ngspice 42: the same output and rawfile values as ngspice 47, except one time point near the end (0.0019712 s where 47 has 0.0019656 s)
+our engine (wasm), as ngspice -b -r (exit 0):
+  the same note and initial solution as ngspice 47
+  vectors: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, -0.99908534909, 0.99214320000
 ```
 
 ### P5. E: V(+ node) − V(− node) = gain × (V(control + node) − V(control − node))
@@ -1263,6 +1415,205 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(Transfer_function) = 0.33333333333333337, v(v1#Input_impedance) = 9, v(output_impedance_at_V(a)) = 4
+```
+
+### A3b. In .tf's v( ), gnd is ground, even beside an ordinary node called gnd
+
+ngspice reads a gnd that a `)` or a `,` follows as node 0 (it rewrites the word before reading the line),
+so `.tf v(out,gnd) V1` is v(out,0), the voltage at out measured from ground: ngspice names the output
+`v(out,0)`, and the transfer function is out's 0.5. Here the circuit also has an ordinary node called
+gnd, at 2.5 V in `.op` (`Vx x gnd`: as the last word of a line gnd is no ground, W9). Were the `.tf`'s
+gnd that node, the output would be v(out) − v(gnd), whose transfer function is 0.5 − 0.5 = 0. So the
+.tf words say "between node out and ground", never "node gnd" (code review 1, 12 November 2026).
+
+```spice
+* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+R3 in x 1k
+Vx x gnd
+R4 x 0 1k
+.tf v(out,gnd) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Note: vx: has no value, DC 0 assumed
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(out,0) = 5.000000e+02
+    v1#input_impedance = 1.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500
+  the same netlist with .op for .tf, ngspice -b (exit 0): gnd 2.500000e+00, x 2.500000e+00, out 2.500000e+00, in 5.000000e+00; rawfile v(gnd) = 2.5
+  the same netlist with .tf v(gnd) V1, ngspice -b (exit 0):
+    Note: vx: has no value, DC 0 assumed
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(0) = 0.000000e+00
+    v1#input_impedance = 1.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(0)) = 0
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, the note "vx: has no value, DC 0 assumed"):
+  vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500; with .op: v(gnd) = 2.5;
+  with .tf v(gnd) V1: v(Transfer_function) = 0, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(0)) = 0
+```
+
+`.tf v(gnd) V1` alone is the voltage at ground, 0 (ngspice names it `v(0)`), not that of the ordinary
+node gnd, whose transfer function would be 0.5. So the .tf check never offers "Use gnd" for a typo of
+such a node: written in `v( )`, the name would measure ground (12 November 2026).
+
+### A3c. A .tf written after .end runs too, and ngspice names its output in its own words
+
+ngspice keeps reading after a plain `.end` (S25 in numbers-and-syntax.md), so a `.tf` written there
+runs. PlainSpice does not read lines after `.end` as dot commands (the after-end check asks for them
+to be moved), so its .tf words take the nodes from ngspice's own name for the output,
+`output_impedance_at_v(out,mid)`: "between node out and node mid", as for a `.tf` above `.end` (code
+review 5, 12 November 2026). out − mid is 5 V × 1k/3k, a transfer function of 1/3; V1 sees 3 kΩ; and
+between out and mid the resistance is R2 ∥ (R1 + R3) = 1k ∥ 2k = 666.7 Ω.
+
+```spice
+* a .tf written after .end
+V1 in 0 5
+R1 in out 1k
+R2 out mid 1k
+R3 mid 0 1k
+.end
+.tf v(out,mid) V1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out,mid) = 6.666667e+02
+    v1#input_impedance = 3.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out,mid)) = 666.6666666666667
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out,mid)) = 666.6666666666667
+```
+
+### A3d. After .end too, a current source as the input makes the transfer function V/A
+
+A4's netlist with its `.tf` written after `.end`: ngspice runs it and gives A4's three numbers, so the
+transfer function is 1 V per ampere, not "1 (V/V)". PlainSpice has no reading of a line after `.end`
+(A3c), so its .tf words take the input's kind from the part ngspice names (`i1#input_impedance` is I1,
+a current source): "1 volt per amp, which is an ohm", as for A4 (critic of the words re-check's fix,
+12 November 2026).
+
+```spice
+* .tf with a current source as the input, written after .end
+I1 0 a 1
+R1 a 0 4
+R2 a b 2
+R3 b 0 2
+.end
+.tf v(b) I1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 1.000000e+00
+    i1#input_impedance = 2.000000e+00
+    output_impedance_at_v(b) = 1.500000e+00
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 1, v(i1#Input_impedance) = 2, v(output_impedance_at_V(b)) = 1.5
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 1, v(i1#Input_impedance) = 2, v(output_impedance_at_V(b)) = 1.5
+```
+
+### A3e. After .end too, a current output is the current in its source: i(Vm), A/A from a current source
+
+A current source drives a current output, with the `.tf` after `.end`. I1 pushes 1 A into a; all of it
+flows through R1 to b, where it splits between R3 (6 Ω) and Vm with R2 (3 Ω): i(Vm) = 1 A × 6/9 = 2/3
+A, a transfer function of 2/3 A per ampere. I1 sees R1 + (6 Ω ∥ 3 Ω) = 4 Ω, and for a current output
+ngspice's output impedance is 1e20 Ω, as in A5. ngspice names the output by its source
+(`vm#output_impedance`), so PlainSpice's words name that part as the netlist writes it, "i(Vm)" and
+"the current in Vm", where they said "i(vm)" and "the current in i(vm)", and in A/A (critic of the
+words re-check's fix, 12 November 2026). Written above `.end`, the same netlist gives the same three
+numbers.
+
+```spice
+* .tf from a current source to a current, written after .end
+I1 0 a 1
+R1 a b 2
+Vm b c 0
+R2 c 0 3
+R3 b 0 6
+.end
+.tf i(Vm) I1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 6.666667e-01
+    i1#input_impedance = 4.000000e+00
+    vm#output_impedance = 1.000000e+20
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
+  the same with the .tf above .end, ngspice -b (exit 0): the same printout and rawfile values
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
+```
+
+### A3f. An analysis line in a subcircuit no X line uses is ignored; in one an X line uses, it runs as the main circuit's
+
+Added after the second critic of the words re-check's fix (12 November 2026). A `.tf` between `.subckt`
+and `.ends` is not the circuit's `.tf` when no X line uses that subcircuit: ngspice ignores it, and runs
+the `.tf v(out)` after `.ends` (0.5 and 500 Ω), which the words named "Transfer function v(a,gnd) / V1"
+until then, with an error that said ngspice makes a new node for a. With nothing else, nothing runs:
+the same for `.op`, `.dc`, `.tran`, `.ac` and `.noise` there. So the words, the checks and the overview leave
+such a line out, and Explain says that ngspice ignores it. When an X line uses the subcircuit, ngspice
+runs the line as if the main circuit had it, once for each such X line, with the main circuit's node
+names: `.tf v(out)` there is the main circuit's out, and `.tf v(a)` a new node a with nothing on it (0
+and 1 Ω, as tf-problems-1), not the subcircuit's a; so such a line is read and checked as one in the
+main circuit.
+
+```spice
+* a .tf inside a subcircuit, and one in the main circuit
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt s a b
+R9 a b 1k
+.tf v(a,gnd) V1
+.ends
+.tf v(out) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(out) = 5.000000e+02
+    v1#input_impedance = 2.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(out)) = 500
+  without the .tf v(out) line, and .op in its place: v(in) = 5, v(out) = 2.5, and no transfer function
+  with no other analysis line, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0): no rawfile; the same with .op, .dc V1 0 5 1, .tran 1m 5m,
+    .ac dec 1 1k 10k or .noise v(out) V1 dec 1 1k 10k (V1 in 0 AC 1 for the last two) in the
+    subcircuit instead of the .tf, where in the main circuit .noise gives its two plots
+  with X1 out 0 s (the subcircuit used), .tf v(out) V1 inside it and .op after .ends, ngspice -b (exit 0):
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out) = 3.333333e+02
+    v1#input_impedance = 1.500000e+03
+  the same with .tf v(a) V1 inside it: transfer_function = 0.000000e+00, output_impedance_at_v(a) = 1.000000e+00
+  the same as the first with X2 in 0 s too: two "Transfer function information" blocks, each 1/3 and 333.3 Ω
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47, except "Note: No ".plot",
+  ".print", or ".fourier" lines; no simulations run" in -b mode, and an exit code of 1 in -b mode for the
+  used subcircuit ("no data saved for D.C. Operating point analysis"), whose rawfile is the same
+our engine (wasm), as ngspice -b -r:
+  exit 0, vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(out)) = 500;
+  no results for the others with no analysis outside the subcircuit; with X1: 0.3333333333333333 and 333.3333333333333;
+  with v(a): 0 and 1; with X1 and X2: two Transfer Function plots
 ```
 
 ### A4. The .tf input can be a current source: the transfer function is then in V/A
@@ -3311,6 +3662,59 @@ our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
   diagnostics: singular-matrix (n3), gmin-stepping-failed, source-stepping-failed, transient-op-fallback
 ```
 
+### M2d. ngspice points at a node in its own spelling: ou___t for a name with a hidden character, __iki__ for ÇIKIŞ
+
+Added after the critic of the words re-check's fix (12 November 2026). As in M2, the node between the
+two capacitors has no DC path; here its name is written with a zero-width space, which ngspice keeps
+as underscores (W16, invisible-character-3), so it points at `ou___t`. With `ÇIKIŞ` in its place (and
+`GİRİŞ` for `in`) it points at `__iki__`, with `aµ` at `au`, and with an ordinary node named `ground` at
+`ground`. So the words map ngspice's name back to the node it spells, as the results' words do (W16),
+and name it as written: "Node out (written with a zero-width space in it) has no DC path to ground",
+"Node ÇIKIŞ has no DC path to ground", 'Node "ground" has no DC path to ground' (they said "No single
+answer at node ou___t" and "at node __iki__"); the drawing writes the note at that node; and the
+floating-dc check quotes the warning as ngspice prints it ('singular matrix: check node ou___t').
+
+```spice
+* t
+V1 in 0 5
+C1 in ou<ZWSP>t 1u
+C2 ou<ZWSP>t 0 1u
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ou___t                           2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -1.57030e-12
+    Warning: singular matrix:  check node ou___t
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node ou___t
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: singular matrix:  check node ou___t
+    Warning: singular matrix:  check node ou___t
+    Warning: singular matrix:  check node ou___t
+    Warning: singular matrix:  check node ou___t
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  rawfile from ngspice -b -r (exit 0): v(in) = 4.9999999999949996, v(ou___t) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12
+  the same with V1 GİRİŞ 0 5, C1 GİRİŞ ÇIKIŞ 1u, C2 ÇIKIŞ 0 1u: the same warnings with "check node __iki__";
+    rawfile v(g__r____) = 4.9999999999949996, v(__iki__) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12
+  with aµ for ou<ZWSP>t: "check node au", rawfile v(au) = 2.4999999999849893; with ground: "check node ground",
+    rawfile v(ground) = 2.4999999999849893 (an ordinary node, W13)
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable): the same messages ("check node ou___t";
+  "check node __iki__" for ÇIKIŞ)
+  vectors: v(in) = 4.9999999999949996, v(ou___t) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12; for ÇIKIŞ:
+    v(g__r____) = 4.9999999999949996, v(__iki__) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12
+  diagnostics: singular-matrix (ou___t; __iki__), gmin-stepping-failed, source-stepping-failed, transient-op-fallback
+```
+
 ### M3. Two voltage sources in parallel: singular matrix at a branch, and no results
 
 V1 and V2 both set n1, to different values: the current in V1 has no single answer. Here even the fallback fails, and there are no results.
@@ -4347,11 +4751,11 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 | Code | Claims |
 |---|---|
 | `explain.ts`: R, C, L lines (either way round, open/short in `.op` and `.dc`, 0 Ω, negative values, missing values) | P1, P2, P11–P15b, P24, A31 |
-| `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values) | P3, P4, P9, P16–P20b |
+| `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values, a source .dc sweeps) | P3, P3b, P4, P4b, P4c, P9, P16–P20b |
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
-| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`) | A1–A22b, A31, M10–M15b |
+| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`) | A1–A22b, A3f, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
-| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V | C1–C9g, A3–A6 |
+| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V | C1–C9g, A3–A6 (with A3b–A3f) |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
 Re-running the evidence: the netlists, the scripts that run them through native ngspice 47, 42 and

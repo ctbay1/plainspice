@@ -17,6 +17,7 @@ import {
   annotateLines as annotateLinesImpl,
   describeCircuit as describeCircuitImpl,
   describeResults as describeResultsImpl,
+  netlistNode,
   type CurrentWords,
   type LineAnnotation,
   type MessageWords,
@@ -27,7 +28,7 @@ import {
   type TransferFunctionWords,
 } from '../spice/describe.ts';
 import { explainLine as explainLineImpl, explainNetlist as explainNetlistImpl, readAnalysis } from '../spice/explain.ts';
-import { lowerAscii, parseNetlist } from '../spice/parse.ts';
+import { parseNetlist } from '../spice/parse.ts';
 import { netlistToRun as netlistToRunImpl, type NetlistToRun } from '../spice/run-netlist.ts';
 import { checkTraps as checkTrapsImpl } from '../spice/traps.ts';
 import type { LineExplanation, Netlist, Trap } from '../spice/types.ts';
@@ -71,7 +72,7 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   const fallback: ResultsDescription = {
     status: run.unreliable ? 'unreliable' : run.ok ? 'ok' : 'failed',
     ngspiceError: run.exitCode !== 0 || run.diagnostics.some((d) => d.severity === 'error'),
-    nodes: (results.op?.nodes ?? []).map((n) => ({ node: n.node, value: n.value, text: formatSI(n.value, 'V'), speech: speakSI(n.value, 'V') })),
+    nodes: (results.op?.nodes ?? []).map((n) => ({ node: n.node, name: n.node, value: n.value, text: formatSI(n.value, 'V'), speech: speakSI(n.value, 'V') })),
     currents: [],
     sweeps: [],
     warnings: [],
@@ -178,7 +179,7 @@ export async function solveText(text: string, runner: Runner, now: () => number 
   const record: RunRecord = { text, status, words, annotations, checks: traps, ms, netlist, run, results, added: toRun.added };
   const singular = status === 'ok' ? undefined : run.diagnostics.find((d) => d.code === 'singular-matrix' && d.subject);
   const title = words.warnings.find((m) => m.code === 'singular-matrix')?.title;
-  if (singular?.subject && title) record.noSingleAnswer = { at: lowerAscii(singular.subject), title };
+  if (singular?.subject && title) record.noSingleAnswer = { at: netlistNode(netlist, singular.subject), title };
   return record;
 }
 

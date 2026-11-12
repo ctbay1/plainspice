@@ -8,7 +8,8 @@
  * (src/spice/describe.ts, partSentenceFor: "R1: a 1 kΩ resistor between node in and node out."), so
  * the drawing makes no claim about SPICE the overview does not. A node's description only says what the drawing shows: which parts it connects.
  */
-import { describeCircuit, partSentenceFor } from '../spice/describe.ts';
+import { DESCRIBE_STRINGS, describeCircuit, partSentenceFor, sentenceNode } from '../spice/describe.ts';
+import { atSentenceStart } from '../spice/node-words.ts';
 import { lowerAscii } from '../spice/parse.ts';
 import { GROUND, labelNode } from './circuit.ts';
 import { DIRECTION_VECTORS, OPPOSITE, type Direction, type Point } from './geometry.ts';
@@ -19,8 +20,9 @@ export type NavItem = { kind: 'part'; key: string } | { kind: 'node'; name: stri
 /** Words for moving around the drawing, in one object so a Turkish UI can replace them later. */
 export const NAVIGATE_STRINGS = {
   ground: 'ground',
-  node: (name: string, parts: string): string => `Node ${name} connects ${parts}.`,
-  nodeAlone: (name: string): string => `Node ${name} connects no part in the drawing.`,
+  /** `node` as a sentence says it ("node n2", 'node "ground"', "node1": DESCRIBE_STRINGS.node), at the start of the sentence. */
+  node: (node: string, parts: string): string => `${atSentenceStart(node)} connects ${parts}.`,
+  nodeAlone: (node: string): string => `${atSentenceStart(node)} connects no part in the drawing.`,
   groundNode: (parts: string): string => `Ground (node 0) connects ${parts}.`,
   hidden: (list: string): string => `It also connects ${list}, which the drawing does not show.`,
   hiddenItem: (name: string, line: number): string => `${name} (line ${line})`,
@@ -122,7 +124,8 @@ export function describePart(s: Schematic, name: string): string {
 }
 
 /**
- * "Node n2 connects R1, R2 and I1." (ground: "Ground (node 0) connects ..."), and the parts on it
+ * "Node n2 connects R1, R2 and I1." (ground: "Ground (node 0) connects ..."; a node named like ground:
+ * 'Node "ground" connects ...'; a name that says node: "node1 connects ..."), and the parts on it
  * that the drawing does not show: "It also connects D1 (line 4), which the drawing does not show."
  */
 export function describeNode(s: Schematic, name: string): string {
@@ -131,8 +134,8 @@ export function describeNode(s: Schematic, name: string): string {
   const hidden = s.circuit.nodes.get(node)?.hidden ?? [];
   const also = hidden.length ? ` ${N.hidden(N.and(hidden.map((h) => N.hiddenItem(h.name, h.lineNumber))))}` : '';
   if (node === GROUND) return `${N.groundNode(N.and(parts))}${also}`;
-  const text = s.circuit.nodes.get(node)?.text ?? name;
-  return `${parts.length ? N.node(text, N.and(parts)) : N.nodeAlone(text)}${also}`;
+  const said = DESCRIBE_STRINGS.node(sentenceNode(s.circuit.nodes.get(node)?.text ?? name));
+  return `${parts.length ? N.node(said, N.and(parts)) : N.nodeAlone(said)}${also}`;
 }
 
 /** The description of whatever an item is. */

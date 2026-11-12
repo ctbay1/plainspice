@@ -3597,7 +3597,7 @@ PlainSpice's checks: `dangling-node`.
 
 ## floating-dc
 
-A group of nodes with no DC path to ground: what touches it are capacitors, the control nodes of E and G, MOSFET gates, or parts joining only the group's own nodes. Error. For capacitors and gates the fix adds a 1 GΩ resistor to ground. Not raised when every analysis is `.tran ... uic` and only capacitors reach the group (floating-dc-6).
+A group of nodes with no DC path to ground: what touches it are capacitors, the control nodes of E and G, MOSFET gates, or parts joining only the group's own nodes. Error. For capacitors and gates the fix adds a 1 GΩ resistor to ground. Not raised when every analysis is `.tran ... uic` and only capacitors reach the group (floating-dc-6). ngspice's warning names one node, which the check quotes only when it is the only node with no DC path: in a larger group, or beside another group, ngspice may name any of them (floating-dc-7, -8, -10). Control inputs alone stop ngspice (floating-dc-4); joined by a resistor, they get numbers that can't be trusted (floating-dc-9).
 
 What PlainSpice shows for floating-dc-1 (error, line 3):
 
@@ -3821,6 +3821,179 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: no trap.
+
+### floating-dc-7. In a group of two nodes ngspice may name either one: check node x, not node1
+
+node1 and x have no DC path: C1 and C2 are open at DC, and R1 joins only the two of them. ngspice's
+warning names x, the second of them in the netlist, so the check quotes a node only when it is the
+only node with no DC path (floating-dc-1, -4, -5, M2d); here it says ngspice names one of them
+(second critic of the words re-check's fix, 12 November 2026). In floating-dc-3 it names the first, n3.
+
+```spice
+* a floating group of two nodes: ngspice names x, not node1
+V1 in 0 5
+C1 in node1 1u
+R1 node1 x 1k
+C2 x 0 1u
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        x                                4.950332e-02
+        node1                            4.950497e+00
+        in                               5.000000e+00
+        v1#branch                        -4.90099e-03
+    Warning: singular matrix:  check node x
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 4.9999999999949996, v(node1) = 4.950496683061028, v(x) = 0.04950331688396305, i(v1) = -0.0049009933711090525
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
+    the same messages as ngspice 47
+    vectors: v(in) = 4.9999999999949996, v(node1) = 4.950496683061028, v(x) = 0.04950331688396305, i(v1) = -0.0049009933711090525
+```
+
+PlainSpice's checks: `floating-dc` (ngspice "names one of the nodes with no DC path", never "check node node1").
+
+### floating-dc-8. With two nodes that have no DC path, ngspice names only one of them: check node a
+
+a and b each sit between two capacitors, two separate groups. ngspice warns about a only; with the
+lines for b written first, it warns about b only (the same run otherwise). So each group's check
+says ngspice names one of the nodes with no DC path, never "check node b" for b's group.
+
+```spice
+* two capacitor-only nodes
+V1 in 0 6
+C1 in a 1u
+C2 a 0 1u
+C3 in b 1u
+C4 b 0 1u
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                3.000000e+00
+        a                                3.000000e+00
+        in                               6.000000e+00
+        v1#branch                        -4.88853e-12
+    Warning: singular matrix:  check node a
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5.9999999999939995, v(a) = 2.9999999999819513, v(b) = 2.9999999999819513, i(v1) = -4.888534022029489e-12
+  with C3 and C4 written before C1 and C2: Warning: singular matrix:  check node b, and the same values
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
+    the same messages as ngspice 47
+    vectors: v(in) = 5.9999999999939995, v(a) = 2.9999999999819513, v(b) = 2.9999999999819513, i(v1) = -4.888534022029489e-12
+```
+
+PlainSpice's checks: `floating-dc`, `floating-dc` (one for a, one for b).
+
+### floating-dc-9. Two control nodes joined by a resistor: singular matrix, but ngspice prints numbers
+
+E1's control input reads c and d, and R3 joins only the two of them, so nothing sets their voltage.
+Unlike a control node with nothing else on it (floating-dc-4), ngspice does not stop here: its
+'transient op' finishes and it prints numbers, which mean nothing for c and d. So the check says
+ngspice "either stops or prints numbers that can't be trusted" (second critic of the words re-check's
+fix, 12 November 2026; it said that ngspice stops).
+
+```spice
+* a control input on two nodes joined only by a resistor
+V1 a 0 6
+R1 a 0 2
+E1 out 0 c d 2
+R2 out 0 1
+R3 c d 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        d                                0.000000e+00
+        c                                0.000000e+00
+        out                              0.000000e+00
+        a                                6.000000e+00
+        v1#branch                        -3.00000e+00
+        e1#branch                        0.000000e+00
+    Warning: singular matrix:  check node c
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 5.9999999999939995, v(out) = 0, v(c) = 0, v(d) = 0, i(e1) = 0, i(v1) = -2.9999999999939995
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
+    the same messages as ngspice 47
+    vectors: v(a) = 5.9999999999939995, v(out) = 0, v(c) = 0, v(d) = 0, i(e1) = 0, i(v1) = -2.9999999999939995
+```
+
+PlainSpice's checks: `floating-dc`.
+
+### floating-dc-10. Two control nodes with nothing else on them: ngspice names d only, then stops
+
+c and d are each a group of their own, as in floating-dc-4. ngspice warns about d only, not c, and
+stops as it does there.
+
+```spice
+* a control input on two nodes with nothing else on them
+V1 a 0 6
+R1 a 0 2
+E1 out 0 c d 2
+R2 out 0 1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    [ngspice lists the last node voltages here]
+    Warning: singular matrix:  check node d
+    Note: Starting dynamic gmin stepping
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: an Operating Point plot with 0 points (no results)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `floating-dc`, `floating-dc` (one for c, one for d).
 
 ## current-source-no-path
 
@@ -7041,7 +7214,7 @@ PlainSpice's checks: `tran-problems`.
 
 ## tf-problems
 
-The output and the input of a `.tf` line. A missing output node and `i( )` of anything but a voltage source give wrong numbers silently; a missing input or one that is not V or I stops ngspice. Error. Fixes: a node whose name looks like a typo of the one written; the circuit's only source as the input.
+The output and the input of a `.tf` line. A missing output node and `i( )` of anything but a voltage source give wrong numbers silently; a missing input or one that is not V or I stops ngspice. Error. Fixes: a node whose name looks like a typo of the one written; the circuit's only source as the input. An output written with an invisible character, one that looks like a space or a look-alike letter is another node with nothing on it (tf-problems-8): the error names the character, and its fix writes the name as the other lines do; the other way round, with the character in the parts' node, it says so and leaves the fix to the character's own warning (tf-problems-9); a part's name in `.tf` written so is named the same way (tf-problems-10). A `.tf` after `.end`, which ngspice runs, is checked too (tf-problems-11), and one in a subcircuit no X line uses, which ngspice ignores, is not (A3f in explanations.md).
 
 What PlainSpice shows for tf-problems-1 (error, line 5):
 
@@ -7232,6 +7405,224 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `tf-problems`.
+
+### tf-problems-8. An output node written with a character that is not what it looks like is another node: transfer function 0, output impedance 1 Ω, silently
+
+Added after the critic of the words re-check's fix (12 November 2026, S11). `ou<ZWSP>t` looks like out,
+the node R1 and R2 are on, but ngspice keeps the zero-width space in the name (as `ou___t`, as in
+invisible-character-3), so the .tf asks about a node with nothing connected: the numbers are those of
+tf-problems-1, not out's 2/3 and 666.7 Ω. A Cyrillic о (`__ut`, as in look-alike-letter-5) and a thin
+space (`o___ut`, as in space-character-10) do the same. So the check keeps an error here, as for any
+node no part connects to, in words that name the character; it never says "There is no node called
+out" or offers "Use out": its fix writes the name as the other lines do.
+
+```spice
+* .tf on a node written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+R2 out 0 2k
+.tf v(ou<ZWSP>t) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(ou___t) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1
+  the same with .tf v(оut) V1 (a Cyrillic о), ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(__ut) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  the same with .tf v(o<THIN>ut) V1, ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(o___ut) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  the same with .tf v(out) V1, ngspice -b (exit 0):
+    transfer_function = 6.666667e-01
+    output_impedance_at_v(out) = 6.666667e+02
+    v1#input_impedance = 3.000000e+03
+  the same with .tf v(о<ZWSP>ut) V1 (a Cyrillic о and a zero-width space), ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(_____ut) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  the same with .tf v(<ZWSP>0) V1, ground written with a zero-width space, ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(___0) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1;
+    with v(оut): v(output_impedance_at_V(__ut)) = 1; with v(o<THIN>ut): v(output_impedance_at_V(o___ut)) = 1; with
+    v(о<ZWSP>ut): v(output_impedance_at_V(_____ut)) = 1; with v(<ZWSP>0): v(output_impedance_at_V(___0)) = 1,
+    each with a transfer function of 0; with v(out):
+    v(Transfer_function) = 0.6666666666666666, v(output_impedance_at_V(out)) = 666.6666666666666
+```
+
+As a second output the character adds 1 Ω, as tf-problems-2 says: v(out,mi<ZWSP>d) is v(out) less a node
+with nothing on it, so the transfer function is out's 0.75 and the output impedance 750 + 1 = 751 Ω, where
+v(out,mid) gives 0.5 and 1 kΩ. So that error quotes tf-problems-2's words, never "comes out 0" (critic of
+the S11 fix, round 2). Ground written so is another node too: v(<ZWSP>0) above gives 0 and 1 Ω, and
+v(out,gn<ZWSP>d), where gnd is ground, gives out's 2/3 and 666.7 + 1 Ω; the error says "not ground (node 0)".
+
+```spice
+* .tf with a second output node written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+R2 out mid 2k
+R3 mid 0 1k
+.tf v(out,mi<ZWSP>d) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 7.500000e-01
+    output_impedance_at_v(out,mi___d) = 7.510000e+02
+    v1#input_impedance = 4.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0.75, v(v1#Input_impedance) = 4000, v(output_impedance_at_V(out,mi___d)) = 751
+  the same with .tf v(out,mid) V1, ngspice -b (exit 0):
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(out,mid) = 1.000000e+03
+    v1#input_impedance = 4.000000e+03
+  V1 in gnd 6, R1 in out 1k, R2 out gnd 2k and .tf v(out,gn<ZWSP>d) V1, ngspice -b (exit 0):
+    transfer_function = 6.666667e-01
+    output_impedance_at_v(out,gn___d) = 6.676667e+02
+    v1#input_impedance = 3.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0.75, v(v1#Input_impedance) = 4000, v(output_impedance_at_V(out,mi___d)) = 751;
+    with v(out,gn<ZWSP>d): v(Transfer_function) = 0.6666666666666666, v(output_impedance_at_V(out,gn___d)) = 667.6666666666666
+```
+
+PlainSpice's checks: `invisible-character`, `tf-problems` (with v(оut): `look-alike-letter`, `tf-problems`; with
+v(o<THIN>ut): `space-character`, `tf-problems`; with v(о<ZWSP>ut): `invisible-character`, `tf-problems`, whose
+words name both characters; with v(out,mi<ZWSP>d), v(<ZWSP>0) and v(out,gn<ZWSP>d): `invisible-character`,
+`tf-problems`).
+
+### tf-problems-9. The other way round: the parts' node has the character, and .tf writes the name plainly
+
+Added after the second critic of the S11 fix (12 November 2026). R1 and R2 are on `ou<ZWSP>t` (`ou___t`
+for ngspice), and `.tf v(out)` asks about out, a node no part connects to: 0 and 1 Ω, as in
+tf-problems-1. The check says so, ".tf asks about node out, but the parts are on another node: out
+(written with a zero-width space in it)", and offers no button: one writing the parts' name into the
+.tf would put a third hidden character in the netlist (the critic's case); the character's own warning
+on the part lines takes it out, and then the .tf asks about their node. A Cyrillic о on the part
+lines does the same.
+
+```spice
+* .tf v(out) with the parts on a node written with a zero-width space
+V1 in 0 6
+R1 in ou<ZWSP>t 1k
+R2 ou<ZWSP>t 0 2k
+.tf v(out) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(out) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out)) = 1
+  the same with R1 in оut 1k and R2 оut 0 2k (a Cyrillic о), ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(out) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out)) = 1,
+    the same with the Cyrillic о
+```
+
+PlainSpice's checks: `invisible-character`, `tf-problems` (with the Cyrillic о: `look-alike-letter`, `tf-problems`).
+
+### tf-problems-10. A part's name in .tf written with such a character is another name: i( ) reads nothing, and an input stops ngspice
+
+Added after the second critic of the S11 fix (12 November 2026). `i(V<ZWSP>m)` names no part (ngspice
+spells it `v___m`), so ngspice gives tf-problems-7's numbers, a transfer function of 0 and an output
+impedance of 1e20 Ω, without a message; `V<ZWSP>1` as the input stops ngspice, which quotes it in its
+own spelling, `v___1`. The check names the character, never shows it, quotes ngspice's message as it
+prints it, and its fix writes the name as the other lines do ("Take it out: use Vm").
+
+```spice
+* .tf i( ) of a source written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+Vm out mid 0
+R2 mid 0 2k
+.tf i(V<ZWSP>m) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    v1#input_impedance = 3.000000e+03
+    v___m#output_impedance = 1.000000e+20
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 3000.0000000000005, v(v___m#Output_impedance) = 1e+20
+  the same netlist with .tf i(Vm) V<ZWSP>1, ngspice -b (exit 1):
+    Warning: Transfer function source v___1 not in circuit
+  ngspice -b -r out.raw (exit 1): no rawfile
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r:
+    exit 0, vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 3000.0000000000005, v(v___m#Output_impedance) = 1e+20;
+    with V<ZWSP>1 as the input: exit 1, "Warning: Transfer function source v___1 not in circuit", no results
+```
+
+PlainSpice's checks: `tf-problems` (each).
+
+### tf-problems-11. A .tf written after .end is checked too: ngspice runs it, a typo or a hidden character there included
+
+Added after the second critic of the S11 fix (12 November 2026). ngspice reads the lines after a plain
+`.end` (after-end-1) and runs a `.tf` there (A3c in explanations.md), so a `.tf v(ou<ZWSP>t)` or
+`.tf v(outt)` after `.end` gives a transfer function of 0 and an output impedance of 1 Ω, as above
+`.end` (tf-problems-1, -8). The check reads such a line as one above `.end` (the run is "Not reliable",
+and its fix writes the name as the other lines do); a node that a part written after `.end` makes is a
+node of the circuit, as for ngspice.
+
+```spice
+* .tf after .end on a node written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+R2 out 0 2k
+.end
+.tf v(ou<ZWSP>t) V1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(ou___t) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1
+  the same with .tf v(outt) V1 after .end, ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(outt) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  the same with R3 out x 1k and .tf v(x) V1 after .end, ngspice -b (exit 0):
+    transfer_function = 6.666667e-01
+    output_impedance_at_v(x) = 1.666667e+03
+    v1#input_impedance = 3.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1;
+    with v(outt): v(output_impedance_at_V(outt)) = 1; with v(x): v(Transfer_function) = 0.6666666666666666,
+    v(output_impedance_at_V(x)) = 1666.6666666666665
+```
+
+PlainSpice's checks: `after-end`, `tf-problems` (with v(x): `after-end` only).
 
 ## no-analysis
 

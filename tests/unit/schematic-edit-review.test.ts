@@ -89,7 +89,8 @@ describe('a node called gnd that is not ground (gnd as the last word of a line, 
   it('is its own node to the drawing: its name reads back as its own, renames, moves, and is described as itself', () => {
     const s = buildSchematic(AMMETER, NOTEBOOK_OPTIONS);
     expect(s.circuit.nodes.has('gnd')).toBe(true);
-    expect(describeNode(s, 'gnd')).toMatch(/^Node gnd connects Vx/);
+    // Quoted, as every sentence says a name like ground that is not ground (words re-check 2).
+    expect(describeNode(s, 'gnd')).toMatch(/^Node "gnd" connects Vx/);
     const label = s.drawing.labels.find((l) => l.node === 'gnd')!;
     const moved = done(s, { kind: 'move-label', node: 'gnd', to: label.at, side: 'right' });
     // Its own *@ label line reads back as gnd's, not as ground's (no "label 0 ... dropped").

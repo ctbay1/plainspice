@@ -31,8 +31,9 @@
  */
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react';
 import { describeItem, neighbour, readingOrder, unionBoxes, GROUND, type Box, type NavItem, type PartLetter, type Point, type Scene, type Schematic } from '../schematic/index.ts';
-import { DESCRIBE_STRINGS } from '../spice/describe.ts';
+import { DESCRIBE_STRINGS, sentenceNode } from '../spice/describe.ts';
 import { elementInfo } from '../spice/elements.ts';
+import { atSentenceStart } from '../spice/node-words.ts';
 import { assignNodeColours } from '../theme/nodes.ts';
 import { Drawing, UNIT_PX, itemKey, type PenMarks } from './Drawing.tsx';
 import { EditLayer, type EditMarks } from './EditLayer.tsx';
@@ -833,8 +834,9 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
     }
     const n = results.nodes.find((x) => x.node === item.name);
     if (!n) return '';
-    const name = s.circuit.nodes.get(item.name)?.text ?? item.name;
-    return `${before}${DESCRIBE_STRINGS.valueIsSpeech(name, n.words.speech)}.`;
+    // "Node in is 6 volts.": a name may be an ordinary word, and one like ground is quoted (words re-check 2).
+    const said = DESCRIBE_STRINGS.valueIsSpeech(DESCRIBE_STRINGS.node(sentenceNode(s.circuit.nodes.get(item.name)?.text ?? item.name)), n.words.speech);
+    return `${before}${before ? said : atSentenceStart(said)}.`;
   };
   const penOf = (item: NavItem): string => {
     const words = props.penWords?.get(itemKey(item));

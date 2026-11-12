@@ -82,11 +82,13 @@ export const en = {
   hintInviteDesk: 'Click {name} and type a new value: the numbers move as you type · Ctrl+K for every command',
   hintSelected: '{name} selected · Enter opens its card · T turns it · Shift+arrow keys move it · Delete deletes it · Esc lets go',
   hintSelectedPhone: '{name} selected · tap it again to change it · hold it, then drag, to move it',
-  hintNodeSelected: 'Node {name} selected · Enter opens its card, to rename it · Shift+arrow keys move its name · Esc lets go',
-  hintNodeSelectedPhone: 'Node {name} selected · tap it again to rename it',
+  /** {node} as a sentence starts with it: "Node out", 'Node "ground"', "node1" (never "Node node1"). */
+  hintNodeSelected: '{node} selected · Enter opens its card, to rename it · Shift+arrow keys move its name · Esc lets go',
+  hintNodeSelectedPhone: '{node} selected · tap it again to rename it',
   hintGroundSelected: 'Ground selected · Enter opens its card · Shift+arrow keys move the symbol · Delete deletes the symbol · Esc lets go',
   hintWireSelected: 'A piece of the wire of {node} selected · Delete deletes it · Esc lets go',
-  hintNodeCard: 'Type a new name for node {name}, then Enter (or Rename) · Esc closes the card',
+  /** {node} as a sentence says it: "node out", 'node "ground"', "node1" (nodeInSentence in src/app/words.ts). */
+  hintNodeCard: 'Type a new name for {node}, then Enter (or Rename) · Esc closes the card',
   hintGroundCard: 'Ground keeps its name · Move or Delete the ground symbol on the card · Esc closes the card',
   hintWireSelectedPhone: 'A piece of the wire of {node} selected · tap “{button}” to delete it',
   hintTyping: '{hint}: ngspice runs again as you type · Enter or Esc closes the card (then T turns it)',
@@ -247,7 +249,8 @@ export const en = {
   newCircuit: 'Start a new circuit on a blank page',
   newCircuitDone: 'A blank page: choose a part to start a new circuit.',
   turnBack: 'Back to Select: the drawing is turned to fit the screen again.',
-  labelName: 'the name of node {node}',
+  /** {node} as a sentence says it (nodeSaid): "the name of node out", "the name of node1". */
+  labelName: 'the name of {node}',
   wireStartHere: 'A wire starts on a pin, on a wire or at a node’s name.',
   wireOnNode: 'With the Wire tool, Enter on a node starts a wire there, and Enter on another node ends it.',
   groundByKeys: 'Without a pointer, a part goes on ground from its card: Connections, then Connect to, then ground (node 0).',
@@ -267,12 +270,20 @@ export const en = {
   squaresDown_one: '{count} square down',
   squaresDown_other: '{count} squares down',
   turnOnlyParts: 'Only a part turns, mirrors or reverses (and a ground symbol turns while it is in hand): a placed ground symbol, a node’s name and a piece of wire stay as they are.',
-  /** As deleteWhileMoving: where the part can't go (a half turn), Esc puts it back, as noHalfTurn says. */
+  /** As deleteWhileMoving: Shift+R on a part being moved where it can go. */
   reverseWhileMoving: 'Put {name} down first (Esc puts it back), then Reverse swaps its two ends in the netlist.',
+  /**
+   * Shift+R on a part being moved where it can't go (the move's preview is refused: a half turn where it
+   * stands, as noHalfTurn says, or a place taken): it can only go back first, so the sentence never asks
+   * to put it down there (words re-check 11).
+   */
+  reverseWhileRefused: '{name} can’t go here: Esc puts it back, then Reverse swaps its two ends in the netlist.',
   /** T and M on a part being moved: the next sentence (moveSayHere, moveSayNot) says whether it can land there. */
   turnedMoving: '{name} turned.',
   mirroredMoving: '{name} mirrored.',
   deleteWhileMoving: 'Put {name} down first (Esc puts it back), then Delete deletes it.',
+  /** Delete on a part being moved where it can't go, as reverseWhileRefused. */
+  deleteWhileRefused: '{name} can’t go here: Esc puts it back, then Delete deletes it.',
   putBack: '{name} put back.',
   toolInHand: '{part} in hand. {hint}',
   /** T, M and Shift+R on the part in hand (it is drawn turned; said too). */
@@ -329,15 +340,18 @@ export const en = {
   and: 'and',
   nodeCardKind: 'Node',
   nodeCardName: 'Name',
-  nodeCardNameOf: 'Name of node {name}',
+  /** {node} as a sentence says it: "node out", 'node "ground"', "node1" (nodeInSentence). */
+  nodeCardNameOf: 'Name of {node}',
   nodeCardRename: 'Rename',
-  nodeCardRenameHint: 'Letters, digits and _. A name another node already has makes the two one node.',
+  /** The letters a to z, as the non-ascii-node check and the refusal (EDIT_STRINGS.badName) say: ç, ı and ş are letters too (words re-check 9). */
+  nodeCardRenameHint: 'Letters a to z (or A to Z), digits and _. A name another node already has makes the two one node.',
   nodeCardVoltage: 'Voltage',
   nodeCardNoVoltage: 'No voltage yet: ngspice runs the circuit in a moment.',
   nodeCardMoveName: 'Move its name',
   nodeCardMoveGround: 'Move the ground symbol',
   nodeCardDeleteGround: 'Delete the ground symbol',
-  nodeCardClose: 'Close the card of {name}',
+  /** {node} as a sentence says it ("node out"), or ground's name. */
+  nodeCardClose: 'Close the card of {node}',
   formTitle: 'Add a part',
   formIntro: 'A part goes between two nodes, as its line in the netlist names them. PlainSpice writes the line and draws the part where it fits.',
   formKind: 'Part',
@@ -435,8 +449,9 @@ export const en = {
   paletteConnections: 'Connect or disconnect {name}',
   paletteDeleteWire: 'Delete the selected piece of wire',
   paletteDeleteGround: 'Delete the ground symbol',
-  paletteRename: 'Rename node {name}',
-  paletteMoveName: 'Move the name of node {name}',
+  /** {node} as a sentence says it (nodeSaid): "Rename node out", "Rename node1". */
+  paletteRename: 'Rename {node}',
+  paletteMoveName: 'Move the name of {node}',
   paletteGroupSettings: 'Settings and help',
   paletteGroupExamples: 'Examples',
   paletteRun: 'Run ngspice now',
@@ -692,6 +707,11 @@ export const en = {
   ratioAA: 'amps per amp',
   ratioAV: 'amps per volt',
   ratioVA: 'volts per amp',
+  // A ratio of 1 or −1 takes the singular, as speakSI says "1 volt" (critic of the words re-check's fix, round 2).
+  ratioVVOne: 'volt per volt',
+  ratioAAOne: 'amp per amp',
+  ratioAVOne: 'amp per volt',
+  ratioVAOne: 'volt per amp',
   minusWord: 'minus',
   messagesHeading: 'What happened, in plain words',
   sweepsNote: 'This run has sweep results: see the Plot panel.',

@@ -1,0 +1,342 @@
+// @vitest-environment jsdom
+/**
+ * The words re-check of the merged fixes of milestone 2's final reviews (12 November 2026, decisions
+ * 0016 and 0017), in the whole app (as tests/unit/app-smoke.test.tsx renders it: the real editor,
+ * model, drawing and ngspice):
+ *
+ * - words re-check 2: a node's own sentences say "node in" (a name may be an ordinary word) and quote
+ *   an ordinary node named like ground, as the sentences next to them do: its description on the
+ *   drawing ("Node in connects V1 and R1. Node in is 6 volts."), its card ("node in is 6 volts") and
+ *   the card's close button; ground (node 0) stays "ground".
+ * - S7 and words re-check 8: the Numbers panel names a node outside ASCII as first written (GİRİŞ, aµ),
+ *   never half lower-cased, and keeps ngspice's own spelling in its ngspice column.
+ * - words re-check 11: Shift+R and Delete on a part being moved follow the move's preview: where it
+ *   can't go they never ask to put it down there.
+ */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import createNgspice from '../../engine/dist/ngspice.mjs';
+import { App } from '../../src/app/App.tsx';
+import { NumbersPanel, tfRows } from '../../src/app/components/NumbersPanel.tsx';
+import type { Engine } from '../../src/app/engine.ts';
+import { START_HERE_ID } from '../../src/app/examples.ts';
+import { solveText } from '../../src/app/model.ts';
+import type { StartupDecision } from '../../src/app/startup.ts';
+import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
+import { t } from '../../src/i18n/index.ts';
+import { INVISIBLE } from '../../src/spice/characters.ts';
+
+const root = resolve(import.meta.dirname, '../..');
+const START = readFileSync(resolve(root, 'examples/start-here.cir'), 'utf8');
+
+let ngspice: Promise<NgspiceEngine>;
+
+beforeAll(() => {
+  // As in app-smoke.test.tsx: jsdom has no layout, so CodeMirror and the drawing get these.
+  const empty = (): DOMRectList => Object.assign([], { item: () => null }) as unknown as DOMRectList;
+  const rect = (): DOMRect => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, toJSON: () => ({}) }) as DOMRect;
+  if (!Range.prototype.getClientRects) Range.prototype.getClientRects = empty;
+  if (!Range.prototype.getBoundingClientRect) Range.prototype.getBoundingClientRect = rect;
+  globalThis.ResizeObserver ??= class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1000 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 600 });
+  ngspice = WebAssembly.compile(readFileSync(resolve(root, 'engine/dist/ngspice.wasm'))).then((m) =>
+    NgspiceEngine.create(createNgspice as unknown as NgspiceFactory, m),
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  history.replaceState(null, '', '/');
+});
+
+function realEngine(): Engine {
+  return {
+    warmUp: async () => {
+      await ngspice;
+      return 1;
+    },
+    run: async (netlist) => (await ngspice).run(netlist),
+    cancel: () => undefined,
+  };
+}
+
+const firstVisit = (): StartupDecision => ({ source: 'example', netlist: START, exampleId: START_HERE_ID });
+const saved = (netlist: string): StartupDecision => ({ source: 'saved', netlist });
+const statusLine = (): string => document.querySelector('.status')?.textContent ?? '';
+const polite = (): string => screen.getByTestId('live-polite').textContent ?? '';
+/** The words a screen reader reads after an item's name on the drawing (its results). */
+const describedBy = (el: HTMLElement): string => document.getElementById(el.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+/** The words a screen reader hears for a node card's voltage. */
+const voltageSaid = (card: HTMLElement): string => card.querySelector('.node-card__voltage .visually-hidden')?.textContent ?? '';
+
+async function solved(): Promise<void> {
+  await waitFor(() => expect(statusLine()).toMatch(/Finished in \d+ ms/), { timeout: 15000 });
+}
+
+describe('words re-check 2: a node\'s own sentences say "node in"', () => {
+  it('on Start here: its description on the drawing, its card and the card\'s close button', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const node = screen.getByRole('button', { name: 'Node in' });
+    await waitFor(() => expect(describedBy(node)).toBe('Node in connects V1 and R1. Node in is 6 volts.'));
+    expect(describedBy(screen.getByRole('button', { name: 'Node out' }))).toBe('Node out connects R1 and R2. Node out is 4 volts.');
+    fireEvent.click(node);
+    const card = screen.getByRole('dialog', { name: /^Node in/ });
+    expect(voltageSaid(card)).toBe('node in is 6 volts');
+    expect(within(card).getByRole('button', { name: 'Close the card of node in' })).toBeTruthy();
+    expect(within(card).getByRole('textbox', { name: 'Name of node in' })).toBeTruthy();
+    // Ground (node 0) is ground: "ground is 0 volts", and its card is ground's.
+    fireEvent.click(screen.getByRole('button', { name: 'Ground, node 0' }));
+    const ground = screen.getByRole('dialog', { name: /^Ground/ });
+    expect(voltageSaid(ground)).toBe('ground is 0 volts');
+    expect(within(ground).getByRole('button', { name: 'Close the card of Ground (node 0)' })).toBeTruthy();
+  }, 30000);
+
+  it('an ordinary node named ground: node "ground" is 4 volts, beside ground (node 0), which is 0 volts', async () => {
+    // Native ngspice 47 and 42: ground = 4 V, an ordinary node (W13).
+    const NAMED = '* a node named ground\nV1 in 0 6\nR1 in ground 1k\nR2 ground 0 2k\n.op\n.end\n';
+    render(<App startup={saved(NAMED)} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run/ }));
+    await solved();
+    await waitFor(() => expect(polite()).toContain('node "ground" is 4 volts'));
+    const node = screen.getByRole('button', { name: 'Node ground' });
+    expect(describedBy(node)).toBe('Node "ground" connects R1 and R2. Node "ground" is 4 volts.');
+    act(() => node.focus());
+    fireEvent.click(node);
+    const card = screen.getByRole('dialog', { name: /^Node ground/ });
+    expect(voltageSaid(card)).toBe('node "ground" is 4 volts');
+    expect(within(card).getByRole('button', { name: 'Close the card of node "ground"' })).toBeTruthy();
+  }, 30000);
+
+  it('a node named node1: "node1 is 6 volts", never "node node1" or "Node1"', async () => {
+    const NODE1 = '* nodes named node1 and node2\nV1 node1 0 6\nR1 node1 node2 1k\nR2 node2 0 2k\n.op\n.end\n';
+    render(<App startup={saved(NODE1)} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run/ }));
+    await solved();
+    const node = screen.getByRole('button', { name: 'Node node1' });
+    await waitFor(() => expect(describedBy(node)).toBe('node1 connects V1 and R1. node1 is 6 volts.'));
+    fireEvent.click(node);
+    const card = screen.getByRole('dialog', { name: /^Node node1/ });
+    expect(voltageSaid(card)).toBe('node1 is 6 volts');
+    expect(within(card).getByRole('button', { name: 'Close the card of node1' })).toBeTruthy();
+    // Ctrl+K names it so too: "Rename node1", never "Rename node node1" (critic of the fix).
+    fireEvent.click(within(card).getByRole('button', { name: 'Close the card of node1' }));
+    act(() => screen.getByRole('button', { name: 'Node node1' }).focus());
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    const palette = screen.getByRole('dialog', { name: 'Commands' });
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'rename' } });
+    const labels = within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent);
+    expect(labels).toContain('Rename node1');
+    expect(labels.filter((l) => /node node/i.test(l ?? ''))).toEqual([]);
+  }, 30000);
+});
+
+/** A cell as seen: its code, or the number shown (not the words read out), or its text; no-break spaces as spaces. */
+const seen = (c: Element): string => (c.querySelector('code') ?? c.querySelector('span[aria-hidden="true"]:not(:empty)') ?? c).textContent!.replace(/\u00a0/g, ' ').trim();
+
+/** The Numbers panel's rows of the table whose caption matches, each row's cells as seen. */
+async function panelRows(text: string, caption: RegExp): Promise<string[][]> {
+  const result = await solveText(text, await ngspice);
+  render(
+    <NumbersPanel
+      outcome={{ kind: 'done', text, result }}
+      text={text}
+      running={false}
+      paused={false}
+      colours={new Map()}
+      plotAvailable={false}
+      onGoToLine={() => {}}
+      onShowChecks={() => {}}
+      onShowPlot={() => {}}
+    />,
+  );
+  const table = screen.getAllByRole('table').find((t) => caption.test(t.querySelector('caption')?.textContent ?? ''))!;
+  return within(table)
+    .getAllByRole('row')
+    .slice(1)
+    .map((r) => [...r.querySelectorAll('th, td')].map(seen));
+}
+
+describe('S7: the Numbers panel names a node outside ASCII as first written', () => {
+  it('GİRİŞ and ÇIKIŞ in the node and current tables, g__r____ and __iki__ in ngspice\'s column', async () => {
+    // Native ngspice 47 and 42: v(g__r____) = 12, v(__iki__) = 8 (W16).
+    const CAPS = '* Turkish capitals\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\n.op\n.end\n';
+    expect((await panelRows(CAPS, /node/i)).map((r) => [r[0], r[2]])).toEqual([
+      ['GİRİŞ', 'v(g__r____) = 1.200000e+01'],
+      ['ÇIKIŞ', 'v(__iki__) = 8.000000e+00'],
+    ]);
+    cleanup();
+    expect((await panelRows(CAPS, /current/i)).map((r) => [r[0], r[2]])).toEqual([
+      ['V1', 'from ground to GİRİŞ'],
+      ['R1', 'from GİRİŞ to ÇIKIŞ'],
+      ['R2', 'from ÇIKIŞ to ground'],
+    ]);
+  }, 30000);
+
+  it('aµ as written, au in ngspice\'s column (W16: ngspice reads µ as u)', async () => {
+    expect((await panelRows('* micro\nV1 aµ 0 5\nR1 aµ 0 1k\n.op\n.end\n', /node/i)).map((r) => [r[0], r[2]])).toEqual([['aµ', 'v(au) = 5.000000e+00']]);
+  }, 30000);
+
+  it('the current table names them so when the results hold no node voltage (a .save of a current only: critic of the fix)', async () => {
+    const SAVED = '* Turkish capitals, a current saved\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\n.save i(v1)\n.op\n.end\n';
+    expect((await panelRows(SAVED, /current/i)).map((r) => [r[0], r[2]])).toEqual([
+      ['V1', 'from ground to GİRİŞ'],
+      ['R1', 'from GİRİŞ to ÇIKIŞ'],
+      ['R2', 'from ÇIKIŞ to ground'],
+    ]);
+    expect(screen.queryAllByRole('table').some((t) => /node/i.test(t.querySelector('caption')?.textContent ?? ''))).toBe(false);
+  }, 30000);
+
+  it('the no-single-answer note goes to the node ngspice spells __iki__, and names it ÇIKIŞ (M2d)', async () => {
+    const record = await solveText('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', await ngspice);
+    expect(record.noSingleAnswer).toEqual({ at: 'ÇikiŞ', title: 'Node ÇIKIŞ has no DC path to ground' });
+  }, 30000);
+});
+
+describe('S11, critic of its fix: a .tf on a node written with a hidden or look-alike character gives no answers', () => {
+  const tone = (): string | null => document.querySelector('.status')?.getAttribute('data-tone') ?? null;
+  // Native ngspice 47 and 42 (tf-problems-8): v(ou<ZWSP>t) and v(оut) are nodes with nothing on them,
+  // so ngspice gives a transfer function of 0 and an output impedance of 1 Ω; v(out) gives 2/3.
+  const ZW = '* zw tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(ou​t) V1\n.end\n';
+  const CY = '* cy tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(оut) V1\n.end\n';
+
+  it.each([
+    ['a zero-width space', ZW],
+    ['a Cyrillic о', CY],
+  ])('%s: "Not reliable", and no "What .tf found" box on the paper', async (_, text) => {
+    render(<App startup={saved(text)} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run/ }));
+    await waitFor(() => expect(statusLine()).toMatch(/^Not reliable/), { timeout: 15000 });
+    expect(tone()).toBe('bad');
+    expect(statusLine()).toContain('A check found an error: .tf asks about a node with');
+    await waitFor(() => expect(polite()).toContain('a check found an error'), { timeout: 5000 });
+    expect(polite()).not.toContain('volts per volt');
+    expect(screen.queryByRole('heading', { name: t('resultsCardTf') })).toBeNull();
+  }, 30000);
+
+  it('the node itself: "Finished", and the box says what .tf found', async () => {
+    render(<App startup={saved(ZW.replace('ou​t', 'out'))} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run/ }));
+    await solved();
+    expect(tone()).toBe('ok');
+    expect(await screen.findByRole('heading', { name: t('resultsCardTf') })).toBeTruthy();
+  }, 30000);
+});
+
+describe('S11, critic of its fix: the .tf box and the Numbers panel\'s .tf table write the formula without a hidden character', () => {
+  // Native ngspice 47 and 42 run both (a .tf after .end too, A3c) on the node ou___t: a transfer function of
+  // 0 and 2 kΩ above (R2 alone is on it), 2/3 and 666.7 Ω after .end (the divider's middle).
+  it.each([
+    ['above .end', '* zw both\nV1 in 0 6\nR1 in out 1k\nR2 ou\u200bt 0 2k\n.tf v(ou\u200bt) V1\n.end\n'],
+    ['after .end', '* zw after end\nV1 in 0 6\nR1 in ou\u200bt 1k\nR2 ou\u200bt 0 2k\n.end\n.tf v(ou\u200bt) V1\n'],
+  ])('%s: "Transfer function v(out) / V1", the character named in the words beside it', async (_, text) => {
+    const rows = tfRows((await solveText(text, await ngspice)).words.tf!);
+    expect(rows[0]!.label).toBe('Transfer function v(out) / V1');
+    expect(rows.map((r) => r.label).filter((l) => INVISIBLE.test(l))).toEqual([]);
+    expect(rows.map((r) => r.label)).toContain('Output resistance at node out (written with a zero-width space in it)');
+  }, 30000);
+});
+
+describe('words re-check 11: Shift+R and Delete on a part being moved say what can be done where it is', () => {
+  const part = (name: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^${name}, `) });
+  /** R1 picked up with its card's Move, as the e2e tests do (the keys then go to R1 on the drawing). */
+  async function pickUp(): Promise<void> {
+    fireEvent.click(part('R1'));
+    fireEvent.click(await screen.findByRole('button', { name: t('editMoveLabel', { name: 'R1' }) }));
+    await waitFor(() => expect(polite()).toContain('R1 picked up'));
+  }
+  const key = (k: string, shift = false): void => {
+    fireEvent.keyDown(part('R1'), { key: k, shiftKey: shift });
+  };
+
+  it('a half turn where it stands is refused: "R1 can’t go here: Esc puts it back, then …", for Shift+R and for Delete', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await pickUp();
+    key('t');
+    key('t');
+    await waitFor(() => expect(polite()).toContain('R1, back where it was: not here.'));
+    key('R', true);
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Reverse swaps its two ends in the netlist.'));
+    expect(polite()).not.toContain('Put R1 down first');
+    key('Delete');
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Delete deletes it.'));
+    // As the sentence says: Esc puts it back, and then Reverse swaps its ends.
+    key('Escape');
+    await waitFor(() => expect(polite()).toContain('R1 put back.'));
+    key('R', true);
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 out in 1k'));
+  }, 30000);
+
+  it('keys pressed back to back, before the move is drawn again, get the sentence of where it is now (critic of the fix)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await pickUp();
+    // Two half turns, then Shift+R and Delete at once: the preview drawn is still of the first turn.
+    key('t');
+    key('t');
+    key('R', true);
+    key('Delete');
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Reverse swaps its two ends in the netlist.'));
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Delete deletes it.'));
+    expect(polite()).not.toContain('Put R1 down first');
+  }, 30000);
+
+  it('the ground symbol: "Put the ground symbol down first", and "The ground symbol can’t go here" (critic of the fix)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    const ground = (): HTMLElement => screen.getByRole('button', { name: /^Ground, node 0/ });
+    fireEvent.click(ground());
+    fireEvent.click(await screen.findByRole('button', { name: t('nodeCardMoveGround') }));
+    await waitFor(() => expect(polite()).toContain('The ground symbol picked up'), { timeout: 5000 });
+    fireEvent.keyDown(ground(), { key: 'Delete' });
+    await waitFor(() => expect(polite()).toContain('Put the ground symbol down first (Esc puts it back), then Delete deletes it.'));
+    // One square up it would lie across a wire: there it can only go back first (said after a pause).
+    fireEvent.keyDown(ground(), { key: 'ArrowUp' });
+    await waitFor(() => expect(polite()).toContain('not here'), { timeout: 5000 });
+    fireEvent.keyDown(ground(), { key: 'Delete' });
+    await waitFor(() => expect(polite()).toContain('The ground symbol can’t go here: Esc puts it back, then Delete deletes it.'));
+    expect(polite()).not.toContain('Put The ground symbol');
+  }, 30000);
+
+  it('where it can go, both still say to put it down first', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await pickUp();
+    key('ArrowUp');
+    await waitFor(() => expect(polite()).toContain('it can go here'));
+    key('R', true);
+    await waitFor(() => expect(polite()).toContain('Put R1 down first (Esc puts it back), then Reverse swaps its two ends in the netlist.'));
+    key('Delete');
+    await waitFor(() => expect(polite()).toContain('Put R1 down first (Esc puts it back), then Delete deletes it.'));
+    expect(polite()).not.toContain('can’t go here');
+  }, 30000);
+});
+
+describe('critic of the fix, round 2: the .tf box and table say "1 volt per amp", as the live region does', () => {
+  // Native ngspice 47 and 42 (A4): v(b)/I1 = 1, a transfer function of 1 volt per amp.
+  it('A4 above .end: "1 V/A", said "1 volt per amp"; other values keep the plural', async () => {
+    const A4 = '* a4\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n';
+    const words = (await solveText(A4, await ngspice)).words;
+    const [row] = tfRows(words.tf!);
+    expect(row!.text.replace(/ /g, ' ')).toBe('1 V/A');
+    expect(row!.speech).toBe('1 volt per amp');
+    expect(words.summarySpeech).toContain('is 1 volt per amp, which is an ohm');
+    const said = (value: number, ratio: string): string => tfRows({ output: 'v(b)', input: 'V1', ratio, transferFunction: { value, text: '', speech: '' } })[0]!.speech;
+    expect([said(1, 'V/V'), said(-1, 'A/A'), said(1, 'A/V'), said(0.5, 'V/A'), said(2, 'V/V')]).toEqual([
+      '1 volt per volt',
+      'minus 1 amp per amp',
+      '1 amp per volt',
+      '0.5 volts per amp',
+      '2 volts per volt',
+    ]);
+  }, 30000);
+});

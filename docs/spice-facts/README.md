@@ -141,6 +141,25 @@ setting where a part's value goes, another name=value after E's gain, a sign bef
 A fact of two problems is marked `several` in its golden row: each fix takes its own trap away, and the
 fixes applied in turn give a clean run.
 
+After the words re-check of the merged fixes, the same day: A3b (a gnd inside `.tf`'s `v( )` is
+ground, even beside an ordinary node called gnd) and A3c (a `.tf` written after `.end` runs, and
+ngspice names its output in its own words, `v(out,mid)`) in explanations.md, on which the .tf words
+rely; P3 and P4 now also run a source with a negative value between two nodes, which Explain says by
+its size ("3 V below", "the current flows the other way"). After the critic of those fixes:
+tf-problems-8 in traps.md (a `.tf` output written with an invisible character, one that looks like a
+space or a look-alike letter is another node with nothing on it: a transfer function of 0 and an
+output impedance of 1 Ω, so the .tf check keeps its error there); and in explanations.md M2d (ngspice
+points at a node in its own spelling, `check node ou___t`, `check node __iki__`, which the words map
+back to the node), A3d and A3e (a `.tf` after `.end` with a current source as the input, and with a
+current output: the same numbers as above `.end`, so the same units and names). After the second
+critic of those fixes: in traps.md floating-dc-7 to -10 (ngspice's "check node" names one node, of a
+larger group or of another group, not always the first; control inputs joined by a resistor get
+numbers, alone they stop ngspice), tf-problems-9 to -11 (the character in the parts' node rather than
+in the `.tf`, in a part's name in `.tf`, and a `.tf` after `.end`, which ngspice runs) and two more
+runs in tf-problems-8 (a second output, which adds 1 Ω, and a name with two kinds of character); in
+explanations.md P3b, P4b and P4c (a source .dc sweeps has no one value there; beside a SIN, .op uses
+the value and .tran the SIN) and A3f (an analysis line in a subcircuit no X line uses is ignored).
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the
