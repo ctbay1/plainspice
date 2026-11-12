@@ -707,6 +707,11 @@ export const en = {
   ratioAA: 'amps per amp',
   ratioAV: 'amps per volt',
   ratioVA: 'volts per amp',
+  // A ratio of 1 or −1 takes the singular, as speakSI says "1 volt" (critic of the words re-check's fix, round 2).
+  ratioVVOne: 'volt per volt',
+  ratioAAOne: 'amp per amp',
+  ratioAVOne: 'amp per volt',
+  ratioVAOne: 'volt per amp',
   minusWord: 'minus',
   messagesHeading: 'What happened, in plain words',
   sweepsNote: 'This run has sweep results: see the Plot panel.',

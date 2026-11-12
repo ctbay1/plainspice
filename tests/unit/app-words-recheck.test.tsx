@@ -320,3 +320,23 @@ describe('words re-check 11: Shift+R and Delete on a part being moved say what c
     expect(polite()).not.toContain('can’t go here');
   }, 30000);
 });
+
+describe('critic of the fix, round 2: the .tf box and table say "1 volt per amp", as the live region does', () => {
+  // Native ngspice 47 and 42 (A4): v(b)/I1 = 1, a transfer function of 1 volt per amp.
+  it('A4 above .end: "1 V/A", said "1 volt per amp"; other values keep the plural', async () => {
+    const A4 = '* a4\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n';
+    const words = (await solveText(A4, await ngspice)).words;
+    const [row] = tfRows(words.tf!);
+    expect(row!.text.replace(/ /g, ' ')).toBe('1 V/A');
+    expect(row!.speech).toBe('1 volt per amp');
+    expect(words.summarySpeech).toContain('is 1 volt per amp, which is an ohm');
+    const said = (value: number, ratio: string): string => tfRows({ output: 'v(b)', input: 'V1', ratio, transferFunction: { value, text: '', speech: '' } })[0]!.speech;
+    expect([said(1, 'V/V'), said(-1, 'A/A'), said(1, 'A/V'), said(0.5, 'V/A'), said(2, 'V/V')]).toEqual([
+      '1 volt per volt',
+      'minus 1 amp per amp',
+      '1 amp per volt',
+      '0.5 volts per amp',
+      '2 volts per volt',
+    ]);
+  }, 30000);
+});

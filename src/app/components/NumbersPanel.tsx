@@ -169,6 +169,13 @@ function panelSummary(summary: string): string {
 
 /** A .tf ratio's unit in words, for screen readers ("0.3333 volts per volt"). */
 const RATIO_WORDS: Record<string, MessageKey> = { 'V/V': 'ratioVV', 'A/A': 'ratioAA', 'A/V': 'ratioAV', 'V/A': 'ratioVA' };
+/** The same for a ratio of 1 or −1: "1 volt per amp", as speakSI says "1 volt" and the live region "1 volt per amp" (A4). */
+const RATIO_WORDS_ONE: Record<string, MessageKey> = { 'V/V': 'ratioVVOne', 'A/A': 'ratioAAOne', 'A/V': 'ratioAVOne', 'V/A': 'ratioVAOne' };
+/** A ratio's unit in words for this value. */
+const ratioWords = (ratio: string, shown: string): string => {
+  const key = (shown.replace('−', '') === '1' ? RATIO_WORDS_ONE : RATIO_WORDS)[ratio];
+  return key ? t(key) : ratio;
+};
 
 export interface TfRow {
   label: string;
@@ -185,7 +192,7 @@ export function tfRows(tf: TransferFunctionWords): TfRow[] {
     rows.push({
       label: t('tfRatio', { output: tf.output, source: tf.input }),
       text: `${formatNumber(v)} ${tf.ratio}`,
-      speech: `${formatNumber(v).replace('−', `${t('minusWord')} `)} ${RATIO_WORDS[tf.ratio] ? t(RATIO_WORDS[tf.ratio]!) : tf.ratio}`,
+      speech: `${formatNumber(v).replace('−', `${t('minusWord')} `)} ${ratioWords(tf.ratio, formatNumber(v))}`,
       value: v,
     });
   }
