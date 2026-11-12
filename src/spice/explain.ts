@@ -245,7 +245,10 @@ export const EXPLAIN_STRINGS = {
   vBelow: (plus: string, minusNode: string, value: string): string => `So ${plus} sits ${value} below ${minusNode}.`,
   vZero: (plus: string, minusNode: string, name: string): string =>
     `So ${plus} and ${minusNode} are at the same voltage: ${name} works like a wire. A 0 V source is how SPICE measures a current: the ammeter trick.`,
+  /** A7, P4b: a source a .dc line sweeps, V or I: its own value is not the one that analysis uses. */
   vSwept: (line: number): string => `The .dc on line ${line} sweeps this source, so in that analysis its value changes.`,
+  /** P3b, P4c: a source with a transient function as well as a value: .op uses the value, .tran the function (critic of words re-check 12's fix). */
+  dcValueInOp: (fn: string): string => `In .op the source has that value; in .tran it follows its ${fn} from time 0 instead.`,
   vZeroCurrent: (name: string, plus: string, minusNode: string): string =>
     `Its current is the current in this branch, positive when it flows from ${plus}, through ${name}, to ${minusNode}.`,
   sourceSign: "SPICE counts a source's current as positive when it enters at the first node, here the + side, and flows through the source to the second.",
@@ -1602,12 +1605,14 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
           const swept = sweptBy(netlist, el.key);
           if (swept !== undefined) {
             sentences.push(S.vSwept(swept + 1)); // A7
-          } else if (v === 0) {
+          } else if (v === 0 && !fn) {
             sentences.push(S.vZero(nodePhrase(a), nodePhrase(b), el.name.text)); // P9
             addNote(p.notes, S.vZeroCurrent(el.name.text, nodeProse(a), nodeProse(b)));
           } else if (b.ground && !a.ground) sentences.push(S.vGround(nodeProse(a), shown));
           else if (a.ground && !b.ground) sentences.push(S.vGround(nodeProse(b), formatSI(-v, 'V')));
           else if (!a.ground && !b.ground) sentences.push(v < 0 ? S.vBelow(nodeProse(a), nodeProse(b), formatSI(-v, 'V')) : S.vAbove(nodeProse(a), nodeProse(b), shown));
+          // P3b: the "so" above is .op's; .tran follows the function from time 0, never this value.
+          if (swept === undefined && fn) sentences.push(S.dcValueInOp(fn.token.text));
         } else if (fn) {
           const t0 = valueAtTimeZero(fn);
           sentences.push(t0 === undefined ? S.timeZeroValueUnknown(fn.token.text) : S.timeZeroValue(fn.token.text, formatSI(t0, 'V'))); // P17
@@ -1623,10 +1628,17 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
     case 'I': {
       sentences.push(S.iPattern); // P4
       const v = value?.value;
+      // P4b: a source a .dc line sweeps pushes no one value there, so only its direction is said, and
+      // that the .dc sweeps it, as for V (critic of words re-check 12's fix: "its value is negative, so
+      // it pushes 2 mA" while the sweep's 5 mA flowed the other way).
+      const swept = sweptBy(netlist, el.key);
       if (a && b) {
-        if (v !== undefined && v < 0) sentences.push(S.iPushesBack(el.name.text, formatSI(-v, 'A'), nodePhrase(b), nodePhrase(a)));
-        else if (v !== undefined) sentences.push(S.iPushes(el.name.text, formatSI(v, 'A'), nodePhrase(a), nodePhrase(b)));
+        if (v !== undefined && swept === undefined && v < 0) sentences.push(S.iPushesBack(el.name.text, formatSI(-v, 'A'), nodePhrase(b), nodePhrase(a)));
+        else if (v !== undefined && swept === undefined) sentences.push(S.iPushes(el.name.text, formatSI(v, 'A'), nodePhrase(a), nodePhrase(b)));
         else sentences.push(S.iPushesNoValue(el.name.text, nodePhrase(a), nodePhrase(b)));
+        if (swept !== undefined) sentences.push(S.vSwept(swept + 1));
+        // P4c: with a transient function too, the value is .op's; .tran follows the function from time 0.
+        else if (v !== undefined && el.sourceFunction) sentences.push(S.dcValueInOp(el.sourceFunction.token.text));
       }
       if (v === undefined && el.sourceFunction) {
         const t0 = valueAtTimeZero(el.sourceFunction);

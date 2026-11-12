@@ -202,6 +202,64 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4, v(c) = 6, v(d) = 9
 ```
 
+### P3b. With a SIN as well, .op uses the source's value and .tran follows the SIN from time 0
+
+`V1 a b -3 SIN(0 1 1k)` has a DC value, −3 V, and a transient function. In .op ngspice uses the
+value: a = −1.5 V and b = 1.5 V, so a sits 3 V below b, as P3 says it (ngspice notes that it uses
+the DC value for the operating point). In .tran the value is not used, not even at the start: the
+SIN starts at its offset, 0, so V(a) − V(b) starts at 0 and swings between about −1 and 1 V. So
+Explain's "So node a sits 3 V below node b." is followed by "In .op the source has that value; in
+.tran it follows its SIN from time 0 instead." (critic of words re-check 12's fix, 12 November
+2026: with .tran only, that "so" was backed by no run).
+
+```spice
+* a voltage source of -3 V with a SIN, in .op
+V1 a b -3 SIN(0 1 1k)
+R1 a 0 1k
+R2 b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Note: v1: dc value used for op instead of transient time=0 value.
+        b                                1.500000e+00
+        a                                -1.50000e+00
+        v1#branch                        1.500000e-03
+  rawfile from ngspice -b -r (exit 0): v(a) = -1.5, v(b) = 1.5, i(v1) = 0.0015
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = -1.5, v(b) = 1.5, i(v1) = 0.0015
+```
+
+```spice
+* a voltage source of -3 V with a SIN, in .tran
+V1 a b -3 SIN(0 1 1k)
+R1 a 0 1k
+R2 b 0 1k
+.tran 0.1m 2m
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r (exit 0):
+    Note: v1: dc value used for op instead of transient time=0 value.
+    Initial Transient Solution
+    --------------------------
+    Node                                   Voltage
+    ----                                   -------
+    a                                            0
+    b                                            0
+    v1#branch                                    0
+    No. of Data Rows : 59
+  rawfile: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, 0.49954267455, -0.49607160000 (v(b) the opposite)
+ngspice 42: the same output and rawfile values as ngspice 47, except one time point near the end (0.0019712 s where 47 has 0.0019656 s)
+our engine (wasm), as ngspice -b -r (exit 0):
+  the same note and initial solution as ngspice 47
+  vectors: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, 0.49954267455, -0.49607160000
+```
+
 ### P4. A current source pushes its current from its first node, through the source, into its second
 
 `I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V. A negative value pushes the current the other way: `I3 0 c -3` pulls 3 A out of c and pushes it into ground, so c = −12 V, as for I2 (Explain says "Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).": words re-check 12, 12 November 2026; and the overview "I3: a −3 A current source: its value is negative, so it pushes 3 A from node c into ground.", where it said "pushing current from ground into node c" until the critic of that fix).
@@ -227,6 +285,85 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(a) = 12, v(b) = -12, v(c) = -12
+```
+
+### P4b. A current source a .dc line sweeps has no one value there
+
+`.dc I1 -5m 5m 1m` sets I1 to −5 mA, −4 mA, ..., 5 mA in turn; its own −2 mA is not used. At 5 mA
+the current goes from a, through I1, into ground, so a = −5 V; at −5 mA it goes the other way and a
+= 5 V. So Explain says only which way I1 pushes its current, and "The .dc on line 4 sweeps this
+source, so in that analysis its value changes.", as for a swept voltage source (A7), and the
+overview says "I1: a current source pushing current from node a into ground, swept by .dc." (critic
+of words re-check 12's fix, 12 November 2026: they said "its value is negative, so it pushes 2 mA
+from ground into node a", which no point of the sweep does at 5 mA).
+
+```spice
+* a current source of -2 mA swept by .dc
+I1 a 0 -2m
+R1 a 0 1k
+.dc I1 -5m 5m 1m
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r (exit 0):
+    No. of Data Rows : 11
+  rawfile: i(i-sweep) = [-0.005, -0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002, 0.003, 0.004, 0.005], v(a) = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5]
+ngspice 42: the same output, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    No. of Data Rows : 11
+  vectors: i(i-sweep) = [-0.005, -0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002, 0.003, 0.004, 0.005], v(a) = [5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5]
+```
+
+### P4c. With a SIN as well, .op uses the current source's value and .tran follows the SIN
+
+`I1 a 0 -2m SIN(0 1m 1k)`: in .op ngspice uses −2 mA, so 2 mA flow from ground into a and a = 2 V,
+as P4 says it. In .tran it follows the SIN from time 0: a starts at 0 and swings between about −1
+and 1 V, and is never 2 V. So Explain's sentence about the negative value is followed by "In .op the
+source has that value; in .tran it follows its SIN from time 0 instead.", and the overview says "so
+in .op it pushes 2 mA from ground into node a" (critic of words re-check 12's fix, 12 November
+2026).
+
+```spice
+* a current source of -2 mA with a SIN, in .op
+I1 a 0 -2m SIN(0 1m 1k)
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Note: i1: dc value used for op instead of transient time=0 value.
+        a                                2.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(a) = 2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 2
+```
+
+```spice
+* a current source of -2 mA with a SIN, in .tran
+I1 a 0 -2m SIN(0 1m 1k)
+R1 a 0 1k
+.tran 0.1m 2m
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r (exit 0):
+    Note: i1: dc value used for op instead of transient time=0 value.
+    Initial Transient Solution
+    --------------------------
+    Node                                   Voltage
+    ----                                   -------
+    a                                            0
+    No. of Data Rows : 59
+  rawfile: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, -0.99908534909, 0.99214320000; between -0.999971575673983 and 0.9930314824871339
+ngspice 42: the same output and rawfile values as ngspice 47, except one time point near the end (0.0019712 s where 47 has 0.0019656 s)
+our engine (wasm), as ngspice -b -r (exit 0):
+  the same note and initial solution as ngspice 47
+  vectors: time: 59 points from 0 to 0.002, largest step 0.00004, v(a) at time 0, 0.00025, 0.00075 s: 0, -0.99908534909, 0.99214320000
 ```
 
 ### P5. E: V(+ node) − V(− node) = gain × (V(control + node) − V(control − node))

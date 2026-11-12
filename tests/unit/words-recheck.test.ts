@@ -696,4 +696,25 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     const joined = traps('* t\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\nR3 c d 1k\n.op\n.end\n', 'floating-dc')[0]!;
     expect(joined.ngspice).toBe("ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4, floating-dc-9]");
   });
+
+  it('a current source .dc sweeps, or with a SIN, is never said to push its value where the run does not (P4b, P4c)', () => {
+    const summary = (text: string): string => sp(explainNetlist(parseNetlist(text))[1]!.summary);
+    // Native ngspice 47 and 42 (P4b): at I1 = 5 mA, a = −5 V; the source's own −2 mA is not used.
+    const SWEPT = '* t\nI1 a 0 -2m\nR1 a 0 1k\n.dc I1 -5m 5m 1m\n.end\n';
+    for (const text of [SWEPT, SWEPT.replace('-2m', '2m')]) {
+      expect(summary(text), text).toContain('So I1 pushes its current from node a, through the source, into ground (node 0). The .dc on line 4 sweeps this source, so in that analysis its value changes.');
+      expect(summary(text), text).not.toMatch(/negative|pushes 2 mA/);
+      const said = 'I1: a current source pushing current from node a into ground, swept by .dc.';
+      expect(sp(describeCircuit(parseNetlist(text))), text).toContain(said);
+      expect(sp(describePart(buildSchematic(text, NOTEBOOK_OPTIONS), 'I1')), text).toContain(said);
+    }
+    // P4c: .op uses −2 mA (a = 2 V); .tran follows the SIN from time 0 (a starts at 0).
+    const SIN = '* t\nI1 a 0 -2m SIN(0 1m 1k)\nR1 a 0 1k\n.tran 0.1m 2m\n.end\n';
+    expect(summary(SIN)).toContain('I1 pushes 2 mA from ground (node 0), through the source, into node a. In .op the source has that value; in .tran it follows its SIN from time 0 instead.');
+    expect(sp(describeCircuit(parseNetlist(SIN)))).toContain('I1: a −2 mA current source: its value is negative, so in .op it pushes 2 mA from ground into node a.');
+    // P3b: the same for a voltage source between two nodes.
+    expect(summary('* t\nV1 a b -3 SIN(0 1 1k)\nR1 a 0 1k\nR2 b 0 1k\n.tran 0.1m 2m\n.end\n')).toContain('So node a sits 3 V below node b. In .op the source has that value; in .tran it follows its SIN from time 0 instead.');
+    // A 0 V source with a SIN is no ammeter in .tran.
+    expect(summary('* t\nV1 a 0 0 SIN(0 1 1k)\nR1 a 0 1k\n.tran 0.1m 2m\n.end\n')).not.toContain('ammeter');
+  });
 });

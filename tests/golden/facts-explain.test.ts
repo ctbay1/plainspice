@@ -53,7 +53,12 @@ const FACTS: Fact[] = [
   { code: 'P1', id: 'part-either-way', netlist: "* a resistor works either way round\nV1 a 0 6\nR1 a 0 2\nV2 b 0 6\nR2 0 b 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 6, "v(b)": 6, "i(v1)": -3, "i(v2)": -3, "i(@r1[i])": 3, "i(@r2[i])": -3 } },
   { code: 'P2', id: 'part-line-order', netlist: "* the order of the lines does not matter\nF1 0 n1 Vx 2\nR1 n1 0 4\nR2 x n1 2\nVx a x 0\nItest 0 a 1\n.op\n.end\n", vectors: { "v(a)": 14, "v(x)": 14, "v(n1)": 12, "i(vx)": 1 } },
   { code: 'P3', id: 'part-vsource', netlist: "* a voltage source sets V(+) - V(-)\nV1 n1 0 6\nR1 n1 0 2\nV2 0 n2 6\nR2 n2 0 2\nV3 a 0 10\nV4 a b 6\nR3 b 0 2\nV5 c 0 6\nV6 c d -3\nR4 d 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "v(n2)": -6, "v(a)": 10, "v(b)": 4, "v(c)": 6, "v(d)": 9 } },
+  { code: 'P3b', id: 'part-vsource-sin-op', netlist: "* a voltage source of -3 V with a SIN, in .op\nV1 a b -3 SIN(0 1 1k)\nR1 a 0 1k\nR2 b 0 1k\n.op\n.end\n", vectors: { "v(a)": -1.5, "v(b)": 1.5, "i(v1)": 0.0015 }, prints: ["v1: dc value used for op instead of transient time=0 value."] },
+  { code: 'P3b', id: 'part-vsource-sin-tran', netlist: "* a voltage source of -3 V with a SIN, in .tran\nV1 a b -3 SIN(0 1 1k)\nR1 a 0 1k\nR2 b 0 1k\n.tran 0.1m 2m\n.end\n", summaries: { "time": { points: 59, first: 0, last: 0.002, maxStep: 0.00004 } }, at: { vector: "v(a)", times: [0, 0.00025, 0.00075], values: [0, 0.4995426745460798, -0.49607160000231176] }, prints: ["v1: dc value used for op instead of transient time=0 value."] },
   { code: 'P4', id: 'part-isource', netlist: "* a current source pushes current from its first node to its second\nI1 0 a 3\nR1 a 0 4\nI2 b 0 3\nR2 b 0 4\nI3 0 c -3\nR3 c 0 4\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": -12, "v(c)": -12 } },
+  { code: 'P4b', id: 'part-isource-swept', netlist: "* a current source of -2 mA swept by .dc\nI1 a 0 -2m\nR1 a 0 1k\n.dc I1 -5m 5m 1m\n.end\n", vectors: { "i(i-sweep)": [-0.005, -0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002, 0.003, 0.004, 0.005], "v(a)": [5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5] } },
+  { code: 'P4c', id: 'part-isource-sin-op', netlist: "* a current source of -2 mA with a SIN, in .op\nI1 a 0 -2m SIN(0 1m 1k)\nR1 a 0 1k\n.op\n.end\n", vectors: { "v(a)": 2 }, prints: ["i1: dc value used for op instead of transient time=0 value."] },
+  { code: 'P4c', id: 'part-isource-sin-tran', netlist: "* a current source of -2 mA with a SIN, in .tran\nI1 a 0 -2m SIN(0 1m 1k)\nR1 a 0 1k\n.tran 0.1m 2m\n.end\n", summaries: { "time": { points: 59, first: 0, last: 0.002, maxStep: 0.00004 } }, at: { vector: "v(a)", times: [0, 0.00025, 0.00075], values: [0, -0.9990853490921596, 0.9921432000046235] }, prints: ["i1: dc value used for op instead of transient time=0 value."] },
   { code: 'P5', id: 'part-vcvs', netlist: "* E: the voltage at out1 is 2 x the voltage at c\nV1 c 0 2\nE1 out1 0 c 0 2\nR1 out1 0 1\nE2 out2 0 0 c 2\nR2 out2 0 1\n.op\n.end\n", vectors: { "v(c)": 2, "v(out1)": 4, "v(out2)": -4 } },
   { code: 'P6', id: 'part-vccs', netlist: "* G: 0.5 amps for every volt at c, pushed from ground into out2\nV1 c 0 2\nG1 0 out2 c 0 0.5\nR2 out2 0 1\nG2 out3 0 c 0 0.5\nR3 out3 0 1\n.op\n.end\n", vectors: { "v(c)": 2, "v(out2)": 1, "v(out3)": -1 } },
   { code: 'P7', id: 'part-cccs', netlist: "* F: 3 x the current in Vs, pushed from ground into out3\nV1 c 0 2\nVs c d 0\nRd d 0 1\nF1 0 out3 Vs 3\nR3 out3 0 1\n.op\n.end\n", vectors: { "i(vs)": 2, "v(out3)": 6 } },
@@ -394,6 +399,30 @@ describe('what the explanations predict matches the run', () => {
     expect(v('a')).toBe(12);
     expect(v('c')).toBe(-12);
     expect(v('c')).toBe(v('b'));
+  });
+
+  it('says a source .dc sweeps has no one value there, and that a value beside a SIN is .op\'s, as the runs find it (P3b, P4b, P4c)', () => {
+    // P4b: the sweep sets I1 from −5 mA to 5 mA; at 5 mA the current goes from a into ground, a = −5 V.
+    const swept = parseNetlist(fact('P4b').netlist);
+    const sweep = interpretPlots(runs.get('part-isource-swept')!.plots).dc!;
+    expect(sweep.series.find((x) => x.name === 'v(a)')!.values.at(-1)).toBe(-5);
+    expect(plain(explainLine(swept, 1)!.summary)).toContain('So I1 pushes its current from node a, through the source, into ground (node 0). The .dc on line 4 sweeps this source, so in that analysis its value changes.');
+    expect(explainLine(swept, 1)!.summary).not.toMatch(/negative|pushes 2 mA/);
+    expect(plain(describeCircuit(swept))).toContain('I1: a current source pushing current from node a into ground, swept by .dc.');
+    // P4c: .op uses −2 mA (a = 2 V); .tran follows the SIN from time 0 (a starts at 0, never 2 V).
+    const isin = parseNetlist(fact('P4c').netlist);
+    expect(interpretPlots(runs.get('part-isource-sin-op')!.plots).op!.nodes.find((x) => x.node === 'a')!.value).toBe(2);
+    const tran = interpretPlots(runs.get('part-isource-sin-tran')!.plots).tran!.series.find((x) => x.name === 'v(a)')!.values;
+    expect(tran[0]).toBe(0);
+    expect(Math.max(...tran)).toBeLessThan(1);
+    expect(plain(explainLine(isin, 1)!.summary)).toContain('Its value is negative, so the current flows the other way: I1 pushes 2 mA from ground (node 0), through the source, into node a. In .op the source has that value; in .tran it follows its SIN from time 0 instead.');
+    expect(plain(describeCircuit(isin))).toContain('I1: a −2 mA current source: its value is negative, so in .op it pushes 2 mA from ground into node a.');
+    // P3b: the same for a voltage source: in .op a sits 3 V below b; .tran starts V(a) − V(b) at 0.
+    const vsin = parseNetlist(fact('P3b').netlist);
+    const op = interpretPlots(runs.get('part-vsource-sin-op')!.plots).op!;
+    expect(op.nodes.find((x) => x.node === 'b')!.value - op.nodes.find((x) => x.node === 'a')!.value).toBe(3);
+    expect(interpretPlots(runs.get('part-vsource-sin-tran')!.plots).tran!.series.find((x) => x.name === 'v(a)')!.values[0]).toBe(0);
+    expect(plain(explainLine(vsin, 1)!.summary)).toContain('So node a sits 3 V below node b. In .op the source has that value; in .tran it follows its SIN from time 0 instead.');
   });
 
   it('says what E, G, F and H do in the channel\'s words (P5–P8)', () => {
