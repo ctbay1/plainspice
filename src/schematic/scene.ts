@@ -245,7 +245,10 @@ function cellsOf(b: Box): number[] | undefined {
  */
 class Obstacles {
   readonly boxes: Box[] = [];
-  /** For each box: a symbol (a part's or a ground symbol's), words, or soft (a junction's dot, a terminal, a stub's mark). */
+  /**
+   * For each box: a symbol (a part's or a ground symbol's), a part's words, a node's name (with the
+   * room kept for its value), or soft (a junction's dot, a terminal, a stub's mark).
+   */
   private readonly kinds: ObstacleKind[] = [];
   readonly segments: [Point, Point][] = [];
   /** What each square holds: box i as i, segment i as −1 − i; `big`: what covers too many squares to file. */
@@ -316,15 +319,15 @@ class Obstacles {
     return c;
   }
 
-  /** How much of the box lies on symbols (parts' and ground symbols'), in square grid units. */
-  onSymbols(box: Box): number {
+  /** How much of the box lies on boxes of one kind (symbols, or nodes' names), in square grid units. */
+  areaOn(box: Box, kind: ObstacleKind): number {
     let area = 0;
-    for (const i of this.near(box).boxes) if (this.kinds[i] === 'symbol') area += overlapArea(box, this.boxes[i]!);
+    for (const i of this.near(box).boxes) if (this.kinds[i] === kind) area += overlapArea(box, this.boxes[i]!);
     return area;
   }
 }
 
-type ObstacleKind = 'symbol' | 'words' | 'soft';
+type ObstacleKind = 'symbol' | 'words' | 'name' | 'soft';
 
 function overlapArea(a: Box, b: Box): number {
   const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
@@ -340,6 +343,15 @@ const NAME_MOVES = 40;
 
 /** How far out from an open end (in grid units, one at a time) its name may go when it has no room at the end. */
 const END_STEPS = 2;
+
+/** Areas and costs closer than this are the same: sums of overlaps that differ by rounding alone. */
+const TIE = 1e-6;
+
+/** True when the keys `a` come before `b`: the first key that differs by more than TIE decides. */
+function comesFirst(a: readonly number[], b: readonly number[]): boolean {
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i]! - b[i]!) > TIE) return a[i]! < b[i]!;
+  return false;
+}
 
 const DIRECTION_STEP: Readonly<Record<Direction, Point>> = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
 
@@ -732,13 +744,17 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     return out.sort((p, q) => far(p) - far(q) || p.y - q.y || p.x - q.x).slice(0, NAME_MOVES);
   };
   const stubAt = new Map(stubs.map((t) => [pointKey(t.at), t]));
+  const pinKeys = new Set(allPins.map((p) => pointKey(p.at)));
   /**
    * A name at an open end with no clear spot there (student:label-on-part, critic of the fix round):
    * it marks that end, so its point stays; the same spots are tried one and then two grid units
-   * further out, the way a wire would leave the end, and the first clear one is taken. When none is,
-   * the least bad of all those places: where the name as it is written before it has a value lies
-   * least on a symbol, then where the room kept for its value does, then the least in the way, the
-   * nearest first.
+   * further out, the way a wire would leave the end (never onto other copper), and the first clear
+   * one is taken. When none is, the least bad of all those places: where the name as it is written
+   * before it has a value lies least on a symbol, then least on another node's name (and the room
+   * kept for its value); then where the room kept for its own value lies least on symbols and other
+   * names together, so two open ends facing each other never write their values over each other
+   * after a run (second critic of the fix round: "n34==12 V"); then the least in the way, the
+   * nearest first. Areas that differ by rounding alone count as the same (TIE).
    */
   const placeAtEnd = (text: string, at: Point, spots: readonly NodeSpot[], names: readonly string[]): Placing => {
     const stub = stubAt.get(pointKey(at));
@@ -746,18 +762,24 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
     const out = stub ? stub.direction : dirs.length === 1 ? OPPOSITE_DIRECTION[dirs[0]!] : undefined;
     const step = out ? DIRECTION_STEP[out] : { x: 0, y: 0 };
     const away = (k: number): Point => ({ x: at.x + step.x * k, y: at.y + step.y * k });
-    const far = out ? END_STEPS : 0;
+    // Out as far as the first point with copper on it (a wire or a pin), not onto it: a name written
+    // there would be read as that copper's (two open ends two units apart).
+    const copperAt = (q: Point): boolean => wireIndex.at(q).length > 0 || pinKeys.has(pointKey(q));
+    let far = 0;
+    while (out && far < END_STEPS && !copperAt(away(far + 1))) far++;
     for (let k = 1; k <= far; k++) {
       const there = placeName(text, away(k), spots, names, true);
       if (there.clear) return there.clear;
     }
-    let best: { placing: Placing; written: number; room: number } | undefined;
+    let best: { placing: Placing; keys: number[] } | undefined;
     for (let k = 0; k <= far; k++) {
       for (const spot of spots) {
         const lines = nodeLabelLines(text, away(k), spot, results, names, measure, options.nodeResultInline);
         const box = boxOfLines(lines);
-        const c = { placing: { lines, cost: obstacles.cost(box), spot }, written: obstacles.onSymbols(nameAsWritten(lines, spot)), room: obstacles.onSymbols(box) };
-        if (!best || c.written < best.written || (c.written === best.written && (c.room < best.room || (c.room === best.room && c.placing.cost < best.placing.cost)))) best = c;
+        const written = nameAsWritten(lines, spot);
+        const cost = obstacles.cost(box);
+        const keys = [obstacles.areaOn(written, 'symbol'), obstacles.areaOn(written, 'name'), obstacles.areaOn(box, 'symbol') + obstacles.areaOn(box, 'name'), cost];
+        if (!best || comesFirst(keys, best.keys)) best = { placing: { lines, cost, spot }, keys };
       }
     }
     return best!.placing;
@@ -789,7 +811,7 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
       }
     }
     const box = boxOfLines(chosen.lines);
-    obstacles.addBox(box);
+    obstacles.addBox(box, 'name');
     nodeLabels.push({ node: label.node, text, at, spot: chosen.spot, lines: chosen.lines, box, terminal, hidden });
   }
 

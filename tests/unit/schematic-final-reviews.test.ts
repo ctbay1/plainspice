@@ -7,10 +7,13 @@
  * what happens and why (words:W6, W7, W10).
  */
 import { describe, expect, it } from 'vitest';
-import { nameShift } from '../../src/notebook/results.ts';
+import { formatSI } from '../../src/format/si.ts';
+import { NODE_VOLTAGE_ROOM } from '../../src/notebook/measure.ts';
+import { markBox, nameShift, nameShifts, placeResults } from '../../src/notebook/results.ts';
 import { notebookSchematic } from '../../src/notebook/schematic.ts';
 import { isWide, turnedQuarter, wireBends } from '../../src/notebook/turn.ts';
 import { EDIT_STRINGS, applyEdit, boxesOverlap, buildSchematic, checkConnectivity, findOverlaps, segmentCrossesBox, segmentsOf, serializeDrawing, stripDrawing, type Box, type EditOp, type Schematic } from '../../src/schematic/index.ts';
+import type { ResultsInWords } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { checkTraps } from '../../src/spice/traps.ts';
 
@@ -106,6 +109,61 @@ function namesOnWords(s: Schematic): string[] {
     for (const g of s.scene.grounds) if (boxesOverlap(b, g.box)) out.push(`${l.node} on a ground symbol`);
     written.forEach((o, j) => j !== i && boxesOverlap(b, o) && out.push(`${l.node} on ${s.scene.nodeLabels[j]!.node}`));
   });
+  return out;
+}
+
+/**
+ * A series circuit a student is still wiring (second critic of the fix round): V1 (12 V) with ground
+ * under it, R1 across the top from (2,0) to (6,0), R2 across from (6 + gap, 0), wired V1 to R1 and R2
+ * back to ground, and the gap between R1 and R2 not wired yet. R1's right end (n3) and R2's left end
+ * (n4) are open ends facing each other across the gap.
+ */
+function seriesWithGap(gap: number): Schematic {
+  let s = notebookSchematic('');
+  for (const op of [
+    { kind: 'add-part', letter: 'V', at: { x: 0, y: 3 } },
+    { kind: 'set-value', part: 'V1', value: '12' },
+    { kind: 'add-ground', at: { x: 0, y: 5 } },
+    { kind: 'add-part', letter: 'R', at: { x: 4, y: 0 }, rot: 270 },
+    { kind: 'add-part', letter: 'R', at: { x: 8 + gap, y: 0 }, rot: 270 },
+    { kind: 'add-wire', from: { at: { x: 0, y: 1 } }, to: { at: { x: 2, y: 0 } } },
+    { kind: 'add-wire', from: { at: { x: 10 + gap, y: 0 } }, to: { at: { x: 0, y: 5 } } },
+  ] satisfies EditOp[]) {
+    const r = applyEdit(s, op);
+    expect(r.ok, r.reason).toBe(true);
+    s = notebookSchematic(r.text);
+  }
+  return s;
+}
+
+/**
+ * Each node's name and its value as the Notebook writes them after a run that gives these voltages:
+ * the value in the room the scene kept (results.ts, placeResults), the pair moved by nameShift, each
+ * box as drawn (markBox), as inkBoxes does.
+ */
+function writtenAfterRun(s: Schematic, volts: Readonly<Record<string, number | string>>): { node: string; boxes: Box[] }[] {
+  const nodes = Object.entries(volts).map(([node, v]) => {
+    const text = typeof v === 'number' ? formatSI(v, 'V') : v;
+    return { node, value: typeof v === 'number' ? v : 0, text, speech: text };
+  });
+  const words: ResultsInWords = { status: 'ok', ngspiceError: false, nodes, currents: [], sweeps: [], warnings: [], summary: '', summarySpeech: '' };
+  const results = placeResults(s.scene, words);
+  const shifts = nameShifts(s.scene, results);
+  return s.scene.nodeLabels.map((l, i) => {
+    const moved = (b: Box): Box => ({ ...b, x0: b.x0 + shifts[i]!, x1: b.x1 + shifts[i]! });
+    const mark = results.nodes.find((n) => n.label === i)?.mark;
+    return { node: l.node, boxes: [moved(l.lines.find((x) => x.role === 'node')!.box), ...(mark ? [moved(markBox(mark))] : [])] };
+  });
+}
+
+/** The names or values written after a run that lie on another node's name or value. */
+function namesOnNames(written: readonly { node: string; boxes: Box[] }[]): string[] {
+  const out: string[] = [];
+  written.forEach((a, i) =>
+    written.forEach((b, j) => {
+      if (j > i && a.boxes.some((x) => b.boxes.some((y) => boxesOverlap(x, y)))) out.push(`${a.node} on ${b.node}`);
+    }),
+  );
   return out;
 }
 
@@ -222,6 +280,30 @@ describe('where a node\'s name is written (student:label-on-part)', () => {
       found.push(...namesOnWords(s).map((x) => `build ${c}: ${x}`));
     }
     expect(found).toEqual([]);
+  });
+
+  it.each([2, 3, 4, 5, 6])('two open ends facing each other across a %i-unit gap not wired yet: after a run their names and values are never written over each other', (gap) => {
+    // The Notebook runs this circuit after every change (its checks only say "Only R1 touches n3"):
+    // ngspice 47 gives n1 = 12 V, n3 = 12 V (no current through R1) and n4 = 0 V. Before, at a 4-unit
+    // gap n3's and n4's names and values were written on one line between R1 and R2 and read
+    // "n34==12 V" (second critic of the fix round).
+    const s = seriesWithGap(gap);
+    expect(s.scene.terminals.map((t) => t.node).sort()).toEqual(['n3', 'n4']);
+    expect(namesOnWords(s), 'before a run').toEqual([]);
+    expect(namesOnNames(writtenAfterRun(s, { n1: 12, n3: 12, n4: 0 })), 'after the run').toEqual([]);
+    // Nor with the widest value the room is kept for, whatever the circuit's values become.
+    expect(namesOnNames(writtenAfterRun(s, { n1: NODE_VOLTAGE_ROOM, n3: NODE_VOLTAGE_ROOM, n4: NODE_VOLTAGE_ROOM })), 'the widest values').toEqual([]);
+    // Each name is written next to its own end, never two units out onto the other's.
+    for (const node of ['n3', 'n4']) {
+      const name = s.scene.nodeLabels.find((l) => l.node === node)!;
+      const end = s.scene.terminals.find((t) => t.node === node)!.at;
+      const other = s.scene.terminals.find((t) => t.node !== node)!.at;
+      const box = name.lines.find((x) => x.role === 'node')!.box;
+      const dx = nameShift(name, undefined);
+      const written = { ...box, x0: box.x0 + dx, x1: box.x1 + dx };
+      const far = (p: { x: number; y: number }): number => Math.hypot(Math.max(written.x0 - p.x, 0, p.x - written.x1), Math.max(written.y0 - p.y, 0, p.y - written.y1));
+      expect(far(end), `${node} at a ${gap}-unit gap`).toBeLessThan(far(other));
+    }
   });
 });
 
