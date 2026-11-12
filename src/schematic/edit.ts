@@ -121,10 +121,16 @@ export interface EditResult {
 const cap = atSentenceStart;
 /** Names that look like ground but name an ordinary node where they are written as a name (W13, W14; gnd at the end of a line, W9). */
 const GROUND_LIKE = /^(gnd|ground|00)$/i;
-/** A node's name on its own in a sentence: as written, quoted when it is named like ground ('"ground"'). */
-const quoted = (name: string): string => (GROUND_LIKE.test(name) ? `"${name}"` : name);
+/**
+ * A node's name on its own in a sentence: as written, quoted when it is named like ground ('"ground"'),
+ * and a character in it that is not what it looks like named, never shown hidden in it (S11).
+ */
+const quoted = (name: string): string => (GROUND_LIKE.test(name) ? `"${name}"` : nodeNameInWords(name));
 /** A node in a sentence: "node out", 'node "ground"'; a name that already says node goes alone ("node1", never "node node1"). */
-const called = (name: string): string => (nameSaysNode(name) ? name : `node ${quoted(name)}`);
+const called = (name: string): string => {
+  const said = quoted(name);
+  return nameSaysNode(said) ? said : `node ${said}`;
+};
 /** "R1", "R1 and R2", "R1, R2 and R3". */
 const listOf = (items: readonly string[]): string => (items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 /** Parts whose ends left a node: "R2 no longer connects to ground: that end is now on a node of its own, n1". */

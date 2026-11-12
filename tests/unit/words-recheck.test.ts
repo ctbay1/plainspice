@@ -396,6 +396,14 @@ describe('S11: a character in a node name that is not what it looks like is name
     expect(w.summarySpeech).not.toMatch(INVISIBLE);
   });
 
+  it('the editor\'s sentences name it too: "Node out (written with a zero-width space in it) renamed to out."', () => {
+    const s = buildSchematic(`* zw\nV1 in 0 6\nR1 in ou${ZW}t 1k\nR2 ou${ZW}t 0 2k\n.op\n.end\n`, NOTEBOOK_OPTIONS);
+    const r = applyEdit(s, { kind: 'rename-node', node: `ou${ZW}t`, name: 'out' });
+    expect(r.ok && r.summary).toBe('Node out (written with a zero-width space in it) renamed to out.');
+    expect(EDIT_STRINGS.node(`ou${ZW}t`)).toBe('node out (written with a zero-width space in it)');
+    expect(nodeSaid(s, `ou${ZW}t`)).toBe('node out (written with a zero-width space in it)');
+  });
+
   it('the .tf check leaves a name that is a node but for such a character to that character\'s warning: never "There is no node called out" with "Use out"', () => {
     for (const text of [ZW_TF_ONLY, CY_TF_ONLY]) {
       const checks = checkTraps(parseNetlist(text));
