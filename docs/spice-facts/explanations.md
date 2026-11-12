@@ -3522,6 +3522,102 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
   diagnostics: duplicate-name [line 4], circuit-not-parsed
 ```
 
+### M4b. Rş and Rç are the same name too: ngspice spells both r__
+
+Added after the re-check of the merged build, 12 November 2026 (S9). ngspice writes each byte of a
+letter outside a to z as `_` (W18), so it stops at `Rç` (`r__ a 0 3`), the same name as `Rş` on line 3.
+The Numbers panel finds that earlier part the way ngspice compares names and gives this reason, as the
+duplicate-name check does (duplicate-name-3 in traps.md); it said "Two parts are called Rç … SPICE
+ignores capital letters", naming neither the other part nor the reason. It also says to rename one of
+them with the letters a to z: `Rş` with `Rö` stops the same way (`r__ a 0 3`, native 47 and 42).
+
+```spice
+* Rş and Rç: the same name for ngspice
+V1 a 0 6
+Rş a 0 2
+Rç a 0 3
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      r__ a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  rawfile from ngspice -b -r (exit 1): (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      r__ a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  rawfile from ngspice -b -r (exit 1): (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 4 or its substitute:
+      r__ a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Error: circuit not parsed.
+  vectors: (none)
+  diagnostics: duplicate-name [line 4], circuit-not-parsed
+```
+
+What the Numbers panel says: "**Rş and Rç are the same name for ngspice.** Each part needs its own
+name. ngspice writes each letter other than a to z (or A to Z) in a name as underscores, so Rç here is
+the same name as Rş on line 3: both are r__. ngspice stops at the second one ("device already exists").
+Rename one of them with the letters a to z."
+
+### M4c. Rµ and Ru are the same name: ngspice reads the micro sign as u
+
+Added after the re-check of the merged build, 12 November 2026 (S9). ngspice reads µ as u (W15), so it
+stops at `Ru` (`ru a 0 3`), the same name as `Rµ` on line 3 (duplicate-name-4 in traps.md). Not a
+matter of capital letters, which the Numbers panel said.
+
+```spice
+* Rµ and Ru: the same name for ngspice
+V1 a 0 6
+Rµ a 0 2
+Ru a 0 3
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      ru a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  rawfile from ngspice -b -r (exit 1): (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      ru a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  rawfile from ngspice -b -r (exit 1): (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 4 or its substitute:
+      ru a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Error: circuit not parsed.
+  vectors: (none)
+  diagnostics: duplicate-name [line 4], circuit-not-parsed
+```
+
+What the Numbers panel says: "**Rµ and Ru are the same name for ngspice.** Each part needs its own
+name. ngspice reads the micro sign µ as u, so Ru here is the same name as Rµ on line 3: both are ru.
+ngspice stops at the second one ("device already exists"). Rename one of them with the letters a to z."
+
 ### M5. A line starting with a digit is no part: unknown device type
 
 A part's name starts with the letter that says what it is; a digit is no such letter.

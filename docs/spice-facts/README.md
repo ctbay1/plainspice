@@ -75,6 +75,32 @@ spaces the groups are three words and ngspice stops; in a node name the characte
 digits not grouped in threes end the number too) and look-alike-letter-6 (a look-alike right after a
 sign: `-５` stops ngspice).
 
+After the re-check of the merged build, the same day (the names lane): in traps.md non-ascii-node-3 (a
+.print or .plot line keeps a node's letters as written, so `ngspice -b` finds no such node there),
+non-ascii-node-4 (so does a command for ngspice: a `save v(çıkış)` that leaves nothing else saved stops
+the analysis, in PlainSpice's run too), non-ascii-node-5 (ngspice reads the micro sign as u, so `aµ` and
+`au` are one node), non-ascii-node-6 (`gñd` is the ordinary node `g__d`, while `gnd` is ground) and
+duplicate-name-4 (`Rµ` and `Ru` are the same name); in explanations.md M4b and M4c (the Numbers panel's
+words for `Rş` and `Rç`, `Rµ` and `Ru`).
+
+After the critic of the names lane, the same day: in traps.md non-ascii-node-7 to -9 (a save that also
+names something ngspice finds, `save all`, or the currents PlainSpice saves for .op keep the analysis
+running), non-ascii-node-10 and -11 (a capacitor with no starting voltage or a diode across `aµ` and
+`au` carries no current, as a resistor does; a current source, a dependent source or a transistor still
+works, a voltage source stops ngspice), and invisible-character-7, -8, look-alike-letter-7, -8,
+space-character-12, -13 (a .print line or a .control block reads a node name with such a character as
+written, as for a Turkish letter).
+
+After the second critic of the names lane, the same day: in traps.md non-ascii-node-12 (a capacitor
+given a starting voltage, `ic=`, across `aµ` and `au` carries −5000 A at the first point under `uic`),
+non-ascii-node-13 (with anything else to print or save, an .op or .tf, a name ngspice finds on the
+line, a .save, savecurrents, .meas or .four line, `ngspice -b` runs the analysis: only the .print line
+is lost) and non-ascii-node-14 (a save of the name in a command for ngspice, or an earlier .print line
+for another analysis, takes ngspice's "can't parse" warning away); non-ascii-node-3 now lists a bare
+name on a .print or .plot line (`.print dc çıkış`) and the other forms of those lines, and
+non-ascii-node-7 three more saves that leave the run going (savecurrents on a continuation line, a
+`reset`, a save inside `if 0`).
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the

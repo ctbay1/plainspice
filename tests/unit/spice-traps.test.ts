@@ -162,6 +162,10 @@ const CASES: Case[] = [
   { name: ".pss, unknown to ngspice 47 as built", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".pss", all: ["unknown-dot-command"], fixes: ["Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n" },
   // After the final reviews (12 November 2026): names ngspice spells with underscores (kept review F3).
   { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
+  { name: "a node name that is gnd but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "g\u00f1d", all: ["non-ascii-node"], fixes: ["Rename g\u00f1d to gnd2"], netlist: "* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\n.op\n.end\n" },
+  { name: "a node name that is ground but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "gr\u00f6und", all: ["non-ascii-node"], fixes: ["Rename gr\u00f6und to ground2"], netlist: "* t\nV1 a 0 5\nR1 a gr\u00f6und 1k\nR2 gr\u00f6und 0 1k\n.op\n.end\n" },
+  { name: "a node written a\u00b5 and au, with a part between the two (words-recheck-8)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Rename a\u00b5 to au2"], netlist: "* t\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.op\n.end\n" },
+  { name: "a node written a\u00b5 and au, one node meant (words-recheck-8)", id: 'non-ascii-node', severity: 'info', line: 2, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Write au for a\u00b5"], netlist: "* t\nV1 a\u00b5 0 12\nR1 au 0 2k\n.op\n.end\n" },
   { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
   // Characters that are not what they look like (security review F2).
   { name: "a zero-width space inside a value", id: 'invisible-character', severity: 'warning', line: 3, at: "1​k", all: ["invisible-character"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n" },
@@ -617,6 +621,89 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       expect(performance.now() - t0, text.slice(0, 12)).toBeLessThan(1000);
     }
   });
+
+  // A crafted link: thousands of nodes that the node-name checks rename, among thousands of comment lines.
+  // Each rename read every line again for the drawing's label lines, and the new names of thousands of
+  // nodes with the same plain letters were found by counting up from 2 each time: a 13.9 kB link froze
+  // the page for about 5 s on opening and after every key (code-2). Ten times the nodes among ten times
+  // the lines must take about as long as ten of the small netlists (linear), not ten times as long
+  // (quadratic): here at most 3 times. Timed as the work it is, the least of three tries of each in turns
+  // (work-time.ts).
+  it('renames thousands of nodes among thousands of lines in time that grows with the netlist, not its square (code-2)', () => {
+    const lines = (count: number): string[] => Array.from({ length: count }, () => '*');
+    const bits = (i: number): string => [...i.toString(2).padStart(11, '0')].map((b) => (b === '1' ? 'ç' : 'ş')).join('');
+    // [what, the netlist of so many nodes among so many comment lines, the small one's nodes and lines]
+    const cases: [what: string, netlist: (nodes: number, comments: number) => string, small: [number, number]][] = [
+      ...([['a Turkish letter', 'ş'], ['a Cyrillic look-alike', 'о'], ['a zero-width space', '​'], ['a thin space', ' ']] as const).map(
+        ([what, odd]): [string, (nodes: number, comments: number) => string, [number, number]] => [
+          what,
+          (nodes, comments) => ['* many names', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x${odd}${i} 1k`), ...lines(comments), '.op', '.end'].join('\n'),
+          [200, 4000],
+        ],
+      ),
+      // One X line with names ngspice spells the same: one error, whose one fix renames every one of them.
+      ['names on one X line that ngspice spells the same', (nodes, comments) =>
+        ['* one line', 'V1 a 0 1', `X1 ${Array.from({ length: nodes }, (_, i) => `a${bits(i)}`).join(' ')} sub`, `.subckt sub${' p'.repeat(nodes)}`, '.ends', ...lines(comments), '.op', '.end'].join('\n'), [200, 4000]],
+      // Each name on a .print line and saved in a .control block too: the sentences for those lines read the
+      // .control lines once (controlNodes, savesNothing), not once per name (names lane critic).
+      ...([['a Turkish letter on .print and .control lines', 'ş'], ['a zero-width space on .print and .control lines', '\u200b']] as const).map(
+        ([what, odd]): [string, (nodes: number, comments: number) => string, [number, number]] => [
+          what,
+          (nodes, comments) =>
+            ['* many names', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x${odd}${i} 1k`), ...lines(comments), '.dc V1 0 1 1',
+              ...Array.from({ length: nodes }, (_, i) => `.print dc v(x${odd}${i})`), '.control', ...Array.from({ length: nodes }, (_, i) => `save v(x${odd}${i})`), 'run', '.endc', '.end'].join('\n'),
+          [200, 4000],
+        ],
+      ),
+      // Each name bare on a .print line, and all of them on one long .print line: the .print and .plot lines
+      // are read once for all the names (printCards, names lane critic 2, 3).
+      ['bare names on .print lines', (nodes, comments) =>
+        ['* many names', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x\u015f${i} 1k`), ...lines(comments), '.dc V1 0 1 1',
+          ...Array.from({ length: nodes }, (_, i) => `.print dc x\u015f${i}`), `.plot dc ${Array.from({ length: nodes }, (_, i) => `x\u015f${i}`).join(' ')}`, '.end'].join('\n'), [200, 4000]],
+      // Names whose plain letters are all "x", with no comment lines: the new names x2, x3 ... were counted
+      // up from 2 for each of them.
+      ['names with the same plain letters', (nodes, comments) =>
+        ['* same letters', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x${String.fromCodePoint(0x4e00 + Math.floor(i / 64), 0x4e00 + (i % 64))} 1k`), ...lines(comments), '.op', '.end'].join('\n'), [400, 0]],
+    ];
+    for (const [what, netlist, [nodes, comments]] of cases) {
+      const small = parseNetlist(netlist(nodes, comments));
+      const large = parseNetlist(netlist(10 * nodes, 10 * comments));
+      expect(checkTraps(large).length, what).toBeGreaterThan(0);
+      const [tenSmall, once] = leastWorkMs(
+        [
+          () => {
+            for (let k = 0; k < 10; k++) checkTraps(small);
+          },
+          () => checkTraps(large),
+        ],
+        3,
+      );
+      expect(once, `${what}: ${once.toFixed(0)} ms once, ${tenSmall.toFixed(0)} ms for ten small ones`).toBeLessThan(3 * tenSmall);
+    }
+  }, 60_000);
+
+  // One long .control line of v( with no ) after them, and a node the checks name: the sentences and the
+  // rename read the line's names once, where a regex read the rest of the line again from every v( (names
+  // lane critic 2, 2: a 326-character link froze the page for 6.5 s on opening and 6 s after each key).
+  // Ten times the line must take about as long as ten of the short ones; the work is a few milliseconds,
+  // below the timer's steps, hence the 20 ms (the old code: 831 ms once, 84 ms for ten small ones).
+  it('reads one long .control line of v( with no ) in time that grows with the line, not its square (names lane critic 2, 2)', () => {
+    const netlist = (opens: number): string =>
+      ['* one line', 'V1 a 0 1', 'R1 a x\u015f 1k', 'R2 x\u015f 0 1k', '.dc V1 0 1 1', '.control', `print ${'v('.repeat(opens)}`, 'save v(x\u015f)', 'run', '.endc', '.end'].join('\n');
+    const small = parseNetlist(netlist(2000));
+    const large = parseNetlist(netlist(20000));
+    expect(checkTraps(large).map((t) => t.id)).toEqual(['non-ascii-node']);
+    const [tenSmall, once] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) checkTraps(small);
+        },
+        () => checkTraps(large),
+      ],
+      3,
+    );
+    expect(once, `${once.toFixed(0)} ms once, ${tenSmall.toFixed(0)} ms for ten small ones`).toBeLessThan(3 * tenSmall + 20);
+  }, 60_000);
 });
 
 /** The Solved Circuits episode netlists, when that repository is checked out next to this one. */
@@ -974,6 +1061,39 @@ describe('after the final reviews (12 November 2026)', () => {
     ]);
   });
 
+  it('says "without a message" for an invisible character, a look-alike or a character that looks like a space in a node name only when no .print, .plot or .control line names it, and renames it there too (names lane critic, 4; invisible-character-7, -8, look-alike-letter-7, -8, space-character-12, -13)', () => {
+    const net = (name: string, extra: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n${extra}.end\n`;
+    const print = (name: string): string => net(name, `.print dc v(${name})\n`);
+    const save = (name: string): string => net(name, `.control\nsave v(${name})\nrun\n.endc\n`);
+    const left = 'PlainSpice\'s run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced.").';
+    // The words never show an invisible character or one that looks like a space: "the name".
+    // With nothing else to print or save, ngspice -b runs no analysis (names lane critic 2, 1).
+    const unseenPrint = `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). ${left}`;
+    const unseenSave = 'In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").';
+    const kept = (spelled: string): string => `ngspice keeps the character in the name, as underscores (${spelled}), and makes a separate node`;
+    const cases: [id: string, name: string, first: string, print: string, save: string, facts: [string, string, string]][] = [
+      ['invisible-character', 'ou\u200bt', kept('ou___t'), unseenPrint, unseenSave, ['invisible-character-3', 'invisible-character-7', 'invisible-character-8']],
+      ['space-character', 'o\u2009ut', kept('o___ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['nbsp', 'o\u00a0ut', kept('o__ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['look-alike-letter', 'оut', 'ngspice writes the letter\'s bytes as underscores (__ut) and makes a separate node',
+        `On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). ${left}`,
+        'In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").',
+        ['look-alike-letter-5', 'look-alike-letter-7', 'look-alike-letter-8']],
+    ];
+    for (const [id, name, said, printed, saved, [base, onPrint, onSave]] of cases) {
+      const noted = ': in one test the resistor on it carried no current.';
+      // Native ngspice 47 -b: "can't parse …" and no analysis; with .control, "no data saved" (-b -r too).
+      expect(first(net(name, ''), id).ngspice, id).toBe(`${said}, without a message${noted} [${base}]`);
+      expect(first(print(name), id).ngspice, id).toBe(`${said}${noted} ${printed} [${base}, ${onPrint}]`);
+      const t = first(save(name), id);
+      expect(t.ngspice, id).toBe(`${said}${noted} ${saved} [${base}, ${onSave}]`);
+      if (id !== 'look-alike-letter') expect(t.ngspice, id).not.toMatch(/[\u200b\u2009\u00a0]/);
+      // The fix writes the plain name on the .control line too: before, the fixed netlist still saved nothing.
+      expect(applyFix(save(name), t.fixes[0]!), id).toBe(save('out'));
+      expect(applyFix(print(name), first(print(name), id).fixes[0]!), id).toBe(print('out'));
+    }
+  });
+
   it('a look-alike in a node name is named, and its fix connects it to the node it looks like (critic of round 1; look-alike-letter-5)', () => {
     // The critic's netlist: R2 on оut (Cyrillic о). It said "ngspice calls the node оut __ut ... (о as __)" and "Rename оut to ut".
     const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n';
@@ -1047,6 +1167,346 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(ids(fixed)).toEqual([]);
   });
 
+  it('renames the drawing\'s label of a node written with the micro sign and another odd letter too: *@ label µş goes with µş (names lane critic, 5)', () => {
+    // The labels were looked up by the name as written (µş), the node by the name as ngspice reads it (uş):
+    // "Rename µş to us" left "*@ label µş", a label of no node.
+    const drawing = (name: string): string => `.op\n.end\n* plainspice-drawing v1\n*@ label ${name} 0 0\n`;
+    const cases: [id: string, name: string, to: string][] = [
+      ['non-ascii-node', 'µş', 'us'],
+      ['invisible-character', 'µou\u200bt', 'µout'],
+      ['look-alike-letter', 'µоut', 'µout'],
+    ];
+    for (const [id, name, to] of cases) {
+      const text = `* t\nV1 ${name} 0 12\nR1 ${name} 0 1k\n${drawing(name)}`;
+      expect(applyFix(text, first(text, id).fixes[0]!), id).toBe(`* t\nV1 ${to} 0 12\nR1 ${to} 0 1k\n${drawing(to)}`);
+    }
+  });
+
+  it('never names a node after ground: ground\'s names count as taken, and names that read as ground are skipped (code-3; non-ascii-node-6)', () => {
+    // Which ends of which parts are on ground: a fix that renames a node must not change them.
+    const groundEnds = (text: string): boolean[][] => {
+      const n = parseNetlist(text);
+      return n.elements.map((i) => n.lines[i]!.element!.nodes.map((r) => r.ground));
+    };
+    const cases: [name: string, label: string][] = [
+      ['g\u00f1d', 'Rename g\u00f1d to gnd2'],
+      ['G\u00d1D', 'Rename G\u00d1D to GND2'],
+      ['0\u00b0', 'Rename 0\u00b0 to 02'],
+      ['\u03c00', 'Rename \u03c00 to 02'],
+      ['gr\u00f6und', 'Rename gr\u00f6und to ground2'],
+      ['e\u00e5rth', 'Rename e\u00e5rth to earth2'],
+      ['dg\u00f1d', 'Rename dg\u00f1d to dgnd2'],
+      ['0\u03080', 'Rename 0\u03080 to 002'],
+    ];
+    for (const [name, label] of cases) {
+      const text = `* t\nV1 a 0 5\nR1 a ${name} 1k\nR2 ${name} 0 1k\n.op\n.end\n`;
+      const t = first(text, 'non-ascii-node');
+      expect(t.fixes.map((f) => f.label), name).toEqual([label]);
+      const fixed = applyFix(text, t.fixes[0]!);
+      // "Rename gñd to gnd" put R1's end on ground and left R2 with both ends there, with no check left.
+      expect(groundEnds(fixed), name).toEqual(groundEnds(text));
+      expect(ids(fixed), name).toEqual([]);
+    }
+    // Two names that become one: each its own name, neither of them ground's.
+    const pair = '* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d g\u0144d 1k\nR3 g\u0144d 0 1k\n.op\n.end\n';
+    const merged = first(pair, 'non-ascii-node');
+    expect(merged.fixes.map((f) => f.label)).toEqual(['Write gnd2 for g\u00f1d and gnd3 for g\u0144d']);
+    expect(groundEnds(applyFix(pair, merged.fixes[0]!))).toEqual(groundEnds(pair));
+  });
+
+  it('says ngspice\'s spelling with "as", never two names side by side: "ngspice spells the node giriş as giri__" (words-recheck-7)', () => {
+    const found = traps('* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n');
+    expect(found.map((t) => t.title)).toEqual(['ngspice spells the node giri\u015f as giri__', 'ngspice spells the node \u00e7\u0131k\u0131\u015f as ____k____']);
+    // A one-letter name read like a blank to fill in: "ngspice calls the node ç __".
+    expect(first('* t\nV1 \u00e7 0 12\nR1 \u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').title).toBe('ngspice spells the node \u00e7 as __');
+  });
+
+  it('says what ngspice does with the name only as far as it holds in every run, and names a .print, .plot or .control line that names the node (S10; non-ascii-node-1, -3, -4)', () => {
+    const name = '\u00e7\u0131k\u0131\u015f';
+    const net = (extra: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n${extra}.end\n`;
+    // No such line: what holds in every run (it said "ngspice runs it", which a .print line in ngspice -b belies).
+    expect(first(net(''), 'non-ascii-node').ngspice).toBe('ngspice spells the node ____k____ in its printout and results, without a message. [non-ascii-node-1]');
+    // .save, .tf and .ic lines are read like part lines: nothing more to say (they work, natively too).
+    expect(first(net(`.save v(${name})\n.tf v(${name}) V1\n`), 'non-ascii-node').ngspice).toBe('ngspice spells the node ____k____ in its printout and results, without a message. [non-ascii-node-1]');
+    // The .print or .plot line itself prints nothing (a line with v(in) too prints no table), and with nothing
+    // else to print or save no analysis runs (critics of the names lane, 3, and second critic, 1: only then, so
+    // not with v(in) on the line); with a results file ngspice reads the line and leaves it out, no "skip" (W11).
+    const printed = (line: string, more = ''): string =>
+      `ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node ${name} there: run as ngspice -b, it warns "can't parse '${name}'" and prints nothing for that line${more}. PlainSpice's run leaves .print and .plot lines out (ngspice: "${line} line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]`;
+    const noRun = '; with nothing else it can print or save, it runs no analysis ("no data saved")';
+    expect(first(net(`.print dc v(${name})\n`), 'non-ascii-node').ngspice).toBe(printed('.print', noRun));
+    expect(first(net(`.plot dc v(${name})\n`), 'non-ascii-node').ngspice).toBe(printed('.plot', noRun));
+    expect(first(net(`.print dc v(in) v(${name})\n`), 'non-ascii-node').ngspice).toBe(printed('.print'));
+    // A save in a .control block that leaves nothing to save stops PlainSpice's run; the rename reaches inside v(...) there.
+    const control = net(`.control\nrun\nprint v(${name})\nsave v(${name})\nrun\n.endc\n`);
+    const t = first(control, 'non-ascii-node');
+    expect(t.ngspice).toBe(
+      `ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node ${name} there: save v(${name}) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-4]`,
+    );
+    expect(applyFix(control, t.fixes[0]!)).toBe(net('.control\nrun\nprint v(cikis)\nsave v(cikis)\nrun\n.endc\n').replaceAll(name, 'cikis'));
+    expect(first(net(`.control\nrun\nprint v(${name})\n.endc\n`), 'non-ascii-node').ngspice).toContain(`In a .control block it reads the name as written too, so it finds no node ${name} there. [non-ascii-node-1, non-ascii-node-4]`);
+    expect(first(net(`*# save v(${name})\n`), 'non-ascii-node').ngspice).toContain('On a *# line, a command for ngspice, it reads the name as written too');
+  });
+
+  it('says a save leaves PlainSpice\'s run no results only when it leaves ngspice nothing to save: a save that names anything else, save all, a .save line or savecurrents keeps the run going (names lane critic, 1; non-ascii-node-4, -7, -8, -9)', () => {
+    const name = '\u00e7\u0131k\u0131\u015f';
+    const net = (extra: string, analysis = '.dc V1 0 12 6'): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n${analysis}\n${extra}.end\n`;
+    const said = (text: string): string => first(text, 'non-ascii-node').ngspice;
+    const found = `In a .control block it reads the name as written too, so it finds no node ${name} there. [non-ascii-node-1, non-ascii-node-4]`;
+    const none = (save: string, where = 'In a .control block'): string =>
+      `${where} it reads the name as written too, so it finds no node ${name} there: ${save} saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-4]`;
+    // Native ngspice 47 and 42, -b -r, and our engine: these run, and give results (non-ascii-node-7, -8, -9).
+    for (const extra of [
+      `.control\nsave v(${name}) i(v1)\nrun\n.endc\n`, // i(v1) is saved
+      `.control\nsave v(${name}) v(in)\nrun\n.endc\n`,
+      `.control\nsave v(${name}) in\nrun\n.endc\n`,
+      `.control\nsave v(${name}) @r1[i]\nrun\n.endc\n`,
+      `.control\nsave all\nsave v(${name})\nrun\n.endc\n`, // the node is saved anyway, as ____k____
+      `.control\nsave v(${name}) allv\nrun\n.endc\n`,
+      `.save v(in)\n.control\nsave v(${name})\nrun\n.endc\n`,
+      `.options savecurrents\n.control\nsave v(${name})\nrun\n.endc\n`,
+      `.control\nsave v(${name})\ndelete all\nrun\n.endc\n`,
+      // The critic's three (names lane critic 2, 4; native 47 and 42, -b -r, and our engine give every
+      // vector, or i(@r1[i]) and i(@r2[i])): savecurrents on a continuation line, a reset after the save, a
+      // save that never runs. Their run gives results, so the check claims none.
+      `.options reltol=1e-3\n+ savecurrents\n.control\nsave v(${name})\nrun\n.endc\n`,
+      `.control\nsave v(${name})\nreset\nrun\n.endc\n`,
+      `.control\nif 0\nsave v(${name})\nend\nrun\n.endc\n`,
+    ]) {
+      expect(said(net(extra)), extra).toContain(found);
+    }
+    expect(said(net(`*# save v(${name}) i(v1)\n`))).toContain(`On a *# line, a command for ngspice, it reads the name as written too, so it finds no node ${name} there. [`);
+    // The critic's netlist, in full: the run gives v(v-sweep) and i(v1) (non-ascii-node-7).
+    expect(said(net(`.control\nsave v(${name}) i(v1)\nrun\n.endc\n`))).toBe(`ngspice spells the node ____k____ in its printout and results. ${found}`);
+    // .op: PlainSpice adds .options savecurrents to the copy it runs, so every part's current is saved (non-ascii-node-9).
+    expect(said(net(`.control\nsave v(${name})\nrun\n.endc\n`, '.op'))).toContain(found);
+    // .tf: its results are no node voltages, so a save of any node leaves nothing, the plain name too: nothing is claimed.
+    expect(said(net(`.control\nsave v(${name})\nrun\n.endc\n`, '.tf v(in) V1'))).toContain(found);
+    // Lines after .end may save something too: nothing is claimed.
+    expect(said(`${net(`.control\nsave v(${name})\nrun\n.endc\n`)}.save v(in)\n`)).toContain(found);
+    // These stop, natively and in our engine (non-ascii-node-4): the save names only names ngspice does not find.
+    expect(said(net(`.control\nsave v(${name})\nrun\n.endc\n`))).toContain(none(`save v(${name})`));
+    expect(said(net(`.control\nsave ${name}\nrun\n.endc\n`))).toContain(none(`save ${name}`));
+    expect(said(net(`.control\nSAVE V(${name})\nrun\n.endc\n`))).toContain(none(`save v(${name})`));
+    expect(said(net(`.control\nsave v(${name})\nrun\n.endc\n`, '.tran 1u 2u'))).toContain(none(`save v(${name})`));
+    expect(said(net(`.control\nsave v(${name})\nrun\n.endc\n`, '.ac dec 1 1k 10k'))).toContain(none(`save v(${name})`));
+    // After a run the save still stops PlainSpice's run: with a results file ngspice runs the analyses again at the end.
+    expect(said(net(`.control\nrun\nsave v(${name})\n.endc\n`))).toContain(none(`save v(${name})`));
+    expect(said(net(`*# save v(${name})\n`))).toContain(none(`save v(${name})`, 'On a *# line, a command for ngspice,'));
+    // A comment is not read: "; v(in)" saves nothing.
+    expect(said(net(`.control\nsave v(${name}) ; v(in)\nrun\n.endc\n`))).toContain(none(`save v(${name})`));
+    // A bare name after save is renamed too, and the fixed netlist saves cikis.
+    const bare = net(`.control\nsave ${name}\nrun\n.endc\n`);
+    expect(applyFix(bare, first(bare, 'non-ascii-node').fixes[0]!)).toBe(net('.control\nsave cikis\nrun\n.endc\n').replaceAll(name, 'cikis'));
+  });
+
+  it('quotes ngspice\'s message with the name as ngspice spells it there: the micro sign as u, capitals small (names lane critic, 3; non-ascii-node-3)', () => {
+    const text = (name: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n.print dc V(${name})\n.end\n`;
+    // Native ngspice 47 -b: "Warning: can't parse 'uş': ignored" and "… 'çak' …".
+    expect(first(text('\u00b5\u015f'), 'non-ascii-node').ngspice).toContain(`so it finds no node \u00b5\u015f there: run as ngspice -b, it warns "can't parse 'u\u015f'"`);
+    expect(first(text('\u00e7Ak'), 'non-ascii-node').ngspice).toContain(`so it finds no node \u00e7Ak there: run as ngspice -b, it warns "can't parse '\u00e7ak'"`);
+  });
+
+  it('says without a message for ş and ç made one node only when no line ngspice reads as written names them (S10; non-ascii-node-2, -3)', () => {
+    const text = '* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.print op v(\u015f)\n.end\n';
+    expect(first(text, 'non-ascii-node').ngspice).toBe(
+      'ngspice spells \u015f and \u00e7 as __ and makes them one node: in one test this put both ends of a resistor on that node, so it carried no current. On a .print or .plot line it reads the name as written, so it finds no node \u015f there: run as ngspice -b, it warns "can\'t parse \'\u015f\'" and prints nothing for that line. PlainSpice\'s run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-2, non-ascii-node-3]',
+    );
+    expect(first(text.replace('.print op v(\u015f)\n', ''), 'non-ascii-node').ngspice).toContain('makes them one node, without a message:');
+  });
+
+  // Native ngspice 47 and 42, ngspice -b (non-ascii-node-3, -13): with nothing on the .print and .plot lines that
+  // ngspice can parse, and nothing else to save, no .dc, .tran or .ac runs (exit 1, "no data saved ... analysis
+  // not run"); with anything else it runs (exit 0). The sentence said "when that line was all it had to print it
+  // runs no analysis" for .op, .tf, v(in) on the line, .save ... (names lane critic 2, 1).
+  it('says ngspice -b runs no analysis only when nothing else on the .print and .plot lines, or elsewhere, can be printed or saved (names lane critic 2, 1; non-ascii-node-3, -13)', () => {
+    const name = '\u00e7\u0131k\u0131\u015f';
+    const net = (lines: string, analysis = '.dc V1 0 12 6', parts = `V1 in 0 dc 12 ac 1\nR1 in ${name} 1k\nR2 ${name} 0 2k`): string => `* t\n${parts}\n${analysis}\n${lines}.end\n`;
+    const said = (text: string): string => first(text, 'non-ascii-node').ngspice;
+    const noRun = '; with nothing else it can print or save, it runs no analysis ("no data saved").';
+    // These do not run (exit 1): the claim is made.
+    const two = `V1 in 0 12\nR1 in ${name} 1k\nR2 ${name} \u015f 1k\nR3 \u015f 0 1k`;
+    for (const [lines, analysis, parts] of [
+      [`.print dc v(${name})\n`],
+      [`.plot dc v(${name})\n`],
+      [`.print dc ${name}\n`], // bare (names lane critic 2, 3)
+      [`.print tran v(${name})\n`, '.tran 1u 2u'],
+      [`.print ac vdb(${name})\n`, '.ac dec 1 1k 10k'],
+      [`.plot ac xlog vdb(${name})\n`, '.ac dec 1 1k 10k'],
+      [`.print dc v(${name}) ; v(in)\n`], // a comment is not read
+      [`.print dc v(${name})\n`, '.dc V1 0 12 6\n.tran 1u 2u'], // neither analysis runs
+      [`.print dc v(${name}) v(\u015f)\n`, undefined, two],
+      [`.print dc v(${name})\n.print dc v(\u015f)\n`, undefined, two],
+      [`.print dc v(${name})\n+ v(\u015f)\n`, undefined, two],
+    ] as const) {
+      expect(said(net(lines, analysis, parts)), lines).toContain(noRun);
+    }
+    // These run (exit 0), natively and as PlainSpice runs them: no claim, and the warning stays.
+    for (const [lines, analysis] of [
+      [`.print op v(${name})\n`, '.op'],
+      [`.print tf v(${name})\n`, `.tf v(${name}) V1`],
+      [`.print dc v(in) v(${name})\n`],
+      [`.print dc v(${name}) i(V1)\n`],
+      [`.print dc v(${name},in)\n`],
+      [`.print dc v(in,${name})\n`],
+      [`.print dc ${name} in\n`],
+      [`.print dc v(${name})\n.print dc i(V1)\n`],
+      [`.save v(in)\n.print dc v(${name})\n`],
+      [`.save all\n.print dc v(${name})\n`],
+      [`.options savecurrents\n.print dc v(${name})\n`],
+      [`.options reltol=1e-3\n+ savecurrents\n.print dc v(${name})\n`],
+      [`.print dc v(${name})\n.meas dc m1 max v(in)\n`],
+      [`.four 1k v(in)\n.print tran v(${name})\n`, '.tran 10u 2m'],
+      [`.probe v(in)\n.print dc v(${name})\n`],
+    ] as const) {
+      const t = said(net(lines, analysis));
+      expect(t, lines).toContain(`it warns "can't parse '${name}'" and prints nothing for that line.`);
+      expect(t, lines).not.toContain('runs no analysis');
+    }
+    // A .control block or lines after .end may save or run something: no claim.
+    expect(said(net(`.print dc v(${name})\n.control\nrun\n.endc\n`))).not.toContain('runs no analysis');
+    expect(said(`${net(`.print dc v(${name})\n`)}.save v(in)\n`)).not.toContain('runs no analysis');
+  });
+
+  // ngspice -b saves a .print line's names only for its own analysis, and a name once: a save of the name in a
+  // command for ngspice, which it reads first, or an earlier .print line for another analysis, takes the
+  // warning away (native 47 and 42, -b: no "can't parse"; non-ascii-node-14). A .save line keeps it: there
+  // ngspice writes the letters as underscores, so it saves the node ____k____, another name (non-ascii-node-13).
+  it('quotes ngspice\'s warning on a .print line only when ngspice gives it (names lane critic 2, 1; non-ascii-node-3, -14)', () => {
+    const name = '\u00e7\u0131k\u0131\u015f';
+    const net = (lines: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n${lines}.end\n`;
+    const said = (text: string): string => first(text, 'non-ascii-node').ngspice;
+    const quiet = 'so it finds no node \u00e7\u0131k\u0131\u015f there: run as ngspice -b, it prints nothing for that line';
+    expect(said(net(`.print dc v(${name})\n.control\nsave v(${name})\nrun\n.endc\n`))).toContain(`${quiet}. PlainSpice's run`);
+    expect(said(net(`*# save v(${name})\n.print dc v(${name})\n`))).toContain(`${quiet}. PlainSpice's run`);
+    expect(said(net(`.print tran v(${name})\n.print dc v(${name})\n`))).toContain(`${quiet}; with nothing else it can print or save, it runs no analysis ("no data saved").`);
+    expect(said(`${net(`.print dc v(${name})\n`)}R9 in 0 1k\n`)).toContain(`${quiet}. PlainSpice's run`); // lines after .end
+    for (const lines of [`.save v(${name})\n.print dc v(${name})\n`, `.save ${name}\n.print dc v(${name})\n`, `.print dc v(${name})\n.print tran v(${name})\n`]) {
+      expect(said(net(lines)), lines).toContain(`it warns "can't parse '${name}'" and prints nothing for that line`);
+    }
+    // A line for an analysis the netlist does not run, or with no analysis named, gets no sentence: ngspice saves
+    // its names for another analysis (or reads the name as the analysis), and warns nothing about them.
+    for (const lines of [`.print tran v(${name})\n`, `.print op v(${name})\n`, `.print v(${name})\n`, `.print v(${name}) v(in)\n`, `.print dc (${name})\n`, `.print dc v (${name})\n`]) {
+      expect(said(net(lines)), lines).toBe('ngspice spells the node ____k____ in its printout and results, without a message. [non-ascii-node-1]');
+    }
+  });
+
+  // A bare name on a .print line is a node for ngspice (".print dc out" prints v(out)): the check said "without
+  // a message" and its rename left the line as it was, so ngspice -b still could not parse it (names lane critic
+  // 2, 3; native 47 and 42: after the rename the table prints).
+  it('reads a bare node name on a .print or .plot line, says what ngspice -b does with it, and renames it there (names lane critic 2, 3; non-ascii-node-3)', () => {
+    const name = '\u00e7\u0131k\u0131\u015f';
+    const net = (n: string, lines: string): string => `* t\nV1 in 0 12\nR1 in ${n} 1k\nR2 ${n} 0 2k\n.dc V1 0 12 6\n${lines}.end\n`;
+    const t = first(net(name, `.print dc ${name}\n`), 'non-ascii-node');
+    expect(t.ngspice).toBe(
+      `ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node ${name} there: run as ngspice -b, it warns "can't parse '${name}'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]`,
+    );
+    expect(applyFix(net(name, `.print dc ${name}\n`), t.fixes[0]!)).toBe(net('cikis', '.print dc cikis\n'));
+    // On a .plot line, after another word, on a continuation line, beside v(...) of the same node: all renamed.
+    for (const [lines, fixed] of [
+      [`.plot dc ${name}\n`, '.plot dc cikis\n'],
+      [`.print dc in ${name}\n`, '.print dc in cikis\n'],
+      [`.print dc in,${name}\n`, '.print dc in,cikis\n'],
+      [`.print dc v(in)\n+ ${name}\n`, '.print dc v(in)\n+ cikis\n'],
+      [`.print dc v(${name}) ${name}\n`, '.print dc v(cikis) cikis\n'],
+    ] as const) {
+      const text = net(name, lines);
+      expect(applyFix(text, first(text, 'non-ascii-node').fixes[0]!), lines).toBe(net('cikis', fixed));
+    }
+    // The other node-name checks: an invisible character, a character that looks like a space, a look-alike.
+    for (const [id, odd] of [['invisible-character', 'ou\u200bt'], ['space-character', 'o\u2009ut'], ['look-alike-letter', '\u043eut']] as const) {
+      const text = net(odd, `.print dc ${odd}\n`);
+      const found = first(text, id);
+      expect(found.ngspice, id).toContain('On a .print or .plot line it reads the name as written');
+      expect(found.ngspice, id).not.toContain('without a message');
+      expect(applyFix(text, found.fixes[0]!), id).toBe(net('out', '.print dc out\n'));
+    }
+    // The µ spelling of a node written aµ and au: the split renames the bare aµ on the .print line too.
+    const micro = '* t\nV1 in 0 12\nR1 in a\u00b5 1k\nR3 a\u00b5 au 1k\nR2 au 0 2k\n.dc V1 0 12 6\n.print dc a\u00b5 au\n.end\n';
+    expect(applyFix(micro, first(micro, 'non-ascii-node').fixes[0]!)).toBe('* t\nV1 in 0 12\nR1 in au2 1k\nR3 au2 au 1k\nR2 au 0 2k\n.dc V1 0 12 6\n.print dc au2 au\n.end\n');
+    // Words ngspice does not read as a node are left alone: the analysis type, a .plot option, a current.
+    const words = net(name, `.plot dc xlog ${name} i(V1)\n`);
+    expect(applyFix(words, first(words, 'non-ascii-node').fixes[0]!)).toBe(net('cikis', '.plot dc xlog cikis i(V1)\n'));
+  });
+
+  // ş and ç made one node: each name's .print and .control sentences were repeated in full, about 1,250
+  // characters (names lane critic 2, 7). One sentence of each kind now lists the names.
+  it('says the .print and .control sentences once for names ngspice makes one node, listing the names (names lane critic 2, 7; non-ascii-node-2, -3, -4)', () => {
+    const net = (lines: string): string => `* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.dc V1 0 12 6\n${lines}.end\n`;
+    const head = 'ngspice spells \u015f and \u00e7 as __ and makes them one node: in one test this put both ends of a resistor on that node, so it carried no current.';
+    expect(first(net('.print dc v(\u015f)\n.print dc v(\u00e7)\n.control\nsave v(\u015f) v(\u00e7)\nrun\n.endc\n'), 'non-ascii-node').ngspice).toBe(
+      `${head} On a .print or .plot line it reads each name as written, so it finds no node \u015f or \u00e7 there: run as ngspice -b, it prints nothing for those lines. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). In a .control block it reads each name as written too, so it finds no node \u015f or \u00e7 there: save v(\u015f) v(\u00e7) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-2, non-ascii-node-3, non-ascii-node-4]`,
+    );
+    expect(first(net('.print dc v(\u015f) v(\u00e7)\n'), 'non-ascii-node').ngspice).toBe(
+      `${head} On a .print or .plot line it reads each name as written, so it finds no node \u015f or \u00e7 there: run as ngspice -b, it warns "can't parse '\u015f'" and "can't parse '\u00e7'", and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-2, non-ascii-node-3]`,
+    );
+    expect(first(net('.control\nsave v(\u015f)\nsave \u00e7\nrun\n.endc\n'), 'non-ascii-node').ngspice).toBe(
+      `${head} In a .control block it reads each name as written too, so it finds no node \u015f or \u00e7 there: save v(\u015f) and save \u00e7 save nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-2, non-ascii-node-4]`,
+    );
+  });
+
+  it('says why a\u00b5 and au are one node, and keeps them apart when a part has an end on each (words-recheck-8; non-ascii-node-5)', () => {
+    const text = '* t\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.tf v(a\u00b5) V1\n.end\n* plainspice-drawing v1\n*@ label a\u00b5 0 0\n*@ label au 4 0\n';
+    const t = first(text, 'non-ascii-node');
+    expect([t.severity, t.title, t.why, t.ngspice]).toEqual([
+      'warning',
+      'a\u00b5 and au are one node for ngspice',
+      'ngspice reads the micro sign \u00b5 as u, so a\u00b5 and au are the same node: R1 has both ends on it and carries no current. Give a\u00b5 a name of its own in plain letters.',
+      'ngspice reads \u00b5 as u and makes a\u00b5 and au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]',
+    ]);
+    // The \u00b5 spelling gets a name no other node has, everywhere it is written: parts, the .tf line, the drawing's label.
+    expect(applyFix(text, t.fixes[0]!)).toBe('* t\nV1 au2 0 12\nR1 au2 au 1k\nR2 au 0 2k\n.tf v(au2) V1\n.end\n* plainspice-drawing v1\n*@ label au2 0 0\n*@ label au 4 0\n');
+    // A directive that writes the node the other way still names the node meant: no check.
+    expect(ids('* t\nV1 a\u00b5 0 6\nR1 a\u00b5 0 2\n.save v(au)\n.op\n.end\n')).toEqual([]);
+    // Written the same way everywhere, \u00b5 is fine (W16).
+    expect(ids('* t\nV1 \u00b5in 0 6\nR1 \u00b5in 0 2\n.op\n.end\n')).toEqual([]);
+    // With another letter outside a to z, the name is the other check's, and its words now say what \u00b5 becomes.
+    expect(first('* t\nV1 \u00b5\u015f 0 12\nR1 \u00b5\u015f 0 1k\n.op\n.end\n', 'non-ascii-node').why).toBe(
+      'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores (\u015f as __), so its printout and results call this node u__, and two names can become one node. A name in plain letters avoids both.',
+    );
+    expect(first('* t\nV1 \u00b5\u015f 0 12\nR1 \u00b5\u015f u\u00e7 1k\nR2 u\u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').why).toContain(
+      'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores, so \u00b5\u015f and u\u00e7 both become u__',
+    );
+  });
+
+  it('says a part across aµ and au carries no current only for a resistor, a capacitor or a diode, and for any other part only which ends are joined (names lane critic, 2; non-ascii-node-5, -10, -11)', () => {
+    const why = (joined: string): string => `ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins ${joined}. Give aµ a name of its own in plain letters.`;
+    const merged = 'ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]';
+    // Native ngspice 47 and 42 (non-ascii-node-11): E1 still delivers 666.7 µA, I1 its 1 mA, G1 its 1 mA, Q1 4.15 mA
+    // into its collector; V2 stops ngspice ("shorted VSRC") and L1 makes its matrix singular. None "carries no current".
+    const cases: [netlist: string, joined: string, facts?: string][] = [
+      ['V1 in 0 1\nE1 aµ 0 in au 2\nR1 au 0 1k\n.op', 'two ends of E1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nV2 aµ au 5\nR2 au 0 2k\n.op', 'both ends of V2'],
+      ['V1 in 0 12\nR1 in aµ 1k\nI1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of I1'],
+      ['V1 in 0 5\nR1 in aµ 1k\nQ1 aµ au 0 qn\nR2 au 0 1meg\n.model qn npn\n.op', 'two ends of Q1'],
+      ['V1 in 0 1\nR0 in 0 1k\nG1 aµ au in 0 1m\nR1 aµ 0 1k\nR2 au 0 1k\n.op', 'two ends of G1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nL1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of L1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nE1 aµ au aµ au 2\nR2 au 0 2k\n.op', 'all four ends of E1'],
+      ['V1 in 0 12\nR1 in aµ 1k\nR3 aµ au 1k\nI1 aµ au 1m\nR2 au 0 2k\n.op', 'both ends of R3 and both ends of I1'],
+      // A capacitor with a starting voltage: under uic it carries −5000 A at the first point (native 47 and 42,
+      // and our engine: −4999.999999999999, then 0; non-ascii-node-12, names lane critic 2, 5), so no current
+      // is claimed, and the fact for it is cited.
+      ['V1 in 0 12\nR1 in aµ 1k\nC1 aµ au 1u ic=5\nR2 au 0 2k\n.options savecurrents\n.tran 1u 10u uic', 'both ends of C1', 'non-ascii-node-5, non-ascii-node-12'],
+      ['V1 in 0 12\nR1 in aµ 1k\nC1 aµ au 1u IC = 5\nR3 aµ au 1k\nR2 au 0 2k\n.tran 1u 10u uic', 'both ends of C1 and both ends of R3', 'non-ascii-node-5, non-ascii-node-12'],
+      ['V1 in 0 12\nR1 in aµ 1k\nC1 aµ au 1u ic=5\nI1 aµ au 1m\nR2 au 0 2k\n.tran 1u 10u uic', 'both ends of C1 and both ends of I1', 'non-ascii-node-5, non-ascii-node-11, non-ascii-node-12'],
+    ];
+    for (const [lines, joined, facts] of cases) {
+      const t = first(`* t\n${lines}\n.end\n`, 'non-ascii-node');
+      expect([t.severity, t.why, t.ngspice], lines).toEqual(['warning', why(joined), facts ? merged.replace('non-ascii-node-5, non-ascii-node-11', facts) : merged]);
+      // The fix still gives the µ spelling a name of its own: the two nodes the netlist reads as.
+      expect(t.fixes.map((f) => f.label), lines).toEqual(['Rename aµ to au2']);
+    }
+    // A resistor, a capacitor or a diode with an end on each has no voltage across it: it carries no current (non-ascii-node-5, -10).
+    const still = (names: string, many: boolean): string =>
+      `ngspice reads the micro sign µ as u, so aµ and au are the same node: ${names} ${many ? 'have both ends on it and carry' : 'has both ends on it and carries'} no current. Give aµ a name of its own in plain letters.`;
+    const cd = first('* t\nV1 in 0 PULSE(0 12 0 10u 10u 1 2)\nR1 in aµ 1k\nC1 aµ au 1u\nD1 aµ au dd\nR2 au 0 2k\n.model dd D\n.tran 10u 50u\n.end\n', 'non-ascii-node');
+    expect([cd.why, cd.ngspice]).toEqual([
+      still('C1 and D1', true),
+      'ngspice reads µ as u and makes aµ and au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]',
+    ]);
+    expect(first('* t\nV1 in 0 12\nR1 in aµ 1k\nD1 aµ au dd\nR2 au 0 2k\n.model dd D\n.op\n.end\n', 'non-ascii-node').why).toBe(still('D1', false));
+  });
+
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {
     const merged = first('* t\nV1 \u0130 0 6\nR1 \u0130 \u015f 1k\nR2 \u015f 0 1k\n.op\n.end\n', 'non-ascii-node');
     expect(merged).toMatchObject({ severity: 'error', title: '\u0130 and \u015f are one node for ngspice' });
@@ -1060,6 +1520,25 @@ describe('after the final reviews (12 November 2026)', () => {
     const t = first('* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n', 'duplicate-name');
     expect(t.title).toBe('R\u015f and R\u00e7 are the same name for ngspice');
     expect(t.why).toContain('are both r__');
+  });
+
+  it('gives R\u00b5 and Ru the micro sign\'s reason, not the capital letters, and a fix that renames (S9; duplicate-name-4)', () => {
+    for (const [a, b] of [['R\u00b5', 'Ru'], ['Ru', 'R\u00b5']]) {
+      const text = `* t\nV1 a 0 6\n${a} a 0 2\n${b} a 0 3\n.op\n.end\n`;
+      const t = first(text, 'duplicate-name');
+      expect([t.title, t.why, t.ngspice], `${a}, ${b}`).toEqual([
+        `${a} and ${b} are the same name for ngspice`,
+        `Every part needs its own name. ngspice reads the micro sign \u00b5 as u, so ${a} and ${b} are both ru.`,
+        "ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-4]",
+      ]);
+      // "Rename it R\u00b5" for Ru then R\u00b5 changed nothing: the fix compares names as ngspice reads them.
+      expect(t.fixes.map((f) => f.label), `${a}, ${b}`).toEqual(['Rename it Ru2']);
+      expect(ids(applyFix(text, t.fixes[0]!)), `${a}, ${b}`).toEqual([]);
+    }
+    // Both kinds of letter: both reasons.
+    expect(first('* t\nV1 a 0 6\nR\u00b5\u015f a 0 2\nRu\u00e7 a 0 3\n.op\n.end\n', 'duplicate-name').why).toBe(
+      'Every part needs its own name. ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a name as underscores, so R\u00b5\u015f and Ru\u00e7 are both ru__.',
+    );
   });
 
   it('the missing-end note says where new lines go, not that .end stops ngspice (words review W1; missing-end-1, after-end-1, S25)', () => {

@@ -1279,7 +1279,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(n1) = 1000
 ```
 
-### S22. A `+` line right after the title has nothing to continue: it is ignored silently
+### S22. A `+` line right after the title has nothing to continue: it is skipped silently
 
 The `+ R1 n1 0 2` line is dropped without a message: v(n1) = 4 V from R2 alone.
 

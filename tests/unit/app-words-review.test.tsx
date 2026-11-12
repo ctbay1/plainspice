@@ -31,7 +31,9 @@ import { en } from '../../src/i18n/en.ts';
 import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve, type Solution } from '../../src/notebook/index.ts';
 import { EDIT_STRINGS, GROUND, buildSchematic, type Schematic } from '../../src/schematic/index.ts';
-import { EXPLAIN_STRINGS } from '../../src/spice/explain.ts';
+import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
+import { parseNetlist } from '../../src/spice/parse.ts';
+import { checkTraps } from '../../src/spice/traps.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 const read = (path: string): string => readFileSync(resolve(root, path), 'utf8');
@@ -261,6 +263,45 @@ describe('W11: whole lines ngspice does not read', () => {
   it('are lines it "skips" (the drawing lines too); "ignores" is kept for characters inside a line', () => {
     expect(t('netlistFoot')).toContain('Lines that start with *@ say where parts are drawn: ngspice skips them.');
     expect(CATALOG.filter(([, v]) => /\*@/.test(v) && /ignor/.test(v)).map(([k]) => k)).toEqual([]);
+  });
+
+  // The Checks panel said the lines after ".end;done" "are ignored" and a + line after the title is
+  // "ignored silently", where Explain says "skips" for the same lines (words re-check 10).
+  it('are lines it "skips" in the Checks panel too, as Explain says for the same line, and lines ngspice reads are never said to be skipped', () => {
+    const glued = '* t\nV1 in 0 6\nR1 in out 1k\n.op\n.end;done\nR2 out 0 2k\n';
+    const plain = glued.replace('.end;done', '.end');
+    const lost = '* t\n+ R1 n1 0 2\nI1 0 n1 1\nR2 n1 0 4\n.op\n.end\n';
+    const title = '.op\nV1 a 0 1\nR1 a 0 1\n.end\n';
+    const checks = (text: string, id: string): string[] => checkTraps(parseNetlist(text)).filter((c) => c.id === id).flatMap((c) => [c.title, c.why, c.ngspice]);
+    const explained = (text: string, line: number): string => explainNetlist(parseNetlist(text)).find((e) => e.line === line)?.summary ?? '';
+    for (const [text, id] of [[glued, 'after-end'], [plain, 'after-end'], [lost, 'lost-continuation'], [title, 'missing-title']] as const) {
+      expect(checks(text, id).length, id).toBeGreaterThan(0);
+      expect(checks(text, id).filter((x) => /ignor/i.test(x)), `${id}: ${text}`).toEqual([]);
+    }
+    // The same line, the same word: line 6 after ".end;done", and the + line right after the title.
+    expect(explained(glued, 6)).toContain('skips this line');
+    expect(checks(glued, 'after-end')).toEqual([
+      'Lines after .end',
+      'ngspice stops reading at this .end, so it skips the lines after it. Keep .end as the last line.',
+      'ngspice stops reading at a .end with a comment glued to it (.end;...) and skips every line after it, without a message. [after-end-2]',
+    ]);
+    expect(explained(lost, 2)).toContain('ngspice skips it silently');
+    expect(checks(lost, 'lost-continuation')[2]).toBe('ngspice has no line to join it to and skips it silently. [lost-continuation-3]');
+    // After a plain .end ngspice reads the lines: never "skipped", nor "looks ignored"; Explain's own words for .end.
+    expect(checks(plain, 'after-end')[1]).toBe(
+      'ngspice does not stop reading at .end: it still reads these lines when it runs a file, so they are part of the circuit. Keep .end as the last line.',
+    );
+    expect(checks(plain, 'after-end').filter((x) => /skip|looks/.test(x))).toEqual([]);
+    // A command on line 1 is the title: it never runs, as the check's own why says.
+    expect(checks(title, 'missing-title')[0]).toBe('Line 1 is the title, so .op never runs');
+    // ngspice reads a .print or .plot line and answers ".print line ignored since rawfile was produced": Explain
+    // and the Checks panel both say it leaves the line out, never that it skips it (names lane critic 2, 6).
+    for (const kind of ['.print', '.plot']) {
+      const printed = `* t\nV1 in 0 12\nR1 in \u00e7 1k\nR2 \u00e7 0 2k\n.dc V1 0 12 6\n${kind} dc v(\u00e7)\n.end\n`;
+      expect(explained(printed, 6), kind).toContain(`and then ngspice leaves the ${kind} line out ("${kind} line ignored since rawfile was produced")`);
+      expect(checks(printed, 'non-ascii-node').join(' '), kind).toContain(`PlainSpice's run leaves .print and .plot lines out (ngspice: "${kind} line ignored since rawfile was produced.")`);
+      expect([explained(printed, 6), ...checks(printed, 'non-ascii-node')].filter((x) => /skip/.test(x)), kind).toEqual([]);
+    }
   });
 });
 

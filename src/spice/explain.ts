@@ -399,7 +399,7 @@ export const EXPLAIN_STRINGS = {
   libOneWord: 'ngspice\'s .lib takes two words, the file and the section; with one word it does not recognise the line and stops: "unimplemented dot command".',
   printWhat: (name: string): string => (name === '.plot' ? 'plot in text' : 'print a table'),
   print: (name: string): string =>
-    `Asks ngspice to ${name === '.plot' ? 'plot results as text' : 'print a table of results'}. PlainSpice's engine writes a results file instead, and then ngspice skips ${name} ("${name} line ignored since rawfile was produced"). PlainSpice shows the results itself, so you don't need it.`,
+    `Asks ngspice to ${name === '.plot' ? 'plot results as text' : 'print a table of results'}. PlainSpice's engine writes a results file instead, and then ngspice leaves the ${name} line out ("${name} line ignored since rawfile was produced"). PlainSpice shows the results itself, so you don't need it.`,
   saveWhat: 'choose what to save',
   save: (what: string): string =>
     `Tells ngspice which results to keep. With .save, the results file holds only what .save names${what ? ` (${what})` : ''}, so PlainSpice can show only those.`,
