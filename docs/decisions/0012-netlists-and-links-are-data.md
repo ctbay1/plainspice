@@ -171,7 +171,9 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   renders, so a 13.9 kB link (2000 such nodes among 100,000 comment lines) froze the page for about
   5 s on opening and after every key, and 4000 names with the same plain letters took 1.2 s. Now the
   label lines are read once, on the first rename, and the next number for each name is kept: the
-  same checks take about 0.3 s on that link (fix-base, which had none of them, 0.12 s). The test
+  checks take about 0.3 s on that link (fix-base, which had none of them, 0.12 s), and in Chromium the
+  page's longest task is 0.28 s on opening it and 0.2 s after a key (5.6 s and 5.7 s before); a
+  6.6 kB link whose one fix renames 2048 nodes, 0.29 s (5.9 s). The test
   (`tests/unit/spice-traps.test.ts`, "renames thousands of nodes among thousands of lines …") builds
   each kind of name, and one X line whose one fix renames all its nodes, ten times larger among ten
   times the lines, and allows at most three times the work of ten small ones, timed as the work it
