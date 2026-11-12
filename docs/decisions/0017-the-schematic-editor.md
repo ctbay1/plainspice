@@ -338,12 +338,14 @@ browsers other than Chromium.
   the new part's card opens as a sheet in the hint line's place, so the time starts when the sheet
   closes (`src/app/hint-note.ts`). It shows with a part still in hand too: Shift+click keeps the tool,
   as the hint line offers, and the why shows at once, as after a plain click (the second critic of W9:
-  placed that way, it was never shown). Moving the pointer, closing the card (Escape or its close
-  button), typing its value, another change with nothing to say (another part placed with Shift+click),
-  or going back to Select (Escape, Cancel, the Select tool, or the click that places the last part)
-  leaves it in place; a change with a note of its own, a refusal, another tool chosen, Undo or Redo,
-  another circuit opened, or any other Escape (letting go of the selection, closing a panel or a
-  sheet, stopping a wire or a move) takes it away at once.
+  placed that way, it was never shown). Moving the pointer, typing the new part's value, another change
+  with nothing to say (another part placed with Shift+click), going back to Select (Escape, Cancel, the
+  Select tool, or the click that places the last part), and closing or stopping something, with Escape
+  or with its own button (the card, a panel, a sheet, a part being moved), leave it in place. A change
+  with a note of its own, a refusal, another tool chosen, Undo or Redo, another circuit opened, or the
+  Escape that lets go of the selection (or has nothing left to stop) takes it away at once: the student
+  is done with it. (An Escape that closed a panel, such as the Netlist panel opened to look at the new
+  lines, or put back a part being moved, took it away unread too.)
 - **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
   now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
   every node name in the circuit's undo history: the texts Undo can go back to since the circuit was

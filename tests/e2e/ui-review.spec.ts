@@ -236,6 +236,12 @@ test('the first part on a blank page: why .op and .end were written is shown fir
   await page.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
   await expect(hintLine(page)).toHaveText(why);
+  // The Netlist panel opened to look at the new .op and .end, and closed with Escape as its tab would: the
+  // why stays (that Escape took it away unread: found with the second critic of W9).
+  await openPanel(page, 'netlist');
+  await page.keyboard.press('Escape');
+  await expect(panel(page, 'netlist')).toHaveCount(0);
+  await expect(hintLine(page)).toHaveText(why);
   // Past the 6 s it used to have at most, and the pointer moving again: still there (60 ms a character).
   await page.waitForTimeout(Math.max(0, 7000 - (Date.now() - placed)));
   await page.mouse.move(empty.x, empty.y, { steps: 4 });

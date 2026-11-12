@@ -2773,35 +2773,33 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
       let acted = true;
-      /** This Escape only closed a card (the one that opened on a new part, say) or put the part in hand down. */
-      let keepsNote = false;
+      /** This Escape let go of the selection, or had nothing left to stop. */
+      let letGo = false;
       if (move) cancelMove();
       else if (wireDraft) {
         setWireDraft(undefined);
         announce(t('wireCancelled'));
       } else if (partsSheet) setPartsSheet(false);
       else if (moreSheet) setMoreSheet(false);
-      else if (card) {
-        closeCard();
-        keepsNote = true;
-      } else if (nodeCard) {
-        closeNodeCard();
-        keepsNote = true;
-      } else if (tool !== 'select') {
-        chooseTool('select');
-        keepsNote = true;
-      } else if (panel && !inEditor) setPanel(undefined);
-      else if (selectedWire && !inEditor) setSelectedWire(undefined);
-      else if (selected && !inEditor) setSelected(undefined);
-      // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
-      // already (in a browser, React draws that before this listener runs).
-      else acted = false;
+      else if (card) closeCard();
+      else if (nodeCard) closeNodeCard();
+      else if (tool !== 'select') chooseTool('select');
+      else if (panel && !inEditor) setPanel(undefined);
+      else {
+        letGo = true;
+        if (selectedWire && !inEditor) setSelectedWire(undefined);
+        else if (selected && !inEditor) setSelected(undefined);
+        // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
+        // already (in a browser, React draws that before this listener runs).
+        else acted = false;
+      }
       // The next thing has happened: the hint line says again what can be done now, not an older refusal
-      // or an edit's note (they were said aloud when they came). A note that must be read stays when
-      // Escape only closed a card (on a phone that brings the hint line, and the note, back into view)
-      // or only went back to Select, as the hint line offers after a Shift+click (chooseTool keeps it).
+      // or an edit's note (they were said aloud when they came). A note that must be read goes only with
+      // the Escape that lets go (the student is done): one that closes or stops something leaves it, as
+      // that thing's own button does (closing the new part's card brings a phone's hint line, and the
+      // note, back into view; going back to Select is what the hint line offers after a Shift+click).
       setRefusal(undefined);
-      if (!(keepsNote && noteLine?.read)) setNoteLine(undefined);
+      if (letGo || !noteLine?.read) setNoteLine(undefined);
       if (acted) e.preventDefault();
       return;
     }

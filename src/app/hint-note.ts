@@ -9,8 +9,10 @@
  * the new part's card opens as a sheet over the hint line, so that time starts when the sheet closes.
  * (Held only as long as the drawing note, it went at the first pointer move after 1.5 s, after 6 s at
  * most, and a phone never showed it: the critic of words W9.) It shows with a part still in hand too
- * (Shift+click keeps the tool), and going back to Select leaves it in place (App.tsx: after a
- * Shift+click it was never shown, and Escape back to Select took it away: the second critic of W9).
+ * (Shift+click keeps the tool), going back to Select leaves it in place, and so does an Escape that
+ * closes or stops something; only the Escape that lets go of the selection takes it away (App.tsx:
+ * after a Shift+click it was never shown, and Escape back to Select, or one that closed a panel, took
+ * it away unread: the second critic of W9).
  */
 import { useEffect, useRef } from 'react';
 import type { Tool } from './tools.ts';

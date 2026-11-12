@@ -188,6 +188,24 @@ describe('the first part on a blank page (words W9)', () => {
     await waitFor(() => expect(document.querySelector('.hint')!.textContent).toBe(starterWords()));
     await waitFor(() => expect(polite()).toContain(starterWords()));
   }, 30000);
+
+  it('keeps the why through an Escape that only closes something, as its own button does; the Escape that lets go takes it away', async () => {
+    render(<App startup={saved('')} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Parts and tools' })).getByRole('button', { name: 'Add a part' }));
+    const form = await screen.findByRole('dialog', { name: 'Add a part' }, { timeout: 5000 });
+    fireEvent.click(within(form).getByRole('button', { name: /^Add R1/ }));
+    await waitFor(() => expect(document.querySelector('.hint')!.textContent).toBe(starterWords()));
+    // The Netlist panel opened to look at the new .op and .end, then closed with Escape (the second critic
+    // of W9: that Escape took the why away unread): it stays, as when the panel's tab closes it.
+    fireEvent.click(tab('Netlist'));
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Netlist' })).toBeTruthy());
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Netlist' })).toBeNull());
+    expect(document.querySelector('.hint')!.textContent).toBe(starterWords());
+    // The next Escape lets go of R1, selected by the form: the student is done with the why.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(document.querySelector('.hint')!.textContent).not.toBe(starterWords()));
+  }, 30000);
 });
 
 describe('the Netlist panel a SPICE for Beginners example opens (student netlist-panel-stays)', () => {
