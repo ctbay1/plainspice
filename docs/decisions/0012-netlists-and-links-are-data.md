@@ -67,7 +67,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - **Characters that look like a space but are none for SPICE** (critic of the fixes above). Documents
   write a thin or narrow no-break space between a number and its unit (`4.7 kΩ`) and between groups
   of digits (`10 000`); Chinese and Japanese input gives the ideographic space. ngspice splits words
-  only at spaces and tabs, so it reads these as part of the word: `4.7<thin space>kΩ` is 4.7 Ω and
+  only at ASCII white space (a space, a tab ...), so it reads these as part of the word: `4.7<thin space>kΩ` is 4.7 Ω and
   `10<thin space>000` is 10, without a message (space-character-1 to -3; the no-break space does the
   same, nbsp-2). The check space-character covers U+1680, U+2000–U+200A, U+202F, U+205F and U+3000;
   the no-break space U+00A0 keeps its own check, nbsp, which now reads a value the same way. A value

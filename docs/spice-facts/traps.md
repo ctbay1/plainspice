@@ -8341,7 +8341,7 @@ Added after the critic of the fixes for the final reviews (12 November 2026). A 
 space but is none for SPICE, other than the no-break space (which has its own check, nbsp): the thin space
 and the narrow no-break space that documents put between a number and its unit (`4.7 kΩ`) or between groups
 of digits (`10 000`), the ideographic space of Chinese and Japanese input, and Unicode's other spaces.
-ngspice splits words only at spaces and tabs and writes every byte outside printable ASCII as `_` (W16), so
+ngspice splits words only at ASCII white space (a space, a tab ...) and writes every byte outside printable ASCII as `_` (W16), so
 it reads such a character as part of the word: inside a value the number ends there and the rest of the word
 is ignored, without a message; between two words it glues them into one; at the start of a value the word is
 no number, and ngspice stops. A value is read the way documents write values: a number, the space, a scale

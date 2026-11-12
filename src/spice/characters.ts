@@ -13,7 +13,7 @@
  * - a node name with a letter outside a to z is written with underscores (giriş is giri__), so two
  *   names can become one node (non-ascii-node-1, -2);
  * - a character that looks like a space (a no-break, thin or ideographic space ...) is no space for
- *   ngspice, which splits words only at spaces and tabs: inside a value it ends the number, so
+ *   ngspice, which splits words only at ASCII white space (a space, a tab ...): inside a value it ends the number, so
  *   4.7<thin space>kΩ is 4.7 Ω (space-character-1, -2, nbsp-2), and between two words it glues them
  *   into one (space-character-4, nbsp-1).
  */
@@ -53,8 +53,8 @@ const INVISIBLE_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Characters that look like a space but are none for SPICE: ngspice splits words only at spaces and
- * tabs, so it reads these as part of the word (W16). Documents put a no-break, narrow no-break or thin
+ * Characters that look like a space but are none for SPICE: ngspice splits words only at ASCII white
+ * space (a space, a tab ...), so it reads these as part of the word (W16). Documents put a no-break, narrow no-break or thin
  * space between a number and its unit (4.7 kΩ) and between groups of digits (10 000); Chinese and
  * Japanese input gives the ideographic space; the rest are Unicode's other spaces (space-character-1
  * to -5, nbsp-1, nbsp-2 in docs/spice-facts/traps.md).
