@@ -216,3 +216,25 @@ Ctrl+K stay as they are.
   then offered none. The link now says "See the fix in Checks" when the Checks panel has a fix for
   that check, and "See why in Checks" when it has not (`CardContent.trapFix`); both open the Checks
   panel at the check, whose first line now says it offers a fix "where there is one".
+- **Explain lists the drawing lines once** (kept review F2, words review W11). A run of drawing lines
+  (`* plainspice-drawing v1` and the `*@` lines after it, found the way `src/schematic/format.ts` finds
+  them) is one entry in "Every line, explained": "Lines 11–32: Drawing lines", what they are for
+  (where each part, wire and node name is drawn, which PlainSpice reads to draw the circuit) and that
+  ngspice skips them, a line starting with `*` being a comment (drawing-1, S6), with one "Go to line
+  11" button, which unfolds them. Every line of the run gives that same entry, so the list shows it
+  once, also within the first lines shown before "Show the other n lines", and those lines are not
+  counted again. Explain says "skips" for whole lines ngspice does not read (comments, blank lines,
+  lines after a glued `.end` or an `@` line) and keeps "ignores" for characters inside a line, as the
+  Netlist and Checks panels do.
+- **Node names with letters outside a to z** (kept review F3). ngspice writes each byte of such a
+  letter as `_` (W16: `giriş` is `giri__`), and joins names it spells the same (W17: `ş` and `ç` are
+  both `__`). `describe.ts` maps ngspice's names back to the netlist's when exactly one netlist name is
+  spelled that way, so the drawing, the Numbers panel, the cards and the announcement say `giriş`;
+  `NodeVoltageWords.ngspice` and `CurrentWords.vector` keep ngspice's spelling for the panel's ngspice
+  column. A check (non-ascii-node) warns about such a name, with a fix to plain letters (`giris`, the
+  letters with no plain form left out), and is an error when two names become one node, because
+  ngspice then simulates another circuit; part names that become one are a duplicate-name error
+  (duplicate-name-3). Chosen: a warning, not a note, as the review asked, although the numbers are
+  right, because a name in plain letters is what keeps two nodes apart; a fix never gives a name
+  another node has (it would join them), so `giriş` next to a node `giris` becomes `giris2`; the fix
+  renames the node on the drawing's `*@ label` line too.

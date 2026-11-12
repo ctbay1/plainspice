@@ -51,7 +51,9 @@
  * "gnd" (W8-W12). "ground" and "00" are ordinary nodes (W13, W14). Ground is listed under "0" in
  * `Netlist.nodes`. Nodes named in directives (".tf v(a) V1") are listed with their references; a
  * node named only there has no connections. Nodes inside .subckt ... .ends are local to the
- * subcircuit and are not listed.
+ * subcircuit and are not listed. The keys keep letters outside ASCII as written ("giriş"), although
+ * ngspice writes each of their bytes as '_' ("giri__", W16): `ngspiceSpelling` gives ngspice's name,
+ * so two names it makes one (W17) can be found, and its results matched to the netlist's names.
  *
  * The parser never throws, whatever the input.
  */
@@ -123,8 +125,28 @@ export function lowerAscii(s: string): string {
   return upper ? s.toLowerCase() : s;
 }
 
+/**
+ * A name as ngspice spells it in its printout and results (W16-W18): it reads the file as bytes, turns
+ * the micro sign µ into 'u', then writes every byte that is not a printable ASCII character as '_'
+ * (inp_casefix in ngspice's inpcom.c), so each character outside ASCII becomes one '_' per byte of
+ * its UTF-8 form: "giriş" is "giri__" (ş is two bytes), "a😀" is "a____". ASCII letters go to lower
+ * case. Spaces never occur in a name.
+ */
+export function ngspiceSpelling(name: string): string {
+  let out = '';
+  for (const ch of name) {
+    const c = ch.codePointAt(0)!;
+    if (c === 0xb5) out += 'u';
+    else if (c < 0x20 || c === 0x7f) out += '_';
+    else if (c < 0x80) out += c >= 65 && c <= 90 ? String.fromCharCode(c + 32) : ch;
+    // UTF-8 length; a lone surrogate is written as U+FFFD, three bytes.
+    else out += '_'.repeat(c < 0x800 ? 2 : c < 0x10000 ? 3 : 4);
+  }
+  return out;
+}
+
 /** A node or part name as ngspice uses it: micro sign as 'u', ASCII letters in lower case. */
-function ngspiceName(word: string): string {
+export function ngspiceName(word: string): string {
   return lowerAscii(word.includes(MICRO_SIGN) ? word.replaceAll(MICRO_SIGN, 'u') : word);
 }
 

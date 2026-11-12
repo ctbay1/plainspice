@@ -208,3 +208,51 @@ describe('markLayout', () => {
     }
   });
 });
+
+describe('after the final reviews (12 November 2026)', () => {
+  it('draws ngspice\'s rounding noise as 0 A: no arrow, no delivers or absorbs (student review; C9b)', () => {
+    // The homework circuit with "Vm x gnd": every true current is 0, and ngspice gives 1e-18 A (C9b).
+    const text = '* circuit\nV1 in 0 12\nR1 in a 1k\nR2 a x 2k\nVm x gnd\nR3 a b 3k\nF1 0 b V1 2\n.op\n.end\n';
+    const results = op({ in: 12, a: 11.999999999999998, x: 11.999999999999998, gnd: 11.999999999999998, b: 11.999999999999995 }, [
+      ['v1', -1.734723475976807e-18, 'branch'],
+      ['vm', 0, 'branch'],
+      ['r1', 1.7763568394002505e-18, 'device'],
+      ['r2', 0, 'device'],
+      ['r3', 1.1842378929335003e-18, 'device'],
+      ['f1', -3.469446951953614e-18, 'device'],
+    ]);
+    const s = notebookSchematic(text);
+    const drawn = placeResults(s.scene, describeResults(parseNetlist(text), results, run()));
+    for (const key of ['v1', 'r1', 'r3', 'f1']) {
+      const pm = drawn.parts.get(key)!;
+      expect(pm.direction, key).toBeUndefined();
+      expect(texts(pm.marks), key).toEqual(['0 A']);
+    }
+    expect(texts(drawn.parts.get('vm')!.marks)).toEqual(['measures 0 A']);
+  });
+
+  it('draws the voltage of a node that noise reaches as 0 V, next to the currents it drives drawn as 0 A (critic of round 1; C9d)', () => {
+    // A balanced bridge with a 0 V source in R5's branch, and F1 copying its noise into R6 (C9d).
+    const text = '* circuit\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\n.op\n.end\n';
+    const results = op({ top: 9, a: 4.499999999999999, b: 4.499999999999999, m: 4.499999999999999, out: -2.1684043449710089e-13 }, [
+      ['vm', -2.168404344971009e-19, 'branch'],
+      ['v1', -0.0014074468085106388, 'branch'],
+      ['r1', 4.5e-4, 'device'],
+      ['r2', 4.5e-4, 'device'],
+      ['r3', 9.574468085106385e-4, 'device'],
+      ['r4', 9.574468085106381e-4, 'device'],
+      ['r5', 0, 'device'],
+      ['f1', -2.1684043449710089e-16, 'device'],
+      ['r6', -2.1684043449710089e-16, 'device'],
+    ]);
+    const s = notebookSchematic(text);
+    const drawn = placeResults(s.scene, describeResults(parseNetlist(text), results, run()));
+    for (const key of ['f1', 'r6']) {
+      expect(drawn.parts.get(key)!.direction, key).toBeUndefined();
+      expect(texts(drawn.parts.get(key)!.marks), key).toEqual(['0 A']);
+    }
+    const out = drawn.nodes.find((n) => n.node === 'out')!;
+    expect(out.words.value).toBe(0);
+    expect(out.mark!.text.replace(/\u00a0/g, ' ')).toMatch(/^(= )?0 V$/);
+  });
+});

@@ -15,11 +15,12 @@
  */
 import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../engine/results.ts';
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
-import { formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
-import { isBuilt } from './graph.ts';
-import { lowerAscii, parseNetlist } from './parse.ts';
+import { behaviouralKind, isBuilt } from './graph.ts';
+import { readNumber } from './numbers.ts';
+import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
 
 const MINUS = '−';
@@ -28,9 +29,21 @@ const ARROW = '→';
 // ------------------------------------------------------------------ result types
 
 export interface NodeVoltageWords {
-  /** Node name as ngspice reports it (lower-case). */
+  /**
+   * The node's name as the netlist writes it, lower-case ASCII letters ("giriş"), and as ngspice
+   * reports it for every other name; ngspice writes each byte of a letter outside ASCII as '_' (W16).
+   */
   node: string;
+  /** ngspice's own spelling, when it is not `node` ("giri__" for "giriş", W16). */
+  ngspice?: string;
+  /** ngspice's value; 0 when it is rounding noise (C9d), which `noise` keeps. */
   value: number;
+  /**
+   * ngspice's own value when it is rounding noise and PlainSpice says 0 V instead (C9d): the node is
+   * joined to ground through parts that carry no current, and the value is below ngspice's voltage
+   * tolerance (vntol, 1 µV, C9c). Shown with ngspice's spelling, never as a voltage.
+   */
+  noise?: number;
   /** "12 V" */
   text: string;
   /** "12 volts" */
@@ -53,14 +66,26 @@ export interface PowerWords {
 }
 
 export interface CurrentWords {
-  /** Lower-case part name, as ngspice reports it. */
+  /** Lower-case part name, as the netlist writes it (ngspice's own spelling differs for letters outside ASCII, W18). */
   element: string;
+  /** The results vector it comes from, in ngspice's spelling: "i(v1)", "i(@r__[i])". */
+  vector?: string;
   /** The part's name as written in the netlist ("R1", "Vx"). */
   name: string;
   /** 1-based line of the part. */
   line?: number;
-  /** SPICE's value, with its sign. */
+  /**
+   * SPICE's value, with its sign; 0 when ngspice's value is rounding noise (C9), which `noise` keeps.
+   * Every word, arrow and power claim follows this value.
+   */
   value: number;
+  /**
+   * ngspice's own value when it is rounding noise and PlainSpice says 0 A instead (C9–C9d): below
+   * ngspice's current tolerance (abstol, 1 pA), on a part whose own numbers say its current is 0
+   * (both ends at the same voltage, the only current left at one of its nodes, or a copy of a current
+   * that is 0: see roundingNoise). Shown with ngspice's spelling, never as a current.
+   */
+  noise?: number;
   /** Node the current comes from, through the part (ngspice's name; ground is "0"). */
   from: string;
   /** Node it flows to. */
@@ -106,7 +131,7 @@ export interface MessageWords {
   /**
    * The diagnostic code (src/engine/diagnostics.ts), one PlainSpice adds for messages that file does
    * not classify (unknown-control-source, unknown-dot-command, meas-skipped), or one of: unreliable,
-   * no-analysis, no-results, tf-node-missing.
+   * no-analysis, no-results, tf-node-missing, rounding-noise (a note: currents said as 0 A, C9).
    */
   code: string;
   severity: 'error' | 'warning' | 'note';
@@ -153,9 +178,33 @@ export interface DiagnosticWords {
 
 // ------------------------------------------------------------------ strings
 
+/**
+ * A node in a sentence, the way the editor says it (EDIT_STRINGS.node, decision 0017): "node in",
+ * because a name may be an ordinary word; ground stays "ground" (written "0" in results). Inside the
+ * templates below, so every page that builds a sentence from them (the overview, the drawing's
+ * descriptions, the cards) says it the same way.
+ */
+function nodeIn(n: string): string {
+  return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' ? n : `node ${n}`;
+}
+
+/** Names that look like ground but are ordinary nodes where they are not ground (W9, W13, W14). */
+const GROUND_LIKE = /^(gnd|ground|00)$/i;
+
+/**
+ * A node's name for the sentences: ground ("0") is "ground"; an ordinary node named like ground is
+ * quoted, as Explain quotes it, so 'node "ground"' never reads as ground (words review W8, critic of
+ * its fix). The templates above read "ground" as ground, as the drawing's and the cards' words pass it.
+ */
+const said = (n: string): string => (n === '0' ? 'ground' : GROUND_LIKE.test(n) ? `"${n}"` : n);
+/** said, for the other modules that build sentences from these templates (the drawing's, the cards'). */
+export const sentenceNode = said;
+
 /** Every sentence this module writes, in one object so a Turkish UI can replace it later. */
 export const DESCRIBE_STRINGS = {
   ground: 'ground',
+  /** A node in a sentence: "node in"; ground is "ground". */
+  node: nodeIn,
   // ---- describeCircuit
   counts: (parts: number, nodes: number, names: string): string =>
     `${parts} ${parts === 1 ? 'part' : 'parts'} and ${nodes} ${nodes === 1 ? 'node' : 'nodes'} besides ground${names ? ` (${names})` : ''}.`,
@@ -163,31 +212,51 @@ export const DESCRIBE_STRINGS = {
     `${parts} ${parts === 1 ? 'part' : 'parts'} and ${nodes} ${nodes === 1 ? 'node' : 'nodes'}${names ? ` (${names})` : ''}. Nothing is connected to ground (node 0).`,
   noParts: 'No parts yet.',
   moreParts: (n: number): string => `And ${n} more ${n === 1 ? 'part' : 'parts'}.`,
-  resistor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} resistor` : 'a resistor'} between ${a} and ${b}.`,
-  capacitor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} capacitor` : 'a capacitor'} between ${a} and ${b}.`,
-  inductor: (name: string, v: string, a: string, b: string): string => `${name}: ${v ? `${articleBefore(v)} ${v} inductor` : 'an inductor'} between ${a} and ${b}.`,
+  resistor: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} resistor` : 'a resistor'} between ${nodeIn(a)} and ${nodeIn(b)}.`,
+  capacitor: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} capacitor` : 'a capacitor'} between ${nodeIn(a)} and ${nodeIn(b)}.`,
+  inductor: (name: string, v: string, a: string, b: string): string =>
+    `${name}: ${v ? `${articleBefore(v)} ${v} inductor` : 'an inductor'} between ${nodeIn(a)} and ${nodeIn(b)}.`,
   vSource: (name: string, v: string, a: string, b: string): string =>
-    `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${a} and its ${MINUS} side at ${b}.`,
-  vFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} voltage source with its + side at ${a} and its ${MINUS} side at ${b}.`,
-  ammeter: (name: string, a: string, b: string): string => `${name}: a 0 V source from ${a} to ${b}, used as an ammeter.`,
-  swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${a} and its ${MINUS} side at ${b}, swept by .dc.`,
+    `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
+  vFunction: (name: string, fn: string, a: string, b: string): string =>
+    `${name}: a ${fn} voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
+  // P9: true of every 0 V source, the turned-off source of a Thevenin example too (student review): what
+  // it is and what ngspice does with it, not a purpose the circuit may not have.
+  ammeter: (name: string, a: string, b: string): string =>
+    `${name}: a 0 V source from ${nodeIn(a)} to ${nodeIn(b)}: a wire, through which ngspice measures the current (the ammeter trick).`,
+  // P16, A20, P21: an AC value is its size in an .ac analysis; with no DC value the source is 0 V in .op.
+  acSource: (name: string, size: string, a: string, b: string): string =>
+    `${name}: an AC source${size ? ` of ${size}` : ''} in an .ac analysis, 0 V in DC, with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
+  swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}, swept by .dc.`,
   iSource: (name: string, v: string, a: string, b: string): string =>
-    `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${a} into ${b}.`,
-  iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${a} into ${b}.`,
+    `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
+  iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
   vcvs: (name: string, out: string, gain: string, control: string): string =>
     `${name}: a voltage-controlled voltage source: ${out}, is ${gain} × ${control}.`,
   cccs: (name: string, gain: string, control: string, a: string, b: string): string =>
-    `${name}: a current-controlled current source pushing ${gain} × the current in ${control} from ${a} into ${b}.`,
+    `${name}: a current-controlled current source pushing ${gain} × the current in ${control} from ${nodeIn(a)} into ${nodeIn(b)}.`,
   vccs: (name: string, gm: string, control: string, a: string, b: string): string =>
-    `${name}: a voltage-controlled current source pushing ${gm} for every volt ${control} from ${a} into ${b}.`,
+    `${name}: a voltage-controlled current source pushing ${gm} for every volt ${control}, from ${nodeIn(a)} into ${nodeIn(b)}.`,
   ccvs: (name: string, out: string, r: string, control: string): string =>
     `${name}: a current-controlled voltage source: ${out}, is ${r} for every amp in ${control}.`,
-  voltageAt: (n: string, ref: string): string => `the voltage at ${n}, measured from ${ref}`,
-  at: (n: string): string => `at ${n}`,
-  between: (a: string, b: string): string => `between ${a} and ${b}`,
+  voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
+  at: (n: string): string => `at ${nodeIn(n)}`,
+  between: (a: string, b: string): string => `between ${nodeIn(a)} and ${nodeIn(b)}`,
   coupling: (name: string, l1: string, l2: string, k: string): string => `${name}: couples ${l1} and ${l2} (coupling ${k}).`,
   otherPart: (name: string, what: string, nodes: string): string => `${name}: ${what}${nodes ? ` (${nodes})` : ''}.`,
-  labelled: (label: string, n: string): string => `${label} ${n}`,
+  // "+ node a" already says "node"; a terminal reads "collector at node c", "emitter at ground". At
+  // ground a "node" label loses the word: "− side at ground", as the V sentence says, "from ground",
+  // or "ground" alone (critic of the W8 fix: no "− node at ground").
+  labelled: (label: string, n: string): string => {
+    if (nodeIn(n) !== 'ground') return label.endsWith('node') ? `${label} ${n}` : `${label} at ${nodeIn(n)}`;
+    const rest = label.replace(/\s*node$/, '');
+    if (rest === label) return `${label} at ground`;
+    if (!rest) return 'ground';
+    if (/[+−]$/.test(rest)) return `${rest} side at ground`;
+    return rest === 'from' || rest === 'to' ? `${rest} ground` : `${label} at ground`;
+  },
   modelOf: (m: string): string => `model ${m}`,
   subcircuitOf: (m: string): string => `subcircuit ${m}`,
   analysis: (list: string): string => `Analysis: ${list}.`,
@@ -205,11 +274,11 @@ export const DESCRIBE_STRINGS = {
   otherAnalysis: (name: string): string => `${name}`,
   subcircuits: (n: number, names: string): string => `${n} subcircuit ${n === 1 ? 'definition' : 'definitions'} (${names}).`,
   // ---- results
-  amps: (a: string, from: string, to: string, name: string): string => `${a} from ${from} to ${to} through ${name}`,
-  ampsSpeech: (a: string, verb: string, from: string, to: string, name: string): string => `${a} ${verb} from ${from} to ${to} through ${name}`,
+  amps: (a: string, from: string, to: string, name: string): string => `${a} from ${nodeIn(from)} to ${nodeIn(to)} through ${name}`,
+  ampsSpeech: (a: string, verb: string, from: string, to: string, name: string): string => `${a} ${verb} from ${nodeIn(from)} to ${nodeIn(to)} through ${name}`,
   noCurrent: (name: string): string => `no current through ${name}`,
   noCurrentSpeech: (name: string): string => `no current flows through ${name}`,
-  measures: (name: string, a: string, from: string, to: string): string => `${name} measures ${a} flowing from ${from} to ${to}`,
+  measures: (name: string, a: string, from: string, to: string): string => `${name} measures ${a} flowing from ${nodeIn(from)} to ${nodeIn(to)}`,
   measuresNothing: (name: string): string => `${name} measures no current`,
   delivers: (name: string, w: string): string => `${name} delivers ${w}`,
   absorbs: (name: string, w: string): string => `${name} absorbs ${w}`,
@@ -225,7 +294,8 @@ export const DESCRIBE_STRINGS = {
   outputRCurrentSpeech: (out: string, r: string): string => `ngspice reports ${r} as the output impedance for ${out}; it is not a resistance of your circuit`,
   ratioWords: { 'V/V': 'volts per volt', 'V/A': 'volts per amp, which is ohms', 'A/V': 'amps per volt', 'A/A': 'amps per amp' } as Record<string, string>,
   ratioWordsOne: { 'V/V': 'volt per volt', 'V/A': 'volt per amp, which is an ohm', 'A/V': 'amp per volt', 'A/A': 'amp per amp' } as Record<string, string>,
-  voltageOf: (n: string): string => `the voltage at ${n}`,
+  voltageOf: (n: string): string => `the voltage at ${nodeIn(n)}`,
+  voltageBetween: (a: string, b: string): string => `the voltage between ${nodeIn(a)} and ${nodeIn(b)}`,
   currentIn: (name: string): string => `the current in ${name}`,
   dcSweepText: (what: string, points: number): string => `DC sweep of ${what}: ${points} ${points === 1 ? 'point' : 'points'}.`,
   dcNoPoints: (what: string): string => `DC sweep of ${what}: no points.`,
@@ -251,7 +321,7 @@ export const DESCRIBE_STRINGS = {
   summaryNothing: 'no results to show',
   // ---- annotations
   noteAmps: (a: string, from: string, to: string): string => `${a}, ${from} ${ARROW} ${to}`,
-  noteAmpsSpeech: (a: string, verb: string, from: string, to: string): string => `${a} ${verb} from ${from} to ${to}`,
+  noteAmpsSpeech: (a: string, verb: string, from: string, to: string): string => `${a} ${verb} from ${nodeIn(from)} to ${nodeIn(to)}`,
   noteNoCurrent: '0 A',
   noteNoCurrentSpeech: 'no current flows',
   noteAcross: (v: string): string => `${v} across`,
@@ -263,7 +333,7 @@ export const DESCRIBE_STRINGS = {
   noteIntoPlusSpeech: 'into its + side',
   noteDelivers: (w: string): string => `delivers ${w}`,
   noteAbsorbs: (w: string): string => `absorbs ${w}`,
-  noteMeasures: (a: string, from: string, to: string): string => `measures ${a} flowing from ${from} to ${to}`,
+  noteMeasures: (a: string, from: string, to: string): string => `measures ${a} flowing from ${nodeIn(from)} to ${nodeIn(to)}`,
   // ---- messages
   unreliableTitle: "These numbers can't be trusted",
   unreliableWhy:
@@ -417,11 +487,47 @@ export const DESCRIBE_STRINGS = {
   unknownDotWhy: (name: string): string => `${name} is not a dot command ngspice knows, so it stops ("unimplemented dot command").`,
   measTitle: '.meas was skipped',
   measWhy: 'PlainSpice\'s engine writes a results file, and then ngspice skips .meas.',
+  // C9–C9e: currents and node voltages ngspice gives as rounding noise of a 0 are said as 0, with what
+  // ngspice gave and why the true value is 0 (roundingNoise).
+  noiseTitle: (currents: readonly string[], nodes: readonly string[]): string => {
+    if (!currents.length) return nodes.length === 1 ? `Node ${nodes[0]} is shown as 0 V` : `${nodes.length} node voltages are shown as 0 V`;
+    const shown = currents.length === 1 ? `${currents[0]}'s current is shown as 0 A` : `${currents.length} currents are shown as 0 A`;
+    return !nodes.length ? shown : `${shown}, and ${nodes.length === 1 ? `node ${nodes[0]}` : `${nodes.length} node voltages`} as 0 V`;
+  },
+  noiseGaveCurrent: (name: string, value: string): string => `${name} ${value} A`,
+  noiseGaveVoltage: (node: string, value: string): string => `node ${node} ${value} V`,
+  noiseSame: (name: string, a: string, b: string, v: string): string => `the two ends of ${name}, ${nodeIn(a)} and ${nodeIn(b)}, are at the same voltage, ${v}`,
+  noiseCopies: (name: string, gain: string, control: string): string => `${name} pushes ${gain} × the current in ${control}, which is 0`,
+  noiseReads: (name: string, c: string, d: string): string => `${name} reads the voltage between ${nodeIn(c)} and ${nodeIn(d)}, which is 0`,
+  noiseNode: (n: string): string => `every other current at ${nodeIn(n)} is 0, and the currents at a node add up to 0`,
+  /** For several parts: what each of them does, by the kinds of reason found ("has its two ends at the same voltage, or ..."). */
+  noiseEach: (kinds: readonly ('same' | 'copies' | 'reads' | 'node')[]): string => {
+    const words = { same: 'has its two ends at the same voltage', copies: 'copies a current that is 0', reads: 'reads a voltage that is 0', node: 'carries the only current left at one of its nodes (the currents at a node add up to 0)' };
+    const list = kinds.map((k) => words[k]);
+    return `each of these parts ${list.length <= 1 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`}`;
+  },
+  noiseGround: (nodes: readonly string[]): string =>
+    `${listWords(nodes.map(nodeIn))} ${nodes.length === 1 ? 'is' : 'are'} joined to ground through parts with no voltage across them`,
+  noiseWhy: (gave: string, reason: string, currents: number, voltages: number): string => {
+    const one = currents + voltages === 1;
+    const what = !voltages ? (one ? 'a current' : 'currents') : !currents ? (one ? 'a voltage' : 'voltages') : 'currents and voltages';
+    const below = !voltages
+      ? "below 1 pA, ngspice's current tolerance (its abstol option)"
+      : !currents
+        ? "below 1 µV, ngspice's voltage tolerance (its vntol option)"
+        : "below 1 pA and 1 µV, ngspice's tolerances for currents and voltages (its abstol and vntol options)";
+    return `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${what} that ${one ? 'is' : 'are'} 0: ${reason}. ${one ? 'It is' : 'They are'} ${below}, so PlainSpice shows ${!voltages ? '0 A' : !currents ? '0 V' : '0 A and 0 V'}.`;
+  },
 } as const;
 
 const S = DESCRIBE_STRINGS;
 
 // ------------------------------------------------------------------ helpers
+
+/** "a", "a and b", "a, b and c". */
+function listWords(items: readonly string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
 
 /** "a resistor", "an inductor". */
 function article(what: string): string {
@@ -472,10 +578,14 @@ function partsOf(netlist: Netlist): Parts {
 
 /** A node in written results: ngspice's name; ground is "0". */
 const nodeName = (ref: NodeRef): string => (ref.ground ? '0' : ref.name);
-/** A node in speech: "ground" for node 0. */
-const nodeSpeech = (name: string): string => (name === '0' ? S.ground : name);
-/** A node in the circuit overview, as written; ground is "ground". */
+/**
+ * A node in the circuit overview, as written; ground is "ground". The part sentences are the drawing's
+ * too (src/schematic/navigate.ts builds the same ones), so a node named like ground is not quoted
+ * here until both quote it (sentenceNode).
+ */
 const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.ground ? S.ground : ref.token.text);
+/** A node in a short note at the end of a line: its bare name, "0" for ground, quoted when it is named like ground. */
+const bare = (n: string): string => (n !== '0' && GROUND_LIKE.test(n) ? `"${n}"` : n);
 
 function flows(speech: string): string {
   return speech.split(' ')[0] === '1' ? 'flows' : 'flow';
@@ -490,9 +600,24 @@ function dcValue(el: Element): number | undefined {
   return el.value?.number?.value;
 }
 
-/** A voltage source whose DC value is 0 (written or missing) and that has no transient function: an ammeter (P9, P16). */
+/**
+ * A source's AC value, its size in an .ac analysis (A20, P21): the number after the word AC; NaN when
+ * AC has no number after it; undefined when the line has no AC value.
+ */
+export function acValue(el: Element): number | undefined {
+  const k = el.fields.findIndex((f) => f.role === 'source-function' && lowerAscii(f.token.text) === 'ac');
+  if (k < 0) return undefined;
+  const next = el.fields[k + 1];
+  return (next?.role === 'source-function' ? readNumber(next.token.text)?.value : undefined) ?? Number.NaN;
+}
+
+/**
+ * A voltage source whose DC value is 0 (written or missing), with no transient function and no AC
+ * value: an ammeter (P9, P16). A source with an AC value is the input of an .ac analysis, though it is
+ * 0 V in .op (critic of the fixes: "V1 in 0 AC 1" is no wire).
+ */
 function isAmmeter(el: Element): boolean {
-  if (el.letter !== 'V' || el.sourceFunction) return false;
+  if (el.letter !== 'V' || el.sourceFunction || acValue(el) !== undefined) return false;
   if (!el.value) return true;
   return el.value.number?.value === 0;
 }
@@ -520,6 +645,10 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
       if (sweptSource(netlist, el.key)) return S.swept(name, nodeWritten(a), nodeWritten(b));
       if (el.sourceFunction && v === undefined) return S.vFunction(name, el.sourceFunction.token.text.toUpperCase(), nodeWritten(a), nodeWritten(b));
       if (isAmmeter(el)) return S.ammeter(name, nodeWritten(a), nodeWritten(b));
+      if (acValue(el) !== undefined && !v) {
+        const ac = acValue(el)!;
+        return S.acSource(name, Number.isNaN(ac) ? '' : formatSI(ac, 'V'), nodeWritten(a), nodeWritten(b));
+      }
       return S.vSource(name, fmt('V'), nodeWritten(a), nodeWritten(b));
     case 'I':
       if (el.sourceFunction && v === undefined) return S.iFunction(name, el.sourceFunction.token.text.toUpperCase(), nodeWritten(a), nodeWritten(b));
@@ -539,7 +668,10 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
     default: {
       const info = el.letter ? elementInfo(el.letter) : undefined;
       const labels = info?.nodeLabels ?? [];
-      const nodes = el.nodes.map((ref, k) => S.labelled((labels[Math.min(k, labels.length - 1)] ?? 'node').replace(/ \(.*\)$/, ''), nodeWritten(ref)));
+      const named = el.nodes.map((ref, k) => [(labels[Math.min(k, labels.length - 1)] ?? 'node').replace(/ \(.*\)$/, ''), nodeWritten(ref)] as const);
+      // Ends that are all plain nodes, as a subcircuit's, read as one list: "node a and ground".
+      const plainEnds = named.every(([label]) => label === 'node');
+      const nodes = plainEnds && named.length ? [listWords(named.map(([label, n]) => S.labelled(label, n)))] : named.map(([label, n]) => S.labelled(label, n));
       const model = el.fields.find((f) => f.role === 'model');
       if (model) nodes.push(el.letter === 'X' ? S.subcircuitOf(model.token.text) : S.modelOf(model.token.text));
       return S.otherPart(name, article(info?.name ?? 'part'), nodes.join(', '));
@@ -574,6 +706,16 @@ function sweepValue(s: SweepReading, v: number | undefined, text: string | undef
   return v !== undefined ? (s.unit ? formatSI(v, s.unit) : formatNumber(v)) : (text ?? '?');
 }
 
+/**
+ * The sentence describeCircuit says for one part, by its key ("r1"); '' when there is no such part.
+ * For the pages that describe one part at a time (the drawing's part descriptions), so they say what
+ * the overview says, an AC source and a node named like ground included.
+ */
+export function partSentenceFor(netlist: Netlist, key: string): string {
+  const line = partsOf(netlist).byKey.get(lowerAscii(key));
+  return line ? partSentence(netlist, line) : '';
+}
+
 /** Parts described one by one; a netlist with more (pasted, or from a link) is summed up after these. */
 export const DESCRIBED_PARTS = 100;
 
@@ -585,7 +727,7 @@ export function describeCircuit(netlist: Netlist): string {
   const parts = partsOf(netlist);
   const out: string[] = [];
   const nodes = [...netlist.nodes.values()].filter((n) => !n.ground && n.connections.length > 0);
-  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => n.name).join(', ');
+  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => bare(n.name)).join(', ');
   const grounded = netlist.nodes.get('0')?.connections.length ?? 0;
   if (parts.lines.length === 0) out.push(S.noParts);
   else out.push(grounded > 0 ? S.counts(parts.lines.length, nodes.length, names) : S.countsNoGround(parts.lines.length, nodes.length, names));
@@ -611,14 +753,399 @@ const SOURCE_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'I', 'E', 'F', 
 const DEVICE_LETTERS: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'F', 'G', 'I', 'B']);
 const BRANCH_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'E', 'H', 'L']);
 
-function voltages(results: AnalysisResults): Map<string, number> {
+// ------------------------------------------------------------------ rounding noise (C9–C9l)
+
+/** ngspice's current tolerance, abstol (C9c): only a current below it can be rounding noise. */
+export const ABSTOL = 1e-12;
+/**
+ * ngspice's voltage tolerance, vntol (C9c): only a node voltage below it can be rounding noise, and a
+ * voltage of at least this much across a resistor is a real voltage (C9f, C9i).
+ */
+export const VNTOL = 1e-6;
+/**
+ * Two node voltages are the same, up to ngspice's rounding, when they differ by at most this many
+ * units in the last place of the larger one (ulp, the step between two neighbouring doubles). A
+ * balanced bridge leaves 1 (C9: 4.499999999999999 against 4.5) or 2 (C9b). Beyond a few, the
+ * difference is real: ngspice then gives the current the netlist's own values make (C9l).
+ */
+export const SAME_VOLTAGE_ULPS = 4;
+/**
+ * The currents known to be real at a node add up to 0, up to ngspice's rounding, when their sum is at
+ * most this fraction of the largest of them. C9's 0.45 mA in and out of node a leave 1.7e-19 A, 4e-16
+ * of them; a bridge whose middle resistor is a million times smaller than its arms leaves up to 8e-11
+ * (C9l).
+ */
+export const KCL_ROUNDING = 1e-9;
+/**
+ * Below the smallest normal double, 2^-1022 (about 2.2e-308), a double has fewer digits, down to one:
+ * what ngspice gives there is what is left of real values too small for a double (the far end of a
+ * ladder of 1000 sections, C9k), never called noise.
+ */
+const SMALLEST_NORMAL = 2 ** -1022;
+
+/** Why a current ngspice gave is rounding noise of a current that is 0 (roundingNoise). */
+export type NoiseWhy =
+  /** A resistor or capacitor whose two ends are at the same voltage. */
+  | { kind: 'same'; a: string; b: string }
+  /** An F that copies the current of a source whose current is 0 (`control` as the netlist writes it). */
+  | { kind: 'copies'; control: string }
+  /** A G that reads a voltage that is 0, between nodes `c` and `d`. */
+  | { kind: 'reads'; c: string; d: string }
+  /** Every other current at `node` is 0: Kirchhoff's current law makes this one 0 too. */
+  | { kind: 'node'; node: string };
+
+export interface RoundingNoise {
+  /** Parts, by key, whose current ngspice gave as rounding noise of 0, and why the current is 0. */
+  currents: Map<string, NoiseWhy>;
+  /** Nodes whose voltage ngspice gave as rounding noise of 0. */
+  nodes: Set<string>;
+}
+
+const ulpView = new DataView(new ArrayBuffer(8));
+/** The step from |x| to the next double: 2^-52 of |x|'s power of 2. */
+function ulp(x: number): number {
+  ulpView.setFloat64(0, Math.abs(x));
+  const exponent = ulpView.getUint16(0) >>> 4;
+  return exponent === 0 ? Number.MIN_VALUE : 2 ** (exponent - 1075);
+}
+
+/** The same voltage up to ngspice's rounding: at most SAME_VOLTAGE_ULPS apart (C9, C9b, C9l). */
+const sameVoltage = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= SAME_VOLTAGE_ULPS * ulp(Math.max(Math.abs(a), Math.abs(b)));
+
+/** Parts whose current flows in at their first node and out at their second, nowhere else (E's and G's control nodes take none). */
+const TWO_ENDED: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'B']);
+
+/** A voltage source that is 0 V in .op: a written or missing 0, no transient function (P9, P16). */
+const zeroVolts = (el: Element): boolean => el.letter === 'V' && !el.sourceFunction && (!el.value || el.value.number?.value === 0);
+
+/**
+ * Which currents and node voltages of an operating point ngspice gave as rounding noise of a 0 (C9,
+ * C9b, C9d), decided from the circuit's own numbers, never by comparing sizes across the circuit: a
+ * 2 aA source next to a 4 mA circuit is a real 2 aA (C9e). Linear in the size of the circuit: each
+ * step looks again only at the parts a change can affect.
+ *
+ * First, the currents that are real, which are never noise:
+ * - a current of at least 1 pA (abstol); a current source's (I, or B with I=): its own value;
+ * - a resistor with a real voltage across it (at least 1 µV and more than rounding), a G that reads one;
+ * - an F that copies a real current; a part at a node with a part whose current ngspice does not give
+ *   by name (a diode, a transistor, a subcircuit, a switch): it may carry that part's current;
+ * - Kirchhoff's current law: where the real currents at a node do not add up to 0 (by more than
+ *   rounding), the node's other parts carry the difference (C9h-C9k); and a part in series with a real
+ *   current (the only two parts at a node) carries it too.
+ * Then a current below 1 pA that is not real is noise when the circuit makes it 0:
+ * - a resistor or capacitor whose two ends are at the same voltage (sameVoltage, or joined by parts
+ *   with no voltage across them by their own numbers: an inductor, a 0 V source, an E or H whose
+ *   control is 0, a resistor whose ends are the same);
+ * - an F that copies a current that is 0, a G that reads a voltage that is 0;
+ * - any other part that carries the only current left at one of its nodes: every other current there
+ *   is 0, and the currents at a node add up to 0. A node with a part whose current ngspice does not
+ *   give by name is never used.
+ * A node voltage below vntol is noise when the node is joined to ground through parts with no voltage
+ * across them: those above, and a resistor whose current is noise of 0 (C9d).
+ */
+export function roundingNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
+  const out: RoundingNoise = { currents: new Map(), nodes: new Set() };
+  const op = results.op;
+  if (!op) return out;
+  const volts = voltages(netlist, results);
+  const amps = new Map<string, number>();
+  for (const c of op.currents) {
+    const key = netlistPart(netlist, c.element);
+    // An inductor has a branch and a device current, the same number: the branch one counts.
+    if (c.origin === 'branch' || !amps.has(key)) amps.set(key, c.value);
+  }
+  const parts = partsOf(netlist)
+    .lines.map((l) => l.element!)
+    .filter((el) => el.letter && isBuilt(el));
+  const byKey = new Map(parts.map((el) => [el.key, el]));
+  const controlOf = (el: Element): string | undefined => (el.controlSource ? netlistPart(netlist, el.controlSource.text) : undefined);
+  const volt = (ref: NodeRef | undefined): number | undefined => (ref ? volts.get(nodeName(ref)) : undefined);
+
+  // Each part's two ends, and the parts whose current flows at each node. A node with a part whose
+  // current is not known is `unknown`: Kirchhoff's current law cannot be used there.
+  const ends = new Map<string, [string, string]>();
+  const at = new Map<string, Element[]>();
+  const unknown = new Set<string>();
+  for (const el of parts) {
+    const two = TWO_ENDED.has(el.letter!);
+    if (!two || !amps.has(el.key)) {
+      for (const ref of two ? el.nodes.slice(0, 2) : el.nodes) unknown.add(nodeName(ref));
+      continue;
+    }
+    const [p, n] = el.nodes;
+    if (!p || !n || nodeName(p) === nodeName(n)) continue;
+    const pair: [string, string] = [nodeName(p), nodeName(n)];
+    ends.set(el.key, pair);
+    for (const node of pair) {
+      const list = at.get(node);
+      if (list) list.push(el);
+      else at.set(node, [el]);
+    }
+  }
+  const counted = (node: string): boolean => node !== '0' && !unknown.has(node);
+  // The F and H that read each source's current.
+  const readers = new Map<string, Element[]>();
+  for (const el of parts) {
+    const control = (el.letter === 'F' || el.letter === 'H') && controlOf(el);
+    if (!control) continue;
+    const list = readers.get(control);
+    if (list) list.push(el);
+    else readers.set(control, [el]);
+  }
+
+  // ---- 1. The currents that are real.
+  const real = new Set<string>();
+  interface Balance {
+    all: number;
+    largest: number;
+    tiny: number;
+    largestTiny: number;
+    open: number;
+    done: boolean;
+  }
+  const balance = new Map<string, Balance>();
+  for (const [node, list] of at) if (counted(node)) balance.set(node, { all: 0, largest: 0, tiny: 0, largestTiny: 0, open: list.length, done: false });
+  const toCheck: string[] = [];
+  const makeReal = (first: Element): void => {
+    const stack = [first];
+    for (let el = stack.pop(); el; el = stack.pop()) {
+      if (real.has(el.key)) continue;
+      real.add(el.key);
+      const amp = amps.get(el.key) ?? 0;
+      for (const node of ends.get(el.key) ?? []) {
+        const b = balance.get(node);
+        if (!b) continue;
+        // The current leaving the node through this part.
+        const leaving = node === ends.get(el.key)![0] ? amp : -amp;
+        b.all += leaving;
+        b.largest = Math.max(b.largest, Math.abs(amp));
+        if (Math.abs(amp) < ABSTOL) {
+          b.tiny += leaving;
+          b.largestTiny = Math.max(b.largestTiny, Math.abs(amp));
+        }
+        b.open -= 1;
+        toCheck.push(node);
+      }
+      // An F copies its control's current: a real current copied is real.
+      for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) stack.push(r);
+    }
+  };
+  const realVoltage = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
+    const [a, b] = [volt(x), volt(y)];
+    return a !== undefined && b !== undefined && Math.abs(a - b) >= VNTOL && !sameVoltage(a, b);
+  };
+  for (const el of parts) {
+    const amp = amps.get(el.key);
+    if (!amp) continue;
+    const [p, n, c, d] = el.nodes;
+    if (
+      !(Math.abs(amp) < ABSTOL) ||
+      el.letter === 'I' ||
+      (el.letter === 'B' && behaviouralKind(el) !== 'v') ||
+      (el.letter === 'R' && realVoltage(p, n)) ||
+      (el.letter === 'G' && realVoltage(c, d)) ||
+      ends.get(el.key)?.some((node) => node !== '0' && unknown.has(node))
+    )
+      makeReal(el);
+  }
+  // Kirchhoff's current law: where the real currents at a node do not add up to 0, the other parts there
+  // carry the difference; the tiny ones are checked on their own, since they are below the rounding
+  // of large ones (C9h-C9k). A part in series with a real current carries it too.
+  const clearlyNot0 = (sum: number, largest: number): boolean => largest > 0 && Math.abs(sum) > KCL_ROUNDING * largest;
+  for (let node = toCheck.pop(); node !== undefined; node = toCheck.pop()) {
+    const b = balance.get(node)!;
+    const list = at.get(node)!;
+    if (b.done || !b.open) continue;
+    if ((list.length === 2 && b.open === 1) || clearlyNot0(b.tiny, b.largestTiny) || clearlyNot0(b.all, b.largest)) {
+      b.done = true;
+      for (const el of list) if (!real.has(el.key)) makeReal(el);
+    }
+  }
+
+  // ---- 2. The currents that are noise of a 0.
+  const zero = (key: string | undefined): boolean => key !== undefined && !real.has(key) && (amps.get(key) === 0 || out.currents.has(key));
+  const candidate = (el: Element): boolean => {
+    const amp = amps.get(el.key);
+    return amp !== undefined && Math.abs(amp) >= SMALLEST_NORMAL && Math.abs(amp) < ABSTOL && !real.has(el.key);
+  };
+  // Nodes joined by parts with no voltage across them: one name per group. A part whose test depends on
+  // two groups waits on both; when two groups become one, it is looked at again.
+  const group = new Map<string, string>();
+  const waiting = new Map<string, Element[]>();
+  const queue: Element[] = [];
+  const find = (n: string): string => {
+    let r = n;
+    for (let up = group.get(r); up !== undefined; up = group.get(r)) r = up;
+    for (let x = n, up = group.get(x); up !== undefined && up !== r; x = up, up = group.get(x)) group.set(x, r);
+    return r;
+  };
+  const join = (a: string, b: string): void => {
+    let [x, y] = [find(a), find(b)];
+    if (x === y) return;
+    if ((waiting.get(x)?.length ?? 0) > (waiting.get(y)?.length ?? 0)) [x, y] = [y, x];
+    group.set(x, y);
+    const moved = waiting.get(x);
+    if (!moved) return;
+    waiting.delete(x);
+    const into = waiting.get(y);
+    if (into) for (const el of moved) into.push(el);
+    else waiting.set(y, moved);
+    for (const el of moved) queue.push(el);
+  };
+  const equal = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
+    if (!x || !y) return false;
+    const [a, b] = [nodeName(x), nodeName(y)];
+    if (find(a) === find(b)) return true;
+    const [va, vb] = [volts.get(a), volts.get(b)];
+    return va !== undefined && vb !== undefined && sameVoltage(va, vb);
+  };
+  // Parts with no voltage across them by their own numbers.
+  for (const el of parts) {
+    const [p, n] = el.nodes;
+    if (!p || !n) continue;
+    const [vp, vn] = [volt(p), volt(n)];
+    const tied =
+      el.letter === 'L' ||
+      zeroVolts(el) ||
+      (el.letter === 'R' && !real.has(el.key) && vp !== undefined && vn !== undefined && sameVoltage(vp, vn)) ||
+      (el.letter === 'H' && zero(controlOf(el)));
+    if (tied) join(nodeName(p), nodeName(n));
+  }
+  const wait = (el: Element, x: NodeRef | undefined, y: NodeRef | undefined): void => {
+    for (const ref of [x, y]) {
+      if (!ref) continue;
+      const root = find(nodeName(ref));
+      const list = waiting.get(root);
+      if (list) list.push(el);
+      else waiting.set(root, [el]);
+    }
+  };
+  // How many currents at each node are not 0: when one is left, it is 0 too.
+  const left = new Map<string, number>();
+  for (const [node, list] of at) if (counted(node)) left.set(node, list.filter((el) => !zero(el.key)).length);
+  const tiedE = new Set<string>();
+  const whyZero = (el: Element): NoiseWhy | undefined => {
+    const [p, n, c, d] = el.nodes;
+    if ((el.letter === 'R' || el.letter === 'C') && p && n && equal(p, n)) return { kind: 'same', a: nodeName(p), b: nodeName(n) };
+    if (el.letter === 'F' && zero(controlOf(el))) return { kind: 'copies', control: byKey.get(controlOf(el)!)?.name.text ?? el.controlSource!.text };
+    if (el.letter === 'G' && c && d && equal(c, d)) return { kind: 'reads', c: nodeName(c), d: nodeName(d) };
+    for (const node of ends.get(el.key) ?? []) if (counted(node) && left.get(node) === 1) return { kind: 'node', node };
+    return undefined;
+  };
+  for (const el of parts) {
+    const [p, n, c, d] = el.nodes;
+    if (el.letter === 'E') {
+      wait(el, c, d);
+      queue.push(el);
+    } else if (candidate(el)) {
+      if (el.letter === 'R' || el.letter === 'C') wait(el, p, n);
+      if (el.letter === 'G') wait(el, c, d);
+      queue.push(el);
+    }
+  }
+  for (const [node, count] of left) if (count === 1) queue.push(at.get(node)!.find((el) => !zero(el.key))!);
+  for (let k = 0; k < queue.length; k++) {
+    const el = queue[k]!;
+    const [p, n, c, d] = el.nodes;
+    // An E whose control voltage is 0 makes 0 V: no voltage across it.
+    if (el.letter === 'E' && !tiedE.has(el.key) && p && n && equal(c, d)) {
+      tiedE.add(el.key);
+      join(nodeName(p), nodeName(n));
+    }
+    if (!candidate(el) || out.currents.has(el.key)) continue;
+    const why = whyZero(el);
+    if (!why) continue;
+    out.currents.set(el.key, why);
+    for (const node of ends.get(el.key) ?? []) {
+      const count = left.get(node);
+      if (count === undefined) continue;
+      left.set(node, count - 1);
+      if (count - 1 === 1) queue.push(at.get(node)!.find((x) => !zero(x.key))!);
+    }
+    for (const r of readers.get(el.key) ?? []) {
+      // An F copies a current that is 0; an H makes 0 V from it.
+      if (r.letter === 'F') queue.push(r);
+      else if (r.nodes[0] && r.nodes[1]) join(nodeName(r.nodes[0]), nodeName(r.nodes[1]));
+    }
+  }
+
+  // ---- 3. Node voltages that are noise of a 0: joined to ground through parts with no voltage across
+  // them, a resistor whose current is noise of 0 among them (C9d).
+  for (const key of out.currents.keys()) {
+    const pair = byKey.get(key)?.letter === 'R' ? ends.get(key) : undefined;
+    if (pair) join(pair[0], pair[1]);
+  }
+  const ground = find('0');
+  for (const [node, value] of volts) if (node !== '0' && Math.abs(value) >= SMALLEST_NORMAL && Math.abs(value) < VNTOL && find(node) === ground) out.nodes.add(node);
+  return out;
+}
+
+/**
+ * ngspice's names back to the netlist's (W16-W18). ngspice writes each byte of a letter outside ASCII
+ * as '_', so its results say "giri__" for the netlist's "giriş". A name maps back when exactly one
+ * netlist name is spelled that way; names ngspice made one (W17, W18) stay as ngspice spells them,
+ * and the checks say why (non-ascii-node, duplicate-name).
+ */
+interface Spellings {
+  nodes: Map<string, string | null>;
+  parts: Map<string, string | null>;
+}
+const spellingsCache = new WeakMap<Netlist, Spellings>();
+
+function spellingsOf(netlist: Netlist): Spellings {
+  const cached = spellingsCache.get(netlist);
+  if (cached) return cached;
+  const add = (m: Map<string, string | null>, key: string): void => {
+    const spelling = ngspiceSpelling(key);
+    const had = m.get(spelling);
+    m.set(spelling, had === undefined || had === key ? key : null);
+  };
+  const out: Spellings = { nodes: new Map(), parts: new Map() };
+  for (const key of netlist.nodes.keys()) add(out.nodes, key);
+  for (const key of partsOf(netlist).byKey.keys()) add(out.parts, key);
+  spellingsCache.set(netlist, out);
+  return out;
+}
+
+/** A node ngspice names in its results, as the netlist writes it (W16). */
+function netlistNode(netlist: Netlist, name: string): string {
+  const key = lowerAscii(name);
+  return spellingsOf(netlist).nodes.get(key) ?? key;
+}
+
+/** A part ngspice names in its results, as the netlist writes it (W18). */
+function netlistPart(netlist: Netlist, name: string): string {
+  const key = lowerAscii(name);
+  return spellingsOf(netlist).parts.get(key) ?? key;
+}
+
+/** The node voltages ngspice gave, by the netlist's names; ground is "0". */
+function voltages(netlist: Netlist, results: AnalysisResults): Map<string, number> {
   const m = new Map<string, number>([['0', 0]]);
-  for (const n of results.op?.nodes ?? []) m.set(lowerAscii(n.node), n.value);
+  for (const n of results.op?.nodes ?? []) m.set(netlistNode(netlist, n.node), n.value);
   return m;
 }
 
-function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, number>): CurrentWords | undefined {
-  const key = lowerAscii(c.element);
+const noiseCache = new WeakMap<AnalysisResults, { netlist: Netlist; noise: RoundingNoise }>();
+
+/** roundingNoise, once per run: the words, the notes and the drawing all use it. */
+function noiseOf(netlist: Netlist, results: AnalysisResults): RoundingNoise {
+  const cached = noiseCache.get(results);
+  if (cached?.netlist === netlist) return cached.noise;
+  const noise = roundingNoise(netlist, results);
+  noiseCache.set(results, { netlist, noise });
+  return noise;
+}
+
+/** The node voltages as PlainSpice shows them: rounding noise of a 0 is 0 (C9d). */
+function shownVoltages(netlist: Netlist, results: AnalysisResults): Map<string, number> {
+  const m = voltages(netlist, results);
+  for (const n of noiseOf(netlist, results).nodes) m.set(n, 0);
+  return m;
+}
+
+function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, number>, noisy: RoundingNoise): CurrentWords | undefined {
+  const key = netlistPart(netlist, c.element);
   const line = partsOf(netlist).byKey.get(key);
   const el = line?.element;
   // P15, P15b: a part ngspice left out has no current, even when savecurrents writes a 0 for it.
@@ -629,7 +1156,9 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   if (!p || !n) return undefined;
   const first = nodeName(p);
   const second = nodeName(n);
-  const v = c.value;
+  // C9, C9b, C9d: rounding noise of a 0 is 0 A, with no direction and no power; `noise` keeps what ngspice gave.
+  const noise = c.value !== 0 && noisy.currents.has(key);
+  const v = noise ? 0 : c.value;
   const [from, to] = v < 0 ? [second, first] : [first, second];
   const name = el.name.text;
   const ammeter = isAmmeter(el);
@@ -638,16 +1167,17 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   let text: string;
   let speech: string;
   if (ammeter) {
-    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, from, to);
-    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, nodeSpeech(from), nodeSpeech(to));
+    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, said(from), said(to));
+    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, said(from), said(to));
   } else if (v === 0) {
     text = S.noCurrent(name);
     speech = S.noCurrentSpeech(name);
   } else {
-    text = S.amps(a, from, to, name);
-    speech = S.ampsSpeech(as, flows(as), nodeSpeech(from), nodeSpeech(to), name);
+    text = S.amps(a, said(from), said(to), name);
+    speech = S.ampsSpeech(as, flows(as), said(from), said(to), name);
   }
-  const words: CurrentWords = { element: key, name, line: line.number, value: v, from, to, ammeter, text, speech };
+  const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, ammeter, text, speech };
+  if (noise) words.noise = c.value;
   if (!ammeter && SOURCE_LETTERS.has(el.letter)) {
     const vp = volts.get(first);
     const vn = volts.get(second);
@@ -671,14 +1201,15 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
 }
 
 function currentsOf(netlist: Netlist, results: AnalysisResults): CurrentWords[] {
-  const volts = voltages(results);
+  const volts = shownVoltages(netlist, results);
   const all = results.op?.currents ?? [];
   // An inductor appears twice with savecurrents (i(l1) and @l1[i], the same number): keep the branch one.
   const branch = new Set(all.filter((c) => c.origin === 'branch').map((c) => lowerAscii(c.element)));
+  const noisy = noiseOf(netlist, results);
   const out: CurrentWords[] = [];
   for (const c of all) {
     if (c.origin === 'device' && branch.has(lowerAscii(c.element))) continue;
-    const w = currentWords(netlist, c, volts);
+    const w = currentWords(netlist, c, volts, noisy);
     if (w) out.push(w);
   }
   const order = new Map(partsOf(netlist).lines.map((l, i) => [l.element!.key, i]));
@@ -690,11 +1221,17 @@ function nodesOf(netlist: Netlist, results: AnalysisResults): NodeVoltageWords[]
   const order = new Map(keys.map((k, i) => [k, i]));
   const colour = new Map<string, number>();
   for (const k of keys) if (k !== '0' && k !== 'gnd') colour.set(k, colour.size);
-  const list = (results.op?.nodes ?? []).map((n, i) => ({ n, i }));
-  list.sort((x, y) => (order.get(lowerAscii(x.n.node)) ?? keys.length + x.i) - (order.get(lowerAscii(y.n.node)) ?? keys.length + y.i));
-  return list.map(({ n }) => {
-    const w: NodeVoltageWords = { node: n.node, value: n.value, text: formatSI(n.value, 'V'), speech: speakSI(n.value, 'V') };
-    const c = colour.get(lowerAscii(n.node));
+  // W16: the netlist's own name ("giriş"), not ngspice's spelling ("giri__"), which `ngspice` keeps.
+  const list = (results.op?.nodes ?? []).map((n, i) => ({ n, i, node: netlistNode(netlist, n.node) }));
+  list.sort((x, y) => (order.get(x.node) ?? keys.length + x.i) - (order.get(y.node) ?? keys.length + y.i));
+  const noisy = noiseOf(netlist, results).nodes;
+  return list.map(({ n, node }) => {
+    // C9d: rounding noise of a 0 is 0 V; `noise` keeps what ngspice gave.
+    const value = noisy.has(node) ? 0 : n.value;
+    const w: NodeVoltageWords = { node: node === lowerAscii(n.node) ? n.node : node, value, text: formatSI(value, 'V'), speech: speakSI(value, 'V') };
+    if (value !== n.value) w.noise = n.value;
+    if (node !== lowerAscii(n.node)) w.ngspice = n.node;
+    const c = colour.get(node);
     if (c !== undefined) w.colourIndex = c;
     return w;
   });
@@ -714,7 +1251,8 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const words: TransferFunctionWords = { output, input, ratio };
   if (tf.transferFunction !== undefined) {
     const v = formatNumber(tf.transferFunction);
-    const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? output) : S.voltageOf((reading?.outputNames ?? [output]).join(' and '));
+    const [n1, n2] = reading?.outputNames ?? [];
+    const outSpeech = outKind === 'current' ? S.currentIn(n1 ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(said(n1)) : S.voltageBetween(said(n1), said(n2));
     words.transferFunction = {
       value: tf.transferFunction,
       text: S.transfer(output, input, v, ratio),
@@ -744,11 +1282,23 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
 function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   const m = /^([vi])\((.*)\)$/i.exec(s.name);
   if (!m) return s.name;
-  if (m[1]!.toLowerCase() === 'v') return S.voltageOf(m[2]!);
+  if (m[1]!.toLowerCase() === 'v') {
+    const [a, b] = m[2]!.split(',').map((x) => netlistNode(netlist, x));
+    return b === undefined ? S.voltageOf(said(a!)) : S.voltageBetween(said(a!), said(b));
+  }
   // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents.
   const inner = /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
-  const part = partsOf(netlist).byKey.get(lowerAscii(inner));
+  const part = partsOf(netlist).byKey.get(netlistPart(netlist, inner));
   return S.currentIn(part?.element?.name.text ?? inner);
+}
+
+/** A results vector's name with the netlist's names in it: "v(giriş)" for ngspice's "v(giri__)" (W16, W18). */
+function netlistVector(netlist: Netlist, name: string): string {
+  const m = /^([vi])\((.*)\)$/i.exec(name);
+  if (!m) return name;
+  if (m[1]!.toLowerCase() === 'v') return `${m[1]}(${m[2]!.split(',').map((x) => netlistNode(netlist, x)).join(',')})`;
+  const device = /^@([^[\]]+)(\[.*)$/.exec(m[2]!);
+  return device ? `${m[1]}(@${netlistPart(netlist, device[1]!)}${device[2]})` : `${m[1]}(${netlistPart(netlist, m[2]!)})`;
 }
 
 function finals(netlist: Netlist, sweep: Sweep): SweepWords['final'] {
@@ -758,7 +1308,7 @@ function finals(netlist: Netlist, sweep: Sweep): SweepWords['final'] {
     return {
       name: s.name,
       value,
-      text: S.valueIs(s.name, formatSI(value, unit)),
+      text: S.valueIs(netlistVector(netlist, s.name), formatSI(value, unit)),
       speech: S.valueIsSpeech(seriesSpeech(netlist, s), speakSI(value, unit)),
     };
   });
@@ -921,7 +1471,8 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   }
   const parts: string[] = [];
   if (words.nodes.length) {
-    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(n.node === '0' ? S.ground : n.node, n.speech) : S.valueIs(n.node, n.text)));
+    // "node in is 6 volts": a node's name may be an ordinary word (W8, decision 0017).
+    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(said(n.node)), n.speech) : S.valueIs(S.node(said(n.node)), n.text)));
     parts.push(S.summaryNodes(shown.join(', '), words.nodes.length - shown.length));
   }
   if (words.currents.length) parts.push(S.summaryCurrents(words.currents.length));
@@ -939,6 +1490,54 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   if (results.other.length) parts.push(S.summaryOther(results.other.length));
   const problems = words.warnings.filter((m) => m.severity !== 'note');
   return S.summaryOk(parts.length ? parts.join('; ') : S.summaryNothing, problems.length, problems[0] ? lower(problems[0].title) : '');
+}
+
+/**
+ * The note for the currents and voltages said as 0 because ngspice gave rounding noise of a 0
+ * (C9–C9e): what ngspice gave, and why the true value is 0. For one part, its own reason ("the two
+ * ends of R5, node a and node b, are at the same voltage, 4.5 V"); for several, the kinds of reason.
+ */
+function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInput): MessageWords | undefined {
+  const noise = noiseOf(netlist, results);
+  const currents = words.currents.filter((c) => c.noise !== undefined);
+  const nodes = words.nodes.filter((n) => n.noise !== undefined);
+  if (!currents.length && !nodes.length) return undefined;
+  const gave = [
+    ...currents.map((c) => S.noiseGaveCurrent(c.name, formatLikeNgspice(c.noise!))),
+    ...nodes.map((n) => S.noiseGaveVoltage(bare(n.node), formatLikeNgspice(n.noise!))),
+  ];
+  const volts = shownVoltages(netlist, results);
+  const reasonFor = (c: CurrentWords): string => {
+    const why = noise.currents.get(c.element)!;
+    const el = partsOf(netlist).byKey.get(c.element)?.element;
+    switch (why.kind) {
+      case 'same':
+        return S.noiseSame(c.name, said(why.a), said(why.b), formatSI(volts.get(why.a) ?? 0, 'V'));
+      case 'copies':
+        return S.noiseCopies(c.name, el?.value?.number ? formatNumber(el.value.number.value) : '?', why.control);
+      case 'reads':
+        return S.noiseReads(c.name, said(why.c), said(why.d));
+      case 'node':
+        return S.noiseNode(said(why.node));
+    }
+  };
+  const found = new Set(currents.map((c) => noise.currents.get(c.element)!.kind));
+  const kinds = (['same', 'copies', 'reads', 'node'] as const).filter((k) => found.has(k));
+  const reasons: string[] = [];
+  if (currents.length === 1) reasons.push(reasonFor(currents[0]!));
+  else if (currents.length) reasons.push(S.noiseEach(kinds));
+  if (nodes.length) reasons.push(S.noiseGround(nodes.map((n) => said(n.node))));
+  const note: MessageWords = {
+    code: 'rounding-noise',
+    severity: 'note',
+    title: S.noiseTitle(
+      currents.map((c) => c.name),
+      nodes.map((n) => bare(n.node)),
+    ),
+    why: S.noiseWhy(listWords(gave), reasons.join('; and '), currents.length, nodes.length),
+  };
+  if (currents.length === 1 && !nodes.length && currents[0]!.line !== undefined) note.line = currents[0]!.line;
+  return note;
 }
 
 /**
@@ -962,6 +1561,10 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   };
   const tf = tfOf(netlist, results);
   if (tf) words.tf = tf;
+  // C9–C9e: what ngspice gave for each current and voltage said as 0, last, as a note (it is no
+  // problem). Only with numbers that are answers: a failed or untrusted run is summed up by its first message.
+  const note = status === 'ok' ? noiseNote(netlist, results, words) : undefined;
+  if (note) words.warnings.push(note);
   return {
     status,
     ngspiceError,
@@ -980,7 +1583,7 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
  */
 export function annotateLines(netlist: Netlist, results: AnalysisResults, run?: RunResult): LineAnnotation[] {
   if (!results.op || (run && (run.unreliable || !run.ok))) return [];
-  const volts = voltages(results);
+  const volts = shownVoltages(netlist, results);
   const byKey = new Map(currentsOf(netlist, results).map((c) => [c.element, c]));
   const out: LineAnnotation[] = [];
   for (const line of partsOf(netlist).lines) {
@@ -1009,8 +1612,8 @@ function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): Line
   if (c.ammeter) {
     return {
       line: line.number,
-      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, c.from, c.to),
-      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, nodeSpeech(c.from), nodeSpeech(c.to)),
+      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, bare(c.from), bare(c.to)),
+      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, said(c.from), said(c.to)),
     };
   }
   const voltageType = el.letter === 'V' || el.letter === 'E' || el.letter === 'H';
@@ -1026,8 +1629,8 @@ function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): Line
     };
   }
   if (c.value === 0) return { line: line.number, text: S.noteNoCurrent, speech: S.noteNoCurrentSpeech };
-  const base = S.noteAmps(a, c.from, c.to);
-  const baseSpeech = S.noteAmpsSpeech(as, flows(as), nodeSpeech(c.from), nodeSpeech(c.to));
+  const base = S.noteAmps(a, bare(c.from), bare(c.to));
+  const baseSpeech = S.noteAmpsSpeech(as, flows(as), said(c.from), said(c.to));
   if (c.power) {
     const w = formatSI(c.power.watts, 'W');
     const ws = speakSI(c.power.watts, 'W');

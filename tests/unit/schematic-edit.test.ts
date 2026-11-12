@@ -396,7 +396,7 @@ describe('turning round and reversing', () => {
     const s = buildSchematic(DIVIDER);
     const { r, next } = edit(s, { kind: 'reverse-part', part: 'V1' });
     expect(circuitText(r.text)).toBe(DIVIDER.replace('V1 in 0 6', 'V1 0 in 6'));
-    expect(r.summary.replace(/[\u00a0\u202f]/g, ' ')).toBe('V1 reversed. V1: a 6 V source with its + side at ground and its − side at in.');
+    expect(r.summary.replace(/[\u00a0\u202f]/g, ' ')).toBe('V1 reversed. V1: a 6 V source with its + side at ground and its − side at node in.');
     expect(next.drawing.wires).toEqual(s.drawing.wires);
     expect(next.drawing.parts.get('v1')!.rot).toBe(180);
     const plus = placedPart(next, 'V1')!.marks.find((m) => m.text === '+')!;

@@ -583,3 +583,33 @@ describe('in the app (decision 0016): one undo history, the store’s text, the 
     expect(editor.view.state.doc.lineAt(editor.view.state.selection.main.head).number).toBe(F3A.split('\n').length);
   });
 });
+
+describe('after the final reviews (12 November 2026)', () => {
+  it('shows invisible characters as a dot named in words, also those CodeMirror does not know (security review F2)', () => {
+    const { parent } = make({ doc: '* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2⁠k\nR3 out 0 3‌k\n.op\n.end\n' });
+    const dots = [...parent.querySelectorAll('.cm-specialChar')];
+    expect(dots.map((d) => d.getAttribute('aria-label'))).toEqual([
+      'a zero-width space (U+200B)',
+      'a word joiner (U+2060)',
+      'a zero-width non-joiner (U+200C)',
+    ]);
+    expect(dots.map((d) => d.getAttribute('title'))).toEqual(dots.map((d) => d.getAttribute('aria-label')));
+    // A Turkish letter or the micro sign is no special character: it shows as written.
+    const plain = make({ doc: '* t\nV1 giriş 0 6\nC1 giriş 0 1µ\n.op\n.end\n' });
+    expect(plain.parent.querySelectorAll('.cm-specialChar')).toHaveLength(0);
+  });
+
+  it('shows a character that looks like a space but is none for SPICE as a dot named in words (critic of round 1; space-character-1)', () => {
+    const { parent } = make({ doc: '* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 1\u202fk\nR3 out 0 1\u3000k\nR4 out 0 1\u00a0k\n.op\n.end\n' });
+    const dots = [...parent.querySelectorAll('.cm-specialChar')];
+    expect(dots.map((d) => d.getAttribute('aria-label'))).toEqual([
+      'a thin space (U+2009)',
+      'a narrow no-break space (U+202F)',
+      'an ideographic space (U+3000)',
+      'a no-break space (U+00A0)',
+    ]);
+    // An ordinary space and a tab are no special characters.
+    const plain = make({ doc: '* t\nV1 in 0 10\nR1 in\tout 4.7k\n.op\n.end\n' });
+    expect(plain.parent.querySelectorAll('.cm-specialChar')).toHaveLength(0);
+  });
+});

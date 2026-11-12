@@ -23,7 +23,7 @@ import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import { interpretPlots, type AnalysisResults } from '../../src/engine/results.ts';
 import type { RawPlot, RunResult } from '../../src/engine/types.ts';
 import { formatSI } from '../../src/format/si.ts';
-import { annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
+import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
 import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import type { Netlist } from '../../src/spice/types.ts';
@@ -131,6 +131,17 @@ const FACTS: Fact[] = [
   { code: 'C6', id: 'cur-e-h', netlist: "* E and H branch currents\nV1 c 0 2\nVs c d 0\nRd d 0 1\nE1 e 0 c 0 3\nRe e 0 2\nH1 h 0 Vs 4\nRh h 0 2\n.op\n.end\n", vectors: { "v(c)": 2, "v(d)": 2, "v(e)": 6, "v(h)": 8, "i(h1)": -4, "i(vs)": 2, "i(e1)": -3, "i(v1)": -2 } },
   { code: 'C7', id: 'cur-b', netlist: "* a B source current with savecurrents\nB1 0 b I=2\nRb b 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "v(b)": 2, "i(@b1[i])": 2, "i(@rb[i])": 2 } },
   { code: 'C8', id: 'cur-switch-wrong', netlist: "* switch currents with savecurrents\nV1 a 0 6\nS1 a c a 0 swm\nRc c 0 3\n.model swm SW(vt=1 ron=1 roff=1e9)\nVs a d 0\nRd d 0 6\nW1 a e Vs wm\nRe e 0 5\n.model wm CSW(it=0.5 ron=1 roff=1e9)\n.options savecurrents\n.op\n.end\n", vectors: { "v(c)": 4.5, "v(e)": 5, "i(vs)": 1, "i(@s1[i])": 1.5000000000000002e-9, "i(@rc[i])": 1.5, "i(@w1[i])": 1e-9, "i(@re[i])": 1 } },
+  { code: 'C9', id: 'cur-noise-bridge', netlist: "* a balanced bridge: no current through R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19 } },
+  { code: 'C9b', id: 'cur-noise-everywhere', netlist: "* a 0 V ammeter whose last word is gnd: no current anywhere\nV1 in 0 12\nR1 in a 1k\nR2 a x 2k\nVm x gnd\nR3 a b 3k\nF1 0 b V1 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.999999999999998, "v(x)": 11.999999999999998, "v(gnd)": 11.999999999999998, "v(b)": 11.999999999999995, "i(v1)": -1.734723475976807e-18, "i(vm)": 0, "i(@r1[i])": 1.7763568394002505e-18, "i(@r2[i])": 0, "i(@r3[i])": 1.1842378929335003e-18, "i(@f1[i])": -3.469446951953614e-18 }, prints: ["vm: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'C9c', id: 'cur-abstol', netlist: "* ngspice's tolerances\nV1 a 0 1\nR1 a 0 1k\n.control\nop\noptions\n.endc\n.end\n", prints: ["abstol      (current) = 1e-12", "vntol       (voltage) = 1e-06", "reltol      (current) = 0.001"], fails: true },
+  { code: 'C9d', id: 'cur-noise-passes-on', netlist: "* a balanced bridge with a 0 V ammeter in R5, and an F that reads it\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.499999999999999, "v(m)": 4.499999999999999, "v(out)": -2.1684043449710089e-13, "i(vm)": -2.168404344971009e-19, "i(v1)": -0.0014074468085106388, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106385, "i(@r4[i])": 0.0009574468085106381, "i(@r5[i])": 0, "i(@f1[i])": -2.1684043449710089e-16, "i(@r6[i])": -2.1684043449710089e-16 } },
+  { code: 'C9e', id: 'cur-tiny-source', netlist: "* superposition: a 12 V source and a 2 A current source (2 attoamps)\nV1 a 0 12\nR1 a b 1k\nR2 b 0 2k\nI1 0 b 2A\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": 8, "i(v1)": -0.004, "i(@r1[i])": 0.004, "i(@r2[i])": 0.004, "i(@i1[current])": 2e-18 } },
+  { code: 'C9f', id: 'cur-tiny-big-r', netlist: "* a 100 T resistor across 12 V, next to a 1.2 A current\nV1 in 0 12\nR1 in 0 10\nR2 in 0 1e14\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "i(v1)": -1.20000000000012, "i(@r1[i])": 1.2000000000000002, "i(@r2[i])": 1.2e-13 } },
+  { code: 'C9g', id: 'cur-tiny-next-to-wire', netlist: "* a 1 n resistor used as a wire, and a 1 T resistor\nV1 in 0 0.5\nR1 in a 1n\nR2 a 0 1k\nR3 a 0 1T\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 0.5, "v(a)": 0.49999999999949996, "i(v1)": -0.000500023365020752, "i(@r1[i])": 0.0005000444502911704, "i(@r2[i])": 0.0004999999999995, "i(@r3[i])": 4.999999999995e-13 } },
+  { code: 'C9h', id: 'cur-tiny-loop', netlist: "* a 12 V source, 1 k and a current source written 2A (2 attoamps) in one loop\nV1 a 0 12\nR1 a b 1k\nI1 0 b 2A\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": 12.000000000000002, "i(v1)": 1.734723475976807e-18, "i(@r1[i])": -1.7763568394002505e-18, "i(@i1[current])": 2e-18 } },
+  { code: 'C9i', id: 'cur-tiny-series', netlist: "* 12 V across 10 ohms in series with 100 T ohms\nV1 in 0 12\nR1 in a 10\nR2 a 0 1e14\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.9999999999988, "i(v1)": -1.2012613126444194e-13, "i(@r1[i])": 1.2008172234345695e-13, "i(@r2[i])": 1.19999999999988e-13 } },
+  { code: 'C9j', id: 'cur-tiny-side-by-side', netlist: "* the loop of C9h with two 1 k resistors side by side\nV1 a 0 12\nR1 a b 1k\nR2 a b 1k\nI1 0 b 2A\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": 12.000000000000002, "i(v1)": 3.469446951953614e-18, "i(@r1[i])": -1.7763568394002505e-18, "i(@r2[i])": -1.7763568394002505e-18, "i(@i1[current])": 2e-18 } },
+  { code: 'C9l', id: 'cur-bridge-voltmeter', netlist: "* the balanced bridge of C9 with a 1e15 ohm voltmeter across R2\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nRvm a 0 1e15\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999990972, "v(b)": 4.499999999993667, "i(v1)": -0.0014074468085128885, "i(@r1[i])": 0.00045000000000090286, "i(@r2[i])": 0.00044999999999909717, "i(@r3[i])": 0.0009574468085119857, "i(@r4[i])": 0.0009574468085092909, "i(@r5[i])": -2.6956215037898802e-15, "i(@rvm[i])": 4.499999999990972e-15 } },
   { code: 'M1', id: 'msg-no-ground', netlist: "* no ground\nV1 a b 6\nR1 a b 2\n.op\n.end\n", vectors: { "v(a)": 9.00033307426206, "v(b)": 3.0003330742710626, "i(v1)": -2.9999999999924993 }, prints: ["singular matrix:  check node b","Transient op started"], codes: ["singular-matrix","gmin-stepping-failed","source-stepping-failed","transient-op-fallback"], unreliable: true },
   { code: 'M2', id: 'msg-cap-node', netlist: "* T15b: a node connected only to capacitors, with a resistor elsewhere\nV1 a 0 6\nR1 a c 1k\nC1 c b 1u\nC2 b 0 2u\nR2 c 0 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(c)": 0.08866339997380636, "v(b)": 0.029554466657885997, "i(v1)": -0.005911336600014282 }, prints: ["singular matrix:  check node b"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M2b', id: 'msg-isource-cap', netlist: "* T05a: a current source in series with a capacitor\nI1 0 a 1m\nC1 a b 1u\nR1 b 0 1k\n.op\n.end\n", vectors: { "v(a)": 1.0099999979842442, "v(b)": 0.9999999979942681 }, codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
@@ -379,11 +390,11 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
   it('F1a: V1 delivers 18 W, and 3 A flow from n1 to 0 through R1 (C1)', () => {
     const d = ofFixture('f1a-voltage-source');
     expect(d.words.status).toBe('ok');
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from n1 to 0 through R1');
-    expect(plain(currentText(d, 'V1'))).toBe('3 A from 0 to n1 through V1');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from node n1 to ground through R1');
+    expect(plain(currentText(d, 'V1'))).toBe('3 A from ground to node n1 through V1');
     expect(plain(powerText(d, 'V1'))).toBe('V1 delivers 18 W');
     expect(plain(d.words.nodes[0]?.text)).toBe('6 V');
-    expect(plain(d.words.summary)).toBe('Simulation finished: n1 = 6 V; 2 currents. Open the results for details.');
+    expect(plain(d.words.summary)).toBe('Simulation finished: node n1 = 6 V; 2 currents. Open the results for details.');
     const notes = annotateLines(d.netlist, d.results, d.run).map((a) => [a.line, plain(a.text)]);
     expect(notes).toEqual([[2, 'delivers 18 W, 3 A out of +'], [3, '3 A, n1 → 0']]);
   });
@@ -392,28 +403,28 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const d = ofFixture('f1b-voltage-source-swapped');
     expect(plain(d.words.nodes[0]?.text)).toBe('−6 V');
     expect(plain(powerText(d, 'V1'))).toBe('V1 delivers 18 W');
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from 0 to n1 through R1');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from ground to node n1 through R1');
   });
 
   it('F2a and F2b: the current source pushes 3 A one way or the other, and delivers 36 W (P4, C3)', () => {
     const a = ofFixture('f2a-current-source');
-    expect(plain(currentText(a, 'I1'))).toBe('3 A from 0 to n1 through I1');
+    expect(plain(currentText(a, 'I1'))).toBe('3 A from ground to node n1 through I1');
     expect(plain(powerText(a, 'I1'))).toBe('I1 delivers 36 W');
-    expect(plain(currentText(a, 'R1'))).toBe('3 A from n1 to 0 through R1');
+    expect(plain(currentText(a, 'R1'))).toBe('3 A from node n1 to ground through R1');
     const b = ofFixture('f2b-current-source-swapped');
-    expect(plain(currentText(b, 'I1'))).toBe('3 A from n1 to 0 through I1');
+    expect(plain(currentText(b, 'I1'))).toBe('3 A from node n1 to ground through I1');
     expect(plain(powerText(b, 'I1'))).toBe('I1 delivers 36 W');
-    expect(plain(currentText(b, 'R1'))).toBe('3 A from 0 to n1 through R1');
+    expect(plain(currentText(b, 'R1'))).toBe('3 A from ground to node n1 through R1');
   });
 
   it('F3a and F3b: 1M is a milliohm, 1meg a megaohm', () => {
     const a = ofFixture('f3a-1M-trap');
     expect(plain(a.words.nodes.find((n) => n.node === 'n2')?.text)).toBe('6 V');
-    expect(plain(currentText(a, 'R1'))).toBe('6 µA from n1 to n2 through R1');
+    expect(plain(currentText(a, 'R1'))).toBe('6 µA from node n1 to node n2 through R1');
     expect(plain(explainLine(a.netlist, 2)!.fields.find((f) => f.label === 'value')?.meaning)).toBe('1 mΩ (milli!)');
     const b = ofFixture('f3b-1meg');
     expect(plain(b.words.nodes.find((n) => n.node === 'n2')?.text)).toBe('3 V');
-    expect(plain(currentText(b, 'R1'))).toBe('3 µA from n1 to n2 through R1');
+    expect(plain(currentText(b, 'R1'))).toBe('3 µA from node n1 to node n2 through R1');
   });
 
   it('F4: the output resistance at v(a) is 4 Ω, the Thevenin resistance (A3)', () => {
@@ -421,22 +432,22 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const tf = d.words.tf!;
     expect(plain(tf.transferFunction?.text)).toBe('v(a)/V1 = 0.3333 (V/V)');
     expect(plain(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
-    expect(plain(tf.outputResistance?.text)).toBe('output resistance at a: 4 Ω, the Thevenin resistance seen at a (ngspice calls it the output impedance)');
-    expect(tf.outputResistance?.speech).toBe('the output resistance at a is 4 ohms, the Thevenin resistance');
+    expect(plain(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thevenin resistance seen at node a (ngspice calls it the output impedance)');
+    expect(tf.outputResistance?.speech).toBe('the output resistance at node a is 4 ohms, the Thevenin resistance');
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {
     const d = ofFixture('f5-thevenin-cccs');
     expect(d.words.nodes.map((n) => [n.node, plain(n.text), n.colourIndex])).toEqual([['a', '14 V', 0], ['x', '14 V', 1], ['n1', '12 V', 2]]);
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from n1 to 0 through R1');
-    expect(plain(currentText(d, 'R2'))).toBe('1 A from x to n1 through R2');
-    expect(plain(currentText(d, 'Vx'))).toBe('Vx measures 1 A flowing from a to x');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from node n1 to ground through R1');
+    expect(plain(currentText(d, 'R2'))).toBe('1 A from node x to node n1 through R2');
+    expect(plain(currentText(d, 'Vx'))).toBe('Vx measures 1 A flowing from node a to node x');
     expect(d.words.currents.find((c) => c.name === 'Vx')?.power).toBeUndefined();
-    expect(plain(currentText(d, 'F1'))).toBe('2 A from 0 to n1 through F1');
+    expect(plain(currentText(d, 'F1'))).toBe('2 A from ground to node n1 through F1');
     expect(plain(powerText(d, 'Itest'))).toBe('Itest delivers 14 W');
     expect(plain(powerText(d, 'F1'))).toBe('F1 delivers 24 W');
-    expect(d.words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from n1 to ground through R1');
-    expect(plain(d.words.summary)).toBe('Simulation finished: a = 14 V, x = 14 V, n1 = 12 V; 5 currents. Open the results for details.');
+    expect(d.words.currents.find((c) => c.name === 'R1')?.speech).toBe('3 amps flow from node n1 to ground through R1');
+    expect(plain(d.words.summary)).toBe('Simulation finished: node a = 14 V, node x = 14 V, node n1 = 12 V; 5 currents. Open the results for details.');
   });
 
   it('F5 without savecurrents: only the 0 V source has a current, and the other lines show their voltage (A1)', () => {
@@ -451,7 +462,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     const s = d.words.sweeps[0]!;
     expect(s.points).toBe(13);
     expect(plain(s.text)).toBe('DC sweep of V1 from 0 V to 12 V in steps of 1 V: 13 points. At V1 = 12 V: v(in) = 12 V, v(out) = 8 V, i(v1) = −4 mA.');
-    expect(s.speech).toContain('the voltage at out is 8 volts, the current in V1 is minus 4 milliamps');
+    expect(s.speech).toContain('the voltage at node out is 8 volts, the current in V1 is minus 4 milliamps');
   });
 
   it('T1: a transient over 5 ms on ngspice\'s own time points (A16)', () => {
@@ -465,7 +476,7 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
   it('describes every fixture circuit for a screen reader', () => {
     const d = ofFixture('f5-thevenin-cccs', false);
     expect(plain(describeCircuit(d.netlist))).toBe(
-      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into a. Vx: a 0 V source from a to x, used as an ammeter. R2: a 2 Ω resistor between x and n1. R1: a 4 Ω resistor between n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into n1. Analysis: operating point.',
+      '5 parts and 3 nodes besides ground (a, x, n1). Itest: a 1 A current source pushing current from ground into node a. Vx: a 0 V source from node a to node x: a wire, through which ngspice measures the current (the ammeter trick). R2: a 2 Ω resistor between node x and node n1. R1: a 4 Ω resistor between node n1 and ground. F1: a current-controlled current source pushing 2 × the current in Vx from ground into node n1. Analysis: operating point.',
     );
     for (const id of FIXTURES) expect(describeCircuit(parseNetlist(fixtureText(id))).length, id).toBeGreaterThan(40);
   });
@@ -481,7 +492,7 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
     const c1b = ofFact('C1b');
     expect(plain(powerText(c1b, 'V1'))).toBe('V1 delivers 18 W');
     expect(c1b.words.currents.find((c) => c.name === 'V1')!.value).toBeGreaterThan(0);
-    expect(plain(currentText(c1b, 'V1'))).toBe('3 A from 0 to n1 through V1');
+    expect(plain(currentText(c1b, 'V1'))).toBe('3 A from ground to node n1 through V1');
     const note = explainLine(c1b.netlist, 1)!.notes.join(' ');
     expect(note).toContain('Its value is negative, so its + side is the lower one: while it delivers power, its current is positive.');
     expect(note).not.toContain('negative current');
@@ -504,25 +515,25 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
 
   it('C3: resistor directions from the sign; current sources from their value', () => {
     const d = ofFact('C3');
-    expect(plain(currentText(d, 'R1'))).toBe('3 A from n1 to 0 through R1');
-    expect(plain(currentText(d, 'R2'))).toBe('3 A from 0 to n2 through R2');
-    expect(plain(currentText(d, 'I2'))).toBe('3 A from n2 to 0 through I2');
+    expect(plain(currentText(d, 'R1'))).toBe('3 A from node n1 to ground through R1');
+    expect(plain(currentText(d, 'R2'))).toBe('3 A from ground to node n2 through R2');
+    expect(plain(currentText(d, 'I2'))).toBe('3 A from node n2 to ground through I2');
     expect(plain(powerText(d, 'I1'))).toBe('I1 delivers 36 W');
     expect(plain(powerText(d, 'I2'))).toBe('I2 delivers 36 W');
   });
 
   it('C4: F and G push their current into the node they name second', () => {
     const d = ofFact('C4');
-    expect(plain(currentText(d, 'F1'))).toBe('4 A from 0 to o through F1');
-    expect(plain(currentText(d, 'F2'))).toBe('4 A from p to 0 through F2');
-    expect(plain(currentText(d, 'G1'))).toBe('1 A from 0 to q through G1');
-    expect(plain(currentText(d, 'G2'))).toBe('1 A from r to 0 through G2');
+    expect(plain(currentText(d, 'F1'))).toBe('4 A from ground to node o through F1');
+    expect(plain(currentText(d, 'F2'))).toBe('4 A from node p to ground through F2');
+    expect(plain(currentText(d, 'G1'))).toBe('1 A from ground to node q through G1');
+    expect(plain(currentText(d, 'G2'))).toBe('1 A from node r to ground through G2');
   });
 
   it('C6, C7: E, H and B sources deliver power', () => {
     expect(plain(powerText(ofFact('C6'), 'E1'))).toBe('E1 delivers 18 W');
     expect(plain(powerText(ofFact('C6'), 'H1'))).toBe('H1 delivers 32 W');
-    expect(plain(currentText(ofFact('C7'), 'B1'))).toBe('2 A from 0 to b through B1');
+    expect(plain(currentText(ofFact('C7'), 'B1'))).toBe('2 A from ground to node b through B1');
     expect(plain(powerText(ofFact('C7'), 'B1'))).toBe('B1 delivers 4 W');
   });
 
@@ -531,13 +542,13 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
     expect(d.results.op!.currents.map((c) => c.element)).toEqual(expect.arrayContaining(['s1', 'w1']));
     expect(d.words.currents.map((c) => c.element)).not.toContain('s1');
     expect(d.words.currents.map((c) => c.element)).not.toContain('w1');
-    expect(plain(currentText(d, 'Rc'))).toBe('1.5 A from c to 0 through Rc');
+    expect(plain(currentText(d, 'Rc'))).toBe('1.5 A from node c to ground through Rc');
   });
 
   it('A1, A2: an inductor appears once, with its branch current', () => {
     const d = ofFact('A2');
     expect(d.words.currents.filter((c) => c.element === 'l1')).toHaveLength(1);
-    expect(plain(currentText(d, 'L1'))).toBe('2.097 A from b to c through L1');
+    expect(plain(currentText(d, 'L1'))).toBe('2.097 A from node b to node c through L1');
     expect(plain(currentText(d, 'C1'))).toBe('no current through C1');
   });
 
@@ -550,8 +561,8 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
   it('A4: a current-source input gives a ratio in V/A', () => {
     const tf = ofFact('A4').words.tf!;
     expect(tf.ratio).toBe('V/A');
-    expect(tf.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at b is 1 volt per amp, which is an ohm');
-    expect(plain(tf.outputResistance?.text)).toContain('output resistance at b: 1.5 Ω');
+    expect(tf.transferFunction?.speech).toBe('the transfer function from I1 to the voltage at node b is 1 volt per amp, which is an ohm');
+    expect(plain(tf.outputResistance?.text)).toContain('output resistance at node b: 1.5 Ω');
   });
 });
 
@@ -629,5 +640,201 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
         if (w.line !== undefined) expect(w.line).toBeGreaterThanOrEqual(1);
       }
     }
+  });
+});
+
+// ------------------------------------------------------------------ after the final reviews
+
+describe('after the final reviews (12 November 2026)', () => {
+  it('drawing-1: a video example runs the same with and without its drawing lines, and Explain gives them one entry that says ngspice skips them (kept F2)', async () => {
+    const text = readFileSync(join(root, 'examples/p01/p01-3-ccvs-supernode.cir'), 'utf8');
+    const bare = text
+      .split('\n')
+      .filter((l) => !/^\s*\*(@|\s*plainspice-drawing)/i.test(l))
+      .join('\n');
+    const [drawn, plain] = [await engine.run(text), await engine.run(bare)];
+    expect(drawn.ok && plain.ok).toBe(true);
+    expect(drawn.plots.map((p) => p.variables.map((v) => v.name))).toEqual(plain.plots.map((p) => p.variables.map((v) => v.name)));
+    drawn.plots.forEach((p, k) => p.real.forEach((v, i) => expect(Array.from(v), p.variables[i]!.name).toEqual(Array.from(plain.plots[k]!.real[i]!))));
+    expect(drawn.diagnostics).toEqual(plain.diagnostics);
+    const entries = explainNetlist(parseNetlist(text));
+    expect(entries.filter((e) => e.heading.startsWith('Drawing line'))).toEqual([
+      {
+        line: 11,
+        lastLine: 32,
+        heading: 'Drawing lines',
+        summary: 'These lines say where each part, wire and node name is drawn; PlainSpice reads them to draw the circuit. ngspice skips them: a line that starts with * is a comment.',
+        fields: [],
+        notes: [],
+      },
+    ]);
+    expect(entries.filter((e) => e.heading === 'Comment')).toHaveLength(1);
+  });
+});
+
+describe('after the final reviews (12 November 2026): rounding noise is 0 A (student review; C9–C9c)', () => {
+  /** Exactly, bit for bit: `agrees` counts any two values below 1e-12 as equal, so it cannot check noise. */
+  const exactly = (code: string): void => {
+    const f = fact(code);
+    const r = runs.get(f.id)!;
+    for (const [name, want] of Object.entries(f.vectors ?? {})) expect(vectorValues(r.plots, name), `${code} ${name}`).toEqual([want]);
+  };
+
+  it('C9, C9b: our engine gives the same noise as native ngspice 47, to the last bit', () => {
+    exactly('C9');
+    exactly('C9b');
+  });
+
+  it('C9c: abstol and vntol, ngspice\'s tolerances for currents and voltages, are 1e-12 A and 1e-6 V: the floors describe.ts uses', () => {
+    expect(runs.get(fact('C9c').id)!.stdout).toMatch(/abstol\s+\(current\) = 1e-12\n/);
+    expect(runs.get(fact('C9c').id)!.stdout).toMatch(/vntol\s+\(voltage\) = 1e-06\n/);
+    expect(ABSTOL).toBe(1e-12);
+    expect(VNTOL).toBe(1e-6);
+  });
+
+  it('C9: the balanced bridge says R5 carries no current, with no arrow, and says what ngspice gave', () => {
+    const d = ofFact('C9');
+    const r5 = d.words.currents.find((c) => c.name === 'R5')!;
+    expect(r5).toMatchObject({ value: 0, noise: -8.881784197001253e-19, text: 'no current through R5', speech: 'no current flows through R5' });
+    expect(r5.power).toBeUndefined();
+    expect(annotateLines(d.netlist, d.results, d.run).find((a) => a.line === 7)).toMatchObject({ text: '0 A', speech: 'no current flows' });
+    const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note).toMatchObject({ severity: 'note', title: "R5's current is shown as 0 A", line: 7 });
+    expect(note.why).toContain('ngspice gave R5 -8.881784e-19 A.');
+    // The why: the circuit makes the current 0, and ngspice's number is below its tolerance.
+    expect(plain(note.why)).toContain('the two ends of R5, node a and node b, are at the same voltage, 4.5 V.');
+    expect(note.why).toContain("below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.");
+    // The other currents are real and keep their words; a note is no problem for the summary.
+    expect(plain(currentText(d, 'R1'))).toBe('450 µA from node top to node a through R1');
+    expect(d.words.summary).not.toMatch(/warning/);
+  });
+
+  it('C9b: when every current is noise, none is drawn, none delivers or absorbs power, and the note gives each value', () => {
+    const d = ofFact('C9b');
+    expect(d.words.status).toBe('ok');
+    for (const c of d.words.currents) {
+      expect(c.value, c.name).toBe(0);
+      expect(c.power, c.name).toBeUndefined();
+    }
+    expect(d.words.currents.filter((c) => c.noise !== undefined).map((c) => [c.name, c.noise])).toEqual([
+      ['V1', -1.734723475976807e-18],
+      ['R1', 1.7763568394002505e-18],
+      ['R3', 1.1842378929335003e-18],
+      ['F1', -3.469446951953614e-18],
+    ]);
+    const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note.title).toBe('4 currents are shown as 0 A');
+    expect(note.why).toContain('ngspice gave V1 -1.734723e-18 A, R1 1.776357e-18 A, R3 1.184238e-18 A and F1 -3.469447e-18 A.');
+    expect(annotateLines(d.netlist, d.results, d.run).every((a) => a.text === '0 A')).toBe(true);
+  });
+
+  it('C9, C9b, C9d-C9g: our engine gives these noise and tiny currents as native ngspice 47 does, to the last bit', () => {
+    for (const code of ['C9d', 'C9e', 'C9f', 'C9g']) exactly(code);
+  });
+
+  it('C9d: the noise passes on: Vm, F1 that copies it and R6 that F1 drives carry no current, and node out is at 0 V (critic of round 1)', () => {
+    const d = ofFact('C9d');
+    expect(d.words.currents.filter((c) => c.noise !== undefined).map((c) => [c.name, c.value, c.noise])).toEqual([
+      ['Vm', 0, -2.168404344971009e-19],
+      ['F1', 0, -2.1684043449710089e-16],
+      ['R6', 0, -2.1684043449710089e-16],
+    ]);
+    for (const c of d.words.currents.filter((x) => x.noise !== undefined)) expect(c.power, c.name).toBeUndefined();
+    const out = d.words.nodes.find((n) => n.node === 'out')!;
+    expect([out.value, out.noise, plain(out.text)]).toEqual([0, -2.1684043449710089e-13, '0 V']);
+    // The other numbers are answers and keep their words.
+    expect(plain(currentText(d, 'R1'))).toBe('450 µA from node top to node a through R1');
+    const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note.title).toBe('3 currents are shown as 0 A, and node out as 0 V');
+    expect(note.why).toContain('ngspice gave Vm -2.168404e-19 A, F1 -2.168404e-16 A, R6 -2.168404e-16 A and node out -2.168404e-13 V.');
+    expect(annotateLines(d.netlist, d.results, d.run).find((a) => a.line === 10)).toMatchObject({ text: '0 A' });
+  });
+
+  it('C9e-C9g: a tiny current the circuit makes is shown as ngspice gives it, next to large currents too: 2 aA, 120 fA, 0.5 pA, and no note (critic of round 1)', () => {
+    const cases: [string, string, number][] = [
+      ['C9e', 'I1', 2e-18],
+      ['C9f', 'R2', 1.2e-13],
+      ['C9g', 'R3', 4.999999999995e-13],
+    ];
+    for (const [code, name, value] of cases) {
+      const d = ofFact(code);
+      expect(d.words.status, code).toBe('ok');
+      expect(d.words.currents.map((c) => c.noise), code).toEqual(d.words.currents.map(() => undefined));
+      expect(d.words.currents.find((c) => c.name === name)!.value, code).toBe(value);
+      expect(d.words.warnings.some((m) => m.code === 'rounding-noise'), code).toBe(false);
+    }
+    expect(plain(currentText(ofFact('C9e'), 'I1'))).toBe('2 aA from ground to node b through I1');
+    expect(plain(currentText(ofFact('C9f'), 'R2'))).toBe('120 fA from node in to ground through R2');
+  });
+
+  it('C9h-C9j, C9l: our engine gives these tiny currents as native ngspice 47 does, to the last bit', () => {
+    for (const code of ['C9h', 'C9i', 'C9j', 'C9l']) exactly(code);
+  });
+
+  it('C9h-C9j: a tiny real current flows on through the parts in series and side by side: shown as ngspice gives it, with no note (critic of round 2)', () => {
+    const cases: [string, string, number][] = [
+      ['C9h', 'R1', -1.7763568394002505e-18],
+      ['C9h', 'V1', 1.734723475976807e-18],
+      ['C9i', 'R1', 1.2008172234345695e-13],
+      ['C9i', 'V1', -1.2012613126444194e-13],
+      ['C9j', 'R2', -1.7763568394002505e-18],
+      ['C9j', 'V1', 3.469446951953614e-18],
+    ];
+    for (const [code, name, value] of cases) {
+      const d = ofFact(code);
+      expect(d.words.currents.map((c) => c.noise), code).toEqual(d.words.currents.map(() => undefined));
+      expect(d.words.currents.find((c) => c.name === name)!.value, `${code} ${name}`).toBe(value);
+      expect(d.words.warnings.some((m) => m.code === 'rounding-noise'), code).toBe(false);
+    }
+    // The critic saw "2 aA, delivers 24 aW" next to R1 "0 A" and V1 "0 A". Now R1 and V1 carry I1's current, to within ngspice's rounding.
+    expect(plain(currentText(ofFact('C9h'), 'R1'))).toBe('1.776 aA from node b to node a through R1');
+    expect(plain(powerText(ofFact('C9h'), 'V1'))).toBe('V1 absorbs 20.82 aW');
+    expect(plain(currentText(ofFact('C9i'), 'R1'))).toBe('120.1 fA from node in to node a through R1');
+  });
+
+  it('C9l: ends 3000 units in the last place apart carry a real current: the voltmeter across R2 makes 2.696 fA flow through R5 (critic of round 2)', () => {
+    const d = ofFact('C9l');
+    const [a, b] = [d.results.op!.nodes.find((n) => n.node === 'a')!.value, d.results.op!.nodes.find((n) => n.node === 'b')!.value];
+    expect(Math.abs(a - b) / 2 ** -50).toBeGreaterThan(3000);
+    expect(d.words.currents.map((c) => c.noise)).toEqual(d.words.currents.map(() => undefined));
+    expect(plain(currentText(d, 'R5'))).toBe('2.696 fA from node b to node a through R5');
+    expect(d.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+    // Without the voltmeter, R5's ends are 1 unit in the last place apart and its current is noise (C9).
+    expect(ofFact('C9').words.currents.find((c) => c.name === 'R5')!.noise).toBe(-8.881784197001253e-19);
+  });
+
+  it('C9k: a ladder of 1000 sections gives section 30 the same values as a ladder of 100, nanovolts and femtoamps that stay; its far end goes below the smallest normal double and then to 0 (critic of round 2)', async () => {
+    const ladder = (sections: number): string => {
+      const lines = [`* a ladder of ${sections} sections: each divides the voltage again`, 'V1 n0 0 10'];
+      for (let k = 1; k <= sections; k++) lines.push(`Ra${k} n${k - 1} n${k} 1k`, `Rb${k} n${k} 0 2k`, `Vm${k} n${k} m${k} 0`, `Rc${k} m${k} 0 10k`);
+      return [...lines, '.options savecurrents', '.op', '.end'].join('\n') + '\n';
+    };
+    const [short, long] = [ladder(100), ladder(1000)];
+    const [r100, r1000] = [await engine.run(short), await engine.run(long)];
+    // As native ngspice 47 and 42 gave them (docs/spice-facts/explanations.md, C9k).
+    for (const r of [r100, r1000]) {
+      expect(vectorValues(r.plots, 'v(n30)')).toEqual([1.3949570192590355e-9]);
+      expect(vectorValues(r.plots, 'i(@rb30[i])')).toEqual([6.974785096295177e-13]);
+    }
+    expect(vectorValues(r100.plots, 'v(n100)')).toEqual([2.0685102856568829e-32]);
+    expect(['v(n100)', 'v(n939)', 'v(n940)', 'v(n987)', 'v(n988)'].map((n) => vectorValues(r1000.plots, n)![0])).toEqual([1.4077842058616815e-32, 3.347756568565453e-308, 1.571228079166437e-308, 5e-324, 0]);
+    for (const [text, r] of [[short, r100], [long, r1000]] as const) {
+      const d = describeRun(text, r);
+      expect(d.words.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual([]);
+      expect(d.words.nodes.filter((n) => n.noise !== undefined).map((n) => n.node)).toEqual([]);
+      expect(plain(d.words.nodes.find((n) => n.node === 'n30')!.text)).toBe('1.395 nV');
+      expect(plain(currentText(d, 'Rb30'))).toBe('697.5 fA from node n30 to ground through Rb30');
+      expect(d.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+    }
+  });
+
+  it('a tiny current that is the whole circuit is not noise: the 3 aA of a 3a source stays 3 aA (unit-letter-1)', async () => {
+    const text = '* 3A on a current source\nI1 0 n1 3A\nR1 n1 0 4\n.options savecurrents\n.op\n.end\n';
+    const d = describeRun(text, await engine.run(text));
+    expect(d.words.currents.map((c) => [c.name, c.value, c.noise])).toEqual([
+      ['I1', 3.0000000000000002e-18, undefined],
+      ['R1', 3.0000000000000002e-18, undefined],
+    ]);
+    expect(d.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
   });
 });

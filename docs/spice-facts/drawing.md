@@ -153,3 +153,10 @@ First recorded on 10 November 2026 with the v1 lines alone; recorded again the s
 
 Our engine, both netlists: exit code 0, no diagnostics, nothing on stderr, the same stdout apart
 from timings, and `v(in)` = 6, `v(out)` = 4, `i(v1)` = −0.002, the same doubles as native 47.
+
+**Also relied on by Explain** (final reviews, 12 November 2026). `src/spice/explain.ts` gives a run
+of drawing lines one entry, "Lines 11–32: Drawing lines", which says what they are for and that
+ngspice skips them because a line starting with `*` is a comment (S6). It finds them the way
+`src/schematic/format.ts` does. `tests/golden/facts-explain.test.ts` runs a video example (p01-3,
+22 drawing lines) with and without its drawing lines through our engine, checks the same vectors
+bit for bit and the same messages, and checks that entry.

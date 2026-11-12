@@ -159,6 +159,23 @@ const CASES: Case[] = [
   { name: "a number after a gain", id: 'unknown-word', severity: 'error', line: 4, at: "3", all: ["unknown-word"], fixes: [], netlist: "* t\nV1 a 0 1\nR0 a 0 1\nE1 b 0 a 0 2 3\nR1 b 0 1\n.op\n.end\n" },
   { name: "a misspelt .tran", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".tarn", all: ["unknown-dot-command"], fixes: ["Use .tran", "Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.tarn 1u 1m\n.op\n.end\n" },
   { name: ".pss, unknown to ngspice 47 as built", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".pss", all: ["unknown-dot-command"], fixes: ["Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n" },
+  // After the final reviews (12 November 2026): names ngspice spells with underscores (kept review F3).
+  { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
+  { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
+  // Characters that are not what they look like (security review F2).
+  { name: "a zero-width space inside a value", id: 'invisible-character', severity: 'warning', line: 3, at: "1​k", all: ["invisible-character"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space inside a node name", id: 'invisible-character', severity: 'warning', line: 4, at: "ou​t", all: ["invisible-character"], fixes: ["Take it out: connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
+  { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
+  { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
+  { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Keep milli: write 10m"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
+  { name: "a Cyrillic o in a node name", id: 'look-alike-letter', severity: 'warning', line: 4, at: "\u043eut", all: ["look-alike-letter"], fixes: ["Connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space right after a minus sign", id: 'invisible-character', severity: 'error', line: 2, at: "-\u200b5", all: ["invisible-character"], fixes: ["Write -5 (\u22125\u00a0V)"], netlist: "* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n" },
+  { name: "a thin space between a value and its unit", id: 'space-character', severity: 'warning', line: 3, at: "4.7\u2009k\u03a9", all: ["space-character"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
+  { name: "a thin space between two words", id: 'space-character', severity: 'warning', line: 3, at: "0\u20092", all: ["missing-value", "space-character"], fixes: ["Replace it with a normal space"], netlist: "* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n" },
+  { name: "a thin space before a value", id: 'space-character', severity: 'error', line: 4, at: "\u20092k", all: ["space-character"], fixes: ["Write 2k (2\u00a0k\u03a9)"], netlist: "* t\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 \u20092k\n.op\n.end\n" },
+  { name: "a no-break space between a value and its unit", id: 'nbsp', severity: 'warning', line: 3, at: "4.7\u00a0k\u03a9", all: ["nbsp"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
+  { name: "two part names ngspice spells the same", id: 'duplicate-name', severity: 'error', line: 4, at: "R\u00e7", all: ["duplicate-name"], fixes: ["Rename it Rc"], netlist: "* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n" },
 ];
 
 describe('each trap fires on a minimal netlist', () => {
@@ -541,7 +558,7 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       const lineOf = (offset: number): number => n.lines.filter((l) => l.span.from <= offset).length;
       for (const l of n.lines) for (const t of l.tokens) expect(text.slice(t.from, t.to)).toBe(t.text);
       const found = checkTraps(n);
-      expect(found.map((t) => t.id)).toEqual(['decimal-comma', 'unknown-word', 'rkm-notation', 'space-before-suffix', 'unknown-dot-command']);
+      expect(found.map((t) => t.id)).toEqual(['non-ascii-node', 'non-ascii-node', 'decimal-comma', 'non-ascii-node', 'unknown-word', 'rkm-notation', 'non-ascii-node', 'space-before-suffix', 'unknown-dot-command']);
       for (const t of found) {
         expect(lineOf(t.span.from), t.id).toBe(t.line);
         for (const f of t.fixes) {
@@ -784,5 +801,261 @@ describe('the evidence', () => {
 
   it('documents every trap id', () => {
     for (const id of TRAP_IDS) expect(doc).toContain(`## ${id}`);
+  });
+});
+
+describe('after the final reviews (12 November 2026)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+
+  it('flags an invisible character or a look-alike only when the reading changes, and never shows it (security review F2)', () => {
+    // The reviewer's link: "R1 in out 1<zero-width space>k" with R2 1k. Native 47: v(out) = 5.994006 (R1 = 1 Ω).
+    const zwsp = first('* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 1k\n.op\n.end\n', 'invisible-character');
+    expect(zwsp.title).toBe('R1\'s value is read as 1 Ω, not 1 kΩ');
+    for (const text of [zwsp.title, zwsp.why, zwsp.ngspice, ...zwsp.fixes.map((f) => f.label)]) expect(text).not.toMatch(/[​-‏⁠-⁤﻿­]/);
+    expect(zwsp.why).toContain('A zero-width space (U+200B) sits between 1 and k');
+    // Harmless: after the scale letter, or a unit written after it; Turkish node names are another check's.
+    expect(ids('* t\nV1 in 0 6\nR1 in out 1k​\nR2 out 0 2k\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 6\nR1 in out 1kΩ\nR2 out 0 2k\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 6\nR1 in out 1k \nR2 out 0 2k\n.op\n.end\n')).not.toContain('invisible-character');
+    // The Greek mu keeps its own check.
+    expect(ids('* t\nI1 0 n1 1\nR1 n1 0 4.7μ\n.op\n.end\n')).toEqual(['greek-mu']);
+    // The numbers of an analysis line too: 5<zero-width space>m is 5 s.
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5​m\n.end\n', 'invisible-character').title).toBe('This value is read as 5, not 0.005');
+  });
+
+  it('says a look-alike in whole sentences, whatever it looks like, and cites the run that shows it (security review F2; look-alike-letter-1, -3)', () => {
+    const cases: [netlist: string, why: string, ngspice: string][] = [
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\u043a\n.op\n.end\n',
+        'The value has the Cyrillic letter \u043a, which looks like k. SPICE knows only the plain letter k, so it ignores this one like a unit. Write 1k.',
+        'ngspice stops reading the number at the Cyrillic letter \u043a, without a message: it reads 1\u00a0Ω. [look-alike-letter-1]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1e\u22123\n.op\n.end\n',
+        'The value has a minus sign (U+2212), which looks like -. SPICE knows only the plain - sign, so it ignores this one like a unit, and the 3 after it. Write 1e-3.',
+        'ngspice stops reading the number at the minus sign (U+2212), without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1e\u20133\n.op\n.end\n',
+        'The value has a dash (U+2013), which looks like -. SPICE knows only the plain - sign, so it ignores this one like a unit, and the 3 after it. Write 1e-3.',
+        'ngspice stops reading the number at the dash (U+2013), without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\uff10k\n.op\n.end\n',
+        'The value has the fullwidth digit \uff10, which looks like 0. SPICE knows only the plain digit 0, so it ignores this one like a unit, and the k after it. Write 10k.',
+        'ngspice stops reading the number at the fullwidth digit \uff10, without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\uff0e5k\n.op\n.end\n',
+        'The value has the fullwidth sign \uff0e, which looks like a decimal point. SPICE knows only the plain decimal point, so it ignores this one like a unit, and the 5k after it. Write 1.5k.',
+        'ngspice stops reading the number at the fullwidth sign \uff0e, without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+      ['* t\nI1 0 n1 1\nR1 n1 0 1\u212a\n.op\n.end\n',
+        'The value has the Kelvin sign \u212a (U+212A), which looks like K. SPICE knows only the plain letter K, so it ignores this one like a unit. Write 1K.',
+        'ngspice stops reading the number at the Kelvin sign \u212a (U+212A), without a message: it reads 1\u00a0Ω. [look-alike-letter-3]'],
+    ];
+    for (const [netlist, why, ngspice] of cases) {
+      const t = first(netlist, 'look-alike-letter');
+      expect(t.why).toBe(why);
+      expect(t.ngspice).toBe(ngspice);
+    }
+  });
+
+  it('reads a value with a character that looks like a space the way documents write it, names the character, and says what ngspice reads (critic of round 1; space-character-1 to -5, nbsp-2)', () => {
+    // The critic's divider, copied from a PDF: R1 4.7<thin space>kΩ. Native 47 and 42: R1 = 4.7 Ω, out = 9.99 V.
+    const thin = first('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 'space-character');
+    expect([thin.title, thin.why, thin.ngspice]).toEqual([
+      'R1\'s value is read as 4.7\u00a0\u03a9, not 4.7\u00a0k\u03a9',
+      'A thin space (U+2009) sits between 4.7 and k\u03a9, as documents write a number and its unit. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the k\u03a9 after it does not count. SPICE needs no space and no units: write 4.7k.',
+      'ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 4.7\u00a0\u03a9. [space-character-1]',
+    ]);
+    // The words never show the character: they name it.
+    for (const text of [thin.title, thin.why, thin.ngspice, ...thin.fixes.map((f) => f.label)]) expect(text).not.toMatch(/[\u1680\u2000-\u200a\u202f\u205f\u3000]/);
+    // The narrow no-break space and the ideographic space (critic's 1<U+202F>k, 1<U+3000>k), and groups of digits.
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 1\u202fk\n.op\n.end\n', 'space-character').why).toContain('A narrow no-break space (U+202F) sits between 1 and k');
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 1\u3000k\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Write 1k (1\u00a0k\u03a9)']);
+    const groups = first('* t\nI1 0 n1 1\nR1 n1 0 10\u2009000\n.op\n.end\n', 'space-character');
+    expect([groups.title, groups.fixes.map((f) => f.label)]).toEqual(['R1\'s value is read as 10\u00a0\u03a9, not 10\u00a0k\u03a9', ['Write 10000 (10\u00a0k\u03a9)']]);
+    expect(groups.why).toContain('as documents group digits');
+    // A capital M after the space is mega in a document: never "Write 1M", which is milli (mega-as-milli).
+    const mega = first('* t\nV1 in 0 10\nR1 in out 1\u2009M\u03a9\nR2 out 0 1meg\n.op\n.end\n', 'space-character');
+    expect(mega.fixes.map((f) => f.label)).toEqual(['Make it 1meg (1\u00a0M\u03a9)', 'Keep milli: write 1m']);
+    expect(mega.why).toContain('a capital M is milli in SPICE: for mega, write meg: 1meg.');
+    expect(first('* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    // A no-break space in a value: the same reading, under the no-break space's own check.
+    expect(first('* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 'nbsp').ngspice).toContain('[nbsp-2]');
+    // Harmless, no trap: after the scale letter; a unit alone (2 A means 2 amps, and SPICE reads 2); at the end of the word.
+    expect(ids('* t\nV1 in 0 10\nR1 in out 4.7k\u2009\u03a9\nR2 out 0 4.7k\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nI1 0 a 2\u2009A\nR1 a 0 1\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 10\u2009\nR1 in 0 1\n.op\n.end\n')).toEqual([]);
+    // The fix gives what was meant: 4.7k, and 10000.
+    expect(applyFix('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', thin.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 4.7k\nR2 out 0 4.7k\n.op\n.end\n');
+    // The numbers of an analysis line too: .tran 1u 5<thin space>ms is 5 s.
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5\u2009ms\n.end\n', 'space-character').title).toBe('This value is read as 5, not 0.005');
+    // Between two words it glues them, named; in a node name the node check names it once, and the non-ascii-node check stays quiet.
+    const glue = first('* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n', 'space-character');
+    expect(glue.title).toBe('A thin space (U+2009) glues "0 2" into one word');
+    expect(ids('* t\nV1 in 0 6\nR1 in ou\u2009t 1k\nR2 ou\u2009t 0 2k\n.op\n.end\n')).toEqual(['space-character']);
+  });
+
+  it('reads groups of digits with a unit after them the way documents write them: 10 000 Ω is 10000, never "Replace it with a normal space" (critic of round 2; space-character-7, -8)', () => {
+    // The critic's netlist: R1 10<thin space>000<thin space>Ω, read as 10 Ω (native 47 and 42: out = 9.99 V).
+    const text = '* t\nV1 in 0 10\nR1 in out 10\u2009000\u2009\u03a9\nR2 out 0 10k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['space-character']);
+    expect([found[0]!.title, found[0]!.why, found[0]!.ngspice, found[0]!.fixes.map((f) => f.label)]).toEqual([
+      'R1\'s value is read as 10\u00a0\u03a9, not 10\u00a0k\u03a9',
+      'A thin space (U+2009) sits between 10 and 000, as documents group digits. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 000 \u03a9 after it does not count. SPICE needs no space and no units: write 10000.',
+      'ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 10\u00a0\u03a9. [space-character-7]',
+      ['Write 10000 (10\u00a0k\u03a9)'],
+    ]);
+    // One click, and nothing is left to fix: the critic's chain ended at a 0 Ω resistor.
+    expect(ids(applyFix(text, found[0]!.fixes[0]!))).toEqual([]);
+    const fixes = (value: string, letter = 'R'): string[] => first(`* t\nI1 0 n1 1\n${letter}1 n1 0 ${value}\nR2 n1 0 1\n.op\n.end\n`, 'space-character').fixes.map((f) => f.label);
+    expect(fixes('4\u2009700\u2009\u03a9')).toEqual(['Write 4700 (4.7\u00a0k\u03a9)']);
+    expect(fixes('1\u2009000k')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
+    expect(fixes('1\u2009000\u2009k\u03a9')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
+    expect(fixes('2\u202f200\u202f000')).toEqual(['Write 2200000 (2.2\u00a0M\u03a9)']);
+    expect(fixes('1\u2009000\u2009M\u03a9')).toEqual(['Make it 1000meg (1\u00a0G\u03a9)', 'Keep milli: write 1000m']);
+    // On a capacitor ngspice also looks the word up as a model, and says so (space-character-8).
+    const cap = first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1\nC1 out 0 1\u2009000\u2009\u00b5F\n.tran 0.1m 1m\n.end\n', 'space-character');
+    expect([cap.title, cap.ngspice, cap.fixes.map((f) => f.label)]).toEqual([
+      'C1\'s value is read as 1\u00a0F, not 1\u00a0mF',
+      "ngspice stops reading the number at the thin space and ignores the rest of the word: it reads 1\u00a0F, and only warns that it can't find a model with the word's name. [space-character-7, space-character-8]",
+      ['Write 1000u (1\u00a0mF)'],
+    ]);
+    // Never shown, only named.
+    for (const t of [...found, cap]) for (const x of [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)]) expect(x).not.toMatch(/[\u1680\u2000-\u200a\u202f\u205f\u3000]/);
+  });
+
+  it('a number written another way says what ngspice reads and takes the character out: 1 2 is 1, 0.000 001 is 0 (critic of round 2; space-character-9, -11)', () => {
+    const one = first('* t\nI1 0 n1 1\nR1 n1 0 1\u20092\n.op\n.end\n', 'space-character');
+    expect([one.title, one.why, one.ngspice, one.fixes.map((f) => f.label)]).toEqual([
+      'R1\'s value is read as 1\u00a0\u03a9',
+      'A thin space (U+2009) sits between 1 and 2 (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the 2 after it does not count. Without it, the value reads 12.',
+      'ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 1\u00a0\u03a9. [space-character-11]',
+      ['Take it out: write 12 (12\u00a0\u03a9)'],
+    ]);
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 0.000\u2009001\nR2 n1 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Take it out: write 0.000001 (1\u00a0\u00b5\u03a9)']);
+    // No value word ever gets "Replace it with a normal space": 10 000 Ω with normal spaces stops ngspice (space-character-9).
+    for (const value of ['10\u2009000\u2009\u03a9', '1\u20092', '0.000\u2009001', '4.7\u2009k\u03a9', '1\u20092\u20093']) {
+      const labels = traps(`* t\nI1 0 n1 1\nR1 n1 0 ${value}\nR2 n1 0 1\n.op\n.end\n`).flatMap((t) => t.fixes.map((f) => f.label));
+      expect(labels, value).not.toContain('Replace it with a normal space');
+    }
+    // Where taking it out changes nothing, nothing is said: 4.7<thin space>xyz is 4.7 either way.
+    expect(ids('* t\nI1 0 n1 1\nR1 n1 0 4.7\u2009xyz\n.op\n.end\n')).toEqual([]);
+    // A word that is no number keeps the glue check: PULSE(0<thin space>1 ... is two words meant.
+    expect(first('* t\nV1 in 0 PULSE(0\u20091 0 1n 1n 1 2)\nR1 in 0 1\n.tran 1m 2m\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Replace it with a normal space']);
+  });
+
+  it('a character that looks like a space in a node name: "Take it out: connect to out", and no dangling-node notes for the pair (critic of round 2; space-character-10)', () => {
+    // The critic's netlist: R1 in o<thin space>ut 2k next to R2 out 0 2k. It got "Replace it with a normal space" and "Rename out to o ut".
+    const text = '* t\nV1 in 0 10\nR1 in o\u2009ut 2k\nR2 out 0 2k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['space-character']);
+    expect([found[0]!.title, found[0]!.why, found[0]!.fixes.map((f) => f.label)]).toEqual([
+      'The node o ut has a thin space (U+2009) in it',
+      'It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.',
+      ['Take it out: connect to out'],
+    ]);
+    expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 2k\nR2 out 0 2k\n.op\n.end\n');
+    // The no-break space under its own check's name; a name no other line writes is renamed everywhere.
+    expect(first('* t\nV1 in 0 10\nR1 in o\u00a0ut 2k\nR2 out 0 2k\n.op\n.end\n', 'nbsp').fixes.map((f) => f.label)).toEqual(['Take it out: connect to out']);
+    const alone = '* t\nV1 o\u2009ut 0 10\nR1 o\u2009ut 0 2k\n.op\n.end\n';
+    const renamed = first(alone, 'space-character');
+    expect(renamed.fixes.map((f) => f.label)).toEqual(['Take it out: name the node out']);
+    expect(applyFix(alone, renamed.fixes[0]!)).toBe('* t\nV1 out 0 10\nR1 out 0 2k\n.op\n.end\n');
+    // A part line a word short: the character stands where a space was meant, so the glue check's fix stays.
+    expect(traps('* t\nV1 in 0 10\nR1 in\u2009out 2k\nR2 out 0 2k\n.op\n.end\n').map((t) => [t.id, t.fixes.map((f) => f.label)])).toEqual([
+      ['missing-value', []],
+      ['space-character', ['Replace it with a normal space']],
+      ['dangling-node', []],
+    ]);
+  });
+
+  it('a look-alike in a node name is named, and its fix connects it to the node it looks like (critic of round 1; look-alike-letter-5)', () => {
+    // The critic's netlist: R2 on оut (Cyrillic о). It said "ngspice calls the node оut __ut ... (о as __)" and "Rename оut to ut".
+    const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['look-alike-letter']);
+    expect([found[0]!.title, found[0]!.why]).toEqual([
+      'The node \u043eut has the Cyrillic letter \u043e',
+      'It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to out.',
+    ]);
+    expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
+    // Alone, it renames the node to its plain letters, and the drawing's label with it.
+    expect(first('* t\nV1 a 0 6\nR1 a \u043eut 1k\nR2 \u043eut 0 2k\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Rename \u043eut to out']);
+    // A name with a Turkish letter too stays the non-ascii-node check's, and its fix writes the look-alike plain (çоk is cok, not ck).
+    expect(first('* t\nV1 in 0 6\nR1 in \u00e7\u043ek 1k\nR2 \u00e7\u043ek 0 2k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename \u00e7\u043ek to cok']);
+  });
+
+  it('a capital M from another alphabet is meant as mega: the fixes are mega-as-milli\'s, never "Write 10M" (critic of round 1; look-alike-letter-4)', () => {
+    const t = first('* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n', 'look-alike-letter');
+    expect(t.title).toBe('R1\'s value is read as 10\u00a0\u03a9, not 10\u00a0M\u03a9');
+    expect(t.why).toBe('The value has the Greek letter \u039c, which looks like M. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): 10meg.');
+    // Neither fix leads into the mega-as-milli check.
+    for (const f of t.fixes) expect(ids(applyFix('* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n', f))).toEqual([]);
+    // On a source, milli first, as mega-as-milli orders them; a small Cyrillic м stays milli.
+    expect(first('* t\nV1 a 0 5\u041c\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    expect(first('* t\nI1 0 n4 1\nR4 n4 0 2\u043c\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Write 2m (2\u00a0m\u03a9)']);
+  });
+
+  it('says where an invisible character sits when the word is no number: right after the -, not "starts with" (critic of round 1; invisible-character-6)', () => {
+    const t = first('* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n', 'invisible-character');
+    expect(t.why).toBe('Right after the -, it has a zero-width space (U+200B), a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.');
+    expect(t.ngspice).toBe("ngspice stops: 'unknown parameter (-___5)'. [invisible-character-6]");
+    expect(first('* t\nI1 0 a 1\nR1 a 0 \u200b2k\n.op\n.end\n', 'invisible-character').why).toMatch(/^It starts with a zero-width space \(U\+200B\)/);
+  });
+
+  it('says the place first for a look-alike right after a sign too: "Right after the -, it has the fullwidth digit ５, which looks like 5" (critic of round 2; look-alike-letter-6)', () => {
+    const t = first('* t\nV1 a 0 -\uff15\nR1 a 0 1k\n.op\n.end\n', 'look-alike-letter');
+    expect([t.title, t.why, t.ngspice, t.fixes.map((f) => f.label)]).toEqual([
+      'V1\'s value is not a number for SPICE',
+      'Right after the -, it has the fullwidth digit \uff15, which looks like 5, so SPICE does not read the word as a number. Write -5.',
+      "ngspice stops: 'unknown parameter (-___)'. [look-alike-letter-6]",
+      ['Write -5 (\u22125\u00a0V)'],
+    ]);
+    // At the start, a minus sign from a document keeps "It starts with" and its own run (look-alike-letter-2).
+    expect(first('* t\nV1 a 0 \u22125\nR1 a 0 1k\n.op\n.end\n', 'look-alike-letter').ngspice).toBe("ngspice stops: 'unknown parameter (___5)'. [look-alike-letter-2]");
+  });
+
+  it('a node name with an invisible character: no "Rename out to out", and no dangling-node notes for the two names (security review F2)', () => {
+    const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['invisible-character']);
+    expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Take it out: connect to out']);
+    expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
+    // On its own, the fix just takes the character out of the name.
+    const alone = first('* t\nV1 a 0 6\nR1 a ou​t 1k\nR2 ou​t 0 2k\n.op\n.end\n', 'invisible-character');
+    expect(alone.fixes.map((f) => f.label)).toEqual(['Take it out: name the node out']);
+  });
+
+  it('quotes ngspice\'s message with ngspice\'s own spelling of the word (W16; unknown-word-12, space-before-suffix-16, -17)', () => {
+    expect(first('* t\nV1 a 0 5\nR1 a 0 1k yük\n.op\n.end\n', 'unknown-word').ngspice).toContain("'unknown parameter (y__k)'");
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 1 Ω\n.op\n.end\n', 'space-before-suffix').ngspice).toContain("'unknown parameter (__)'");
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1 µ\n.op\n.end\n', 'space-before-suffix').ngspice).toContain("'unknown parameter (u)'");
+  });
+
+  it('renames a node with a Turkish letter everywhere, on the drawing\'s label line too, and never onto a name ngspice already has (kept F3)', () => {
+    const text = '* t\nV1 giri\u015f 0 12\nR1 giri\u015f giris 1k\nR2 giris 0 2k\n.tf v(giri\u015f) V1\n.end\n* plainspice-drawing v1\n*@ label giri\u015f 0 0\n*@ label giris 4 0\n';
+    const t = first(text, 'non-ascii-node');
+    // "giris" is another node: the fix must not join the two.
+    expect(t.fixes.map((f) => f.label)).toEqual(['Rename giri\u015f to giris2']);
+    const fixed = applyFix(text, t.fixes[0]!);
+    expect(fixed).toBe('* t\nV1 giris2 0 12\nR1 giris2 giris 1k\nR2 giris 0 2k\n.tf v(giris2) V1\n.end\n* plainspice-drawing v1\n*@ label giris2 0 0\n*@ label giris 4 0\n');
+    expect(ids(fixed)).toEqual([]);
+  });
+
+  it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {
+    const merged = first('* t\nV1 \u0130 0 6\nR1 \u0130 \u015f 1k\nR2 \u015f 0 1k\n.op\n.end\n', 'non-ascii-node');
+    expect(merged).toMatchObject({ severity: 'error', title: '\u0130 and \u015f are one node for ngspice' });
+    expect(merged.fixes.map((f) => f.label)).toEqual(['Write I for \u0130 and s for \u015f']);
+    expect(first('* t\nV1 \u03b1 0 6\nR1 \u03b1 0 1k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename \u03b1 to n1']);
+    // The micro sign is fine: ngspice reads it as u (W16).
+    expect(ids('* t\nV1 \u00b5in 0 6\nR1 \u00b5in 0 2\n.op\n.end\n')).toEqual([]);
+  });
+
+  it('finds two part names that ngspice spells the same (duplicate-name-3)', () => {
+    const t = first('* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n', 'duplicate-name');
+    expect(t.title).toBe('R\u015f and R\u00e7 are the same name for ngspice');
+    expect(t.why).toContain('are both r__');
+  });
+
+  it('the missing-end note says where new lines go, not that .end stops ngspice (words review W1; missing-end-1, after-end-1, S25)', () => {
+    const t = first('* t\nV1 n1 0 6\nR1 n1 0 2\n.op\n', 'missing-end');
+    expect(t.why).toContain('keep new lines above it, because ngspice still reads lines written after .end');
+    // ngspice reads past .end (after-end-1), and no fact here says what other SPICE programs need.
+    expect(`${t.title} ${t.why} ${t.ngspice}`).not.toMatch(/stops|other SPICE programs|marks/);
+    expect(t.ngspice).toContain('[missing-end-1, after-end-1]');
   });
 });

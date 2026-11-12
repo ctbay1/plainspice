@@ -129,3 +129,57 @@ that a phone left no room to watch the numbers move; this record says what the c
   face for 0.53 to 0.65 s (0.73 to 0.82 s before) while the font arrives behind them, sharing the
   connection with the parts of the app it downloads once the first run is done (menus, dialogs, the
   Netlist panel's editor). Nothing moves when the face changes.
+- **Rounding noise is written as 0 A, but only where nothing real flows** (student review; corrected
+  after the critic of the fixes, and again after the critic of round 2). Where a current is 0,
+  ngspice's arithmetic can leave about 10⁻¹⁸ A (C9, C9b in `docs/spice-facts/explanations.md`), which
+  the drawing wrote with an arrow ("R5 ← 8.882e-19 A") and as power ("V1 delivers 20.82 aW"). The
+  first fix compared each current with the circuit's largest one, and zeroed the 2 aA of a source
+  written 2A next to a 4 mA divider (C9e). The second decided part by part, but its "same voltage"
+  (to 10⁻¹² of the voltage) and its use of Kirchhoff's current law still zeroed real currents: the
+  2 aA of that source in a loop with 1 kΩ, where R1 and V1 were "0 A" next to "I1 2 aA" (C9h), a
+  10 Ω resistor in series with 10¹⁴ Ω across 12 V (C9i), the nanovolts and femtoamps of a ladder of
+  1000 sections (C9k), and R5 in 42 of 300 bridges with random values (C9l). So `describe.ts`
+  (`roundingNoise`) first finds the currents that are real, and never calls them noise: one of at
+  least 1 pA (ngspice's current tolerance abstol, C9c); a current source's own value; a resistor with
+  a real voltage across it (at least 1 µV and more than 4 steps of a double), a G that reads one; an
+  F that copies a real current; a part next to one whose current PlainSpice does not read (a diode, a
+  transistor, a subcircuit, a switch), which may carry that part's current; and, since the currents
+  at a node add up to 0, the parts that carry the difference where the real currents at a node do not
+  add up to 0 (by more than 10⁻⁹ of the largest; rounding left up to 8e−11 in the random bridges),
+  and a part in series with a real current (C9h to C9k). Only then is a current below 1 pA noise of a
+  0, when the circuit makes it 0: a resistor whose two ends are at the same voltage, at most 4 steps of
+  a double apart (a balanced circuit leaves 1 or 2: C9, C9b; in the random bridges the noise was never
+  more than 2 steps, and beyond 4 the current was the circuit's own, C9l), or joined by parts with no
+  voltage across them by their own numbers (an inductor, a 0 V source, an E or H whose control is 0, a
+  resistor whose ends are the same); a part that carries the only current left at one of its nodes;
+  an F that copies a current that is 0, a G that reads a voltage that is 0. A number below the
+  smallest normal double, 2⁻¹⁰²² (about 2.2e−308), is never noise: it is what is left of a real value
+  too small for a double (C9k). A node voltage below 1 µV, ngspice's voltage tolerance vntol (C9c), is
+  shown as 0 V when the node is joined to ground through parts with no voltage across them, a resistor
+  whose current is noise among them, so the drawing never writes "out = −216.8 fV" next to "0 A" for
+  every part at out (C9d). The check looks again only at the parts a change can affect, so its time
+  grows with the size of the circuit, not faster: about 10 ms for a ladder of 1000 sections or a bridge
+  with 4000 ammeters, which took seconds (a unit test keeps it under 100 ms, and all the words of such a
+  run under 400 ms). Such a current gets no arrow,
+  no "delivers" or "absorbs", "0 A" at the end of its line and "no current flows" in speech; a note in
+  the Numbers panel says what ngspice gave and why the true value is 0 ("ngspice gave R5 -8.881784e-19
+  A. That is rounding noise, what its arithmetic leaves of a current that is 0: the two ends of R5,
+  node a and node b, are at the same voltage, 4.5 V. …"; for several parts, "each of these parts has
+  its two ends at the same voltage or carries the only current left at one of its nodes").
+  `CurrentWords.noise` and `NodeVoltageWords.noise` keep ngspice's values for the panel's ngspice
+  columns. The floors are ngspice's defaults: a netlist's `.options abstol` or `vntol` does not move
+  them. Across the 184 netlists with `.op` we have (the examples, the fixtures, the trap corpus, the
+  docs and the channel's episode netlists) no current or voltage is shown as noise. In the 300 random
+  bridges, R5's current is shown as noise in the 133 whose ends are at most 4 steps apart (104 where
+  ngspice's number is rounding noise, and 29 where the circuit's own current is no larger than the
+  rounding), the 42 beyond keep their currents, and nothing else is shown as noise.
+- **A 0 V source is "a wire, through which ngspice measures the current (the ammeter trick)"** in the
+  circuit's description and on its card (student review): true of every 0 V source (P9), the
+  turned-off source of a Thevenin example too, where "used as an ammeter" claimed a purpose the
+  circuit does not have. The drawing keeps "measures". After the critic of this fix: a source with an
+  AC value, the input of every Bode-plot exercise, is no wire and no ammeter, though it is 0 V in .op:
+  "V1: an AC source of 1 V in an .ac analysis, 0 V in DC, with its + side at node in and its − side at
+  ground" (P16, A20, P21). In an .op run its current is said as a current, with no "measures" and no
+  power (it makes 0 V). The drawing's part description (`src/schematic/navigate.ts`) builds its own
+  sentence and still calls such a source a wire until it takes the overview's own sentence
+  (`partSentenceFor`, exported for it); its lane can change that at the merge.

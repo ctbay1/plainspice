@@ -228,6 +228,11 @@ export interface FieldExplanation {
 export interface LineExplanation {
   /** 1-based line number. */
   line: number;
+  /**
+   * For an entry that explains several lines at once, the last of them (1-based): the drawing lines,
+   * a run of "* plainspice-drawing" and "*@" comment lines, get one entry (final reviews, kept F2).
+   */
+  lastLine?: number;
   /** "V1: a voltage source", "Title line", ".op: operating point". */
   heading: string;
   /** One or two sentences, e.g. "SPICE reads it as V(n1) − V(0) = 6 V. Ground is 0 V, so n1 sits at 6 V." */

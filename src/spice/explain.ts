@@ -15,6 +15,7 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
+import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { readNumber } from './numbers.ts';
@@ -65,14 +66,21 @@ export const EXPLAIN_STRINGS = {
   atHeading: 'A line starting with @',
   atLine: 'A line starting with @ ends the netlist here: ngspice silently reads nothing after it.',
   blankHeading: 'Blank line',
-  blank: 'SPICE ignores blank lines.',
+  // "Skips" for whole lines ngspice does not read, "ignores" for characters inside a line (words review W11).
+  blank: 'SPICE skips blank lines.',
   commentHeading: 'Comment',
-  commentStar: 'The star marks a comment, a line SPICE ignores.',
-  commentHash: 'A line starting with # is a comment in ngspice 47, the version PlainSpice runs, so SPICE ignores it.',
-  commentSemicolon: 'A line starting with ; is a comment, a line SPICE ignores.',
-  commentSlashes: 'A line starting with // is a comment, a line SPICE ignores.',
+  commentStar: 'The star marks a comment, a line SPICE skips.',
+  // drawing-1, S6: the drawing lines are comments; "skips" for whole lines, as the Checks and Netlist panels say.
+  drawingHeading: 'Drawing lines',
+  drawingHeadingOne: 'Drawing line',
+  drawingLines:
+    'These lines say where each part, wire and node name is drawn; PlainSpice reads them to draw the circuit. ngspice skips them: a line that starts with * is a comment.',
+  drawingLine: 'This line is part of the drawing: PlainSpice keeps where the circuit is drawn in lines like it. ngspice skips it: a line that starts with * is a comment.',
+  commentHash: 'A line starting with # is a comment in ngspice 47, the version PlainSpice runs, so SPICE skips it.',
+  commentSemicolon: 'A line starting with ; is a comment, a line SPICE skips.',
+  commentSlashes: 'A line starting with // is a comment, a line SPICE skips.',
   commentOdd: (c: string): string =>
-    `ngspice turns a line starting with ${c} into a comment and ignores it, with a warning ("Unusual leading characters").`,
+    `ngspice turns a line starting with ${c} into a comment and skips it, with a warning ("Unusual leading characters").`,
   commentSwallows: (line: number): string =>
     `A + line below continues this comment, not the part before it, so its words are lost too (line ${line}).`,
   controlHeading: 'Command for ngspice',
@@ -84,7 +92,7 @@ export const EXPLAIN_STRINGS = {
     `A line starting with + continues the line before it: SPICE reads it as part of line ${line}${what ? ` (${what})` : ''}.`,
   continuationShell: (line: number, what: string): string =>
     `The line before ends with two backslashes, so SPICE reads this line as part of line ${line}${what ? ` (${what})` : ''}.`,
-  continuationNothing: 'There is no line before it to continue (only the title), so ngspice ignores it silently.',
+  continuationNothing: 'There is no line before it to continue (only the title), so ngspice skips it silently.',
   continuationIntoComment: (line: number): string =>
     `The line it continues, line ${line}, is a comment, so ngspice adds these words to that comment and ignores them.`,
   continuationLost: (line: number, name: string): string =>
@@ -95,9 +103,9 @@ export const EXPLAIN_STRINGS = {
   afterEndRead: (end: number): string =>
     `This line comes after .end (line ${end}). ngspice does not stop reading at .end, so it still reads this line. Put it above .end, where it belongs.`,
   afterEndNotRead: (end: number): string =>
-    `ngspice stopped reading at line ${end}, so it ignores this line.`,
+    `ngspice stopped reading at line ${end}, so it skips this line.`,
   afterEndGlued: 'A comment glued to .end (.end;…) makes ngspice stop reading there.',
-  afterAt: (line: number): string => `Line ${line} starts with @, so ngspice stopped reading there and ignores this line.`,
+  afterAt: (line: number): string => `Line ${line} starts with @, so ngspice stopped reading there and skips this line.`,
   invalidHeading: 'Not a part',
   invalidDigit: (c: string): string =>
     `This line starts with ${c}, so it is not a part: a part's name starts with the letter that says what it is (R, C, L, V, I, E, F, G, H …). ngspice stops: "unknown device type".`,
@@ -171,6 +179,23 @@ export const EXPLAIN_STRINGS = {
   greekMuNote: (text: string): string =>
     `The Greek letter μ is not a scale letter, so ngspice ignores it and everything after it in ${text}. For micro, write u.`,
   unitsIgnoredNote: (letters: string): string => `ngspice ignores '${letters}' after the number. Don't type units after numbers.`,
+  // Security review F2: a character that is not what it looks like is named, never shown in quotes
+  // (invisible-character-1, -4, look-alike-letter-1, -3).
+  oddIgnored: (what: string, after: string): string => (after ? `${what}${what.includes(', which') ? ',' : ''} and the '${after}' after it are ignored` : `${what}${what.includes(', which') ? ',' : ''} is ignored`),
+  invisibleNote: (what: string, clean: string): string =>
+    `${what}, a character you cannot see, ends the number here, so ngspice ignores it and everything after it. Delete it: write ${clean}.`,
+  lookAlikeNote: (what: string, clean: string): string => `${what}, is a different character for SPICE, so ngspice ignores it and everything after it. Write ${clean}.`,
+  invisibleHarmless: (what: string): string => `There is ${what} in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.`,
+  nodeWithInvisible: (clean: string, what: string): string => `${clean} (written with ${what} in it)`,
+  // Critic of the final-review fixes: a character that looks like a space is named, never shown in
+  // quotes as if it were a space (space-character-1 to -4, nbsp-1, nbsp-2).
+  spaceNote: (what: string, write: string): string =>
+    `${what} looks like a space but is none for SPICE, so ngspice stops reading the number at it and ignores everything after it.${write ? ` ${write}` : ''}`,
+  spaceWrite: (spice: string): string => `SPICE needs no space and no units: write ${spice}.`,
+  spaceWriteMega: (spice: string): string => `SPICE needs no space and no units, and a capital M is milli in SPICE: for mega, write ${spice}.`,
+  spaceWriteDigits: (spice: string, several: boolean): string => `Write the number without ${several ? 'them' : 'it'}: ${spice}.`,
+  spaceHarmless: (what: string): string => `There is ${what} in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.`,
+  nodeWithSpace: (shown: string, what: string): string => `${shown} (one word for SPICE: written with ${what}, not a space)`,
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
     `ngspice read two numbers for the value, ${first} and ${second}, and uses the last one: ${used}.${why ? ` ${why}` : ''}`,
   twoNumbersComma: 'A comma separates words in SPICE: use a decimal point.',
@@ -370,7 +395,7 @@ export const EXPLAIN_STRINGS = {
   libOneWord: 'ngspice\'s .lib takes two words, the file and the section; with one word it does not recognise the line and stops: "unimplemented dot command".',
   printWhat: (name: string): string => (name === '.plot' ? 'plot in text' : 'print a table'),
   print: (name: string): string =>
-    `Asks ngspice to ${name === '.plot' ? 'plot results as text' : 'print a table of results'}. PlainSpice's engine writes a results file instead, and then ngspice ignores ${name} ("${name} line ignored since rawfile was produced"). PlainSpice shows the results itself, so you don't need it.`,
+    `Asks ngspice to ${name === '.plot' ? 'plot results as text' : 'print a table of results'}. PlainSpice's engine writes a results file instead, and then ngspice skips ${name} ("${name} line ignored since rawfile was produced"). PlainSpice shows the results itself, so you don't need it.`,
   saveWhat: 'choose what to save',
   save: (what: string): string =>
     `Tells ngspice which results to keep. With .save, the results file holds only what .save names${what ? ` (${what})` : ''}, so PlainSpice can show only those.`,
@@ -451,7 +476,19 @@ interface Context {
   reltol: number;
   /** Lower-case names of the parts a .dc line sweeps, with the first .dc line that sweeps each. */
   swept: Map<string, number>;
+  /** For each drawing line, the first and last line (0-based) of its run of drawing lines. */
+  drawing: Map<number, readonly [first: number, last: number]>;
 }
+
+/**
+ * A drawing line: "* plainspice-drawing v1" or a comment starting with "*@", read the way
+ * src/schematic/format.ts reads them (isDrawingLine; the model does not import the drawing code).
+ * ngspice skips them, since a line starting with * is a comment (drawing-1 in
+ * docs/spice-facts/drawing.md, S6).
+ */
+const DRAWING_HEADER = /^\s*\*\s*plainspice-drawing\b/i;
+const DRAWING_LINE = /^\s*\*@/;
+export const isDrawingComment = (line: NetlistLine): boolean => line.kind === 'comment' && (DRAWING_LINE.test(line.text) || DRAWING_HEADER.test(line.text));
 
 const contexts = new WeakMap<Netlist, Context>();
 
@@ -469,9 +506,19 @@ function contextOf(netlist: Netlist): Context {
     hasSaveCurrents: false,
     reltol: 1e-3,
     swept: new Map(),
+    drawing: new Map(),
   };
   const open: number[] = [];
+  let run: number | undefined;
+  const closeRun = (last: number): void => {
+    if (run === undefined) return;
+    const span = [run, last] as const;
+    for (let k = run; k <= last; k++) ctx.drawing.set(k, span);
+    run = undefined;
+  };
   for (const line of netlist.lines) {
+    if (isDrawingComment(line)) run ??= line.index;
+    else closeRun(line.index - 1);
     if (line.continues !== undefined) {
       const list = ctx.continuedBy.get(line.continues);
       if (list) list.push(line.index);
@@ -519,6 +566,7 @@ function contextOf(netlist: Netlist): Context {
       ctx.stop = line.index;
     }
   }
+  closeRun(netlist.lines.length - 1);
   if (netlist.end !== undefined && (ctx.stop === undefined || netlist.end < ctx.stop)) {
     ctx.stop = netlist.end;
     ctx.endStops = endIsGlued(netlist.lines[netlist.end]!);
@@ -616,8 +664,34 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     notes.push(S.femtoNote(token.text, numberPart(token.text)));
     trap = true;
   }
-  if (reading.ignored) {
-    marks.push(S.ignored(reading.ignored));
+  const odd = reading.ignored ? [...reading.ignored][0]! : '';
+  if (reading.ignored && SPACE_LIKE.test(odd)) {
+    // The number stops at a character that looks like a space: name it, and say what a document meant
+    // by it (spacedValue: a number and its unit, or groups of digits).
+    const what = describeCharacter(odd);
+    marks.push(S.oddIgnored(what, withSpaces([...reading.ignored].slice(1).join(''))));
+    const meant = spacedValue(token.text);
+    if (meant && meant.value === reading.value) notes.push(S.spaceHarmless(what));
+    else {
+      const write = !meant ? '' : !meant.unit ? S.spaceWriteDigits(meant.spice, meant.spaces > 1) : meant.milli ? S.spaceWriteMega(meant.spice) : S.spaceWrite(meant.spice);
+      notes.push(S.spaceNote(capitalized(what), write));
+      trap = true;
+    }
+  } else if (reading.ignored && (INVISIBLE.test(odd) || lookAlikeOf(odd) !== undefined)) {
+    // The number stops at a character that is not what it looks like: name it, and say what was meant.
+    const after = cleanWord([...reading.ignored].slice(1).join('')).clean;
+    const clean = cleanWord(token.text).clean;
+    const meant = readNumber(clean);
+    marks.push(S.oddIgnored(describeCharacter(odd), after));
+    if (meant && meant.value !== reading.value) {
+      notes.push((INVISIBLE.test(odd) ? S.invisibleNote : S.lookAlikeNote)(capitalized(describeCharacter(odd)), clean));
+      trap = true;
+    } else if (INVISIBLE.test(odd)) notes.push(S.invisibleHarmless(nameOfCharacter(odd)!));
+  } else if (reading.ignored) {
+    const hidden = [...reading.ignored].find((ch) => INVISIBLE.test(ch));
+    const letters = withoutInvisible(reading.ignored);
+    marks.push(S.ignored(letters));
+    if (hidden) notes.push(S.invisibleHarmless(nameOfCharacter(hidden)!));
     if (/^\d/.test(reading.ignored) && scale) {
       // N6: 2k2 is 2 k, not 2.2 k.
       const digits = /^\d+/.exec(reading.ignored)![0];
@@ -633,12 +707,15 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
       // N5: the Greek letter mu is not the micro sign.
       notes.push(S.greekMuNote(token.text));
       trap = true;
-    } else if (!trap) {
-      notes.push(S.unitsIgnoredNote(reading.ignored));
+    } else if (!trap && letters) {
+      notes.push(S.unitsIgnoredNote(letters));
     }
   }
   return { text: marks.length ? `${shown} (${marks.join('; ')})` : shown, value: reading.value, notes, trap };
 }
+
+/** "A zero-width space (U+200B)" from "a zero-width space (U+200B)". */
+const capitalized = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The digits of a value word, without its scale letter and units: "4.7" in "4.7MOhm". */
 function numberPart(text: string): string {
@@ -651,6 +728,10 @@ function nodeText(ref: NodeRef): string {
   if (ref.ground) return S.ground;
   // W9, W13, W14: names that look like ground but are ordinary nodes are quoted, so "ground" never reads as ground.
   if (ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00') return S.quotedNode(ref.token.text);
+  // invisible-character-3: the character is named, not hidden in the sentence.
+  if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
+  // space-character-4, nbsp-1: one word for SPICE, though it reads as two.
+  if (hasSpaceLike(ref.token.text)) return S.nodeWithSpace(withSpaces(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
   return S.nodeWord(ref.token.text);
 }
 
@@ -1863,7 +1944,18 @@ function firstChar(line: NetlistLine): string {
   return leadTrim(line.text)[0] ?? '';
 }
 
+/**
+ * The drawing lines as one entry, in the Netlist and Checks panels' words (kept F2, words W11): what
+ * they are for, and that ngspice skips them (drawing-1, S6). Every line of a run gets the same entry.
+ */
+function explainDrawing([first, last]: readonly [number, number]): LineExplanation {
+  if (first === last) return { line: first + 1, heading: S.drawingHeadingOne, summary: S.drawingLine, fields: [], notes: [] };
+  return { line: first + 1, lastLine: last + 1, heading: S.drawingHeading, summary: S.drawingLines, fields: [], notes: [] };
+}
+
 function explainComment(netlist: Netlist, line: NetlistLine): LineExplanation {
+  const drawing = contextOf(netlist).drawing.get(line.index);
+  if (drawing) return explainDrawing(drawing);
   const t = leadTrim(line.text);
   const c = t[0] ?? '';
   let summary: string;
@@ -2047,12 +2139,17 @@ export function explainLine(netlist: Netlist, lineIndex: number): LineExplanatio
   }
 }
 
-/** Every line explained, in order: one explanation per physical line, blank lines included. */
+/**
+ * Every line explained, in order: one explanation per physical line, blank lines included, except
+ * that a run of drawing lines is one entry (its `lastLine` says where it ends).
+ */
 export function explainNetlist(netlist: Netlist): LineExplanation[] {
   const out: LineExplanation[] = [];
   for (let i = 0; i < netlist.lines.length; i++) {
     const e = explainLine(netlist, i);
-    if (e) out.push(e);
+    if (!e) continue;
+    out.push(e);
+    if (e.lastLine !== undefined && e.line === i + 1) i = e.lastLine - 1;
   }
   return out;
 }

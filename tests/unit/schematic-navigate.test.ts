@@ -48,9 +48,9 @@ describe('descriptions', () => {
   it('describes parts and nodes in plain words', () => {
     const s = buildSchematic(P1);
     const sp = (t: string): string => t.replace(/ /g, ' ');
-    expect(sp(describePart(s, 'R1'))).toBe('R1: a 2 Ω resistor between n1 and n2.');
-    expect(sp(describePart(s, 'v1'))).toBe('V1: a 6 V source with its + side at n1 and its − side at ground.');
-    expect(sp(describePart(s, 'I1'))).toBe('I1: a 3 A current source pushing current from ground into n2.');
+    expect(sp(describePart(s, 'R1'))).toBe('R1: a 2 Ω resistor between node n1 and node n2.');
+    expect(sp(describePart(s, 'v1'))).toBe('V1: a 6 V source with its + side at node n1 and its − side at ground.');
+    expect(sp(describePart(s, 'I1'))).toBe('I1: a 3 A current source pushing current from ground into node n2.');
     expect(describeNode(s, 'n2')).toBe('Node n2 connects R1, R2 and I1.');
     expect(describeNode(s, '0')).toBe('Ground (node 0) connects V1, R2 and I1.');
     expect(describeItem(s, node('n1'))).toBe('Node n1 connects V1 and R1.');
