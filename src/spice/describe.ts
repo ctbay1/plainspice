@@ -2269,10 +2269,12 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
     const [va, vb] = [volts.get(nodeName(p)), volts.get(nodeName(n))];
     if (va !== undefined && va === vb) reason = S.lostEnds(currents[0]!.name, formatSI(Math.abs(currents[0]!.value * ohms), 'V'), formatSI(va, 'V'), said(nodeName(p)), said(nodeName(n)));
   }
-  const value = one ? formatSI(currents[0]?.value ?? nodes[0]!.value, currents.length ? 'A' : 'V') : undefined;
+  // A current's size (its direction is on the drawing and in the tables), a node voltage with its sign.
+  const size = (v: number, unit: 'A' | 'V'): string => formatSI(unit === 'A' ? Math.abs(v) : v, unit);
+  const value = one ? (currents.length ? size(currents[0]!.value, 'A') : size(nodes[0]!.value, 'V')) : undefined;
   const shows =
     value === undefined
-      ? cappedList(items((name, v, unit) => S.lostShows(name, formatSI(v, unit))))
+      ? cappedList(items((name, v, unit) => S.lostShows(name, size(v, unit))))
       : currents.length ? S.lostCarries(currents[0]!.name, value) : S.lostIsAt(bare(nodes[0]!.node), value);
   const note: MessageWords = {
     code: 'rounded-to-0',

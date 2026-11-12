@@ -13,7 +13,7 @@ import { plotSpecs } from '../../src/app/components/PlotPanel.tsx';
 import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
+import { annotateLines, describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 import { agrees, exactModel, shares, toDouble, type ExactModel } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -463,5 +463,33 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     // a, b and m are still one level: the bridge's middle branch carries 0 A.
     const level = (n: string): number | undefined => words.nodes.find((x) => x.node === n)!.level;
     expect([level('a') === level('m'), level('m') === level('b'), level('a') !== undefined]).toEqual([true, true, true]);
+  });
+});
+
+describe('after the critic of the re-check\'s fixes: where ngspice\'s answers are farther off, the rule decides, helped by the exact solution', () => {
+  const lost = (w: ResultsInWords): string[] => w.currents.filter((c) => c.given !== undefined).map((c) => c.name);
+
+  it('V1 of 100 V through 1 Ω and 1e20 Ω: ngspice gives the 1 aA in V1 and R1 as exactly 0 (its answer for V1 is 0, not 1 aA): the rule decides, and V1 and R1 are the exact 1 aA, never "no current"', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 100', 'R1 top1 s2 1', 'R2 s2 0 1e20'));
+    expect(by).toBe('rule');
+    expect([current(words, 'V1'), current(words, 'R1'), current(words, 'R2')]).toEqual(['1 aA from ground to node top1 through V1', '1 aA from node top1 to node s2 through R1', '1 aA from node s2 to ground through R2']);
+    expect(lost(words)).toEqual(['V1', 'R1']);
+    expect(sp(words.warnings.find((m) => m.code === 'rounded-to-0')!.why)).toContain('PlainSpice shows each as the exact solution gives it: V1 1 aA and R1 1 aA.');
+  });
+
+  it('V1 of 1 µV through 1 mΩ and 10 TΩ: ngspice gives V1 217 zA where the circuit makes 100 zA; the rule alone would call V1 and R1 noise (R1\'s ends are one double), the exact solution keeps them as ngspice gives them', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 1u', 'R1 top1 s2 1m', 'R2 s2 0 1e13'));
+    expect(by).toBe('rule');
+    expect(noise(words)).toEqual([]);
+    expect([current(words, 'V1'), current(words, 'R1')]).toEqual(['2.168e-19 A from ground to node top1 through V1', '2.118e-19 A from node top1 to node s2 through R1']);
+  });
+
+  it('a part with no current of its own between two nodes the rule puts at one level says 0 V across it: a diode across an E that reads the balanced bridge', async () => {
+    const r = await solveText(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'V2 x 0 5', 'E1 x y a b 1000', 'Ry y 0 1k', 'D1 x y dmod', '.model dmod d'), ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('rule');
+    // ngspice leaves y 8.9e-13 V below x; E1 makes 0 V by the rule's numbers (its control, a and b, is noise of 0).
+    expect(r.results.op!.nodes.find((n) => n.node === 'y')!.value).not.toBe(5);
+    const d1 = annotateLines(r.netlist, r.results, r.run).find((a) => a.line === 11)!;
+    expect(sp(d1.text)).toBe('0 V across');
   });
 });
