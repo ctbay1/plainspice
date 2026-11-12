@@ -210,7 +210,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   polynomial; on R, C and L after a model warning; unknown-word-13 to -21), with no fix that comments it
   out and leaves the part with no value; its words suggest the number, or a `.param` line and braces
   (unknown-word-23). A name defined on a `.param` line is that value, as ngspice reads it, so it is no
-  trap (unknown-word-22), and Explain uses its value. A source whose value word ngspice cannot read is
+  trap (unknown-word-22, -24), and Explain uses its value. A source whose value word ngspice cannot read is
   no ammeter in the circuit's words (`describe.ts`), and Explain gives it no "has no value" note, which
   it now keeps for a source with nothing after its nodes or an AC value alone; with `dc` and no number
   ngspice prints no note (P16b), and Explain says "without a message".

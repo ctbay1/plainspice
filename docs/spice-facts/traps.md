@@ -7342,7 +7342,7 @@ PlainSpice's checks: no trap.
 
 ## unknown-word
 
-A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22, -23).
+A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24).
 
 What PlainSpice shows for unknown-word-1 (error, line 3):
 
@@ -8380,6 +8380,36 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(a) = 5, v(b) = 5, v(c) = 1, v(d) = 50, v(e) = -15, v(f) = 5, v(g) = -7.5, i(v1) = -0.0075, i(h1) = 0.0075, i(l1) = 0.005, i(e1) = -0.05
+```
+
+PlainSpice's checks: none.
+
+### unknown-word-24. The same for a .param whose value is an expression
+
+`.param Av={2*5}` makes Av 10 where E1's gain goes, as a plain number does (unknown-word-22): no trap, and Explain calls it a name from a `.param` line.
+
+```spice
+* a gain named on a .param line whose value is an expression
+.param Av={2*5}
+V1 a 0 1
+R0 a 0 1k
+E1 b 0 a 0 Av
+R1 b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+            b                                1.000000e+01
+            a                                1.000000e+00
+            v1#branch                        -1.00000e-03
+            e1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 1, v(b) = 10, i(e1) = -0.01, i(v1) = -0.001
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(a) = 1, v(b) = 10, i(e1) = -0.01, i(v1) = -0.001
 ```
 
 PlainSpice's checks: none.

@@ -84,7 +84,7 @@ separators; an E's gain; a `.four` line, which a run with a results file skips),
 decimal point, the letter O where a zero belongs, other characters outside ASCII inside a number),
 space-character-12 to -15 and nbsp-3 (a sign followed by a character that looks like a space),
 space-before-suffix-18 (`4·7 kΩ`), missing-value-11 to -14 (settings but no gain: 0, silently, in
-native 47 too), unknown-word-13 to -23 (a word where a part's value goes; a `.param` name there is
+native 47 too), unknown-word-13 to -24 (a word where a part's value goes; a `.param` name there is
 that value) and dc-sweep-problems-9, -10 (a word that is no number where a `.dc` number goes); and in
 explanations.md P16b (`dc` with no number: 0, without a note).
 

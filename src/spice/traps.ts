@@ -522,6 +522,8 @@ function analysisPlace(d: NonNullable<NetlistLine['directive']>, k: number): Pla
       `ngspice 47 stops: 'Bad syntax!'.${one ? ` ngspice 42 takes the word for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "${spelled}" is not in the circuit'.` : ''} [invisible-character-${k >= 4 ? 15 : 11 + k}]`;
   }
   if (d.name === '.ac') {
+    // Only with the kind of sweep first, as ngspice reads the line; without it the numbers shift.
+    if (!/^(dec|oct|lin)$/i.test(args[0]?.text ?? '')) return undefined;
     if (k === 1 || k === 2) return () => `${AC_DEFAULTS}, then stops: 'AC startfreq <= 0'. [invisible-character-${15 + k}]`;
     if (k === 3) {
       const start = num(args[2]);

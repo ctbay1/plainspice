@@ -205,6 +205,7 @@ export const EXPLAIN_STRINGS = {
   twoNumbersSign: 'A + or − after a digit or a letter starts a new word; for an exponent, write e (1e-3).',
   expression: 'an expression: ngspice works out its value before running',
   expressionParam: (name: string, value: string, line: number): string => `${value} (${name}, from .param on line ${line})`,
+  paramByName: (name: string): string => `${name}: a name from a .param line, whose value ngspice uses here`,
   negativeR: 'ngspice accepts a negative resistance without a message.',
   zeroR:
     'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name; to measure the current, use a 0 V source (the ammeter trick).',
@@ -478,6 +479,8 @@ interface Context {
   insideSubckt: Map<number, number>;
   /** .param values that are plain numbers. */
   params: Map<string, ParamValue>;
+  /** Every name a .param line defines, with any value (an expression too), lower-case. */
+  paramNames: Set<string>;
   /** Line where ngspice stops reading: the .end line or a line starting with '@'. */
   stop?: number;
   /** ngspice stops at the .end line itself (".end;comment") rather than reading on. */
@@ -513,6 +516,7 @@ function contextOf(netlist: Netlist): Context {
     subckts: new Map(),
     insideSubckt: new Map(),
     params: new Map(),
+    paramNames: new Set(),
     endStops: false,
     continuedBy: new Map(),
     hasSaveCurrents: false,
@@ -555,6 +559,7 @@ function contextOf(netlist: Netlist): Context {
         for (const [name, value] of pairs(netlist, d.args)) {
           const reading = value ? readNumber(value.text) : undefined;
           if (reading && !reading.ignored && !reading.rest) ctx.params.set(lowerAscii(name.text), { line: line.index, reading });
+          ctx.paramNames.add(lowerAscii(name.text));
         }
       }
       if (d.name === '.dc') {
@@ -1372,9 +1377,10 @@ function partFields(p: PartContext): FieldExplanation[] {
           return;
         }
         if (valuePlaceWord(el) === f) {
-          // Where the value goes: a name from .param is that value (unknown-word-22); any other word stops
+          // Where the value goes: a name from .param is that value (unknown-word-22, -24); any other word stops
           // ngspice, on E, F, G and H lines too (unknown-word-13 to -21; re-check S6).
-          rows.push(fieldOf(labelFor(el.letter, 'value', 0), f.token, paramValue(netlist, el)?.text ?? S.unknownWord));
+          const named = contextOf(netlist).paramNames.has(lowerAscii(f.token.text));
+          rows.push(fieldOf(labelFor(el.letter, 'value', 0), f.token, paramValue(netlist, el)?.text ?? (named ? S.paramByName(f.token.text) : S.unknownWord)));
           return;
         }
         rows.push(fieldOf(label, f.token, otherWordMeaning(el.letter, f.token.text)));

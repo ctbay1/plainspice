@@ -883,6 +883,10 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     const e = line('* t\n.param Av=10\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 Av\nR1 b 0 1k\n.op\n.end\n', 5);
     expect(sp(e.summary)).toContain('is 10 × the voltage at node a');
     expect(rows(e).find((r) => r[1] === 'Av')).toEqual(['gain', 'Av', '10 (Av, from .param on line 2)']);
+    // A .param whose value is an expression: still a name ngspice uses, never "ngspice stops" (no trap either).
+    const expr = line('* t\n.param Av={2*5}\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 Av\nR1 b 0 1k\n.op\n.end\n', 5);
+    expect(rows(expr).find((r) => r[1] === 'Av')).toEqual(['gain', 'Av', 'Av: a name from a .param line, whose value ngspice uses here']);
+    expect(allNotes(expr)).not.toMatch(/no gain|not enough parameters|settings but no/);
     const v = line('* t\n.param Vs=5\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n', 3);
     expect(sp(v.summary)).toContain('SPICE reads that as V(a) − V(0) = 5 V.');
     expect(allNotes(v)).not.toContain('no DC value');

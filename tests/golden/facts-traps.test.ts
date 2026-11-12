@@ -334,6 +334,7 @@ const FACTS: Fact[] = [
   { code: 'unknown-word-21', netlist: "* a textbook symbol as the value of H\nV1 a 0 1\nR0 a 0 1k\nH1 b 0 V1 rm\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (rm)"], fails: true, traps: ['unknown-word'] },
   { code: 'unknown-word-22', netlist: "* names from a .param line where each part's value goes\n.param Rl=2k Cx=1u Lx=1m Vs=5 Is=1m Av=10 beta=2 gm=1m rm=1k\nV1 a 0 Vs\nR1 a 0 Rl\nC1 a 0 Cx\nL1 a b Lx\nR2 b 0 1k\nI1 0 c Is\nR3 c 0 1k\nE1 d 0 a 0 Av\nR4 d 0 1k\nF1 0 e V1 beta\nR5 e 0 1k\nG1 0 f a 0 gm\nR6 f 0 1k\nH1 g 0 V1 rm\nR7 g 0 1k\n.op\n.end\n", vectors: { "v(a)": 5, "v(b)": 5, "v(c)": 1, "v(d)": 50, "v(e)": -15, "v(f)": 5, "v(g)": -7.5, "i(v1)": -0.0075 }, prints: ["can't find model 'rl'"], traps: [] },
   { code: 'unknown-word-23', netlist: "* the same names in braces\n.param Rl=2k Cx=1u Lx=1m Vs=5 Is=1m Av=10 beta=2 gm=1m rm=1k\nV1 a 0 {Vs}\nR1 a 0 {Rl}\nC1 a 0 {Cx}\nL1 a b {Lx}\nR2 b 0 1k\nI1 0 c {Is}\nR3 c 0 1k\nE1 d 0 a 0 {Av}\nR4 d 0 1k\nF1 0 e V1 {beta}\nR5 e 0 1k\nG1 0 f a 0 {gm}\nR6 f 0 1k\nH1 g 0 V1 {rm}\nR7 g 0 1k\n.op\n.end\n", vectors: { "v(a)": 5, "v(b)": 5, "v(c)": 1, "v(d)": 50, "v(e)": -15, "v(f)": 5, "v(g)": -7.5, "i(v1)": -0.0075 }, traps: [] },
+  { code: 'unknown-word-24', netlist: "* a gain named on a .param line whose value is an expression\n.param Av={2*5}\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 Av\nR1 b 0 1k\n.op\n.end\n", vectors: { "v(a)": 1, "v(b)": 10 }, traps: [] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
