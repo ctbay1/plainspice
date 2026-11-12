@@ -7855,10 +7855,13 @@ ngspice then simulates a different circuit from the one written, with a fix that
 letters. The fixes rename the node everywhere it is named, and on the drawing's `*@ label` line, and
 never give a name another node has (that would join two nodes), nor one of ground's (0 and gnd, which
 would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
-ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6). A name with an invisible character or
-a no-break space is left to those checks (invisible-character, nbsp). PlainSpice matches ngspice's
-results back to the netlist's names (`src/spice/describe.ts`), so the drawing, the Numbers panel and
-the announcement say `giriş`.
+ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6); they also rename
+the node inside `v(...)` on the lines of a .control block. What ngspice does is said only as far as it
+holds in every run, with a sentence more when a .print or .plot line (non-ascii-node-3) or a command for
+ngspice (non-ascii-node-4) names the node. A name with an invisible character or a no-break space is
+left to those checks (invisible-character, nbsp). PlainSpice matches ngspice's results back to the
+netlist's names (`src/spice/describe.ts`), so the drawing, the Numbers panel and the announcement say
+`giriş`.
 
 What PlainSpice shows for non-ascii-node-1 (warning, line 2):
 
