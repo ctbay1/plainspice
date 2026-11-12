@@ -2007,9 +2007,16 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
       // о<zero-width space>ut is out, critic of the fix, round 2) is another node with nothing on it, so
       // ngspice's .tf numbers mean nothing, as for any such node (tf-problems-8): an error, in words
       // that name the characters, never "There is no node called out" nor "Use out".
-      const near = plainForms(t.text).find((x) => connected(lowerAscii(x)));
+      const forms = plainForms(t.text);
+      const near = forms.find((x) => x !== GROUND && connected(lowerAscii(x)));
       if (near !== undefined) {
         oddTfNode(c, t, near, idx);
+        return;
+      }
+      // Ground but for such a character: 0, or gnd, which v( ) reads as ground (A3b).
+      const ground = forms.find((x) => x === GROUND || lowerAscii(x) === 'gnd');
+      if (ground !== undefined) {
+        oddTfNode(c, t, ground, idx, true);
         return;
       }
       // Its mirror: the parts' node has such a character and the .tf writes the name plainly (critic of
@@ -2140,20 +2147,20 @@ function oddFixLabel(odd: readonly string[], shown: string): string {
  * A .tf output written with characters that are not what they look like, which make it another node
  * than `clean`, the node of the circuit it looks like (S11, critic of its fix, rounds 1 and 2;
  * tf-problems-8). The characters are named, never shown, the node as the other words name it ('the
- * node "ground"', "node1"); the fix writes the name as the other lines do, as the character's own
- * warning does for the whole node. An ordinary node called gnd gets none: written in v( ), gnd is
- * ground (A3b).
+ * node "ground"', "node1"; ground is "ground (node 0)"); the fix writes the name as the other lines
+ * do, as the character's own warning does for the whole node. An ordinary node called gnd gets none:
+ * written in v( ), gnd is ground (A3b).
  */
-function oddTfNode(c: Ctx, t: Token, clean: string, idx: number): void {
+function oddTfNode(c: Ctx, t: Token, clean: string, idx: number, ground = false): void {
   // The characters `clean` was made without, each once, in the order they come.
   const odd = oddCharacters(t.text).filter((ch) => !clean.includes(ch));
-  const node = theNode(clean);
+  const node = ground ? 'ground (node 0)' : theNode(clean);
   add(c, 'tf-problems', 'error', t, `.tf asks about a node with ${list(odd.map(characterWhat))} in its name, not ${node}`,
-    `${oddWhy(odd)}, so this is not ${node} the other lines name but another node, one no part connects to.`,
+    `${oddWhy(odd)}, so this is not ${node}${ground ? '' : ' the other lines name'} but another node, one no part connects to.`,
     idx === 0
       ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1, tf-problems-8]'
       : 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2, tf-problems-8]',
-    lowerAscii(clean) === 'gnd' ? [] : [fix(oddFixLabel(odd, tfNamed(clean)), replace(t, clean))]);
+    !ground && lowerAscii(clean) === 'gnd' ? [] : [fix(oddFixLabel(odd, ground ? clean : tfNamed(clean)), replace(t, clean))]);
 }
 
 /**

@@ -714,6 +714,11 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     // An ordinary node called gnd: written in v( ), gnd is ground (A3b), so no fix writes it.
     const [gnd] = traps(`* t\nV1 in 0 6\nR1 in mid 1k\nR2 mid gnd\nR3 mid 0 2k\n.tf v(gn${ZW}d) V1\n.end\n`, 'tf-problems');
     expect([gnd!.title, gnd!.fixes]).toEqual(['.tf asks about a node with a zero-width space (U+200B) in its name, not the node "gnd"', []]);
+    // Ground written so is "ground (node 0)", never "the node 0" (native 47 and 42: ___0 and gn___d, tf-problems-8).
+    for (const [tf, label] of [[`v(${ZW}0)`, 'Take it out: use 0'], [`v(out,gn${ZW}d)`, 'Take it out: use gnd']]) {
+      const [g] = traps(`* t\nV1 in gnd 6\nR1 in out 1k\nR2 out gnd 2k\n.tf ${tf} V1\n.end\n`, 'tf-problems');
+      expect([g!.title, g!.fixes.map((f) => f.label)], tf).toEqual(['.tf asks about a node with a zero-width space (U+200B) in its name, not ground (node 0)', [label]]);
+    }
   });
 
   it('the mirror: the parts\' node has the hidden character and the .tf does not: said so, and no button writes the character (tf-problems-9)', async () => {
