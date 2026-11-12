@@ -19,6 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { isBuilt } from './graph.ts';
+import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
 
@@ -187,6 +188,18 @@ function nodeIn(n: string): string {
   return n === 'ground' || n === '0' ? 'ground' : n === '?' || n === '' ? n : `node ${n}`;
 }
 
+/** Names that look like ground but are ordinary nodes where they are not ground (W9, W13, W14). */
+const GROUND_LIKE = /^(gnd|ground|00)$/i;
+
+/**
+ * A node's name for the sentences: ground ("0") is "ground"; an ordinary node named like ground is
+ * quoted, as Explain quotes it, so 'node "ground"' never reads as ground (words review W8, critic of
+ * its fix). The templates above read "ground" as ground, as the drawing's and the cards' words pass it.
+ */
+const said = (n: string): string => (n === '0' ? 'ground' : GROUND_LIKE.test(n) ? `"${n}"` : n);
+/** said, for the other modules that build sentences from these templates (the drawing's, the cards'). */
+export const sentenceNode = said;
+
 /** Every sentence this module writes, in one object so a Turkish UI can replace it later. */
 export const DESCRIBE_STRINGS = {
   ground: 'ground',
@@ -213,6 +226,9 @@ export const DESCRIBE_STRINGS = {
   // it is and what ngspice does with it, not a purpose the circuit may not have.
   ammeter: (name: string, a: string, b: string): string =>
     `${name}: a 0 V source from ${nodeIn(a)} to ${nodeIn(b)}: a wire, through which ngspice measures the current (the ammeter trick).`,
+  // P16, A20, P21: an AC value is its size in an .ac analysis; with no DC value the source is 0 V in .op.
+  acSource: (name: string, size: string, a: string, b: string): string =>
+    `${name}: an AC source${size ? ` of ${size}` : ''} in an .ac analysis, 0 V in DC, with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
   swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}, swept by .dc.`,
   iSource: (name: string, v: string, a: string, b: string): string =>
     `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
@@ -230,8 +246,17 @@ export const DESCRIBE_STRINGS = {
   between: (a: string, b: string): string => `between ${nodeIn(a)} and ${nodeIn(b)}`,
   coupling: (name: string, l1: string, l2: string, k: string): string => `${name}: couples ${l1} and ${l2} (coupling ${k}).`,
   otherPart: (name: string, what: string, nodes: string): string => `${name}: ${what}${nodes ? ` (${nodes})` : ''}.`,
-  // "+ node a" already says "node"; a terminal reads "collector at node c", "emitter at ground".
-  labelled: (label: string, n: string): string => (label.endsWith('node') && nodeIn(n) !== 'ground' ? `${label} ${n}` : `${label} at ${nodeIn(n)}`),
+  // "+ node a" already says "node"; a terminal reads "collector at node c", "emitter at ground". At
+  // ground a "node" label loses the word: "− side at ground", as the V sentence says, "from ground",
+  // or "ground" alone (critic of the W8 fix: no "− node at ground").
+  labelled: (label: string, n: string): string => {
+    if (nodeIn(n) !== 'ground') return label.endsWith('node') ? `${label} ${n}` : `${label} at ${nodeIn(n)}`;
+    const rest = label.replace(/\s*node$/, '');
+    if (rest === label) return `${label} at ground`;
+    if (!rest) return 'ground';
+    if (/[+−]$/.test(rest)) return `${rest} side at ground`;
+    return rest === 'from' || rest === 'to' ? `${rest} ground` : `${label} at ground`;
+  },
   modelOf: (m: string): string => `model ${m}`,
   subcircuitOf: (m: string): string => `subcircuit ${m}`,
   analysis: (list: string): string => `Analysis: ${list}.`,
@@ -553,10 +578,14 @@ function partsOf(netlist: Netlist): Parts {
 
 /** A node in written results: ngspice's name; ground is "0". */
 const nodeName = (ref: NodeRef): string => (ref.ground ? '0' : ref.name);
-/** A node in speech: "ground" for node 0. */
-const nodeSpeech = (name: string): string => (name === '0' ? S.ground : name);
-/** A node in the circuit overview, as written; ground is "ground". */
+/**
+ * A node in the circuit overview, as written; ground is "ground". The part sentences are the drawing's
+ * too (src/schematic/navigate.ts builds the same ones), so a node named like ground is not quoted
+ * here until both quote it (sentenceNode).
+ */
 const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.ground ? S.ground : ref.token.text);
+/** A node in a short note at the end of a line: its bare name, "0" for ground, quoted when it is named like ground. */
+const bare = (n: string): string => (n !== '0' && GROUND_LIKE.test(n) ? `"${n}"` : n);
 
 function flows(speech: string): string {
   return speech.split(' ')[0] === '1' ? 'flows' : 'flow';
@@ -571,9 +600,24 @@ function dcValue(el: Element): number | undefined {
   return el.value?.number?.value;
 }
 
-/** A voltage source whose DC value is 0 (written or missing) and that has no transient function: an ammeter (P9, P16). */
+/**
+ * A source's AC value, its size in an .ac analysis (A20, P21): the number after the word AC; NaN when
+ * AC has no number after it; undefined when the line has no AC value.
+ */
+export function acValue(el: Element): number | undefined {
+  const k = el.fields.findIndex((f) => f.role === 'source-function' && lowerAscii(f.token.text) === 'ac');
+  if (k < 0) return undefined;
+  const next = el.fields[k + 1];
+  return (next?.role === 'source-function' ? readNumber(next.token.text)?.value : undefined) ?? Number.NaN;
+}
+
+/**
+ * A voltage source whose DC value is 0 (written or missing), with no transient function and no AC
+ * value: an ammeter (P9, P16). A source with an AC value is the input of an .ac analysis, though it is
+ * 0 V in .op (critic of the fixes: "V1 in 0 AC 1" is no wire).
+ */
 function isAmmeter(el: Element): boolean {
-  if (el.letter !== 'V' || el.sourceFunction) return false;
+  if (el.letter !== 'V' || el.sourceFunction || acValue(el) !== undefined) return false;
   if (!el.value) return true;
   return el.value.number?.value === 0;
 }
@@ -601,6 +645,10 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
       if (sweptSource(netlist, el.key)) return S.swept(name, nodeWritten(a), nodeWritten(b));
       if (el.sourceFunction && v === undefined) return S.vFunction(name, el.sourceFunction.token.text.toUpperCase(), nodeWritten(a), nodeWritten(b));
       if (isAmmeter(el)) return S.ammeter(name, nodeWritten(a), nodeWritten(b));
+      if (acValue(el) !== undefined && !v) {
+        const ac = acValue(el)!;
+        return S.acSource(name, Number.isNaN(ac) ? '' : formatSI(ac, 'V'), nodeWritten(a), nodeWritten(b));
+      }
       return S.vSource(name, fmt('V'), nodeWritten(a), nodeWritten(b));
     case 'I':
       if (el.sourceFunction && v === undefined) return S.iFunction(name, el.sourceFunction.token.text.toUpperCase(), nodeWritten(a), nodeWritten(b));
@@ -620,7 +668,10 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
     default: {
       const info = el.letter ? elementInfo(el.letter) : undefined;
       const labels = info?.nodeLabels ?? [];
-      const nodes = el.nodes.map((ref, k) => S.labelled((labels[Math.min(k, labels.length - 1)] ?? 'node').replace(/ \(.*\)$/, ''), nodeWritten(ref)));
+      const named = el.nodes.map((ref, k) => [(labels[Math.min(k, labels.length - 1)] ?? 'node').replace(/ \(.*\)$/, ''), nodeWritten(ref)] as const);
+      // Ends that are all plain nodes, as a subcircuit's, read as one list: "node a and ground".
+      const plainEnds = named.every(([label]) => label === 'node');
+      const nodes = plainEnds && named.length ? [listWords(named.map(([label, n]) => S.labelled(label, n)))] : named.map(([label, n]) => S.labelled(label, n));
       const model = el.fields.find((f) => f.role === 'model');
       if (model) nodes.push(el.letter === 'X' ? S.subcircuitOf(model.token.text) : S.modelOf(model.token.text));
       return S.otherPart(name, article(info?.name ?? 'part'), nodes.join(', '));
@@ -655,6 +706,16 @@ function sweepValue(s: SweepReading, v: number | undefined, text: string | undef
   return v !== undefined ? (s.unit ? formatSI(v, s.unit) : formatNumber(v)) : (text ?? '?');
 }
 
+/**
+ * The sentence describeCircuit says for one part, by its key ("r1"); '' when there is no such part.
+ * For the pages that describe one part at a time (the drawing's part descriptions), so they say what
+ * the overview says, an AC source and a node named like ground included.
+ */
+export function partSentenceFor(netlist: Netlist, key: string): string {
+  const line = partsOf(netlist).byKey.get(lowerAscii(key));
+  return line ? partSentence(netlist, line) : '';
+}
+
 /** Parts described one by one; a netlist with more (pasted, or from a link) is summed up after these. */
 export const DESCRIBED_PARTS = 100;
 
@@ -666,7 +727,7 @@ export function describeCircuit(netlist: Netlist): string {
   const parts = partsOf(netlist);
   const out: string[] = [];
   const nodes = [...netlist.nodes.values()].filter((n) => !n.ground && n.connections.length > 0);
-  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => n.name).join(', ');
+  const names = nodes.length > DESCRIBED_PARTS ? '' : nodes.map((n) => bare(n.name)).join(', ');
   const grounded = netlist.nodes.get('0')?.connections.length ?? 0;
   if (parts.lines.length === 0) out.push(S.noParts);
   else out.push(grounded > 0 ? S.counts(parts.lines.length, nodes.length, names) : S.countsNoGround(parts.lines.length, nodes.length, names));
@@ -925,14 +986,14 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   let text: string;
   let speech: string;
   if (ammeter) {
-    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, from, to);
-    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, nodeSpeech(from), nodeSpeech(to));
+    text = v === 0 ? S.measuresNothing(name) : S.measures(name, a, said(from), said(to));
+    speech = v === 0 ? S.measuresNothing(name) : S.measures(name, as, said(from), said(to));
   } else if (v === 0) {
     text = S.noCurrent(name);
     speech = S.noCurrentSpeech(name);
   } else {
-    text = S.amps(a, from, to, name);
-    speech = S.ampsSpeech(as, flows(as), nodeSpeech(from), nodeSpeech(to), name);
+    text = S.amps(a, said(from), said(to), name);
+    speech = S.ampsSpeech(as, flows(as), said(from), said(to), name);
   }
   const words: CurrentWords = { element: key, vector: c.vector, name, line: line.number, value: v, from, to, ammeter, text, speech };
   if (noise) words.noise = c.value;
@@ -1010,7 +1071,7 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   if (tf.transferFunction !== undefined) {
     const v = formatNumber(tf.transferFunction);
     const [n1, n2] = reading?.outputNames ?? [];
-    const outSpeech = outKind === 'current' ? S.currentIn(n1 ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
+    const outSpeech = outKind === 'current' ? S.currentIn(n1 ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(said(n1)) : S.voltageBetween(said(n1), said(n2));
     words.transferFunction = {
       value: tf.transferFunction,
       text: S.transfer(output, input, v, ratio),
@@ -1042,7 +1103,7 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   if (!m) return s.name;
   if (m[1]!.toLowerCase() === 'v') {
     const [a, b] = m[2]!.split(',').map((x) => netlistNode(netlist, x));
-    return b === undefined ? S.voltageOf(a!) : S.voltageBetween(a!, b);
+    return b === undefined ? S.voltageOf(said(a!)) : S.voltageBetween(said(a!), said(b));
   }
   // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents.
   const inner = /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
@@ -1230,7 +1291,7 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   const parts: string[] = [];
   if (words.nodes.length) {
     // "node in is 6 volts": a node's name may be an ordinary word (W8, decision 0017).
-    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(n.node), n.speech) : S.valueIs(S.node(n.node), n.text)));
+    const shown = words.nodes.slice(0, 4).map((n) => (speech ? S.valueIsSpeech(S.node(said(n.node)), n.speech) : S.valueIs(S.node(said(n.node)), n.text)));
     parts.push(S.summaryNodes(shown.join(', '), words.nodes.length - shown.length));
   }
   if (words.currents.length) parts.push(S.summaryCurrents(words.currents.length));
@@ -1262,7 +1323,7 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
   if (!currents.length && !nodes.length) return undefined;
   const gave = [
     ...currents.map((c) => S.noiseGaveCurrent(c.name, formatLikeNgspice(c.noise!))),
-    ...nodes.map((n) => S.noiseGaveVoltage(n.node, formatLikeNgspice(n.noise!))),
+    ...nodes.map((n) => S.noiseGaveVoltage(bare(n.node), formatLikeNgspice(n.noise!))),
   ];
   const volts = shownVoltages(netlist, results);
   const reasonFor = (c: CurrentWords): string => {
@@ -1270,13 +1331,13 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
     const el = partsOf(netlist).byKey.get(c.element)?.element;
     switch (why.kind) {
       case 'same':
-        return S.noiseSame(c.name, why.a, why.b, formatSI(volts.get(why.a) ?? 0, 'V'));
+        return S.noiseSame(c.name, said(why.a), said(why.b), formatSI(volts.get(why.a) ?? 0, 'V'));
       case 'copies':
         return S.noiseCopies(c.name, el?.value?.number ? formatNumber(el.value.number.value) : '?', why.control);
       case 'reads':
-        return S.noiseReads(c.name, why.c, why.d);
+        return S.noiseReads(c.name, said(why.c), said(why.d));
       case 'node':
-        return S.noiseNode(why.node);
+        return S.noiseNode(said(why.node));
     }
   };
   const found = new Set(currents.map((c) => noise.currents.get(c.element)!.kind));
@@ -1284,13 +1345,13 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
   const reasons: string[] = [];
   if (currents.length === 1) reasons.push(reasonFor(currents[0]!));
   else if (currents.length) reasons.push(S.noiseEach(kinds));
-  if (nodes.length) reasons.push(S.noiseGround(nodes.map((n) => n.node)));
+  if (nodes.length) reasons.push(S.noiseGround(nodes.map((n) => said(n.node))));
   const note: MessageWords = {
     code: 'rounding-noise',
     severity: 'note',
     title: S.noiseTitle(
       currents.map((c) => c.name),
-      nodes.map((n) => n.node),
+      nodes.map((n) => bare(n.node)),
     ),
     why: S.noiseWhy(listWords(gave), reasons.join('; and '), currents.length, nodes.length),
   };
@@ -1370,8 +1431,8 @@ function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): Line
   if (c.ammeter) {
     return {
       line: line.number,
-      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, c.from, c.to),
-      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, nodeSpeech(c.from), nodeSpeech(c.to)),
+      text: c.value === 0 ? S.noteNoCurrent : S.noteAmps(a, bare(c.from), bare(c.to)),
+      speech: c.value === 0 ? S.measuresNothing(c.name) : S.noteMeasures(as, said(c.from), said(c.to)),
     };
   }
   const voltageType = el.letter === 'V' || el.letter === 'E' || el.letter === 'H';
@@ -1387,8 +1448,8 @@ function sourceOrPartNote(line: NetlistLine, el: Element, c: CurrentWords): Line
     };
   }
   if (c.value === 0) return { line: line.number, text: S.noteNoCurrent, speech: S.noteNoCurrentSpeech };
-  const base = S.noteAmps(a, c.from, c.to);
-  const baseSpeech = S.noteAmpsSpeech(as, flows(as), nodeSpeech(c.from), nodeSpeech(c.to));
+  const base = S.noteAmps(a, bare(c.from), bare(c.to));
+  const baseSpeech = S.noteAmpsSpeech(as, flows(as), said(c.from), said(c.to));
   if (c.power) {
     const w = formatSI(c.power.watts, 'W');
     const ws = speakSI(c.power.watts, 'W');

@@ -136,4 +136,10 @@ that a phone left no room to watch the numbers move; this record says what the c
 - **A 0 V source is "a wire, through which ngspice measures the current (the ammeter trick)"** in the
   circuit's description and on its card (student review): true of every 0 V source (P9), the
   turned-off source of a Thevenin example too, where "used as an ammeter" claimed a purpose the
-  circuit does not have. The drawing keeps "measures".
+  circuit does not have. The drawing keeps "measures". After the critic of this fix: a source with an
+  AC value, the input of every Bode-plot exercise, is no wire and no ammeter, though it is 0 V in .op:
+  "V1: an AC source of 1 V in an .ac analysis, 0 V in DC, with its + side at node in and its − side at
+  ground" (P16, A20, P21). In an .op run its current is said as a current, with no "measures" and no
+  power (it makes 0 V). The drawing's part description (`src/schematic/navigate.ts`) builds its own
+  sentence and still calls such a source a wire until it takes the overview's own sentence
+  (`partSentenceFor`, exported for it); its lane can change that at the merge.

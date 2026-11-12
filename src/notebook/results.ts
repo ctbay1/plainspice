@@ -17,6 +17,8 @@ import { NOTEBOOK_STRINGS } from './strings.ts';
 /**
  * A voltage source whose DC value is 0 (written or missing) and that has no transient function:
  * describe.ts reads its current as a meter (the ammeter trick, P9, P16) and claims no power for it.
+ * A source with only an AC value is no meter there (it is an AC source), but it is 0 V in .op too, so
+ * it has no power either and the one line kept here fits its current.
  */
 export function isAmmeter(part: CircuitPart): boolean {
   return part.letter === 'V' && !part.sourceFunction && (part.valueText === '' || part.value === 0);

@@ -337,7 +337,18 @@ browsers other than Chromium.
   page that builds a sentence from them (`src/schematic/navigate.ts`, `src/app/card.ts`) says it the
   same way. Left bare, because they are not sentences: the short notes at the end of netlist lines
   ("3 A, n1 → 0"), the value beside a node's name on the drawing ("s = 12 V") and the names listed after
-  the counts ("2 nodes besides ground (in, out)").
+  the counts ("2 nodes besides ground (in, out)"). After the critic of this fix: a terminal at ground
+  loses the word "node" ("D1: a diode (+ node a, − side at ground)", as the V sentence says "its − side
+  at ground"; "from ground"), and a subcircuit's nodes read as one list ("X1: a subcircuit (node a and
+  ground, subcircuit sub1)"). A node named like ground that is not ground (ground, W13; gnd as an
+  ordinary node, W9; 00, W14) is quoted, as Explain quotes it, in the words `describe.ts` alone builds:
+  the run summary ('node "ground" is 5 volts'), the currents ('5 mA from ground to node "ground"'), the
+  notes, the sweep and .tf words, the rounding-noise note and the names after the counts. The part
+  sentences of the overview are also built by `src/schematic/navigate.ts`, and a test holds the two to
+  the same words; both pass the word "ground" for ground, so the overview's part sentences quote such a
+  name only when navigate.ts takes the overview's own sentence (`partSentenceFor`) and
+  `src/app/card.ts` and `src/notebook/words.ts` pass node names through `sentenceNode` (both exported
+  for them), which their lanes can do at the merge.
 - **The missing-end check says what the blank page's sentence says** (words review W1): .end is the
   netlist's last line, new lines go above it, and ngspice still reads lines written after .end
   (missing-end-1, after-end-1, S25); nothing about other SPICE programs, which no fact here backs.

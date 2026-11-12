@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import type { EngineDiagnostic, RawPlot, RunResult } from '../../src/engine/types.ts';
-import { DESCRIBE_STRINGS, DESCRIBED_PARTS, annotateLines, describeCircuit, describeResults, explainDiagnostic } from '../../src/spice/describe.ts';
+import { DESCRIBE_STRINGS, DESCRIBED_PARTS, annotateLines, describeCircuit, describeResults, explainDiagnostic, sentenceNode } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 
 const MINUS = '−';
@@ -96,9 +96,9 @@ describe('describeCircuit', () => {
 
   it('describes other parts with their node labels and model', () => {
     const text = sp(describeCircuit(parseNetlist('* t\nD1 a 0 dmod\nQ1 c b 0 qn\nX1 a b amp\n.model dmod D\n.model qn NPN\n.op\n')));
-    expect(text).toContain(`D1: a diode (+ node a, ${MINUS} node at ground, model dmod).`);
+    expect(text).toContain(`D1: a diode (+ node a, ${MINUS} side at ground, model dmod).`);
     expect(text).toContain('Q1: a bipolar junction transistor (collector at node c, base at node b, emitter at ground, model qn).');
-    expect(text).toContain('X1: a subcircuit (node a, node b, subcircuit amp).');
+    expect(text).toContain('X1: a subcircuit (node a and node b, subcircuit amp).');
   });
 
   it('says when nothing is connected to ground, when there are no parts, and when nothing will run (M1, M20)', () => {
@@ -689,6 +689,43 @@ describe('after the final reviews (12 November 2026)', () => {
     // A real voltage on a node joined to ground that way would not be noise: only below 1 µV (vntol).
     const big = describeResults(parseNetlist(text('F1 0 out Vm 1000')), op({ ...volts, out: 2e-6 }, [...common, ['f1', -2.1684043449710089e-16, 'device']]), run());
     expect(big.nodes.find((x) => x.node === 'out')!.noise).toBeUndefined();
+  });
+
+  it('a node named ground that is not ground is quoted in the results words, so it never reads as ground (critic of round 1; W13)', () => {
+    // The critic's netlist: "V1 ground 0 5 / R1 ground 0 1k". It said "5 mA from ground to ground through V1" and "ground is 5 volts".
+    const n = parseNetlist('* t\nV1 ground 0 5\nR1 ground 0 1k\n.op\n.end\n');
+    const w = describeResults(n, op({ ground: 5 }, [['v1', -0.005, 'branch'], ['r1', 0.005, 'device']]), run());
+    expect(sp(w.currents[0]!.text)).toBe('5 mA from ground to node "ground" through V1');
+    expect(w.currents[1]!.speech).toBe('5 milliamps flow from node "ground" to ground through R1');
+    expect(w.summarySpeech).toBe('Simulation finished: node "ground" is 5 volts; 2 currents. Open the results for details.');
+    expect(sp(describeCircuit(n))).toContain('2 parts and 1 node besides ground ("ground").');
+    // The note at the end of a line keeps the bare names, ground's "0" and the quoted "ground".
+    expect(sp(annotateLines(n, op({ ground: 5 }, [['v1', -0.005, 'branch'], ['r1', 0.005, 'device']])).find((a) => a.line === 3)!.text)).toBe('5 mA, "ground" → 0');
+    // gnd as an ordinary node (W9), and 00 (W14), too; ground itself stays "ground".
+    expect(sentenceNode('gnd')).toBe('"gnd"');
+    expect(sentenceNode('00')).toBe('"00"');
+    expect(sentenceNode('0')).toBe('ground');
+    expect(sentenceNode('in')).toBe('in');
+  });
+
+  it('a terminal at ground reads "− side at ground", and a subcircuit\'s nodes read as a list (critic of round 1; W8)', () => {
+    const text = sp(describeCircuit(parseNetlist('* t\nV1 a 0 5\nD1 a 0 dmod\nX1 a 0 sub1\nB1 n 0 V=1\nR3 n 0 1k\nI1 0 a 1\nG1 0 a a 0 1m\n.subckt sub1 p q\nR1 p q 1k\n.ends\n.model dmod d\n.op\n.end\n')));
+    expect(text).toContain(`D1: a diode (+ node a, ${MINUS} side at ground, model dmod).`);
+    expect(text).toContain('X1: a subcircuit (node a and ground, subcircuit sub1).');
+    expect(text).toContain(`B1: a behavioural source (+ node n, ${MINUS} side at ground).`);
+    expect(text).not.toContain('node at ground');
+  });
+
+  it('an AC source is an AC source, not a wire: its size in .ac, 0 V in DC (critic of round 1; P16, A20)', () => {
+    const n = parseNetlist('* RC low-pass\nV1 in 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n.ac dec 5 10 10k\n.end\n');
+    expect(sp(describeCircuit(n))).toContain(`V1: an AC source of 1 V in an .ac analysis, 0 V in DC, with its + side at node in and its ${MINUS} side at ground.`);
+    expect(sp(describeCircuit(parseNetlist('* t\nV1 in 0 0 AC 2 90\nR1 in 0 1k\n.ac lin 3 1 2\n.end\n')))).toContain('V1: an AC source of 2 V in an .ac analysis, 0 V in DC');
+    // In .op it is a source that makes 0 V, so it measures nothing and gives no power: its current is a current.
+    const w = describeResults(parseNetlist('* t\nV2 a 0 5\nV1 a b AC 1\nR1 b 0 1k\n.op\n.end\n'), op({ a: 5, b: 5 }, [['v2', -0.005, 'branch'], ['v1', 0.005, 'branch'], ['r1', 0.005, 'device']]), run());
+    expect(w.currents.find((c) => c.name === 'V1')).toMatchObject({ ammeter: false, value: 0.005 });
+    expect(w.currents.find((c) => c.name === 'V1')!.power).toBeUndefined();
+    // A 0 V source with no AC value is still the ammeter trick.
+    expect(sp(describeCircuit(parseNetlist('* t\nV1 a 0 6\nVx a b 0\nR1 b 0 2\n.op\n.end\n')))).toContain('Vx: a 0 V source from node a to node b: a wire');
   });
 
   it('a G that reads a voltage that is 0 makes no current (C9d)', () => {
