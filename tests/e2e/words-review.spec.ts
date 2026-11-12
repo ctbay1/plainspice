@@ -7,6 +7,8 @@
  * - Connections say that Connect to makes two nodes one, with every part on them, and that Disconnect
  *   first, then Connect to, moves one end alone, which is true (W2); they promise no wire, which a
  *   circuit without ground does not get.
+ * - The first part on a page whose student typed .end says PlainSpice wrote .op, not that it wrote
+ *   that .end (W1).
  * - The card says "node in is higher", on the card and to screen readers (W8).
  * - The first numbers of a first visit are drawn in Caveat, not in a fallback face; on a run=1 link
  *   the font waits until ngspice.wasm has come, so the first numbers come no later (F6).
@@ -15,21 +17,26 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { starterWords } from '../../src/app/editing.ts';
 import { encodeShare } from '../../src/share/link.ts';
 import {
   RUN_TIMEOUT,
   START_HERE,
   chooseExample,
+  closePanel,
   drawing,
   expectAnnounced,
   expectSolved,
   gridPoint,
   hintLine,
   isPhone,
+  newCircuit,
   openApp,
   openCard,
   panel,
+  partsToolbar,
   savedNetlist,
+  setNetlist,
   settle,
   t,
 } from './helpers.ts';
@@ -119,6 +126,26 @@ test.describe('the words review', () => {
     expect(lines(before, 'wire')).toHaveLength(5);
     expect(lines(after, 'wire')).toEqual(lines(before, 'wire'));
     expect(lines(after, 'ground')).toHaveLength(lines(before, 'ground').length + 1);
+  });
+
+  test('the first part on a page whose .end was typed says PlainSpice wrote .op, not that it wrote .end (W1)', async ({ page }) => {
+    await openApp(page);
+    await newCircuit(page);
+    // The student's own title and .end, typed in the Netlist panel; no part, no analysis yet.
+    await setNetlist(page, '* my circuit\n.end\n');
+    await closePanel(page, 'netlist');
+    await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
+    await clickAt(page, 4, 0);
+    await expect(page.getByRole('dialog', { name: /^R1 / })).toBeVisible();
+    await expectAnnounced(page, starterWords());
+    const said = (await page.getByRole('status').filter({ hasText: 'R1 added' }).first().textContent()) ?? '';
+    // The sentence that says what PlainSpice wrote names .op only; .end is the student's own, still the last line.
+    const wrote = said.split(/(?<=\.)\s+(?=[A-Z])/).find((x) => /\bwrote\b/.test(x)) ?? '';
+    expect([...wrote.matchAll(/(?<![\w.])\.[a-z]+\b/g)].map((m) => m[0])).toEqual(['.op']);
+    await expect.poll(() => savedNetlist(page)).toMatch(/^\* my circuit\nR1 \w+ \w+ 1k\n\.op\n/);
+    const text = (await savedNetlist(page)) ?? '';
+    expect(text.match(/^\.end$/gm)).toHaveLength(1);
+    expect(text.trimEnd().split('\n').at(-1)).toBe('.end');
   });
 });
 

@@ -53,12 +53,13 @@ hears what they did.
   voltage source for F and H: the model's `set-control`). Ground goes on a pin (its node becomes 0);
   on a page with no parts it is refused with why.
 - **A blank page gets `.op` and `.end`.** The first part placed on a page with no parts and no analysis
-  also writes `.op` (before the drawing lines) and `.end`, and the announcement says so in one
-  sentence: "PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the
-  operating point), so the circuit runs as you build it, and .end, the netlist’s last line (keep new
-  lines above it: ngspice still reads lines after .end)." (facts A1, no-analysis-1, missing-end-1,
-  S25 and after-end-1: `.end` stops nothing). It does not make the circuit solvable: until a
-  ground symbol is placed, the checks say there is no ground (no-ground-1).
+  also writes `.op` (before the drawing lines) and, when the netlist has none, `.end`, and the
+  announcement says why: "PlainSpice also wrote .op, which asks ngspice for the DC voltages and
+  currents (the operating point), so the circuit runs as you build it. Keep .end as the netlist’s
+  last line, with new lines above it: ngspice still reads lines after .end." (facts A1,
+  no-analysis-1, missing-end-1, S25 and after-end-1: `.end` stops nothing). It never says who wrote
+  `.end`, so it is true whether PlainSpice wrote it or the student had typed it. It does not make the
+  circuit solvable: until a ground symbol is placed, the checks say there is no ground (no-ground-1).
   The model writes the title line (`* circuit`) a SPICE file needs first. Start here built from a blank
   page by mouse, and again by keyboard, is solved by ngspice to out = 4 V (`editor.spec.ts`).
 - **Turn, Mirror, Reverse**: T turns a quarter turn, M mirrors, Shift+R reverses, on the part in hand
@@ -346,10 +347,14 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
 
 - **.end in the blank page's sentence** (W1). It said .end "marks where the netlist stops", but
   ngspice still reads the lines after .end (S25, after-end-1; native ngspice 47 and 42 give V1
-  −12 mA with a 1 kΩ resistor written after .end, −6 mA without it). Now: ".end, the netlist’s last
-  line (keep new lines above it: ngspice still reads lines after .end)", as Explain's .end line and
-  the missing-end check say it. Nothing about other SPICE programs: no fact here backs a claim about
-  them.
+  −12 mA with a 1 kΩ resistor written after .end, −6 mA without it). It also said PlainSpice wrote
+  .end when the student had typed it (a page with a title and .end only gets .op alone: the critic
+  of W1). Now: "PlainSpice also wrote .op, … so the circuit runs as you build it. Keep .end as the
+  netlist’s last line, with new lines above it: ngspice still reads lines after .end.", as Explain's
+  .end line ("Keep .end as the last line.") and the missing-end check say it, and true whoever wrote
+  .end. One sentence for both: telling them apart would take `starterWords` in `editing.ts`, which
+  the hint line of words W9 also shows, not the words alone. Nothing about other SPICE programs: no
+  fact here backs a claim about them.
 - **Connections** (W2). Connect to makes the end's node and the chosen node one, every part on them
   included (on Start here, end 2 of R1 connected to ground shorted R2), while the hint line said it
   "rewires an end". The card's intro, the hint line and the buttons now say what happens and how to

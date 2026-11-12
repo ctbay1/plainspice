@@ -170,7 +170,7 @@ test('builds Start here again with the keyboard only (no pointer at all), throug
     await expect(form).toHaveCount(0);
   };
   await add('Voltage', '6', [{ pick: 'a new', name: 'in' }, { pick: 'ground' }]);
-  await expectAnnounced(page, 'V1 added between node in and ground. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it, and .end, the netlist’s last line (keep new lines above it: ngspice still reads lines after .end).');
+  await expectAnnounced(page, 'V1 added between node in and ground. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it. Keep .end as the netlist’s last line, with new lines above it: ngspice still reads lines after .end.');
   await add('Resistor', '1k', [{ pick: 'in' }, { pick: 'a new', name: 'out' }]);
   await add('Resistor', '2k', [{ pick: 'out' }, { pick: 'ground' }]);
   await expect.poll(() => savedNetlist(page)).toBe('* circuit\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');

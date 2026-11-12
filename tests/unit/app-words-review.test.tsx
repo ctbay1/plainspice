@@ -4,7 +4,8 @@
  * says while a circuit is built, checked against the model and against what ngspice does.
  *
  * - W1: the sentence for the .op and .end a blank page gets says what .end is without claiming it
- *   stops ngspice (fact S25: ngspice reads past it), as Explain's own note for .end says.
+ *   stops ngspice (fact S25: ngspice reads past it), as Explain's own note for .end says, and never
+ *   that PlainSpice wrote a .end the netlist already had.
  * - W2: Connections say that Connect to makes two nodes one, with every part on them, and how to move
  *   only one end; they promise no wire, since a circuit without ground gets a ground symbol instead.
  * - W3: a card's red-pen line offers "the fix" only for a check the Checks panel has a fix for.
@@ -23,7 +24,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { cardContent, type CardState } from '../../src/app/card.ts';
 import { IndexCard } from '../../src/app/components/IndexCard.tsx';
-import { connectEdit, endRoles, nodeChoices, starterWords } from '../../src/app/editing.ts';
+import { addPartEdit, connectEdit, endRoles, formStart, handFor, nodeChoices, placeEdit, starterWords } from '../../src/app/editing.ts';
 import { hintWords, type HintInput } from '../../src/app/words.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { en } from '../../src/i18n/en.ts';
@@ -64,11 +65,51 @@ describe('W1: the .op and .end a blank page gets', () => {
   it('says .end is the last line and that ngspice still reads lines after it, never that it stops anything', () => {
     const said = starterWords();
     expect(said).toContain('.op, which asks ngspice for the DC voltages and currents (the operating point)');
-    expect(said).toContain('.end, the netlist’s last line');
+    expect(said).toContain('Keep .end as the netlist’s last line');
     expect(said).toContain('ngspice still reads lines after .end');
     expect(said).not.toMatch(/stops|where the netlist ends|marks where/);
     // The same as Explain says for the .end line (S25), so the two never disagree.
     expect(EXPLAIN_STRINGS.endKeepsReading).toContain('still reads the lines after it');
+    expect(EXPLAIN_STRINGS.endKeepsReading).toContain('Keep .end as the last line.');
+  });
+
+  it('says PlainSpice wrote only what it wrote: never a .end the netlist already had', () => {
+    /** The lines an edit added (each line counted as often as it is there). */
+    const added = (before: string, after: string): string[] => {
+      const left = before.split(/\r?\n/).map((l) => l.trim());
+      return after
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => {
+          const i = left.indexOf(l);
+          if (i < 0) return true;
+          left.splice(i, 1);
+          return false;
+        });
+    };
+    /** The netlist lines the summary says PlainSpice wrote: the dot lines named in its sentence with "wrote". */
+    const claimed = (summary: string): string[] => {
+      const sentence = summary.split(/(?<=\.)\s+(?=[A-Z])/).find((x) => /\bwrote\b/.test(x)) ?? '';
+      return [...sentence.matchAll(/(?<![\w.])\.[a-z]+\b/g)].map((m) => m[0]);
+    };
+    // A blank page gets .op and .end; a page whose student typed .end (and nothing else) gets .op only.
+    for (const typed of ['', '* my circuit\n.end\n']) {
+      const s = buildSchematic(typed, NOTEBOOK_OPTIONS);
+      const placed = placeEdit(s, handFor('R'), { x: 4, y: 0 });
+      const form = addPartEdit(s, { ...formStart(s, 'R'), value: '1k' });
+      for (const r of [placed, form]) {
+        expect(r.ok, typed).toBe(true);
+        if (!r.ok) continue;
+        expect(r.summary).toContain(starterWords());
+        const wrote = added(typed, r.text);
+        expect(claimed(r.summary), typed).toEqual(['.op']);
+        for (const line of claimed(r.summary)) expect(wrote, `${line} after ${JSON.stringify(typed)}`).toContain(line);
+        // One .end either way, the last line.
+        expect(r.text.match(/^\.end$/gm)).toHaveLength(1);
+        expect(r.text.trimEnd().split('\n').at(-1)).toBe('.end');
+      }
+    }
+    expect(added('* my circuit\n.end\n', placeEdit(buildSchematic('* my circuit\n.end\n', NOTEBOOK_OPTIONS), handFor('R'), { x: 4, y: 0 }).text)).not.toContain('.end');
   });
 });
 
