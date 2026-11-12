@@ -63,6 +63,16 @@ describe('the status line', () => {
     );
     expect(statusWords(READY, paused({ reason: 'stopped' }), TEXT)).toEqual({ main: 'Stopped', detail: 'To run it again, press Run (Ctrl+Enter).', tone: 'paused' });
     expect(statusWords(READY, paused({ reason: 'timeout', seconds: 20 }), TEXT).main).toBe('Stopped after 20 s');
+    // Numbers from before the last change only when that run gave answers (the drawing keeps them in
+    // pencil): a run that gave none (a check found an error) left none to speak of (phone review, F5).
+    const checked = done('check', { checks: [{ id: 'no-ground', severity: 'error', line: 2, span: { from: 0, to: 1 }, title: 'No ground (node 0).', why: '', ngspice: '', fixes: [] }] });
+    expect(statusWords(READY, paused({ reason: 'long', points: 1_000_000 }, checked), `${TEXT}* x\n`).detail).toBe(
+      'This netlist asks for about 1,000,000 points, so ngspice does not run after every change: press Run (Ctrl+Enter).',
+    );
+    for (const reason of [{ reason: 'slow', ms: 2400 }, { reason: 'stopped' }, { reason: 'timeout', seconds: 20 }] as const) {
+      expect(statusWords(READY, paused(reason, done('unreliable')), `${TEXT}* x\n`).detail).not.toContain(t('statusOldNumbers'));
+      expect(statusWords(READY, paused(reason, done('ok')), `${TEXT}* x\n`).detail).toContain(t('statusOldNumbers'));
+    }
     // A phone has no keys to press: its Run button is tapped.
     expect(statusWords(READY, paused({ reason: 'link' }), TEXT, true).detail).toBe('This link opens without running: tap Run to run it.');
     expect(statusWords(READY, paused({ reason: 'long', points: 250_000 }), TEXT, true).detail).not.toContain('Ctrl');

@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { stripDrawing } from '../../src/schematic/index.ts';
 import { encodeShare } from '../../src/share/link.ts';
-import { chooseExample, drawnText, expectSolved, hintLine, isPhone, openApp, openCard, partOnDrawing, sidewaysScroll, t, TYPING } from './helpers.ts';
+import { chooseExample, closePanel, drawnText, expectSolved, hintLine, isPhone, openApp, openCard, partOnDrawing, setNetlist, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
 
 test.beforeEach(({ page }) => {
   test.skip(!isPhone(page), 'the phone’s layout');
@@ -204,4 +204,16 @@ test('the Parts and More sheets take the focus to their heading and give it back
   await page.keyboard.press('Escape');
   await expect(help).toHaveCount(0);
   await expect(more).toBeFocused();
+});
+
+// ------------------------------------------------------------------ after the final reviews (12 November 2026)
+
+test('the status line speaks of numbers from before the last change only when there are some', async ({ page }) => {
+  await openApp(page);
+  await chooseExample(page, 'Mistake 1: no ground (node 0)');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  await setNetlist(page, '* RC charging\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1n 1m\n.end\n');
+  await closePanel(page, 'netlist');
+  await expect(statusLine(page)).toContainText(t('statusPaused'));
+  await expect(statusLine(page)).not.toContainText(t('statusOldNumbers'));
 });

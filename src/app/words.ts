@@ -40,7 +40,9 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
   const o = live.outcome;
   const p = live.paused;
   if (p) {
-    const old = o.kind === 'done' && o.text !== text ? ` ${t('statusOldNumbers')}` : '';
+    // Only when there are old numbers to see: the last run, of this circuit (a new one starts with
+    // none), gave answers, which the drawing keeps in pencil. A run that gave none left none to warn of.
+    const old = o.kind === 'done' && o.text !== text && o.result.status === 'ok' ? ` ${t('statusOldNumbers')}` : '';
     switch (p.reason) {
       case 'link':
         return { main: t('statusNotRun'), detail: t('statusNotRunDetail', { run }), tone: 'paused' };
