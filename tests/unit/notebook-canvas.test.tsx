@@ -13,7 +13,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import { NO_INSETS, NO_RESULTS, NotebookCanvas, notebookSchematic, placeResults, type CanvasHandle, type CanvasViewInfo, type DrawingResults } from '../../src/notebook/index.ts';
 import { KEEP_IN_VIEW_PX } from '../../src/notebook/fit.ts';
-import { inkBox } from '../../src/notebook/NotebookCanvas.tsx';
+import { inkBox, showBox } from '../../src/notebook/NotebookCanvas.tsx';
 import { describeItem, describeSchematic, neighbour, stripDrawing, type NavItem } from '../../src/schematic/index.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -466,5 +466,27 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
     expect(views.at(-1)!.unit).toBe(60);
     for (let i = 0; i < 8; i++) act(() => ref.current!.zoomBy(1 / 1.2));
     expect(views.at(-1)!.unit).toBeCloseTo(30, 6);
+  });
+});
+
+describe('showBox: an item the keys reach, out from under the page (WCAG 2.4.11)', () => {
+  // 10 px a grid unit; the free part of the window is 500 × 100 px, above a sheet.
+  const v = { unit: 10, x: 0, y: 0 };
+  const free = { x0: 0, y0: 0, x1: 500, y1: 100 };
+  it('brings all of an item that fits into the free part, just enough', () => {
+    // 200 to 240 px down, under the sheet: up to 60 to 100.
+    expect(showBox(v, { x0: 1, y0: 20, x1: 3, y1: 24 }, free)).toEqual({ unit: 10, x: 0, y: -140 });
+    // Off to the left: just inside.
+    expect(showBox(v, { x0: -9, y0: 1, x1: -5, y1: 3 }, free)).toEqual({ unit: 10, x: 90, y: 0 });
+  });
+  it('shows the middle of an item larger than the free part (the free paper above a sheet on a small phone)', () => {
+    // 150 px tall, all of it under the sheet: its middle to the middle of the free part.
+    const moved = showBox(v, { x0: 1, y0: 20, x1: 3, y1: 35 }, free);
+    expect(moved.y + 20 * 10 + moved.y + 35 * 10).toBeCloseTo(100, 6);
+  });
+  it('leaves the view as it is while half of the item shows, or it fills most of the free part', () => {
+    expect(showBox(v, { x0: 1, y0: 8, x1: 3, y1: 12 }, free)).toBe(v);
+    expect(showBox(v, { x0: 1, y0: -2, x1: 3, y1: 13 }, free)).toBe(v);
+    expect(showBox(v, { x0: 1, y0: 1, x1: 3, y1: 3 }, free)).toBe(v);
   });
 });

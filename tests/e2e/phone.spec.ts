@@ -817,12 +817,16 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
   }
 });
 
-/** One round of Tab stops on the page: none of them may be out of sight (clipped to nothing for screen readers only, or not shown). */
+/**
+ * One round of Tab stops on the page: none of them may be out of sight (clipped to nothing for screen
+ * readers only, or not shown), nor hidden behind something else on the page, such as a sheet over the
+ * drawing's part that has the drawing's Tab stop (WCAG 2.4.11): some of what shows of it, inside the
+ * window and whatever scrolls around it, is not under anything else.
+ */
 async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<number> {
-  const seen = new Set<string>();
-  for (let i = 0; i < 80; i++) {
-    await page.keyboard.press('Tab');
-    const stop = await page.evaluate(() => {
+  /** The Tab stop now: itself (a list may have several of one name, scrolled to one place), its name and place, and why it cannot be seen. */
+  const look = (): Promise<{ key: string; name: string; why: string }> =>
+    page.evaluate(() => {
       const el = document.activeElement;
       if (!el || el === document.body) return { key: 'the page', name: 'the page', why: '' };
       let why = '';
@@ -833,6 +837,28 @@ async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<numb
       }
       const r = el.getBoundingClientRect();
       if (!why && (r.width < 1 || r.height < 1)) why = 'no size';
+      if (!why) {
+        // What shows of it: inside the window and every box around it that cuts what it holds.
+        let [x0, y0, x1, y1] = [Math.max(r.left, 0), Math.max(r.top, 0), Math.min(r.right, innerWidth), Math.min(r.bottom, innerHeight)];
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const s = getComputedStyle(p);
+          if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
+          const c = p.getBoundingClientRect();
+          [x0, y0, x1, y1] = [Math.max(x0, c.left), Math.max(y0, c.top), Math.min(x1, c.right), Math.min(y1, c.bottom)];
+        }
+        if (x1 - x0 < 1 || y1 - y0 < 1) why = 'out of view';
+        else {
+          const points = [[0.5, 0.5], [0.15, 0.15], [0.85, 0.15], [0.15, 0.85], [0.85, 0.85]].map(([fx, fy]) => [x0 + (x1 - x0) * fx!, y0 + (y1 - y0) * fy!] as const);
+          const shows = points.some(([x, y]) => {
+            const hit = document.elementFromPoint(x, y);
+            return !!hit && (hit === el || el.contains(hit) || hit.contains(el));
+          });
+          if (!shows) {
+            const over = document.elementFromPoint(points[0]![0], points[0]![1]);
+            why = `under ${over ? `${over.tagName.toLowerCase()}.${(over.getAttribute('class') ?? '').split(' ')[0]}` : 'nothing'}`;
+          }
+        }
+      }
       const name = (el.getAttribute('aria-label') ?? el.textContent ?? el.tagName).trim().replace(/\s+/g, ' ').slice(0, 40);
       // Each element by itself (a list may have several of one name, scrolled to one place).
       const w = window as unknown as { tabStops?: WeakMap<Element, number>; tabStopCount?: number };
@@ -840,9 +866,14 @@ async function expectNoTabStopOutOfSight(page: Page, what: string): Promise<numb
       if (!w.tabStops.has(el)) w.tabStops.set(el, (w.tabStopCount = (w.tabStopCount ?? 0) + 1));
       return { key: `${w.tabStops.get(el)}`, name: `${name} at ${Math.round(r.left)}, ${Math.round(r.top)}`, why };
     });
+  const seen = new Set<string>();
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press('Tab');
+    const stop = await look();
     if (seen.has(stop.key)) break;
     seen.add(stop.key);
-    expect(stop.why, `${what}: the Tab stop ${stop.name} can be seen`).toBe('');
+    // The page may first bring it into view: the drawing slides there over a third of a second.
+    if (stop.why) await expect.poll(async () => (await look()).why, { message: `${what}: the Tab stop ${stop.name} can be seen`, timeout: 2000 }).toBe('');
   }
   return seen.size;
 }
@@ -962,6 +993,9 @@ test('an upright phone keeps the status line and its Undo above More and Parts, 
       expect(status.y + status.height, `${at}, ${name} open: the status line is above the sheet`).toBeLessThanOrEqual((await sheet.boundingBox())!.y + 1);
       const free = await paperLeft(page);
       expect(free.bottom - free.top, `${at}, ${name} open: some paper shows`).toBeGreaterThanOrEqual(48);
+      // The drawing's Tab stop (R2, the part just turned) too: brought out from under the sheet when the
+      // keys reach it, its focus ring in the paper left above the sheet.
+      expect(await expectNoTabStopOutOfSight(page, `${at}, ${name} open`)).toBeGreaterThan(10);
       await sheets[name].close();
     }
   }
