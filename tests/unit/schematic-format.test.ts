@@ -317,9 +317,11 @@ describe('limits: wire over wire, slanted wire and long chains build quickly (se
   /** Builds 100 lines, then `count`: both quick, and the drawing still connects what the netlist does. */
   const quick = (make: (count: number) => string[], count: number): Schematic => {
     const small = build(make(100));
-    expect(small.ms, 'at 100 lines').toBeLessThan(250);
+    // Limits ten times what this takes here, for slow or busy machines: before, 100 lines took 2 to
+    // 8 seconds and the limit 15 seconds to minutes.
+    expect(small.ms, 'at 100 lines').toBeLessThan(1000);
     const { s, ms } = build(make(count));
-    expect(ms, `at ${count} lines`).toBeLessThan(1500);
+    expect(ms, `at ${count} lines`).toBeLessThan(5000);
     expect(s.problems.map((p) => p.kind)).not.toContain('too-many-lines');
     expect(schematicConnectivity(s)).toEqual([]);
     return s;

@@ -274,7 +274,8 @@ describe('wire over wire, slanted wire and long chains (security:F1)', () => {
     const t0 = performance.now();
     expect(pruneDangling(segs, [p(0, 0)], [])).toEqual([]);
     expect(pruneDangling(segs, [p(0, 0), pts[pts.length - 1]!], [])).toEqual(segs);
-    expect(performance.now() - t0).toBeLessThan(500);
+    // About 10 ms here (it took over nine minutes before); the limit allows for a busy machine.
+    expect(performance.now() - t0).toBeLessThan(2000);
   });
 
   it('keeps a slanted piece once, however often and whichever way round it is drawn', () => {
@@ -304,7 +305,8 @@ describe('wire over wire, slanted wire and long chains (security:F1)', () => {
     const wires = Array.from({ length: 5000 }, (_, i) => (i % 2 ? [p(0, 0), p(1, 0)] : [p(1, 0), p(0, 0)]));
     const t0 = performance.now();
     const isl = findIslands(wires, [p(0, 0)]);
-    expect(performance.now() - t0).toBeLessThan(200);
+    // About 10 ms here (12 s before); the limit allows for a busy machine.
+    expect(performance.now() - t0).toBeLessThan(2000);
     expect(isl.count).toBe(1);
     expect(junctionPoints(wires, [])).toEqual([p(1, 0), p(0, 0)]);
   });
