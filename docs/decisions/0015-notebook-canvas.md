@@ -100,3 +100,19 @@ that a phone left no room to watch the numbers move; this record says what the c
   "ground" in current texts.
 - To ask Tarık: is the turned drawing right for phones, or should a phone always show the drawing as
   in the video and pan? (`p02-4-open-phone-views.png` shows both.)
+
+## After the final reviews (12 November 2026)
+
+- **The first numbers are handwritten from the start** (phone review F6). A browser asks for a font
+  only when text needs it, and no text needs Caveat 700 before ngspice's first results: on a first
+  visit on a slow phone (a Pixel 7 on Slow 4G with its CPU slowed four times) they were drawn in a
+  fallback face for about 0.8 s, then changed to Caveat (nothing moved: the room is Caveat's). The page
+  now loads that face once its own CSS and scripts are in (DOMContentLoaded, a line in its head that
+  `vite.config.ts` writes from the family and weight the CSS declares) and before the engine's Worker
+  asks for ngspice.wasm: the face is there seconds before the first numbers. Measured on that phone,
+  six first visits each against the build before: the first paint, the first drawing and the first
+  results came no later, within the runs' spread (about 0.1 s on a busy machine). The review's
+  `<link rel="preload">` brought the font as early but shared the first second's bandwidth with the
+  page's CSS and scripts, and the first paint came about 0.15 s later, with low priority too. With
+  the plain font chosen the face is loaded all the same (49 kB; from the service worker's cache after
+  the first visit).

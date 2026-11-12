@@ -132,6 +132,14 @@ function shipDependencyLicences(): Plugin {
  *   "run=1" link (the channel's "Open this circuit" links): otherwise the 0.6 MB engine waits for
  *   the scripts, the first render and the Worker, and on a slow phone the results came about 2 s
  *   later (perf review 3). Only for run=1, so an ordinary visit's first screen is not slowed.
+ * - On the app page, a line that loads the handwriting the results are written in (Caveat 700, as
+ *   the page's own CSS declares it) once the page's scripts have run (DOMContentLoaded). A browser
+ *   asks for a font only when text needs it, and no text needs this one before ngspice's first
+ *   numbers, so on a first visit they were drawn in a fallback face and changed to Caveat about 0.8 s
+ *   later (phone review F6). Not a <link rel="preload">: that shares the first second's bandwidth with
+ *   the page's own CSS and scripts, and on a slow phone it put the first paint about 0.15 s later, at
+ *   low priority too; after DOMContentLoaded the network is quiet until the Worker asks for
+ *   ngspice.wasm, and the first paint, the drawing and the results came no later (decision 0015).
  * - A Content-Security-Policy (security review m1), as a <meta> because GitHub Pages sets no
  *   headers. Defence in depth: nothing from a link is ever put into the page as HTML. Styles need
  *   'unsafe-inline' (CodeMirror and React Aria add style elements and attributes), images data:
@@ -184,6 +192,21 @@ function pageHead(): Plugin {
           );
         } else {
           this.warn('the engine preload was left out: ngspice.wasm or the engine Worker is not in the bundle');
+        }
+        // The results' handwriting, as the page's own CSS declares it (src/notebook/fonts.css: the face
+        // whose file is caveat-700-<hash>.woff2), loaded by family and weight through the CSS Font Loading API.
+        const css = [...(ctx.chunk?.viteMetadata?.importedCss ?? [])]
+          .map((f) => ctx.bundle?.[f])
+          .map((a) => (a?.type !== 'asset' ? '' : typeof a.source === 'string' ? a.source : new TextDecoder().decode(a.source)))
+          .join('\n');
+        const face = /@font-face\s*\{[^}]*caveat-700-[\w-]+\.woff2[^}]*\}/i.exec(css)?.[0] ?? '';
+        const family = /font-family:\s*([^;}]+)/i.exec(face)?.[1]?.trim().replace(/^(['"])(.*)\1$/, '$2');
+        const weight = /font-weight:\s*(\d+)/i.exec(face)?.[1];
+        if (family && weight) {
+          const font = JSON.stringify(`${weight} 1em "${family}"`);
+          lines.push(`document.addEventListener("DOMContentLoaded",()=>{try{document.fonts.load(${font}).catch(()=>{})}catch{}})`);
+        } else {
+          this.warn('the results font is not loaded early: the app page\'s CSS declares no Caveat 700 face');
         }
         const script = lines.join(';');
         const hash = script ? ` 'sha256-${createHash('sha256').update(script).digest('base64')}'` : '';
