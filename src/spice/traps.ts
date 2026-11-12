@@ -131,7 +131,14 @@ interface Ctx {
   top: number[];
   models: Map<string, ModelCard>;
   subckts: Set<string>;
+  /** Names an expression in braces can use: .param, .func, and a subcircuit's own parameters, lower-case. */
   params: Set<string>;
+  /**
+   * Names of .param lines outside subcircuits, after .end too, lower-case: the names ngspice also reads
+   * as a part's value at the top level (unknown-word-22, -36, -37; not a subcircuit's own, a .func's:
+   * unknown-word-33 to -35).
+   */
+  topParams: Set<string>;
   /** Lower-case name of each element outside subcircuits, to its first line. */
   byKey: Map<string, number>;
   /** Every element name in use (subcircuits included), lower-case: new names must avoid them. */
@@ -347,6 +354,7 @@ function context(n: Netlist): Ctx {
     models: new Map(),
     subckts: new Set(),
     params: new Set(),
+    topParams: new Set(),
     byKey: new Map(),
     names: new Set(n.elements.map((i) => n.lines[i]!.element!.key)),
     opNeeded: true,
@@ -363,10 +371,20 @@ function context(n: Netlist): Ctx {
   for (const l of n.lines) {
     if (l.continues !== undefined) c.lastContinuation.set(l.continues, Math.max(l.index, c.lastContinuation.get(l.continues) ?? 0));
   }
+  let depth = 0;
   for (const l of n.lines) {
     if (l.kind === 'invalid' && /^[\s\ufeff]*@/.test(l.text) && c.atLine === undefined) c.atLine = l.index;
+    // A .param line after .end is read too, even after .end;comment (unknown-word-36, -37).
+    if (l.kind === 'after-end' && lowerAscii(l.tokens[0]?.text ?? '') === '.param') {
+      for (const t of l.tokens.slice(1)) if (/^[ \t]*=/.test(c.text.slice(t.to, l.span.to))) c.topParams.add(lowerAscii(t.text));
+    }
     const d = l.directive;
     if (!d) continue;
+    if (d.name === '.subckt' || d.name === '.macro') depth += 1;
+    else if (d.name === '.ends' || d.name === '.eom') depth = Math.max(0, depth - 1);
+    else if (d.name === '.param' && depth === 0) {
+      for (const t of d.args) if (/^[ \t]*=/.test(c.text.slice(t.to, cardEnd(c, l.index)))) c.topParams.add(lowerAscii(t.text));
+    }
     const first = d.args[0];
     if (d.name === '.model' && first) {
       const second = d.args[1];
@@ -420,6 +438,15 @@ const RKM_SCALE: Record<string, [factor: number, spelling: string]> = {
   t: [1e12, 't'],
 };
 
+/**
+ * "ngspice reads 2k2 as 2 kΩ (R1) and says nothing. [rkm-notation-1]", except for a resistor read as 0,
+ * which ngspice 47 cannot use and warns about (zeroOhm; re-check critic CR1-1): never "says nothing" there.
+ */
+function saysNothing(head: string, claims: string, letter: ElementLetter | undefined, name: string | undefined, value: number): string {
+  const zero = zeroOhm(letter, name, value);
+  return zero ? `${head}, ${zero.says} [${claims}, ${zero.claims}]` : `${head} and says nothing. [${claims}]`;
+}
+
 function checkValueSpelling(c: Ctx, i: number): void {
   const e = el(c, i);
   const v = e.value;
@@ -443,7 +470,7 @@ function checkValueSpelling(c: Ctx, i: number): void {
       v.token,
       `${text} is read as ${asRead}, not ${meant}`,
       `On resistor codes and schematics ${text} means ${meant}: the letter stands for the decimal point. SPICE stops reading the number at the letter and ignores the ${rkm[3]} after it. Write ${meant}.`,
-      `ngspice reads ${text} as ${amount(r.value, letter)} (${name}) and says nothing. [rkm-notation-1]`,
+      saysNothing(`ngspice reads ${text} as ${amount(r.value, letter)} (${name})`, 'rkm-notation-1', letter, name, r.value),
       [fix(`Write ${meant} (${amount(Number(`${rkm[1]}.${rkm[3]}`) * factor, letter)})`, replace(v.token, meant))],
     );
     return;
@@ -465,7 +492,7 @@ function checkValueSpelling(c: Ctx, i: number): void {
       v.token,
       ohms || gain ? `${text} means ${amountSaid(r.value, letter)}, not ${amountSaid(base * 1e6, letter)}` : `${text} means ${amountSaid(r.value, letter)}`,
       `SPICE ignores capital letters, so a capital M is the same as a small m: milli. For mega, write meg: ${digits}meg.`,
-      `ngspice reads ${text} as ${amount(r.value, letter)}${r.ignored ? ` (it ignores the ${r.ignored})` : ''} and says nothing. [mega-as-milli-1, mega-as-milli-2, mega-as-milli-3]`,
+      saysNothing(`ngspice reads ${text} as ${amount(r.value, letter)}${r.ignored ? ` (it ignores the ${r.ignored})` : ''}`, 'mega-as-milli-1, mega-as-milli-2, mega-as-milli-3', letter, name, r.value),
       ohms || gain ? [mega, milli] : [milli, mega],
     );
     return;
@@ -484,60 +511,227 @@ function checkValueSpelling(c: Ctx, i: number): void {
       atto
         ? `${shown} is not amps here: SPICE reads it as the scale letter a, atto (10⁻¹⁸), and it does not use units. Write the number alone: ${digits} means ${meant}.`
         : `F is not farads here: SPICE reads it as the scale letter f, femto (10⁻¹⁵), and it does not use units. Write the number alone: ${digits} means ${meant}.`,
-      `ngspice reads ${text} as ${speakSI(r.value, unit)} and says nothing. [unit-letter-1, unit-letter-2]`,
+      saysNothing(`ngspice reads ${text} as ${speakSI(r.value, unit)}`, 'unit-letter-1, unit-letter-2', letter, name, r.value),
       [fix(`Write ${digits} (${meant})`, replace(v.token, digits))],
     );
   }
 }
 
 /**
- * What ngspice does with a word it cannot read as a number at one place of an analysis line, given
- * the word as ngspice spells it (W16). Never "unknown parameter", which ngspice prints only on part
- * lines: each place has its own message, from its own run (re-check S2; invisible-character-8 to -21).
+ * What ngspice does with a word at one place of a line, for the character checks, each from its own
+ * runs (re-check S2, and its critic's CR1-2 and CR1-5): `unread`, for a word it cannot read as a number
+ * at all, given the word as ngspice spells it (W16); `read`, for a number it reads short (the number
+ * ends at the character), given the value it reads: what that value does there, or undefined where
+ * ngspice runs on without a message, as the runs `silent` names show. Never "unknown parameter" where
+ * ngspice says something else, and never "without a message" where it stops or warns.
  */
-type Place = (spelled: string) => string;
+interface Place {
+  /** Whose number it is, for the titles: "This value", "A word in V1's PULSE", "C1's ic value". */
+  subject: string;
+  unread: (spelled: string) => string;
+  read: (value: number) => Outcome | undefined;
+  silent: string;
+}
+
+/** What a number read short does at its place: the words after "it reads 0, ", their runs, and whether ngspice stops. */
+interface Outcome {
+  says: string;
+  claims: string;
+  stops: boolean;
+}
 
 const AC_DEFAULTS = "ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation'";
+const stop = (says: string, claims: string): Outcome => ({ says, claims, stops: true });
+const runs = (says: string, claims: string): Outcome => ({ says, claims, stops: false });
 
 /**
- * The place of word k of an analysis line, when a run shows what ngspice does with a word it cannot
- * read there: the four numbers of .tran, the numbers of each .dc sweep, and the points, start and stop
- * of .ac and .noise. Any other place has no recorded run (.disto, .pz, .sens, .sp, a .noise's points
+ * The place of word k of an analysis line, when runs show what ngspice does with a word there: the
+ * four numbers of .tran, the numbers of the two sweeps of .dc, and the points, start and stop of .ac
+ * and .noise. A number read short is weighed with the line's other numbers as ngspice reads them: a
+ * .tran step or stop of 0 stops ngspice, and so does a start not before the stop; a .dc step of 0 stops
+ * ngspice 47 and keeps 42 going for ever, and a sweep the wrong way round has no points (invisible-
+ * character-28 to -44). Any other place has no recorded run (.disto, .pz, .sens, .sp, a .noise's points
  * per summary ...), or nothing in it counts (.four, which a run with a results file skips:
  * invisible-character-27), so the character checks leave its words alone.
  */
 function analysisPlace(d: NonNullable<NetlistLine['directive']>, k: number): Place | undefined {
   const args = d.args;
+  const at = (j: number): number | undefined => num(args[j]);
+  const subject = 'This value';
   if (d.name === '.tran') {
-    if (k === 0) return () => "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-8]";
-    if (k === 1) return () => "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [invisible-character-9]";
-    if (k === 2 || k === 3) return () => `ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-${k === 2 ? 10 : 11}]`;
+    // Read as ngspice does, uic aside: the step, the stop, the start and the largest step.
+    const values = args.filter((t) => lowerAscii(t.text) !== 'uic').map((t) => num(t));
+    if (k === 0) {
+      return { subject, unread: () => "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-8]",
+        read: (x) => (x <= 0 ? stop("and ngspice stops: 'TSTEP is invalid, must be greater than zero.'", 'invisible-character-28') : undefined),
+        silent: 'invisible-character-44' };
+    }
+    if (k === 1) {
+      const start = values[2];
+      return { subject, unread: () => "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [invisible-character-9]",
+        read: (x) => (x <= 0 ? stop("and ngspice stops: 'TSTOP is invalid, must be greater than zero.'", 'invisible-character-29')
+          : start !== undefined && x <= start ? stop("which is not after the start time, so ngspice stops: 'TSTART is invalid, must be less than TSTOP.'", 'invisible-character-31')
+            : undefined),
+        silent: 'invisible-character-22' };
+    }
+    if (k === 2 || k === 3) {
+      const tstop = values[1];
+      return { subject, unread: () => `ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-${k === 2 ? 10 : 11}]`,
+        read: (x) => (k === 2 && tstop !== undefined && x >= tstop ? stop("which is not before the stop time, so ngspice stops: 'TSTART is invalid, must be less than TSTOP.'", 'invisible-character-30') : undefined),
+        silent: 'invisible-character-44' };
+    }
     return undefined;
   }
   if (d.name === '.dc') {
+    // As ngspice 47 reads it: two sweeps at most, each a name, a start, a stop and a step (inp2dot.c).
     if (k % 4 === 0 || k >= 8) return undefined;
     // ngspice 42 reads a one-sweep line on: the word becomes the name of a second sweep (recorded for one sweep only).
     const one = k < 4 && args.length <= 4;
-    return (spelled) =>
-      `ngspice 47 stops: 'Bad syntax!'.${one ? ` ngspice 42 takes the word for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "${spelled}" is not in the circuit'.` : ''} [invisible-character-${k >= 4 ? 15 : 11 + k}]`;
+    const base = k - (k % 4);
+    return { subject,
+      unread: (spelled) => `ngspice 47 stops: 'Bad syntax!'.${one ? ` ngspice 42 takes the word for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "${spelled}" is not in the circuit'.` : ''} [invisible-character-${k >= 4 ? 15 : 11 + k}]`,
+      read: (x) => {
+        const [start, end, step] = [1, 2, 3].map((j) => (base + j === k ? x : at(base + j)));
+        if (k % 4 === 3 && x === 0) return stop("and a step of 0 stops ngspice 47: 'Bad syntax!'. ngspice 42 never finishes.", 'invisible-character-32, dc-sweep-problems-1');
+        if (start === undefined || end === undefined || step === undefined || step === 0) return undefined;
+        return (step > 0 && start > end) || (step < 0 && start < end) ? runs('so the sweep has no points: ngspice runs none and says nothing.', 'invisible-character-33') : undefined;
+      },
+      silent: k % 4 === 2 ? 'invisible-character-22' : 'invisible-character-44' };
   }
   if (d.name === '.ac') {
     // Only with the kind of sweep first, as ngspice reads the line; without it the numbers shift.
     if (!/^(dec|oct|lin)$/i.test(args[0]?.text ?? '')) return undefined;
-    if (k === 1 || k === 2) return () => `${AC_DEFAULTS}, then stops: 'AC startfreq <= 0'. [invisible-character-${15 + k}]`;
+    const [start, end] = [at(2), at(3)];
+    const upTo = (f: number): string => `up to 1000 times the start frequency${f > 0 ? ` (${formatSI(1000 * f, 'Hz')})` : ''}`;
+    if (k === 1) {
+      return { subject, unread: () => `${AC_DEFAULTS}, then stops: 'AC startfreq <= 0'. [invisible-character-16]`,
+        read: (x) => (Math.floor(0.5 + x) < 1 ? runs(`so ${AC_DEFAULTS}, and runs anyway with a number of points of its own.`, 'invisible-character-34') : undefined),
+        silent: 'invisible-character-44' };
+    }
+    if (k === 2) {
+      return { subject, unread: () => `${AC_DEFAULTS}, then stops: 'AC startfreq <= 0'. [invisible-character-17]`,
+        read: (x) => (x <= 0 ? stop("and ngspice stops: 'AC startfreq <= 0'.", 'invisible-character-35')
+          : end !== undefined && x > end ? runs(`which is above the stop frequency, so ${AC_DEFAULTS}, and runs anyway, ${upTo(x)}.`, 'invisible-character-37')
+            : undefined),
+        silent: 'invisible-character-44' };
+    }
     if (k === 3) {
-      const start = num(args[2]);
-      return () => `${AC_DEFAULTS}, and runs anyway, up to 1000 times the start frequency${start !== undefined && start > 0 ? ` (${formatSI(1000 * start, 'Hz')})` : ''} instead of the stop written here. [invisible-character-18]`;
+      return { subject, unread: () => `${AC_DEFAULTS}, and runs anyway, ${upTo(start ?? 0)} instead of the stop written here. [invisible-character-18]`,
+        read: (x) => (start !== undefined && x < start ? runs(`which is below the start frequency, so ${AC_DEFAULTS}, and runs anyway, ${upTo(start)} instead.`, 'invisible-character-36') : undefined),
+        silent: 'invisible-character-22' };
     }
     return undefined;
   }
   if (d.name === '.noise') {
     const j = args.findIndex((x) => /^(dec|oct|lin)$/i.test(x.text));
     const n = k - j;
-    if (j >= 0 && n >= 1 && n <= 3) return () => `ngspice stops: 'Frequency of 0 is invalid'. [invisible-character-${18 + n}]`;
+    if (j < 0 || n < 1 || n > 3) return undefined;
+    const [start, end] = [at(j + 2), at(j + 3)];
+    const none = 'so ngspice computes no frequencies, without a message: the results are only its two totals, both 0.';
+    return { subject, unread: () => `ngspice stops: 'Frequency of 0 is invalid'. [invisible-character-${18 + n}]`,
+      read: (x) => {
+        if (n === 1) return Math.floor(0.5 + x) < 1 ? stop("and ngspice warns: 'Number of steps for noise measurement has to be larger than 0', then stops: 'run simulation(s) aborted'.", 'invisible-character-38') : undefined;
+        if (x <= 0) return stop("and ngspice stops: 'Frequency of 0 is invalid'.", n === 2 ? 'invisible-character-39' : 'invisible-character-40');
+        if (n === 2) return end !== undefined && x > end ? runs(`which is above the stop frequency, ${none}`, 'invisible-character-43') : undefined;
+        if (start === undefined) return undefined;
+        if (x === start) return runs("the same as the start frequency, so ngspice warns: 'Noise measurement at a single frequency ... only!', and computes that one frequency.", 'invisible-character-41');
+        return x < start ? runs(`which is below the start frequency, ${none}`, 'invisible-character-42') : undefined;
+      },
+      silent: 'invisible-character-44' };
   }
   return undefined;
 }
+
+/** The functions of a source whose numbers ngspice reads alike, as runs show (invisible-character-45 to -47, -51). */
+const LISTED_FUNCTIONS: ReadonlySet<string> = new Set(['pulse', 'sin', 'pwl', 'exp', 'sffm']);
+const KEYWORD = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * The place of a word of a part line other than the part's own value, when runs show what ngspice does
+ * with a word there (re-check critic CR1-5). In a source's PULSE, SIN, PWL, EXP or SFFM ngspice reads the
+ * numbers into a list, so a word it cannot read ends the list: with no number before it, it says the
+ * value is out of range; with one, that a number is missing; after that, the word is an unknown
+ * parameter (invisible-character-45 to -47). The AC value and phase are part values (-48, -49). The value
+ * of a setting written name=value is read first, by numparam, which stops at it (-50, -52, -53). A number read
+ * short runs on without a message in each (-51). null: a place no run shows (AM, TRNOISE, a third word
+ * after AC ...), which the character checks leave alone; undefined: the part's own value, or another word.
+ */
+function partPlace(c: Ctx, e: Element, f: Field): Place | null | undefined {
+  const name = nameOf(e);
+  const k = e.fields.indexOf(f);
+  // The word that governs this one: the nearest keyword before it, past numbers, up to the nodes.
+  let w = k - 1;
+  while (w > 0 && !NODE_ROLES.has(e.fields[w]!.role) && e.fields[w]!.role !== 'control-source' && !KEYWORD.test(e.fields[w]!.token.text)) w -= 1;
+  const key = e.fields[w];
+  if (!key || w === 0 || NODE_ROLES.has(key.role) || key.role === 'control-source' || !KEYWORD.test(key.token.text)) return undefined;
+  const word = lowerAscii(key.token.text);
+  if (w === k - 1 && c.text.slice(key.token.to, f.token.from).includes('=')) {
+    return { subject: `${name}'s ${key.token.text} value`,
+      unread: (spelled) => `ngspice stops with a fatal error: 'Undefined parameter [${spelled}]'. [invisible-character-50, invisible-character-52, invisible-character-53]`,
+      read: () => undefined, silent: 'invisible-character-51' };
+  }
+  const p = k - w - 1;
+  const fn = e.sourceFunction;
+  if (fn && fn.token.from === key.token.from) {
+    if (c.text.slice(key.token.to, f.token.from).includes(')')) return undefined;
+    if (!LISTED_FUNCTIONS.has(word)) return null;
+    return { subject: `A word in ${name}'s ${key.token.text}`,
+      unread: (spelled) =>
+        p === 0 ? "ngspice stops: 'parameter value out of range or the wrong type'. [invisible-character-45]"
+          : p === 1 ? "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'). [invisible-character-46]"
+            : `ngspice stops: 'unknown parameter (${spelled})'. [invisible-character-47]`,
+      read: () => undefined, silent: 'invisible-character-51' };
+  }
+  if (word === 'ac' && key.role === 'source-function') {
+    if (p > 1) return null;
+    return { subject: `${name}'s AC ${p === 0 ? 'value' : 'phase'}`,
+      unread: (spelled) => `ngspice stops: 'unknown parameter (${spelled})'. [invisible-character-${p === 0 ? 48 : 49}]`,
+      read: () => undefined, silent: 'invisible-character-51' };
+  }
+  return undefined;
+}
+
+/**
+ * A resistor's value that ngspice reads as 0 because of how it is written (0<zero-width space>.47,
+ * 0R47, 0．47, 1,0): ngspice 47 cannot use 0 Ω, so it uses 1e-12 Ω and warns, and ngspice 42 used 1 mΩ
+ * without a word (zero-ohm-1, zero-ohm-4). The check that reads the value says so, never "says
+ * nothing", and zero-ohm leaves such a value to it (re-check critic CR1-1).
+ */
+function zeroOhm(letter: ElementLetter | undefined, name: string | undefined, value: number): { says: string; claims: string } | undefined {
+  if (letter !== 'R' || !name || value !== 0) return undefined;
+  return { says: `which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor ${lowerAscii(name)} is too small, set to 1.000000e-12' (ngspice 42 used 0.001 Ω without a word).`, claims: 'zero-ohm-1, zero-ohm-4' };
+}
+
+/** Claim IDs, each once, in order: "a, b, a" is "a, b". */
+const claimList = (...parts: string[]): string => [...new Set(parts.flatMap((p) => p.split(', ')).filter(Boolean))].join(', ');
+
+/**
+ * The end of a character check's sentence after "ngspice stops reading the number at ...": what it
+ * reads, and what that does. A part's value runs on without a message, except that ngspice also looks
+ * a capacitor's or an inductor's value word up as a model name, so it warns that it can't find one
+ * (`model`: invisible-character-7, look-alike-letter-7 ...), and that ngspice 47 cannot use a resistor
+ * read as 0 (zeroOhm). At another place the place says (CR1-2, CR1-5). `claims` are the runs of the reading.
+ */
+function readTail(
+  value: number,
+  shown: string,
+  claims: string,
+  o: { letter?: ElementLetter | undefined; name?: string | undefined; place?: Place | undefined; model: string },
+): { text: string; stops: boolean } {
+  const out: { says: string; claims: string; stops?: boolean } | undefined = o.place ? o.place.read(value) : zeroOhm(o.letter, o.name, value);
+  if (out) return { text: `: it reads ${shown}, ${out.says} [${claimList(claims, out.claims)}]`, stops: out.stops === true };
+  if (!o.place && (o.letter === 'C' || o.letter === 'L')) return { text: `: it reads ${shown}, and only warns that it can't find a model with the word's name. [${claimList(claims, o.model)}]`, stops: false };
+  return { text: `, without a message: it reads ${shown}. [${claimList(claims, o.place?.silent ?? '')}]`, stops: false };
+}
+
+/** The checks of a character that is not what it looks like, which say what ngspice does with a number at its place. */
+const CHARACTER_CHECKS: ReadonlySet<string> = new Set(['invisible-character', 'look-alike-letter', 'space-character', 'nbsp']);
+
+/** A part's main value in words: E's and F's is a gain, the others' a value (re-check critic CR1-14). */
+const valueWord = (letter: ElementLetter | undefined): string => (letter === 'E' || letter === 'F' ? 'gain' : 'value');
+
+/** A word as the words show it: its invisible characters taken out, a character that looks like a space shown as a space. */
+const shownWord = (s: string): string => withSpaces(withoutInvisible(s));
 
 /** "A zero-width space" from "a zero-width space (U+200B)": the start of a sentence. */
 const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
@@ -583,25 +777,24 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const what = describeCharacter(ch);
   const id: TrapId = hidden ? 'invisible-character' : 'look-alike-letter';
   const shown = (v: number): string => (letter && unit !== undefined ? amount(v, letter) : formatNumber(v));
-  const subject = name ? `${name}'s value` : 'This value';
+  const subject = place?.subject ?? (name ? `${name}'s ${valueWord(letter)}` : 'This value');
   const fixes = [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(meant.value, letter)})` : ''}`, replace(t, clean))];
   if (!read) {
     // Where it is, from the text before it, said first: "Right after the -, it has ..." for
-    // -<zero-width space>5 and -５ (invisible-character-6, look-alike-letter-6). On an analysis line
-    // ngspice says something else, by the place of the word (re-check S2).
+    // -<zero-width space>5 and -５ (invisible-character-6, look-alike-letter-6). Elsewhere than a part's
+    // value ngspice says something else, by the place of the word (re-check S2, CR1-5).
     const lead = withoutInvisible(chars.slice(0, chars.indexOf(ch)).join(''));
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
       `${lead ? `Right after the ${lead}, it has ${what}` : `It starts with ${what}`}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
-      place ? place(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-5' : 'invisible-character-5, invisible-character-24') : lead ? 'look-alike-letter-6' : lookAlikeOf(ch) === '.' && ch !== '\uff0e' ? 'look-alike-letter-13' : 'look-alike-letter-2'}]`,
+      place ? place.unread(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-5' : 'invisible-character-5, invisible-character-24') : lead ? 'look-alike-letter-6' : lookAlikeOf(ch) === '.' && ch !== '\uff0e' ? 'look-alike-letter-13' : 'look-alike-letter-2'}]`,
       fixes);
     return;
   }
-  // A capacitor's or an inductor's value word is also looked up as a model name, so ngspice warns that it
-  // can't find one (invisible-character-7, look-alike-letter-7, as greek-mu-2 and space-character-8).
-  const model = letter === 'C' || letter === 'L';
-  const reads = (also: string): string =>
-    model ? `: it reads ${shown(read.value)}, and only warns that it can't find a model with the word's name. [${also}, ${hidden ? 'invisible-character-7' : 'look-alike-letter-7'}]`
-      : `, without a message: it reads ${shown(read.value)}. [${also}${place ? ', invisible-character-22' : ''}]`;
+  // What ngspice does with the number it reads: on a part's value, nothing, but a capacitor's or an
+  // inductor's word is also looked up as a model name (invisible-character-7, look-alike-letter-7) and a
+  // resistor read as 0 is too small for ngspice 47; elsewhere, what the place does with it (readTail).
+  const reads = (also: string): { text: string; stops: boolean } =>
+    readTail(read.value, shown(read.value), also, { letter, name, place, model: hidden ? 'invisible-character-7' : 'look-alike-letter-7' });
   // A capital M from another alphabet (the M key of a Greek keyboard): the student means mega, and a
   // plain M is milli in SPICE, so the fixes are mega-as-milli's, never "Write 10M" (look-alike-letter-4).
   // Neither keeps anything: ngspice reads neither mega nor milli, so the milli fix says what it writes.
@@ -611,10 +804,11 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
     const big = letter === 'R' || 'EFGH'.includes(letter);
     const mega = fix(`Make it ${digits}meg (${amount(base * 1e6, letter)})`, replace(t, `${digits}meg`));
     const milli = fix(`Make it ${digits}m (${amount(base * 1e-3, letter)})`, replace(t, `${digits}m`));
-    add(c, id, 'warning', t,
+    const tail = reads('look-alike-letter-4, mega-as-milli-1');
+    add(c, id, tail.stops ? 'error' : 'warning', t,
       big ? `${subject} is read as ${shown(read.value)}, not ${shown(base * 1e6)}` : `${subject} is read as ${shown(read.value)}`,
       `The value has ${what}. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): ${digits}meg.`,
-      `ngspice stops reading the number at ${what.replace(/, which .*$/, '')}${reads('look-alike-letter-4, mega-as-milli-1')}`,
+      `ngspice stops reading the number at ${what.replace(/, which .*$/, '')}${tail.text}`,
       big ? [mega, milli] : [milli, mega]);
     return;
   }
@@ -631,43 +825,57 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const plain = /\d/.test(like) ? `the plain digit ${like}` : isLetter ? `the plain letter ${like}` : like === '.' ? 'the plain decimal point' : `the plain ${like} sign`;
   const the = what.replace(/, which .*$/, '').replace(/^an? /, 'the ');
   const claim = isLetter && /[Ͱ-ӿＡ-Ｚａ-ｚ]/.test(ch) ? 'look-alike-letter-1' : like === '.' && ch !== '．' ? 'look-alike-letter-9' : 'look-alike-letter-3';
-  add(c, id, 'warning', t, `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
+  const tail = reads(hidden ? (INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-1, invisible-character-2' : 'invisible-character-1, invisible-character-23') : claim);
+  add(c, id, tail.stops ? 'error' : 'warning', t, `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
     hidden
       ? `${capital(what)} sits between ${before} and ${after}: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the ${after} after it does not count. Write ${clean}.`
       : `The value has ${what}. SPICE knows only ${plain}, so it ignores this one like a unit${after ? `, and the ${after} after it` : ''}. Write ${clean}.`,
     hidden
-      ? `ngspice stops reading the number at the ${nameOfCharacter(ch)!.replace(/^an? /, '').replace(/ \(U\+[0-9A-F]+\)$/, '')} and ignores the rest of the word${reads(INVISIBLE_CLAIMS.has(ch) ? 'invisible-character-1, invisible-character-2' : 'invisible-character-1, invisible-character-23')}`
-      : `ngspice stops reading the number at ${the}${reads(claim)}`,
+      ? `ngspice stops reading the number at the ${nameOfCharacter(ch)!.replace(/^an? /, '').replace(/ \(U\+[0-9A-F]+\)$/, '')} and ignores the rest of the word${tail.text}`
+      : `ngspice stops reading the number at ${the}${tail.text}`,
     fixes);
 }
 
+/** The units a part's value may carry after the letter O where a zero belongs (1OkΩ, 1OuF, 1OA): its own. */
+const O_UNITS: Partial<Record<ElementLetter, string>> = { R: '[Oo][Hh][Mm][Ss]?|\u03a9|\u2126', C: '[Ff]', L: '[Hh]', V: '[Vv]', I: '[Aa]' };
+
 /**
  * A value word with the letter O where the digit 0 belongs, written as SPICE should read it, or
- * undefined (re-check C4). Read on cleanWord's form, so the plain O and o and the Cyrillic, Greek and
- * fullwidth ones are alike. Only where nothing else can be meant: an O between digits (1O00), an O
- * after a digit followed by one scale letter that ends the word (1Ok, 1On; not m: 100Ом is Russian for
- * 100 Ω, and SPICE reads it so), and an O at the start before a decimal point (O.47k). Never before a
- * unit: 1Ohm, 100Ом, 1kОм are as meant.
+ * undefined (re-check C4 and its critic, CR1-8, CR1-9). Read on cleanWord's form, so the plain O and o
+ * and the Cyrillic, Greek and fullwidth ones are alike. Only where nothing else can be meant: Os between
+ * digits (1O00, 1OO0); Os after a digit before one scale letter that ends the word, or before the part's
+ * own unit after it (1Ok, 1OOk, 1Omeg, 1OkΩ, 1OuF; m only with the unit after it, as 1OmA: 100Ом is
+ * Russian for 100 Ω, and SPICE reads it so; never a or f, which after a number is a unit, amps or
+ * farads, as checkSpaceBeforeSuffix reads them); Os after a digit before the part's unit alone (1OA,
+ * 1OV), written without the unit, since a lone A or F would be atto or femto for SPICE; and an O at the
+ * start before a decimal point (O.47k). Never before another word: 1Ohm, 100Ом, 1kОм are as meant.
  */
-export function zeroForLetterO(word: string): string | undefined {
+export function zeroForLetterO(word: string, letter?: ElementLetter): string | undefined {
   const { clean } = cleanWord(word, true);
   if (!/[Oo]/.test(clean)) return undefined;
+  const own = letter ? O_UNITS[letter] : undefined;
+  const unit = own ? `(?:${own})` : '(?!)';
+  const zeros = (o: string): string => '0'.repeat(o.length);
   const out = clean
     .replace(/^([+-]?)[Oo](?=\.\d)/, '$10')
-    .replace(/(?<=\d)[Oo](?=\d)/g, '0')
-    .replace(/(?<=\d)[Oo](?=[tgkunpfaµ]$)/i, '0');
+    .replace(/(?<=\d)[Oo]+(?=\d)/g, zeros)
+    .replace(new RegExp(`(?<=\\d)[Oo]+(?=(?:[Mm][Ee][Gg]|[tgkunpTGKUNP\u00b5])${unit}?$|m${unit}$)`), zeros)
+    .replace(new RegExp(`(?<=\\d)([Oo]+)${unit}$`), (_m: string, o: string) => zeros(o));
   if (out === clean) return undefined;
   const r = readNumber(out);
-  return r && !r.rest && !r.ignored?.match(/[Oo]/) ? out : undefined;
+  // No letter O may be left for SPICE to stop at, but the O of the unit ohm (1OkOhm is 10kOhm).
+  return r && !r.rest && (!/[Oo]/.test(r.ignored ?? '') || new RegExp(`^${unit}$`).test(r.ignored ?? '')) ? out : undefined;
 }
 
 /**
  * A part's value with the letter O where a zero belongs (zeroForLetterO): 1Ok is 1 Ω and 1О00 is 1 Ω,
- * without a message, and O.47k is no number at all, so ngspice stops (look-alike-letter-10, -11).
- * The fix writes the zero, never a comment that would leave the part with no value. True when found.
+ * and O.47k is no number at all, so ngspice stops (look-alike-letter-10, -11, -15). What ngspice says of
+ * the number it reads is readTail's: nothing on R, V and I, a model warning on C and L, and on a
+ * resistor read as 0, ngspice 47's warning. The fix writes the zero, never a comment that would leave
+ * the part with no value. True when found.
  */
 function checkLetterO(c: Ctx, t: Token, letter: ElementLetter, name: string): boolean {
-  const meantText = zeroForLetterO(t.text);
+  const meantText = zeroForLetterO(t.text, letter);
   const meant = meantText === undefined ? undefined : readNumber(meantText);
   if (!meantText || !meant) return false;
   const read = readNumber(t.text);
@@ -677,22 +885,21 @@ function checkLetterO(c: Ctx, t: Token, letter: ElementLetter, name: string): bo
   const at = chars.findIndex((ch) => /[Oo]/.test(cleanWord(ch, true).clean));
   const ch = chars[at]!;
   const the = /[Oo]/.test(ch) ? `the letter ${ch}` : describeCharacter(ch).replace(/, which .*$/, '');
+  const what = valueWord(letter);
   const fixes = [fix(`Write ${meantText} (${amount(meant.value, letter)})`, replace(t, meantText))];
   if (!read) {
-    add(c, 'look-alike-letter', 'error', t, `${name}'s value starts with the letter O, not the digit 0`,
+    add(c, 'look-alike-letter', 'error', t, `${name}'s ${what} starts with the letter O, not the digit 0`,
       `It starts with ${the}, which looks like the digit 0, so SPICE does not read the word as a number. Write ${meantText}.`,
       `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [look-alike-letter-11]`,
       fixes);
     return true;
   }
   const before = withoutInvisible(chars.slice(0, at).join(''));
-  const after = cleanWord(chars.slice(at + 1).join(''), true).clean;
-  const model = letter === 'C' || letter === 'L';
-  add(c, 'look-alike-letter', 'warning', t, `${name}'s value is read as ${amount(read.value, letter)}, not ${amount(meant.value, letter)}`,
-    `The value has ${the} after the ${before}, not the digit 0. SPICE stops reading the number at a letter, so it ignores it${after ? ` and the ${after} after it` : ''}. Write ${meantText}.`,
-    model
-      ? `ngspice stops reading the number at ${the}: it reads ${amount(read.value, letter)}, and only warns that it can't find a model with the word's name. [look-alike-letter-10]`
-      : `ngspice stops reading the number at ${the}, without a message: it reads ${amount(read.value, letter)}. [look-alike-letter-10]`,
+  const after = cleanWord(chars.slice(at + 1).join(''), true).clean.replace(/^[Oo]+/, '');
+  const tail = readTail(read.value, amount(read.value, letter), 'look-alike-letter-10, look-alike-letter-15', { letter, name, model: 'look-alike-letter-7' });
+  add(c, 'look-alike-letter', 'warning', t, `${name}'s ${what} is read as ${amount(read.value, letter)}, not ${amount(meant.value, letter)}`,
+    `The ${what} has ${the} after the ${before}, not the digit 0. SPICE stops reading the number at a letter, so it ignores it${after ? ` and the ${after} after it` : ''}. Write ${meantText}.`,
+    `ngspice stops reading the number at ${the}${tail.text}`,
     fixes);
   return true;
 }
@@ -716,10 +923,10 @@ function checkStrayCharacter(c: Ctx, t: Token, unit: string | undefined, letter:
   if (code < 0x80 || ch === 'μ' || next === undefined || !/^\d/.test(next) || lookAlikeOf(ch!) !== undefined) return;
   const what = describeCharacter(ch!);
   const after = [...read.ignored].slice(1).join('');
-  const model = letter === 'C' || letter === 'L';
-  add(c, 'look-alike-letter', 'warning', t, `${name}'s value is read as ${amount(read.value, letter)}`,
-    `The value has ${what}, which is no part of a number for SPICE: it stops reading the number there, so the ${after} after it does not count.`,
-    `ngspice stops reading the number at ${what}${model ? `: it reads ${amount(read.value, letter)}, and only warns that it can't find a model with the word's name. [look-alike-letter-12, look-alike-letter-7]` : `, without a message: it reads ${amount(read.value, letter)}. [look-alike-letter-12]`}`);
+  const tail = readTail(read.value, amount(read.value, letter), 'look-alike-letter-12', { letter, name, model: 'look-alike-letter-7' });
+  add(c, 'look-alike-letter', 'warning', t, `${name}'s ${valueWord(letter)} is read as ${amount(read.value, letter)}`,
+    `The ${valueWord(letter)} has ${what}, which is no part of a number for SPICE: it stops reading the number there, so the ${after} after it does not count.`,
+    `ngspice stops reading the number at ${what}${tail.text}`);
 }
 
 /**
@@ -743,7 +950,7 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
   const id: TrapId = ch === '\u00a0' ? 'nbsp' : 'space-character';
   const what = describeCharacter(ch);
   const bare = nameOfCharacter(ch, false)!.replace(/^an? /, '');
-  const subject = name ? `${name}'s value` : 'This value';
+  const subject = place?.subject ?? (name ? `${name}'s ${valueWord(letter)}` : 'This value');
   const shown = (v: number): string => (letter && unit !== undefined ? amount(v, letter) : formatNumber(v));
   if (SPACE_LIKE.test(chars[0]!)) {
     const clean = withoutSpaces(t.text);
@@ -752,7 +959,7 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
     c.spaced.add(t.from);
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
       `It starts with ${what}, which looks like a space but is none for SPICE (it often comes with text copied from a document or a web page), so SPICE does not read the word as a number. Write ${clean}.`,
-      place ? place(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [space-character-5]`,
+      place ? place.unread(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [space-character-5]`,
       [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(r.value, letter)})` : ''}`, replace(t, clean))]);
     return;
   }
@@ -774,7 +981,7 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
     const ascii = chars[0] === sign;
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
       `${ascii ? `Right after the ${sign}, it has ${what}` : `It starts with ${describeCharacter(chars[0]!)}, then ${what}`}, which looks like a space but is none for SPICE (it often comes with text copied from a document or a web page), so SPICE does not read the word as a number. Write ${written}.`,
-      place ? place(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${!ascii ? 'space-character-14' : id === 'nbsp' ? 'nbsp-3' : 'space-character-12'}]`,
+      place ? place.unread(ngspiceSpelling(t.text)) : `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${!ascii ? 'space-character-14' : id === 'nbsp' ? 'nbsp-3' : 'space-character-12'}]`,
       [fix(`Write ${written}${letter && unit !== undefined ? ` (${amount(r.value, letter)})` : ''}`, replace(t, written))]);
     return;
   }
@@ -785,9 +992,14 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
   const main = letter !== undefined && unit !== undefined;
   if (!read || (!meant && !main)) return;
   c.spaced.add(t.from);
-  // A capacitor's or an inductor's value word is also looked up as a model name (greek-mu-2, space-character-8).
+  // What ngspice does with the number it reads (readTail): on a part's value nothing, but a capacitor's or
+  // an inductor's word is also looked up as a model name (greek-mu-2, space-character-8), and a resistor
+  // read as 0 is too small for ngspice 47; elsewhere, what the place does with it.
   const model = letter === 'C' || letter === 'L';
-  const stops = `ngspice stops reading the number at the ${bare} and ignores the rest of the word${model ? '' : ', without a message'}: it reads ${shown(read.value)}${model ? ", and only warns that it can't find a model with the word's name" : ''}.`;
+  const stops = (claims: string): { text: string; stops: boolean } => {
+    const tail = readTail(read.value, shown(read.value), claims, { letter, name, place, model: 'space-character-8' });
+    return { text: `ngspice stops reading the number at the ${bare} and ignores the rest of the word${tail.text}`, stops: tail.stops };
+  };
   if (!meant) {
     // Not written the way documents write a value (1<thin space>2, 0.000<thin space>001): say what ngspice
     // reads, and offer to take the characters out when that changes it.
@@ -798,9 +1010,10 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
     const before = chars.slice(0, at).join('');
     const after = withSpaces(chars.slice(at + 1).join(''));
     const several = chars.filter((x) => SPACE_LIKE.test(x)).length > 1;
-    add(c, id, 'warning', t, `${subject} is read as ${shown(read.value)}`,
+    const said = stops('space-character-11');
+    add(c, id, said.stops ? 'error' : 'warning', t, `${subject} is read as ${shown(read.value)}`,
       `${capital(what)} sits between ${before} and ${after} (it often comes with text copied from a document or a web page). It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${after} after it does not count. Without ${several ? 'these characters' : 'it'}, the value reads ${clean}.`,
-      `${stops} [space-character-11${model ? ', space-character-8' : ''}]`,
+      said.text,
       [fix(`Take ${several ? 'them' : 'it'} out: write ${clean} (${shown(meantClean.value)})`, replace(t, clean))]);
     return;
   }
@@ -826,20 +1039,31 @@ function checkSpaceInValue(c: Ctx, t: Token, unit: string | undefined, letter: E
   const write = meant.unit
     ? `SPICE needs no space and no units${meant.milli ? `, and a capital M is milli in SPICE: for mega, write meg: ${meant.spice}` : `: write ${meant.spice}`}.`
     : `Write the number without ${meant.spaces > 1 ? 'them' : 'it'}: ${meant.spice}.`;
-  add(c, id, 'warning', t,
+  const said = stops(claim);
+  add(c, id, said.stops ? 'error' : 'warning', t,
     meant.milli && !big ? `${subject} is read as ${shown(read.value)}` : `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
     `${capital(what)} sits between ${meant.before} and ${meant.next}, as documents ${digits ? 'group digits' : 'write a number and its unit'}. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the ${meant.after} after it does not count. ${write}`,
-    `${stops} [${claim}${place ? ', invisible-character-22' : ''}]`,
+    said.text,
     fixes);
 }
 
-/** Every value word of a part line, and the numbers of the analysis lines, through checkOddValue. */
+/**
+ * Every value word of a part line through checkOddValue: the part's own value by the part's rules, a
+ * word of a source's function, of its AC value or of a setting by its place (partPlace), and a place no
+ * run shows left alone (re-check critic CR1-5).
+ */
 function checkOddValues(c: Ctx, i: number): void {
   const e = el(c, i);
   for (const f of e.fields) {
     if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role)) continue;
     // A word a check before this one already explains (4·7 kΩ: the space before the unit) is left to it.
     if ((c.byLine.get(lineAt(c.n, f.token.from).number) ?? []).some((t) => t.span.from <= f.token.from && f.token.to <= t.span.to)) continue;
+    const place = partPlace(c, e, f);
+    if (place === null) continue;
+    if (place) {
+      checkOddValue(c, f.token, undefined, undefined, undefined, place);
+      continue;
+    }
     const main = e.value?.token === f.token || (!e.value && f.role === 'other' && e.fields.indexOf(f) === e.fields.findIndex((x) => x.role === 'other'));
     checkOddValue(c, f.token, main && e.letter ? (UNIT[e.letter] ?? '') : undefined, main ? e.letter : undefined, main ? nameOf(e) : undefined);
   }
@@ -848,24 +1072,30 @@ function checkOddValues(c: Ctx, i: number): void {
 /** Number-like words with the Greek letter mu, which ngspice ignores (the micro sign works). */
 function checkGreekMu(c: Ctx): void {
   const looksLikeNumber = /^[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?\u03bc/;
-  const visit = (t: Token, unit: string | undefined, letter?: ElementLetter): void => {
+  const visit = (t: Token, unit: string | undefined, letter?: ElementLetter, name?: string, place?: Place): void => {
     if (!looksLikeNumber.test(t.text)) return;
     const r = readNumber(t.text);
     if (!r) return;
     const shown = unit === undefined ? formatNumber(r.value) : formatSI(r.value, unit);
     const meant = t.text.replaceAll('\u03bc', 'u');
-    // greek-mu-2: a capacitor's or an inductor's value word is also looked up as a model name.
+    // greek-mu-2: a capacitor's or an inductor's value word is also looked up as a model name. On an
+    // analysis line, what the place does with the number read (analysisPlace; re-check critic CR1-2).
     const model = letter === 'C' || letter === 'L';
+    const out = place?.read(r.value);
     add(
       c,
       'greek-mu',
-      'warning',
+      out?.stops ? 'error' : 'warning',
       t,
       `${t.text} is read as ${shown}: SPICE ignores this \u03bc`,
       `This \u03bc is the Greek letter mu, not the micro sign \u00b5 that SPICE knows (phone keyboards often type the Greek one). SPICE ignores it like a unit. Write u for micro: ${meant}.`,
       model
         ? `ngspice reads ${t.text} as ${shown}; it only warns that it can't find a model called '${lowerAscii(t.text)}'. [greek-mu-2]`
-        : `ngspice reads ${t.text} as ${shown} and says nothing. [greek-mu-1]`,
+        : out
+          ? `ngspice reads ${t.text} as ${shown}, ${out.says} [${claimList('greek-mu-1', out.claims)}]`
+          : place
+            ? `ngspice reads ${t.text} as ${shown} and says nothing. [${claimList('greek-mu-1', place.silent)}]`
+            : saysNothing(`ngspice reads ${t.text} as ${shown}`, 'greek-mu-1', letter, name, r.value),
       [fix(`Write u for micro: ${meant}`, replace(t, meant))],
     );
   };
@@ -874,14 +1104,33 @@ function checkGreekMu(c: Ctx): void {
     for (const f of e.fields) {
       if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role)) continue;
       const main = e.value?.token === f.token;
-      visit(f.token, main && e.letter ? (UNIT[e.letter] ?? '') : undefined, main ? e.letter : undefined);
+      visit(f.token, main && e.letter ? (UNIT[e.letter] ?? '') : undefined, main ? e.letter : undefined, main ? nameOf(e) : undefined);
     }
   }
-  for (const i of c.n.analyses) for (const t of c.n.lines[i]!.directive!.args) visit(t, undefined);
+  // On an analysis line only at a place a run shows (analysisPlace).
+  for (const i of c.n.analyses) {
+    const d = c.n.lines[i]!.directive!;
+    d.args.forEach((t, k) => {
+      const place = analysisPlace(d, k);
+      if (place) visit(t, undefined, undefined, undefined, place);
+    });
+  }
 }
 
 /** Main value fields of a part, in order. */
 const mainFields = (e: Element): Field[] => e.fields.filter((f) => MAIN_ROLES.has(f.role));
+
+/**
+ * "ngspice reads two numbers, 1 and 5k, keeps the second one and says nothing: R1 gets 5 kΩ" (decimal
+ * comma, a sign inside the value), with the model warning on C and L, and ngspice 47's warning when a
+ * resistor gets 0 (zeroOhm: 1,0 is 0 Ω for ngspice; re-check critic CR1-1).
+ */
+function keepsSecond(first: string, second: string, written: string, e: Element, value: number | undefined, claims: string): string {
+  const gets = `${nameOf(e)} gets ${value !== undefined ? amount(value, e.letter) : second}`;
+  const zero = value === undefined ? undefined : zeroOhm(e.letter, nameOf(e), value);
+  if (zero) return `ngspice reads two numbers, ${first} and ${second}, and keeps the second one: ${gets}, ${zero.says} [${claims}, ${zero.claims}]`;
+  return `ngspice reads two numbers, ${first} and ${second}, keeps the second one and says nothing${e.letter === 'C' || e.letter === 'L' ? ` except a warning that it can't find a model called '${lowerAscii(written)}'` : ''}: ${gets}. [${claims}]`;
+}
 
 function checkDecimalComma(c: Ctx, i: number): void {
   const e = el(c, i);
@@ -897,7 +1146,7 @@ function checkDecimalComma(c: Ctx, i: number): void {
     const passive = e.letter === 'R' || e.letter === 'C' || e.letter === 'L';
     const source = e.letter === 'V' || e.letter === 'I';
     const ngspice = passive
-      ? `ngspice reads two numbers, ${f1.token.text} and ${f2.token.text}, keeps the second one and says nothing${e.letter === 'C' || e.letter === 'L' ? ` except a warning that it can't find a model called '${lowerAscii(written)}'` : ''}: ${nameOf(e)} gets ${second ? amount(second.value, e.letter) : f2.token.text}. [decimal-comma-1, decimal-comma-2, decimal-comma-3]`
+      ? keepsSecond(f1.token.text, f2.token.text, written, e, second?.value, 'decimal-comma-1, decimal-comma-2, decimal-comma-3')
       : source
         ? `ngspice stops: 'unknown parameter (${ngspiceSpelling(f2.token.text)})'. [decimal-comma-4, decimal-comma-5]`
         : `PlainSpice's engine stops: 'unknown parameter (${ngspiceSpelling(f2.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the two numbers as the coefficients of a polynomial instead. [decimal-comma-6, decimal-comma-7, decimal-comma-8, decimal-comma-9]`;
@@ -946,7 +1195,7 @@ function checkSignInValue(c: Ctx, i: number): void {
       span,
       `${written}: SPICE reads two numbers, ${f1.token.text} and ${shownSecond}`,
       `A + or ${MINUS} right after a digit or a letter starts a new number in SPICE, so ${written} is two numbers, and ${nameOf(e)} takes the second one. For an exponent, write e: 1e-3.`,
-      `ngspice reads two numbers, ${f1.token.text} and ${f2.token.text}, keeps the second one and says nothing${e.letter === 'C' || e.letter === 'L' ? ` except a warning that it can't find a model called '${lowerAscii(written)}'` : ''}: ${nameOf(e)} gets ${amount(second.value, e.letter)}. [${e.letter === 'R' ? 'sign-in-value-1' : 'sign-in-value-2'}]`,
+      keepsSecond(f1.token.text, f2.token.text, written, e, second.value, e.letter === 'R' ? 'sign-in-value-1' : 'sign-in-value-2'),
       fixes,
     );
     return;
@@ -1071,6 +1320,9 @@ function checkUnknownWord(c: Ctx, i: number): void {
   const f = e.fields[k];
   if (!f || (c.byLine.get(lineAt(c.n, f.token.from).number) ?? []).some((t) => t.span.from <= f.token.from && f.token.to <= t.span.to)) return;
   const word = f.token.text;
+  // A word with a character that is not what it looks like, at a place no run shows (in AM( ), TRNOISE( ) ...),
+  // is left alone, as the character checks leave it (partPlace; re-check critic CR1-5).
+  if (partPlace(c, e, f) === null && (hasInvisible(word) || hasSpaceLike(word) || cleanWord(word, true).odd.length > 0)) return;
   const name = nameOf(e);
   const kind = { R: 'a resistor', C: 'a capacitor', L: 'an inductor', V: 'a voltage source', I: 'a current source', E: 'an E line', F: 'an F line', G: 'a G line', H: 'an H line' }[e.letter as 'R'];
   const efgh = 'EFGH'.includes(e.letter);
@@ -1078,17 +1330,28 @@ function checkUnknownWord(c: Ctx, i: number): void {
   // that value, as ngspice reads it (unknown-word-22, -23); any other word is no number, and ngspice
   // stops there, on E, F, G and H lines too (no polynomial: nothing came before it). Its words are
   // not a setting's, and there is no fix that comments it out, which would leave the part with no value.
+  // Outside a subcircuit only a top-level .param line's names count, after .end too: not a subcircuit's
+  // own parameters, a .param inside one, nor a .func's name (unknown-word-33 to -37; re-check critic CR1-7).
   if (!e.value && e.fields.slice(0, k).every((x) => x.role !== 'parameter' && x.role !== 'source-function' && x.role !== 'model')) {
-    if (c.params.has(lowerAscii(word))) return;
+    if ((c.graph.inSubcircuit.has(i) ? c.params : c.topParams).has(lowerAscii(word))) return;
     const what = efgh ? (e.letter === 'E' || e.letter === 'F' ? 'gain' : 'value') : 'value';
     // A sign with a space after it (- 5): two words, and a sign alone is no number (space-character-13).
     const sign = cleanWord(word, true).clean;
     const next = e.fields[k + 1];
     if (/^[+-]$/.test(sign) && next && readNumber(next.token.text) && /^[ \t]+$/.test(c.text.slice(f.token.to, next.token.from))) {
       const joined = `${sign}${next.token.text}`;
+      // What ngspice says, part by part (re-check critic CR1-3): E, F, G and H lines are read as a
+      // polynomial by native ngspice 47 and 42 (both built with XSPICE); C and L look the word up as a
+      // model first; R, V and I stop at the sign.
+      const quote = `'unknown parameter (${ngspiceSpelling(word)})'`;
+      const says = efgh
+        ? `PlainSpice's engine stops: ${quote}. Native ngspice 47 and 42 read the line as a polynomial and stop: 'MIF-ERROR ... Bad real value'. [unknown-word-${25 + 'EFGH'.indexOf(e.letter)}]`
+        : e.letter === 'C' || e.letter === 'L'
+          ? `ngspice looks for a model called ${lowerAscii(word)}, warns 'can't find model', and stops: ${quote}. [unknown-word-${e.letter === 'C' ? 29 : 30}]`
+          : `ngspice stops: ${quote}. [${e.letter === 'V' ? 'space-character-13' : e.letter === 'R' ? 'unknown-word-31' : 'unknown-word-32'}]`;
       add(c, 'unknown-word', 'error', f.token, `${name}'s ${what} is not a number`,
         `The ${word} and the ${next.token.text} are two words for SPICE: a space after a sign splits the value in two, and a sign alone is no number, so SPICE stops there. Write ${joined}.`,
-        `ngspice stops: 'unknown parameter (${ngspiceSpelling(word)})'. [space-character-13]`,
+        says,
         [fix(`Write ${joined} (${amount(readNumber(joined)!.value, e.letter)})`, change(f.token.from, next.token.to, joined))]);
       return;
     }
@@ -2066,69 +2329,120 @@ function independentSources(c: Ctx): Element[] {
 }
 
 /**
- * Each sweep of a .dc line, read by place as ngspice 47 reads it (inp2dot.c, dot_dc): a name, then
- * three numbers, the start, the stop and the step. A word that is no number in a number's place
- * stops ngspice 47 ('Bad syntax!', dc-sweep-problems-9, -10): it is said there, never taken for the
- * name of another sweep. A word another check already explains (an invisible character, a look-alike,
- * a character that looks like a space, the Greek mu) is left to that check, and the rest of the line
- * with it: no fix may rewrite the sweep around it (re-check S5). Where the step goes, a word that names
- * a part or temp starts the next sweep: the step is missing.
+ * A .dc line read by place, as ngspice 47 reads it (inp2dot.c, dot_dc): a name, then the start, the stop
+ * and the step; then, when anything follows, a second sweep read the same way; anything after that is
+ * ignored (dc-sweep-problems-19). ngspice 47 stops ('Bad syntax!') when the line ends before a sweep has
+ * its three numbers, or when a step is 0; a word that is no number reads as 0 there and is never taken
+ * up, so that stops it too (dc-sweep-problems-1, -2, -9 to -13, -18). A word in braces or quotes is a
+ * number numparam works out first (dc-sweep-problems-17). A word a character check explains is that
+ * check's, which says what ngspice does with the number it reads there (analysisPlace): its sweep is not
+ * read again here (re-check S5 and its critic, CR1-2). A number where the second sweep's name goes is
+ * one number too many (CR1-6); a name with a character that is not what it looks like is said so
+ * (CR1-12); "Sweep V1 instead" is never offered for a source the line already sweeps. Where the step goes,
+ * a part's name or temp starts the next sweep: the step is missing.
  */
 function checkDc(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
   const args = d.args;
   const line = c.byLine.get(lineAt(c.n, d.token.from).number) ?? [];
-  const covered = (t: Token): boolean => line.some((x) => x.id !== 'dc-sweep-problems' && x.span.from <= t.from && t.to <= x.span.to);
+  const covered = (t: Token): boolean => line.some((x) => CHARACTER_CHECKS.has(x.id) && x.span.from <= t.from && t.to <= x.span.to);
   const sweepName = (t: Token): boolean => lowerAscii(t.text) === 'temp' || c.byKey.has(lowerAscii(t.text));
+  // A word in braces or quotes is worked out by numparam before ngspice reads the line (dc-sweep-problems-17).
+  const expression = (t: Token): boolean => /^[{']/.test(t.text);
+  const isNumber = (t: Token): boolean => !expression(t) && readNumber(t.text) !== undefined;
+  const sources = independentSources(c);
+  // The sources the line sweeps already: "Sweep V1 instead" must not make it sweep V1 twice.
+  const named = new Set(args.filter((t, k) => k === 0 || (k === 4 && !isNumber(t))).map((t) => lowerAscii(t.text)));
+  const instead = sources.length === 1 && !named.has(sources[0]!.key) ? sources[0] : undefined;
   let k = 0;
-  while (k < args.length) {
+  for (let sweep = 0; sweep < 2 && k < args.length; sweep++) {
     const src = args[k]!;
+    if (sweep === 1 && isNumber(src)) {
+      // A number where the second sweep's name goes (.dc V1 0 5 1 2): one number too many. ngspice 47
+      // takes it for a name, and stops at the line unless three more words follow; 42 looks for the part.
+      let last = k;
+      while (last + 1 < args.length && isNumber(args[last + 1]!)) last += 1;
+      const extra = args.slice(k, last + 1);
+      const words = extra.map((t) => shownWord(t.text)).join(' ');
+      const whole = args.length >= k + 4;
+      add(c, 'dc-sweep-problems', 'error', { from: src.from, to: args[last]!.to }, `${extra.length === 1 ? 'One number' : `${extra.length} numbers`} too many on this .dc line`,
+        `.dc ${args.slice(0, 4).map((t) => shownWord(t.text)).join(' ')} is a whole sweep: the source, the start, the stop and the step. SPICE takes the next word, ${shownWord(src.text)}, for the name of a second source to sweep, and there is no part called ${shownWord(src.text)}.`,
+        whole
+          ? `ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named "${ngspiceSpelling(src.text)}" is not in the circuit'. [dc-sweep-problems-14]`
+          : `ngspice 47 stops: 'Bad syntax!'. ngspice 42 takes ${shownWord(src.text)} for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "${ngspiceSpelling(src.text)}" is not in the circuit'. [dc-sweep-problems-13]`,
+        [fix(`Delete ${words}`, change(args[k - 1]!.to, args[last]!.to, ''))]);
+      return;
+    }
     const nums: Token[] = [];
     let j = k + 1;
     for (; j < args.length && nums.length < 3; j++) {
-      if (nums.length === 2 && !readNumber(args[j]!.text) && sweepName(args[j]!)) break;
+      if (nums.length === 2 && !isNumber(args[j]!) && !expression(args[j]!) && sweepName(args[j]!)) break;
       nums.push(args[j]!);
     }
     k = j;
-    if ([src, ...nums].some(covered)) return;
-    const bad = nums.findIndex((t) => !readNumber(t.text));
+    if ([src, ...nums].some(covered)) continue;
+    const name = shownWord(src.text);
+    const bad = nums.findIndex((t) => !expression(t) && readNumber(t.text) === undefined);
     if (bad >= 0) {
       const t = nums[bad]!;
       const place = ['start', 'stop', 'step'][bad]!;
-      // The letter O typed for the digit 0 (.dc V1 O 5 1): say so, and write the zero (re-check C4).
-      const zero = /^[Oo]$/.test(cleanWord(t.text, true).clean) ? '0' : zeroForLetterO(t.text);
+      // The letter O typed for the digit 0 (.dc V1 O 5 1): say so, and write the zero; never a step of 0 (re-check C4, CR1-8).
+      const zero = bad === 2 ? undefined : /^[Oo]$/.test(cleanWord(t.text, true).clean) ? '0' : zeroForLetterO(t.text);
+      const letterO = zero !== undefined || /^[Oo]$/.test(cleanWord(t.text, true).clean);
+      // A name from a .param line is that number only in braces (dc-sweep-problems-17, -18).
+      const param = c.topParams.has(lowerAscii(t.text)) && KEYWORD.test(t.text);
       add(c, 'dc-sweep-problems', 'error', t, `The ${place} of this sweep is not a number`,
-        `.dc ${src.text} needs three numbers after the name: the start, the stop and the step, for example .dc ${src.text} 0 5 1. Here ${t.text} stands where the ${place} goes${zero ? ', with a letter O where the digit 0 belongs' : ''}.`,
-        `ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]`,
-        zero ? [fix(`Write ${zero}`, replace(t, zero))] : []);
+        `.dc ${name} needs three numbers after the name: the start, the stop and the step, for example .dc ${name} 0 5 1. Here ${shownWord(t.text)} stands where the ${place} goes${letterO ? ', with a letter O where the digit 0 belongs' : ''}.${param ? ` To use the value ${t.text} has on its .param line, write it in braces: {${t.text}}.` : ''}`,
+        `ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10${param ? ', dc-sweep-problems-18' : ''}]`,
+        zero !== undefined ? [fix(`Write ${zero}`, replace(t, zero))] : param ? [fix(`Write {${t.text}}`, replace(t, `{${t.text}}`))] : []);
       return;
     }
-    const name = lowerAscii(src.text);
-    if (name !== 'temp') {
-      const target = c.byKey.get(name);
+    if (nums.length < 2) {
+      // The line ends before the stop (.dc V1, .dc V1 0, a second sweep's name alone): ngspice 47 stops, 42 never finishes.
+      add(c, 'dc-sweep-problems', 'error', { from: src.from, to: (nums[nums.length - 1] ?? src).to }, `.dc needs a start, a stop and a step for ${name}`,
+        `.dc sweeps a source from a start to a stop in steps, three numbers after its name: .dc ${name} 0 5 1 sweeps it from 0 to 5 in steps of 1. Here ${name} has ${nums.length === 0 ? 'no number after it' : `only ${shownWord(nums[0]!.text)} after it`}.`,
+        `ngspice 47 stops: 'Bad syntax!'. ngspice 42 never finishes. [${sweep === 0 ? 'dc-sweep-problems-11' : 'dc-sweep-problems-12'}]`);
+      return;
+    }
+    const key = lowerAscii(src.text);
+    if (key !== 'temp') {
+      const target = c.byKey.get(key);
       const targetEl = target === undefined ? undefined : el(c, target);
-      if (!sweepable(targetEl)) {
-        const sources = independentSources(c);
-        add(c, 'dc-sweep-problems', 'error', src, targetEl ? `.dc can't sweep ${src.text}` : `.dc sweeps ${src.text}, which is not in the circuit`,
-          `.dc sweeps a voltage source, a current source, a resistor, or the temperature (temp), named first on its line. ${targetEl ? `${nameOf(targetEl)} is none of these.` : `There is no part called ${src.text}.`}`,
-          `ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named "${name}" is not in the circuit'. [dc-sweep-problems-6, dc-sweep-problems-7]`,
-          sources.length === 1 ? [fix(`Sweep ${nameOf(sources[0]!)} instead`, replace(src, nameOf(sources[0]!)))] : []);
+      const meant = withoutInvisible(cleanWord(src.text).clean);
+      const odd = !targetEl && meant !== src.text && c.byKey.has(lowerAscii(meant)) ? cleanWord(src.text).odd[0] : undefined;
+      if (odd !== undefined) {
+        // A character that is not what it looks like in the name (<zero-width space>V1, V１): ngspice keeps it,
+        // so the name is no part's (dc-sweep-problems-15, -16; re-check critic CR1-12). Named, never shown.
+        const what = describeCharacter(odd);
+        add(c, 'dc-sweep-problems', 'error', src, INVISIBLE.test(odd) ? `${capital(what)} hides in the name ${meant}` : `The name ${meant} is written with ${what.replace(/, which .*$/, '')}`,
+          INVISIBLE.test(odd)
+            ? `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so .dc names no part of the circuit: not ${meant}.`
+            : `It looks like ${lookAlikeOf(odd)}, but SPICE knows only the plain ${/\d/.test(lookAlikeOf(odd) ?? '') ? 'digit' : 'letter'} ${lookAlikeOf(odd)}, so .dc names no part of the circuit: not ${meant}.`,
+          `ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named "${ngspiceSpelling(src.text)}" is not in the circuit'. [${INVISIBLE.test(odd) ? 'dc-sweep-problems-15' : 'dc-sweep-problems-16'}]`,
+          [fix(INVISIBLE.test(odd) ? `Take it out: sweep ${meant}` : `Write ${meant}`, replace(src, meant))]);
+      } else if (!sweepable(targetEl)) {
+        add(c, 'dc-sweep-problems', 'error', src, targetEl ? `.dc can't sweep ${name}` : `.dc sweeps ${name}, which is not in the circuit`,
+          `.dc sweeps a voltage source, a current source, a resistor, or the temperature (temp), named first on its line. ${targetEl ? `${nameOf(targetEl)} is none of these.` : `There is no part called ${name}.`}`,
+          `ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named "${ngspiceSpelling(src.text)}" is not in the circuit'. [dc-sweep-problems-6, dc-sweep-problems-7]`,
+          instead ? [fix(`Sweep ${nameOf(instead)} instead`, replace(src, nameOf(instead)))] : []);
       }
     }
     const [t0, t1, t2] = nums;
-    const start = num(t0);
-    const stop = num(t1);
+    const value = (t: Token | undefined): number | undefined => (t && !expression(t) ? readNumber(t.text)?.value : undefined);
+    const start = value(t0);
+    const stop = value(t1);
     if (start === undefined || stop === undefined || !t1) continue;
-    const intro = `.dc ${src.text} ${t0!.text} ${t1.text} ${t2?.text ?? '<step>'} means: sweep ${src.text} from ${t0!.text} to ${t1.text} in steps of ${t2?.text ?? '<step>'}.`;
+    const [w0, w1, w2] = [t0!, t1, t2].map((t) => (t ? shownWord(t.text) : '<step>'));
+    const intro = `.dc ${name} ${w0} ${w1} ${w2} means: sweep ${name} from ${w0} to ${w1} in steps of ${w2}.`;
     const tenth = (stop - start) / 10;
     const tenthText = formatSpiceNumber(tenth);
     const hangs = "ngspice 47 stops: 'Bad syntax!'. ngspice 42 never finishes: it keeps sweeping the first point. [dc-sweep-problems-1, dc-sweep-problems-2]";
     if (!t2) {
       add(c, 'dc-sweep-problems', 'error', { from: src.from, to: t1.to }, '.dc needs a step',
-        `.dc needs four things: the source to sweep, the start, the stop and the step. For example .dc ${src.text} ${t0!.text} ${t1.text} ${tenth !== 0 ? tenthText : '1'}.`,
+        `.dc needs four things: the source to sweep, the start, the stop and the step. For example .dc ${name} ${w0} ${w1} ${tenth !== 0 ? tenthText : '1'}.`,
         hangs, tenth !== 0 ? [fix(`Add a step of ${tenthText} (10 steps)`, change(t1.to, t1.to, ` ${tenthText}`))] : []);
       continue;
     }
-    const step = num(t2);
+    const step = value(t2);
     if (step === undefined) continue;
     if (step === 0) {
       add(c, 'dc-sweep-problems', 'error', t2, 'A step of 0 never reaches the stop',
@@ -2136,25 +2450,34 @@ function checkDc(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
         tenth !== 0 ? [fix(`Use a step of ${tenthText} (10 steps)`, replace(t2, tenthText))] : []);
     } else if (step > 0 && start > stop) {
       add(c, 'dc-sweep-problems', 'error', { from: t0!.from, to: t2.to }, 'This sweep has no points: start is above stop',
-        `${intro} Going up in steps of ${t2.text} from ${t0!.text} never gets down to ${t1.text}. Swap the two ends, or use a negative step to sweep downwards.`,
+        `${intro} Going up in steps of ${w2} from ${w0} never gets down to ${w1}. Swap the two ends, or use a negative step to sweep downwards.`,
         'ngspice runs no sweep points and says nothing: the results are empty. [dc-sweep-problems-4]',
-        [fix(`Swap them: from ${t1.text} to ${t0!.text}`, replace(t0!, t1.text), replace(t1, t0!.text)),
+        [fix(`Swap them: from ${w1} to ${w0}`, replace(t0!, t1.text), replace(t1, t0!.text)),
           fix(`Go down: make the step ${formatSpiceNumber(-step)}`, replace(t2, formatSpiceNumber(-step)))]);
     } else if (step < 0 && start < stop) {
       add(c, 'dc-sweep-problems', 'error', t2, 'This sweep has no points: the step goes the wrong way',
-        `${intro} Going down in steps of ${t2.text} from ${t0!.text} never gets up to ${t1.text}.`,
+        `${intro} Going down in steps of ${w2} from ${w0} never gets up to ${w1}.`,
         'ngspice runs no sweep points and says nothing: the results are empty. [dc-sweep-problems-3]',
         [fix(`Make the step ${formatSpiceNumber(-step)}`, replace(t2, formatSpiceNumber(-step)))]);
     } else if (start !== stop && Math.abs(step) > Math.abs(stop - start)) {
       add(c, 'dc-sweep-problems', 'warning', t2, 'The step is bigger than the whole sweep',
-        `${intro} One step jumps past ${t1.text}, so the sweep has only its first point.`,
-        `ngspice computes only the first point (${src.text} = ${t0!.text}) and says nothing. [dc-sweep-problems-5]`,
+        `${intro} One step jumps past ${w1}, so the sweep has only its first point.`,
+        `ngspice computes only the first point (${name} = ${w0}) and says nothing. [dc-sweep-problems-5]`,
         [fix(`Use a step of ${tenthText} (10 steps)`, replace(t2, tenthText))]);
     }
   }
 }
 
+/**
+ * The numbers of a .tran line as ngspice reads them: the step, the stop time, the start time. A word a
+ * character check explains is that check's, which says what ngspice does with the number it reads
+ * there (analysisPlace): the line is not read again here, so no second trap reads 0<zero-width
+ * space>.5 as 0 and no fix writes the character back (re-check critic CR1-13). Words are shown without
+ * their invisible characters.
+ */
 function checkTran(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
+  const line = c.byLine.get(lineAt(c.n, d.token.from).number) ?? [];
+  if (d.args.some((t) => line.some((x) => CHARACTER_CHECKS.has(x.id) && x.span.from <= t.from && t.to <= x.span.to))) return;
   const args = d.args.filter((t) => lowerAscii(t.text) !== 'uic');
   const [a0, a1, a2] = args;
   if (!a0) {
@@ -2165,12 +2488,13 @@ function checkTran(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
   }
   const tstep = num(a0);
   if (tstep === undefined) return;
+  const [w0, w1, w2] = [a0, a1, a2].map((t) => (t ? shownWord(t.text) : ''));
   if (!a1) {
     const step = formatSpiceNumber(tstep / 100);
     add(c, 'tran-problems', 'error', a0, '.tran needs a stop time',
-      `.tran needs at least two numbers: the step and the stop time, for example .tran ${step} ${a0.text}. With one number, SPICE takes it as the step and finds no stop time.`,
+      `.tran needs at least two numbers: the step and the stop time, for example .tran ${step} ${w0}. With one number, SPICE takes it as the step and finds no stop time.`,
       "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [tran-problems-1]",
-      tstep > 0 ? [fix(`Use ${a0.text} as the stop time: .tran ${step} ${a0.text}`, change(a0.from, a0.from, `${step} `))] : []);
+      tstep > 0 ? [fix(`Use ${w0} as the stop time: .tran ${step} ${w0}`, change(a0.from, a0.from, `${step} `))] : []);
     return;
   }
   const tstop = num(a1);
@@ -2178,25 +2502,33 @@ function checkTran(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
   if (tstep <= 0) {
     const step = formatSpiceNumber(tstop / 100);
     add(c, 'tran-problems', 'error', a0, `The step of .tran must be more than 0`,
-      `.tran ${a0.text} ${a1.text} means: steps of ${a0.text} up to ${a1.text}. The step has to be a positive time.`,
+      `.tran ${w0} ${w1} means: steps of ${w0} up to ${w1}. The step has to be a positive time.`,
       "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [tran-problems-2, tran-problems-7]",
       tstop > 0 ? [fix(`Use a step of ${step}`, replace(a0, step))] : []);
+    return;
+  }
+  if (tstop <= 0) {
+    // ngspice reads the step first, then the stop time (inp2dot.c): a stop of 0 or less stops it (tran-problems-8).
+    add(c, 'tran-problems', 'error', a1, 'The stop time of .tran must be more than 0',
+      `.tran ${w0} ${w1} means: steps of ${w0} up to ${w1}. The stop time has to be a positive time, the length of the run.`,
+      "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [tran-problems-8]",
+      tstop < 0 ? [fix(`Make it ${formatSpiceNumber(-tstop)}`, replace(a1, formatSpiceNumber(-tstop)))] : []);
     return;
   }
   const tstart = num(a2);
   if (a2 && tstart !== undefined && tstart >= tstop) {
     add(c, 'tran-problems', 'error', a2, 'The start time is not before the stop time',
-      `The third number of .tran is the time to start saving results (${a2.text}); it must be less than the stop time (${a1.text}).`,
+      `The third number of .tran is the time to start saving results (${w2}); it must be less than the stop time (${w1}).`,
       "ngspice stops: 'TSTART is invalid, must be less than TSTOP.' [tran-problems-4, tran-problems-5]",
-      [fix(`Remove the start time ${a2.text}`, change(a1.to, a2.to, ''))]);
+      [fix(`Remove the start time ${w2}`, change(a1.to, a2.to, ''))]);
     return;
   }
   if (tstep > tstop) {
     const step = formatSpiceNumber(tstop / 100);
     add(c, 'tran-problems', 'info', a0, 'The step is longer than the whole run',
-      `.tran ${a0.text} ${a1.text} means: steps of ${a0.text} up to ${a1.text}. A step longer than the whole run is probably a slip.`,
+      `.tran ${w0} ${w1} means: steps of ${w0} up to ${w1}. A step longer than the whole run is probably a slip.`,
       'ngspice runs and says nothing; it chooses its own time steps (in one test, 59 points for .tran 1 5m), so the curve still looks fine. [tran-problems-3]',
-      [fix(`Use a step of ${step} (a hundredth of ${a1.text})`, replace(a0, step))]);
+      [fix(`Use a step of ${step} (a hundredth of ${w1})`, replace(a0, step))]);
   }
 }
 
@@ -2383,9 +2715,10 @@ function checkZeroOhm(c: Ctx, i: number): void {
   }
   // A 0 that another check already explains (0<zero-width space>.47, 0R47, 0k47, 0．47 ...: the student
   // meant 470 mΩ, and ngspice reads 0 only because of how it is written) is that check's: its fix
-  // writes what was meant, where "Use a 0 V source" would make a short (re-check C1).
+  // writes what was meant, where "Use a 0 V source" would make a short (re-check C1), and its words say
+  // what ngspice 47 does with 0 Ω, as these do (zeroOhm; its critic, CR1-1).
   const tok = e.value!.token;
-  if ((c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
+  if (v === 0 && (c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
   const fixes: Fix[] = [];
   if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
     const name = freshName(c, `V${e.name.text}`);
