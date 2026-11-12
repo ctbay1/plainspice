@@ -1229,6 +1229,8 @@ describe('after the final reviews (12 November 2026)', () => {
       expect(said(net(extra)), extra).toContain(found);
     }
     expect(said(net(`*# save v(${name}) i(v1)\n`))).toContain(`On a *# line, a command for ngspice, it reads the name as written too, so it finds no node ${name} there. [`);
+    // The critic's netlist, in full: the run gives v(v-sweep) and i(v1) (non-ascii-node-7).
+    expect(said(net(`.control\nsave v(${name}) i(v1)\nrun\n.endc\n`))).toBe(`ngspice spells the node ____k____ in its printout and results. ${found}`);
     // .op: PlainSpice adds .options savecurrents to the copy it runs, so every part's current is saved (non-ascii-node-9).
     expect(said(net(`.control\nsave v(${name})\nrun\n.endc\n`, '.op'))).toContain(found);
     // .tf: its results are no node voltages, so a save of any node leaves nothing, the plain name too: nothing is claimed.
