@@ -390,6 +390,10 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   foot and the README as in the hint line and the Checks panel; "ignores" stays for characters inside
   a line (a unit after a number).
 - **Thévenin** (W12). The basics' F5 is "Thévenin resistance with a dependent source", as the channel
-  spells it, so Ctrl+K finds it with the video's examples. The title line of its netlist
-  (`tests/fixtures/f5-thevenin-cccs.cir`) still says "Thevenin": that text is recorded in the golden
-  runs and quoted in the share-link documents.
+  spells it, in the Examples menu, Ctrl+K and "Opened the example …", so Ctrl+K finds it with the
+  video's examples. Known gap: the title line of its netlist (`tests/fixtures/f5-thevenin-cccs.cir`)
+  still says "Thevenin", and F5 opened from the menu shows that line as the page's heading and the
+  drawing's name ("F5: Thevenin resistance with a dependent source (test source method)"). The
+  fixture stays as it is (the golden runs record it, and the published F5 link decodes to it); an
+  accented title line for F5 opened as an example belongs to `src/app/examples.ts`, not done this
+  round.
