@@ -644,6 +644,17 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       // One X line with names ngspice spells the same: one error, whose one fix renames every one of them.
       ['names on one X line that ngspice spells the same', (nodes, comments) =>
         ['* one line', 'V1 a 0 1', `X1 ${Array.from({ length: nodes }, (_, i) => `a${bits(i)}`).join(' ')} sub`, `.subckt sub${' p'.repeat(nodes)}`, '.ends', ...lines(comments), '.op', '.end'].join('\n'), [200, 4000]],
+      // Each name on a .print line and saved in a .control block too: the sentences for those lines read the
+      // .control lines once (controlNodes, savesNothing), not once per name (names lane critic).
+      ...([['a Turkish letter on .print and .control lines', 'ş'], ['a zero-width space on .print and .control lines', '\u200b']] as const).map(
+        ([what, odd]): [string, (nodes: number, comments: number) => string, [number, number]] => [
+          what,
+          (nodes, comments) =>
+            ['* many names', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x${odd}${i} 1k`), ...lines(comments), '.dc V1 0 1 1',
+              ...Array.from({ length: nodes }, (_, i) => `.print dc v(x${odd}${i})`), '.control', ...Array.from({ length: nodes }, (_, i) => `save v(x${odd}${i})`), 'run', '.endc', '.end'].join('\n'),
+          [200, 4000],
+        ],
+      ),
       // Names whose plain letters are all "x", with no comment lines: the new names x2, x3 ... were counted
       // up from 2 for each of them.
       ['names with the same plain letters', (nodes, comments) =>
