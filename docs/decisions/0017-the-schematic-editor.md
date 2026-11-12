@@ -338,8 +338,8 @@ browsers other than Chromium.
   the new part's card opens as a sheet in the hint line's place, so the time starts when the sheet
   closes (`src/app/hint-note.ts`). Moving the pointer, closing the card (Escape or its close button),
   typing its value, or another change with nothing to say leaves it in place; a change with a note of
-  its own, a refusal, a tool chosen, Undo or Redo, another circuit opened, or an Escape that does more
-  than close a card takes its place at once.
+  its own, a refusal, a tool chosen, Undo or Redo, another circuit opened, or an Escape for anything
+  but closing a card takes it away at once.
 - **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
   now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
   every node name in the circuit's undo history: the texts Undo can go back to since the circuit was
