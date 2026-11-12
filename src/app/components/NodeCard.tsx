@@ -18,6 +18,8 @@ export interface NodeCardProps {
   notch?: number;
   /** The node's name as written ("out"); ground's name in words for ground. */
   name: string;
+  /** The node as a sentence says it ("node out", 'node "ground"', "node1"), for the names of its close button and field; ground's name for ground. */
+  said: string;
   ground: boolean;
   /** The name field's text, and why the last rename was refused (the model's words). */
   input: string;
@@ -80,7 +82,7 @@ export function NodeCard(p: NodeCardProps): ReactNode {
             </>
           )}
         </h2>
-        <button className="icon-button" type="button" onClick={p.onClose} aria-label={t('nodeCardClose', { name: p.name })}>
+        <button className="icon-button" type="button" onClick={p.onClose} aria-label={t('nodeCardClose', { node: p.said })}>
           <LineIcon name="close" />
         </button>
       </div>
@@ -113,7 +115,7 @@ export function NodeCard(p: NodeCardProps): ReactNode {
                     value={p.input}
                     aria-invalid={p.refused ? true : undefined}
                     // Its label is set in capitals by the style; said in sentence case.
-                    aria-label={t('nodeCardNameOf', { name: p.name })}
+                    aria-label={t('nodeCardNameOf', { node: p.said })}
                     aria-describedby={`${id}-why`}
                     onChange={(e) => p.onInput(e.target.value)}
                   />

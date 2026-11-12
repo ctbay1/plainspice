@@ -332,7 +332,8 @@ export const en = {
   and: 'and',
   nodeCardKind: 'Node',
   nodeCardName: 'Name',
-  nodeCardNameOf: 'Name of node {name}',
+  /** {node} as a sentence says it: "node out", 'node "ground"', "node1" (nodeInSentence). */
+  nodeCardNameOf: 'Name of {node}',
   nodeCardRename: 'Rename',
   nodeCardRenameHint: 'Letters, digits and _. A name another node already has makes the two one node.',
   nodeCardVoltage: 'Voltage',
@@ -340,7 +341,8 @@ export const en = {
   nodeCardMoveName: 'Move its name',
   nodeCardMoveGround: 'Move the ground symbol',
   nodeCardDeleteGround: 'Delete the ground symbol',
-  nodeCardClose: 'Close the card of {name}',
+  /** {node} as a sentence says it ("node out"), or ground's name. */
+  nodeCardClose: 'Close the card of {node}',
   formTitle: 'Add a part',
   formIntro: 'A part goes between two nodes, as its line in the netlist names them. PlainSpice writes the line and draws the part where it fits.',
   formKind: 'Part',

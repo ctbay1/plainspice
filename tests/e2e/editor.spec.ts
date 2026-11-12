@@ -125,7 +125,7 @@ test('builds Start here on a blank page with the mouse: place, values, turn, gro
   await card.getByRole('textbox', { name: t('nodeCardName') }).press('Enter');
   await expectAnnounced(page, 'Node n4 renamed to out.');
   await expectSolved(page);
-  await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription(/out is 4 volts/, { timeout: RUN_TIMEOUT });
+  await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription(/\. Node out is 4 volts\.$/, { timeout: RUN_TIMEOUT });
   expect(await drawnText(page)).toMatch(/=\s4\sV/);
   await expect.poll(() => savedNetlist(page)).toMatch(/^\* circuit\nV1 n1 0 6\nR1 n1 out 1k\nR2 out 0 2k\n\.op\n\* plainspice-drawing v1\n/);
 });
@@ -208,7 +208,7 @@ test('builds Start here again with the keyboard only (no pointer at all), throug
   await expectSolved(page);
   // The new part has the focus on the drawing; ngspice's numbers are in its description.
   await expect(partOnDrawing(page, 'R2')).toBeFocused();
-  await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription(/out is 4 volts/, { timeout: RUN_TIMEOUT });
+  await expect(drawing(page).getByRole('button', { name: 'Node out' })).toHaveAccessibleDescription(/\. Node out is 4 volts\.$/, { timeout: RUN_TIMEOUT });
   expect(await page.evaluate(() => (window as unknown as { pointers: number }).pointers), 'no pointer event at all').toBe(0);
 });
 

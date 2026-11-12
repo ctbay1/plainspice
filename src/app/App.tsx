@@ -95,7 +95,7 @@ import {
 } from '../schematic/index.ts';
 import { decodeShare } from '../share/link.ts';
 import { formatSI, speakSI } from '../format/si.ts';
-import { DESCRIBE_STRINGS } from '../spice/describe.ts';
+import { DESCRIBE_STRINGS, sentenceNode } from '../spice/describe.ts';
 import { elementInfo } from '../spice/elements.ts';
 import type { Fix, Trap } from '../spice/types.ts';
 import { AnnouncerProvider, useAnnounce } from './announcer.tsx';
@@ -179,7 +179,7 @@ import { clearShareFragment, type StartupDecision } from './startup.ts';
 import { STORAGE_KEYS, writeStored } from './storage.ts';
 import { createNetlistStore, type Change, type NetlistStore } from './store.ts';
 import { useDebounced, whenIdle } from './timing.ts';
-import { afterColon, analysisName, hintWords, offsetWords, pressRun, statusWords, type EngineStatus } from './words.ts';
+import { afterColon, analysisName, hintWords, nodeInSentence, offsetWords, pressRun, statusWords, type EngineStatus } from './words.ts';
 
 export interface AppProps {
   startup: StartupDecision;
@@ -1994,15 +1994,18 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const info = schematic.circuit.nodes.get(nodeCard.node) ?? (nodeCard.renamed !== undefined ? schematic.circuit.nodes.get(nodeCard.renamed) : undefined);
     if (!ground && !info) return undefined;
     const name = ground ? t('groundName') : (info?.text ?? nodeCard.node);
+    // "node in is 6 volts", 'node "ground" is 4 volts': a name may be an ordinary word (words re-check 2).
+    const sentence = sentenceNode(name);
     const n = results.nodes.find((x) => x.node === nodeCard.node);
     const label = schematic.drawing.labels.some((l) => l.node === nodeCard.node);
     const voltage = ground
       ? { text: formatSI(0, 'V'), speech: DESCRIBE_STRINGS.valueIsSpeech(EDIT_STRINGS.ground, speakSI(0, 'V')), pending: false }
       : n
-        ? { text: n.mark ? n.mark.text.replace(/^=\s*/, '') : n.words.text, speech: DESCRIBE_STRINGS.valueIsSpeech(name, n.words.speech), pending: !current }
+        ? { text: n.mark ? n.mark.text.replace(/^=\s*/, '') : n.words.text, speech: DESCRIBE_STRINGS.valueIsSpeech(DESCRIBE_STRINGS.node(sentence), n.words.speech), pending: !current }
         : undefined;
     return {
       name,
+      said: ground ? name : nodeInSentence(sentence),
       ground,
       input: nodeCard.input,
       ...(nodeCard.refused ? { refused: nodeCard.refused } : {}),
