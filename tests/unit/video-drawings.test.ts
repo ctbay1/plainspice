@@ -120,12 +120,14 @@ describe.each(manifest.examples.map((e) => e.id))('%s', (id) => {
     expect(lines[lines.length - 1]).toBe('.end');
   });
 
+  // The first test of each example runs the converter (the tests after it reuse its result): 0.3 to 1.3 s
+  // alone (sp01-3, e04-4); 8.4 s at load 13 on 4 cores, past vitest's 5 s: 30 s, as the app's slow tests have.
   it('is exactly what the converter makes from the committed recording', () => {
     const c = converted(id);
     expect(c.text).toBe(text);
     // Nothing else in the file: without the block, the netlist is the one the channel's design file gives.
     expect(stripDrawing(text)).toBe(stripDrawing(c.text));
-  });
+  }, 30_000);
 
   it('is clean in the Notebook look: no problem, no overlap, exactly the netlist’s connections, every part where the block puts it', () => {
     expect(s.origin).toBe('given');

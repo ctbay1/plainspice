@@ -303,13 +303,17 @@ describe('words where an edit leaves them', () => {
     expect(next.drawing.labels.find((l) => l.node === 'out')!.side).toBe('above-left');
   });
 
+  // About 1.2 s alone (every part of 30 drawings turned, each drawing built again and checked); 9 s at
+  // load 16 on 4 cores, past vitest's 5 s: 30 s, as the app's slow tests have.
   it('turning parts of the videos’ drawings rarely puts words on something (22 of 108 turns, every one before), nor of the automatic layouts (50, 78 before)', () => {
     expect(turnsAddingOverlaps(videos)).toBeLessThanOrEqual(25);
     expect(turnsAddingOverlaps(videos.map(stripDrawing))).toBeLessThanOrEqual(55);
-  });
+  }, 30_000);
 });
 
 describe('random edits on every example', () => {
+  // About 1.3 s alone (twelve random edits on each of the examples, each built again and checked); 9 s at
+  // load 16 on 4 cores, past vitest's 5 s: 30 s, as the app's slow tests have.
   it('keep the lines written exactly what the drawing shows, and the drawing connecting what the netlist connects', () => {
     let seed = 7;
     const rnd = (): number => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -342,5 +346,5 @@ describe('random edits on every example', () => {
       }
     }
     expect(made).toBeGreaterThan(80);
-  });
+  }, 30_000);
 });

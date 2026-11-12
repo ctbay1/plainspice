@@ -398,6 +398,8 @@ describe('<App />', () => {
     expect(screen.getAllByText('The link could not be opened')).toHaveLength(1);
   }, 30000);
 
+  // About 1 s alone (a slow run waited for, stopped, and run again); 1.6 s at load 16 on 4 cores: 30 s, as
+  // the other tests here have.
   it('Stop cancels a run that takes long: Run becomes Stop, and live runs wait for Run again', async () => {
     let reject: (e: Error) => void = () => undefined;
     const engine: Engine & { runs: number } = {
@@ -423,7 +425,7 @@ describe('<App />', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /R1/ }), { target: { value: '5' } });
     await new Promise((r) => setTimeout(r, 500));
     expect(engine.runs).toBe(1);
-  });
+  }, 30000);
 
   it('a run slower than 1.5 s pauses live runs: the status line says to press Run, and Run solves the new text', async () => {
     const engine = realEngine(1600);

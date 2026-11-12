@@ -345,6 +345,8 @@ describe('an independent check of the connectivity', () => {
 });
 
 describe('random circuits', () => {
+  // About 1.1 s alone (160 random circuits laid out and checked twice); 7.9 s at load 16 on 4 cores, past
+  // vitest's 5 s: 30 s, as the app's slow tests have.
   it('always connect exactly what their netlist connects, by the model and by the independent check, with no symbol on a symbol or a wire', () => {
     const rnd = random(20261110);
     for (let i = 0; i < 160; i++) {
@@ -355,7 +357,7 @@ describe('random circuits', () => {
       expect(symbolClashes(s), text).toEqual([]);
       expect(s.scene.parts.length, text).toBe(s.circuit.parts.length);
     }
-  });
+  }, 30_000);
 
   it('lay out a 20-part ladder quickly', () => {
     const lines = ['* ladder', 'V1 n0 0 10'];

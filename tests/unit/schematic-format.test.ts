@@ -278,6 +278,8 @@ describe('limits: a drawing line can never make the drawing slow or fail', () =>
     expect(long.wires.length).toBe(MAX_WIRE_LENGTH / 4000);
   });
 
+  // About 0.4 s alone (300 drawings of random drawing lines, each built and checked); 1.6 s at load 16
+  // on 4 cores and more at load 25: 30 s, as the app's slow tests have (each drawing still has its second).
   it('never throws and never takes long on garbage drawing lines (fuzz)', () => {
     let seed = 7;
     const rnd = (n: number): number => {
@@ -294,7 +296,7 @@ describe('limits: a drawing line can never make the drawing slow or fail', () =>
       expect(performance.now() - t0, text).toBeLessThan(1000);
       expect(schematicConnectivity(s!), text).toEqual([]);
     }
-  });
+  }, 30_000);
 });
 
 describe('fields and versions', () => {

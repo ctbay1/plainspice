@@ -516,6 +516,8 @@ describe('scripts/make-link.ts', () => {
     }
   });
 
+  // Node started six times: about 0.5 s alone, 4.1 s at load 16 on 4 cores (each start waits for a
+  // processor), most of vitest's 5 s: 30 s, as the app's slow tests have.
   it('explains its usage and exits 2 for wrong arguments', () => {
     for (const args of [[], ['--frobnicate', 'a.cir'], ['--base'], ['--base', 'ctbay1.github.io', 'a.cir'], ['--base', 'ftp://x/', 'a.cir']]) {
       const result = makeLink(...args);
@@ -523,5 +525,5 @@ describe('scripts/make-link.ts', () => {
       expect(result.stderr).toContain('Usage:');
     }
     expect(makeLink('--help').status).toBe(0);
-  });
+  }, 30_000);
 });
