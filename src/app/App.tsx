@@ -342,6 +342,44 @@ interface CardEdit {
   written: string;
 }
 
+/** An open phone sheet held where it is (AP-2): its height and scroll, which together put its rows on the screen. */
+interface SheetHold {
+  room: string;
+  sheet: HTMLElement;
+  body: HTMLElement;
+  /** How tall all its rows are, whatever room they have (its scroll box counts all it holds). */
+  rows: number;
+  /** The sheet's own greatest height (app.css), in pixels. */
+  cap: number;
+  height: number;
+  head: number;
+  scroll: number;
+  release: () => void;
+}
+
+const sheetRowsOf = (h: { body: HTMLElement }): number => h.body.scrollHeight;
+/** How far down the sheet its head ends (its grab and head). */
+const headOf = (sheet: HTMLElement): number => {
+  const head = sheet.querySelector<HTMLElement>(':scope > .card-head');
+  return head ? head.offsetTop + head.offsetHeight : 0;
+};
+
+/** Holds a sheet as it is laid out now: its scroll is followed as the student scrolls it. */
+function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement): SheetHold {
+  sheet.style.removeProperty('max-height');
+  const cap = Number.parseFloat(getComputedStyle(sheet).maxHeight);
+  const held: SheetHold = { room, sheet, body, rows: sheetRowsOf({ body }), cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY, height: sheet.offsetHeight, head: headOf(sheet), scroll: body.scrollTop, release: () => undefined };
+  const onScroll = (): void => {
+    held.scroll = body.scrollTop;
+  };
+  body.addEventListener('scroll', onScroll, { passive: true });
+  held.release = () => {
+    body.removeEventListener('scroll', onScroll);
+    sheet.style.removeProperty('max-height');
+  };
+  return held;
+}
+
 /** What the polite region says after a run (decision 0010): the summary, and each sweep's last point. */
 function resultsSaid(record: RunRecord): string {
   const error = record.checks.find((c) => c.severity === 'error');
@@ -1916,7 +1954,17 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // comes back with the short one its undo brings.
   const rowsKept = Math.min(SHEET_ROWS_KEPT_REM * 16 * textScale, sheetRows || Number.POSITIVE_INFINITY);
   const undoAtHand = phone && snap.canUndo && snap.last.source === 'drawing';
-  const statusKey = `${status.tone}|${status.main.replace(/\d+/g, '#')}|${status.detail ?? ''}|${undoAtHand ? 'undo' : ''}|${phone && turned ? 'turn' : ''}`;
+  const statusKeyNow = `${status.tone}|${status.main.replace(/\d+/g, '#')}|${status.detail ?? ''}|${undoAtHand ? 'undo' : ''}|${phone && turned ? 'turn' : ''}`;
+  // A run's own "Running…" (a change's or Run's, not ngspice loading) is no new status above a sheet: the
+  // step and the key of the last settled status are kept through it, and the lines keep its height
+  // (linesHeld), so each run neither brings the lines back above the sheet for a fifth of a second nor
+  // moves the sheet's rows (the second re-check, AP-2). Its result is measured again only if it differs.
+  const running = status.tone === 'busy' && status.main === t('statusSolving');
+  const [settledKey, setSettledKey] = useState(statusKeyNow);
+  useLayoutEffect(() => {
+    if (!running && settledKey !== statusKeyNow) setSettledKey(statusKeyNow);
+  }, [running, statusKeyNow, settledKey]);
+  const statusKey = running ? settledKey : statusKeyNow;
   const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}|${Math.round(rowsKept)}|${statusKey}` : undefined;
   const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
   const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
@@ -1937,6 +1985,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setGaveWay(undefined);
       return;
     }
+    // Not for a run's "Running…": a step taken for it would be kept for the settled status after it.
+    if (running) return;
     // Measured here, at this step and with the room it has now (linesMax): what the lines' watchers said
     // last may be from the step before, when the lines still gave way first.
     const over = (box: Element | null | undefined): boolean => !!box && box.scrollHeight > box.clientHeight + 1;
@@ -1944,7 +1994,45 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (linesStep === 0 && (over(box) || over(box?.querySelector('.hint-scroll')))) setGaveWay({ key: sheetKey, step: 1 });
     else if (linesStep === 1 && over(box)) setGaveWay({ key: sheetKey, step: 2 });
     // Measured again when the watchers see a change (words, sizes) or the room changes.
-  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax]);
+  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax, running]);
+
+  // An open sheet keeps its rows where they are on the screen while the lines above it change (a run, a
+  // new status, an undo, the hint): its top moves only as far as its scroll takes back, so a finger about
+  // to tap a row again (More's Undo, twice) finds it there. When the lines need more room the sheet gives
+  // it and its scroll moves on by as much; when they need less it takes back no more than its scroll can
+  // give back, and the paper takes the rest. Opening it, scrolling it, rows of its own coming or going, or
+  // a new window, text size or stack (a part in hand, the keyboard) lay it out afresh (AP-2).
+  const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
+  const sheetHold = useRef<SheetHold | undefined>(undefined);
+  useLayoutEffect(() => {
+    const sheet = sheetRoom ? document.querySelector<HTMLElement>('.phone-bottom > .sheet') : null;
+    const body = sheet?.querySelector<HTMLElement>(':scope > .card-body') ?? null;
+    let held = sheetHold.current;
+    // Its own rows changed (a check found, a netlist line added): laid out afresh, in the same frame.
+    if (held && (held.room !== sheetRoom || held.sheet !== sheet || held.body !== body || held.rows !== sheetRowsOf(held))) {
+      held.release();
+      held = sheetHold.current = undefined;
+    }
+    if (!sheetRoom || !sheet || !body) return;
+    if (!held) {
+      sheetHold.current = holdSheet(sheetRoom, sheet, body);
+      return;
+    }
+    // Where its rows are: the sheet's top (its height, the stack standing on the bar), below its head, less
+    // its scroll. (Its head may change on its own: the Checks count as a check is typed in.)
+    const keep = held.height - held.head + held.scroll;
+    const head = headOf(sheet);
+    const max = `${Math.floor(Math.min(held.cap, keep + head))}px`;
+    if (sheet.style.maxHeight !== max) sheet.style.maxHeight = max;
+    const height = sheet.offsetHeight;
+    if (height !== held.height || head !== held.head) {
+      body.scrollTop = keep - (height - head);
+      held.height = height;
+      held.head = head;
+      held.scroll = body.scrollTop;
+    }
+  });
+  useEffect(() => () => sheetHold.current?.release(), []);
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
@@ -1994,6 +2082,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // (A note that must be read shows with a part still in hand too: Shift+click keeps the tool.)
   const noteInHint = hintShowsNote(noteLine, { refused: refusalShown, inHand: !!hand, moving: !!move });
   const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
+  // The lines' height for the settled status, kept through a run's "Running…" (shorter or not, it takes
+  // no less room: a taller one, a button that came with the change, takes more).
+  const [linesSettled, setLinesSettled] = useState(0);
+  useLayoutEffect(() => {
+    if (!sheetKey || running || linesStep === 2) return;
+    const h = linesBox.current?.offsetHeight ?? 0;
+    setLinesSettled((old) => (old === h ? old : h));
+  }, [sheetKey, running, linesStep, statusKeyNow, hint, linesSqueezed, hintSqueezed, linesMax]);
+  const linesHeld = running && !!sheetKey && linesStep < 2 && linesSettled > 0 ? Math.min(linesSettled, linesMax ?? Number.POSITIVE_INFINITY) : undefined;
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
   // netlist being typed puts it aside, as does a sheet that needs its room (hintAside).
   const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !hintAside));
@@ -3561,9 +3658,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             // all of them out of sight (linesAside).
             // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             <footer
-              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}`}
+              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}${linesHeld !== undefined ? ' is-held' : ''}`}
               ref={linesBoxRef}
-              style={linesMax !== undefined ? { maxHeight: linesMax } : undefined}
+              style={linesMax !== undefined || linesHeld !== undefined ? { ...(linesMax !== undefined ? { maxHeight: linesMax } : {}), ...(linesHeld !== undefined ? { minHeight: linesHeld } : {}) } : undefined}
               {...(linesSqueezed && !linesAside ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
             >
               {lines}

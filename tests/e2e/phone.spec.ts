@@ -1021,6 +1021,176 @@ test('a sheet on a phone on its side keeps the status line and its Undo above it
   await expectUsable(page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }), 'the Parts sheet below the status line: Resistor');
 });
 
+/**
+ * From now on, on every frame: where each row of the open sheet is on the screen (More's rows, and each
+ * box and list item of a panel), each element by itself, and the status line's tone.
+ */
+async function logSheetRows(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { sheetRows: { mark: string; tone: string; top: number; rows: [number, string, number][] }[]; sheetMark: string; sheetIds: WeakMap<Element, number>; sheetStop?: boolean };
+    w.sheetRows = [];
+    w.sheetMark = 'start';
+    w.sheetIds = new WeakMap();
+    w.sheetStop = false;
+    let next = 0;
+    const tick = (): void => {
+      const sheet = document.querySelector('.phone-bottom > .sheet');
+      const rows: [number, string, number][] = [];
+      for (const e of sheet?.querySelectorAll('.more-row, .card-body > *, .card-body li') ?? []) {
+        const r = e.getBoundingClientRect();
+        if (!r.height) continue;
+        if (!w.sheetIds.has(e)) w.sheetIds.set(e, next++);
+        rows.push([w.sheetIds.get(e)!, (e.textContent ?? '').trim().slice(0, 30), r.top]);
+      }
+      w.sheetRows.push({ mark: w.sheetMark, tone: document.querySelector('.status')?.getAttribute('data-tone') ?? '', top: sheet?.getBoundingClientRect().top ?? Number.NaN, rows });
+      if (!w.sheetStop) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+/** A step, then once its run has come and gone, the page settled. */
+async function stepAndRun(page: Page, what: string, act: () => Promise<void>): Promise<void> {
+  await page.evaluate((m) => ((window as unknown as { sheetMark: string }).sheetMark = m), what);
+  await act();
+  await page.waitForFunction((m) => {
+    const frames = (window as unknown as { sheetRows: { mark: string; tone: string }[] }).sheetRows.filter((f) => f.mark === m);
+    return frames.some((f) => f.tone === 'busy') && /^(ok|bad)$/.test(frames.at(-1)?.tone ?? '');
+  }, what);
+  await settle(page);
+}
+
+/** Where the sheet's top was, at least and at most, in the frames of one step. */
+async function sheetTopsIn(page: Page, step: string): Promise<[number, number]> {
+  return page.evaluate((m) => {
+    const tops = (window as unknown as { sheetRows: { mark: string; top: number }[] }).sheetRows.filter((f) => f.mark === m).map((f) => f.top);
+    return [Math.min(...tops), Math.max(...tops)];
+  }, step);
+}
+
+/** Each row that moved on the screen while the log ran, with where it went (none: the rows stayed within a pixel). */
+async function rowsThatMoved(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { sheetRows: { mark: string; rows: [number, string, number][] }[]; sheetStop?: boolean };
+    w.sheetStop = true;
+    const seen = new Map<number, { name: string; tops: string[]; min: number; max: number }>();
+    for (const f of w.sheetRows)
+      for (const [id, name, top] of f.rows) {
+        const r = seen.get(id) ?? { name, tops: [], min: top, max: top };
+        if (r.tops.at(-1)?.startsWith(`${Math.round(top)} `) !== true) r.tops.push(`${Math.round(top)} (${f.mark})`);
+        r.min = Math.min(r.min, top);
+        r.max = Math.max(r.max, top);
+        seen.set(id, r);
+      }
+    return [...seen.values()].filter((r) => r.max - r.min > 1).map((r) => `${r.name}: ${r.tops.join(' → ')}`);
+  });
+}
+
+test('an open sheet keeps its rows where they are through each run, a new status and an undo (AP-2)', async ({ page }) => {
+  // The second re-check: while an error stood, each edit's "Running…" brought the status line back above the
+  // sheet for a fifth of a second and the sheet's top dropped (863 × 360: 105 → 143 → 105; 640 × 400:
+  // 199 → 148 → 199), and a new settled status moved the rows too (More's Undo, 320 × 568, from 463–509 to
+  // 404–450 when the error was undone): a quick second tap pressed the row below.
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  for (const view of [
+    { width: 863, height: 360, sheet: 'Checks' },
+    { width: 640, height: 400, sheet: 'Checks' },
+    { width: 320, height: 568, sheet: 'More' },
+  ] as const) {
+    const at = `${view.width} × ${view.height}, ${view.sheet} open`;
+    await page.setViewportSize({ width: view.width, height: view.height });
+    await openApp(page);
+    await expectSolved(page);
+    if (view.sheet === 'Checks') await openPanel(page, 'checks');
+    else {
+      await bar.getByRole('button', { name: t('barMore'), exact: true }).tap();
+      await page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('undo'), exact: true }).scrollIntoViewIfNeeded();
+    }
+    await settle(page);
+    await logSheetRows(page);
+    // The error: the ground deleted on the drawing with the keys. More keeps its rows where they are;
+    // Checks gets the error's row and its count (its own rows change: it is laid out afresh), so its rows
+    // are followed from the next step.
+    await stepAndRun(page, 'the ground deleted', async () => {
+      await partOnDrawing(page, 'Ground').focus();
+      await page.keyboard.press('Delete');
+    });
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+    if (view.sheet === 'Checks') {
+      await rowsThatMoved(page);
+      await logSheetRows(page);
+    }
+    await stepAndRun(page, 'T on R2', async () => {
+      await partOnDrawing(page, 'R2').focus();
+      await page.keyboard.press('t');
+    });
+    await stepAndRun(page, 'T again', () => page.keyboard.press('t'));
+    await stepAndRun(page, 'Ctrl+Z', () => page.keyboard.press('Control+z'));
+    await stepAndRun(page, 'Ctrl+Z again', () => page.keyboard.press('Control+z'));
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+    // A run whose status is the one before it moves nothing at all, the sheet's head included: its
+    // "Running…" is no new status (it brought the lines back above the sheet, or took them another height).
+    for (const step of ['T again', 'Ctrl+Z again']) {
+      const [lo, hi] = await sheetTopsIn(page, step);
+      expect(hi - lo, `${at}, ${step}: the sheet's top moves (${lo} to ${hi})`).toBeLessThanOrEqual(1);
+    }
+    // The error undone: a new, shorter status (More's rows are the same rows; Checks' change).
+    if (view.sheet === 'More') {
+      await stepAndRun(page, 'the error undone', () => page.keyboard.press('Control+z'));
+      await expect(statusLine(page)).toHaveAttribute('data-tone', 'ok');
+    }
+    expect(await rowsThatMoved(page), `${at}: the sheet's rows that moved`).toEqual([]);
+    // Start here as it was for the next view (the netlist is saved on this device).
+    if (view.sheet === 'Checks') await page.keyboard.press('Control+z');
+    await expectSolved(page);
+  }
+});
+
+test('two quick taps on More’s Undo, 150 ms apart, undo twice while an error stands (320 × 568, AP-2)', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await openApp(page);
+  await expectSolved(page);
+  // Three changes: the ground deleted (an error), R2 turned twice.
+  await partOnDrawing(page, 'Ground').focus();
+  await page.keyboard.press('Delete');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  for (let i = 0; i < 2; i++) {
+    await partOnDrawing(page, 'R2').focus();
+    await page.keyboard.press('t');
+    await expect(statusLine(page).getByRole('button', { name: t('undo'), exact: true })).toBeAttached();
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+    await settle(page);
+  }
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barMore'), exact: true }).tap();
+  const undo = page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('undo'), exact: true });
+  await undo.scrollIntoViewIfNeeded();
+  await settle(page);
+  const box = (await undo.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.evaluate(() => {
+    const w = window as unknown as { pressed: string[] };
+    w.pressed = [];
+    document.addEventListener('click', (e) => w.pressed.push((e.target as Element).closest('button')?.textContent?.trim() ?? (e.target as Element).tagName), true);
+  });
+  // Two real taps, the second 150 ms after the first (while the first one's run is under way).
+  const cdp = await page.context().newCDPSession(page);
+  const tap = async (): Promise<void> => {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await page.waitForTimeout(40);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  await tap();
+  await page.waitForTimeout(110);
+  await tap();
+  await cdp.detach();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { pressed: string[] }).pressed)).toEqual([t('undo'), t('undo')]);
+  // Both turns undone, the error still there: Redo has two steps to give back.
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  await expect(page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('redo'), exact: true })).toBeEnabled();
+});
+
 test('an upright phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it on its side (320 × 568, the usual text)', async ({ page }) => {
   // Upright, an iPhone SE at the usual text size: above More and Parts the hint steps aside and the status
   // line stays (the first step). On its side, Plot before a sweep has one line of words below its head:

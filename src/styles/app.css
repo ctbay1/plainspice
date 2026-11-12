@@ -3345,6 +3345,11 @@ html[data-contrast='more'] .lines .hint {
 .phone-lines.is-hint-aside {
   flex: none;
 }
+/* Through a run's "Running…" above a sheet the lines keep the settled status's height (App.tsx: linesHeld),
+   the shorter "Running…" on the sheet's edge where the status was (safe: never pushed out at the top). */
+.phone-lines.is-held {
+  justify-content: safe flex-end;
+}
 /* Squeezed (large text on a small phone), what scrolls takes a finger (the paper under it does not pan)
    and the keys (App.tsx, StatusLines: a named region); the lines as a whole are then a strip of paper of
    their own, their edge drawn, so they read as part of the stack and not as words on the drawing. */

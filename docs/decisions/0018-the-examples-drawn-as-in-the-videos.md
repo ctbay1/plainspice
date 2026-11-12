@@ -287,7 +287,9 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   until the sheet closed, in the same room as before. A step is now also kept for the status line's
   tone, its words (not the run's time, which changes with every run), its reason and its buttons (Undo,
   the turn): a new status is measured again from the first step, before the page is drawn, so nothing
-  flickers, and the same status never comes back and goes again. And a sheet kept its head and 6 rem
+  flickers. (Not so, the second re-check found: each run's "Running…" counted as a new status, so while an
+  error stood the status line came back above the sheet for each edit's run and went again, the sheet
+  moving with it; a run now keeps the step of the status before it, below.) And a sheet kept its head and 6 rem
   below it whatever it had: on an iPhone SE on its side at the usual text size, Plot before a sweep (one
   line of words, 36 px below its head) put the status line out of sight with 126 px of paper free. A
   sheet now keeps the less of 6 rem and all it has below its head: there the status line stays above
@@ -343,6 +345,45 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   scroll); "'Show the whole drawing' pressed on the status line with the keys gives the focus to the
   drawing" (on b060bc8 the focus is on nothing); and `tests/unit/notebook-canvas.test.tsx`, a part the
   keys reach that the fit shows leaves the view not moved (moved on b060bc8).
+
+- **An open sheet keeps its rows where they are: a run, a new status or an undo moves none of them.**
+  The second re-check (AP-2) found a sheet and its rows moving under the student's finger, on 8 of 12
+  phone views and at 640 × 400 and 1280 × 800 with 150 % text (never on fix-base). While an error stood,
+  each edit's "Running…" was a new status (its key held the run's tone), measured again from the first
+  step: it fitted, so the lines came back above the sheet for about 220 ms and went again with the
+  error, the sheet's top dropping 34 to 118 px and coming back; where the lines stayed in sight, a
+  "Running…" of another height moved the sheet too (the stack has a ceiling, and a sheet that scrolls
+  takes whatever the lines leave); and a new settled status of another height moved it once (More's
+  Undo on an iPhone SE from 463–509 to 404–450 when the error was undone). Double taps 150 ms apart
+  pressed Undo then Redo, Redo then Share; six quick taps left the ground deleted. Now:
+  - A run's own "Running…" (a change's or Run's; not ngspice loading) is no new status above a sheet: the
+    step and the key of the status before it are kept through it, and the lines keep that status's height
+    (a "Running…" shorter than an error's reason sits on the sheet's edge; one taller, with a button the
+    change brought, takes the room it needs). The run's result is measured again only if it differs.
+  - While a sheet is open its rows stay where they are on the screen, whatever the lines above it do (a
+    new status, the hint's words, an undo). When the lines need more room the sheet gives it from its
+    top, and its scroll moves on by as much: the rows stay, the head comes down over the top ones. When
+    the lines need less room, or step out of sight, the sheet grows back only as far as its scroll gives
+    back; the paper takes the rest. So the step logic is unchanged and a new settled status still comes
+    back above the sheet when there is room (R2-2: the sheet gives it the room, its rows staying put).
+    Only opening, closing or scrolling the sheet, its own rows changing (a check found or fixed, a
+    netlist line added), or a new window, text size or stack (the keyboard, a part in hand) lay it out
+    afresh. Considered: the lines only (the skeptic's first fix, the busy tone out of the key and their
+    height kept), which leaves the move a new settled status makes; a sheet that never gives room, its
+    lines stepping aside instead, which hides the status line above a sheet opened while an error stood
+    even once the error is undone; and letting the stack grow past its ceiling, which leaves under 48 px
+    of paper on the small phones.
+  Measured on every frame (each of More's rows, and each box and list item of Checks, through the
+  ground deleted, T, T, Ctrl+Z, Ctrl+Z and the error undone), on the 12 phone views, 640 × 400 and 1280
+  × 800 at 150 %: on b060bc8 rows moved up to 175.6 px (a Pixel 7 upright at 150 %), 59.5 px (an iPhone
+  SE), 55 px (640 × 400), and not at all on 4 views; now at most 0.6 px on all 28. Typing in the
+  Netlist sheet moved nothing on either build (its lines are out of sight while the netlist is typed).
+  Tests (`tests/e2e/phone.spec.ts`): "an open sheet keeps its rows where they are through each run, a
+  new status and an undo" (863 × 360 and 640 × 400 with Checks, 320 × 568 with More and the error
+  undone; and a run that keeps its status moves not even the sheet's head): on b060bc8 Checks' rows go
+  165 → 203 → 165 px with each run at 863 × 360; without the sheet held, rows move 25 px at an undo at
+  640 × 400; without the hold through a run, the sheet's top goes 148 → 199 there. "Two quick taps on
+  More's Undo, 150 ms apart, undo twice while an error stands": b060bc8 pressed Undo, then Redo.
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the
