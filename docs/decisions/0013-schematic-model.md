@@ -164,3 +164,52 @@ and compared; anything they need that v1 cannot say becomes a new field (read pa
 - A drawing line can make the drawing ignore it, but never make building slow or fail: the
   coordinates, the number of lines, the wire length and every route's search area are bounded, and
   a last-resort fallback lays the circuit out again.
+
+## After the final reviews (12 November 2026)
+
+**Wire work is bounded at the format's limits** (security:F1, with decision 0012):
+
+- Segments at a point are found by their row or column (sorted, a binary search) or, for slanted
+  ones, by the grid points they pass; islands of copper visit each point once; the obstacles words
+  avoid are filed by squares of the grid. No lookup scans the whole drawing.
+- The copper is merged once when the lines are read, and a slanted piece drawn twice is kept once,
+  so no later step sees repeats.
+- **A piece of wire drawn twice over the same place is one piece**: its copy no longer keeps the
+  other's dead end alive (before, two stacked copies of a dead end both stayed). Dead ends are cut
+  in the same rounds as before, but each round looks only at what the last one changed, so a chain
+  of wire hanging from one pin goes in one sweep. The drawing written is pruned once more after
+  merging, so it reads back the same.
+- Every example, fixture and corpus netlist builds to exactly the same drawing and scene as
+  before, and a 300-part ladder and a dense mesh build faster.
+
+**A node's name never sits on a part** (student:label-on-part). A name with no spot of its own
+(no `side=`) that touches a symbol, words or a wire at every spot around its point moves along its
+own piece of copper to the nearest point where it touches none (the 40 nearest are tried; never off
+its piece, never onto a point where another node's wire crosses, never away from an open end it
+marks). Junction dots and terminals still steer where a name goes but no longer count as something
+it sits on. This is done only in the scene a schematic keeps, and `buildSchematic` writes the new
+point into the drawing, so the lines written by the next change in the drawing say what the page
+shows; the scenes made along the way (layout, routing, the turned phone view) leave every name
+where it is. A name the student drags onto a crowded point therefore moves to the nearest point
+where it can be read; a spot chosen on purpose (`side=`) never moves.
+
+**A ground symbol is never put where a wire runs through it** (student:phone-link-unturned). When
+the drawing has no ground symbol (the turned phone view never has one), the symbol goes at the
+lowest point of ground's copper that is clear of symbols, words and wires; when none is (a ground
+wire drawn straight through the pins, turned upright), it hangs on a one-unit lead below the
+lowest end of ground's copper that has room, best where the lead goes straight on from a wire
+coming down, and the lead is drawn as wire. Ladders built with the mouse now turn for a phone held
+upright; of the other netlists, 52 corpus drawings now turn that did not, 4 fixtures and 28 corpus
+drawings turn one unit tighter, the examples' turned views are unchanged, and none lost its turn.
+
+**Three sentences of the editor** (words:W6, W7, W10):
+
+- Renaming a node to a name that differs from an existing node's only in capital letters joins
+  them, as before, but the netlist now gets the existing node's spelling, and the editor says why
+  (fact W6): "Node out renamed to IN. SPICE ignores capital letters in node names, so IN is node in,
+  which was already there: the two are now one node, in."
+- A half turn of a wired part where it stands is refused in words that no longer call it "turning
+  round" (which also named Reverse): "A half turn of R1 where it stands would loop its wires round
+  it. To swap its two ends, put it down, then use Reverse."
+- Reverse refused on a line ending with gnd names the Checks panel's own button, spelled as the
+  panel spells it: "... Rename gnd first: the Checks panel says why and offers “Rename gnd to 0”."
