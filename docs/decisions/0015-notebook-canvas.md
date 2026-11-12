@@ -133,7 +133,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   whose current is noise among them, so the drawing never writes "out = −216.8 fV" next to "0 A" for
   every part at out (C9d). The check looks again only at the parts a change can affect, so its time
   grows with the size of the circuit, not faster: about 10 ms for a ladder of 1000 sections or a bridge
-  with 4000 ammeters, which took seconds (a unit test holds it to that). Such a current gets no arrow,
+  with 4000 ammeters, which took seconds (a unit test keeps it under 100 ms, and all the words of such a
+  run under 400 ms). Such a current gets no arrow,
   no "delivers" or "absorbs", "0 A" at the end of its line and "no current flows" in speech; a note in
   the Numbers panel says what ngspice gave and why the true value is 0 ("ngspice gave R5 -8.881784e-19
   A. That is rounding noise, what its arithmetic leaves of a current that is 0: the two ends of R5,
