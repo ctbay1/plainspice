@@ -3610,7 +3610,7 @@ PlainSpice's checks: no trap.
 node1 and x have no DC path: C1 and C2 are open at DC, and R1 joins only the two of them. ngspice's
 warning names x, the second of them in the netlist, so the check quotes a node only when it is the
 only node with no DC path (floating-dc-1, -4, -5, M2d); here it says ngspice names one of them
-(critic of the words re-check's fix, 12 November 2026). In floating-dc-3 it names the first, n3.
+(second critic of the words re-check's fix, 12 November 2026). In floating-dc-3 it names the first, n3.
 
 ```spice
 * a floating group of two nodes: ngspice names x, not node1
@@ -3695,8 +3695,8 @@ PlainSpice's checks: `floating-dc`, `floating-dc` (one for a, one for b).
 E1's control input reads c and d, and R3 joins only the two of them, so nothing sets their voltage.
 Unlike a control node with nothing else on it (floating-dc-4), ngspice does not stop here: its
 'transient op' finishes and it prints numbers, which mean nothing for c and d. So the check says
-ngspice "either stops or prints numbers that can't be trusted" (critic of the words re-check's fix,
-12 November 2026; it said that ngspice stops).
+ngspice "either stops or prints numbers that can't be trusted" (second critic of the words re-check's
+fix, 12 November 2026; it said that ngspice stops).
 
 ```spice
 * a control input on two nodes joined only by a resistor
