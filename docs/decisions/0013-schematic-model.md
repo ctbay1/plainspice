@@ -213,28 +213,57 @@ phone view) leave every name where it is. A spot chosen on purpose (`side=`) nev
 
 A name at an open end (a pin not wired yet, an output terminal, a stub) is that end's name, so its
 point stays at the end. When no spot there is clear, the same spots are tried one and then two grid
-units further out, the way a wire would leave the end, and the first clear one is taken (the critic
-of the fix round found names at open ends still written on parts while a circuit is built: n7 across
-R3's zigzag, n9 over F1's name). When none is clear either (parts dropped a few squares apart leave
-no room for a name and the room kept for its value), the least bad of those places is taken in this
-order: where the name, as it is written before it has a value (on the left of its point the Notebook
-writes the pair up against the point, `results.ts` nameShift), lies least on a symbol; then where the
-room kept for its value does; then the least in the way. In 600 seeded mouse-like builds (parts on a
-grid, then pin-to-pin wires) no name, as written before it has a value, now lies on a symbol, a
-part's name or value, or another name (before: 57 names on a symbol and 85 on a part's words, all at
-open ends). The boxes that include the room kept for a value still overlap a part or a part's words
-548 times in those builds (513 before), since that room is what does not fit. So "never on a part"
-holds for what is written while a circuit is built, and wherever there is room for a name and its
-value; where there is none, a value written after a run may still touch a part. The repository's
-netlists draw exactly as before.
+units further out, the way a wire would leave the end, but never onto a point with copper on it (a
+wire or a pin), where the name would be read as that copper's; the first clear one is taken (the
+critic of the fix round found names at open ends still written on parts while a circuit is built: n7
+across R3's zigzag, n9 over F1's name). When none is clear either (parts dropped a few squares apart
+leave no room for a name and the room kept for its value), the least bad of those places is taken in
+this order: where the name, as it is written before it has a value (on the left of its point the
+Notebook writes the pair up against the point, `results.ts` nameShift), lies least on a symbol, then
+least on another node's name (with the room kept for its value); then where the room kept for its
+own value lies least on symbols and other names together; then the least in the way. Areas that
+differ only by rounding (less than a millionth of a square) count as the same.
+
+Corrected after the second critic of the fix round: names at open ends are kept off each other too,
+and never step out onto other copper. The order before looked only at symbols and compared areas
+exactly, so a rounding difference decided between two places and the one twice as much in the way
+could win; and it ignored other names. Two open ends facing each other across a gap not wired yet
+(V1, R1, the gap, R2, ground: the Notebook runs it, since its checks only say "Only R1 touches n3")
+were written on one line, and after the run their values over each other: "n34==12 V" at a 4-unit
+gap. At a 2-unit gap the two names lay on each other even before a run, and the order the critic
+proposed (areas within rounding, names kept apart) wrote n4's name two units out, at R1's end. Now,
+at gaps of 2 to 6 units, each name is written nearer its own end than the other, and the names and
+values stay apart, for the run's values and for the widest value the room is kept for. In the
+critic's random builds (three seeds, 60 builds each, checked after every wire, a value "= 12.35 V"
+written as the Notebook writes it) no name or value lies on another's (18, 28 and 10 did before this
+correction); with the widest value ("= −888.8 mV"), 28 of 1512 names still touch another at the far
+ends of their rooms, where no shorter value reaches.
+
+After a run, a name written on the left of its point moves left with its value: the pair "n4 = 0 V"
+ends at the point, as the videos write a name (nameShift). So where the room kept for the value lies
+on a part, the name itself may then touch the part: in the circuit above, n4's name touches R1's lead
+once its value is written at a 3-unit gap, and R1's zigzag at a 2-unit gap.
+
+In 600 seeded mouse-like builds (parts on a grid, then pin-to-pin wires) no name, as written before it
+has a value, lies on a symbol, a part's name or value, or another name (the first fix wrote 57 names
+on a symbol and 85 on a part's words, all at open ends). The boxes that include the room kept for a
+value still overlap a part or a part's words 518 times in those builds (513 on the first fix, 548
+before this correction), since that room is what does not fit. So "never on a part" holds for what
+is written while a circuit is built, and wherever there is room for a name and its value; where there
+is none, a name or a value written after a run may still touch a part. The repository's netlists draw
+exactly as before.
 
 A name the student moves (dragged, Shift+arrow keys, or "Move its name" on the node card) lands
-where it was put, even on a crowded point: there it keeps the spot it has (else the one the scene
-picks there, the least in the way), stored as `side=` and kept as the student's choice, as a part's
-side the student chose is kept. The first fix let the rebuild carry such a name back to a free point
-while the editor said "it can go here" and "The name of node n4 moved." (critic of the fix round).
-Moved on to a point with room, the stored spot is let go when it is in the way there (as any stored
-spot an edit puts something on), and the scene chooses afresh.
+where it was put, even on a crowded point: there it gets the spot the scene picks there (the least in
+the way), stored as `side=` and kept as the student's choice, as a part's side the student chose is
+kept. The first fix let the rebuild carry such a name back to a free point while the editor said "it
+can go here" and "The name of node n4 moved." (critic of the fix round). A spot stored for a name
+belongs to its point: moved to another point, the name no longer takes it along, as a part turned
+lets its words' side go (the second critic of the fix round found n4, stepped with Shift+arrows to
+(8,0), (7,0) and (6,0), still had the spot picked at (8,0), where one move to (6,0) gives a freer
+one). So a name stepped somewhere is written as one moved there at once; only a spot the edit itself
+names (`move-label` with `side`) goes along. Moved on to a point with room, it is written with the
+spot the scene chooses there.
 
 **A ground symbol is put where no wire runs through it, wherever there is room** (student:phone-link-unturned). When
 the drawing has no ground symbol (the turned phone view never has one), the symbol goes at the

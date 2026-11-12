@@ -69,6 +69,14 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   reviewed, fix-base) and 3.3 s on the slowed phone. A drawing at the limits like it, with tens of
   thousands of grid points of wire, takes about half a second to build on a developer's machine
   (0.8 s the first time), not milliseconds; turning it takes none. Its test allows 5 s for the build
-  and 1 s for the turn (`tests/unit/schematic-format.test.ts`, "finds a ground symbol's place
-  quickly ..."). An edit on such a drawing rebuilds it about three times: 0.6 to 1 s here (0.9 to
-  1.5 s before this round). Separately, a netlist with thousands of parts still lays out slowly.
+  and 1 s for the turn (`tests/unit/schematic-format.test.ts`, "builds a drawing with a wire through
+  every point of ground's wire ..."). An edit on such a drawing rebuilds it about three times: 0.6 to
+  1 s here (0.9 to 1.5 s before this round). Separately, a netlist with thousands of parts still lays
+  out slowly.
+- **The search is guarded by counting its work, not by timing it** (second critic of the fix round).
+  A time limit that allows for a busy machine cannot tell the two searches apart: the first fix's,
+  which checked every wire for each point of ground's wire, built that link in about 3.4 s, inside
+  5 s. `tests/unit/schematic-ground-search.test.ts` counts the checks of a piece of wire through a
+  box while building the link and a control (the same link with the ground symbol and its lead
+  given, so nothing is searched): the search may add fewer checks than the drawing has pieces of
+  wire (9,951). It adds about 370; the first fix's added 48 million.
