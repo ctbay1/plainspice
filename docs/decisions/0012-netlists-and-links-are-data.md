@@ -101,7 +101,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   value only when its reading changes once the invisible characters are removed and the look-alikes
   written as the letters they look like, so `1kΩ`, a Turkish node name or a zero-width space after
   the scale letter is no trap; they say what ngspice reads and offer the plain value ("Write 1k").
-  Invisible means U+00AD, U+200B–U+200F, U+202A–U+202E, U+2060–U+2064, U+2066–U+2069 and U+FEFF; the
+  Invisible meant U+00AD, U+200B–U+200F, U+202A–U+202E, U+2060–U+2064, U+2066–U+2069 and U+FEFF (all the
+  default-ignorable characters since the re-check, below); the
   look-alikes are the Cyrillic and Greek letters that look like Latin ones, the fullwidth letters and
   digits, a minus sign, dashes and the Kelvin sign (the Greek mu keeps its own check). A node name with
   an invisible character gets a fix that takes it out, which joins it to the node of that name when
@@ -125,7 +126,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   what ngspice reads (`4.7k<thin space>Ω` is still 4.7 kΩ, space-character-6), with a fix that writes
   the value for SPICE, `4.7k` or `10000`, never just the space taken out, which would turn `2 A` into
   `2A`, 2 attoamps. After a capital M, mega in a document and milli in SPICE, the fixes are
-  "Make it 1meg" and "Keep milli: write 1m", as mega-as-milli offers them. Elsewhere on a line such a
+  "Make it 1meg" and "Make it 1m (1 mΩ)" (after the re-check: see below). Elsewhere on a line such a
   character glues two words into one (space-character-4, nbsp-1): a warning that names it, with the
   fix "Replace it with a normal space". A value that starts with one is an error (space-character-5).
   The words name the character ("a thin space (U+2009)"), in the checks and in Explain, and the
@@ -133,7 +134,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - **A capital M that is no M** (critic of the fixes above). A Greek capital Μ (the M key of a Greek
   keyboard), a Cyrillic М or a fullwidth Ｍ looks like M, which is milli in SPICE; a student who types
   one means mega. So for those look-alikes the check offers "Make it 10meg" first for a resistor or a
-  gain, and "Keep milli: write 10m", as mega-as-milli does, never "Write 10M", which that check would
+  gain, and "Make it 10m (10 mΩ)", never "Write 10M", which that check would
   then flag. A small м stays m, milli.
 - **A look-alike letter in a node name** (critic of the fixes above). `оut` with a Cyrillic о is the
   node __ut for ngspice, not out (look-alike-letter-5). When a node name is a Latin word with such
@@ -163,3 +164,81 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   space (U+2009) in it") and, as for an invisible character, its fix takes it out, "Take it out:
   connect to out" when a node out exists, else "Take it out: name the node out"; the dangling-node
   check says nothing about the pair, so no button reads "Rename out to o ut".
+- **What ngspice does on an analysis line, said place by place** (re-check of the fixes, S2). A number
+  of an analysis line that starts with an invisible character, a look-alike or a character that looks
+  like a space got "ngspice stops: 'unknown parameter (___2m)'", which ngspice prints only on part
+  lines; for an .ac stop frequency it does not even stop. What ngspice does depends on the place of
+  the word, so the check says it place by place, from a run of each (invisible-character-8 to -21):
+  .tran's step and stop ("TSTEP/TSTOP is invalid"), its start and largest step ("unknown parameter on
+  .tran - ignored", though it runs nothing), every number of a .dc sweep (ngspice 47: "Bad syntax!";
+  ngspice 42 takes the word for a second source, said for a line of one sweep only, as recorded), .ac's
+  points and start (a warning, then "AC startfreq <= 0"), .ac's stop (a warning, and it runs anyway, up
+  to 1000 times the start frequency), and .noise's points, start and stop ("Frequency of 0 is invalid").
+  Any other place has no recorded run, so the character checks leave its words alone: .four (which a
+  run with a results file ignores anyway, invisible-character-27), .disto, .pz, .sens, .sp, a .noise's
+  points per summary. A
+  character inside such a number ends it, without a message, as in a value (invisible-character-22). A
+  unit test runs every place with each kind of character and checks that no trap on an analysis line
+  quotes "unknown parameter".
+- **A .dc line read by place** (S5). The dc-sweep check read numbers greedily and took a word it could
+  not read for the name of the next sweep, so `.dc V1 −5 5 1` (a minus sign from a document) got ".dc
+  sweeps −5, which is not in the circuit" and ".dc needs a step", whose fixes led to `.dc V1 V1 5 1
+  -400m`, "No traps found" and a failed run. Now it reads each sweep as ngspice 47 does: a name, then
+  the start, the stop and the step. A word another check explains (an invisible character, a
+  look-alike, a character that looks like a space) leaves the line to that check, whose fix is the only
+  one; a word that is no number where a number goes is said there ("The start of this sweep is not a
+  number", ngspice 47: "Bad syntax!", dc-sweep-problems-9, -10), with "Write 0" for a letter O; where
+  the step goes, a part's name or temp still means the step is missing. The words for ngspice's own
+  "Bad syntax!" on a .dc line (`describe.ts`) blame the step only when it is missing or 0, and
+  otherwise say "ngspice cannot read this line".
+- **On a capacitor or an inductor, a model warning** (S4). For C and L, ngspice also looks a value word
+  with a character outside ASCII up as a model and warns "can't find model" (invisible-character-7,
+  look-alike-letter-7), as for the Greek mu and a thin space; the invisible-character, look-alike and
+  capital-M words now say so there, instead of "without a message". R, V, I, E, F, G and H stay "without
+  a message".
+- **The milli fix says what it writes** (words-recheck-6). For a capital M from another alphabet, after
+  a character that looks like a space, or after a normal space (`10 M`), ngspice reads neither mega nor
+  milli: 10 Ω, or M as a setting. So the second fix is "Make it 10m (10 mΩ)", worded like the mega one,
+  in the order mega-as-milli uses; "Keep milli: write 10m" stays only in mega-as-milli, where ngspice
+  does read milli. A unit test checks that no character check's fix starts with "Keep".
+- **No value word, settings only, or a value word ngspice cannot read** (S6, C3). These were one case
+  in three places. E, F, G and H: with nothing after the nodes, native 47 stops (missing-value-4 to
+  -7); with settings but no number (`gain`, `m=2`), native 47, 42 and our engine use 0 and say nothing
+  (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain at all,
+  but the character checks' or unknown-word's. A word where any part's value goes (`Av`, `Rload`,
+  `five`) is said as that: ngspice stops at it ("unknown parameter (av)", native 47 too, with no
+  polynomial; on R, C and L after a model warning; unknown-word-13 to -21), with no fix that comments it
+  out and leaves the part with no value; its words suggest the number, or a `.param` line and braces
+  (unknown-word-23). A name defined on a `.param` line is that value, as ngspice reads it, so it is no
+  trap (unknown-word-22), and Explain uses its value. A source whose value word ngspice cannot read is
+  no ammeter in the circuit's words (`describe.ts`), and Explain gives it no "has no value" note, which
+  it now keeps for a source with nothing after its nodes or an AC value alone; with `dc` and no number
+  ngspice prints no note (P16b), and Explain says "without a message".
+- **A 0 another check explains** (C1). `0<zero-width space>.47`, `0R47`, `0k47` and `0．47` are read as
+  0, but 470 mΩ was meant: the zero-ohm warning, whose "Use a 0 V source" would make a short, now
+  steps aside for the check that explains the value; the error for a resistor straight across a
+  source stays (zero-ohm-2).
+- **A sign then a character that looks like a space** (C2). `-<thin space>5` is no number, and ngspice
+  stops; it got the glue warning, whose "Replace it with a normal space" left `- 5`, which ngspice also
+  stops at (space-character-13), and a comment fix that left 0 V. Now the space-character (or nbsp)
+  check says where the character is, as for an invisible one, and writes the value, "Write -5"
+  (space-character-12, -14, nbsp-3); `- 5` with a normal space gets "Write -5" too.
+- **The letter O where the digit 0 belongs** (C4). `1Ok` and `1оk` (Cyrillic о) are 1 Ω, `1О00` is
+  1 Ω and `O.47k` is no number (look-alike-letter-10, -11). One narrow check covers the plain letter and
+  its look-alikes alike: an O between digits, an O after a digit before one scale letter that ends the
+  word (not m), and an O at the start before a decimal point; never before a unit, so `100Ом` (Russian
+  for 100 Ω) and `1kОм` stay as meant, and `10кОм` keeps its к warning only. LOOK_ALIKES still maps о
+  and ο to the letter o, as decided above: only this check reads them as a digit. Its fix writes the
+  zero, where the old comment fix left R1 with no value.
+- **Every invisible character, and the decimal points of documents** (C5). Invisible now means all of
+  Unicode's default-ignorable characters (U+034F, U+061C, U+115F–U+1160, U+17B4–U+17B5,
+  U+180B–U+180F, U+3164, U+FE00–U+FE0F, U+FFA0, the tag characters ...) with the line and paragraph
+  separators and the next-line character (invisible-character-23 to -25), written with escapes and the
+  u flag, as a raw line separator would end a regular expression. Each has a name in words, its own
+  ("a Hangul filler (U+3164)") or its range's, else "an invisible character (U+XXXX)", so the words
+  never show one and nothing reads a name that is not there. A middle dot, a one-dot leader, a small
+  full stop and the Arabic decimal separator are read as a decimal point in a value's words only
+  (`4·7k` is 4 Ω; look-alike-letter-9, -13; `4·7 kΩ` too, space-before-suffix-18), each named as what
+  it is, never "a dash". Any other character outside ASCII inside a number, with a digit after it
+  (`4。7k`), is said as what ngspice reads, without a fix (look-alike-letter-12), and Explain names it
+  instead of "Don't type units after numbers".

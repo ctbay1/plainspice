@@ -75,6 +75,19 @@ spaces the groups are three words and ngspice stops; in a node name the characte
 digits not grouped in threes end the number too) and look-alike-letter-6 (a look-alike right after a
 sign: `-５` stops ngspice).
 
+After the re-check of those fixes, the same day, each run the same way: in traps.md,
+invisible-character-7 and look-alike-letter-7 (on a capacitor or an inductor ngspice also warns about a
+model), invisible-character-8 to -22 (what ngspice does with a word it cannot read at each place of
+`.tran`, `.dc`, `.ac` and `.noise`, never "unknown parameter"; inside such a number it ends it),
+invisible-character-23 to -27 (the other default-ignorable characters, the line and paragraph
+separators; an E's gain; a `.four` line, which a run with a results file skips), look-alike-letter-8 to -14 (a minus sign in a `.dc` line, a document's
+decimal point, the letter O where a zero belongs, other characters outside ASCII inside a number),
+space-character-12 to -15 and nbsp-3 (a sign followed by a character that looks like a space),
+space-before-suffix-18 (`4·7 kΩ`), missing-value-11 to -14 (settings but no gain: 0, silently, in
+native 47 too), unknown-word-13 to -23 (a word where a part's value goes; a `.param` name there is
+that value) and dc-sweep-problems-9, -10 (a word that is no number where a `.dc` number goes); and in
+explanations.md P16b (`dc` with no number: 0, without a note).
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the
