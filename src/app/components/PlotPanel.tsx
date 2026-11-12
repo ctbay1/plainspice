@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { AnalysisResults, Sweep } from '../../engine/results.ts';
 import { t } from '../../i18n/index.ts';
 import type { PlotHandle, PlotSpec } from '../../plot/types.ts';
+import { netlistVector } from '../../spice/describe.ts';
 import type { Netlist } from '../../spice/types.ts';
 
 /**
@@ -24,27 +25,33 @@ export function dcSourceName(netlist: Netlist): string | undefined {
   return undefined;
 }
 
-function seriesOf(sweep: Sweep): PlotSpec['series'] {
-  return sweep.series.map((s) => ({ label: s.name, unit: s.unit, values: s.values }));
+/**
+ * A sweep's lines, named with the netlist's names: v(giriş) where ngspice writes v(giri__), as the
+ * Numbers panel and the results' words name them (W16, W18).
+ */
+function seriesOf(sweep: Sweep, netlist: Netlist): PlotSpec['series'] {
+  return sweep.series.map((s) => ({ label: netlistVector(netlist, s.name), unit: s.unit, values: s.values }));
 }
+
+const seriesNames = (sweep: Sweep, netlist: Netlist): string => sweep.series.map((s) => netlistVector(netlist, s.name)).join(', ');
 
 export function plotSpecs(results: AnalysisResults, netlist: Netlist): PlotSpec[] {
   const specs: PlotSpec[] = [];
   if (results.dc && results.dc.series.length) {
     const source = dcSourceName(netlist) ?? results.dc.scale.name;
     specs.push({
-      title: t('plotTitleDc', { series: results.dc.series.map((s) => s.name).join(', '), source }),
+      title: t('plotTitleDc', { series: seriesNames(results.dc, netlist), source }),
       kind: 'dc',
       x: { label: source, unit: results.dc.scale.unit, values: results.dc.scale.values },
-      series: seriesOf(results.dc),
+      series: seriesOf(results.dc, netlist),
     });
   }
   if (results.tran && results.tran.series.length) {
     specs.push({
-      title: t('plotTitleTran', { series: results.tran.series.map((s) => s.name).join(', ') }),
+      title: t('plotTitleTran', { series: seriesNames(results.tran, netlist) }),
       kind: 'tran',
       x: { label: t('plotTime'), unit: 's', values: results.tran.scale.values },
-      series: seriesOf(results.tran),
+      series: seriesOf(results.tran, netlist),
     });
   }
   return specs;

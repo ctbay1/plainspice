@@ -1292,8 +1292,11 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   return S.currentIn(part?.element?.name.text ?? inner);
 }
 
-/** A results vector's name with the netlist's names in it: "v(giriş)" for ngspice's "v(giri__)" (W16, W18). */
-function netlistVector(netlist: Netlist, name: string): string {
+/**
+ * A results vector's name with the netlist's names in it: "v(giriş)" for ngspice's "v(giri__)" (W16,
+ * W18). The Plot panel names its lines with it too.
+ */
+export function netlistVector(netlist: Netlist, name: string): string {
   const m = /^([vi])\((.*)\)$/i.exec(name);
   if (!m) return name;
   if (m[1]!.toLowerCase() === 'v') return `${m[1]}(${m[2]!.split(',').map((x) => netlistNode(netlist, x)).join(',')})`;

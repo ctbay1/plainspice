@@ -229,7 +229,8 @@ Ctrl+K stay as they are.
 - **Node names with letters outside a to z** (kept review F3). ngspice writes each byte of such a
   letter as `_` (W16: `giriş` is `giri__`), and joins names it spells the same (W17: `ş` and `ç` are
   both `__`). `describe.ts` maps ngspice's names back to the netlist's when exactly one netlist name is
-  spelled that way, so the drawing, the Numbers panel, the cards and the announcement say `giriş`;
+  spelled that way, so the drawing, the Numbers panel, the cards, the announcement and the Plot
+  panel's lines (`netlistVector`, when the lanes were merged) say `giriş`;
   `NodeVoltageWords.ngspice` and `CurrentWords.vector` keep ngspice's spelling for the panel's ngspice
   column. A check (non-ascii-node) warns about such a name, with a fix to plain letters (`giris`, the
   letters with no plain form left out), and is an error when two names become one node, because
