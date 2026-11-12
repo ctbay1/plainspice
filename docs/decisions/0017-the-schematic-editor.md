@@ -99,10 +99,15 @@ hears what they did.
   on the paper gives the drawing the focus, so Delete works on a piece of wire just clicked. Each key
   is shown on its button, in the hint line, in Help (a table of the editing keys) and in Ctrl+K, which
   has every editing command by name.
-- **One word for one idea**: Turn, Mirror, Reverse, Wire, Delete, Move, Connect (an end connects to a
-  node), a part's "end", a node's "name", "in hand" for a part about to be placed, and "node out" in
-  sentences (a name may be an ordinary word: "Wire started at node s."); keys spelled one way (Ctrl+K,
-  Shift+R, Esc, Shift+arrow keys). While a part is in hand or a wire on its way, the hint line ends
+- **One word for one idea**: Turn, Mirror, Reverse (a part "reversed", its two ends swapped; never
+  "turned round", which would also name the half turn the model refuses), Wire, Delete, Move, Connect
+  (an end connects to a node), a part's "end", a node's "name", "in hand" for a part about to be
+  placed, "dependent source" for E, F, G and H as one tool and one group (the channel's word, as in
+  "Thévenin Equivalent with Dependent Sources"; each keeps its catalog name, "voltage-controlled
+  voltage source" ...), "skips" for whole lines ngspice does not read (the `*@` lines, after fact
+  drawing-1; "ignores" is kept for characters inside a line), and "node out" in sentences (a name
+  may be an ordinary word: "Wire started at node s."); keys spelled one way (Ctrl+K, Shift+R, Esc,
+  Shift+arrow keys). While a part is in hand or a wire on its way, the hint line ends
   with the way out, after a refusal too: on a computer "Esc goes back to Select" (or "Esc cancels this
   wire"), on a phone "Select goes back".
 - **On a phone**: the Parts sheet puts a part in hand; with no hover, the first tap shows where it
@@ -329,3 +334,46 @@ Still open, on the plan: dragging a piece of wire; choosing what a controlled so
 the drawing; the phone's layout used with a keyboard and a mouse (large text on a laptop) gives touch
 words; automatic node names keep their numbers (n1, n4) when nodes merge; real screen readers and
 browsers other than Chromium.
+
+## After the final reviews (12 November 2026)
+
+The words review of the final reviews found sentences that said something other than what happens.
+What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
+`tests/e2e/words-review.spec.ts` check each):
+
+- **.end in the blank page's sentence** (W1). It said .end "marks where the netlist stops", but
+  ngspice still reads the lines after .end (S25, after-end-1; native ngspice 47 and 42 give V1
+  −12 mA with a 1 kΩ resistor written after .end, −6 mA without it). Now: ".end, the netlist’s last
+  line (keep new lines above it: ngspice still reads lines after .end)", as Explain's .end line and
+  the missing-end check say it. Nothing about other SPICE programs: no fact here backs a claim about
+  them.
+- **Connections** (W2). Connect to makes the end's node and the chosen node one, every part on them
+  included (on Start here, end 2 of R1 connected to ground shorted R2), while the hint line said it
+  "rewires an end". The card's intro, the hint line and the buttons now say what happens and how to
+  move one end alone: "Connect to… draws a wire from an end to another node, so the end’s node and
+  that node become one, with every part on them. To move only one end, Disconnect it first, then
+  Connect to." The button is named "Connect to another node: the node at the end 2 of R1" (its own
+  words first, WCAG 2.5.3) and its list "Connect the node at the end 2 of R1 to …". Not done here:
+  a check for a resistor with both ends on one node (only sources are checked).
+- **Dependent source** (W4). E, F, G and H as one tool, its menu, the phone's Parts sheet and the
+  Checks panel say "dependent source", the channel's word, as the examples and the model's refusals
+  already did; each keeps its catalog name ("voltage-controlled current source").
+- **Reverse, and turning while moving** (W7). Shift+R on the part in hand is "A resistor in hand,
+  reversed: its two ends swapped." ("turned round" also named the half turn the model refuses); M or
+  Shift+R on the ground symbol in hand, "A ground symbol has one end and looks the same mirrored: T
+  turns it."; T or M on a part being moved says "R1 turned." or "R1 mirrored." and the sentence after
+  it says whether it can go there (it said "it lands that way" before a refusal); the ground
+  symbol's hint over empty paper keeps one colon: "it touches nothing yet (draw a wire to it)".
+- **"node in" on the card** (W8). The card's "in is higher", and its spoken "2 volts across R1, in is
+  higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
+  stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button is
+  "Disconnect the end 1 of R1 from its node, in" ("…from its node, ground (node 0)"): the list gives a
+  node as its name, or as "ground (node 0)", so the sentence says "its node" before it; that is right
+  for both, where "from node {name}" would read "node ground (node 0)".
+- **"skips"** (W11). Whole lines ngspice does not read are lines it "skips", in the Netlist panel's
+  foot and the README as in the hint line and the Checks panel; "ignores" stays for characters inside
+  a line (a unit after a number).
+- **Thévenin** (W12). The basics' F5 is "Thévenin resistance with a dependent source", as the channel
+  spells it, so Ctrl+K finds it with the video's examples. The title line of its netlist
+  (`tests/fixtures/f5-thevenin-cccs.cir`) still says "Thevenin": that text is recorded in the golden
+  runs and quoted in the share-link documents.
