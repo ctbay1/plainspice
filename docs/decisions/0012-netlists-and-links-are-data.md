@@ -163,3 +163,16 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   space (U+2009) in it") and, as for an invisible character, its fix takes it out, "Take it out:
   connect to out" when a node out exists, else "Take it out: name the node out"; the dangling-node
   check says nothing about the pair, so no button reads "Rename out to o ut".
+- **The node-name checks grow with the netlist again, not with its square** (code review of the
+  merged build, code-2). The checks for node names (non-ascii-node, invisible-character,
+  space-character, look-alike-letter) rename a node on the drawing's `*@ label` line too, and read
+  every line of the netlist again for each node they renamed; the new names of nodes with the same
+  plain letters (x, x2, x3 …) were counted up from 2 for each. `readNetlist` runs while the page
+  renders, so a 13.9 kB link (2000 such nodes among 100,000 comment lines) froze the page for about
+  5 s on opening and after every key, and 4000 names with the same plain letters took 1.2 s. Now the
+  label lines are read once, on the first rename, and the next number for each name is kept: the
+  same checks take about 0.3 s on that link (fix-base, which had none of them, 0.12 s). The test
+  (`tests/unit/spice-traps.test.ts`, "renames thousands of nodes among thousands of lines …") builds
+  each kind of name, and one X line whose one fix renames all its nodes, ten times larger among ten
+  times the lines, and allows at most three times the work of ten small ones, timed as the work it
+  is (`work-time.ts`): the old code took six to eight times as much, the new one about as much.

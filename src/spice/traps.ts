@@ -160,6 +160,8 @@ interface Ctx {
   nextNumber: Map<string, number>;
   /** Value words with a character that looks like a space, by offset, that checkSpaceInValue read: checkSpaces leaves them alone. */
   spaced: Set<number>;
+  /** The drawing's `*@ label` lines, by the node name they write (lower-case), read on the first rename (labelChanges). */
+  labels?: Map<string, Span[]>;
 }
 
 const GROUND = '0';
@@ -1431,27 +1433,49 @@ function checkDuplicates(c: Ctx): void {
 
 /**
  * The drawing's line for a node's name (`*@ label <node> x y`, src/schematic/format.ts), renamed with
- * the node, so a fix that renames a node keeps its name on the drawing.
+ * the node, so a fix that renames a node keeps its name on the drawing. The label lines are read once,
+ * on the first rename: reading every line again for each node renamed took seconds for a link with
+ * thousands of such nodes (code-2).
  */
 function labelChanges(c: Ctx, key: string, to: string): TextChange[] {
-  const out: TextChange[] = [];
-  for (const l of c.n.lines) {
-    if (l.kind !== 'comment') continue;
-    const m = /^(\s*\*@\s*label\s+)(\S+)/i.exec(l.text);
-    if (!m || lowerAscii(m[2]!) !== key) continue;
-    const from = l.span.from + m[1]!.length;
-    out.push(change(from, from + m[2]!.length, to));
+  if (!c.labels) {
+    const labels = new Map<string, Span[]>();
+    for (const l of c.n.lines) {
+      if (l.kind !== 'comment') continue;
+      const m = /^(\s*\*@\s*label\s+)(\S+)/i.exec(l.text);
+      if (!m) continue;
+      const from = l.span.from + m[1]!.length;
+      const name = lowerAscii(m[2]!);
+      const span = { from, to: from + m[2]!.length };
+      const spans = labels.get(name);
+      if (spans) spans.push(span);
+      else labels.set(name, [span]);
+    }
+    c.labels = labels;
   }
-  return out;
+  return (c.labels.get(key) ?? []).map((s) => replace(s, to));
 }
 
-/** A new name for a node: `wanted` when ngspice spells it like no other node, else wanted2, wanted3 ... */
-function freeNodeName(taken: Set<string>, wanted: string): string {
-  const base = wanted || 'n';
-  let name = base;
-  for (let k = 2; taken.has(ngspiceSpelling(name)); k++) name = `${base}${k}`;
-  taken.add(ngspiceSpelling(name));
-  return name;
+/**
+ * New names for nodes, each `wanted` when ngspice spells it like no name in `taken`, else wanted2,
+ * wanted3 ... (and then taken too). The next number to try is kept for each name, so thousands of names
+ * with the same plain letters stay fast (code-2).
+ */
+function nodeNamer(taken: Set<string>): (wanted: string) => string {
+  const next = new Map<string, number>();
+  return (wanted) => {
+    const base = wanted || 'n';
+    let name = base;
+    if (taken.has(ngspiceSpelling(name))) {
+      const key = ngspiceSpelling(base);
+      let k = next.get(key) ?? 2;
+      while (taken.has(ngspiceSpelling(`${base}${k}`))) k += 1;
+      next.set(key, k + 1);
+      name = `${base}${k}`;
+    }
+    taken.add(ngspiceSpelling(name));
+    return name;
+  };
 }
 
 /**
@@ -1472,8 +1496,8 @@ function checkNodeNames(c: Ctx): void {
     if (g) g.push(info);
     else groups.set(spelled, [info]);
   }
-  const taken = new Set(groups.keys());
-  const plainFor = (info: NodeInfo): string => freeNodeName(taken, plainLetters(info.refs[0]!.text, true) || 'n1');
+  const freeName = nodeNamer(new Set(groups.keys()));
+  const plainFor = (info: NodeInfo): string => freeName(plainLetters(info.refs[0]!.text, true) || 'n1');
   const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to)];
   for (const [spelled, infos] of groups) {
     if (infos.length > 1) {

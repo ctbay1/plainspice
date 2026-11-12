@@ -617,6 +617,50 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
       expect(performance.now() - t0, text.slice(0, 12)).toBeLessThan(1000);
     }
   });
+
+  // A crafted link: thousands of nodes that the node-name checks rename, among thousands of comment lines.
+  // Each rename read every line again for the drawing's label lines, and the new names of thousands of
+  // nodes with the same plain letters were found by counting up from 2 each time: a 13.9 kB link froze
+  // the page for about 5 s on opening and after every key (code-2). Ten times the nodes among ten times
+  // the lines must take about as long as ten of the small netlists (linear), not ten times as long
+  // (quadratic): here at most 3 times. Timed as the work it is, the least of three tries of each in turns
+  // (work-time.ts).
+  it('renames thousands of nodes among thousands of lines in time that grows with the netlist, not its square (code-2)', () => {
+    const lines = (count: number): string[] => Array.from({ length: count }, () => '*');
+    const bits = (i: number): string => [...i.toString(2).padStart(11, '0')].map((b) => (b === '1' ? 'ç' : 'ş')).join('');
+    // [what, the netlist of so many nodes among so many comment lines, the small one's nodes and lines]
+    const cases: [what: string, netlist: (nodes: number, comments: number) => string, small: [number, number]][] = [
+      ...([['a Turkish letter', 'ş'], ['a Cyrillic look-alike', 'о'], ['a zero-width space', '​'], ['a thin space', ' ']] as const).map(
+        ([what, odd]): [string, (nodes: number, comments: number) => string, [number, number]] => [
+          what,
+          (nodes, comments) => ['* many names', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x${odd}${i} 1k`), ...lines(comments), '.op', '.end'].join('\n'),
+          [200, 4000],
+        ],
+      ),
+      // One X line with names ngspice spells the same: one error, whose one fix renames every one of them.
+      ['names on one X line that ngspice spells the same', (nodes, comments) =>
+        ['* one line', 'V1 a 0 1', `X1 ${Array.from({ length: nodes }, (_, i) => `a${bits(i)}`).join(' ')} sub`, `.subckt sub${' p'.repeat(nodes)}`, '.ends', ...lines(comments), '.op', '.end'].join('\n'), [200, 4000]],
+      // Names whose plain letters are all "x", with no comment lines: the new names x2, x3 ... were counted
+      // up from 2 for each of them.
+      ['names with the same plain letters', (nodes, comments) =>
+        ['* same letters', 'V1 a 0 1', ...Array.from({ length: nodes }, (_, i) => `R${i} a x${String.fromCodePoint(0x4e00 + Math.floor(i / 64), 0x4e00 + (i % 64))} 1k`), ...lines(comments), '.op', '.end'].join('\n'), [400, 0]],
+    ];
+    for (const [what, netlist, [nodes, comments]] of cases) {
+      const small = parseNetlist(netlist(nodes, comments));
+      const large = parseNetlist(netlist(10 * nodes, 10 * comments));
+      expect(checkTraps(large).length, what).toBeGreaterThan(0);
+      const [tenSmall, once] = leastWorkMs(
+        [
+          () => {
+            for (let k = 0; k < 10; k++) checkTraps(small);
+          },
+          () => checkTraps(large),
+        ],
+        3,
+      );
+      expect(once, `${what}: ${once.toFixed(0)} ms once, ${tenSmall.toFixed(0)} ms for ten small ones`).toBeLessThan(3 * tenSmall);
+    }
+  }, 60_000);
 });
 
 /** The Solved Circuits episode netlists, when that repository is checked out next to this one. */
