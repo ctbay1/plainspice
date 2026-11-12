@@ -217,3 +217,26 @@ test('the status line speaks of numbers from before the last change only when th
   await expect(statusLine(page)).toContainText(t('statusPaused'));
   await expect(statusLine(page)).not.toContainText(t('statusOldNumbers'));
 });
+
+test('a touch screen with a keyboard: Tab from a card’s value goes on to the card’s actions', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  // The keyboard alone: the skip link, the drawing, R1, its card.
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  const r1 = partOnDrawing(page, 'R1');
+  for (let i = 0; i < 6 && !(await r1.evaluate((b) => b === document.activeElement)); i++) await page.keyboard.press('ArrowRight');
+  await expect(r1).toBeFocused();
+  await page.keyboard.press('Enter');
+  const card = page.getByRole('dialog', { name: /^R1 / });
+  await expect(card.getByRole('heading', { level: 2 })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(card.getByRole('textbox')).toBeFocused();
+  // Reached with Tab, the value keeps the sheet (no strip: no on-screen keyboard is up), actions and all.
+  await expect(page.locator('.app')).not.toHaveClass(/\bis-editing\b/);
+  await page.keyboard.press('Tab');
+  await expect(card.getByRole('button', { name: /^Explain line 3/ })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(card.getByRole('button', { name: /Turn R1 a quarter turn/ })).toBeFocused();
+});

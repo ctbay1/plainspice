@@ -525,8 +525,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [offlineReady, setOfflineReady] = useState(false);
   /** The sticky note invites the student on the first screen (Start here), until a card opens or it is hidden. */
   const [noteWanted, setNoteWanted] = useState(startup.source === 'example' && startup.exampleId === START_HERE_ID);
-  /** A phone: the card's value field has the focus (the editing strip shows above the keyboard). */
-  const [editing, setEditing] = useState(false);
+  /**
+   * A phone: the card's value field has the focus, and how it got it: a tap ('touch': on a touch
+   * screen the editing strip shows above its keyboard) or the keys ('keys': Tab, a digit typed on the
+   * card; the sheet stays, with its actions next in the Tab order, as on a computer).
+   */
+  const [editing, setEditing] = useState<false | 'touch' | 'keys'>(false);
   /** A touch screen (a coarse pointer): a phone's card becomes the strip above its keyboard while a value is typed. */
   const coarse = useMedia('(pointer: coarse)');
   /** The netlist is being typed: the drawing keeps its size (only a new part fits it again). */
@@ -1468,9 +1472,11 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const firstScreenInvite = shown?.scene.parts.find((p) => p.key === 'r1') ?? shown?.scene.parts.find((p) => p.letter === 'R');
   const noteShown = !phone && noteWanted && tool === 'select' && !card && !nodeCard && !panel && !paletteOpen && !!firstScreenInvite && !!schematic;
   const phoneSheet: 'card' | 'parts' | 'more' | 'panel' | undefined = phone ? (card || nodeCard ? 'card' : partsSheet ? 'parts' : moreSheet ? 'more' : panel ? 'panel' : undefined) : undefined;
-  // The strip (the field held above the on-screen keyboard) is for a touch screen; the phone's layout
-  // on a laptop (large text, zoom) keeps the sheet and its actions, which Tab reaches (WCAG 2.1.1).
-  const strip = phone && !!card && editing && (keyboard > 0 || coarse);
+  // The strip (the field held above the on-screen keyboard) is for a field tapped on a touch screen, or
+  // whenever an on-screen keyboard is up. A field reached with the keys (a touch screen with a keyboard,
+  // the phone's layout on a laptop at large text) keeps the sheet: Tab goes on to the card's actions
+  // (WCAG 2.4.3), as on a computer. (Android may report no keyboard inset at all: a tap is enough.)
+  const strip = phone && !!card && !!editing && (keyboard > 0 || (coarse && editing === 'touch'));
   const vw = win.width;
   const vh = win.height;
   const rightEdge = !phone ? Math.min(tabsRect.width ? tabsRect.left : vw, panel && sheetRect.width ? sheetRect.left : vw) : vw;
@@ -3259,7 +3265,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
                 // The arrow keys on the drawing move the card along without taking the focus into it.
                 takeFocus={card?.focus !== false}
                 {...(card ? { session: card.session } : {})}
-                onFieldFocus={() => setEditing(true)}
+                onFieldFocus={() => setEditing(lastInput.current === 'pointer' ? 'touch' : 'keys')}
                 onFieldBlur={(next) => {
                   if (!next?.closest('.index-card')) setEditing(false);
                 }}
