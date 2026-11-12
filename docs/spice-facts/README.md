@@ -79,7 +79,10 @@ After the words re-check of the merged fixes, the same day: A3b (a gnd inside `.
 ground, even beside an ordinary node called gnd) and A3c (a `.tf` written after `.end` runs, and
 ngspice names its output in its own words, `v(out,mid)`) in explanations.md, on which the .tf words
 rely; P3 and P4 now also run a source with a negative value between two nodes, which Explain says by
-its size ("3 V below", "the current flows the other way").
+its size ("3 V below", "the current flows the other way"). After the critic of those fixes:
+tf-problems-8 in traps.md (a `.tf` output written with an invisible character, one that looks like a
+space or a look-alike letter is another node with nothing on it: a transfer function of 0 and an
+output impedance of 1 Ω, so the .tf check keeps its error there).
 
 ## Where the evidence came from
 

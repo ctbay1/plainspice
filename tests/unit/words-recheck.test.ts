@@ -460,17 +460,36 @@ describe('S11: a character in a node name that is not what it looks like is name
     expect(nodeSaid(s, `ou${ZW}t`)).toBe('node out (written with a zero-width space in it)');
   });
 
-  it('the .tf check leaves a name that is a node but for such a character to that character\'s warning: never "There is no node called out" with "Use out"', () => {
-    for (const text of [ZW_TF_ONLY, CY_TF_ONLY]) {
+  it('the .tf check keeps an error on a name that is a node but for such a character, naming it: never "There is no node called out" with "Use out" (critic of the fix)', async () => {
+    const THIN_TF_ONLY = '* thin tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(o ut) V1\n.end\n';
+    const cases: [text: string, what: string, why: string, label: string][] = [
+      [ZW_TF_ONLY, 'a zero-width space (U+200B)', 'It is a character you cannot see, and SPICE keeps it in the name', 'Take it out: use out'],
+      [CY_TF_ONLY, 'the Cyrillic letter о', 'It looks like o, but SPICE knows only the plain letter o', 'Write the plain letter o: out'],
+      [THIN_TF_ONLY, 'a thin space (U+2009)', 'It looks like a space, but SPICE keeps it in the name', 'Take it out: use out'],
+    ];
+    for (const [text, what, why, label] of cases) {
       const checks = checkTraps(parseNetlist(text));
-      expect(checks.filter((c) => c.id === 'tf-problems'), text).toEqual([]);
-      expect(checks.some((c) => c.id === 'invisible-character' || c.id === 'look-alike-letter'), text).toBe(true);
+      // The character's own warning stays; the .tf error says what the .tf asks about.
+      expect(checks.some((c) => c.id === 'invisible-character' || c.id === 'look-alike-letter' || c.id === 'space-character'), text).toBe(true);
+      const tf = checks.filter((c) => c.id === 'tf-problems');
+      expect(tf.map((c) => [c.severity, c.title, c.why]), text).toEqual([
+        ['error', `.tf asks about a node with ${what} in its name, not the node out`, `${why}, so this is not the node out the other lines name but another node, one no part connects to.`],
+      ]);
+      expect(tf[0]!.ngspice, text).toContain('The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1, tf-problems-8]');
+      expect(tf[0]!.fixes.map((f) => f.label), text).toEqual([label]);
+      expect([tf[0]!.title, tf[0]!.why, ...tf[0]!.fixes.map((f) => f.label)].filter((w) => INVISIBLE.test(w) || /There is no node called|^Use out/.test(w)), text).toEqual([]);
+      // ngspice's numbers for such a node are those of a node with nothing on it (tf-problems-8: 0 and 1 Ω),
+      // so the run is marked as a typo's is; the fix gives out's own numbers (2/3 and 666.7 Ω).
+      expect((await solve(text, await engine)).status, text).toBe('check');
+      const fixed = await solve(applyFix(text, tf[0]!.fixes[0]!), await engine);
+      expect(fixed.status, text).toBe('ok');
+      expect(sp(fixed.words.tf?.transferFunction?.text), text).toBe('v(out)/V1 = 0.6667 (V/V)');
     }
     // A name that is no node even without the character: the error stays, the character named.
     const none = checkTraps(parseNetlist(`* zw no node\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(xy${ZW}z) V1\n.end\n`)).find((c) => c.id === 'tf-problems')!;
     expect(none.title).toBe('.tf asks about node xyz (written with a zero-width space in it), which is not in the circuit');
     expect(none.why).toBe('There is no node called xyz (written with a zero-width space in it): no part connects to it. .tf v(xyz) needs a node of the circuit.');
-  });
+  }, 30000);
 });
 
 describe('words re-check 9: a node name with a letter outside a to z is refused with why, and a plain spelling no node has', () => {

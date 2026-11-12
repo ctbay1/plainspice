@@ -176,6 +176,36 @@ describe('S7: the Numbers panel names a node outside ASCII as first written', ()
   }, 30000);
 });
 
+describe('S11, critic of its fix: a .tf on a node written with a hidden or look-alike character gives no answers', () => {
+  const tone = (): string | null => document.querySelector('.status')?.getAttribute('data-tone') ?? null;
+  // Native ngspice 47 and 42 (tf-problems-8): v(ou<ZWSP>t) and v(оut) are nodes with nothing on them,
+  // so ngspice gives a transfer function of 0 and an output impedance of 1 Ω; v(out) gives 2/3.
+  const ZW = '* zw tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(ou​t) V1\n.end\n';
+  const CY = '* cy tf only\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.tf v(оut) V1\n.end\n';
+
+  it.each([
+    ['a zero-width space', ZW],
+    ['a Cyrillic о', CY],
+  ])('%s: "Not reliable", and no "What .tf found" box on the paper', async (_, text) => {
+    render(<App startup={saved(text)} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run/ }));
+    await waitFor(() => expect(statusLine()).toMatch(/^Not reliable/), { timeout: 15000 });
+    expect(tone()).toBe('bad');
+    expect(statusLine()).toContain('A check found an error: .tf asks about a node with');
+    await waitFor(() => expect(polite()).toContain('a check found an error'));
+    expect(polite()).not.toContain('volts per volt');
+    expect(screen.queryByRole('heading', { name: t('resultsCardTf') })).toBeNull();
+  }, 30000);
+
+  it('the node itself: "Finished", and the box says what .tf found', async () => {
+    render(<App startup={saved(ZW.replace('ou​t', 'out'))} engine={realEngine()} serviceWorker={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Run/ }));
+    await solved();
+    expect(tone()).toBe('ok');
+    expect(await screen.findByRole('heading', { name: t('resultsCardTf') })).toBeTruthy();
+  }, 30000);
+});
+
 describe('words re-check 11: Shift+R and Delete on a part being moved say what can be done where it is', () => {
   const part = (name: string): HTMLElement => screen.getByRole('button', { name: new RegExp(`^${name}, `) });
   /** R1 picked up with its card's Move, as the e2e tests do (the keys then go to R1 on the drawing). */

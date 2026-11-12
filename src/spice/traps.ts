@@ -1970,11 +1970,14 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
       const name = lowerAscii(t.text);
       if (name === GROUND || name === 'gnd' || (c.n.nodes.get(name)?.connections.length ?? 0) > 0) return;
       // S11: a name that is a node of the circuit but for a character that is not what it looks like (an
-      // invisible one, one that looks like a space, a letter from another alphabet) is left to the check
-      // that names that character and offers the same fix (invisible-character, space-character,
-      // look-alike-letter): this one would say "There is no node called out", with "Use out".
+      // invisible one, one that looks like a space, a letter from another alphabet) is another node with
+      // nothing on it, so ngspice's .tf numbers mean nothing, as for any such node (tf-problems-8): an
+      // error, in words that name the character, never "There is no node called out" nor "Use out".
       const clean = hasInvisible(t.text) ? withoutInvisible(t.text) : hasSpaceLike(t.text) ? withoutSpaces(t.text) : lookAlikeName(t.text);
-      if (clean !== undefined && (c.n.nodes.get(lowerAscii(clean))?.connections.length ?? 0) > 0) return;
+      if (clean !== undefined && (c.n.nodes.get(lowerAscii(clean))?.connections.length ?? 0) > 0) {
+        oddTfNode(c, t, clean, idx);
+        return;
+      }
       // Otherwise such a character is named, never shown hidden in the name (decision 0012); a name like
       // ground is quoted, and a name that says node goes alone ("node5", never "node node5"), as Explain
       // says them on the same line (words re-check 3 and 4, decision 0017).
@@ -2016,6 +2019,26 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
       `The input of .tf must be an independent source: a voltage source (V) or a current source (I). ${nameOf(targetEl)} is not.`,
       `ngspice stops: 'Transfer function source ${lowerAscii(src.text)} not of proper type'. [tf-problems-4]`, useOnly(src));
   }
+}
+
+/**
+ * A .tf output written with a character that is not what it looks like, which makes it another node
+ * than `clean`, the node of the circuit it looks like (S11, critic of its fix; tf-problems-8). The
+ * character is named, never shown; the fix writes the name as the other lines do, as the character's
+ * own warning does for the whole node.
+ */
+function oddTfNode(c: Ctx, t: Token, clean: string, idx: number): void {
+  // The character `clean` was made without, in the same order: an invisible one, one that looks like a space, a look-alike.
+  const chars = [...t.text];
+  const ch = chars.find((x) => INVISIBLE.test(x)) ?? chars.find((x) => SPACE_LIKE.test(x)) ?? cleanWord(t.text).odd[0]!;
+  const like = INVISIBLE.test(ch) || SPACE_LIKE.test(ch) ? undefined : lookAlikeOf(ch)!;
+  const what = like === undefined ? nameOfCharacter(ch)! : describeCharacter(ch).replace(/, which looks like .*$/, '');
+  add(c, 'tf-problems', 'error', t, `.tf asks about a node with ${what} in its name, not the node ${clean}`,
+    `${like !== undefined ? `It looks like ${like}, but SPICE knows only the plain letter ${like}` : INVISIBLE.test(ch) ? 'It is a character you cannot see, and SPICE keeps it in the name' : 'It looks like a space, but SPICE keeps it in the name'}, so this is not the node ${clean} the other lines name but another node, one no part connects to.`,
+    idx === 0
+      ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1, tf-problems-8]'
+      : 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2, tf-problems-8]',
+    [fix(like === undefined ? `Take it out: use ${clean}` : `Write the plain letter ${like}: ${clean}`, replace(t, clean))]);
 }
 
 function checkAnalyses(c: Ctx): void {
