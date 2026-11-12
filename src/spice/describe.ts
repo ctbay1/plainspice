@@ -385,6 +385,13 @@ export const DESCRIBE_STRINGS = {
   duplicateWhy: (earlier: string): string =>
     `Each part needs its own name, and SPICE ignores capital letters${earlier}. ngspice stops at the second one ("device already exists"). Rename one of them.`,
   duplicateEarlier: (here: string, name: string, line: number): string => `, so ${here} here is the same name as ${name} on line ${line}`,
+  // M4b, M4c: two names that differ by more than capital letters, said as the duplicate-name check says them.
+  duplicateSpelledTitle: (first: string, here: string): string => `${first} and ${here} are the same name for ngspice`,
+  duplicateSpelledWhy: (rule: string, here: string, first: string, line: number, spelled: string): string =>
+    `Each part needs its own name. ngspice ${rule}, so ${here} here is the same name as ${first} on line ${line}: both are ${spelled}. ngspice stops at the second one ("device already exists"). Rename one of them with the letters a to z.`,
+  microRule: 'reads the micro sign \u00b5 as u',
+  underscoresRule: 'writes each letter other than a to z (or A to Z) in a name as underscores',
+  bothRules: 'reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a name as underscores',
   unknownDeviceTitle: (c: string): string => `A line starts with ${c}`,
   unknownDeviceWhy: (c: string): string =>
     `A part's line starts with the letter that says what it is: R, C, L, V, I, E, F, G, H … This line starts with ${c}, so ngspice stops: "unknown device type".`,
@@ -1466,7 +1473,10 @@ type SummaryInput = Omit<ResultsInWords, 'summary' | 'summarySpeech' | 'status' 
  */
 function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, words: SummaryInput, results: AnalysisResults, speech: boolean): string {
   const firstProblem = words.warnings.find((m) => m.code !== 'unreliable' && m.severity !== 'note') ?? words.warnings[0];
-  const lower = (s: string): string => (s && !/^[A-Z]{2}|^[A-Z]\d|^\./.test(s) ? s[0]!.toLowerCase() + s.slice(1) : s);
+  // A title that starts with a name keeps its capital: R1, RS, .tf, a name with a letter outside a to z
+  // (Rş), and the two names of "Ru and Rµ are the same name for ngspice" (M4b, M4c).
+  const lower = (s: string): string =>
+    s && !/^[A-Z]{2}|^[A-Z]\d|^\.|^[A-Z]\S*[^\sa-z]|^\S+ and \S+ are the same name/.test(s) ? s[0]!.toLowerCase() + s.slice(1) : s;
   if (status === 'failed') return (ngspiceError ? S.summaryFailed : S.summaryEmpty)(firstProblem ? lower(firstProblem.title) : S.summaryNothing);
   if (status === 'unreliable') {
     const specific = words.warnings.find((m) => m.code !== 'unreliable');
@@ -1750,9 +1760,19 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
     case 'timestep-too-small':
       return { title: S.timestepTitle, why: S.timestepWhy };
     case 'duplicate-name': {
-      // M4, W7
+      // M4, W7. ngspice compares names as it spells them (W18, W15), so the earlier part is found the same
+      // way: Rç's is Rş, both r__ (M4b), and Ru's is Rµ, both ru (M4c). Names that differ by more than
+      // capital letters get the reason that makes them one, as the duplicate-name check gives it (S9).
       const here = netlist.lines[(d.line ?? 0) - 1]?.element;
-      const first = here ? partsOf(netlist).byKey.get(here.key) : undefined;
+      const spelled = here ? ngspiceSpelling(here.key) : '';
+      const first = here ? partsOf(netlist).lines.find((l) => ngspiceSpelling(l.element!.key) === spelled) : undefined;
+      if (here && first && first.number !== d.line && lowerAscii(first.element!.name.text) !== lowerAscii(here.name.text)) {
+        const names = [first.element!.name.text, here.name.text];
+        const micro = names.some((n) => n.includes('\u00b5'));
+        const others = names.some((n) => [...n].some((ch) => ch.codePointAt(0)! >= 0x80 && ch !== '\u00b5'));
+        const rule = micro && others ? S.bothRules : micro ? S.microRule : S.underscoresRule;
+        return withLine({ title: S.duplicateSpelledTitle(names[0]!, names[1]!), why: S.duplicateSpelledWhy(rule, names[1]!, names[0]!, first.number, spelled) });
+      }
       const name = first?.element?.name.text ?? here?.name.text ?? '?';
       const earlier = first && first.number !== d.line ? S.duplicateEarlier(here?.name.text ?? name, first.element!.name.text, first.number) : '';
       return withLine({ title: S.duplicateTitle(name), why: S.duplicateWhy(earlier) });

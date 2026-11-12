@@ -150,6 +150,8 @@ const FACTS: Fact[] = [
   { code: 'M3b', id: 'msg-v-shorted-0v', netlist: "* T06b: a voltage source shorted by a 0 V source\nV1 n1 0 5\nVx n1 0 0\nR1 n1 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node"], codes: ["singular-matrix","op-failed"], fails: true, unreliable: true },
   { code: 'M3c', id: 'msg-v-shorted-l', netlist: "* a voltage source with an inductor across it\nV1 a 0 5\nL1 a 0 1m\nR1 a 0 1k\n.op\n.end\n", vectors: { "v(a)": 4.9999999999949996, "i(l1)": 0.049999999999950126, "i(v1)": -0.05499999999989012 }, prints: ["singular matrix:  check node l1#branch"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M4', id: 'msg-duplicate', netlist: "* T07b: R1 and r1\nV1 n1 0 6\nR1 n1 0 2\nr1 n1 0 4\n.op\n.end\n", prints: ["device already exists"], codes: ["duplicate-name"], fails: true },
+  { code: 'M4b', id: 'msg-duplicate-letters', netlist: "* R\u015f and R\u00e7: the same name for ngspice\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists", "r__ a 0 3"], codes: ["duplicate-name"], fails: true },
+  { code: 'M4c', id: 'msg-duplicate-micro', netlist: "* R\u00b5 and Ru: the same name for ngspice\nV1 a 0 6\nR\u00b5 a 0 2\nRu a 0 3\n.op\n.end\n", prints: ["device already exists", "ru a 0 3"], codes: ["duplicate-name"], fails: true },
   { code: 'M5', id: 'msg-unknown-device', netlist: "* a line starting with a digit\nV1 a 0 6\nR1 a 0 2\n1k a 0 5\n.op\n.end\n", prints: ["unknown device type - error"], codes: ["unknown-device"], fails: true },
   { code: 'M5b', id: 'msg-unknown-device-nonascii', netlist: "* a line starting with a non-ASCII letter\nV1 a 0 6\nR1 a 0 2\nÜ1 a 0 5\n.op\n.end\n", prints: ["unknown device type - error"], codes: ["unknown-device"], fails: true },
   { code: 'M6', id: 'msg-unknown-subckt', netlist: "* X without a .subckt\nV1 a 0 6\nR1 a 0 2\nX1 a 0 amp\n.op\n.end\n", prints: ["unknown subckt"], codes: ["unknown-subcircuit"], fails: true },
@@ -576,6 +578,8 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     ['M3b', 'failed', 'V1 is in a loop of voltage sources or shorts', 2],
     ['M3c', 'unreliable', 'L1 is in a loop of voltage sources or shorts', 3],
     ['M4', 'failed', 'Two parts are called R1', 4],
+    ['M4b', 'failed', 'R\u015f and R\u00e7 are the same name for ngspice', 4],
+    ['M4c', 'failed', 'R\u00b5 and Ru are the same name for ngspice', 4],
     ['M5', 'failed', 'A line starts with 1', 4],
     ['M5b', 'failed', 'A line starts with Ü', 4],
     ['M6', 'failed', 'No subcircuit called amp', 4],
@@ -620,6 +624,19 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     expect(m!.why.length).toBeGreaterThan(20);
     // The live summary leads with the first problem when the run failed or can't be trusted.
     if (status !== 'ok') expect(d.words.summary.toLowerCase()).toContain(title.toLowerCase().slice(0, 12));
+  });
+
+  it('M4b, M4c: two part names that differ by more than capital letters get the reason ngspice joins them, and the earlier part (S9)', () => {
+    const letters = ofFact('M4b').words.warnings.find((w) => w.code === 'duplicate-name')!;
+    expect(letters.why).toBe(
+      'Each part needs its own name. ngspice writes each letter other than a to z (or A to Z) in a name as underscores, so R\u00e7 here is the same name as R\u015f on line 3: both are r__. ngspice stops at the second one ("device already exists"). Rename one of them with the letters a to z.',
+    );
+    const micro = ofFact('M4c').words.warnings.find((w) => w.code === 'duplicate-name')!;
+    expect(micro.why).toBe(
+      'Each part needs its own name. ngspice reads the micro sign \u00b5 as u, so Ru here is the same name as R\u00b5 on line 3: both are ru. ngspice stops at the second one ("device already exists"). Rename one of them with the letters a to z.',
+    );
+    // R1 and r1 keep the capital letters (M4).
+    expect(ofFact('M4').words.warnings.find((w) => w.code === 'duplicate-name')!.why).toContain('SPICE ignores capital letters, so r1 here is the same name as R1 on line 3');
   });
 
   it('puts "these numbers can\'t be trusted" first on an unreliable run, and gives no inline notes', () => {

@@ -4166,7 +4166,7 @@ PlainSpice's checks: `voltage-loop`.
 
 ## duplicate-name
 
-Two parts with the same name, ignoring case, in the same scope (the main circuit, or one subcircuit). Error, at the later one. Fix: rename it to the next free name (`R1` to `R2`, or `R3` when R2 is taken).
+Two parts with the same name, ignoring case, in the same scope (the main circuit, or one subcircuit). Error, at the later one. Fix: rename it to the next free name (`R1` to `R2`, or `R3` when R2 is taken). Names are compared as ngspice reads them: `Rş` and `Rç` are both `r__` (duplicate-name-3), `Rµ` and `Ru` both `ru` (duplicate-name-4); such names get that reason, not the capital letters, and a fix in plain letters (`Rc`, `Ru2`).
 
 What PlainSpice shows for duplicate-name-1 (error, line 4):
 
@@ -4301,6 +4301,63 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
 ```
+
+PlainSpice's checks: `duplicate-name`.
+
+### duplicate-name-4. Rµ and Ru are the same name: ngspice reads the micro sign as u
+
+Added after the re-check of the merged build, 12 November 2026 (S9). ngspice reads µ as u (W15), so
+`Rµ` is the part `ru`, the same name as `Ru`, and it stops at the second. These names differ by more
+than capital letters, so the check gives this reason, not "SPICE ignores capital letters"; its fix is
+the next free name in plain letters (`Ru2`: the old "Rename it Rµ" for `Ru` then `Rµ` changed nothing).
+
+What PlainSpice shows for duplicate-name-4 (error, line 4):
+
+> **Rµ and Ru are the same name for ngspice.** Every part needs its own name. ngspice reads the micro sign µ as u, so Rµ and Ru are both ru.
+>
+> *ngspice:* ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-4]
+>
+> *Fixes:* "Rename it Ru2"
+
+```spice
+* Rµ and Ru are the same name: ngspice reads µ as u
+V1 a 0 6
+Rµ a 0 2
+Ru a 0 3
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      ru a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      ru a 0 3
+    device already exists, bail out
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+With `Ru` first and `Rµ` second, native 47 and 42 stop the same way at line 4 (`ru a 0 3`). And a
+name renamed to another letter outside a to z can still clash: `Rş` with `Rö` stops at `r__ a 0 3`
+(native 47 and 42), which is why the Numbers panel says to rename one of them with the letters a to z
+(M4b in explanations.md).
 
 PlainSpice's checks: `duplicate-name`.
 

@@ -1195,6 +1195,25 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(t.why).toContain('are both r__');
   });
 
+  it('gives R\u00b5 and Ru the micro sign\'s reason, not the capital letters, and a fix that renames (S9; duplicate-name-4)', () => {
+    for (const [a, b] of [['R\u00b5', 'Ru'], ['Ru', 'R\u00b5']]) {
+      const text = `* t\nV1 a 0 6\n${a} a 0 2\n${b} a 0 3\n.op\n.end\n`;
+      const t = first(text, 'duplicate-name');
+      expect([t.title, t.why, t.ngspice], `${a}, ${b}`).toEqual([
+        `${a} and ${b} are the same name for ngspice`,
+        `Every part needs its own name. ngspice reads the micro sign \u00b5 as u, so ${a} and ${b} are both ru.`,
+        "ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-4]",
+      ]);
+      // "Rename it R\u00b5" for Ru then R\u00b5 changed nothing: the fix compares names as ngspice reads them.
+      expect(t.fixes.map((f) => f.label), `${a}, ${b}`).toEqual(['Rename it Ru2']);
+      expect(ids(applyFix(text, t.fixes[0]!)), `${a}, ${b}`).toEqual([]);
+    }
+    // Both kinds of letter: both reasons.
+    expect(first('* t\nV1 a 0 6\nR\u00b5\u015f a 0 2\nRu\u00e7 a 0 3\n.op\n.end\n', 'duplicate-name').why).toBe(
+      'Every part needs its own name. ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a name as underscores, so R\u00b5\u015f and Ru\u00e7 are both ru__.',
+    );
+  });
+
   it('the missing-end note says where new lines go, not that .end stops ngspice (words review W1; missing-end-1, after-end-1, S25)', () => {
     const t = first('* t\nV1 n1 0 6\nR1 n1 0 2\n.op\n', 'missing-end');
     expect(t.why).toContain('keep new lines above it, because ngspice still reads lines written after .end');

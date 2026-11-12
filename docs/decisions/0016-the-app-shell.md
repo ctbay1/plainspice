@@ -290,3 +290,14 @@ Ctrl+K stay as they are.
   trap. The check's other sentences now say what µ becomes when a name has it: "ngspice reads the micro
   sign µ as u and writes the other letters outside a to z … as underscores". The names the drawing, the
   Numbers panel and the Plot panel show for such a node (`au` for `aµ`) are the words lane's.
+- **Two part names ngspice reads as one, said the same way in the Numbers panel** (SPICE re-check
+  S9). For `Rş` and `Rç` the Numbers panel said "Two parts are called Rç … SPICE ignores capital
+  letters": it looked for the earlier part by the lower-case name, found Rç itself, and gave the
+  reason for R1 and r1. It now finds the earlier part the way ngspice compares names (as it spells
+  them) and, when the two differ by more than capital letters, says what the check says: "Rş and Rç
+  are the same name for ngspice … so Rç here is the same name as Rş on line 3: both are r__", and to
+  rename one of them with the letters a to z (`Rö` for `Rç` still stops, M4b). For `Rµ` and `Ru` both
+  say "ngspice reads the micro sign µ as u … both are ru" (M4c, duplicate-name-4): the check decided
+  "capital letters or not" by the key, which already reads µ as u, and its fix for `Ru` then `Rµ` was
+  "Rename it Rµ", which changed nothing; new names are now compared as ngspice reads them (`Ru2`).
+  The run's one-line summary keeps such a title's capitals ("… error: Rş and Rç are the same name …").

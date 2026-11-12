@@ -325,6 +325,28 @@ describe('describeResults: messages and status', () => {
     expect(w.summary).toBe('ngspice stopped with an error: two parts are called R1. Open the results for details.');
   });
 
+  it('names both parts and ngspice\'s reason when two names differ by more than capital letters: R\u015f and R\u00e7, R\u00b5 and Ru (S9; M4b, M4c)', () => {
+    const failed = (text: string): ReturnType<typeof describeResults> =>
+      describeResults(parseNetlist(text), { other: [] }, run({ ok: false, exitCode: 1, diagnostics: [diag('duplicate-name', 'device already exists, bail out', { line: 4 })] }));
+    const letters = failed('* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n');
+    // It said "Two parts are called R\u00e7 \u2026 SPICE ignores capital letters", beside the Checks panel's right reason.
+    expect(letters.warnings.map((m) => [m.title, m.why, m.line])).toEqual([
+      [
+        'R\u015f and R\u00e7 are the same name for ngspice',
+        'Each part needs its own name. ngspice writes each letter other than a to z (or A to Z) in a name as underscores, so R\u00e7 here is the same name as R\u015f on line 3: both are r__. ngspice stops at the second one ("device already exists"). Rename one of them with the letters a to z.',
+        4,
+      ],
+    ]);
+    // The summary keeps the names' capitals ("two parts are called R1" is lowered, a name is not).
+    expect(letters.summary).toBe('ngspice stopped with an error: R\u015f and R\u00e7 are the same name for ngspice. Open the results for details.');
+    expect(failed('* t\nV1 a 0 6\nRu a 0 2\nR\u00b5 a 0 3\n.op\n.end\n').summary).toBe('ngspice stopped with an error: Ru and R\u00b5 are the same name for ngspice. Open the results for details.');
+    const micro = failed('* t\nV1 a 0 6\nR\u00b5 a 0 2\nRu a 0 3\n.op\n.end\n').warnings[0]!;
+    expect([micro.title, micro.why]).toEqual([
+      'R\u00b5 and Ru are the same name for ngspice',
+      'Each part needs its own name. ngspice reads the micro sign \u00b5 as u, so Ru here is the same name as R\u00b5 on line 3: both are ru. ngspice stops at the second one ("device already exists"). Rename one of them with the letters a to z.',
+    ]);
+  });
+
   it('no results and no message: no analysis line, or nothing at all (M20)', () => {
     const none = describeResults(parseNetlist('* t\nR1 a 0 1\n'), { other: [] }, run({ ok: false }));
     expect(none.warnings.map((m) => m.code)).toEqual(['no-analysis']);

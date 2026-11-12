@@ -230,15 +230,15 @@ function insertLineAfter(c: Ctx, i: number, line: string): TextChange {
   return change(c.text.length, c.text.length, `${c.text.endsWith('\n') || c.text.length === 0 ? '' : '\n'}${line}\n`);
 }
 
-/** A part name not used yet: base itself, or base with the next free number. */
+/** A part name not used yet: base itself, or base with the next free number (names compared as ngspice reads them, µ as u). */
 function freshName(c: Ctx, base: string): string {
-  if (!c.names.has(lowerAscii(base))) return base;
+  if (!c.names.has(ngspiceName(base))) return base;
   const m = /^(.*?)(\d+)$/.exec(base);
   const stem = m ? m[1]! : base;
   // Start after the last number handed out for this stem, so many duplicates stay fast.
-  const stemKey = lowerAscii(stem);
+  const stemKey = ngspiceName(stem);
   let k = Math.max(m ? Number(m[2]) + 1 : 2, c.nextNumber.get(stemKey) ?? 0);
-  while (c.names.has(lowerAscii(`${stem}${k}`))) k += 1;
+  while (c.names.has(ngspiceName(`${stem}${k}`))) k += 1;
   c.nextNumber.set(stemKey, k + 1);
   return `${stem}${k}`;
 }
@@ -1404,18 +1404,25 @@ function checkDuplicates(c: Ctx): void {
     const e = l.element;
     if (!e) continue;
     const scope = scopes[scopes.length - 1]!;
-    // ngspice compares names as it spells them: capital letters aside, each letter outside a to z is
-    // underscores, so Rş and Rç are both r__ (duplicate-name-3, W18).
+    // ngspice compares names as it spells them: capital letters aside, µ is u (W15) and each other letter
+    // outside a to z is underscores, so Rş and Rç are both r__ (duplicate-name-3, W18), and Rµ and Ru are
+    // both ru (duplicate-name-4).
     const spelled = ngspiceSpelling(e.key);
     const first = scope.get(spelled);
     if (!first) {
       scope.set(spelled, e);
       continue;
     }
-    const byLetters = first.key !== e.key;
+    // Names that differ by more than capital letters (decided by the names as written: the key already
+    // reads µ as u) get the reason that makes them one, never "SPICE ignores capital letters" (S9).
+    const byLetters = lowerAscii(first.name.text) !== lowerAscii(e.name.text);
+    const names = [first.name.text, e.name.text];
+    const micro = names.some((x) => x.includes(MICRO));
+    const others = names.some((x) => !isPlainName(x));
     const plain = byLetters ? plainLetters(e.name.text) : undefined;
-    const renamed = freshName(c, plain && !c.names.has(lowerAscii(plain)) && !scope.has(ngspiceSpelling(lowerAscii(plain))) ? plain : e.name.text);
-    c.names.add(lowerAscii(renamed));
+    // A name in plain letters; when that is taken too, the next number after it (Ru2, not Rµ, which is ru).
+    const renamed = freshName(c, plain && !c.names.has(lowerAscii(plain)) && !scope.has(ngspiceSpelling(lowerAscii(plain))) ? plain : plain || e.name.text);
+    c.names.add(ngspiceName(renamed));
     add(
       c,
       'duplicate-name',
@@ -1423,10 +1430,10 @@ function checkDuplicates(c: Ctx): void {
       e.name,
       first.name.text === e.name.text ? `Two parts are called ${e.name.text}` : byLetters ? `${first.name.text} and ${e.name.text} are the same name for ngspice` : `${first.name.text} and ${e.name.text} are the same name`,
       byLetters
-        ? `Every part needs its own name. ngspice writes each letter other than a to z (or A to Z) in a name as underscores, so ${first.name.text} and ${e.name.text} are both ${spelled}.`
+        ? `Every part needs its own name. ngspice ${micro && !others ? `reads the micro sign ${MICRO} as u` : lettersRule(names, 'a name')}, so ${first.name.text} and ${e.name.text} are both ${spelled}.`
         : 'Every part needs its own name, and SPICE ignores capital letters, so R1 and r1 count as the same name.',
       byLetters
-        ? `ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-3]`
+        ? `ngspice stops at the second one: 'device already exists, bail out'. [${micro && others ? 'duplicate-name-3, duplicate-name-4' : micro ? 'duplicate-name-4' : 'duplicate-name-3'}]`
         : "ngspice stops at the second one: 'device already exists, bail out'. [duplicate-name-1, duplicate-name-2]",
       [fix(`Rename it ${renamed}`, replace(e.name, renamed))],
     );
