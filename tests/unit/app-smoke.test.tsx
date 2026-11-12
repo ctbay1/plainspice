@@ -822,6 +822,9 @@ describe('<App /> after the words re-check of step B', () => {
     act(() => node('out').focus());
     fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
     let palette = screen.getByRole('dialog', { name: 'Commands' });
+    // Its Rename too, said as a sentence says the node (words re-check 4: "Rename node out").
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'rename' } });
+    expect(within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent)).toContain('Rename node out');
     fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'move the name' } });
     expect(within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent)).toContain('Move the name of node out');
     fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Enter' });

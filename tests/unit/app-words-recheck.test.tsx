@@ -127,6 +127,15 @@ describe('words re-check 2: a node\'s own sentences say "node in"', () => {
     const card = screen.getByRole('dialog', { name: /^Node node1/ });
     expect(voltageSaid(card)).toBe('node1 is 6 volts');
     expect(within(card).getByRole('button', { name: 'Close the card of node1' })).toBeTruthy();
+    // Ctrl+K names it so too: "Rename node1", never "Rename node node1" (critic of the fix).
+    fireEvent.click(within(card).getByRole('button', { name: 'Close the card of node1' }));
+    act(() => screen.getByRole('button', { name: 'Node node1' }).focus());
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    const palette = screen.getByRole('dialog', { name: 'Commands' });
+    fireEvent.change(within(palette).getByRole('combobox'), { target: { value: 'rename' } });
+    const labels = within(palette).getAllByRole('option').map((o) => o.querySelector('.palette__label')?.textContent);
+    expect(labels).toContain('Rename node1');
+    expect(labels.filter((l) => /node node/i.test(l ?? ''))).toEqual([]);
   }, 30000);
 });
 
