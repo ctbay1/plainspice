@@ -7784,7 +7784,9 @@ nearest plain letters (`giris`; the letters that have no plain form are left out
 node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
 ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
 letters. The fixes rename the node everywhere it is named, and on the drawing's `*@ label` line, and
-never give a name another node has (that would join two nodes). A name with an invisible character or
+never give a name another node has (that would join two nodes), nor one of ground's (0 and gnd, which
+would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
+ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6). A name with an invisible character or
 a no-break space is left to those checks (invisible-character, nbsp). PlainSpice matches ngspice's
 results back to the netlist's names (`src/spice/describe.ts`), so the drawing, the Numbers panel and
 the announcement say `giriş`.
@@ -7853,6 +7855,51 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(__) = 12, i(v1) = -0.006
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-6. gñd is the node g__d, not ground: the fix never names it gnd
+
+Added after the re-check of the merged build, 12 November 2026 (code-3). The plain letters of `gñd`
+are `gnd`, ground's other name (W8): a fix that renamed it gnd would join it to ground and change the
+circuit, so the fixes skip ground's names and the names that read as ground. In this run g__d and
+gnd2 are ordinary nodes at 2.5 V, with 2.5 mA through each of their resistors, while R6, between gnd
+and ground, carries nothing: gnd is ground. Here the fix gives `gnd3`, because `gnd2` is taken.
+
+```spice
+* gñd is not ground, and neither is gnd2: gnd is
+V1 a 0 5
+R1 a gñd 1k
+R2 gñd 0 1k
+R3 a gnd2 1k
+R4 gnd2 0 1k
+R5 a gnd 1k
+R6 gnd 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        gnd2                             2.500000e+00
+        g__d                             2.500000e+00
+        a                                5.000000e+00
+        @r6[i]                           0.000000e+00
+        @r5[i]                           5.000000e-03
+        @r4[i]                           2.500000e-03
+        @r3[i]                           2.500000e-03
+        @r2[i]                           2.500000e-03
+        @r1[i]                           2.500000e-03
+        v1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 5, v(g__d) = 2.5, v(gnd2) = 2.5, i(v1) = -0.009999999999999998, i(@r1[i]) = 0.0025, i(@r2[i]) = 0.0025, i(@r3[i]) = 0.0025, i(@r4[i]) = 0.0025, i(@r5[i]) = 0.005, i(@r6[i]) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(a) = 5, v(g__d) = 2.5, v(gnd2) = 2.5, i(v1) = -0.009999999999999998, i(@r1[i]) = 0.0025, i(@r2[i]) = 0.0025, i(@r3[i]) = 0.0025, i(@r4[i]) = 0.0025, i(@r5[i]) = 0.005, i(@r6[i]) = 0
+after the fix ("Rename gñd to gnd3"), ngspice 47, 42 and our engine, -b -r (exit 0):
+    v(gnd3) = 2.5, as g__d was, and every current as before
 ```
 
 PlainSpice's checks: `non-ascii-node`.

@@ -253,3 +253,12 @@ Ctrl+K stay as they are.
   right, because a name in plain letters is what keeps two nodes apart; a fix never gives a name
   another node has (it would join them), so `giriş` next to a node `giris` becomes `giris2`; the fix
   renames the node on the drawing's `*@ label` line too.
+- **A node's new name is never ground's** (code review of the merged build, code-3). The plain letters
+  of `gñd` are `gnd`, ground's other name for ngspice (W8), so "Rename gñd to gnd" joined the node to
+  ground and changed the circuit with no check left (R2 between it and ground carried nothing, native
+  47 and 42), and `gröund` became `ground`, which the ground-misnamed check then flagged. Ground's names
+  (0 and gnd, in any case) now count as taken, and the names that read as ground (ground, earth, agnd,
+  dgnd, gnd0, 00 …) are skipped too: `gñd` becomes `gnd2`, `0°` `02`, `gröund` `ground2`
+  (non-ascii-node-6: g__d and gnd2 are ordinary nodes, gnd is ground). The other node checks (a
+  look-alike, an invisible character, a character that looks like a space) still connect `ｇnd` and
+  `g<zero-width space>nd` to ground: that is the node the student typed.

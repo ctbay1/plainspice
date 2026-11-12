@@ -162,6 +162,8 @@ const CASES: Case[] = [
   { name: ".pss, unknown to ngspice 47 as built", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".pss", all: ["unknown-dot-command"], fixes: ["Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n" },
   // After the final reviews (12 November 2026): names ngspice spells with underscores (kept review F3).
   { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
+  { name: "a node name that is gnd but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "g\u00f1d", all: ["non-ascii-node"], fixes: ["Rename g\u00f1d to gnd2"], netlist: "* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\n.op\n.end\n" },
+  { name: "a node name that is ground but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "gr\u00f6und", all: ["non-ascii-node"], fixes: ["Rename gr\u00f6und to ground2"], netlist: "* t\nV1 a 0 5\nR1 a gr\u00f6und 1k\nR2 gr\u00f6und 0 1k\n.op\n.end\n" },
   { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
   // Characters that are not what they look like (security review F2).
   { name: "a zero-width space inside a value", id: 'invisible-character', severity: 'warning', line: 3, at: "1​k", all: ["invisible-character"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n" },
@@ -1089,6 +1091,38 @@ describe('after the final reviews (12 November 2026)', () => {
     const fixed = applyFix(text, t.fixes[0]!);
     expect(fixed).toBe('* t\nV1 giris2 0 12\nR1 giris2 giris 1k\nR2 giris 0 2k\n.tf v(giris2) V1\n.end\n* plainspice-drawing v1\n*@ label giris2 0 0\n*@ label giris 4 0\n');
     expect(ids(fixed)).toEqual([]);
+  });
+
+  it('never names a node after ground: ground\'s names count as taken, and names that read as ground are skipped (code-3; non-ascii-node-6)', () => {
+    // Which ends of which parts are on ground: a fix that renames a node must not change them.
+    const groundEnds = (text: string): boolean[][] => {
+      const n = parseNetlist(text);
+      return n.elements.map((i) => n.lines[i]!.element!.nodes.map((r) => r.ground));
+    };
+    const cases: [name: string, label: string][] = [
+      ['g\u00f1d', 'Rename g\u00f1d to gnd2'],
+      ['G\u00d1D', 'Rename G\u00d1D to GND2'],
+      ['0\u00b0', 'Rename 0\u00b0 to 02'],
+      ['\u03c00', 'Rename \u03c00 to 02'],
+      ['gr\u00f6und', 'Rename gr\u00f6und to ground2'],
+      ['e\u00e5rth', 'Rename e\u00e5rth to earth2'],
+      ['dg\u00f1d', 'Rename dg\u00f1d to dgnd2'],
+      ['0\u03080', 'Rename 0\u03080 to 002'],
+    ];
+    for (const [name, label] of cases) {
+      const text = `* t\nV1 a 0 5\nR1 a ${name} 1k\nR2 ${name} 0 1k\n.op\n.end\n`;
+      const t = first(text, 'non-ascii-node');
+      expect(t.fixes.map((f) => f.label), name).toEqual([label]);
+      const fixed = applyFix(text, t.fixes[0]!);
+      // "Rename gñd to gnd" put R1's end on ground and left R2 with both ends there, with no check left.
+      expect(groundEnds(fixed), name).toEqual(groundEnds(text));
+      expect(ids(fixed), name).toEqual([]);
+    }
+    // Two names that become one: each its own name, neither of them ground's.
+    const pair = '* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d g\u0144d 1k\nR3 g\u0144d 0 1k\n.op\n.end\n';
+    const merged = first(pair, 'non-ascii-node');
+    expect(merged.fixes.map((f) => f.label)).toEqual(['Write gnd2 for g\u00f1d and gnd3 for g\u0144d']);
+    expect(groundEnds(applyFix(pair, merged.fixes[0]!))).toEqual(groundEnds(pair));
   });
 
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {

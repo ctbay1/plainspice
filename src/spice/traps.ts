@@ -1458,18 +1458,24 @@ function labelChanges(c: Ctx, key: string, to: string): TextChange[] {
 
 /**
  * New names for nodes, each `wanted` when ngspice spells it like no name in `taken`, else wanted2,
- * wanted3 ... (and then taken too). The next number to try is kept for each name, so thousands of names
- * with the same plain letters stay fast (code-2).
+ * wanted3 ... (and then taken too). Never ground's own names, 0 and gnd (W8), which would join the node
+ * to ground, nor a name that reads as ground (GROUND_LIKE: ground, earth, 00 ...), which the
+ * ground-misnamed check would flag: gñd becomes gnd2, gröund ground2 (code-3). The next number to try
+ * is kept for each name, so thousands of names with the same plain letters stay fast (code-2).
  */
 function nodeNamer(taken: Set<string>): (wanted: string) => string {
   const next = new Map<string, number>();
+  const free = (name: string): boolean => {
+    const spelled = ngspiceSpelling(name);
+    return !taken.has(spelled) && spelled !== GROUND && !GROUND_LIKE.test(spelled);
+  };
   return (wanted) => {
     const base = wanted || 'n';
     let name = base;
-    if (taken.has(ngspiceSpelling(name))) {
+    if (!free(name)) {
       const key = ngspiceSpelling(base);
       let k = next.get(key) ?? 2;
-      while (taken.has(ngspiceSpelling(`${base}${k}`))) k += 1;
+      while (!free(`${base}${k}`)) k += 1;
       next.set(key, k + 1);
       name = `${base}${k}`;
     }
@@ -1485,7 +1491,8 @@ function nodeNamer(taken: Set<string>): (wanted: string) => string {
  * (non-ascii-node-2). A name on its own: a warning, with a fix to plain letters. Names that become
  * one: an error, because ngspice then simulates another circuit; the fix gives each its plain letters.
  * A name with an invisible character is the invisible-character check's; µ is fine (ngspice reads u).
- * The fixes never give a name ngspice already uses: that would join two nodes.
+ * The fixes never give a name ngspice already uses, that would join two nodes, nor one of ground's
+ * (nodeNamer).
  */
 function checkNodeNames(c: Ctx): void {
   const groups = new Map<string, NodeInfo[]>();
