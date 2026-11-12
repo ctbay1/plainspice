@@ -609,7 +609,10 @@ export interface PartEnd {
   pin: 0 | 1;
   role: string;
   node: string;
+  /** The node as the lists write it: "in", "ground (node 0)". */
   words: string;
+  /** The node as a sentence says it: "node in", "ground (node 0)". */
+  said: string;
 }
 
 /**
@@ -629,7 +632,7 @@ export function endsOf(s: Schematic, key: string): PartEnd[] {
   const part = s.circuit.parts.find((p) => p.key === key);
   if (!part) return [];
   const roles = endRoles(part.letter);
-  return ([0, 1] as const).map((pin) => ({ pin, role: roles[pin], node: part.nodes[pin], words: nodeWords(s, part.nodes[pin]) }));
+  return ([0, 1] as const).map((pin) => ({ pin, role: roles[pin], node: part.nodes[pin], words: nodeWords(s, part.nodes[pin]), said: nodeSaid(s, part.nodes[pin]) }));
 }
 
 /** A ground symbol at a pin points away from its part. */

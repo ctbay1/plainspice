@@ -88,13 +88,13 @@ test.describe('the words review', () => {
     await expect(card.getByText(t('connIntro'))).toBeVisible();
     await expect(hintLine(page)).toHaveText(t('hintConnections'));
     await expect(card.getByRole('button', { name: 'Connect to another node: the node at the end 2 of R1', exact: true })).toBeVisible();
-    // No button's name ends on a bare node name ("…from its node, out" was heard as "from its node out…", W8).
+    // Each button names its node as a sentence does, "node out", never a bare name ("…from out" was heard as "from out…", W8).
     const disconnect = card.getByRole('button', { name: /^Disconnect / });
     await expect(disconnect).toHaveCount(2);
-    await expect(disconnect.nth(0)).toHaveAccessibleName('Disconnect the end 1 of R1 from its node');
-    await expect(disconnect.nth(1)).toHaveAccessibleName('Disconnect the end 2 of R1 from its node');
+    await expect(disconnect.nth(0)).toHaveAccessibleName('Disconnect the end 1 of R1 from node in');
+    await expect(disconnect.nth(1)).toHaveAccessibleName('Disconnect the end 2 of R1 from node out');
     // The advice works: end 2 of R1 alone goes to ground, and R2 stays between out and ground (not shorted).
-    await card.getByRole('button', { name: 'Disconnect the end 2 of R1 from its node', exact: true }).click();
+    await card.getByRole('button', { name: 'Disconnect the end 2 of R1 from node out', exact: true }).click();
     await expect.poll(() => savedNetlist(page)).toMatch(/^R1 in (?!out\b)\w+ 1k$/m);
     await card.getByRole('button', { name: 'Connect to another node: the node at the end 2 of R1' }).click();
     await card.getByRole('group', { name: t('connTo', { role: 'end 2', name: 'R1' }) }).getByRole('button', { name: t('groundWords') }).click();

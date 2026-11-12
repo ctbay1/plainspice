@@ -311,11 +311,10 @@ export const en = {
   connNone: 'There is no other node yet.',
   connDisconnect: 'Disconnect',
   /**
-   * The node is not named: the card passes it as its list writes it, a bare name ("in") or "ground
-   * (node 0)", and a sentence ending "from in" or "from its node, in" can be heard as "from in…" (a
-   * node in a sentence is "node in", decision 0017). The end's row says the node just before this button.
+   * The node as a sentence says it, "node in" or "ground (node 0)" (decision 0017): a bare name, "from
+   * in" or "from its node, in", was heard as "from in…" (final reviews, words W8).
    */
-  connDisconnectLabel: 'Disconnect the {role} of {name} from its node',
+  connDisconnectLabel: 'Disconnect the {role} of {name} from {node}',
   connAlready: 'That end is already on {node}.',
   connReadsVoltage: 'It reads the voltage between',
   connReadsCurrent: 'It reads the current through',

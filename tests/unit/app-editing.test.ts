@@ -274,7 +274,8 @@ describe('Connections: an end connected to a node, or let go', () => {
     const i = build('* t\nI1 0 a 1m\nR1 a 0 1k\n.op\n.end\n');
     expect(endsOf(i, 'i1').map((e) => e.role)).toEqual(['from end', 'to end']);
     expect(t('connConnectLabel', { role: endRoles('V')[0], name: 'V1' })).toBe('Connect to another node: the node at the + end of V1');
-    expect(t('connDisconnectLabel', { role: endRoles('V')[0], name: 'V1', node: 'in' })).toBe('Disconnect the + end of V1 from its node');
+    expect(endsOf(s0, 'v1').map((e) => e.said)).toEqual(['node in', 'ground (node 0)']);
+    expect(t('connDisconnectLabel', { role: endRoles('V')[0], name: 'V1', node: 'node in' })).toBe('Disconnect the + end of V1 from node in');
     expect(`${t('formNewName')} ${t('formNewNameAt', { role: endRoles('R')[0] })}`).toBe('Name of the new node (end 1)');
     expect(nodeChoices(s0).map((n) => n.words)).toEqual(['ground (node 0)', 'in', 'out']);
   });

@@ -196,7 +196,7 @@ export function Connections({ e }: { e: PartEditing }): ReactNode {
                 >
                   {t('connConnect')}
                 </button>
-                <button type="button" className="link-button" aria-label={t('connDisconnectLabel', { role: end.role, name: e.name, node: end.words })} onClick={() => e.onDisconnect(end.pin)}>
+                <button type="button" className="link-button" aria-label={t('connDisconnectLabel', { role: end.role, name: e.name, node: end.said })} onClick={() => e.onDisconnect(end.pin)}>
                   {t('connDisconnect')}
                 </button>
               </span>

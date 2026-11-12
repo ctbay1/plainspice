@@ -24,7 +24,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { cardContent, type CardState } from '../../src/app/card.ts';
 import { IndexCard } from '../../src/app/components/IndexCard.tsx';
-import { addPartEdit, connectEdit, endRoles, formStart, handFor, nodeChoices, placeEdit, starterWords } from '../../src/app/editing.ts';
+import { addPartEdit, connectEdit, endRoles, endsOf, formStart, handFor, nodeChoices, nodeSaid, placeEdit, starterWords } from '../../src/app/editing.ts';
 import { hintWords, type HintInput } from '../../src/app/words.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { en } from '../../src/i18n/en.ts';
@@ -159,14 +159,14 @@ describe('W2: Connections', () => {
     expect(connect.startsWith(t('connConnect').replace('…', ''))).toBe(true);
     // The list of nodes finishes the sentence its group is named by.
     expect(`${t('connTo', { role: end2, name: 'R1' })} ${t('groundWords')}`).toBe('Connect the node at the end 2 of R1 to ground (node 0)');
-    // Disconnect: the card passes the node as its list writes it, a bare name ("in") or "ground (node
-    // 0)"; the sentence names no node, so it never ends on a bare name heard as "from in…" (W8).
+    // Disconnect: the card passes the node as a sentence says it, "node in" or "ground (node 0)", so
+    // the name never ends on a bare node name heard as "from in…" (W8).
     const s = buildSchematic(START, NOTEBOOK_OPTIONS);
-    for (const { words } of nodeChoices(s)) {
-      expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: words })).toBe('Disconnect the end 1 of R1 from its node');
-      expect(t('connDisconnectLabel', { role: end2, name: 'R2', node: words })).toBe('Disconnect the end 2 of R2 from its node');
-    }
-    expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: 'in' }).startsWith(t('connDisconnect'))).toBe(true);
+    expect(endsOf(s, 'r1').map((end) => t('connDisconnectLabel', { role: end.role, name: 'R1', node: end.said }))).toEqual(['Disconnect the end 1 of R1 from node in', 'Disconnect the end 2 of R1 from node out']);
+    expect(endsOf(s, 'v1').map((end) => t('connDisconnectLabel', { role: end.role, name: 'V1', node: end.said }))).toEqual(['Disconnect the + end of V1 from node in', 'Disconnect the − end of V1 from ground (node 0)']);
+    for (const { node } of nodeChoices(s)) expect(nodeSaid(s, node)).toMatch(/^(node \S+|ground \(node 0\))$/);
+    expect(t('connDisconnectLabel', { role: end1, name: 'R1', node: 'node in' }).startsWith(t('connDisconnect'))).toBe(true);
+    expect(t('connDisconnectLabel', { role: end2, name: 'R2', node: t('groundWords') })).toBe('Disconnect the end 2 of R2 from ground (node 0)');
   });
 });
 

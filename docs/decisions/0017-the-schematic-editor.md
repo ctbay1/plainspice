@@ -407,11 +407,9 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   higher", say "node in is higher" ("ground is higher" for ground). The short line under a current
   stays a label, "from in to out", as the drawing writes "in = 6 V". The Disconnect button was
   "Disconnect the end 1 of R1 from in", then "…from its node, in": either ends on a bare name, heard
-  as "from (its node) in…". It is now "Disconnect the end 1 of R1 from its node", naming no node: the
-  card passes the node as its list writes it ("in", "ground (node 0)"), and the end's row says it
-  just before the button. "…from node in" and "…from ground (node 0)" need the card
-  (`CardEdit.tsx`, not the words' file) to pass the node as a sentence says it (`nodeSaid`), with
-  the words "Disconnect the {role} of {name} from {node}".
+  as "from (its node) in…". It is now "Disconnect the end 1 of R1 from node in" ("…from ground (node
+  0)" for ground): the card passes each end's node as a sentence says it (`PartEnd.said`, from
+  `nodeSaid`), not as its list writes it (done when the lanes were merged).
 - **"skips"** (W11). Whole lines ngspice does not read are lines it "skips", in the Netlist panel's
   foot and the README as in the hint line and the Checks panel; "ignores" stays for characters inside
   a line (a unit after a number).
