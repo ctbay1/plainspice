@@ -39,7 +39,6 @@ function notAnswersWord(r: RunRecord): string {
  * shows none of them).
  */
 export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, text: string, phone = false, parts = true, oldShown = true): StatusWords {
-
   const run = pressRun(phone);
   if (engine.status === 'failed') return { main: t('statusEngineFailed'), detail: engine.reason, tone: 'bad' };
   if (live.running?.loading) return { main: t('statusLoading'), detail: t('statusLoadingDetail'), tone: 'busy' };
@@ -123,6 +122,12 @@ export interface HintInput {
   paused?: boolean;
   /** The whole drawing is in view. */
   whole: boolean;
+  /**
+   * The fit shows the whole drawing (CanvasViewInfo.fits), wherever the reader has moved it since:
+   * a drawing that fits, moved partly off the screen, keeps the words of its fit (the status line
+   * offers all of it back), never "as well as it can" or "drag the paper to see the rest".
+   */
+  fits?: boolean;
   /** A phone shows the drawing turned to fit, or as drawn. */
   turned: boolean;
   asDrawn: boolean;
@@ -216,9 +221,12 @@ export function hintWords(p: HintInput): string {
   if (p.selectedNode !== undefined) return p.phone ? t('hintNodeSelectedPhone', { name: p.selectedNode }) : t('hintNodeSelected', { name: p.selectedNode });
   if (p.selectedName) return p.phone ? t('hintSelectedPhone', { name: p.selectedName }) : t('hintSelected', { name: p.selectedName });
   if (p.invite) return p.phone ? t('hintInvitePhone', { name: p.invite }) : t('hintInviteDesk', { name: p.invite });
-  if (p.phone && p.turned) return p.whole ? t('hintTurned') : t('hintTurnedPan');
-  if (p.phone && p.asDrawn && !p.whole) return t(p.video ? 'hintAsInVideo' : 'hintAsDrawn');
-  if (p.phone) return p.whole ? t('hintPhone') : t('hintPhonePan');
+  // "Drag the paper to see the rest" only when the fit itself cuts something off: a drawing the reader
+  // moved partly off the screen is still the fit it was, and the status line offers all of it back.
+  const whole = p.whole || !!p.fits;
+  if (p.phone && p.turned) return whole ? t('hintTurned') : t('hintTurnedPan');
+  if (p.phone && p.asDrawn && !whole) return t(p.video ? 'hintAsInVideo' : 'hintAsDrawn');
+  if (p.phone) return whole ? t('hintPhone') : t('hintPhonePan');
   return t('hintDesk');
 }
 

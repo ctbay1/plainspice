@@ -136,6 +136,14 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   numbers) is in the free paper, wherever the fit or the reader put it. The hint says "drag the paper
   to see the rest" only when something drawn is cut off: at 360 px, four turned examples shown whole
   (sp01-4, sp01-5, p01-2, p02-3) told the student to drag; now they say "Turned to fit the screen".
+  The hint names the view by its fit (`CanvasViewInfo.fits`): a drawing whose fit shows all of it,
+  moved partly off the screen by the reader, keeps its words ("Turned to fit the screen · tap a part
+  to change it", "Tap a part to see its numbers and change it"), and the status line offers "Show the
+  whole drawing"; "as well as it can · drag the paper to see the rest" is said only when the fit itself
+  cuts something off (the critic of these fixes found the turned hint claiming the turn could not fit
+  Mistake 2 after a swipe). Considered: a hint of its own for a drawing moved off ("… · Show the
+  whole drawing brings all of it back"), as the critic suggested; not taken, because the button with
+  those words is right under the hint, and the hint would change as the reader pans.
 - **Fit shows the whole drawing, and is called so.** Fit fits all of the drawing, smaller than its
   words' readable size if it must be, down to 4 px a grid unit (as the phone's view while editing
   already did). Before, it stopped at the readable size, so it changed nothing for a drawing too

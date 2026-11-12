@@ -1765,6 +1765,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     nodeCard: nodeCard && schematic ? { name: nodeCard.node === GROUND ? t('groundName') : nodeWords(schematic, nodeCard.node), ground: nodeCard.node === GROUND } : undefined,
     paused: status.tone === 'paused',
     whole: viewInfo?.whole ?? true,
+    fits: viewInfo?.fits ?? true,
     turned: !!turned && shown === turned,
     asDrawn: asDrawnOnPhone,
     video,

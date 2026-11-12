@@ -519,3 +519,25 @@ test('“Show the whole drawing” and the turn share one row of the status line
     expect((await status.locator('.status__main').boundingBox())!.width).toBeGreaterThan(20);
   }
 });
+
+test('a turned drawing that fits, moved partly off the screen: the hint still says it fits, and only a fit that cuts some of it off says to drag', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await openApp(page);
+  // From the middle of the paper, clear of the "more" at its edges.
+  const paper = (await page.locator('.nb-canvas').boundingBox())!;
+  const from = { x: paper.x + paper.width * 0.55, y: paper.y + paper.height * 0.45 };
+  const swipe = (): Promise<void> => fingers(page, [from], [{ x: from.x - 160, y: from.y }]);
+  await chooseExample(page, 'Mistake 2: a typo in a node name');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', /^(ok|bad)$/);
+  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  await swipe();
+  await expect(statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true })).toBeVisible();
+  await expect(hintLine(page)).toHaveText(t('hintTurned'));
+  // Turned as well as it can be (some of it is cut off at any readable size): it says so, moved or not.
+  await chooseExample(page, 'Example 3: open circuit (V_Th)');
+  await expectSolved(page);
+  await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
+  await swipe();
+  await expect(statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true })).toBeVisible();
+  await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
+});

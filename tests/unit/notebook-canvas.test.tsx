@@ -428,6 +428,24 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
     expect(views.at(-1)!.whole).toBe(false);
   });
 
+  it('says whether its fit shows all of the drawing, wherever the reader moved it since (the hint’s words after a pan)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    const { rerender } = render(<NotebookCanvas ref={ref} {...base(views)} />);
+    expect(views.at(-1)!).toMatchObject({ whole: true, fits: true });
+    // Moved partly off the screen: no longer whole, but the fit it came from shows all of it.
+    act(() => ref.current!.panBy(-400, 0));
+    expect(views.at(-1)!).toMatchObject({ moved: true, whole: false, fits: true });
+    // At a readable size the window cannot hold, the fit itself cuts some of it off, moved or not.
+    rerender(<NotebookCanvas ref={ref} {...base(views)} minUnit={60} maxUnit={60} fitKey="big" />);
+    expect(views.at(-1)!).toMatchObject({ moved: false, whole: false, fits: false });
+    act(() => ref.current!.panBy(-100, 0));
+    expect(views.at(-1)!).toMatchObject({ moved: true, whole: false, fits: false });
+    // Asked for whole ("Show the whole drawing"): its fit shows all of it.
+    rerender(<NotebookCanvas ref={ref} {...base(views)} minUnit={60} maxUnit={60} fitKey="whole" fitWhole />);
+    expect(views.at(-1)!).toMatchObject({ moved: false, whole: true, fits: true });
+  });
+
   it('asked for the whole drawing (Fit), shows all of it, smaller than readable if it must; zooming out goes as far as two fingers do, never jumping in', () => {
     const views: CanvasViewInfo[] = [];
     const ref = createRef<CanvasHandle>();

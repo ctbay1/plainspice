@@ -74,6 +74,11 @@ export interface CanvasViewInfo {
   unit: number;
   /** All of the drawing (what is drawn: not the room kept around it for longer numbers) is in the free part of the window. */
   whole: boolean;
+  /**
+   * The fit (not the reader's pans and zooms) shows all of the drawing, as `whole` judges it: a
+   * drawing the reader moved partly off the screen is not whole, but still fits.
+   */
+  fits: boolean;
   /** Where the drawing is on the canvas now (with `offset` applied). */
   view: View;
   /** The same without `offset`: where the fit puts it. */
@@ -421,7 +426,9 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   // Whole when everything drawn is in the free part of the window (fit.ts: inkInView), wherever the fit or the reader put it.
   // The page hears of it when that changes, not each time its bars change size (each run): its render must not lag the pointer.
   const whole = !ink || !shown || inkInView(shown, ink, size, insets);
-  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, view: shown, base: view, size, moved } : undefined), [shown, view, whole, size, moved]);
+  // And whether the fit itself shows all of it (the page's words for the view: "turned to fit the screen", or "drag").
+  const fits = useMemo(() => !ink || !size.width || !size.height || inkInView(fitNow(), ink, size, insets), [ink, size, insets, fitNow]);
+  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, fits, view: shown, base: view, size, moved } : undefined), [shown, view, whole, fits, size, moved]);
   const { onView } = props;
   useEffect(() => {
     if (info) onView?.(info);
