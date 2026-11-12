@@ -144,9 +144,12 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   line); it was "Fit the drawing to the window" everywhere but on the status line, two names for one
   action. "Fit" is left to the turn ("Turn to fit", "Turned to fit the screen"), and Ctrl+K still
   finds the command by "fit". The whole fit stays until something else fits the drawing again
-  (another circuit, a part typed in the Netlist panel), and a phone's card still fits its own part.
-  Zoom out (its buttons and keys) now goes as far as two fingers do, to half the readable size, and
-  never jumps in from a view that is already smaller.
+  (another circuit, a part typed in the Netlist panel). On a phone it waits while a sheet or a card
+  is open: in the strip of paper left above a sheet the whole drawing was a stamp (p02-4 at 4.3 px a
+  grid unit), so the More sheet's "Show the whole drawing" keeps the readable size while the sheet
+  is up, and the whole drawing shows when it goes; a card still fits its own part. Zoom out (its
+  buttons and keys) now goes as far as two fingers do, to half the readable size, and never jumps in
+  from a view that is already smaller.
 - **As drawn, at the smallest readable size.** A drawing shown as drawn on a phone that needs panning
   ("As in the video", or a drawing that cannot be turned cleanly) opens at the smallest size its
   words can be read (names 10.5 px), from its left end, instead of as tall as the screen allows up to

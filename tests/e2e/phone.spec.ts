@@ -446,11 +446,14 @@ test('a drawing shown as drawn opens at the smallest readable size, and Fit show
   await expect(hintLine(page)).toHaveText(t('hintAsInVideo'));
   // As much of it as can be read at once (it opened at 30 px a unit, twice that, with only V1 and R1 in view).
   await expect.poll(() => unitNow(page)).toBeCloseTo(minUnitFor(), 3);
-  // More, then "Show the whole drawing": all of it, smaller than readable if it must be.
+  // More, then "Show the whole drawing": all of it, smaller than readable if it must be...
   const bar = page.getByRole('navigation', { name: t('barLabel') });
   await bar.getByRole('button', { name: t('barMore') }).click();
   const more = page.getByRole('dialog', { name: t('barMore') });
   await more.getByRole('button', { name: t('zoomFit'), exact: true }).click();
+  // ...once the sheet has gone: in the strip of paper above it, the whole drawing would be a stamp.
+  await settle(page);
+  expect(await unitNow(page)).toBeGreaterThanOrEqual(minUnitFor() - 1e-3);
   await more.getByRole('button', { name: t('moreClose') }).click();
   await expect(more).toHaveCount(0);
   await expect.poll(() => unitNow(page)).toBeLessThan(minUnitFor());

@@ -3189,10 +3189,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             padding={phone ? 10 : 24}
             // Whole, smaller than readable if it must be: a phone shown as drawn while editing (it was
             // turned to fit), so no part is off the screen where the student was looking (two fingers
-            // zoom in); or the reader asked for it (Fit), except for a phone's card, which fits its part.
+            // zoom in); or the reader asked for it ("Show the whole drawing"). On a phone not while a
+            // sheet is open: the paper left above it would make the drawing a stamp (a card fits its
+            // part, More keeps the readable size); the whole fit comes when the sheet goes.
             // Otherwise a drawing that does not fit (as drawn on a phone) opens at the smallest readable
             // size, from its left end: as much of it as can be read at once.
-            fitWhole={editingWhole || (wholeAt === fitCount && !(phone && (card || nodeCard)))}
+            fitWhole={editingWhole || (wholeAt === fitCount && !(phone && phoneSheet))}
             focus={cardFocus}
             frame={frame}
             offset={offset}
