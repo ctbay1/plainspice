@@ -43,6 +43,11 @@ interface Fact {
   unreliable?: true;
   /** What checkTraps finds, in order. */
   traps: string[];
+  /**
+   * The netlist has more than one problem, so no single fix makes it run: each fix must take its own trap away,
+   * and the fixes, applied one after another as the traps then offer them, must give a clean run.
+   */
+  several?: true;
 }
 
 const FACTS: Fact[] = [
@@ -339,6 +344,8 @@ const FACTS: Fact[] = [
   // does at its place (CR1-2); a sign with a space on E-H, C and L (CR1-3); .param names (CR1-7); a source's function,
   // AC words and settings (CR1-5); .dc by place (CR1-4, -6, -12); a .tran stop of 0 (CR1-13); the letter O (CR1-8, -9).
   { code: 'zero-ohm-4', netlist: "* values read as 0 because of how they are written\nV1 a 0 1\nR1 a b 0\u200b.47\nR2 b c 0R47\nR3 c d 0k47\nR4 d e 0\uff0e47\nR5 e f 0\u00b747\nR6 f g 0\u2009.47\nR7 g h 0\u00a0.47\nR8 h i 0\u300247\nR9 i j 1,0\nR10 j 0 1\n.op\n.end\n", vectors: { "v(j)": 0.9999999999909992, "i(v1)": -1.0001220703125 }, prints: ["Value of resistor r1 is too small, set to 1.000000e-12", "Value of resistor r9 is too small, set to 1.000000e-12"], traps: ['invisible-character', 'rkm-notation', 'rkm-notation', 'look-alike-letter', 'look-alike-letter', 'space-character', 'nbsp', 'look-alike-letter', 'decimal-comma'] },
+  { code: 'zero-ohm-5', netlist: "* r= and resistance= read as 0: 0\u200b.47 reads 0\nV1 a 0 1\nR1 a b r=0\u200b.47\nR2 b 0 1\nV2 c 0 1\nR3 c d resistance=0\u200b.47\nR4 d 0 1\n.op\n.end\n", vectors: { "v(b)": 0.9999999999989999, "v(d)": 0.9999999999989999 }, prints: ["Warning: Value of resistor r1 is too small, set to 1.000000e-12", "Warning: Value of resistor r3 is too small, set to 1.000000e-12"], traps: ['invisible-character', 'invisible-character'] },
+  { code: 'zero-ohm-6', netlist: "* a resistor of 0 in a subcircuit used twice, one written 0, one read as 0\n.subckt div a b\nR1 a b 0\nR2 b 0 1\nR3 b c 0\u200b.47\nR4 c 0 1\n.ends\nV1 in 0 1\nX1 in out1 div\nX2 in out2 div\n.op\n.end\n", prints: ["Value of resistor r.x1.r1 is too small", "Value of resistor r.x2.r1 is too small", "Value of resistor r.x1.r3 is too small"], traps: ['zero-ohm', 'invisible-character'] },
   { code: 'invisible-character-28', netlist: "* a zero-width space inside .tran's step: it reads 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0\u200b.1m 2m\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true, traps: ['invisible-character'] },
   { code: 'invisible-character-29', netlist: "* a zero-width space inside .tran's stop time: it reads 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\u200b.5\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['invisible-character'] },
   { code: 'invisible-character-30', netlist: "* a zero-width space inside .tran's start time: it reads 1 s, after the stop\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 2m 1\u200bm\n.end\n", prints: ["TSTART is invalid, must be less than TSTOP."], fails: true, traps: ['invisible-character'] },
@@ -365,6 +372,16 @@ const FACTS: Fact[] = [
   { code: 'invisible-character-51', netlist: "* numbers read short in functions, AC values and settings\nV1 in 0 DC 0 AC 1\u200b0 PULSE(0 1\u200b0 0 1n 1n 1 2)\nV2 a 0 SIN(0 1 1\u200bk)\nV3 b 0 PWL(0 0 1\u200bm 1)\nV4 c 0 EXP(0 1\u200b0 0 1m 1m 1m)\nV5 d 0 SFFM(0 1\u200b0 1k 1 100)\nR1 in out 1k m=1\u200b0\nC1 out 0 1u ic=1\u200b0\nRa a 0 1k\nRb b 0 1k\nRc c 0 1k\nRd d 0 1k\n.tran 0.1m 2m\n.end\n", last: { "v(in)": 1, "v(a)": 0.012566039883352607, "v(b)": 0.002, "v(c)": 0.21831082194880724, "v(d)": 0.8140296083596736, "v(out)": 0.8646997736181392 }, sig6: true, traps: ['invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character'] },
   { code: 'invisible-character-52', netlist: "* a zero-width space at the start of a source's dc=\nV1 a 0 dc=\u200b5\nR1 a 0 1k\n.op\n.end\n", prints: ["Undefined parameter [___5]"], fails: true, traps: ['invisible-character'] },
   { code: 'invisible-character-53', netlist: "* a zero-width space at the start of a capacitor's ic=\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u ic=\u200b1\n.tran 0.1m 2m uic\n.end\n", prints: ["Undefined parameter [___1]"], fails: true, traps: ['invisible-character'] },
+  { code: 'invisible-character-54', netlist: "* a zero-width space inside the second sweep's stop of .dc: it reads 1, below the start of 2\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 2 1\u200b0 1\n.end\n", vectors: { "v(v-sweep)": [0, 1, 2, 3, 4, 5], "v(b)": [2, 2, 2, 2, 2, 2] }, traps: ['invisible-character'] },
+  { code: 'invisible-character-55', netlist: "* a zero-width space inside the first sweep's stop of .dc: it reads 1, below the start of 2\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 2 1\u200b0 1 V2 0 1 0.5\n.end\n", vectors: { "v(v-sweep)": [2, 2], "v(b)": [0.5, 1] }, traps: ['invisible-character'] },
+  { code: 'invisible-character-57', netlist: "* a zero-width space inside the start of a lin .ac sweep: it reads 0\nV1 in 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n.ac lin 10 0\u200b.5 1k\n.end\n", vectors: { "frequency": [0, 111.11111111111111, 222.22222222222223, 333.33333333333337, 444.44444444444446, 555.5555555555555, 666.6666666666666, 777.7777777777777, 888.8888888888888, 999.9999999999999] }, traps: ['invisible-character'] },
+  { code: 'invisible-character-58', netlist: "* a step read as 0 and a negative stop time: the step is checked first\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0\u200b.1m -1m\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true, several: true, traps: ['invisible-character'] },
+  { code: 'invisible-character-59', netlist: "* PWL times read short: 1\u200bm reads 1, after the next time of 2m\nV1 a 0 PWL(0 0 1\u200bm 1 2m 0)\nRa a 0 1k\nI1 0 b PWL(1\u200bm 0 2m 1m)\nRb b 0 1k\n.tran 0.1m 3m\n.end\n", last: { "v(a)": 0, "v(b)": 0 }, sig6: true, prints: ["Warning : voltage source v1 has non-increasing PWL time points.", "Warning : current source i1 has non-increasing PWL time points."], traps: ['invisible-character', 'invisible-character'] },
+  { code: 'invisible-character-60', netlist: "* a step read as 0, and a second sweep with no step\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 0\u200b.5 V2 0 1\n.end\n", prints: ["Bad syntax!"], fails: true, several: true, traps: ['invisible-character'] },
+  { code: 'invisible-character-61', netlist: "* a step of 0, and a zero-width space inside the stop time\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0 2\u200bm\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true, several: true, traps: ['tran-problems', 'invisible-character'] },
+  { code: 'invisible-character-62', netlist: "* V9 is not in the circuit, and a zero-width space inside the stop\nV1 in 0 1\nR1 in 0 1k\n.dc V9 0 5\u200b0 1\n.end\n", prints: ["named \"v9\" is not in the circuit"], fails: true, several: true, traps: ['dc-sweep-problems', 'invisible-character'] },
+  { code: 'invisible-character-63', netlist: "* .ac with no stop frequency, and a zero-width space inside the start\nV1 in 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n.ac dec 10 1\u200b0\n.end\n", vectors: { "frequency": [1, 1.2589254117941673, 1.5848931924611136, 1.99526231496888, 2.5118864315095806, 3.16227766016838, 3.9810717055349736, 5.011872336272725, 6.309573444801935, 7.9432823472428185, 10.000000000000005, 12.58925411794168, 15.848931924611145, 19.95262314968881, 25.118864315095824, 31.622776601683825, 39.81071705534977, 50.11872336272729, 63.0957344480194, 79.43282347242825, 100.00000000000014, 125.89254117941691, 158.4893192461116, 199.52623149688827, 251.18864315095843, 316.2277660168385, 398.10717055349795, 501.1872336272732, 630.9573444801945, 794.3282347242831, 1000.000000000002] }, prints: ["Warning, ngspice assumes default parameter(s) for ac simulation"], traps: ['invisible-character'] },
+  { code: 'invisible-character-56', netlist: "* numbers read short in the other places of PULSE, SIN, EXP, SFFM and PWL, in the AC phase, and in values written name=value\nV1 n1 0 PULSE(1\u200b0 1 0 1n 1n 1 2)\nV2 n2 0 PULSE(0 1 1\u200b0u 1n 1n 1 2)\nV3 n3 0 PULSE(0 1 0 1\u200b0u 1n 1 2)\nV4 n4 0 PULSE(0 1 0 1n 1\u200b0u 1 2)\nV5 n5 0 PULSE(0 1 0 1n 1n 0\u200b.5m 1m)\nV6 n6 0 PULSE(0 1 0 1n 1n 0.2m 0\u200b.5m)\nV7 n7 0 PULSE(0 1 0 1n 1n 1 2 4\u200b5)\nV8 n8 0 SIN(1\u200b0 1 1k)\nV9 n9 0 SIN(0 1 0\u200b.5k)\nV10 n10 0 SIN(0 1 1k 1\u200b0u)\nV11 n11 0 SIN(0 1 1k 0 1\u200b0)\nV12 n12 0 SIN(0 1 1k 0 0 4\u200b5)\nV13 n13 0 EXP(1\u200b0 1 0 1m 1m 1m)\nV14 n14 0 EXP(0 1 1\u200b0u 1m 1m 1m)\nV15 n15 0 EXP(0 1 0 0\u200b.1m 1m 1m)\nV16 n16 0 EXP(0 1 0 1m 1\u200b0m 1m)\nV17 n17 0 EXP(0 1 0 1m 1m 0\u200b.1m)\nV18 n18 0 SFFM(1\u200b0 1 1k 1 100)\nV19 n19 0 SFFM(0 1 1k 1 100 1\u200b0u)\nV20 n20 0 SFFM(0 1 1k 1 100 0 4\u200b5)\nV21 n21 0 SFFM(0 1 1k 1 100 0 0 4\u200b5)\nV22 n22 0 PWL(0 1\u200b0 1m 2)\nV23 n23 0 PWL(0 0 1m 2\u200b0)\nV24 n24 0 DC 1 AC 1 4\u200b5\nV25 n25 0 dc=1\u200b0\nE1 n26 0 n1 0 gain=1\u200b0\nRln1 n1 0 1k\nRln2 n2 0 1k\nRln3 n3 0 1k\nRln4 n4 0 1k\nRln5 n5 0 1k\nRln6 n6 0 1k\nRln7 n7 0 1k\nRln8 n8 0 1k\nRln9 n9 0 1k\nRln10 n10 0 1k\nRln11 n11 0 1k\nRln12 n12 0 1k\nRln13 n13 0 1k\nRln14 n14 0 1k\nRln15 n15 0 1k\nRln16 n16 0 1k\nRln17 n17 0 1k\nRln18 n18 0 1k\nRln19 n19 0 1k\nRln20 n20 0 1k\nRln21 n21 0 1k\nRln22 n22 0 1k\nRln23 n23 0 1k\nRln24 n24 0 1k\nRln25 n25 0 1k\nRln26 n26 0 1k\nI27 0 n27 1m\nR27 n27 0 r=1\u200b0\nI28 0 n28 1m\nR28 n28 0 resistance=1\u200b0\nV29 a29 0 PULSE(0 1 0 1n 1n 1 2)\nR29 a29 n29 1k\nC29 n29 0 c=1\u200bu\nV30 a30 0 PULSE(0 1 0 1n 1n 1 2)\nR30 a30 n30 1k\nL30 n30 0 l=1\u200bm\nV31 a31 0 1\nRa31 a31 0 1k\nF31 0 n31 V31 gain=1\u200b0\nR31 n31 0 1k\n.tran 0.1m 2m\n.end\n", last: { "v(n1)": 1, "v(n27)": 0.001, "v(n29)": 0.000001999997999985299, "v(n30)": 0.1353046553256334, "v(n31)": -1 }, sig6: true, traps: ['invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character'] },
   { code: 'unknown-word-25', netlist: "* a minus sign with a space after it where E's gain goes\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 - 2\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (-)"], fails: true, traps: ['unknown-word'] },
   { code: 'unknown-word-26', netlist: "* a minus sign with a space after it where F's gain goes\nV1 a 0 1\nR0 a 0 1k\nF1 0 b V1 - 2\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (-)"], fails: true, traps: ['unknown-word'] },
   { code: 'unknown-word-27', netlist: "* a minus sign with a space after it where G's value goes\nV1 a 0 1\nR0 a 0 1k\nG1 0 b a 0 - 1m\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (-)"], fails: true, traps: ['unknown-word'] },
@@ -378,6 +395,21 @@ const FACTS: Fact[] = [
   { code: 'unknown-word-35', netlist: "* a .func name where a value goes\n.func f(x) {x*2}\nV1 a 0 f\nR1 a 0 1k\n.op\n.end\n", prints: ["unknown parameter (f)"], fails: true, traps: ['unknown-word'] },
   { code: 'unknown-word-36', netlist: "* a .param line after .end\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n.param Vs=5\n", vectors: { "v(a)": 5 }, traps: ['after-end'] },
   { code: 'unknown-word-37', netlist: "* a .param line after .end with a comment glued to it\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end;x\n.param Vs=5\n", vectors: { "v(a)": 5 }, traps: ['after-end'] },
+  { code: 'unknown-word-38', netlist: "* bar's R1 names foo's parameter Rv\n.subckt foo x y Rv=2k\nR1 x y {Rv}\n.ends\n.subckt bar x y\nR1 x y Rv\n.ends\nV1 a 0 1\nX1 a 0 foo\nX2 a 0 bar\n.op\n.end\n", prints: ["can't find model 'rv'", "unknown parameter (rv)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-39', netlist: "* bar's R1 names the function f\n.func f(x) {x*2}\n.subckt bar x y\nR1 x y f\n.ends\nV1 a 0 1\nX2 a 0 bar\n.op\n.end\n", prints: ["can't find model 'f'", "unknown parameter (f)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-40', netlist: "* m=3 after E1's gain\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 2 m=3\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (m)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-41', netlist: "* m=3 after H1's value\nV1 a 0 1\nR0 a 0 1k\nH1 b 0 V1 2 m=3\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (m)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-42', netlist: "* x=... where R1's value goes\nV1 a 0 1\nR1 a 0 x=5\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-43', netlist: "* x=... where C1's value goes\nV1 a 0 1\nR1 a b 1k\nC1 b 0 x=5\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-44', netlist: "* x=... where L1's value goes\nV1 a 0 1\nR1 a b 1k\nL1 b 0 x=5\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-45', netlist: "* x=... where V1's value goes\nV1 a 0 x=5\nR1 a 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-46', netlist: "* x=... where I1's value goes\nI1 0 a x=5\nR1 a 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-47', netlist: "* x=... where E1's value goes\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 x=5\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-48', netlist: "* x=... where F1's value goes\nV1 a 0 1\nR0 a 0 1k\nF1 0 b V1 x=5\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-49', netlist: "* gm=... where G1's value goes\nV1 a 0 1\nR0 a 0 1k\nG1 0 b a 0 gm=1m\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (gm)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-50', netlist: "* x=... where H1's value goes\nV1 a 0 1\nR0 a 0 1k\nH1 b 0 V1 x=5\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-51', netlist: "* x=3 after E1's gain\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 2 x=3\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-52', netlist: "* a resistor written - 1\u200b0\nV1 a 0 1\nR3 a 0 - 1\u200b0\n.op\n.end\n", prints: ["unknown parameter (-)"], fails: true, traps: ['unknown-word'] },
   { code: 'dc-sweep-problems-11', netlist: "* a .dc sweep with only its start\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
   { code: 'dc-sweep-problems-12', netlist: "* a second .dc sweep with its name only\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
   { code: 'dc-sweep-problems-13', netlist: "* one number too many on a .dc line\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 1 2\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
@@ -387,6 +419,14 @@ const FACTS: Fact[] = [
   { code: 'dc-sweep-problems-17', netlist: "* expressions in braces and quotes on a .dc line\n.param lo=-5 hi=5 st=1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 {lo} {hi} 'st'\n.end\n", last: { "v(v-sweep)": 5 }, traps: [] },
   { code: 'dc-sweep-problems-18', netlist: "* a .param name without braces where the step goes\n.param st=1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 st\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
   { code: 'dc-sweep-problems-19', netlist: "* a word after the second sweep\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 0 1 0.5 7\n.end\n", last: { "v(v-sweep)": 5 }, traps: [] },
+  { code: 'dc-sweep-problems-20', netlist: "* the second sweep goes the wrong way: start 2 above stop 1, step up\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 2 1 1\n.end\n", vectors: { "v(v-sweep)": [0, 1, 2, 3, 4, 5], "v(b)": [2, 2, 2, 2, 2, 2] }, traps: ['dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-21', netlist: "* the first sweep goes the wrong way: start 2 above stop 1, step up\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 2 1 1 V2 0 1 0.5\n.end\n", vectors: { "v(v-sweep)": [2, 2], "v(b)": [0.5, 1] }, traps: ['dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-22', netlist: "* both sweeps go the wrong way\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 2 1 1 V2 2 1 1\n.end\n", fails: true, traps: ['dc-sweep-problems', 'dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-23', netlist: "* the second sweep's step jumps past its stop\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 0 1 5\n.end\n", vectors: { "v(v-sweep)": [0, 1, 2, 3, 4, 5], "v(b)": [0, 0, 0, 0, 0, 0] }, traps: ['dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-24', netlist: "* the first sweep's step jumps past its stop\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 1 5 V2 0 1 0.5\n.end\n", vectors: { "v(v-sweep)": [0, 0, 0], "v(b)": [0, 0.5, 1] }, traps: ['dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-25', netlist: "* V9 is not in the circuit, and the step is 0\nV1 in 0 1\nR1 in 0 1k\n.dc V9 0 5 0\n.end\n", prints: ["Bad syntax!"], fails: true, several: true, traps: ['dc-sweep-problems', 'dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-26', netlist: "* the second sweep's step goes down from 0 towards 1\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 0 1 -0.5\n.end\n", vectors: { "v(v-sweep)": [0, 1, 2, 3, 4, 5], "v(b)": [0, 0, 0, 0, 0, 0] }, traps: ['dc-sweep-problems'] },
+  { code: 'dc-sweep-problems-27', netlist: "* the first sweep's step goes down from 0 towards 5\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 -1 V2 0 1 0.5\n.end\n", vectors: { "v(v-sweep)": [0, 0], "v(b)": [0.5, 1] }, traps: ['dc-sweep-problems'] },
   { code: 'tran-problems-8', netlist: "* .tran with a stop time of 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['tran-problems'] },
   { code: 'tran-problems-9', netlist: "* .tran with a negative stop time\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m -1m\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['tran-problems'] },
   { code: 'look-alike-letter-15', netlist: "* the letter O for a zero, with a unit, meg or two Os\nI1 0 a 1\nR1 a 0 1Ok\u03a9\nI2 0 b 1\nR2 b 0 1Omeg\nI3 0 c 1\nR3 c 0 1OOk\nI4 0 d 1\nR4 d 0 1OkOhm\nI5 0 e 1OA\nR5 e 0 1\nV6 f 0 1\nC6 f 0 1OuF\n.op\n.end\n", vectors: { "v(a)": 1, "v(b)": 1, "v(c)": 1, "v(d)": 1, "v(e)": 1 }, prints: ["can't find model '1ouf'"], traps: ['look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter'] },
@@ -394,11 +434,14 @@ const FACTS: Fact[] = [
   { code: 'space-character-16', netlist: "* a thin space inside a .dc step: it reads 0\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 0\u2009.5\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['space-character'] },
   { code: 'space-character-17', netlist: "* a thin space inside .tran's stop time: it reads 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\u2009.5\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['space-character'] },
   { code: 'space-character-18', netlist: "* a thin space inside a .dc stop: it reads 1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 1\u20090 1\n.end\n", vectors: { "v(v-sweep)": [0, 1] }, traps: ['space-character'] },
+  { code: 'space-character-19', netlist: "* a step of 0, and the stop time written 2<thin space>ms\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0 2\u2009ms\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true, several: true, traps: ['tran-problems', 'space-character'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
 const runs = new Map<string, RunResult>();
 const fixed = new Map<string, { label: string; netlist: string; run: RunResult }[]>();
+/** For a netlist with several problems: the fixes applied in turn, and the run of what they give. */
+const inTurn = new Map<string, { netlist: string; run: RunResult }>();
 
 beforeAll(async () => {
   const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
@@ -412,6 +455,16 @@ beforeAll(async () => {
       }
     }
     fixed.set(f.code, list);
+    if (f.several) {
+      // The first fix of the first trap that has one, again and again, until no trap offers a fix.
+      let netlist = f.netlist;
+      for (let k = 0; k < 10; k++) {
+        const next = checkTraps(parseNetlist(netlist)).find((t) => t.fixes.length > 0);
+        if (!next) break;
+        netlist = applyFix(netlist, next.fixes[0]!);
+      }
+      inTurn.set(f.code, { netlist, run: await engine.run(netlist) });
+    }
   }
 });
 
@@ -446,6 +499,22 @@ describe.each(FACTS)('$code', (fact) => {
   });
 
   it('every fix the traps offer runs cleanly in our engine', () => {
+    if (fact.several) {
+      // Each fix takes its own trap away; the fixes in turn give a clean run.
+      const before = checkTraps(parseNetlist(fact.netlist));
+      for (const t of before) {
+        for (const fix of t.fixes) {
+          const after = checkTraps(parseNetlist(applyFix(fact.netlist, fix)));
+          expect(after.filter((x) => x.id === t.id).length, `${t.id}: ${fix.label}`).toBeLessThan(before.filter((x) => x.id === t.id).length);
+        }
+      }
+      expect(before.some((t) => t.fixes.length > 0)).toBe(true);
+      const last = inTurn.get(fact.code)!;
+      expect(last.run.ok, `${last.netlist}${last.run.stderr}`).toBe(true);
+      expect(last.run.unreliable, last.netlist).toBe(false);
+      expect(checkTraps(parseNetlist(last.netlist)).filter((t) => t.severity !== 'info'), last.netlist).toEqual([]);
+      return;
+    }
     for (const f of fixed.get(fact.code)!) {
       expect(f.run.ok, `${f.label}\n${f.netlist}${f.run.stderr}`).toBe(true);
       expect(f.run.unreliable, `${f.label}\n${f.netlist}`).toBe(false);

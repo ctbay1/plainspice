@@ -353,6 +353,11 @@ export const EXPLAIN_STRINGS = {
   dcNested: (inner: string, outer: string, total: number): string =>
     `For each value of ${outer}, ${inner} runs through all its values: ${total} points in all.`,
   dcNoPoints: 'With these numbers the sweep has no points (start is past stop for this step), so ngspice runs nothing and says nothing.',
+  // In two sweeps a sweep the wrong way never moves (traps.md, dc-sweep-problems-20, -21; re-check critic CR2-4).
+  dcStuckSecond: (name: string, start: string, first: string): string =>
+    `With these numbers this sweep goes the wrong way and never moves: ngspice computes the sweep of ${first} once, with ${name} at its start, ${start}, and says nothing.`,
+  dcStuckFirst: (name: string, start: string, second: string): string =>
+    `With these numbers this sweep goes the wrong way and never moves: ngspice keeps ${name} at its start, ${start}, takes ${second} from its second value on, and says nothing.`,
   dcStepZero: 'A step of 0 (or no step at all) stops ngspice 47: "Bad syntax!".',
   dcNotNumber: 'not a number for SPICE (see Checks)',
   dcNotNumberNote: 'A word that is no number where a number goes stops ngspice 47: "Bad syntax!".',
@@ -2009,7 +2014,11 @@ function explainDc(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     if (s.step) fields.push(fieldOf('step', s.step, read(s.step, s.stepValue, S.dcStep)));
     if (notNumber(s.start, s.startValue) || notNumber(s.stop, s.stopValue) || notNumber(s.step, s.stepValue)) addNote(notes, S.dcNotNumberNote);
     else if (!s.step || s.stepValue === 0) addNote(notes, S.dcStepZero); // M13, M13b
-    else if (s.points === 0) addNote(notes, S.dcNoPoints); // A11
+    else if (s.points === 0) {
+      // A11 on a line of one sweep, or when both sweeps have none; in two sweeps one the wrong way never moves.
+      const other = r.sweeps[1 - k];
+      addNote(notes, !other || other.points === 0 ? S.dcNoPoints : k === 1 ? S.dcStuckSecond(s.source.text, v(s.start, s.startValue), other.source.text) : S.dcStuckFirst(s.source.text, v(s.start, s.startValue), other.source.text));
+    }
     const name = s.kind === 'temperature' ? 'the temperature' : s.source.text;
     phrases.push(S.dcSweep(name, v(s.start, s.startValue), v(s.stop, s.stopValue), v(s.step, s.stepValue)));
   });
