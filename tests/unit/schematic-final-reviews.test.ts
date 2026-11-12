@@ -2,12 +2,15 @@
  * The schematic model after the final reviews of milestone 2 (12 November 2026), each finding pinned
  * down: a node's name is never written on a part (student:label-on-part); a ground symbol is never
  * put where a wire runs through it, so a ladder built with the mouse turns for a phone held upright
- * (student:phone-link-unturned).
+ * (student:phone-link-unturned); and three sentences of the editor say what happens and why
+ * (words:W6, W7, W10).
  */
 import { describe, expect, it } from 'vitest';
 import { notebookSchematic } from '../../src/notebook/schematic.ts';
 import { isWide, turnedQuarter, wireBends } from '../../src/notebook/turn.ts';
-import { applyEdit, buildSchematic, checkConnectivity, findOverlaps, segmentCrossesBox, segmentsOf, serializeDrawing, stripDrawing, type EditOp, type Schematic } from '../../src/schematic/index.ts';
+import { EDIT_STRINGS, applyEdit, buildSchematic, checkConnectivity, findOverlaps, segmentCrossesBox, segmentsOf, serializeDrawing, stripDrawing, type EditOp, type Schematic } from '../../src/schematic/index.ts';
+import { parseNetlist } from '../../src/spice/parse.ts';
+import { checkTraps } from '../../src/spice/traps.ts';
 
 /** The reviewers' ladder built with the mouse (student:label-on-part), as its netlist was after a reload. */
 const MOUSE_LADDER = `* circuit
@@ -138,5 +141,42 @@ describe('a ladder built with the mouse turns for a phone held upright (student:
     for (const w of s.drawing.wires) for (const [a, b] of segmentsOf(w)) expect(segmentCrossesBox(a, b, ground!.box), JSON.stringify(w)).toBe(false);
     expect(findOverlaps(s.scene)).toEqual([]);
     expect(checkConnectivity(s.circuit, s.drawing)).toEqual([]);
+  });
+});
+
+describe('the editor says what happens and why (words:W6, W7, W10)', () => {
+  const DIVIDER = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
+
+  it('W6: a name that differs from a node\'s only in capital letters joins that node, written as it is, and says why (fact W6)', () => {
+    const s = buildSchematic(DIVIDER);
+    const r = applyEdit(s, { kind: 'rename-node', node: 'out', name: 'IN' });
+    expect(r.ok).toBe(true);
+    expect(r.summary).toBe('Node out renamed to IN. SPICE ignores capital letters in node names, so IN is node in, which was already there: the two are now one node, in.');
+    // The netlist keeps one spelling, the node's own, so nothing describes in and IN as two nodes.
+    expect(stripDrawing(r.text)).toBe('* divider\nV1 in 0 6\nR1 in in 1k\nR2 in 0 2k\n.op\n.end\n');
+    // The same spelling: the sentence it always was.
+    expect(applyEdit(s, { kind: 'rename-node', node: 'out', name: 'in' }).summary).toBe('Node out renamed to in. A node called in was already there, so the two are now one node, in.');
+    // A node's own name with other capital letters is a new spelling of that node, not a join.
+    const own = applyEdit(s, { kind: 'rename-node', node: 'out', name: 'OUT' });
+    expect(own.summary).toBe('Node out renamed to OUT.');
+    expect(stripDrawing(own.text)).toContain('R1 in OUT 1k\nR2 OUT 0 2k');
+  });
+
+  it('W7: a half turn where a part stands is refused in words that never call Reverse a turn', () => {
+    const s = buildSchematic(DIVIDER);
+    const r1 = s.drawing.parts.get('r1')!;
+    const r = applyEdit(s, { kind: 'move-part', part: 'R1', to: r1.at, rot: ((r1.rot + 180) % 360) as 0 | 90 | 180 | 270 });
+    expect(r).toMatchObject({ ok: false, reason: 'A half turn of R1 where it stands would loop its wires round it. To swap its two ends, put it down, then use Reverse.' });
+    expect(EDIT_STRINGS.noHalfTurn('R1')).not.toMatch(/turning|round where/i);
+  });
+
+  it.each(['gnd', 'GND'])('W10: Reverse refused on a line ending with %s names the Checks panel\'s own fix', (word) => {
+    const text = `* gnd test\nV1 a 0 6\nR1 a b 2\nVx b ${word}\n.op\n.end\n`;
+    const reason = applyEdit(buildSchematic(text), { kind: 'reverse-part', part: 'Vx' }).reason!;
+    const fixes = checkTraps(parseNetlist(text)).flatMap((t) => t.fixes.map((f) => f.label));
+    const rename = fixes.find((f) => f.startsWith('Rename') && f.endsWith('to 0'))!;
+    expect(rename).toBe(`Rename ${word} to 0`);
+    expect(reason).toContain(`Rename ${word} first: the Checks panel says why and offers “${rename}”.`);
+    expect(reason).not.toContain('write 0');
   });
 });

@@ -160,6 +160,8 @@ export const EDIT_STRINGS = {
     `No part connects to a ground symbol any more, so ${leftNode(parts, ends, 'ground', piece)}, and the circuit has no ground (node 0) until a part connects to a ground symbol again.`,
   renamed: (old: string, name: string): string => `Node ${old} renamed to ${name}.`,
   joinedByName: (name: string): string => `A node called ${name} was already there, so the two are now one node, ${name}.`,
+  /** W6: a name typed with other capital letters than an existing node's is that node; `name` as the node is written. */
+  joinedByCase: (typed: string, name: string): string => `SPICE ignores capital letters in node names, so ${typed} is node ${name}, which was already there: the two are now one node, ${name}.`,
   labelMoved: (node: string): string => `The name of node ${node} moved.`,
   wordsMoved: (name: string): string => `${name}'s words moved.`,
   valueSet: (name: string, value: string): string => `${name} is now ${value}.`,
@@ -186,7 +188,7 @@ export const EDIT_STRINGS = {
   noRoute: 'There is no way for a wire between those two points.',
   noWay: (name: string): string => `${cap(name)}'s wires would find no way there. Try a place with more room.`,
   noTurn: (name: string): string => `${name} can't turn there: its wires would find no way. Move it to a place with more room first, or use Reverse to swap its ends.`,
-  noHalfTurn: (name: string): string => `Turning ${name} round where it stands would loop its wires round it. To swap its two ends instead, use Reverse.`,
+  noHalfTurn: (name: string): string => `A half turn of ${name} where it stands would loop its wires round it. To swap its two ends, put it down, then use Reverse.`,
   slanted: 'A wire runs only across and up or down.',
   offGrid: `That place is off the grid: x and y must be whole numbers from −${COORD_LIMIT} to ${COORD_LIMIT}.`,
   badTurn: 'A part turns in quarter turns: 0, 90, 180 or 270.',
@@ -213,8 +215,9 @@ export const EDIT_STRINGS = {
   failed: 'PlainSpice could not make that change.',
   outOfStep: 'PlainSpice could not draw that change with wires that connect exactly what the netlist connects, so it left the circuit as it was. You can make it in the Netlist panel.',
   // W9: gnd as the last word of a line is an ordinary node; W8: anywhere else it is ground (0).
-  gndNode: (name: string): string =>
-    `${name}'s line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename gnd first: the Checks panel says why and offers to write 0.`,
+  // `word`: the node as the Checks panel's fix names it ("Rename gnd to 0", traps.ts).
+  gndNode: (name: string, word = 'gnd'): string =>
+    `${name}'s line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename ${word} first: the Checks panel says why and offers “Rename ${word} to 0”.`,
 } as const;
 
 const S = EDIT_STRINGS;
@@ -941,7 +944,8 @@ function reversePart(s: Schematic, name: string, options: EditOptions): EditResu
   // The meanings swap, not the words: ground is written 0, since "gnd" at the end of a line is an
   // ordinary node to ngspice (W9). A node called gnd that is not ground cannot move away from the
   // end of the line without becoming ground.
-  if ([a, b].some((n) => !n.ground && lowerAscii(n.token.text) === 'gnd')) return refuse(s, S.gndNode(part.name));
+  const gnd = [a, b].find((n) => !n.ground && lowerAscii(n.token.text) === 'gnd');
+  if (gnd) return refuse(s, S.gndNode(part.name, s.netlist.nodes.get(gnd.name)?.refs[0]?.text ?? gnd.token.text));
   const written = (n: typeof a): string => (n.ground ? '0' : n.token.text);
   const changes = [replaceToken(a.token, written(b)), replaceToken(b.token, written(a))];
   const next = cloneDrawing(s.drawing);
@@ -1197,7 +1201,10 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
   const name = wanted.trim();
   if (!NODE_NAME.test(name)) return refuse(s, S.badName(name));
   const target = lowerAscii(name) === 'gnd' ? GROUND : lowerAscii(name);
-  const written = target === GROUND ? '0' : name;
+  // A name that differs from another node's only in capital letters is that node (W6): it is written
+  // as that node is, so the netlist (and what describes it) never has the two spellings.
+  const existing = target !== GROUND && target !== node ? s.circuit.nodes.get(target) : undefined;
+  const written = target === GROUND ? '0' : (existing?.text ?? name);
   const changes = renameRefs(s.netlist, node, written);
   const next = cloneDrawing(s.drawing);
   next.labels = next.labels.map((l) => (l.node === node ? { ...cloneLabel(l), node: target } : l));
@@ -1225,7 +1232,8 @@ function renameNode(s: Schematic, nodeName: string, wanted: string, options: Edi
       else next.labels.push({ node: target, at: p.at });
     });
     if (target === GROUND) next.labels = next.labels.filter((l) => l.node !== GROUND);
-    const summary = target === GROUND ? `${S.renamed(info.text, name)} ${S.nowGround(S.node(info.text))}` : `${S.renamed(info.text, name)} ${S.joinedByName(name)}`;
+    const joined = existing && existing.text !== name ? S.joinedByCase(name, existing.text) : S.joinedByName(name);
+    const summary = target === GROUND ? `${S.renamed(info.text, name)} ${S.nowGround(S.node(info.text))}` : `${S.renamed(info.text, name)} ${joined}`;
     return finish(s, changes, next, { summary, select: { node: target } }, options);
   }
   return finish(s, changes, next, { summary: S.renamed(info.text, name), select: { node: target } }, options);
