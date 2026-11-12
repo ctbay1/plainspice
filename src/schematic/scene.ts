@@ -927,6 +927,11 @@ export interface Overlap {
 /**
  * Everything that collides: symbols with symbols, wires crossing symbols, words on symbols, on
  * wires or on other words. A clean drawing has none.
+ *
+ * Each symbol and each set of words is compared only with what is filed in the squares of the grid it
+ * covers, in the order a comparison of every pair would take them, so the list is the same; a
+ * comparison of every pair grew with the square of the drawing (1,600 ground symbols drawn by lines
+ * made each edit compare three million pairs, three times; second re-check, P3).
  */
 export function findOverlaps(scene: Scene): Overlap[] {
   const out: Overlap[] = [];
@@ -939,18 +944,63 @@ export function findOverlaps(scene: Scene): Overlap[] {
     ...scene.nodeLabels.map((l, i) => ({ item: { kind: 'node-label' as const, id: `${l.node}#${i}` }, box: l.box })),
   ];
   const segments = scene.wires.flatMap((w, i) => segmentsOf(w.points).map((s) => ({ item: { kind: 'wire' as const, id: String(i) }, s })));
+  const symbolsNear = new Grid(symbols.map((t) => t.box));
+  const wordsNear = new Grid(words.map((t) => t.box));
+  const segmentsNear = new Grid(segments.map(({ s: [a, b] }) => ({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) })));
   for (let i = 0; i < symbols.length; i++) {
-    for (let j = i + 1; j < symbols.length; j++) {
-      if (boxesOverlap(symbols[i]!.box, symbols[j]!.box)) out.push({ a: symbols[i]!.item, b: symbols[j]!.item });
-    }
-    for (const w of segments) if (segmentCrossesBox(w.s[0], w.s[1], symbols[i]!.box)) out.push({ a: symbols[i]!.item, b: w.item });
-    for (const t of words) if (boxesOverlap(symbols[i]!.box, t.box)) out.push({ a: symbols[i]!.item, b: t.item });
+    const box = symbols[i]!.box;
+    for (const j of symbolsNear.near(box)) if (j > i && boxesOverlap(box, symbols[j]!.box)) out.push({ a: symbols[i]!.item, b: symbols[j]!.item });
+    for (const k of segmentsNear.near(box)) if (segmentCrossesBox(segments[k]!.s[0], segments[k]!.s[1], box)) out.push({ a: symbols[i]!.item, b: segments[k]!.item });
+    for (const k of wordsNear.near(box)) if (boxesOverlap(box, words[k]!.box)) out.push({ a: symbols[i]!.item, b: words[k]!.item });
   }
   for (let i = 0; i < words.length; i++) {
-    for (let j = i + 1; j < words.length; j++) {
-      if (boxesOverlap(words[i]!.box, words[j]!.box)) out.push({ a: words[i]!.item, b: words[j]!.item });
-    }
-    for (const w of segments) if (segmentCrossesBox(w.s[0], w.s[1], words[i]!.box)) out.push({ a: words[i]!.item, b: w.item });
+    const box = words[i]!.box;
+    for (const j of wordsNear.near(box)) if (j > i && boxesOverlap(box, words[j]!.box)) out.push({ a: words[i]!.item, b: words[j]!.item });
+    for (const k of segmentsNear.near(box)) if (segmentCrossesBox(segments[k]!.s[0], segments[k]!.s[1], box)) out.push({ a: words[i]!.item, b: segments[k]!.item });
   }
   return out;
+}
+
+/**
+ * Boxes filed by the squares of the grid they cover (as the obstacles words avoid are): `near` gives,
+ * in order, every box that shares a square with a given box (every box that can overlap it), each once.
+ */
+class Grid {
+  private readonly cells = new Map<number, number[]>();
+  /** What covers too many squares to file: in every answer. */
+  private readonly big: number[] = [];
+  private readonly seen: Uint32Array<ArrayBuffer>;
+  private looks = 0;
+  private readonly count: number;
+
+  constructor(boxes: readonly Box[]) {
+    this.count = boxes.length;
+    this.seen = new Uint32Array(boxes.length);
+    boxes.forEach((b, i) => {
+      const keys = cellsOf(b);
+      if (!keys) this.big.push(i);
+      else for (const k of keys) (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push(i);
+    });
+  }
+
+  near(box: Box): readonly number[] {
+    const keys = cellsOf(box);
+    if (!keys) return Array.from({ length: this.count }, (_, i) => i);
+    const look = ++this.looks;
+    const out: number[] = [];
+    let lists = 0;
+    const take = (list: readonly number[]): void => {
+      if (!list.length) return;
+      lists++;
+      for (const i of list) {
+        if (this.seen[i] === look) continue;
+        this.seen[i] = look;
+        out.push(i);
+      }
+    };
+    take(this.big);
+    for (const k of keys) take(this.cells.get(k) ?? NO_IDS);
+    if (lists > 1) out.sort((a, b) => a - b);
+    return out;
+  }
 }

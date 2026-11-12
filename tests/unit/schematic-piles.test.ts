@@ -154,6 +154,29 @@ describe('the repairs stop when a round changes nothing (P3)', () => {
   });
 });
 
+describe('overlaps are found by looking near each symbol and name (P3)', () => {
+  it('1,600 ground symbols on a joined mesh: the same overlaps as comparing every pair, with a few checks each', { timeout: 60_000 }, () => {
+    const lines: string[] = [];
+    const row = (j: number): string => `*@ wire ${Array.from({ length: 40 }, (_, i) => `${7 + i},${5 + j}`).join(' ')}`;
+    const column = (i: number): string => `*@ wire ${Array.from({ length: 40 }, (_, j) => `${7 + i},${5 + j}`).join(' ')}`;
+    for (let k = 0; k < 40; k++) lines.push(row(k), column(k));
+    for (let k = 0; k < 1600; k++) lines.push(`*@ ground ${7 + (k % 40)} ${5 + Math.floor(k / 40)} 0`);
+    const s = build(`* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0 m\n*@ R1 4 0 270\n*@ R2 7 3 0\n${lines.join('\n')}\n.end\n`);
+    const sc = s.scene;
+    expect(sc.grounds.length).toBe(1600);
+    const found = counted(() => findOverlaps(sc));
+    // Every pair, the way findOverlaps compared them before (and in that order).
+    const symbols = [...sc.parts.map((p) => p.box), ...sc.grounds.map((g) => g.box)];
+    const pieces = sc.wires.reduce((n, w) => n + w.points.length - 1, 0);
+    const words = sc.parts.length + sc.nodeLabels.length;
+    const pairs = (symbols.length * (symbols.length - 1)) / 2 + symbols.length * (pieces + words) + (words * (words - 1)) / 2 + words * pieces;
+    expect(found.result.length).toBeGreaterThan(0);
+    // About 25 checks for each symbol here; comparing every pair was 5.5 million.
+    expect(found.checks).toBeLessThan(50 * (symbols.length + words + pieces));
+    expect(found.checks).toBeLessThan(pairs / 20);
+  });
+});
+
 describe('a look at what words must avoid does not sort what it looks at (P3)', () => {
   it('2,000 names written at one point: each look sorts a few ids, not every id in its squares, twice', { timeout: 60_000 }, () => {
     // buildScene places each name against the others there (that work is the names': the scenes that
