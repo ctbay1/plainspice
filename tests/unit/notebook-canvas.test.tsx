@@ -392,4 +392,18 @@ describe('NotebookCanvas after the final reviews (the phone lane)', () => {
     rerender(<NotebookCanvas ref={ref} {...props} />);
     expect(views.at(-1)!.view).toEqual(panned);
   });
+
+  it('is whole when everything drawn is in the free part of the window, wherever the reader put it (F4)', () => {
+    const views: CanvasViewInfo[] = [];
+    const ref = createRef<CanvasHandle>();
+    render(<NotebookCanvas ref={ref} {...base(views)} />);
+    expect(views.at(-1)!.whole).toBe(true);
+    // Moved a little, all of it still in view: still whole (it said not whole after any move).
+    act(() => ref.current!.panBy(2, 2));
+    expect(views.at(-1)!.moved).toBe(true);
+    expect(views.at(-1)!.whole).toBe(true);
+    // Moved so that some of it is out of view: not whole.
+    act(() => ref.current!.panBy(-400, 0));
+    expect(views.at(-1)!.whole).toBe(false);
+  });
 });

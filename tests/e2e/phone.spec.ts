@@ -318,6 +318,22 @@ test('a sheet opened while something is selected leaves the drawing where it was
   expect((await inkOnScreen(page)).y0, 'the drawing starts below the top bar').toBeGreaterThanOrEqual(free.top - 1);
 });
 
+test('a phone 360 px wide: a turned drawing shown whole says so, not “drag the paper”', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await openApp(page);
+  for (const name of ['Mistake 2: a typo in a node name', 'Example 2: only a dependent source, 1 A test current']) {
+    await chooseExample(page, name);
+    await expect(statusLine(page)).toHaveAttribute('data-tone', /^(ok|bad)$/);
+    await expect(hintLine(page), name).toHaveText(t('hintTurned'));
+    const free = await freePaper(page);
+    const ink = await inkOnScreen(page);
+    expect(ink.x0, name).toBeGreaterThanOrEqual(0);
+    expect(ink.x1, name).toBeLessThanOrEqual(free.width);
+    expect(ink.y0, name).toBeGreaterThanOrEqual(free.top);
+    expect(ink.y1, name).toBeLessThanOrEqual(free.bottom);
+  }
+});
+
 test('the status line speaks of numbers from before the last change only when there are some', async ({ page }) => {
   await openApp(page);
   await chooseExample(page, 'Mistake 1: no ground (node 0)');

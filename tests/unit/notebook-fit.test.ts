@@ -1,6 +1,7 @@
 /** src/notebook/fit.ts: the drawing fitted to the window, its words never too small to read. */
 import { describe, expect, it } from 'vitest';
 import { MIN_TEXT_PX, NO_INSETS, TYPE, fitView, minUnitFor, toGrid, toScreen, zoomAt } from '../../src/notebook/index.ts';
+import { inkInView } from '../../src/notebook/fit.ts';
 
 const box = { x0: -2, y0: -3, x1: 18, y1: 7 }; // 20 × 10 grid units
 const size = { width: 1000, height: 600 };
@@ -94,5 +95,17 @@ describe('fitView, filling the height (a wide drawing on a phone, as in the vide
     const whole = fitView(square, phone, NO_INSETS, { padding: 10, minUnit: 5, maxUnit: 100 });
     expect(whole.unit).toBeCloseTo(37, 6);
     expect(whole.whole).toBe(true);
+  });
+});
+
+describe('inkInView: everything drawn is in the free part of the window (phone review, F4)', () => {
+  const ink = { x0: 0, y0: 0, x1: 30, y1: 15 };
+  const insets = { top: 50, right: 10, bottom: 100, left: 20 };
+  it('judges what is drawn against the free part, give or take a few pixels', () => {
+    expect(inkInView({ unit: 10, x: 20, y: 50 }, ink, size, insets)).toBe(true);
+    expect(inkInView({ unit: 10, x: 17, y: 50 }, ink, size, insets)).toBe(true);
+    expect(inkInView({ unit: 10, x: 10, y: 50 }, ink, size, insets)).toBe(false);
+    expect(inkInView({ unit: 10, x: 20, y: 600 - 100 - 150 + 3 }, ink, size, insets)).toBe(true);
+    expect(inkInView({ unit: 10, x: 20, y: 600 - 100 - 150 + 10 }, ink, size, insets)).toBe(false);
   });
 });

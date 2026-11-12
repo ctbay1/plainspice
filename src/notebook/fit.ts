@@ -90,6 +90,19 @@ export function fitView(bounds: Box, size: Size, insets: Insets, options: FitOpt
   return { unit, x, y, whole: bw * unit <= fw + 0.5 && bh * unit <= fh + 0.5 };
 }
 
+/**
+ * All of the drawing (`ink`: what is drawn, in grid units, not the room kept around it for longer
+ * numbers) is in the free part of the window, give or take `slack` pixels.
+ */
+export function inkInView(view: View, ink: Box, size: Size, insets: Insets, slack = 4): boolean {
+  return (
+    view.x + ink.x0 * view.unit >= insets.left - slack &&
+    view.x + ink.x1 * view.unit <= size.width - insets.right + slack &&
+    view.y + ink.y0 * view.unit >= insets.top - slack &&
+    view.y + ink.y1 * view.unit <= size.height - insets.bottom + slack
+  );
+}
+
 /** The view zoomed by `factor` about a screen point, within the unit limits. */
 export function zoomAt(view: View, factor: number, at: { x: number; y: number }, limits: { minUnit: number; maxUnit: number }): View {
   const unit = Math.max(limits.minUnit, Math.min(limits.maxUnit, view.unit * factor));

@@ -29,15 +29,16 @@
  *   its way ...) is drawn over the drawing.
  */
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react';
-import { describeItem, neighbour, readingOrder, GROUND, type Box, type NavItem, type PartLetter, type Point, type Schematic } from '../schematic/index.ts';
+import { describeItem, neighbour, readingOrder, unionBoxes, GROUND, type Box, type NavItem, type PartLetter, type Point, type Scene, type Schematic } from '../schematic/index.ts';
 import { DESCRIBE_STRINGS } from '../spice/describe.ts';
 import { elementInfo } from '../spice/elements.ts';
 import { assignNodeColours } from '../theme/nodes.ts';
 import { Drawing, UNIT_PX, itemKey, type PenMarks } from './Drawing.tsx';
 import { EditLayer, type EditMarks } from './EditLayer.tsx';
-import { fitView, zoomAt, type Insets, type Size, type View } from './fit.ts';
+import { fitView, inkInView, zoomAt, type Insets, type Size, type View } from './fit.ts';
 import { TYPE } from './measure.ts';
-import type { DrawingResults } from './results.ts';
+import { symbolBoxes } from './place.ts';
+import { inkBoxes, type DrawingResults } from './results.ts';
 import { NOTEBOOK_STRINGS } from './strings.ts';
 
 export interface CanvasHandle {
@@ -70,7 +71,7 @@ export interface CanvasHandle {
 export interface CanvasViewInfo {
   /** Screen pixels per grid unit. */
   unit: number;
-  /** The whole drawing is in view. */
+  /** All of the drawing (what is drawn: not the room kept around it for longer numbers) is in the free part of the window. */
   whole: boolean;
   /** Where the drawing is on the canvas now (with `offset` applied). */
   view: View;
@@ -220,6 +221,12 @@ export function itemBox(s: Schematic, item: NavItem): Box | undefined {
   return s.scene.nodeLabels.find((l) => l.node === item.name)?.box;
 }
 
+/** What is drawn (grid units): the symbols, the words and results as written (not the room kept for longer ones), the wires. */
+export function inkBox(scene: Scene, results: DrawingResults): Box | undefined {
+  const wires = scene.wires.flatMap((w) => w.points.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })));
+  return unionBoxes([...symbolBoxes(scene), ...inkBoxes(scene, results), ...wires]);
+}
+
 const grow = (b: Box, d: number): Box => ({ x0: b.x0 - d, y0: b.y0 - d, x1: b.x1 + d, y1: b.y1 + d });
 
 /** Two sets of insets are the same page around the paper, give or take its bars resizing (HOLD_SLACK). */
@@ -243,7 +250,6 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const descId = useId();
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const [view, setView] = useState<View | undefined>(undefined);
-  const [whole, setWhole] = useState(true);
   const [hovered, setHovered] = useState<NavItem | undefined>(undefined);
   const [focused, setFocused] = useState<NavItem | undefined>(undefined);
   /** Where a ghost (`ghost`, no editor) follows the pointer, in grid units. */
@@ -288,6 +294,7 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   const order = useMemo(() => readingOrder(s), [s]);
   const items = useMemo(() => order.map((item) => ({ item, box: itemBox(s, item) })).filter((x): x is { item: NavItem; box: Box } => x.box !== undefined), [order, s]);
   const bounds = s.scene.bounds;
+  const ink = useMemo(() => inkBox(s.scene, results), [s, results]);
 
   // The window's size.
   useLayoutEffect(() => {
@@ -301,16 +308,14 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   }, []);
 
   const selectedBox = selected ? itemBox(s, selected) : undefined;
-  const fitNow = useCallback((): { view: View; whole: boolean } => {
+  const fitNow = useCallback((): View => {
     const focus = frame ? undefined : selectedBox ? grow(selectedBox, 2.5) : focusBox;
     const f = fitView(frame ?? bounds, size, insets, { padding: padding ?? PADDING, minUnit, maxUnit, fill: frame ? 'whole' : fill, ...(focus ? { focus } : {}) });
-    const all = frame ? fitView(bounds, size, insets, { padding: padding ?? PADDING, minUnit: f.unit, maxUnit: f.unit }) : f;
-    return { view: { unit: f.unit, x: f.x, y: f.y }, whole: all.whole };
+    return { unit: f.unit, x: f.x, y: f.y };
   }, [bounds, size, insets, minUnit, maxUnit, padding, selectedBox, focusBox, frame, fill]);
   const applyFit = useCallback((): void => {
     const f = fitNow();
-    setView((v) => (sameView(v, f.view) ? v : f.view));
-    setWhole(f.whole);
+    setView((v) => (sameView(v, f) ? v : f));
   }, [fitNow]);
 
   // Fit when the window, the insets, the drawing or fitKey change, unless the reader moved the view
@@ -403,7 +408,8 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
   useLayoutEffect(() => {
     shownRef.current = shown;
   }, [shown]);
-  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole, view: shown, base: view, size, moved } : undefined), [shown, view, whole, size, moved]);
+  // Whole when everything drawn is in the free part of the window (fit.ts: inkInView), wherever the fit or the reader put it.
+  const info = useMemo((): CanvasViewInfo | undefined => (shown && view ? { unit: shown.unit, whole: !ink || inkInView(shown, ink, size, insets), view: shown, base: view, size, moved } : undefined), [shown, view, ink, size, insets, moved]);
   const { onView } = props;
   useEffect(() => {
     if (info) onView?.(info);
@@ -417,7 +423,6 @@ export function NotebookCanvas(props: NotebookCanvasProps): ReactNode {
       setMoved(true);
       setView((v) => (v ? next({ ...v, x: v.x + o.x, y: v.y + o.y }) : v));
     } else setView((v) => (v ? next(v) : v));
-    setWhole(false);
   }, []);
 
   const focusItem = useCallback(
