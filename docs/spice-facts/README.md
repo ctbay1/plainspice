@@ -102,6 +102,19 @@ too many, a name with a character that is not what it looks like, braces and quo
 without them, words after the second sweep), tran-problems-8, -9 (a stop time of 0 or less) and
 space-character-16 to -18 (a word glued by a thin space on an analysis line is one number, cut short).
 
+After the second critic of the re-check fixes, the same day, each run the same way: in traps.md,
+invisible-character-58, -60 to -63 and space-character-19 (a character word on an analysis line with a
+problem of its own: ngspice does what that problem does), -57 (a lin `.ac` start read as 0 runs from
+0 Hz), -54, -55 and dc-sweep-problems-20 to -24, -26, -27 (a sweep the wrong way in two sweeps never
+moves; both: no points), dc-sweep-problems-25 (a step of 0 and a missing source: 47 stops at the step,
+42 at the source), invisible-character-56 (the other places of the source functions, the AC phase and
+values written name=value, read short: no message) and -59 (PWL times read out of order: a warning),
+zero-ohm-5, -6 (r= read as 0; ngspice's names inside a subcircuit, r.x1.r1) and unknown-word-38 to -52
+(another subcircuit's parameter or a `.func` name inside a subcircuit, m= after an E or H gain, a
+setting where a part's value goes, another name=value after E's gain, a sign before a hidden character).
+A fact of two problems is marked `several` in its golden row: each fix takes its own trap away, and the
+fixes applied in turn give a clean run.
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the

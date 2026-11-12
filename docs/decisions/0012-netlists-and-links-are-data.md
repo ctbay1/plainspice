@@ -260,7 +260,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   one word would say the same consequence twice with two different buttons, of which "Use a 0 V source"
   makes a short where 470 mΩ was meant; the true words and the fix that writes what was meant ("Write
   0.47", "Write 0.5") are in one card. `checkTran`, as `checkDc` already did, leaves such a word to that
-  check (before, `.tran 0.1m 0<zero-width space>.5` got "The step is longer than the whole run" and a fix
+  check (corrected by the second critic, CR2-1, below: only the conclusions that word's reading decides) (before, `.tran 0.1m 0<zero-width space>.5` got "The step is longer than the whole run" and a fix
   that wrote a step of 0 with the raw character in its label), and a stop time of 0 or less is now an
   error of its own (tran-problems-8, -9; "Make it 1" for `-1`). The status words for ngspice's "TSTOP is
   invalid" (`describe.ts`) say "The .tran stop time must be more than 0" when the line has a stop time,
@@ -279,7 +279,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   parameter on this device or parameter is missing" (42: "no such parameter on this device"), later ones
   "unknown parameter" (invisible-character-45 to -47); the AC value and phase "unknown parameter" (-48,
   -49); a setting's value (`m=`, `dc=`, `ic=`) numparam's fatal "Undefined parameter [___2]" (-50, -52,
-  -53); a number read short there runs on without a message (-51). Their subjects say what they are ("A
+  -53); a number read short there runs on without a message where a run shows it (-51, -56; narrowed by the
+  second critic, CR2-3, below). Their subjects say what they are ("A
   word in V1's PULSE", "V1's AC value", "R1's m value") and their fixes give no unit. A place with no
   recorded run (AM, TRNOISE and the like) is left alone by the character checks and by unknown-word.
 - **One word for E's and F's gain** (CR1-14): "E1's gain" in the character checks too, as unknown-word
@@ -319,3 +320,66 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   analysis line where the line lacks a word says what is read there, not what ngspice does with the line
   as a whole (`.tran 1u<thin space>2m` has no stop time). Explain and the circuit's words for a `.tran`
   stop of 0 ("this line has no stop time", "from 0 to 0 s") are as before.
+- **A character word never hides its line's other problem** (second critic of the re-check fixes, CR2-1).
+  `checkTran` skipped a whole `.tran` line, and `checkDc` a whole sweep, when a character check covered one
+  word, and that check, weighing only its own number, said "without a message" where ngspice stopped at
+  another word: `.tran 0 2<thin space>ms` (a step of 0), `.tran 2<thin space>ms` (no stop time), `.dc V9 0
+  5<zero-width space>0 1` (no V9). Now the line is read as ngspice 47 reads it (`lineOutcome` in
+  `src/spice/traps.ts`, from inp2dot.c, dctrcurv.c, acan.c and noisean.c: the step, then the stop, then the
+  start of `.tran`; the words of each `.dc` sweep, then its source, then its points; `.ac`'s defaults and its
+  start; `.noise`'s frequencies, then its run). A character check says the line's outcome only when its
+  place's words describe it exactly (each outcome names the word that decides it: TSTEP@0, BAD@7), "without a
+  message" only when the line runs without one, and otherwise nothing ("it reads 2."): the line's own check
+  says its problem, as on a line without the character, and its fixes write the number meant, never the
+  character back. We chose this over the critic's other way (the line's own outcome, for every combination,
+  from a run): the outcomes ngspice reaches are many, and a check of its own already says each, from its own
+  runs; the facts invisible-character-58, -60 to -63 and space-character-19 show such lines. On `.tran`, whose
+  first problem stops ngspice, a character's own stop is said even when a later word is wrong too (-58).
+  Where a word glued by a character that looks like a space may be two words, the line is still left to the
+  glue check. A `.dc` line ngspice 47 stops at ("Bad syntax!") is never said to meet a missing source in 47
+  (ngspice 42 does, dc-sweep-problems-25), and no points are said of a line ngspice stops at. `.ac lin` has no
+  check of its start: a start of 0 runs from 0 Hz (invisible-character-57), where the words had said it stops.
+- **Linear in a long PWL** (CR2-2). Working out each word's place walked back over the words before it, so
+  a PWL of N numbers took time in N²: 22 s for 16,000 points, 2 s per keystroke at 4,000. The places of a
+  part line are now worked out in one pass (`partPlaces`, once per line), and a PWL's times are weighed from
+  a count of their falls made once: 16,000 points take about 0.2 s, a character in every time too. A unit test
+  checks that ten PWLs of 1,000 points take about as long as one of 10,000.
+- **"Without a message" in a function or a setting, only where a run shows it** (CR2-3). A PWL's times must
+  rise: a time read short out of order makes ngspice warn that the source "has non-increasing PWL time
+  points", which the words now say (invisible-character-59); a resistor's value written r= or resistance= and
+  read as 0 gets zero-ohm's words (zero-ohm-5). "Without a message" stays for the places runs show:
+  invisible-character-51 (narrowed to what it recorded) and -56 (every other place of PULSE, SIN, EXP, SFFM
+  and PWL, the AC phase, values written dc=, r=, resistance=, c=, l= and gain=; written c= or l=, the value is
+  not looked up as a model). No claim is made where a run is missing or ngspice weighs the number with
+  others: SFFM's carrier, modulation index and signal frequency, a value at time 0 beside a DC value (ngspice
+  notes when they differ), a source's DC value beside a function, a PWL with r= (whose repeat time must be one
+  of its times), any other setting.
+- **Two sweeps** (CR2-4). "No points" was recorded on lines of one sweep. In two sweeps ngspice computes the
+  first sweep for each value of the second, so a second sweep the wrong way leaves the first computed once,
+  with the second at its start (dc-sweep-problems-20, -26), a first sweep the wrong way stays at its start
+  while the second runs from its second value (-21, -27), both the wrong way give no points (-22), and a
+  step past the end gives one value of that sweep (-23, -24). The checks say so, as a warning (ngspice gives
+  results), for the plain words and the character words alike (invisible-character-54, -55), and so does
+  Explain.
+- **Parameters across subcircuits** (CR2-5). Inside a subcircuit ngspice gives a word a value from the top
+  level's `.param` lines and the subcircuit's own (its `.subckt` line and the `.param` lines in it), never
+  another subcircuit's, and never a `.func`'s name: those stop it (unknown-word-38, -39) and are flagged again.
+- **The sign check takes the number after it** (CR2-6). `R3 a 0 - 1<zero-width space>0` got "Write -1<zero-width space>0"
+  with the character in the label and the fix, and a second card saying "without a message" on a line ngspice
+  stops at the sign. The number after a sign standing alone is now the sign check's: one card, its value
+  written without the character ("Write -10"), and no character card for that word (unknown-word-52).
+- **ngspice's names in a subcircuit** (CR2-7). ngspice builds a subcircuit's parts once for each X line that
+  uses it and names them by it: r.x1.r1. The zero-ohm words quote that name, once for each X line
+  (zero-ohm-6); for a subcircuit inside another, or one no X line uses, they say the warning without a name.
+- **Settings on E to H lines, and where a value goes** (CR2-8). After an E's or H's gain, m= stops native
+  ngspice 47 and 42 too, with no polynomial (unknown-word-40, -41); F and G take m, their multiplier; any other
+  name=value there is read natively as a polynomial, as the words already said (unknown-word-51). A setting
+  written where the value goes (`G1 0 b a 0 gm=1m`, `R1 a 0 x=5`) stops every part at its name, with no
+  model warning (unknown-word-42 to -50): the words say the part has no setting of that name and offer "Write
+  1m", never a .param line and braces.
+- **Known limits after the second critic.** A line with two problems where the character's reading decides
+  the first is said by the character check on `.tran` and `.dc` (the first stop), and left unsaid on `.ac` and
+  `.noise`, whose outcomes combine warnings; their own problems, as on lines without a character, have no
+  check of their own. A word glued by a character that looks like a space between digits (`.dc V1 0 5<thin
+  space>1`) still leaves the line to the glue check. On a `.dc` line with a missing source and a step of 0,
+  each card says what each version does, as the runs show.
