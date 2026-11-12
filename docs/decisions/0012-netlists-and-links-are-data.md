@@ -170,25 +170,27 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   look-alike letter in a node name; and the circuit overview and the results' words did the same. Now
   one function, `nodeNameInWords` (`src/spice/explain.ts`), names it wherever a sentence names the
   node (and, after the critic of the fix, the floating-node and dangling-node checks and the
-  no-single-answer message, which wrote "ou<ZWSP>t has no DC path to ground" and "ou___t"): "node out (written with a zero-width space in it)", "node o ut (one word for SPICE: written
-  with a thin space, not a space)", "node оut (written with the Cyrillic letter о, which looks like
-  o)". On .ic, .save and .print lines such a voltage is said in words ("the voltage at node out
-  (written with a zero-width space in it) starts at 1 V"), and the .tf formula leaves the character
-  out, the words after it naming it (in the summary, the box on the paper and the Numbers panel's .tf
-  table, which wrote "v(ou<ZWSP>t)" until the critic of the fix). So does the card's formula, "V(in) −
-  V(out) = 2 V", whose spoken form names it after the formula ("V(in) minus V(out) is 2 volts, where out
-  is node out (written with a zero-width space in it)") unless the words before it, "node … is higher",
-  name it already (critic of the fix: a screen reader heard V(out), the node it is not). A name all in another alphabet (α) or with a Turkish letter is
-  meant as written, and not named. The .tf check keeps an error on a name that is a node of the
-  circuit but for such a character, as on any node no part connects to: ngspice's numbers for it are a
-  transfer function of 0 and an output impedance of 1 Ω (tf-problems-8), so the run is "Not reliable"
-  and the paper draws no .tf box, as for a typo (the critic of the S11 fix found that leaving it to
-  the character's warning made the run a green "Finished", with "Transfer function v(out) / V1: 0 V/V"
-  drawn as an answer). Its words name the character and never say "There is no node called out" with
-  a button "Use out": ".tf asks about a node with a zero-width space (U+200B) in its name, not the node
-  out", and the fix "Take it out: use out" ("Write the plain letter o: out" for a look-alike), as the
-  character's own warning offers it for the whole node. For a name that is no node either, the error
-  names the character too. Known gap: the short forms still write such a name as it is written, so the
-  character is there unseen: a sweep's "v(out) = 3.5 V", the Plot's legend, the Numbers panel's Node
-  column and the notes at the end of netlist lines (the checks warn about the node, and the sentences
-  beside them name the character).
+  no-single-answer message, which wrote "ou<ZWSP>t has no DC path to ground" and "ou___t"): "node out
+  (written with a zero-width space in it)", "node o ut (one word for SPICE: written with a thin space,
+  not a space)", "node оut (written with the Cyrillic letter о, which looks like o)". On .ic, .save
+  and .print lines such a voltage is said in words ("the voltage at node out (written with a
+  zero-width space in it) starts at 1 V"), and the .tf formula leaves the character out, the words
+  after it naming it (in the summary, the box on the paper and the Numbers panel's .tf table, which
+  wrote "v(ou<ZWSP>t)" until the critic of the fix). So does the card's formula, "V(in) − V(out) = 2
+  V", whose spoken form names it after the formula ("V(in) minus V(out) is 2 volts, where out is node
+  out (written with a zero-width space in it)") unless the words before it, "node … is higher", name
+  it already (critic of the fix: a screen reader heard V(out), the node it is not). A name all in
+  another alphabet (α) or with a Turkish letter is meant as written, and not named. The .tf check
+  keeps an error on a name that is a node of the circuit but for such a character, as on any node no
+  part connects to: ngspice's numbers for it are a transfer function of 0 and an output impedance of 1
+  Ω (tf-problems-8), so the run is "Not reliable" and the paper draws no .tf box, as for a typo (the
+  critic of the S11 fix found that leaving it to the character's warning made the run a green
+  "Finished", with "Transfer function v(out) / V1: 0 V/V" drawn as an answer). Its words name the
+  character and never say "There is no node called out" with a button "Use out": ".tf asks about a
+  node with a zero-width space (U+200B) in its name, not the node out", and the fix "Take it out: use
+  out" ("Write the plain letter o: out" for a look-alike), as the character's own warning offers it
+  for the whole node. For a name that is no node either, the error names the character too. Known gap:
+  the short forms still write such a name as it is written, so the character is there unseen: a
+  sweep's "v(out) = 3.5 V", the Plot's legend, the Numbers panel's Node column and the notes at the
+  end of netlist lines (the checks warn about the node, and the sentences beside them name the
+  character).
