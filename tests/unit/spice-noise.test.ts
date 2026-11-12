@@ -14,7 +14,7 @@ import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { annotateLines, describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
-import { agrees, exactModel, shares, toDouble, type ExactModel } from '../../src/spice/exact.ts';
+import { agrees, answersGap, exactModel, operatingPoint, shares, solveExact, toDouble, type ExactModel } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
@@ -345,6 +345,20 @@ describe('the same-circuit check (exact.ts agrees), measured with the real engin
     // R, F, G and I by their products; V, E and H by their own equations.
     expect((await check({ G1: '1.000001m' })).products).toBeGreaterThan(9e-7);
     expect((await check({ H1: '100.0001' })).equations).toBeGreaterThan(1e-9);
+  });
+
+  it('roundingNoise takes ngspice\'s run of another circuit for the other circuit\'s, even where its answers are within the page\'s digits: R2 1 ppm off is decided by the rule alone', async () => {
+    const written = parseNetlist(circuit());
+    const other = (await solveText(circuit().replace('R2 a 0 10k', 'R2 a 0 10.00001k'), ngspice)).results;
+    const own = (await solveText(circuit(), ngspice)).results;
+    expect(roundingNoise(written, own).by).toBe('exact');
+    expect(roundingNoise(written, other).by).toBe('rule');
+    // Within 5e-5 of the exact answers, so only the same-circuit check tells them apart.
+    const m = exactModel(written, written.lines.flatMap((l) => (l.element ? [l.element] : [])), readAfterEnd(written)) as ExactModel;
+    const nodes = new Map(other.op!.nodes.map((n) => [n.node, n.value]));
+    const branch = new Map(other.op!.currents.filter((c) => c.origin === 'branch').map((c) => [c.element, c.value]));
+    const ng = { voltage: (n: string) => nodes.get(n), branch: (k: string) => branch.get(k), device: () => undefined };
+    expect(answersGap(m, solveExact(m, [operatingPoint(m)])![0]!, ng)!).toBeLessThan(5e-5);
   });
 
   it('a small source is weighed against the circuit\'s largest voltage: 1 pV read as 1 nV passes, as 1 µV it does not (the values are read by ngspice\'s own grammar)', async () => {
