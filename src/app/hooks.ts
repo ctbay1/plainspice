@@ -78,7 +78,9 @@ export function useRect<T extends HTMLElement>(): [(el: T | null) => void, Rect]
  * Whether an element's content is taller than the element itself (so it scrolls), kept up to date as
  * either changes: the element's size (a window resized, the stack around it squeezed), its children's
  * sizes (the words in them wrapping again), and what is in it (other words, a child replaced by another,
- * which is then watched in its turn).
+ * which is then watched in its turn). It also marks which ends hide some of the content, as it scrolls
+ * (`data-more`: "above", "below" or "both"; none while all of it shows), so the page can show it: a box
+ * cut exactly between two lines of words gives no other sign that there are more.
  */
 export function useOverflowing<T extends HTMLElement>(): [(el: T | null) => void, boolean] {
   const [over, setOver] = useState(false);
@@ -90,19 +92,31 @@ export function useOverflowing<T extends HTMLElement>(): [(el: T | null) => void
       setOver(false);
       return;
     }
+    const ends = (): void => {
+      const above = el.scrollTop > 1;
+      const below = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+      const more = above && below ? 'both' : above ? 'above' : below ? 'below' : undefined;
+      if (el.dataset.more !== more) {
+        if (more) el.dataset.more = more;
+        else delete el.dataset.more;
+      }
+    };
     const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => update());
     const update = (): void => {
       setOver(el.scrollHeight > el.clientHeight + 1);
+      ends();
       // Watching an element already watched does nothing; a new child is watched from now on.
       for (const child of el.children) ro?.observe(child);
     };
     ro?.observe(el);
     const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(update);
     mo?.observe(el, { childList: true, subtree: true, characterData: true });
+    el.addEventListener('scroll', ends, { passive: true });
     update();
     stop.current = () => {
       ro?.disconnect();
       mo?.disconnect();
+      el.removeEventListener('scroll', ends);
     };
   }, []);
   return [ref, over];

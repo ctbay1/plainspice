@@ -227,14 +227,14 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   within them the hint gives way first: its box keeps its first line and scrolls, the status and its
   buttons stay whole below it; should even the status not fit, the lines scroll as a whole. What scrolls
   is then a named region a finger and the keys can scroll (WCAG 2.1.1), as a table too wide for the
-  screen is. A sheet that leaves the lines no room at all puts them out of sight while it is open
-  (screen readers keep them), rather than a sliver of half a line over the sheet. A short window is
-  short for its text, as the phone's layout itself is chosen: below 420 px of height at the usual text
-  size, 630 px at 150 %, so an iPhone SE upright with the largest text gets what a phone on its side
-  gets (the hint out of sight, the bar's words for screen readers only), and a sheet takes the lines'
-  place there; the bars get compact in a short window (their buttons 44 px, the smallest target the
-  phone's main buttons have, larger only for large text's icons; less padding; a sheet's head without
-  its grab), and below 300 px at the usual size (450 px at 150 %) a calm status folds to its dot. The
+  screen is. Above a sheet the lines give way in two steps (the next point), never as a sliver of half
+  a line over the sheet. A window wider than tall is short for its text, as the phone's layout itself
+  is chosen: below 420 px of height at the usual text size, 630 px at 150 % (a phone on its side, a
+  laptop window with large text); there the hint is out of sight (screen readers keep it) and the bars
+  get compact (their buttons 44 px, the smallest target the phone's main buttons have, larger only for
+  large text's icons; less padding; a sheet's head without its grab), and below 300 px at the usual
+  size (450 px at 150 %) a calm status folds to its dot. An upright phone is short only below 420 px,
+  whatever its text size (the next point). The
   card for a blank page scrolls inside the free paper, and the "more" at a cut edge stays below the
   top bar. Considered: the hand bar inside the stack, which would count in the drawing's free paper
   and move the drawing as a part is taken in hand; the status's reason or the hint cut to a line or two,
@@ -243,6 +243,42 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   `tests/e2e/phone.spec.ts`, "a small phone with the largest text keeps the hand bar, the sheets, the
   strip and the status line usable, and some paper" (on fix-base it stops at Place, at 48 to 102 px with
   the top bar ending at 85).
+- **The status line stays above a sheet while the sheet keeps its rows, and what is out of sight takes
+  no Tab stop.** The critic of these fixes found two things wrong in them. In a short window any sheet
+  put the hint and status lines out of sight (for screen readers only), the status line's buttons still
+  Tab stops: a keyboard user reached an Undo nobody could see, and Enter undid a change with nothing on
+  the screen to say so (WCAG 2.4.7); and a phone on its side at the usual text size, or a laptop at 200
+  %, lost the run's status and Undo while a panel was open, which it had shown before. And an iPhone SE
+  upright at 150 % counted as short, so its hint line, what a beginner reads first, was never on the
+  screen. Now the lines above a sheet (Parts, More, a panel) give way in two steps, each kept until the
+  sheet closes or the window changes (measured again, the lines would come back and go again): first the
+  hint steps out of sight (whatever the sheet is about, the hint is about the drawing), and the status
+  line stays whole above the sheet, which gives way below it and scrolls, down to its head and about two
+  of its rows (6 rem below its head: `SHEET_ROWS_KEPT_REM`); only when even the status line would leave
+  the sheet less do the lines step out of sight, their words still there for screen readers and none of
+  their buttons with them (More keeps Undo). Only a window wider than tall is short for its text, so an
+  upright phone keeps its hint line at every text size, in its box that keeps the first line and
+  scrolls. Checked as before (four phones, upright and on their side, three text sizes, the same sixteen
+  screens): no control out of reach, at least 48 px of paper, the hint line on an iPhone SE's screen at
+  150 % as at the usual size (the first screen, a blank page, a part in hand, a change made); the status
+  line above the More, Numbers and Checks sheets on every phone held upright but the iPhone SE at 150 %,
+  and on every phone on its side at the usual text size but the iPhone SE (320 px of height); and above
+  the Parts sheet over a blank page, whose status line explains why there is nothing to run, on the
+  larger phones upright. Where it is out of sight the Tab order reaches nothing that cannot be seen
+  (also at 1280 × 600 and 1366 × 768 with the largest text, and at 640 × 400, a laptop at 200 %). A box
+  in the lines scrolls only while it is squeezed (scrolling always, it cut the focus ring of the first
+  screen's "Change R1" at the usual text size), and fades at the end where it hides words, as the
+  computer's divider tabs do: a box cut exactly between two lines gave no sign that it scrolled. The
+  stack and its lines take a new size at once, also where motion is reduced (where every property
+  otherwise keeps its old value for a frame, and the lines measured that frame as no room). Considered:
+  the lines kept with their buttons made inert, or taken out of the accessibility tree altogether, as
+  the critic suggested first; their words stay for screen readers (how the run went is what one asks
+  for), without the buttons. Tests (`tests/e2e/phone.spec.ts`): "a sheet on a phone on its side keeps
+  the status line and its Undo above it…" (863 × 360; on the previous fix the status line is out of
+  sight), "a sheet that leaves the status line no room puts it out of sight…" (568 × 320 at 150 %; on
+  the previous fix the Tab order reaches Undo at x = −43), and the 320 × 568 test checks the hint line
+  on the first screen, on a blank page, with a part in hand and once it is placed (on the previous fix
+  the first screen's hint is out of sight).
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the

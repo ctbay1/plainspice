@@ -908,3 +908,43 @@ test('a sheet that leaves the status line no room puts it out of sight, its word
     await expectUsable(statusLine(page).getByRole('button', { name: t('undo'), exact: true }), `${name} closed: the status line's Undo`);
   }
 });
+
+test('the hint line’s box cuts nothing at the usual text size, and squeezed it fades where it hides words', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  // The first screen's Change R1 from the keys: its focus ring is drawn whole, no box around it cutting
+  // it (the hint's box scrolled always, and cut the ring's bottom on a Pixel 7 at the usual text size).
+  const invite = page.getByRole('button', { name: t('noteButton', { name: 'R1' }), exact: true });
+  await invite.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(invite).toBeFocused();
+  const cut = await invite.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const ring = Number.parseFloat(s.outlineOffset) + Number.parseFloat(s.outlineWidth);
+    const r = el.getBoundingClientRect();
+    const cuts: string[] = [];
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      if (getComputedStyle(p).overflowY === 'visible' && getComputedStyle(p).overflowX === 'visible') continue;
+      const c = p.getBoundingClientRect();
+      if (r.top - ring < c.top - 0.5 || r.bottom + ring > c.bottom + 0.5 || r.left - ring < c.left - 0.5 || r.right + ring > c.right + 0.5) cuts.push(String(p.className).split(' ')[0] ?? p.tagName);
+    }
+    return cuts;
+  });
+  expect(cut, 'boxes that cut the focus ring of Change R1').toEqual([]);
+  // A small phone with the largest text and a resistor in hand: the hint's box keeps its first line and
+  // scrolls. A box cut exactly between two lines gave no sign of more words: it fades at that end now.
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
+  await openApp(page);
+  await newCircuit(page);
+  await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barParts') }).tap();
+  await page.getByRole('dialog', { name: t('partsSheetTitle') }).getByRole('button', { name: /^Resistor/ }).tap();
+  const box = page.getByRole('region', { name: t('hintScrollLabel') });
+  await expect(box).toBeVisible();
+  const fade = (): Promise<{ more: string; mask: string }> => box.evaluate((el) => ({ more: (el as HTMLElement).dataset.more ?? '', mask: getComputedStyle(el).maskImage }));
+  await expect.poll(fade).toMatchObject({ more: 'below', mask: expect.stringMatching(/gradient/) });
+  // Scrolled to its end, the fade moves to the top, where the words it has passed are.
+  await box.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect.poll(fade).toMatchObject({ more: 'above', mask: expect.stringMatching(/gradient/) });
+});

@@ -3307,13 +3307,13 @@ html[data-contrast='more'] .lines .hint {
 }
 /* The lines give way before a sheet does (a sheet open is what the student is using), and within them the
    hint gives way first: its box keeps its first line and scrolls, the status and its buttons stay whole
-   below it. */
+   below it. A box scrolls only while it is squeezed: otherwise nothing in it is cut, a focus ring
+   included. */
 .phone-lines {
   display: flex;
   flex-direction: column;
   flex: 0 1000 auto;
   min-height: 0;
-  overflow-y: auto;
   overscroll-behavior: contain;
   pointer-events: none;
 }
@@ -3331,7 +3331,6 @@ html[data-contrast='more'] .lines .hint {
   flex: 0 1 auto;
   /* Never less than its first line: the rest scrolls. */
   min-height: 1.375rem;
-  overflow-y: auto;
   overscroll-behavior: contain;
 }
 /* Above a sheet, once the hint has stepped aside (App.tsx: hintAside), the status line keeps its size and
@@ -3344,6 +3343,7 @@ html[data-contrast='more'] .lines .hint {
    their own, their edge drawn, so they read as part of the stack and not as words on the drawing. */
 .hint-scroll.is-squeezed,
 .phone-lines.is-squeezed {
+  overflow-y: auto;
   pointer-events: auto;
 }
 .phone-lines.is-squeezed {
@@ -3354,6 +3354,26 @@ html[data-contrast='more'] .lines .hint {
 .hint-scroll.is-squeezed:focus-visible,
 .phone-lines.is-squeezed:focus-visible {
   outline-offset: -0.1875rem;
+}
+/* What a squeezed box hides fades at that end (hooks.ts, useOverflowing: data-more), as the computer's
+   divider tabs do: a box cut exactly between two lines still says there are more words. Never more than
+   two fifths of the box, so a box down to its first line keeps that line readable; while the keys are on
+   it, its whole focus ring shows instead (the arrow keys scroll it). */
+.hint-scroll.is-squeezed[data-more='below'],
+.phone-lines.is-squeezed[data-more='below'] {
+  mask-image: linear-gradient(to bottom, #000 max(60%, 100% - 1rem), rgb(0 0 0 / 0.25));
+}
+.hint-scroll.is-squeezed[data-more='above'],
+.phone-lines.is-squeezed[data-more='above'] {
+  mask-image: linear-gradient(to top, #000 max(60%, 100% - 1rem), rgb(0 0 0 / 0.25));
+}
+.hint-scroll.is-squeezed[data-more='both'],
+.phone-lines.is-squeezed[data-more='both'] {
+  mask-image: linear-gradient(to bottom, rgb(0 0 0 / 0.25), #000 min(20%, 1rem), #000 max(80%, 100% - 1rem), rgb(0 0 0 / 0.25));
+}
+.hint-scroll.is-squeezed:focus-visible,
+.phone-lines.is-squeezed:focus-visible {
+  mask-image: none;
 }
 /* Behind a sheet that needs their room (App.tsx: linesAside): out of sight, still read by screen readers,
    with none of their buttons (App.tsx leaves them out: no Tab stop nobody can see). */
