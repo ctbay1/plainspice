@@ -25,7 +25,7 @@
 import { lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Netlist } from '../spice/types.ts';
 import { circuitFromNetlist, GROUND, labelNode, subCircuit, type Circuit } from './circuit.ts';
-import { checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin, type Islands } from './connectivity.ts';
+import { SegmentIndex, checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin, type Islands } from './connectivity.ts';
 import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type NodeLabel, type PartPlacement } from './drawing.ts';
 import { parseDrawingLines, readDrawing, type DrawingLines, type DrawingProblem, type PositionLine } from './format.ts';
 import { boxesOverlap, inflate, isOrthogonal, manhattan, pointKey, pt, samePoint, segmentCrossesBox, segmentsOf, unionBoxes, type Box, type Direction, type Point } from './geometry.ts';
@@ -486,7 +486,8 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   if (circuit.hasGround && drawing.grounds.length === 0) {
     const spot = groundSpot(circuit, drawing, segs, options);
     if (spot) {
-      drawing.grounds.push({ at: spot, rot: 0 });
+      if (spot.lead) segs.push(spot.lead);
+      drawing.grounds.push({ at: spot.at, rot: 0 });
       problems.push({ kind: 'ground-added', severity: 'info', message: 'A ground symbol was added: the circuit has ground (node 0) and the drawing had none.' });
       // Its symbol names that copper now: a "0" label there goes.
       const pins = pinsOf();
@@ -750,20 +751,60 @@ function groundRotAt(circuit: Circuit, drawing: Drawing, pin: DrawnPin): 0 | 90 
   return out === 'down' ? 0 : out === 'left' ? 90 : out === 'up' ? 180 : 270;
 }
 
-/** A place for a ground symbol on node 0's copper: below its lowest free pin or wire point. */
-function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], options: LayoutOptions): Point | undefined {
-  const scene = buildScene(circuit, { ...drawing, wires: normalizeWires(segs) }, options);
-  const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.nodeLabels.map((l) => l.box)];
+/**
+ * A place for a ground symbol (bars down) on node 0's copper: below its lowest free pin or wire
+ * point, clear of symbols and words, and with no wire through it. When no point is clear (a ground
+ * rail drawn straight through the pins and then turned for a phone stands upright, so it runs through
+ * any symbol hung on it), the symbol hangs on a one-unit lead below the lowest end of ground's copper
+ * that has room, best where the lead goes straight on from a wire coming down (no new bend), as the
+ * automatic layout's ground rail ends; the lead is returned to be drawn. Else the least bad point.
+ */
+function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], options: LayoutOptions): { at: Point; lead?: Segment } | undefined {
+  const wires = normalizeWires(segs);
+  const scene = buildScene(circuit, { ...drawing, wires }, options);
+  const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box)];
+  const lines = wires.flatMap((w) => segmentsOf(w));
+  const symbols: Box[] = [...scene.parts.map((p) => p.box), ...scene.grounds.map((g) => g.box)];
+  /** Clear of the symbols, of words too unless `wordsMove` (words are placed afresh around a new symbol), and of the wires. */
+  const symbolClear = (at: Point, wordsMove = false): boolean => {
+    const box = symbolGeometry('ground', at, 0, false).box;
+    return !(wordsMove ? symbols : boxes).some((b) => boxesOverlap(inflate(box, 0.1), b)) && !lines.some(([a, b]) => segmentCrossesBox(a, b, box));
+  };
   const candidates: Point[] = [];
   for (const part of scene.parts) for (const pin of part.pins) if (pin.node === GROUND && pin.outward === 'down') candidates.push(pin.at);
   const copper = copperOf(circuit, drawing, segs).get(GROUND) ?? [];
   candidates.push(...copper);
   candidates.sort((a, b) => b.y - a.y || a.x - b.x);
-  for (const c of candidates) {
-    const box = symbolGeometry('ground', c, 0, false).box;
-    if (!boxes.some((b) => boxesOverlap(inflate(box, 0.1), b))) return c;
+  for (const c of candidates) if (symbolClear(c)) return { at: c };
+  // A lead from an end of ground's copper: its wire ends and its pins, where nothing runs on below.
+  const index = new SegmentIndex(wires);
+  const pinAt = new Set(scene.parts.flatMap((p) => p.pins.map((q) => pointKey(q.at))));
+  const pinDown = new Set(scene.parts.flatMap((p) => p.pins.filter((q) => q.outward === 'down').map((q) => pointKey(q.at))));
+  const ends: { at: Point; straight: boolean }[] = [];
+  const seen = new Set<string>();
+  for (const e of copper) {
+    const k = pointKey(e);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const here = index.at(e);
+    // Not the middle of a wire, and nothing below already.
+    if (here.some((t) => !samePoint(t.a, e) && !samePoint(t.b, e))) continue;
+    const below = pt(e.x, e.y + 1);
+    if (index.at(below).length || pinAt.has(pointKey(below))) continue;
+    const others = here.map((t) => (samePoint(t.a, e) ? t.b : t.a));
+    if (!others.length && !pinAt.has(k)) continue;
+    // Straight on: the wires there all come down to it, or a bare pin points down.
+    ends.push({ at: e, straight: others.length ? others.every((q) => q.x === e.x && q.y < e.y) : pinDown.has(k) });
   }
-  return candidates[0];
+  ends.sort((a, b) => Number(b.straight) - Number(a.straight) || b.at.y - a.at.y || a.at.x - b.at.x);
+  // The words around are placed again once the symbol is there, so only symbols and wires are in its way.
+  for (const { at: e } of ends) {
+    const at = pt(e.x, e.y + 1);
+    const lead: Segment = [e, at];
+    if (symbols.some((b) => segmentCrossesBox(e, at, b)) || !symbolClear(at, true)) continue;
+    return { at, lead };
+  }
+  return candidates[0] ? { at: candidates[0] } : undefined;
 }
 
 /**

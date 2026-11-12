@@ -1,10 +1,13 @@
 /**
  * The schematic model after the final reviews of milestone 2 (12 November 2026), each finding pinned
- * down: a node's name is never written on a part (student:label-on-part).
+ * down: a node's name is never written on a part (student:label-on-part); a ground symbol is never
+ * put where a wire runs through it, so a ladder built with the mouse turns for a phone held upright
+ * (student:phone-link-unturned).
  */
 import { describe, expect, it } from 'vitest';
 import { notebookSchematic } from '../../src/notebook/schematic.ts';
-import { applyEdit, findOverlaps, serializeDrawing, stripDrawing, type EditOp, type Schematic } from '../../src/schematic/index.ts';
+import { isWide, turnedQuarter, wireBends } from '../../src/notebook/turn.ts';
+import { applyEdit, buildSchematic, checkConnectivity, findOverlaps, segmentCrossesBox, segmentsOf, serializeDrawing, stripDrawing, type EditOp, type Schematic } from '../../src/schematic/index.ts';
 
 /** The reviewers' ladder built with the mouse (student:label-on-part), as its netlist was after a reload. */
 const MOUSE_LADDER = `* circuit
@@ -101,5 +104,39 @@ describe('a node\'s name is never written on a part (student:label-on-part)', ()
     }
     expect(s.circuit.parts.map((p) => p.name)).toEqual(['V1', 'R1', 'R2', 'R3', 'F1']);
     expect(nameOnPart(s)).toEqual([]);
+  });
+});
+
+describe('a ladder built with the mouse turns for a phone held upright (student:phone-link-unturned)', () => {
+  it.each([
+    ['the ladder built with the mouse', MOUSE_LADDER],
+    ['the ladder of resistors', LADDER4],
+    ['the ladder built with the mouse, its names not written', MOUSE_LADDER.replace(/\*@ label .*\n/g, '')],
+  ])('%s: turned, whole and clean, its ground symbol hung below the end of the ground wire', (_, text) => {
+    const s = notebookSchematic(text);
+    expect(isWide(s)).toBe(true);
+    const t = turnedQuarter(s)!;
+    expect(t).toBeDefined();
+    expect(findOverlaps(t.scene)).toEqual([]);
+    expect(checkConnectivity(t.circuit, t.drawing).filter((c) => c.kind !== 'hidden')).toEqual([]);
+    expect(wireBends(t.drawing.wires)).toBeLessThanOrEqual(wireBends(s.drawing.wires));
+    expect(t.scene.parts.length).toBe(5);
+    // The ground wire stands upright through the pins; the symbol hangs one unit below its lowest end,
+    // with no wire through it.
+    const [ground] = t.scene.grounds;
+    expect(ground!.at).toEqual({ x: -5, y: 17 });
+    for (const w of t.drawing.wires) for (const [a, b] of segmentsOf(w)) expect(segmentCrossesBox(a, b, ground!.box)).toBe(false);
+  });
+
+  it('never puts a ground symbol where a wire runs through it, as drawn either', () => {
+    // A ground wire drawn upright through the pins, and no ground symbol: one is added.
+    const text = '* upright rail\nV1 a 0 5\nR1 a 0 1k\nR2 a 0 2k\n.op\n* plainspice-drawing v1\n*@ V1 -3 0 90\n*@ R1 -3 4 90\n*@ R2 -3 8 90\n*@ wire -1,0 -1,8\n*@ wire -5,0 -5,8\n.end\n';
+    const s = buildSchematic(text);
+    expect(s.problems.map((p) => p.kind)).toContain('ground-added');
+    const [ground] = s.scene.grounds;
+    expect(ground).toBeDefined();
+    for (const w of s.drawing.wires) for (const [a, b] of segmentsOf(w)) expect(segmentCrossesBox(a, b, ground!.box), JSON.stringify(w)).toBe(false);
+    expect(findOverlaps(s.scene)).toEqual([]);
+    expect(checkConnectivity(s.circuit, s.drawing)).toEqual([]);
   });
 });
