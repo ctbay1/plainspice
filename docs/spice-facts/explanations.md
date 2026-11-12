@@ -82,7 +82,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 so a source whose + side is the higher one reads negative while it delivers power, and one with a
 negative value reads positive (C1, C1b, C2); a part's current is positive from its first
 node to its second, and a current source reports its value as written (C3); F, G, E, H and B follow
-the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8).
+the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8); a current that is 0 can
+come out as rounding noise of about 10⁻¹⁸ A, far below ngspice's current tolerance abstol, 1 pA (C9–C9c).
 
 **Messages** (section 4): no ground, capacitor-only nodes, floating parts, voltage-source loops,
 duplicate names, lines that are no part, missing subcircuits and models, models our engine leaves
@@ -2644,6 +2645,111 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(c) = 4.5, v(e) = 5, i(vs) = 1, i(@s1[i]) = 1.5000000000000002e-9, i(@rc[i]) = 1.5, i(@w1[i]) = 1e-9, i(@re[i]) = 1
 ```
 
+### C9. A current that is 0 can come out as rounding noise, about 10⁻¹⁸ A: in a balanced bridge, R5 shows −8.88e−19 A
+
+Added after the final reviews of 12 November 2026 (student review). The bridge is balanced (10 kΩ over 10 kΩ, 4.7 kΩ over 4.7 kΩ), so a and b sit at the same voltage and no current flows through R5. ngspice's arithmetic leaves a remainder: v(a) comes out one unit in the last place below 4.5 V (4.499999999999999), so @r5[i] = (v(a) − v(b)) / 1 kΩ = −8.88e−19 A, while the other currents are 0.45 mA and 0.96 mA, about 10¹⁵ times larger. Native 47, native 42 and our engine give the same doubles. PlainSpice shows such a current as 0 A, with no arrow and no power, and says what ngspice gave (decision 0015).
+
+```spice
+* a balanced bridge: no current through R5
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19
+```
+
+### C9b. When every true current is 0, every current ngspice gives can be such noise
+
+The homework circuit with its 0 V ammeter written `Vm x gnd` (gnd as the last word is an ordinary node, W9, so Vm carries nothing): the only path left is V1, R1, R3 and F1. R3 brings into b the current that flows through V1 and R1, and F1 takes twice that current out of b; only 0 balances node b, so every current is 0 and every node sits at 12 V. ngspice gives currents of about 10⁻¹⁸ A, the node voltages a few units in the last place below 12 V. The same doubles in native 47, native 42 and our engine. Here every current is noise, so the largest current ngspice gives is noise too: what tells noise from a real current is the size of the currents this circuit's voltages drive through its resistors (12 V across 1 kΩ is 12 mA), not the largest current in the results.
+
+```spice
+* a 0 V ammeter whose last word is gnd: no current anywhere
+V1 in 0 12
+R1 in a 1k
+R2 a x 2k
+Vm x gnd
+R3 a b 3k
+F1 0 b V1 2
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.200000e+01
+        gnd                              1.200000e+01
+        x                                1.200000e+01
+        a                                1.200000e+01
+        in                               1.200000e+01
+        @f1[i]                           -3.46945e-18
+        @r3[i]                           1.184238e-18
+        @r2[i]                           0.000000e+00
+        @r1[i]                           1.776357e-18
+        vm#branch                        0.000000e+00
+        v1#branch                        -1.73472e-18
+    Note: vm: has no value, DC 0 assumed
+  rawfile from ngspice -b -r (exit 0): v(in) = 12, v(a) = 11.999999999999998, v(x) = 11.999999999999998, v(gnd) = 11.999999999999998, v(b) = 11.999999999999995, i(v1) = -1.734723475976807e-18, i(vm) = 0, i(@r1[i]) = 1.7763568394002505e-18, i(@r2[i]) = 0, i(@r3[i]) = 1.1842378929335003e-18, i(@f1[i]) = -3.469446951953614e-18
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    Note: vm: has no value, DC 0 assumed
+  vectors: v(in) = 12, v(a) = 11.999999999999998, v(x) = 11.999999999999998, v(gnd) = 11.999999999999998, v(b) = 11.999999999999995, i(v1) = -1.734723475976807e-18, i(vm) = 0, i(@r1[i]) = 1.7763568394002505e-18, i(@r2[i]) = 0, i(@r3[i]) = 1.1842378929335003e-18, i(@f1[i]) = -3.469446951953614e-18
+```
+
+A tiny current is not always noise: `I1 0 n1 3A` is a 3 aA source (unit-letter-1 in traps.md), and ngspice gives v(n1) = 1.2e−17 V across 4 Ω, a real 3 aA, because every value in that circuit is that small. So PlainSpice treats a current as noise only when it is also tiny next to the currents of its own circuit.
+
+### C9c. ngspice's current tolerance, abstol, is 1e-12 A (1 pA) by default
+
+ngspice's `options` command lists the tolerances it works to. The absolute tolerance for currents, abstol, is 1e-12 A in native 47, native 42 and our engine; the relative one, reltol, is 0.001. A current that ngspice gives as 10⁻¹⁸ A is a million times smaller than abstol.
+
+```spice
+* ngspice's tolerances
+V1 a 0 1
+R1 a 0 1k
+.control
+op
+options
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the lines about tolerances of the listing:
+    Tolerances (absolute):
+    abstol      (current) = 1e-12
+    chgtol      (charge)  = 1e-14
+    vntol       (voltage) = 1e-06
+    pivtol      (pivot)   = 1e-13
+
+    Tolerances (relative):
+    reltol      (current) = 0.001
+    pivrel      (pivot)   = 0.001
+ngspice 42: the same lines
+our engine (wasm), as ngspice -b -r (exit 0, no results file: the .control block writes none, A36):
+    the same lines
+```
+
 ## 4. Messages
 
 Each message explainDiagnostic puts into plain words, with the netlist that makes ngspice print it and the codes `src/engine/diagnostics.ts` gives it in our engine.
@@ -3806,7 +3912,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
 | `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`) | A1–A22b, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
-| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out | C1–C8, A3–A6 |
+| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A | C1–C9c, A3–A6 |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
 Re-running the evidence: the netlists, the scripts that run them through native ngspice 47, 42 and

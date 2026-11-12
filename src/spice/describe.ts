@@ -15,7 +15,7 @@
  */
 import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../engine/results.ts';
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
-import { formatNumber, formatSI, speakSI } from '../format/si.ts';
+import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { isBuilt } from './graph.ts';
@@ -59,8 +59,17 @@ export interface CurrentWords {
   name: string;
   /** 1-based line of the part. */
   line?: number;
-  /** SPICE's value, with its sign. */
+  /**
+   * SPICE's value, with its sign; 0 when ngspice's value is rounding noise (C9), which `noise` keeps.
+   * Every word, arrow and power claim follows this value.
+   */
   value: number;
+  /**
+   * ngspice's own value when it is rounding noise and PlainSpice says 0 A instead (C9–C9c): below
+   * ngspice's current tolerance (abstol, 1 pA) and a million million times below the circuit's own
+   * currents. Shown with ngspice's spelling, never as a current.
+   */
+  noise?: number;
   /** Node the current comes from, through the part (ngspice's name; ground is "0"). */
   from: string;
   /** Node it flows to. */
@@ -106,7 +115,7 @@ export interface MessageWords {
   /**
    * The diagnostic code (src/engine/diagnostics.ts), one PlainSpice adds for messages that file does
    * not classify (unknown-control-source, unknown-dot-command, meas-skipped), or one of: unreliable,
-   * no-analysis, no-results, tf-node-missing.
+   * no-analysis, no-results, tf-node-missing, rounding-noise (a note: currents said as 0 A, C9).
    */
   code: string;
   severity: 'error' | 'warning' | 'note';
@@ -438,11 +447,21 @@ export const DESCRIBE_STRINGS = {
   unknownDotWhy: (name: string): string => `${name} is not a dot command ngspice knows, so it stops ("unimplemented dot command").`,
   measTitle: '.meas was skipped',
   measWhy: 'PlainSpice\'s engine writes a results file, and then ngspice skips .meas.',
+  // C9–C9c: a current ngspice gives as rounding noise, said as 0 A, with what ngspice gave.
+  noiseTitle: (names: string[]): string => (names.length === 1 ? `${names[0]}'s current is shown as 0 A` : `${names.length} currents are shown as 0 A`),
+  noiseWhy: (gave: string, one: boolean): string =>
+    `ngspice gave ${gave}. ${one ? 'That is rounding noise, what ngspice\'s arithmetic leaves of a current that is 0' : 'Those are rounding noise, what ngspice\'s arithmetic leaves of currents that are 0'}: far below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.`,
+  noiseGave: (name: string, value: string): string => `${name} ${value} A`,
 } as const;
 
 const S = DESCRIBE_STRINGS;
 
 // ------------------------------------------------------------------ helpers
+
+/** "a", "a and b", "a, b and c". */
+function listWords(items: readonly string[]): string {
+  return items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
 
 /** "a resistor", "an inductor". */
 function article(what: string): string {
@@ -632,13 +651,48 @@ const SOURCE_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'I', 'E', 'F', 
 const DEVICE_LETTERS: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'F', 'G', 'I', 'B']);
 const BRANCH_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'E', 'H', 'L']);
 
+/**
+ * ngspice's default current tolerance, abstol (C9c). A current below it is shown as 0 A only when
+ * it is also below NOISE_RATIO × the circuit's own current scale
+ * (currentScale), so a real tiny current is kept: the 3 aA of a 3a source is the whole circuit there
+ * (unit-letter-1), while a balanced bridge leaves −8.88e−19 A next to 0.45 mA (C9).
+ */
+export const ABSTOL = 1e-12;
+/** About 5000 times the rounding of one double (2.2e-16): far below any current a circuit makes. */
+export const NOISE_RATIO = 1e-12;
+
+/**
+ * How big this circuit's currents are: the largest current ngspice gives, or the largest a node
+ * voltage drives through a resistor to ground, whichever is larger. When every true current is 0,
+ * every current in the results is noise too, so the resistors give the scale (C9b: 12 V and 1 kΩ).
+ */
+function currentScale(netlist: Netlist, results: AnalysisResults, volts: Map<string, number>): number {
+  let scale = 0;
+  for (const c of results.op?.currents ?? []) if (Number.isFinite(c.value)) scale = Math.max(scale, Math.abs(c.value));
+  for (const line of partsOf(netlist).lines) {
+    const el = line.element!;
+    const r = el.letter === 'R' && isBuilt(el) ? el.value?.number?.value : undefined;
+    const [a, b] = el.nodes;
+    if (!r || !Number.isFinite(r) || !a || !b) continue;
+    const v = Math.max(Math.abs(volts.get(nodeName(a)) ?? 0), Math.abs(volts.get(nodeName(b)) ?? 0));
+    if (Number.isFinite(v)) scale = Math.max(scale, v / Math.abs(r));
+  }
+  return scale;
+}
+
+/** Rounding noise, not a current (C9–C9c): see ABSTOL. */
+export function isNoise(current: number, scale: number): boolean {
+  const size = Math.abs(current);
+  return size > 0 && size < ABSTOL && size < NOISE_RATIO * scale;
+}
+
 function voltages(results: AnalysisResults): Map<string, number> {
   const m = new Map<string, number>([['0', 0]]);
   for (const n of results.op?.nodes ?? []) m.set(lowerAscii(n.node), n.value);
   return m;
 }
 
-function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, number>): CurrentWords | undefined {
+function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, number>, scale: number): CurrentWords | undefined {
   const key = lowerAscii(c.element);
   const line = partsOf(netlist).byKey.get(key);
   const el = line?.element;
@@ -650,7 +704,9 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
   if (!p || !n) return undefined;
   const first = nodeName(p);
   const second = nodeName(n);
-  const v = c.value;
+  // C9: rounding noise is 0 A, with no direction and no power; `noise` keeps what ngspice gave.
+  const noise = isNoise(c.value, scale);
+  const v = noise ? 0 : c.value;
   const [from, to] = v < 0 ? [second, first] : [first, second];
   const name = el.name.text;
   const ammeter = isAmmeter(el);
@@ -669,6 +725,7 @@ function currentWords(netlist: Netlist, c: ElementCurrent, volts: Map<string, nu
     speech = S.ampsSpeech(as, flows(as), nodeSpeech(from), nodeSpeech(to), name);
   }
   const words: CurrentWords = { element: key, name, line: line.number, value: v, from, to, ammeter, text, speech };
+  if (noise) words.noise = c.value;
   if (!ammeter && SOURCE_LETTERS.has(el.letter)) {
     const vp = volts.get(first);
     const vn = volts.get(second);
@@ -696,10 +753,11 @@ function currentsOf(netlist: Netlist, results: AnalysisResults): CurrentWords[] 
   const all = results.op?.currents ?? [];
   // An inductor appears twice with savecurrents (i(l1) and @l1[i], the same number): keep the branch one.
   const branch = new Set(all.filter((c) => c.origin === 'branch').map((c) => lowerAscii(c.element)));
+  const scale = currentScale(netlist, results, volts);
   const out: CurrentWords[] = [];
   for (const c of all) {
     if (c.origin === 'device' && branch.has(lowerAscii(c.element))) continue;
-    const w = currentWords(netlist, c, volts);
+    const w = currentWords(netlist, c, volts, scale);
     if (w) out.push(w);
   }
   const order = new Map(partsOf(netlist).lines.map((l, i) => [l.element!.key, i]));
@@ -988,6 +1046,15 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   };
   const tf = tfOf(netlist, results);
   if (tf) words.tf = tf;
+  // C9–C9c: what ngspice gave for each current said as 0 A, last, as a note (it is no problem). Only
+  // with numbers that are answers: a failed or untrusted run is summed up by its first message.
+  const noisy = words.currents.filter((c) => c.noise !== undefined);
+  if (status === 'ok' && noisy.length) {
+    const gave = noisy.map((c) => S.noiseGave(c.name, formatLikeNgspice(c.noise!)));
+    const note: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseTitle(noisy.map((c) => c.name)), why: S.noiseWhy(listWords(gave), noisy.length === 1) };
+    if (noisy.length === 1 && noisy[0]!.line !== undefined) note.line = noisy[0]!.line;
+    words.warnings.push(note);
+  }
   return {
     status,
     ngspiceError,

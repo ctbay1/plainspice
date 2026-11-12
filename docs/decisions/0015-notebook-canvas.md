@@ -100,3 +100,20 @@ that a phone left no room to watch the numbers move; this record says what the c
   "ground" in current texts.
 - To ask Tarık: is the turned drawing right for phones, or should a phone always show the drawing as
   in the video and pan? (`p02-4-open-phone-views.png` shows both.)
+
+## After the final reviews (12 November 2026)
+
+- **Rounding noise is written as 0 A** (student review). Where a current is 0, ngspice's arithmetic can
+  leave about 10⁻¹⁸ A (C9, C9b in `docs/spice-facts/explanations.md`), which the drawing wrote with an
+  arrow ("R5 ← 8.882e-19 A") and as power ("V1 delivers 20.82 aW"). `describe.ts` now says 0 A for a
+  current that is both below 1 pA, ngspice's default current tolerance abstol (C9c), and below 10⁻¹²
+  times the circuit's own current scale: the largest current ngspice gives, or the largest current a
+  node voltage drives through a resistor to ground (when every true current is 0, every current in the
+  results is noise, so the resistors give the scale, C9b). The second test keeps a real tiny current:
+  the 3 aA of a 3a source is the whole circuit (unit-letter-1), so it is not noise. Such a current
+  gets no arrow, no "delivers" or "absorbs", "0 A" at the end of its line and "no current flows" in
+  speech, and a note in the Numbers panel says what ngspice gave ("ngspice gave R5 -8.881784e-19 A.
+  That is rounding noise …"); `CurrentWords.noise` keeps ngspice's value for the panel's ngspice
+  column. The floor is fixed at the default abstol: a netlist's `.options abstol` does not move it.
+  Across the 184 netlists with `.op` we have (the examples, the fixtures, the trap corpus and the
+  channel's episode netlists) no current is shown as noise.

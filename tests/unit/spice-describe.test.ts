@@ -587,6 +587,34 @@ describe('a very long netlist', () => {
 });
 
 describe('after the final reviews (12 November 2026)', () => {
+  it('says 0 A for rounding noise: below abstol and a million million times below the circuit\'s currents (student review; C9)', () => {
+    const n = parseNetlist('* bridge\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.op\n.end\n');
+    const r = op({ top: 9, a: 4.499999999999999, b: 4.5 }, [['v1', -0.0014074468085106386, 'branch'], ['r1', 4.5e-4, 'device'], ['r5', -8.881784197001253e-19, 'device']]);
+    const w = describeResults(n, r, run());
+    expect(w.currents.find((c) => c.name === 'R5')).toMatchObject({ value: 0, noise: -8.881784197001253e-19, from: 'a', to: 'b', text: 'no current through R5' });
+    expect(w.currents.find((c) => c.name === 'R1')!.noise).toBeUndefined();
+    expect(w.warnings.map((m) => [m.code, m.severity, m.title, m.line])).toEqual([['rounding-noise', 'note', "R5's current is shown as 0 A", 7]]);
+    // Not when the numbers are not answers: the summary of an untrusted run names its first problem.
+    expect(describeResults(n, r, run({ unreliable: true })).warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+  });
+
+  it('keeps a tiny current that the circuit itself makes, and one at or above 1 pA (C9, C9c, unit-letter-1)', () => {
+    const atto = describeResults(parseNetlist('* t\nI1 0 a 3A\nR1 a 0 4\n.op\n.end\n'), op({ a: 1.2e-17 }, [['i1', 3e-18, 'device'], ['r1', 3e-18, 'device']]), run());
+    expect(atto.currents.map((c) => [c.value, c.noise])).toEqual([[3e-18, undefined], [3e-18, undefined]]);
+    // 1e-12 A next to a 1 A current is a millionth of a millionth, but not below abstol: kept.
+    const pico = describeResults(parseNetlist('* t\nV1 a 0 1\nR1 a 0 1\nR2 a b 1\nR3 b 0 1\n.op\n.end\n'), op({ a: 1, b: 0.5 }, [['r1', 1, 'device'], ['r3', 1e-12, 'device']]), run());
+    expect(pico.currents.find((c) => c.name === 'R3')).toMatchObject({ value: 1e-12 });
+  });
+
+  it('takes the scale from the resistors when every current is noise, and gives a source no power then (C9b)', () => {
+    const n = parseNetlist('* t\nV1 in 0 12\nR1 in a 1k\nR3 a b 3k\nF1 0 b V1 2\n.op\n.end\n');
+    const w = describeResults(n, op({ in: 12, a: 11.999999999999998, b: 11.999999999999995 }, [['v1', -1.734723475976807e-18, 'branch'], ['r1', 1.7763568394002505e-18, 'device'], ['r3', 1.1842378929335003e-18, 'device'], ['f1', -3.469446951953614e-18, 'device']]), run());
+    expect(w.currents.map((c) => c.value)).toEqual([0, 0, 0, 0]);
+    expect(w.currents.map((c) => c.power)).toEqual([undefined, undefined, undefined, undefined]);
+    expect(annotateLines(n, op({ in: 12, a: 12, b: 12 }, [['v1', -1.734723475976807e-18, 'branch']])).find((a) => a.line === 2)).toMatchObject({ text: '0 A', speech: 'no current flows' });
+    expect(w.warnings.find((m) => m.code === 'rounding-noise')!.line).toBeUndefined();
+  });
+
   it('names a node "node in" in its sentences, as the editor does; ground stays "ground" (words review W8)', () => {
     const n = parseNetlist('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\nG1 0 out in 0 1m\n.op\n.end\n');
     const overview = sp(describeCircuit(n));

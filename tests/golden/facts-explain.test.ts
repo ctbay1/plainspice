@@ -23,7 +23,7 @@ import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import { interpretPlots, type AnalysisResults } from '../../src/engine/results.ts';
 import type { RawPlot, RunResult } from '../../src/engine/types.ts';
 import { formatSI } from '../../src/format/si.ts';
-import { annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
+import { ABSTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
 import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import type { Netlist } from '../../src/spice/types.ts';
@@ -131,6 +131,9 @@ const FACTS: Fact[] = [
   { code: 'C6', id: 'cur-e-h', netlist: "* E and H branch currents\nV1 c 0 2\nVs c d 0\nRd d 0 1\nE1 e 0 c 0 3\nRe e 0 2\nH1 h 0 Vs 4\nRh h 0 2\n.op\n.end\n", vectors: { "v(c)": 2, "v(d)": 2, "v(e)": 6, "v(h)": 8, "i(h1)": -4, "i(vs)": 2, "i(e1)": -3, "i(v1)": -2 } },
   { code: 'C7', id: 'cur-b', netlist: "* a B source current with savecurrents\nB1 0 b I=2\nRb b 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "v(b)": 2, "i(@b1[i])": 2, "i(@rb[i])": 2 } },
   { code: 'C8', id: 'cur-switch-wrong', netlist: "* switch currents with savecurrents\nV1 a 0 6\nS1 a c a 0 swm\nRc c 0 3\n.model swm SW(vt=1 ron=1 roff=1e9)\nVs a d 0\nRd d 0 6\nW1 a e Vs wm\nRe e 0 5\n.model wm CSW(it=0.5 ron=1 roff=1e9)\n.options savecurrents\n.op\n.end\n", vectors: { "v(c)": 4.5, "v(e)": 5, "i(vs)": 1, "i(@s1[i])": 1.5000000000000002e-9, "i(@rc[i])": 1.5, "i(@w1[i])": 1e-9, "i(@re[i])": 1 } },
+  { code: 'C9', id: 'cur-noise-bridge', netlist: "* a balanced bridge: no current through R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19 } },
+  { code: 'C9b', id: 'cur-noise-everywhere', netlist: "* a 0 V ammeter whose last word is gnd: no current anywhere\nV1 in 0 12\nR1 in a 1k\nR2 a x 2k\nVm x gnd\nR3 a b 3k\nF1 0 b V1 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.999999999999998, "v(x)": 11.999999999999998, "v(gnd)": 11.999999999999998, "v(b)": 11.999999999999995, "i(v1)": -1.734723475976807e-18, "i(vm)": 0, "i(@r1[i])": 1.7763568394002505e-18, "i(@r2[i])": 0, "i(@r3[i])": 1.1842378929335003e-18, "i(@f1[i])": -3.469446951953614e-18 }, prints: ["vm: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'C9c', id: 'cur-abstol', netlist: "* ngspice's tolerances\nV1 a 0 1\nR1 a 0 1k\n.control\nop\noptions\n.endc\n.end\n", prints: ["abstol      (current) = 1e-12", "reltol      (current) = 0.001"], fails: true },
   { code: 'M1', id: 'msg-no-ground', netlist: "* no ground\nV1 a b 6\nR1 a b 2\n.op\n.end\n", vectors: { "v(a)": 9.00033307426206, "v(b)": 3.0003330742710626, "i(v1)": -2.9999999999924993 }, prints: ["singular matrix:  check node b","Transient op started"], codes: ["singular-matrix","gmin-stepping-failed","source-stepping-failed","transient-op-fallback"], unreliable: true },
   { code: 'M2', id: 'msg-cap-node', netlist: "* T15b: a node connected only to capacitors, with a resistor elsewhere\nV1 a 0 6\nR1 a c 1k\nC1 c b 1u\nC2 b 0 2u\nR2 c 0 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(c)": 0.08866339997380636, "v(b)": 0.029554466657885997, "i(v1)": -0.005911336600014282 }, prints: ["singular matrix:  check node b"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M2b', id: 'msg-isource-cap', netlist: "* T05a: a current source in series with a capacitor\nI1 0 a 1m\nC1 a b 1u\nR1 b 0 1k\n.op\n.end\n", vectors: { "v(a)": 1.0099999979842442, "v(b)": 0.9999999979942681 }, codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
@@ -658,5 +661,68 @@ describe('after the final reviews (12 November 2026)', () => {
       },
     ]);
     expect(entries.filter((e) => e.heading === 'Comment')).toHaveLength(1);
+  });
+});
+
+describe('after the final reviews (12 November 2026): rounding noise is 0 A (student review; C9–C9c)', () => {
+  /** Exactly, bit for bit: `agrees` counts any two values below 1e-12 as equal, so it cannot check noise. */
+  const exactly = (code: string): void => {
+    const f = fact(code);
+    const r = runs.get(f.id)!;
+    for (const [name, want] of Object.entries(f.vectors ?? {})) expect(vectorValues(r.plots, name), `${code} ${name}`).toEqual([want]);
+  };
+
+  it('C9, C9b: our engine gives the same noise as native ngspice 47, to the last bit', () => {
+    exactly('C9');
+    exactly('C9b');
+  });
+
+  it('C9c: abstol, ngspice\'s current tolerance, is 1e-12 A: the floor describe.ts uses', () => {
+    expect(runs.get(fact('C9c').id)!.stdout).toMatch(/abstol\s+\(current\) = 1e-12\n/);
+    expect(ABSTOL).toBe(1e-12);
+  });
+
+  it('C9: the balanced bridge says R5 carries no current, with no arrow, and says what ngspice gave', () => {
+    const d = ofFact('C9');
+    const r5 = d.words.currents.find((c) => c.name === 'R5')!;
+    expect(r5).toMatchObject({ value: 0, noise: -8.881784197001253e-19, text: 'no current through R5', speech: 'no current flows through R5' });
+    expect(r5.power).toBeUndefined();
+    expect(annotateLines(d.netlist, d.results, d.run).find((a) => a.line === 7)).toMatchObject({ text: '0 A', speech: 'no current flows' });
+    const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note).toMatchObject({ severity: 'note', title: "R5's current is shown as 0 A", line: 7 });
+    expect(note.why).toContain('ngspice gave R5 -8.881784e-19 A');
+    expect(note.why).toContain("far below 1 pA, ngspice's current tolerance (its abstol option)");
+    // The other currents are real and keep their words; a note is no problem for the summary.
+    expect(plain(currentText(d, 'R1'))).toBe('450 µA from node top to node a through R1');
+    expect(d.words.summary).not.toMatch(/warning/);
+  });
+
+  it('C9b: when every current is noise, none is drawn, none delivers or absorbs power, and the note gives each value', () => {
+    const d = ofFact('C9b');
+    expect(d.words.status).toBe('ok');
+    for (const c of d.words.currents) {
+      expect(c.value, c.name).toBe(0);
+      expect(c.power, c.name).toBeUndefined();
+    }
+    expect(d.words.currents.filter((c) => c.noise !== undefined).map((c) => [c.name, c.noise])).toEqual([
+      ['V1', -1.734723475976807e-18],
+      ['R1', 1.7763568394002505e-18],
+      ['R3', 1.1842378929335003e-18],
+      ['F1', -3.469446951953614e-18],
+    ]);
+    const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note.title).toBe('4 currents are shown as 0 A');
+    expect(note.why).toContain('ngspice gave V1 -1.734723e-18 A, R1 1.776357e-18 A, R3 1.184238e-18 A and F1 -3.469447e-18 A.');
+    expect(annotateLines(d.netlist, d.results, d.run).every((a) => a.text === '0 A')).toBe(true);
+  });
+
+  it('a tiny current that is the whole circuit is not noise: the 3 aA of a 3a source stays 3 aA (unit-letter-1)', async () => {
+    const text = '* 3A on a current source\nI1 0 n1 3A\nR1 n1 0 4\n.options savecurrents\n.op\n.end\n';
+    const d = describeRun(text, await engine.run(text));
+    expect(d.words.currents.map((c) => [c.name, c.value, c.noise])).toEqual([
+      ['I1', 3.0000000000000002e-18, undefined],
+      ['R1', 3.0000000000000002e-18, undefined],
+    ]);
+    expect(d.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
   });
 });
