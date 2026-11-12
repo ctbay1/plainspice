@@ -618,32 +618,84 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(s.speech).toContain('the voltage at node giri\u015f is 2 volts');
   });
 
-  it('says 0 A for rounding noise: below abstol and a million million times below the circuit\'s currents (student review; C9)', () => {
+  it('says 0 A for rounding noise of a 0: a resistor whose two ends are at the same voltage (student review; C9)', () => {
     const n = parseNetlist('* bridge\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.op\n.end\n');
     const r = op({ top: 9, a: 4.499999999999999, b: 4.5 }, [['v1', -0.0014074468085106386, 'branch'], ['r1', 4.5e-4, 'device'], ['r5', -8.881784197001253e-19, 'device']]);
     const w = describeResults(n, r, run());
     expect(w.currents.find((c) => c.name === 'R5')).toMatchObject({ value: 0, noise: -8.881784197001253e-19, from: 'a', to: 'b', text: 'no current through R5' });
     expect(w.currents.find((c) => c.name === 'R1')!.noise).toBeUndefined();
     expect(w.warnings.map((m) => [m.code, m.severity, m.title, m.line])).toEqual([['rounding-noise', 'note', "R5's current is shown as 0 A", 7]]);
+    expect(sp(w.warnings[0]!.why)).toBe(
+      "ngspice gave R5 -8.881784e-19 A. That is rounding noise, what its arithmetic leaves of a current that is 0: the two ends of R5, node a and node b, are at the same voltage, 4.5 V. It is below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.",
+    );
     // Not when the numbers are not answers: the summary of an untrusted run names its first problem.
     expect(describeResults(n, r, run({ unreliable: true })).warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
   });
 
-  it('keeps a tiny current that the circuit itself makes, and one at or above 1 pA (C9, C9c, unit-letter-1)', () => {
-    const atto = describeResults(parseNetlist('* t\nI1 0 a 3A\nR1 a 0 4\n.op\n.end\n'), op({ a: 1.2e-17 }, [['i1', 3e-18, 'device'], ['r1', 3e-18, 'device']]), run());
-    expect(atto.currents.map((c) => [c.value, c.noise])).toEqual([[3e-18, undefined], [3e-18, undefined]]);
-    // 1e-12 A next to a 1 A current is a millionth of a millionth, but not below abstol: kept.
-    const pico = describeResults(parseNetlist('* t\nV1 a 0 1\nR1 a 0 1\nR2 a b 1\nR3 b 0 1\n.op\n.end\n'), op({ a: 1, b: 0.5 }, [['r1', 1, 'device'], ['r3', 1e-12, 'device']]), run());
-    expect(pico.currents.find((c) => c.name === 'R3')).toMatchObject({ value: 1e-12 });
+  it('keeps every tiny current the circuit itself makes, next to large currents too: noise is decided part by part (critic of round 1; C9e-C9g, unit-letter-1)', () => {
+    const kept = (text: string, r: AnalysisResults, name: string, value: number): void => {
+      const w = describeResults(parseNetlist(text), r, run());
+      const c = w.currents.find((x) => x.name === name)!;
+      expect([c.value, c.noise], name).toEqual([value, undefined]);
+      expect(w.nodes.every((x) => x.noise === undefined)).toBe(true);
+      expect(w.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+    };
+    // A current source's current is its own value: the 3 aA of 3A alone, and the 2 aA of 2A next to a 4 mA divider (C9e).
+    kept('* t\nI1 0 a 3A\nR1 a 0 4\n.op\n.end\n', op({ a: 1.2e-17 }, [['i1', 3e-18, 'device'], ['r1', 3e-18, 'device']]), 'R1', 3e-18);
+    kept('* t\nV1 a 0 12\nR1 a b 1k\nR2 b 0 2k\nI1 0 b 2A\n.op\n.end\n', op({ a: 12, b: 8 }, [['v1', -0.004, 'branch'], ['r1', 0.004, 'device'], ['r2', 0.004, 'device'], ['i1', 2e-18, 'device']]), 'I1', 2e-18);
+    // A resistor with its two ends 12 V apart carries 120 fA, next to a 1.2 A current (C9f).
+    kept('* t\nV1 in 0 12\nR1 in 0 10\nR2 in 0 1e14\n.op\n.end\n', op({ in: 12 }, [['v1', -1.20000000000012, 'branch'], ['r1', 1.2000000000000002, 'device'], ['r2', 1.2e-13, 'device']]), 'R2', 1.2e-13);
+    // A 1 nΩ wire makes V/R huge; the 1 TΩ resistor next to it still carries its 0.5 pA (C9g).
+    kept('* t\nV1 in 0 0.5\nR1 in a 1n\nR2 a 0 1k\nR3 a 0 1T\n.op\n.end\n', op({ in: 0.5, a: 0.49999999999949996 }, [['v1', -0.000500023365020752, 'branch'], ['r1', 0.0005000444502911704, 'device'], ['r2', 0.0004999999999995, 'device'], ['r3', 4.999999999995e-13, 'device']]), 'R3', 4.999999999995e-13);
+    // A diode's leakage: the node with the diode is never used to say a current is 0 (its current is not one PlainSpice reads).
+    kept('* t\nV1 in 0 10\nR1 in 0 10\nV2 k 0 0.3\nD1 0 k dmod\n.model dmod d\n.op\n.end\n', op({ in: 10, k: 0.30000000000000004 }, [['v2', -3.099913851083045e-13, 'branch'], ['v1', -1, 'branch'], ['r1', 1, 'device']]), 'V2', -3.099913851083045e-13);
+    // 1 pA is not below abstol: kept, whatever the voltages.
+    kept('* t\nV1 a 0 1\nR1 a 0 1\nR2 a b 1\nR3 b 0 1\n.op\n.end\n', op({ a: 1, b: 1 }, [['r1', 1, 'device'], ['r3', 1e-12, 'device']]), 'R3', 1e-12);
   });
 
-  it('takes the scale from the resistors when every current is noise, and gives a source no power then (C9b)', () => {
+  it('says 0 A when the circuit\'s own numbers make every current 0, and gives a source no power then (C9b)', () => {
     const n = parseNetlist('* t\nV1 in 0 12\nR1 in a 1k\nR3 a b 3k\nF1 0 b V1 2\n.op\n.end\n');
-    const w = describeResults(n, op({ in: 12, a: 11.999999999999998, b: 11.999999999999995 }, [['v1', -1.734723475976807e-18, 'branch'], ['r1', 1.7763568394002505e-18, 'device'], ['r3', 1.1842378929335003e-18, 'device'], ['f1', -3.469446951953614e-18, 'device']]), run());
+    const r = op({ in: 12, a: 11.999999999999998, b: 11.999999999999995 }, [['v1', -1.734723475976807e-18, 'branch'], ['r1', 1.7763568394002505e-18, 'device'], ['r3', 1.1842378929335003e-18, 'device'], ['f1', -3.469446951953614e-18, 'device']]);
+    const w = describeResults(n, r, run());
     expect(w.currents.map((c) => c.value)).toEqual([0, 0, 0, 0]);
     expect(w.currents.map((c) => c.power)).toEqual([undefined, undefined, undefined, undefined]);
-    expect(annotateLines(n, op({ in: 12, a: 12, b: 12 }, [['v1', -1.734723475976807e-18, 'branch']])).find((a) => a.line === 2)).toMatchObject({ text: '0 A', speech: 'no current flows' });
-    expect(w.warnings.find((m) => m.code === 'rounding-noise')!.line).toBeUndefined();
+    expect(annotateLines(n, r).find((a) => a.line === 2)).toMatchObject({ text: '0 A', speech: 'no current flows' });
+    const note = w.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note.line).toBeUndefined();
+    expect(note.why).toContain('each of these parts has its two ends at the same voltage or is the only current left at one of its nodes (the currents at a node add up to 0).');
+    // Without the resistors' currents nothing says V1's current is 0: it is kept as ngspice gave it.
+    expect(describeResults(n, op({ in: 12, a: 12, b: 12 }, [['v1', -1.734723475976807e-18, 'branch']]), run()).currents[0]!.value).toBe(-1.734723475976807e-18);
+  });
+
+  it('passes the noise on: what an F or H makes of a noise current, the resistor it drives and the voltage there are 0 (critic of round 1; C9d)', () => {
+    const text = (f: string): string => `* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n${f}\nR6 out 0 1k\n.op\n.end\n`;
+    const volts = { top: 9, a: 4.499999999999999, b: 4.499999999999999, m: 4.499999999999999, out: -2.1684043449710089e-13 };
+    const common: [string, number, Origin][] = [['v1', -0.0014074468085106388, 'branch'], ['r1', 4.5e-4, 'device'], ['r2', 4.5e-4, 'device'], ['r3', 9.574468085106385e-4, 'device'], ['r4', 9.574468085106381e-4, 'device'], ['r5', 0, 'device'], ['vm', -2.168404344971009e-19, 'branch'], ['r6', -2.1684043449710089e-16, 'device']];
+    const f = describeResults(parseNetlist(text('F1 0 out Vm 1000')), op(volts, [...common, ['f1', -2.1684043449710089e-16, 'device']]), run());
+    expect(f.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['Vm', 'F1', 'R6']);
+    const out = f.nodes.find((x) => x.node === 'out')!;
+    expect([out.value, out.noise, sp(out.text), out.speech]).toEqual([0, -2.1684043449710089e-13, '0 V', '0 volts']);
+    const note = f.warnings.find((m) => m.code === 'rounding-noise')!;
+    expect(note.title).toBe('3 currents are shown as 0 A, and node out as 0 V');
+    expect(note.why).toContain('and node out -2.168404e-13 V.');
+    expect(note.why).toContain('each of these parts copies a current that is 0 or is the only current left at one of its nodes (the currents at a node add up to 0); and node out is joined to ground through parts with no voltage across them.');
+    expect(note.why).toContain("below 1 pA and 1 µV, ngspice's tolerances for currents and voltages (its abstol and vntol options), so PlainSpice shows 0 A and 0 V.");
+    // The note at the end of R6's line agrees with the drawing: no current, and no voltage across.
+    expect(annotateLines(parseNetlist(text('F1 0 out Vm 1000')), op(volts, [...common, ['f1', -2.1684043449710089e-16, 'device']])).find((a) => a.line === 10)).toMatchObject({ text: '0 A' });
+    // H: its output is 1 MΩ × a current that is 0, so node out is joined to ground through it.
+    const h = describeResults(parseNetlist(text('H1 out 0 Vm 1meg')), op(volts, [...common, ['h1', 2.1684043449710089e-16, 'branch']]), run());
+    expect(h.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['Vm', 'H1', 'R6']);
+    expect(h.nodes.find((x) => x.node === 'out')!.value).toBe(0);
+    // A real voltage on a node joined to ground that way would not be noise: only below 1 µV (vntol).
+    const big = describeResults(parseNetlist(text('F1 0 out Vm 1000')), op({ ...volts, out: 2e-6 }, [...common, ['f1', -2.1684043449710089e-16, 'device']]), run());
+    expect(big.nodes.find((x) => x.node === 'out')!.noise).toBeUndefined();
+  });
+
+  it('a G that reads a voltage that is 0 makes no current (C9d)', () => {
+    const n = parseNetlist('* t\nV1 a 0 9\nR1 a b 10k\nR2 b 0 10k\nR3 a c 4.7k\nR4 c 0 4.7k\nG1 0 o b c 1m\nR5 o 0 1k\n.op\n.end\n');
+    const w = describeResults(n, op({ a: 9, b: 4.499999999999999, c: 4.5, o: -8.881784197001252e-16 }, [['v1', -0.0014074468085106386, 'branch'], ['r1', 4.5e-4, 'device'], ['r2', 4.5e-4, 'device'], ['r3', 9.574468085106382e-4, 'device'], ['r4', 9.574468085106382e-4, 'device'], ['g1', -8.881784197001253e-19, 'device'], ['r5', -8.881784197001253e-19, 'device']]), run());
+    expect(w.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['G1', 'R5']);
+    expect(w.nodes.find((x) => x.node === 'o')!.value).toBe(0);
   });
 
   it('names a node "node in" in its sentences, as the editor does; ground stays "ground" (words review W8)', () => {

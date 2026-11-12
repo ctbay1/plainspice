@@ -83,7 +83,9 @@ so a source whose + side is the higher one reads negative while it delivers powe
 negative value reads positive (C1, C1b, C2); a part's current is positive from its first
 node to its second, and a current source reports its value as written (C3); F, G, E, H and B follow
 the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8); a current that is 0 can
-come out as rounding noise of about 10⁻¹⁸ A, far below ngspice's current tolerance abstol, 1 pA (C9–C9c).
+come out as rounding noise of about 10⁻¹⁸ A, far below ngspice's current tolerance abstol, 1 pA (C9–C9c), and
+the noise passes on through the parts it drives (C9d), while a tiny current the circuit makes is real
+(C9e–C9g).
 
 **Messages** (section 4): no ground, capacitor-only nodes, floating parts, voltage-source loops,
 duplicate names, lines that are no part, missing subcircuits and models, models our engine leaves
@@ -2681,7 +2683,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### C9b. When every true current is 0, every current ngspice gives can be such noise
 
-The homework circuit with its 0 V ammeter written `Vm x gnd` (gnd as the last word is an ordinary node, W9, so Vm carries nothing): the only path left is V1, R1, R3 and F1. R3 brings into b the current that flows through V1 and R1, and F1 takes twice that current out of b; only 0 balances node b, so every current is 0 and every node sits at 12 V. ngspice gives currents of about 10⁻¹⁸ A, the node voltages a few units in the last place below 12 V. The same doubles in native 47, native 42 and our engine. Here every current is noise, so the largest current ngspice gives is noise too: what tells noise from a real current is the size of the currents this circuit's voltages drive through its resistors (12 V across 1 kΩ is 12 mA), not the largest current in the results.
+The homework circuit with its 0 V ammeter written `Vm x gnd` (gnd as the last word is an ordinary node, W9, so Vm carries nothing): the only path left is V1, R1, R3 and F1. R3 brings into b the current that flows through V1 and R1, and F1 takes twice that current out of b; only 0 balances node b, so every current is 0 and every node sits at 12 V. ngspice gives currents of about 10⁻¹⁸ A, the node voltages a few units in the last place below 12 V. The same doubles in native 47, native 42 and our engine. Here every current is noise, so comparing a current with the largest one ngspice gives tells nothing; the circuit's own numbers do. R1 and R3 have their two ends at the same voltage, to the last bits of a double (12 against 11.999999999999998, and 11.999999999999998 against 11.999999999999995), so they carry no current; then V1 is the only current left at node in, and F1 copies V1's current, so they carry none either (C9d says how PlainSpice decides this, part by part).
 
 ```spice
 * a 0 V ammeter whose last word is gnd: no current anywhere
@@ -2717,11 +2719,11 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(in) = 12, v(a) = 11.999999999999998, v(x) = 11.999999999999998, v(gnd) = 11.999999999999998, v(b) = 11.999999999999995, i(v1) = -1.734723475976807e-18, i(vm) = 0, i(@r1[i]) = 1.7763568394002505e-18, i(@r2[i]) = 0, i(@r3[i]) = 1.1842378929335003e-18, i(@f1[i]) = -3.469446951953614e-18
 ```
 
-A tiny current is not always noise: `I1 0 n1 3A` is a 3 aA source (unit-letter-1 in traps.md), and ngspice gives v(n1) = 1.2e−17 V across 4 Ω, a real 3 aA, because every value in that circuit is that small. So PlainSpice treats a current as noise only when it is also tiny next to the currents of its own circuit.
+A tiny current is not always noise: `I1 0 n1 3A` is a 3 aA source (unit-letter-1 in traps.md), and ngspice gives v(n1) = 1.2e−17 V across 4 Ω, a real 3 aA. So is a tiny current next to large ones (C9e to C9g). PlainSpice never compares a current with the circuit's other currents: it decides part by part, from each part's own numbers (C9d).
 
-### C9c. ngspice's current tolerance, abstol, is 1e-12 A (1 pA) by default
+### C9c. ngspice's current tolerance, abstol, is 1e-12 A (1 pA) by default, and its voltage tolerance, vntol, 1e-6 V (1 µV)
 
-ngspice's `options` command lists the tolerances it works to. The absolute tolerance for currents, abstol, is 1e-12 A in native 47, native 42 and our engine; the relative one, reltol, is 0.001. A current that ngspice gives as 10⁻¹⁸ A is a million times smaller than abstol.
+ngspice's `options` command lists the tolerances it works to. The absolute tolerance for currents, abstol, is 1e-12 A in native 47, native 42 and our engine; the one for node voltages, vntol, is 1e-6 V; the relative one, reltol, is 0.001. A current that ngspice gives as 10⁻¹⁸ A is a million times smaller than abstol.
 
 ```spice
 * ngspice's tolerances
@@ -2748,6 +2750,134 @@ ngspice 47, ngspice -b (exit 0), the lines about tolerances of the listing:
 ngspice 42: the same lines
 our engine (wasm), as ngspice -b -r (exit 0, no results file: the .control block writes none, A36):
     the same lines
+```
+
+### C9d. Rounding noise passes on: what an F makes of a 0 V source's noise, the resistor it drives and the voltage there are noise too
+
+Added after the critic of the fixes for the final reviews (12 November 2026). The bridge of C9 with a 0 V source Vm in R5's branch, and F1 copying 1000 × Vm's current into R6. R5 carries exactly 0 A here; Vm, the only other current at node m, gives −2.17e−19 A. F1 and R6 then give −2.17e−16 A, and node out −2.17e−13 V: all noise of a 0, because a current that is 0 copied 1000 times is still 0, and a resistor that carries no current has no voltage across it. The same doubles in native 47, native 42 and our engine.
+
+PlainSpice decides this part by part, from each part's own numbers, never by comparing it with the circuit's other currents (decision 0015, `roundingNoise` in `src/spice/describe.ts`). Only a current below 1 pA, ngspice's current tolerance (abstol, C9c), can be noise, and only when the circuit makes it 0: a resistor whose two ends are at the same voltage (to a million millionth of it; ngspice leaves a few units in the last place of a double, C9, C9b); a part that is the only current left at one of its nodes, since the currents at a node add up to 0; an F that copies, or a G that reads, something that is 0. A current source never: its current is its own value (C9e). A node voltage below 1 µV, ngspice's voltage tolerance (vntol, C9c), is noise when the node is joined to ground through parts with no voltage across them (here R6). PlainSpice shows each as 0 A or 0 V, and says what ngspice gave in a note.
+
+```spice
+* a balanced bridge with a 0 V ammeter in R5, and an F that reads it
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a m 1k
+Vm m b 0
+F1 0 out Vm 1000
+R6 out 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              -2.16840e-13
+        m                                4.500000e+00
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @r6[i]                           -2.16840e-16
+        @f1[i]                           -2.16840e-16
+        @r5[i]                           0.000000e+00
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+        vm#branch                        -2.16840e-19
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.499999999999999, v(m) = 4.499999999999999, v(out) = -2.1684043449710089e-13, i(vm) = -2.168404344971009e-19, i(v1) = -0.0014074468085106388, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106385, i(@r4[i]) = 0.0009574468085106381, i(@r5[i]) = 0, i(@f1[i]) = -2.1684043449710089e-16, i(@r6[i]) = -2.1684043449710089e-16
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.499999999999999, v(m) = 4.499999999999999, v(out) = -2.1684043449710089e-13, i(vm) = -2.168404344971009e-19, i(v1) = -0.0014074468085106388, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106385, i(@r4[i]) = 0.0009574468085106381, i(@r5[i]) = 0, i(@f1[i]) = -2.1684043449710089e-16, i(@r6[i]) = -2.1684043449710089e-16
+```
+
+### C9e. A tiny current is real when the circuit makes it: a source written 2A (2 attoamps) next to a 12 V divider gives exactly its own 2e−18 A
+
+The superposition circuit of a first-year course, with the current source written `2A`, which SPICE reads as 2 attoamps (unit-letter-1 in traps.md). ngspice gives @i1[current] = 2e−18 A, the source's own value, next to 4 mA in R1 and R2 (the source's share of their currents, about 10⁻¹⁸ A, is lost in their rounding). A current source's current is its own value, so it is never noise: PlainSpice shows 2 aA, and the unit-letter check says why it is so small. Compared with the circuit's other currents it is a million million times smaller than 4 mA, which is why a rule that compared sizes would wrongly call it noise.
+
+```spice
+* superposition: a 12 V source and a 2 A current source (2 attoamps)
+V1 a 0 12
+R1 a b 1k
+R2 b 0 2k
+I1 0 b 2A
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                8.000000e+00
+        a                                1.200000e+01
+        @i1[current]                     2.000000e-18
+        @r2[i]                           4.000000e-03
+        @r1[i]                           4.000000e-03
+        v1#branch                        -4.00000e-03
+  rawfile from ngspice -b -r (exit 0): v(a) = 12, v(b) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@r2[i]) = 0.004, i(@i1[current]) = 2e-18
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 12, v(b) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@r2[i]) = 0.004, i(@i1[current]) = 2e-18
+```
+
+### C9f. So is the current of a resistor whose ends are far apart: 1e14 Ω across 12 V carries 1.2e−13 A, next to 1.2 A
+
+R2 has 12 V across it, so its 1.2e−13 A (120 fA) is real, though about 10⁻¹³ of R1's 1.2 A: its two ends are not at the same voltage.
+
+```spice
+* a 100 T resistor across 12 V, next to a 1.2 A current
+V1 in 0 12
+R1 in 0 10
+R2 in 0 1e14
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        in                               1.200000e+01
+        @r2[i]                           1.200000e-13
+        @r1[i]                           1.200000e+00
+        v1#branch                        -1.20000e+00
+  rawfile from ngspice -b -r (exit 0): v(in) = 12, i(v1) = -1.20000000000012, i(@r1[i]) = 1.2000000000000002, i(@r2[i]) = 1.2e-13
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(in) = 12, i(v1) = -1.20000000000012, i(@r1[i]) = 1.2000000000000002, i(@r2[i]) = 1.2e-13
+```
+
+### C9g. And of a resistor next to one used as a wire: 1 TΩ beside a 1 nΩ wire carries 5e−13 A
+
+The 1 nΩ resistor R1, a wire, makes a node voltage over its resistance huge (0.5 V / 1 nΩ = 5e8 A), but R3 has 0.5 V across it, so its 0.5 pA is real. (ngspice gives the wire's own current as 5.000445e−4 A against R2's 5e−4 A: it divides the rounding of the wire's node voltages by 1 nΩ.)
+
+```spice
+* a 1 n resistor used as a wire, and a 1 T resistor
+V1 in 0 0.5
+R1 in a 1n
+R2 a 0 1k
+R3 a 0 1T
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        a                                5.000000e-01
+        in                               5.000000e-01
+        @r3[i]                           5.000000e-13
+        @r2[i]                           5.000000e-04
+        @r1[i]                           5.000445e-04
+        v1#branch                        -5.00023e-04
+  rawfile from ngspice -b -r (exit 0): v(in) = 0.5, v(a) = 0.49999999999949996, i(v1) = -0.000500023365020752, i(@r1[i]) = 0.0005000444502911704, i(@r2[i]) = 0.0004999999999995, i(@r3[i]) = 4.999999999995e-13
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(in) = 0.5, v(a) = 0.49999999999949996, i(v1) = -0.000500023365020752, i(@r1[i]) = 0.0005000444502911704, i(@r2[i]) = 0.0004999999999995, i(@r3[i]) = 4.999999999995e-13
 ```
 
 ## 4. Messages
@@ -3912,7 +4042,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
 | `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`) | A1–A22b, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
-| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A | C1–C9c, A3–A6 |
+| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V | C1–C9g, A3–A6 |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
 Re-running the evidence: the netlists, the scripts that run them through native ngspice 47, 42 and

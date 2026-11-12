@@ -103,20 +103,36 @@ that a phone left no room to watch the numbers move; this record says what the c
 
 ## After the final reviews (12 November 2026)
 
-- **Rounding noise is written as 0 A** (student review). Where a current is 0, ngspice's arithmetic can
-  leave about 10⁻¹⁸ A (C9, C9b in `docs/spice-facts/explanations.md`), which the drawing wrote with an
-  arrow ("R5 ← 8.882e-19 A") and as power ("V1 delivers 20.82 aW"). `describe.ts` now says 0 A for a
-  current that is both below 1 pA, ngspice's default current tolerance abstol (C9c), and below 10⁻¹²
-  times the circuit's own current scale: the largest current ngspice gives, or the largest current a
-  node voltage drives through a resistor to ground (when every true current is 0, every current in the
-  results is noise, so the resistors give the scale, C9b). The second test keeps a real tiny current:
-  the 3 aA of a 3a source is the whole circuit (unit-letter-1), so it is not noise. Such a current
-  gets no arrow, no "delivers" or "absorbs", "0 A" at the end of its line and "no current flows" in
-  speech, and a note in the Numbers panel says what ngspice gave ("ngspice gave R5 -8.881784e-19 A.
-  That is rounding noise …"); `CurrentWords.noise` keeps ngspice's value for the panel's ngspice
-  column. The floor is fixed at the default abstol: a netlist's `.options abstol` does not move it.
-  Across the 184 netlists with `.op` we have (the examples, the fixtures, the trap corpus and the
-  channel's episode netlists) no current is shown as noise.
+- **Rounding noise is written as 0 A, decided part by part** (student review; corrected after the
+  critic of the fixes). Where a current is 0, ngspice's arithmetic can leave about 10⁻¹⁸ A (C9, C9b in
+  `docs/spice-facts/explanations.md`), which the drawing wrote with an arrow ("R5 ← 8.882e-19 A") and
+  as power ("V1 delivers 20.82 aW"). The first fix compared each current with the circuit's largest
+  one; that also zeroed real tiny currents, such as the 2 aA of a source written 2A next to a 4 mA
+  divider, while the unit-letter check said "2A means 2 attoamps" (C9e). So `describe.ts`
+  (`roundingNoise`) never compares a current with other parts' currents. A current is shown as 0 A
+  only when it is below 1 pA, ngspice's current tolerance abstol (C9c), and the circuit's own numbers
+  make it 0 (C9d): a resistor or capacitor whose two ends are at the same voltage, to 10⁻¹² of that
+  voltage (ngspice leaves a few units in the last place of a double: C9 has 4.499999999999999
+  against 4.5; 300 balanced bridges with random values stayed below 10⁻¹⁴); a part that is the only
+  current left at one of its nodes, every other current there being 0 (the currents at a node add up
+  to 0); an F that copies a current that is 0, a G that reads a voltage that is 0. A current source is
+  never noise: its current is its own value. A node with a part whose current ngspice does not give by
+  name (a diode, a transistor, a subcircuit, a switch) is never used, so a diode's real leakage next to
+  a 1 A circuit stays 310 fA. A node voltage below 1 µV, ngspice's voltage tolerance vntol (C9c), is
+  shown as 0 V when the node is joined to ground through parts with no voltage across them (a resistor
+  that carries no current, an inductor, a 0 V source, an E or H whose control is 0), so the drawing
+  never writes "out = −216.8 fV" next to "0 A" for every part at out. A real tiny current keeps its
+  value however large the circuit's other currents are: 120 fA through 1e14 Ω across 12 V next to
+  1.2 A (C9f), 0.5 pA through 1 TΩ next to a 1 nΩ wire (C9g). Such a current gets no arrow, no
+  "delivers" or "absorbs", "0 A" at the end of its line and "no current flows" in speech; a note in
+  the Numbers panel says what ngspice gave and why the true value is 0 ("ngspice gave R5 -8.881784e-19
+  A. That is rounding noise, what its arithmetic leaves of a current that is 0: the two ends of R5,
+  node a and node b, are at the same voltage, 4.5 V. …"). `CurrentWords.noise` and
+  `NodeVoltageWords.noise` keep ngspice's values for the panel's ngspice columns. The floors are
+  ngspice's defaults: a netlist's `.options abstol` or `vntol` does not move them. Across the 184
+  netlists with `.op` we have (the examples, the fixtures, the trap corpus, the docs and the channel's
+  episode netlists) no current or voltage is shown as noise; in 300 balanced bridges with random
+  values, R5's current is, whenever it is not exactly 0, and nothing else is.
 - **A 0 V source is "a wire, through which ngspice measures the current (the ammeter trick)"** in the
   circuit's description and on its card (student review): true of every 0 V source (P9), the
   turned-off source of a Thevenin example too, where "used as an ammeter" claimed a purpose the

@@ -57,6 +57,10 @@ names can become one) in numbers-and-syntax.md; and in traps.md non-ascii-node-1
 duplicate-name-3, invisible-character-1 to -5, look-alike-letter-1 to -3, unknown-word-12 and
 space-before-suffix-16, -17. drawing-1 is now relied on by Explain too.
 
+After the critic of those fixes, the same day: C9d (the noise passes on through what it drives, and a
+node voltage can be noise too; vntol, ngspice's voltage tolerance, is 1 µV) and C9e, C9f, C9g (a
+tiny current the circuit makes is real, next to large currents too) in explanations.md.
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the
