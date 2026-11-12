@@ -65,10 +65,11 @@ export function theTool(kind: PartKind): string {
 
 /**
  * The other names a tool's Place command has in Ctrl+K, found and ranked as its own name: each
- * dependent source (E to H) is a "dependent source", the channel's word and the examples', and has
- * its textbook initials, read off its catalog name ("vcvs": voltage-controlled voltage source, E).
- * So "dependent" or "cccs" puts a Place command first, not an example that would replace the open
- * circuit (final reviews, words W4).
+ * dependent source (E to H) has the tool's own name in the margin, "Dependent source" (the channel's
+ * word and the examples'), its group's name in the margin's menu and the phone's Parts sheet,
+ * "Dependent sources", and its textbook initials, read off its catalog name ("vcvs":
+ * voltage-controlled voltage source, E). So "dependent", "dependent sources" or "cccs" puts a Place
+ * command first, not an example that would replace the open circuit (final reviews, words W4).
  */
 export function toolAliases(tool: Tool): string[] {
   if (!isControlled(tool)) return [];
@@ -77,5 +78,5 @@ export function toolAliases(tool: Tool): string[] {
     .filter(Boolean)
     .map((w) => w.charAt(0).toLowerCase())
     .join('');
-  return ['dependent source', initials];
+  return [...new Set([t('toolControlled'), t('partsGroupControlled'), t('controlledMenu')])].concat(initials);
 }

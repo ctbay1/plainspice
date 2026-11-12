@@ -111,7 +111,7 @@ describe('after the final reviews: Ctrl+K finds a command by the words it shows'
   it('puts a dependent source’s Place command first for its other names: “dependent”, “dependent source”, “cccs” (the critic of words W4)', () => {
     const shown = (query: string): string[] => filterCommands(REAL, query).map((c) => c.id);
     // The channel's word: the four Place commands first, in the margin's order, before the examples named with it.
-    for (const q of ['dependent', 'dependent source', 'Dependent', 'dep']) {
+    for (const q of ['dependent', 'dependent source', 'Dependent', 'dep', 'dependent sources', 'Dependent sources']) {
       expect(shown(q).slice(0, 4), q).toEqual(['tool:E', 'tool:F', 'tool:G', 'tool:H']);
       expect(shown(q).some((id) => id.startsWith('example:')), q).toBe(true);
     }
@@ -128,8 +128,11 @@ describe('after the final reviews: Ctrl+K finds a command by the words it shows'
     expect(shown(example.label)[0]).toBe(example.id);
     // Only the four have other names.
     expect((['R', 'C', 'L', 'V', 'I', 'ground', 'select', 'wire'] as const).map((tl) => toolAliases(tl))).toEqual([[], [], [], [], [], [], [], []]);
-    expect(toolAliases('E')).toEqual(['dependent source', 'vcvs']);
-    expect(toolAliases('H')).toEqual(['dependent source', 'ccvs']);
+    // Their names as the margin, its menu and the phone's Parts sheet show them ("Dependent sources", the group), and their initials.
+    expect(toolAliases('E')).toEqual(['Dependent source', 'Dependent sources', 'vcvs']);
+    expect(toolAliases('H')).toEqual(['Dependent source', 'Dependent sources', 'ccvs']);
+    expect(toolAliases('F')).toEqual([t('toolControlled'), t('partsGroupControlled'), 'cccs']);
+    expect(t('controlledMenu')).toBe(t('partsGroupControlled'));
   });
 
   it('ranks a command by another name of its own as by words of its name, never as its start', () => {

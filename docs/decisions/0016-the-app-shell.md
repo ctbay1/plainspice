@@ -180,8 +180,10 @@ Ctrl+K stay as they are.
   ("Place a current-controlled current source", "Example 3: short", "(V_Th)"), finds it, and
   "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands have
   other names of their own (a command's `aliases`, found and ranked as words of its name are, never as
-  the start of its name): "dependent source", the channel's word, and their textbook initials, "vcvs",
-  "cccs", "vccs" and "ccvs" (read off the catalog's names). So "dependent" lists them first, before the
+  the start of its name): "Dependent source", the channel's word and the tool's name in the margin;
+  "Dependent sources", their group's name in the margin's menu and the phone's Parts sheet, so the
+  group's name typed as shown finds them too (done when the lanes were merged); and their textbook
+  initials, "vcvs", "cccs", "vccs" and "ccvs" (read off the catalog's names). So "dependent" lists them first, before the
   eight examples named with the word (their group, Edit the drawing, comes before Examples), in view on
   a phone too, and Enter places a source rather than opening an example over the open circuit (words W4
   and its critic); "controlled", the textbook's word, is in their names. A short query keeps the

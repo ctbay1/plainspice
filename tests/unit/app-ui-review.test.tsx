@@ -96,7 +96,7 @@ describe('Ctrl+K after the final reviews', () => {
     // The channel's word finds the four tools (words W4), first, before the examples named with it (the
     // critic of W4: Enter opened an example over the open circuit), and "controlled" still does.
     const dependentTools = (['E', 'F', 'G', 'H'] as const).map((tl) => t('palettePlace', { part: toolPhrase(tl) }));
-    for (const query of ['dependent', 'dependent source']) {
+    for (const query of ['dependent', 'dependent source', t('partsGroupControlled')]) {
       fireEvent.change(input, { target: { value: query } });
       expect(labels(palette).slice(0, 4), query).toEqual(dependentTools);
       expect(labels(palette).length, query).toBeGreaterThan(4);
