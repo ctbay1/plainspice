@@ -386,6 +386,9 @@ describe('what the explanations predict matches the run', () => {
     expect(plain(explainLine(n, 1)!.summary)).toContain('So I1 pushes 3 A from ground (node 0), through the source, into node a.');
     // I3 0 c -3: 3 A from c into ground, so c is below ground, as b is (words re-check 12).
     expect(plain(explainLine(n, 5)!.summary)).toContain('Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).');
+    // The overview (and the drawing's description) say it the same way (critic of words re-check 12).
+    expect(plain(describeCircuit(n))).toContain('I3: a −3 A current source: its value is negative, so it pushes 3 A from node c into ground.');
+    expect(plain(describeCircuit(n))).toContain('I2: a 3 A current source pushing current from node b into ground.');
     expect(v('a')).toBe(12);
     expect(v('c')).toBe(-12);
     expect(v('c')).toBe(v('b'));

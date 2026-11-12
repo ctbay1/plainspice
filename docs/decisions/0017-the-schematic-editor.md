@@ -520,7 +520,10 @@ what they look like):
   that fits, "So node a sits 3 V below node b.", as the card says the size and which end is higher,
   the formula before it keeping the sign ("V(a) − V(b) = −3 V"). A current source with a negative value
   is said the way its current flows: "Its value is negative, so the current flows the other way: I1
-  pushes 3 mA from node a, through the source, into ground (node 0)." (P3 and P4 now run both.)
+  pushes 3 mA from node a, through the source, into ground (node 0)." (P3 and P4 now run both.) The
+  overview and the drawing's description of the part say it the same way, "I1: a −2 mA current
+  source: its value is negative, so it pushes 2 mA from ground into node a.", where they said "pushing
+  current from node a into ground" beside Explain's sentence (critic of the fix).
 
 Two of the pointer's ways went wrong when the page drew late (end-to-end tests on a busy machine, load
 10 to 20 on 4 cores, and a quick hand). Each has a test now that sends the events in the order a busy

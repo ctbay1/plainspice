@@ -253,6 +253,9 @@ export const DESCRIBE_STRINGS = {
   swept: (name: string, a: string, b: string): string => `${name}: a voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}, swept by .dc.`,
   iSource: (name: string, v: string, a: string, b: string): string =>
     `${name}: ${v ? `${articleBefore(v)} ${v} current source` : 'a current source'} pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
+  /** A negative value (P4): its size, pushed the way the current really flows, from the second node into the first (critic of words re-check 12). */
+  iSourceBack: (name: string, v: string, size: string, a: string, b: string): string =>
+    `${name}: ${articleBefore(v)} ${v} current source: its value is negative, so it pushes ${size} from ${nodeIn(b)} into ${nodeIn(a)}.`,
   iFunction: (name: string, fn: string, a: string, b: string): string => `${name}: a ${fn} current source pushing current from ${nodeIn(a)} into ${nodeIn(b)}.`,
   vcvs: (name: string, out: string, gain: string, control: string): string =>
     `${name}: a voltage-controlled voltage source: ${out}, is ${gain} × ${control}.`,
@@ -679,6 +682,7 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
       return S.vSource(name, fmt('V'), nodeWritten(a), nodeWritten(b));
     case 'I':
       if (el.sourceFunction && v === undefined) return S.iFunction(name, el.sourceFunction.token.text.toUpperCase(), nodeWritten(a), nodeWritten(b));
+      if (v !== undefined && v < 0) return S.iSourceBack(name, fmt('A'), formatSI(-v, 'A'), nodeWritten(a), nodeWritten(b));
       return S.iSource(name, fmt('A'), nodeWritten(a), nodeWritten(b));
     case 'E':
       return S.vcvs(name, S.voltageAt(nodeWritten(a), nodeWritten(b)), v === undefined ? '?' : formatNumber(v), S.voltageAt(nodeWritten(c), nodeWritten(d)));

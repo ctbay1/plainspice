@@ -204,7 +204,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### P4. A current source pushes its current from its first node, through the source, into its second
 
-`I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V. A negative value pushes the current the other way: `I3 0 c -3` pulls 3 A out of c and pushes it into ground, so c = −12 V, as for I2 (Explain says "Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).": words re-check 12, 12 November 2026).
+`I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V. A negative value pushes the current the other way: `I3 0 c -3` pulls 3 A out of c and pushes it into ground, so c = −12 V, as for I2 (Explain says "Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).": words re-check 12, 12 November 2026; and the overview "I3: a −3 A current source: its value is negative, so it pushes 3 A from node c into ground.", where it said "pushing current from ground into node c" until the critic of that fix).
 
 ```spice
 * a current source pushes current from its first node to its second

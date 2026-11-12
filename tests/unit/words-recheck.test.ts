@@ -19,7 +19,7 @@ import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts'
 import type { RunResult } from '../../src/engine/types.ts';
 import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve } from '../../src/notebook/index.ts';
-import { EDIT_STRINGS, applyEdit, buildSchematic } from '../../src/schematic/index.ts';
+import { EDIT_STRINGS, applyEdit, buildSchematic, describePart } from '../../src/schematic/index.ts';
 import { DESCRIBE_STRINGS, annotateLines, describeCircuit, describeResults, explainDiagnostic, netlistVector } from '../../src/spice/describe.ts';
 import { INVISIBLE } from '../../src/spice/characters.ts';
 import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
@@ -608,5 +608,16 @@ describe('words re-check 12: a source with a negative value between two nodes is
     expect(s).toContain('Its value is negative, so the current flows the other way: I1 pushes 3 mA from node a, through the source, into ground (node 0).');
     expect(s).not.toMatch(/pushes −/);
     expect(summary('* positive I\nI1 0 a 3m\nR1 a 0 1k\n.op\n.end\n', 2)).toContain('So I1 pushes 3 mA from ground (node 0), through the source, into node a.');
+  });
+
+  it('the overview and the drawing\'s description say it the same way: "its value is negative, so it pushes 2 mA from ground into node a" (critic of the fix)', () => {
+    // Native ngspice 47 and 42: I1 a 0 -2m with 1 kΩ to ground gives a = 2 V, so 2 mA flow from ground into a.
+    const NEG = '* negative I\nI1 a 0 -2m\nR1 a 0 1k\n.op\n.end\n';
+    const said = 'I1: a −2 mA current source: its value is negative, so it pushes 2 mA from ground into node a.';
+    expect(sp(describeCircuit(parseNetlist(NEG)))).toContain(said);
+    expect(sp(describePart(buildSchematic(NEG, NOTEBOOK_OPTIONS), 'I1'))).toContain(said);
+    // Written another way, the same words; a positive value keeps the arrow's words.
+    for (const value of ['DC -2m', '-2mA']) expect(sp(describeCircuit(parseNetlist(NEG.replace('-2m', value)))), value).toContain(said);
+    expect(sp(describeCircuit(parseNetlist(NEG.replace('-2m', '2m'))))).toContain('I1: a 2 mA current source pushing current from node a into ground.');
   });
 });
