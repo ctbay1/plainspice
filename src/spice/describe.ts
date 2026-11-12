@@ -944,7 +944,7 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
       (el.letter === 'B' && behaviouralKind(el) !== 'v') ||
       (el.letter === 'R' && realVoltage(p, n)) ||
       (el.letter === 'G' && realVoltage(c, d)) ||
-      ends.get(el.key)?.some((node) => unknown.has(node))
+      ends.get(el.key)?.some((node) => node !== '0' && unknown.has(node))
     )
       makeReal(el);
   }

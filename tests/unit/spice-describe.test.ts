@@ -788,6 +788,13 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     expect(bridge.currents.find((c) => c.name === 'R5')!.noise).toBe(-8.881784197001253e-19);
   });
 
+  it('a diode to ground does not make every part at ground real: the noise of C9d stays noise', () => {
+    // Ground takes every current; only the diode's other node is one where its current flows through a named part.
+    const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\nD1 top 0 dmod\n.model dmod d\n.op\n.end\n';
+    const r = op({ top: 9, a: 4.499999999999999, b: 4.499999999999999, m: 4.499999999999999, out: -2.1684043449710089e-13 }, [['v1', -0.0014074468085106388, 'branch'], ['r1', 4.5e-4, 'device'], ['r2', 4.5e-4, 'device'], ['r3', 9.574468085106385e-4, 'device'], ['r4', 9.574468085106381e-4, 'device'], ['r5', 0, 'device'], ['vm', -2.168404344971009e-19, 'branch'], ['r6', -2.1684043449710089e-16, 'device'], ['f1', -2.1684043449710089e-16, 'device']]);
+    expect(describeResults(parseNetlist(text), r, run()).currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['Vm', 'F1', 'R6']);
+  });
+
   it('a part next to a diode may carry its current: a 0.1 mΩ resistor and an ammeter in series with a leaking diode keep their currents', () => {
     // R1's two ends are 1 unit in the last place apart, but the diode's leakage flows through it: PlainSpice does not read a diode's current.
     kept('* t\nV1 in 0 0.3\nR1 in a 0.1m\nVm a k 0\nD1 0 k dmod\n.model dmod d\n.op\n.end\n', op({ in: 0.3, a: 0.29999999999999993, k: 0.29999999999999993 }, [['v1', -5.551115123125783e-13, 'branch'], ['r1', 5.551115123125783e-13, 'device'], ['vm', 5.551115123125783e-13, 'branch']]));
