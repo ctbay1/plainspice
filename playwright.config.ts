@@ -12,8 +12,11 @@ import { resolve } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const CI = Boolean(process.env.CI);
-/** Not 4173 (vite preview's default), which another server may already be using. */
-const PORT = 4174;
+/**
+ * Not 4173 (vite preview's default), which another server may already be using. PW_PORT moves it,
+ * so two checkouts can run their tests side by side without one reusing the other's server.
+ */
+const PORT = Number(process.env.PW_PORT ?? 4174);
 const BASE_URL = `http://localhost:${PORT}/`;
 const built = existsSync(resolve(import.meta.dirname, 'dist/index.html'));
 
