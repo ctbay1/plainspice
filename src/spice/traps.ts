@@ -825,7 +825,7 @@ function ownVerdict(d: Directive, k: number, n: number, R: string, read: number 
       const one = alone && args.length <= 4;
       return stop(`ngspice 47 stops: 'Bad syntax!'.${one ? ` ngspice 42 takes the word for the name of a second source to sweep, and stops: 'Voltage source, current source, or resistor named "${spelled}" is not in the circuit'.` : ''}`, `invisible-character-${k >= 4 ? 15 : 11 + k}`);
     }
-    if (k % 4 === 3 && R === `BAD@${k}`) return stop(`and a step of 0 stops ngspice 47: 'Bad syntax!'.${alone ? ' ngspice 42 never finishes.' : ''}`, `invisible-character-32, dc-sweep-problems-1${mixed ? ', invisible-character-60' : ''}`);
+    if (k % 4 === 3 && R === `BAD@${k}`) return stop(`and a step of 0 stops ngspice 47: 'Bad syntax!'.${alone ? ' ngspice 42 never finishes.' : ''}`, `invisible-character-32, dc-sweep-problems-1${k >= 4 ? ', invisible-character-64' : ''}${mixed ? ', invisible-character-60' : ''}`);
     // A run's outcome is said only when it is exactly this sweep's: nothing else on the line changes it.
     const s = k < 4 ? 0 : 1;
     const name = (j: number): string => shownWord(args[j]!.text);

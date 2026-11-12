@@ -13343,6 +13343,42 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 PlainSpice's checks: `invisible-character`.
 
+### invisible-character-64. In two sweeps, the second sweep's step read as 0: the same as in one sweep
+
+Added after the second critic of the re-check fixes (12 November 2026, CR2-1, CR2-4): as invisible-character-32 on a line of one sweep, ngspice 47 stops ('Bad syntax!') and ngspice 42 never finishes.
+
+```spice
+* a zero-width space inside the second sweep's step: it reads 0
+V1 in 0 1
+V2 b 0 1
+R1 in b 1k
+.dc V1 0 5 1 V2 0 1 0<ZWSP>.5
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      .dc v1 0 5 1 v2 0 1 0___.5
+    Bad syntax!
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit null)
+    rawfile: (did not finish in 15 s: stopped)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `invisible-character`.
+
 ## look-alike-letter
 
 Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,

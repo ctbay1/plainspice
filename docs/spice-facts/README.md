@@ -104,7 +104,7 @@ space-character-16 to -18 (a word glued by a thin space on an analysis line is o
 
 After the second critic of the re-check fixes, the same day, each run the same way: in traps.md,
 invisible-character-58, -60 to -63 and space-character-19 (a character word on an analysis line with a
-problem of its own: ngspice does what that problem does), -57 (a lin `.ac` start read as 0 runs from
+problem of its own: ngspice does what that problem does), -64 (a second sweep's step read as 0), -57 (a lin `.ac` start read as 0 runs from
 0 Hz), -54, -55 and dc-sweep-problems-20 to -24, -26, -27 (a sweep the wrong way in two sweeps never
 moves; both: no points), dc-sweep-problems-25 (a step of 0 and a missing source: 47 stops at the step,
 42 at the source), invisible-character-56 (the other places of the source functions, the AC phase and
