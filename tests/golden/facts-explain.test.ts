@@ -701,9 +701,9 @@ describe('after the final reviews (12 November 2026): rounding noise is 0 A (stu
     const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
     expect(note).toMatchObject({ severity: 'note', title: "R5's current is shown as 0 A", line: 7 });
     expect(note.why).toContain('ngspice gave R5 -8.881784e-19 A.');
-    // The why: the circuit makes the current 0, and ngspice's number is below its tolerance.
+    // The why: the circuit makes the current 0, as its exact solution shows (decision 0015).
     expect(plain(note.why)).toContain('the two ends of R5, node a and node b, are at the same voltage, 4.5 V.');
-    expect(note.why).toContain("below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.");
+    expect(note.why).toContain("Solved exactly, with fractions, from the netlist's values, the circuit makes it exactly 0, so PlainSpice shows 0 A.");
     // The other currents are real and keep their words; a note is no problem for the summary.
     expect(plain(currentText(d, 'R1'))).toBe('450 µA from node top to node a through R1');
     expect(d.words.summary).not.toMatch(/warning/);
