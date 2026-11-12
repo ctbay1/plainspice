@@ -130,6 +130,37 @@ test('builds Start here on a blank page with the mouse: place, values, turn, gro
   await expect.poll(() => savedNetlist(page)).toMatch(/^\* circuit\nV1 n1 0 6\nR1 n1 out 1k\nR2 out 0 2k\n\.op\n\* plainspice-drawing v1\n/);
 });
 
+test('the Wire tool starts a wire at the end the pointer is on, even before the page has drawn the pointer’s last move', async ({ page }) => {
+  test.skip(isPhone(page), 'a mouse (a finger has no pointer to follow)');
+  await openApp(page);
+  await newCircuit(page);
+  // R1 across at (4, 0): its ends at (2, 0) and (6, 0), on new nodes n1 and n2.
+  await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
+  await clickAt(page, 4, 0);
+  await expect(page.getByRole('dialog', { name: /^R1 / })).toBeVisible();
+  await page.keyboard.press('Enter');
+  await partsToolbar(page).getByRole('button', { name: t('toolWire') }).click();
+  await expect(hintLine(page)).toHaveText(t('hintWire'));
+  // The pointer over R1's left end, and the page has drawn it there (the ring on that end).
+  const left = await gridPoint(page, 2, 0);
+  await page.mouse.move(left.x, left.y);
+  await expect(page.locator('.nb-target-on')).toHaveAttribute('cx', '40');
+  // Then over its right end and a click there, all before the page draws again: on a busy machine (or a
+  // quick hand) the press comes before the page has drawn the pointer's last move. The wire starts where
+  // the pointer is, not at the end it left (which then offered to join n1 and n2).
+  const right = await gridPoint(page, 6, 0);
+  await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y)!;
+    const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    target.dispatchEvent(new PointerEvent('pointermove', { ...base, buttons: 0 }));
+    target.dispatchEvent(new PointerEvent('pointerdown', { ...base, button: 0, buttons: 1 }));
+    target.dispatchEvent(new PointerEvent('pointerup', { ...base, button: 0, buttons: 0 }));
+  }, right);
+  await expectAnnounced(page, 'Wire started at node n2.');
+  await expect(page.locator('.nb-draft__start')).toHaveAttribute('cx', '120');
+  await expect(hintLine(page)).toHaveText(t('hintWireOn'));
+});
+
 test('builds Start here again with the keyboard only (no pointer at all), through Ctrl+K and the Add a part form', async ({ page }) => {
   await openApp(page);
   await page.evaluate(() => {

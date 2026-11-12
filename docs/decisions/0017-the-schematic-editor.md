@@ -421,3 +421,15 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   fixture stays as it is (the golden runs record it, and the published F5 link decodes to it); an
   accented title line for F5 opened as an example belongs to `src/app/examples.ts`, not done this
   round.
+
+A pointer's way went wrong when the page drew late (an end-to-end test on a busy machine, load 10 to
+20 on 4 cores, and a quick hand). It has a test now that sends the events in the order a busy page
+meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
+
+- **A click acts on where the pointer is, not on the last preview drawn.** With the Wire tool, a click
+  on a part's symbol takes the end its preview showed (at the symbol's middle both ends are about as
+  near, and the pointer's last move chose). The preview is drawn a moment after the move; when the
+  press came first (a busy page, or a quick move from one end of a part to its other end and a click),
+  the wire started at the end the pointer had left, and the hint offered to join two nodes ("Click to
+  end the wire here: node n4 and node n6 become one node"). The end is now found from where the
+  pointer last moved, kept as it moves, not from the preview the page last drew.

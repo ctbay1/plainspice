@@ -574,6 +574,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [hand, setHand] = useState<Hand | undefined>(undefined);
   /** Where the pointer is over the paper (grid units, to a quarter unit), for the previews; undefined when it is not. */
   const [hover, setHover] = useState<Point | undefined>(undefined);
+  /**
+   * The same, kept as the pointer moves rather than as the page last drew (a render can come after the
+   * next press: a busy machine, or a quick move and click). A click acts on where the pointer is, not on
+   * a preview drawn for where it was.
+   */
+  const hoverNow = useRef<Point | undefined>(undefined);
   /** A touch screen: where the part in hand was put for a look, before Place (or a second tap there) places it. */
   const [lookAt, setLookAt] = useState<Point | undefined>(undefined);
   /** A wire on its way: its first end and the corners chosen since. */
@@ -2683,6 +2689,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         if (!noteLine?.read) setNoteLine(undefined);
       }
       const q = info ? quarter(info.at) : undefined;
+      hoverNow.current = q;
       setHover((h) => ((h && q && h.x === q.x && h.y === q.y) || (!h && !q) ? h : q));
       const m = moveRef.current;
       const s = m?.how === 'pick' && info ? currentDrawing() : undefined;
@@ -2745,7 +2752,12 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         const clicked = wireStartOf(hitTest(s, info.at, tol, 'wire')) ?? symbolEnd(s, info.at, tol);
         // The end the preview showed, when the click is on the same part's symbol: at its middle the two pins
         // are equally near, and the pointer's last move (not the press, a fraction of a square away) chose.
-        const shown = wireHover && 'end' in wireHover ? wireHover : undefined;
+        // Found from where the pointer last moved, not from the preview the page last drew: a render that
+        // had not come yet (a busy machine, a quick move from one end of a part to its other end and a
+        // click) started the wire at the end the pointer had left, the hint offering to join two nodes.
+        const last = hoverNow.current;
+        const near = !!last && Math.hypot(last.x - info.at.x, last.y - info.at.y) <= 1;
+        const shown = near ? (wireStartOf(hitTest(s, last, nearness(info.unit), 'wire')) ?? symbolEnd(s, last, nearness(info.unit))) : undefined;
         const same = !!clicked && !!shown && 'part' in clicked.end && 'part' in shown.end && clicked.end.part === shown.end.part;
         wireAt(same ? shown : clicked, info.at);
         return;
