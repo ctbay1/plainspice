@@ -189,7 +189,7 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     // as a dot named in words, so a value that reads 1k or 4.7 kΩ but is 1 Ω or 4.7 Ω shows why
     // (security review F2; invisible-character-1, space-character-1). CodeMirror's own set has some
     // of the invisible ones; INVISIBLE and SPACE_LIKE add the rest.
-    highlightSpecialChars({ addSpecialChars: new RegExp(`${INVISIBLE.source}|${SPACE_LIKE.source}`), render: specialChar }),
+    highlightSpecialChars({ addSpecialChars: new RegExp(`${INVISIBLE.source}|${SPACE_LIKE.source}`, 'u'), render: specialChar }),
     // No pop-up on the gutter markers: it cannot be closed with Escape, and hovering the
     // underlined text (or F8) shows the same pop-up.
     lintGutter({ tooltipFilter: () => [] }),

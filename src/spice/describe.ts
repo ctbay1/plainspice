@@ -17,7 +17,7 @@ import type { AnalysisResults, ElementCurrent, Sweep, SweepSeries } from '../eng
 import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, dcStopsNgspice, isExpression, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
@@ -267,6 +267,8 @@ export const DESCRIBE_STRINGS = {
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
+  // re-check critic CR1-11: a .dc line ngspice 47 cannot read is never told as a sweep that runs.
+  dcStopsName: 'a DC sweep at which ngspice 47 stops ("Bad syntax!"): see Checks',
   dcSweep: (source: string, start: string, stop: string, step: string): string => `${source} from ${start} to ${stop} in steps of ${step}`,
   points: (n: number): string => ` (${n} ${n === 1 ? 'point' : 'points'})`,
   tranName: (stop: string): string => `transient, from 0 to ${stop}`,
@@ -439,6 +441,8 @@ export const DESCRIBE_STRINGS = {
   badSyntaxWhy: 'ngspice stopped at this line ("Bad syntax!").',
   tstopTitle: '.tran needs a step and a stop time',
   tstopWhy: 'With one number, ngspice has no stop time ("TSTOP is invalid"). Write a step and then the stop time, like .tran 10u 5m.',
+  tstopZeroTitle: 'The .tran stop time must be more than 0',
+  tstopZeroWhy: 'ngspice stops when the stop time it reads is 0 or less ("TSTOP is invalid"). The stop time is the length of the run, like 5m.',
   tstepTitle: 'The .tran step must be more than 0',
   tstepWhy: 'ngspice stops when the step is 0 ("TSTEP is invalid").',
   tstartTitle: 'tstart must come before tstop',
@@ -621,10 +625,13 @@ export function acValue(el: Element): number | undefined {
 /**
  * A voltage source whose DC value is 0 (written or missing), with no transient function and no AC
  * value: an ammeter (P9, P16). A source with an AC value is the input of an .ac analysis, though it is
- * 0 V in .op (critic of the fixes: "V1 in 0 AC 1" is no wire).
+ * 0 V in .op (critic of the fixes: "V1 in 0 AC 1" is no wire). Nor is a source whose value word ngspice
+ * cannot read (−5 with a minus sign from a document, -<zero-width space>5): ngspice stops there and
+ * measures nothing (look-alike-letter-2, invisible-character-6, space-character-12; re-check C3).
  */
 function isAmmeter(el: Element): boolean {
   if (el.letter !== 'V' || el.sourceFunction || acValue(el) !== undefined) return false;
+  if (el.fields.some((f) => f.role === 'other')) return false;
   if (!el.value) return true;
   return el.value.number?.value === 0;
 }
@@ -693,6 +700,7 @@ function analysisPhrase(netlist: Netlist, r: AnalysisReading): string {
     case 'tf':
       return S.tfName(r.output, r.input?.text ?? '?');
     case 'dc': {
+      if (dcStopsNgspice(r)) return S.dcStopsName;
       const sweeps = r.sweeps.map((s) => S.dcSweep(sweepName(s), sweepValue(s, s.startValue, s.start?.text), sweepValue(s, s.stopValue, s.stop?.text), sweepValue(s, s.stepValue, s.step?.text)));
       return S.dcName(sweeps.join(' and '), r.points !== undefined ? S.points(r.points) : '');
     }
@@ -1673,6 +1681,34 @@ function written(netlist: Netlist, name: string, line?: number): string {
   return name;
 }
 
+/**
+ * Whether ngspice 47's 'Bad syntax!' on a .dc line is its step: missing or 0 in a sweep whose other
+ * numbers read. A word that is no number where a number goes (−5 with a minus sign from a document,
+ * V1 again) stops it too, and then the step is not the problem. Read by place, as checkDc does: where
+ * the step goes, a part's name or temp starts the next sweep, so that sweep has no step.
+ */
+function dcStepIsTheProblem(netlist: Netlist, line: number | undefined): boolean {
+  const reading = line === undefined ? undefined : readAnalysis(netlist, line - 1);
+  if (reading?.kind !== 'dc') return true;
+  // A word in braces or quotes is a number numparam works out (dc-sweep-problems-17; re-check critic CR1-4):
+  // a step written so can only be the problem when it comes to 0.
+  let expressionStep = false;
+  for (const s of reading.sweeps) {
+    if (!s.start || !s.stop) return false;
+    if ((s.startValue === undefined && !isExpression(s.start)) || (s.stopValue === undefined && !isExpression(s.stop))) return false;
+    if (s.step && s.stepValue === undefined && !isExpression(s.step)) return lowerAscii(s.step.text) === 'temp' || partNamed(netlist, s.step.text) !== undefined;
+    if (!s.step || s.stepValue === 0) return true;
+    if (isExpression(s.step)) expressionStep = true;
+  }
+  return expressionStep;
+}
+
+/** Whether the .tran line (1-based) has a word where the stop time goes, uic aside. */
+function tranHasStop(netlist: Netlist, line: number | undefined): boolean {
+  const d = line === undefined ? undefined : netlist.lines[line - 1]?.directive;
+  return d?.name === '.tran' && d.args.filter((t) => lowerAscii(t.text) !== 'uic').length >= 2;
+}
+
 function lineText(netlist: Netlist, line: number | undefined): string {
   return line === undefined ? '' : (netlist.lines[line - 1]?.text ?? '');
 }
@@ -1835,13 +1871,19 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       return withLine({ title: S.sweepMissingTitle(name), why: S.sweepMissingWhy(name) }, at); // M12
     }
     case 'bad-syntax': {
-      const isDc = /^\s*\.dc\b/i.test(lineText(netlist, d.line));
-      return withLine(isDc ? { title: S.badSyntaxDcTitle, why: S.badSyntaxDcWhy } : { title: S.badSyntaxTitle, why: S.badSyntaxWhy }); // M13, M13b
+      // M13, M13b: on a .dc line, the step only when it is missing or 0 (dc-sweep-problems-1, -2); a word that is
+      // no number where one goes says 'Bad syntax!' too (dc-sweep-problems-9, -10; re-check S5).
+      const isDc = /^\s*\.dc\b/i.test(lineText(netlist, d.line)) && dcStepIsTheProblem(netlist, d.line);
+      return withLine(isDc ? { title: S.badSyntaxDcTitle, why: S.badSyntaxDcWhy } : { title: S.badSyntaxTitle, why: S.badSyntaxWhy });
     }
     case 'bad-tran-arguments': {
       const which = (d.subject ?? '').toUpperCase();
-      const w = which === 'TSTEP' ? { title: S.tstepTitle, why: S.tstepWhy } : which === 'TSTART' ? { title: S.tstartTitle, why: S.tstartWhy } : { title: S.tstopTitle, why: S.tstopWhy };
-      return withLine(w, d.line ?? dotLine(netlist, '.tran')); // M14, M15, M15b
+      const at = d.line ?? dotLine(netlist, '.tran');
+      // With a word where the stop time goes, "TSTOP is invalid" means a stop of 0 or less, not one number
+      // (tran-problems-8, -9, invisible-character-29; re-check critic CR1-13).
+      const stop = tranHasStop(netlist, at) ? { title: S.tstopZeroTitle, why: S.tstopZeroWhy } : { title: S.tstopTitle, why: S.tstopWhy };
+      const w = which === 'TSTEP' ? { title: S.tstepTitle, why: S.tstepWhy } : which === 'TSTART' ? { title: S.tstartTitle, why: S.tstartWhy } : stop;
+      return withLine(w, at); // M14, M15, M15b
     }
     case 'missing-inductor': {
       // M16: "coupling to non-existent inductor l2."

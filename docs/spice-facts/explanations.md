@@ -691,6 +691,36 @@ our engine (wasm), as ngspice -b -r (exit 0):
   diagnostics: no-value-dc0 (i1), no-value-dc0 (v2), no-value-dc0 (v1)
 ```
 
+### P16b. A source with dc but no number after it is 0 in .op too, without a note
+
+Added after the re-check of the fixes (12 November 2026, C3). `dc` with no number is a DC value of 0 for ngspice, so it prints no "has no value" note, with an AC value after it or not; Explain says "without a message" for these. A source whose value word ngspice cannot read (`−5` with a minus sign from a document) is neither: ngspice stops at the word (look-alike-letter-2, invisible-character-6, space-character-12 in traps.md), so Explain gives it no note about a missing value.
+
+```spice
+* a source with dc but no number after it
+V1 a 0 dc
+R1 a 0 1
+V2 b 0 dc AC 1
+R2 b 0 1
+I1 0 c dc
+R3 c 0 1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+            c                                0.000000e+00
+            b                                0.000000e+00
+            a                                0.000000e+00
+            v1#branch                        0.000000e+00
+            v2#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 0, v(b) = 0, v(c) = 0, i(v2) = 0, i(v1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(a) = 0, v(b) = 0, v(c) = 0, i(v2) = 0, i(v1) = 0
+```
+
 ### P17. In .op a PULSE, SIN, PWL or EXP source without a DC value uses its value at time 0
 
 Without a DC value, each source uses its value at time 0: the PULSE starts at 1 V, the SIN at its offset 2 V, the PWL at 4 V, the EXP at 3 V. No message.

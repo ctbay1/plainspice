@@ -49,7 +49,7 @@ const CASES: Case[] = [
   { name: "1F on a capacitor", id: 'unit-letter', severity: 'warning', line: 4, at: "1F", all: ["unit-letter"], fixes: ["Write 1 (1 farad)"], netlist: "* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1F\n.tran 1u 5u\n.end\n" },
   { name: "10f on a capacitor (info)", id: 'unit-letter', severity: 'info', line: 4, at: "10f", all: ["unit-letter"], fixes: ["Write 10 (10 farads)"], netlist: "* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 10f\n.tran 1u 5u\n.end\n" },
   { name: "Greek mu on a resistor", id: 'greek-mu', severity: 'warning', line: 3, at: "4.7\u03bc", all: ["greek-mu"], fixes: ["Write u for micro: 4.7u"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 4.7\u03bc\n.op\n.end\n" },
-  { name: "Greek mu in .tran", id: 'greek-mu', severity: 'warning', line: 5, at: "1\u03bcs", all: ["greek-mu","tran-problems"], fixes: ["Write u for micro: 1us"], netlist: "* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1\u03bcs 5m\n.end\n" },
+  { name: "Greek mu in .tran", id: 'greek-mu', severity: 'warning', line: 5, at: "1\u03bcs", all: ["greek-mu"], fixes: ["Write u for micro: 1us"], netlist: "* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1\u03bcs 5m\n.end\n" },
   { name: "2k2", id: 'rkm-notation', severity: 'warning', line: 3, at: "2k2", all: ["rkm-notation"], fixes: ["Write 2.2k (2.2\u00a0k\u03a9)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 2k2\n.op\n.end\n" },
   { name: "1M5", id: 'rkm-notation', severity: 'warning', line: 3, at: "1M5", all: ["rkm-notation"], fixes: ["Write 1.5meg (1.5\u00a0M\u03a9)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1M5\n.op\n.end\n" },
   { name: "4R7", id: 'rkm-notation', severity: 'warning', line: 3, at: "4R7", all: ["rkm-notation"], fixes: ["Write 4.7 (4.7\u00a0\u03a9)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 4R7\n.op\n.end\n" },
@@ -63,7 +63,7 @@ const CASES: Case[] = [
   { name: "1 k on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 k", all: ["space-before-suffix"], fixes: ["Write 1k"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 k\n.op\n.end\n" },
   { name: "5 V on a voltage source", id: 'space-before-suffix', severity: 'error', line: 2, at: "5 V", all: ["space-before-suffix"], fixes: ["Write 5"], netlist: "* t\nV1 n1 0 5 V\nR1 n1 0 1\n.op\n.end\n" },
   { name: "3 A on a current source", id: 'space-before-suffix', severity: 'error', line: 2, at: "3 A", all: ["space-before-suffix"], fixes: ["Write 3"], netlist: "* t\nI1 0 n1 3 A\nR1 n1 0 2\n.op\n.end\n" },
-  { name: "1 M on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 M", all: ["space-before-suffix"], fixes: ["Make it 1meg","Keep milli: write 1m"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 M\n.op\n.end\n" },
+  { name: "1 M on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 M", all: ["space-before-suffix"], fixes: ["Make it 1meg (1\u00a0M\u03a9)","Make it 1m (1\u00a0m\u03a9)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 M\n.op\n.end\n" },
   { name: "10 kOhm on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "10 kOhm", all: ["space-before-suffix"], fixes: ["Write 10k"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 10 kOhm\n.op\n.end\n" },
   { name: "1 m on a resistor", id: 'space-before-suffix', severity: 'error', line: 3, at: "1 m", all: ["space-before-suffix"], fixes: ["Write 1m"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1 m\nR2 n1 0 1\n.op\n.end\n" },
   { name: "* after a value", id: 'midline-comment', severity: 'error', line: 3, at: "*", all: ["midline-comment"], fixes: ["Use ; for the comment"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 2 * load\n.op\n.end\n" },
@@ -173,7 +173,7 @@ const CASES: Case[] = [
   { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
   { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
   { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
-  { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Keep milli: write 10m"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
+  { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Make it 10m (10\u00a0m\u03a9)"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
   { name: "a Cyrillic o in a node name", id: 'look-alike-letter', severity: 'warning', line: 4, at: "\u043eut", all: ["look-alike-letter"], fixes: ["Connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n" },
   { name: "a zero-width space right after a minus sign", id: 'invisible-character', severity: 'error', line: 2, at: "-\u200b5", all: ["invisible-character"], fixes: ["Write -5 (\u22125\u00a0V)"], netlist: "* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n" },
   { name: "a thin space between a value and its unit", id: 'space-character', severity: 'warning', line: 3, at: "4.7\u2009k\u03a9", all: ["space-character"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
@@ -918,7 +918,7 @@ describe('after the final reviews (12 November 2026)', () => {
     // The Greek mu keeps its own check.
     expect(ids('* t\nI1 0 n1 1\nR1 n1 0 4.7μ\n.op\n.end\n')).toEqual(['greek-mu']);
     // The numbers of an analysis line too: 5<zero-width space>m is 5 s.
-    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5​m\n.end\n', 'invisible-character').title).toBe('This value is read as 5, not 0.005');
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5​m\n.end\n', 'invisible-character').title).toBe('This value is read as 5, not 5m');
   });
 
   it('says a look-alike in whole sentences, whatever it looks like, and cites the run that shows it (security review F2; look-alike-letter-1, -3)', () => {
@@ -967,9 +967,9 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(groups.why).toContain('as documents group digits');
     // A capital M after the space is mega in a document: never "Write 1M", which is milli (mega-as-milli).
     const mega = first('* t\nV1 in 0 10\nR1 in out 1\u2009M\u03a9\nR2 out 0 1meg\n.op\n.end\n', 'space-character');
-    expect(mega.fixes.map((f) => f.label)).toEqual(['Make it 1meg (1\u00a0M\u03a9)', 'Keep milli: write 1m']);
+    expect(mega.fixes.map((f) => f.label)).toEqual(['Make it 1meg (1\u00a0M\u03a9)', 'Make it 1m (1\u00a0m\u03a9)']);
     expect(mega.why).toContain('a capital M is milli in SPICE: for mega, write meg: 1meg.');
-    expect(first('* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    expect(first('* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Make it 5m (5\u00a0mV)', 'Make it 5meg (5\u00a0MV)']);
     // A no-break space in a value: the same reading, under the no-break space's own check.
     expect(first('* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 'nbsp').ngspice).toContain('[nbsp-2]');
     // Harmless, no trap: after the scale letter; a unit alone (2 A means 2 amps, and SPICE reads 2); at the end of the word.
@@ -979,7 +979,7 @@ describe('after the final reviews (12 November 2026)', () => {
     // The fix gives what was meant: 4.7k, and 10000.
     expect(applyFix('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', thin.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 4.7k\nR2 out 0 4.7k\n.op\n.end\n');
     // The numbers of an analysis line too: .tran 1u 5<thin space>ms is 5 s.
-    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5\u2009ms\n.end\n', 'space-character').title).toBe('This value is read as 5, not 0.005');
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5\u2009ms\n.end\n', 'space-character').title).toBe('This value is read as 5, not 5m');
     // Between two words it glues them, named; in a node name the node check names it once, and the non-ascii-node check stays quiet.
     const glue = first('* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n', 'space-character');
     expect(glue.title).toBe('A thin space (U+2009) glues "0 2" into one word');
@@ -1004,7 +1004,7 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(fixes('1\u2009000k')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
     expect(fixes('1\u2009000\u2009k\u03a9')).toEqual(['Write 1000k (1\u00a0M\u03a9)']);
     expect(fixes('2\u202f200\u202f000')).toEqual(['Write 2200000 (2.2\u00a0M\u03a9)']);
-    expect(fixes('1\u2009000\u2009M\u03a9')).toEqual(['Make it 1000meg (1\u00a0G\u03a9)', 'Keep milli: write 1000m']);
+    expect(fixes('1\u2009000\u2009M\u03a9')).toEqual(['Make it 1000meg (1\u00a0G\u03a9)', 'Make it 1000m (1\u00a0\u03a9)']);
     // On a capacitor ngspice also looks the word up as a model, and says so (space-character-8).
     const cap = first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1\nC1 out 0 1\u2009000\u2009\u00b5F\n.tran 0.1m 1m\n.end\n', 'space-character');
     expect([cap.title, cap.ngspice, cap.fixes.map((f) => f.label)]).toEqual([
@@ -1117,7 +1117,7 @@ describe('after the final reviews (12 November 2026)', () => {
     // Neither fix leads into the mega-as-milli check.
     for (const f of t.fixes) expect(ids(applyFix('* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n', f))).toEqual([]);
     // On a source, milli first, as mega-as-milli orders them; a small Cyrillic м stays milli.
-    expect(first('* t\nV1 a 0 5\u041c\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    expect(first('* t\nV1 a 0 5\u041c\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Make it 5m (5\u00a0mV)', 'Make it 5meg (5\u00a0MV)']);
     expect(first('* t\nI1 0 n4 1\nR4 n4 0 2\u043c\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Write 2m (2\u00a0m\u03a9)']);
   });
 
@@ -1547,5 +1547,778 @@ describe('after the final reviews (12 November 2026)', () => {
     // ngspice reads past .end (after-end-1), and no fact here says what other SPICE programs need.
     expect(`${t.title} ${t.why} ${t.ngspice}`).not.toMatch(/stops|other SPICE programs|marks/);
     expect(t.ngspice).toContain('[missing-end-1, after-end-1]');
+  });
+});
+
+describe('after the re-check of the fixes (12 November 2026)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+  const texts = (t: Trap): string[] => [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)];
+
+  it('says what ngspice does with a word it cannot read on an analysis line, by its place, never "unknown parameter" (S2; invisible-character-8 to -21)', () => {
+    const rc = '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    const ac = '* t\nV1 in 0 DC 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n';
+    const dc = '* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n';
+    // Each place, with a zero-width space, a minus sign from a document, a thin space and a fullwidth digit at its start.
+    const places: [netlist: (w: string) => string, says: string][] = [
+      [(w) => `${rc}.tran ${w} 2m\n.end\n`, "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-8]"],
+      [(w) => `${rc}.tran 0.1m ${w}\n.end\n`, "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [invisible-character-9]"],
+      [(w) => `${rc}.tran 0.1m 2m ${w}\n.end\n`, "ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-10]"],
+      [(w) => `${rc}.tran 0.1m 2m 0 ${w}\n.end\n`, "ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-11]"],
+      [(w) => `${dc}.dc V1 ${w} 5 1\n.end\n`, "ngspice 47 stops: 'Bad syntax!'. ngspice 42 takes the word for the name of a second source to sweep"],
+      [(w) => `${dc}.dc V1 0 ${w} 1\n.end\n`, '[invisible-character-13]'],
+      [(w) => `${dc}.dc V1 0 5 ${w}\n.end\n`, '[invisible-character-14]'],
+      [(w) => `${dc}.dc V1 0 5 1 V2 ${w} 1 0.5\n.end\n`, "ngspice 47 stops: 'Bad syntax!'. [invisible-character-15]"],
+      [(w) => `${ac}.ac dec ${w} 1 1k\n.end\n`, "ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation', then stops: 'AC startfreq <= 0'. [invisible-character-16]"],
+      [(w) => `${ac}.ac dec 10 ${w} 1k\n.end\n`, '[invisible-character-17]'],
+      [(w) => `${ac}.ac dec 10 1 ${w}\n.end\n`, "ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation', and runs anyway, up to 1000 times the start frequency (1\u00a0kHz) instead of the stop written here. [invisible-character-18]"],
+      [(w) => `${ac}.noise v(out) V1 dec ${w} 1 1k\n.end\n`, "ngspice stops: 'Frequency of 0 is invalid'. [invisible-character-19]"],
+      [(w) => `${ac}.noise v(out) V1 dec 10 ${w} 1k\n.end\n`, '[invisible-character-20]'],
+      [(w) => `${ac}.noise v(out) V1 dec 10 1 ${w}\n.end\n`, '[invisible-character-21]'],
+    ];
+    for (const [netlist, says] of places) {
+      for (const w of ['\u200b5', '−5', '\u20095', '５']) {
+        const text = netlist(w);
+        const n = parseNetlist(text);
+        const found = traps(text).filter((t) => n.lines[t.line - 1]!.directive);
+        expect(found.map((t) => t.id), text).toHaveLength(1);
+        expect(found[0]!.severity, text).toBe('error');
+        expect(found[0]!.ngspice, text).toContain(says);
+        expect(found[0]!.fixes.map((f) => f.label), text).toEqual([`Write ${w === '−5' ? '-5' : '5'}`]);
+      }
+    }
+  });
+
+  it('no trap on an analysis line quotes "unknown parameter", and places no run shows are left alone (S2 guard)', () => {
+    const rc = '* t\nV1 in 0 DC 0 AC 1 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    const lines = ['.tran {w} 2m', '.tran 0.1m {w}', '.tran 0.1m 2m {w}', '.tran 0.1m 2m 0 {w}', '.dc V1 {w} 5 1', '.dc V1 0 {w} 1', '.dc V1 0 5 {w}',
+      '.dc temp 0 {w} 10', '.ac dec {w} 1 1k', '.ac lin 10 {w} 1k', '.ac oct 10 1 {w}', '.noise v(out) V1 dec 10 1 {w}', '.noise v(out,0) V1 dec {w} 1 1k',
+      '.four {w} v(out)', '.disto dec 10 1 {w}', '.sp dec 10 1 {w}', '.sens v(out) ac dec 10 1 {w}', '.noise v(out) V1 dec 10 1 1k {w}'];
+    const words = ['\u200b5', '−5', '\u20095', '\u00a05', '５', '-\u200b5', '-\u20095', '\u2028' + '5', '·5', '5\u200b0', '5к', '5\u2009m'];
+    let checked = 0;
+    for (const line of lines) {
+      for (const w of words) {
+        const text = `${rc}${line.replace('{w}', w)}\n.tran 1m 2m\n.end\n`;
+        const n = parseNetlist(text);
+        for (const t of traps(text)) {
+          if (!n.lines[t.line - 1]!.directive) continue;
+          expect(t.ngspice, text).not.toContain('unknown parameter (');
+          checked += 1;
+        }
+        // .four (ignored by a run with a results file), .disto, .sp, .sens and a .noise's points per summary have no recorded run.
+        if (/^\.(four|disto|sp|sens)|1k \{w\}$/.test(line)) expect(traps(text).filter((t) => t.line === 5 && /not a number|is read as/.test(t.title)).map((t) => t.id), text).toEqual([]);
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  it('a .dc line with a word that is a number once its character is fixed gets that check alone, and its fix leaves no trap (S5)', () => {
+    for (const text of ['* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 −5 5 1\n.end\n', '* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 \u200b5 1\n.end\n',
+      '* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 5 -5 −1\n.end\n', '* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 −1 1 0.5\n.end\n',
+      '* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0<\u2009>5 1\n.end\n'.replace('<\u2009>', '\u2009')]) {
+      const found = traps(text);
+      expect(found.map((t) => t.id), text).not.toContain('dc-sweep-problems');
+      expect(found, text).toHaveLength(1);
+      for (const x of texts(found[0]!)) expect(x).not.toMatch(/[\u200b\u2009]/);
+      expect(ids(applyFix(text, found[0]!.fixes[0]!)), text).toEqual([]);
+    }
+  });
+
+  it('reads a .dc sweep by place, as ngspice 47 does: a word that is no number where one goes is said there (S5; dc-sweep-problems-9, -10)', () => {
+    const net = (line: string): string => `* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n${line}\n.end\n`;
+    const letterO = first(net('.dc V1 O 5 1'), 'dc-sweep-problems');
+    expect([letterO.title, letterO.ngspice, letterO.fixes.map((f) => f.label)]).toEqual(['The start of this sweep is not a number', "ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]", ['Write 0']]);
+    expect(letterO.why).toContain('with a letter O where the digit 0 belongs');
+    expect(ids(applyFix(net('.dc V1 O 5 1'), letterO.fixes[0]!))).toEqual([]);
+    // The skeptic's dead ends: no "Sweep V1 instead" that writes V1 twice, no step added to a line ngspice cannot read.
+    for (const line of ['.dc V1 V1 5 1 -400m', '.dc V1 0 V1 1', '.dc V1 V1 5 1']) {
+      const found = traps(net(line));
+      expect(found.map((t) => [t.id, t.title]), line).toEqual([['dc-sweep-problems', `The ${line === '.dc V1 0 V1 1' ? 'stop' : 'start'} of this sweep is not a number`]]);
+      expect(found[0]!.fixes, line).toEqual([]);
+    }
+    // A sweep with no step before the next one still gets "needs a step", and its fix (as before).
+    const step = first(net('.dc V1 0 5 V2 0 1 0.5'), 'dc-sweep-problems');
+    expect([step.title, step.fixes.map((f) => f.label)]).toEqual(['.dc needs a step', ['Add a step of 500m (10 steps)']]);
+    expect(ids(net('.dc V1 0 5 1 V2 0 1 0.5'))).toEqual([]);
+  });
+
+  it('on a capacitor or an inductor says ngspice warns about a model, never "without a message"; on the other parts, no message (S4; invisible-character-7, look-alike-letter-7)', () => {
+    const value = (letter: string, word: string, id: string): Trap => first(`* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR0 in a 1\n${letter}1 a 0 ${word}\n.tran 0.1m 1m\n.end\n`, id);
+    for (const [word, id] of [['2\u200bu', 'invisible-character'], ['2кk', 'look-alike-letter'], ['10Μ', 'look-alike-letter'], ['4·7u', 'look-alike-letter'], ['1On', 'look-alike-letter']] as const) {
+      for (const letter of ['C', 'L']) {
+        const t = value(letter, word, id);
+        expect(t.ngspice, `${letter} ${word}`).toContain("and only warns that it can't find a model with the word's name.");
+        expect(t.ngspice, `${letter} ${word}`).not.toContain('without a message');
+      }
+      for (const letter of ['R', 'V', 'I']) expect(value(letter, word, id).ngspice, `${letter} ${word}`).toContain('without a message');
+    }
+    expect(value('C', '2\u200bu', 'invisible-character').ngspice).toContain('[invisible-character-1, invisible-character-2, invisible-character-7]');
+  });
+
+  it('a capital M from another alphabet or after a space-like character: the milli fix says what it writes, and only mega-as-milli keeps milli (words-recheck-6)', () => {
+    const cases = ['* t\nI1 0 a 1u\nR1 a 0 10Μ\n.op\n.end\n', '* t\nV1 in 0 5\nR1 in 0 10\u2009MΩ\n.op\n.end\n', '* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n',
+      '* t\nV1 a 0 5М\nR1 a 0 1\n.op\n.end\n', '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in a 1\nC1 a 0 10Ｍ\n.tran 1m 2m\n.end\n', '* t\nI1 0 n1 1\nR1 n1 0 10 M\n.op\n.end\n'];
+    for (const text of cases) {
+      const labels = traps(text).flatMap((t) => t.fixes.map((f) => f.label));
+      expect(labels.some((l) => l.startsWith('Keep')), text).toBe(false);
+      expect(labels.some((l) => /^Make it \d+m \(/.test(l)), text).toBe(true);
+    }
+    expect(first('* t\nI1 0 a 1u\nR1 a 0 10Μ\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Make it 10meg (10\u00a0MΩ)', 'Make it 10m (10\u00a0mΩ)']);
+    // ngspice reads 10M as milli, so there milli is kept.
+    expect(first('* t\nI1 0 a 1u\nR1 a 0 10M\n.op\n.end\n', 'mega-as-milli').fixes.map((f) => f.label)).toEqual(['Make it 10meg (10\u00a0MΩ)', 'Keep milli: write 10m']);
+  });
+
+  it('an E, F, G or H value ngspice cannot read is no missing gain: the character check alone (S6; invisible-character-26, look-alike-letter-14)', () => {
+    const lines = ['E1 b 0 a 0 {w}', 'G1 0 b a 0 {w}', 'F1 0 b V1 {w}', 'H1 b 0 V1 {w}'];
+    for (const line of lines) {
+      for (const [w, id] of [['\u200b2', 'invisible-character'], ['−2', 'look-alike-letter'], ['２', 'look-alike-letter'], ['\u00a02', 'nbsp'], ['\u20092', 'space-character'], ['-\u20092', 'space-character']] as const) {
+        const text = `* t\nV1 a 0 1\nR0 a 0 1k\n${line.replace('{w}', w)}\nR1 b 0 1k\n.op\n.end\n`;
+        const found = traps(text);
+        expect(found.map((t) => t.id), text).toEqual([id]);
+        expect(found[0]!.ngspice, text).not.toContain('not enough parameters');
+        expect(ids(applyFix(text, found[0]!.fixes[0]!)), text).toEqual([]);
+      }
+    }
+  });
+
+  it('a textbook symbol where a value goes: one error, ngspice\'s own message, no comment fix; a .param name is that value (S6; unknown-word-13 to -23)', () => {
+    const net = (line: string, param = ''): string => `* t\n${param}V1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`;
+    for (const [line, word, said] of [['E1 b 0 a 0 Av', 'Av', 'av'], ['F1 0 b V1 beta', 'beta', 'beta'], ['G1 0 b a 0 gm', 'gm', 'gm'], ['H1 b 0 V1 rm', 'rm', 'rm']] as const) {
+      const found = traps(net(line));
+      expect(found.map((t) => t.id), line).toEqual(['unknown-word']);
+      const t = found[0]!;
+      expect(t.ngspice, line).toMatch(new RegExp(`^ngspice stops: 'unknown parameter \\(${said}\\)'\\. \\[unknown-word-(18|19|20|21), unknown-word-23\\]$`));
+      expect(t.ngspice, line).not.toMatch(/MIF-ERROR|polynomial|PlainSpice's engine/);
+      expect(t.why, line).toContain(`${word} stands where`);
+      expect(t.fixes, line).toEqual([]);
+      // Given on a .param line, it is the value: no trap at all (unknown-word-22).
+      expect(ids(net(line, `.param ${word}=2\n`)), line).toEqual([]);
+    }
+    const r = first('* t\nV1 a 0 1\nR1 a 0 Rload\n.op\n.end\n', 'unknown-word');
+    expect([r.title, r.ngspice]).toEqual(["R1's value is not a number", "ngspice looks for a model called rload, warns 'can't find model', and stops: 'unknown parameter (rload)'. [unknown-word-13, unknown-word-23]"]);
+    expect(ids('* t\n.param Vs=5\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n')).toEqual([]);
+    // After a value, a word is still a setting that is not one (unknown-word-1), with its comment fix.
+    expect(first('* t\nV1 a 0 5\nR1 a 0 1k load\n.op\n.end\n', 'unknown-word').fixes.map((f) => f.label)).toEqual(['Make load and the rest of the line a comment']);
+  });
+
+  it('settings but no gain run with 0, silently, in native 47 too: missing-value says so (S6; missing-value-11 to -14)', () => {
+    for (const line of ['E1 b 0 a 0 gain', 'G1 0 b a 0 m=2', 'F1 0 b V1 m=2', 'H1 b 0 V1 gain']) {
+      const t = first(`* t\nV1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`, 'missing-value');
+      expect(t.ngspice, line).toMatch(/^ngspice uses 0 and says nothing: in one test [EFGH]1's output stayed at 0\. \[missing-value-11, missing-value-12\]$/);
+      expect(t.why, line).toContain('has settings but no');
+    }
+    // Nothing after the nodes keeps native 47's "not enough parameters" (missing-value-4).
+    expect(first('* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0\nR1 b 0 1k\n.op\n.end\n', 'missing-value').ngspice).toContain("Native ngspice 47 stops: 'not enough parameters in line'.");
+  });
+
+  it('a 0 that another check explains is that check\'s: no "Use a 0 V source" for 0<zero-width space>.47, 0R47, 0k47 (C1)', () => {
+    for (const value of ['0\u200b.47', '0．47', '0\u2009.47', '0\u00a0.47', '0R47', '0k47', '0\u200b.1meg']) {
+      const text = `* t\nV1 a 0 1\nR1 a b ${value}\nR2 b 0 1\n.op\n.end\n`;
+      const found = traps(text);
+      expect(found, value).toHaveLength(1);
+      expect(found[0]!.id, value).not.toBe('zero-ohm');
+      expect(found.flatMap((t) => t.fixes.map((f) => f.label)).join(' '), value).not.toContain('0 V source');
+    }
+    // Straight across a source the error stays: it is the only thing that keeps 6e12 A from reading as an answer (zero-ohm-2).
+    expect(traps('* t\nV1 a 0 6\nR1 a 0 0\u200b.47\n.op\n.end\n').map((t) => [t.id, t.severity])).toEqual([['invisible-character', 'warning'], ['zero-ohm', 'error']]);
+    // A plain 0 keeps its warning and its fix.
+    for (const value of ['0', '0R0', '-0']) {
+      expect(first(`* t\nV1 a 0 1\nR1 a b ${value}\nR2 b 0 1\n.op\n.end\n`, 'zero-ohm').fixes.map((f) => f.label), value).toEqual(['Use a 0 V source instead (VR1)']);
+    }
+  });
+
+  it('a sign then a character that looks like a space: one error whose fix writes the value, no glue warning, no comment fix (C2; space-character-12 to -14, nbsp-3)', () => {
+    const spaces = ['\u00a0', '\u1680', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009', '\u200a', '\u202f', '\u205f', '\u3000'];
+    for (const ch of spaces) {
+      for (const [line, written] of [['V1 a 0 {s}5', '-5'], ['I1 0 a {s}1m', '-1m'], ['R1 a 0 {s}2k', '-2k']] as const) {
+        for (const sign of ['-', '+']) {
+          const text = `* t\n${line.replace('{s}', `${sign}${ch}`)}\nR0 a 0 1k\n.op\n.end\n`;
+          const found = traps(text);
+          expect(found.map((t) => t.id), text).toEqual([ch === '\u00a0' ? 'nbsp' : 'space-character']);
+          const t = found[0]!;
+          expect(t.severity).toBe('error');
+          expect(t.why, text).toMatch(new RegExp(`^Right after the \\${sign}, it has `));
+          const want = sign === '-' ? written : written.replace('-', '+');
+          expect(t.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), text).toEqual([`Write ${want}`]);
+          expect(applyFix(text, t.fixes[0]!)).toContain(` ${want}\n`);
+          for (const x of texts(t)) expect(x).not.toMatch(/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000](?!(k|m|M|V|A|Ω|µ)?[A-Za-zΩ]*\)$)/);
+        }
+      }
+    }
+    // A minus sign from a document, then a thin space; and -<thin space>5<thin space>V read as a document writes it.
+    const minus = first('* t\nV1 a 0 −\u20095\nR1 a 0 1k\n.op\n.end\n', 'space-character');
+    expect([minus.why.startsWith('It starts with a minus sign (U+2212), which looks like -, then a thin space (U+2009)'), minus.fixes.map((f) => f.label)]).toEqual([true, ['Write -5 (−5\u00a0V)']]);
+    expect(first('* t\nV1 a 0 -\u20095\u2009V\nR1 a 0 1k\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Write -5 (−5\u00a0V)']);
+  });
+
+  it('a sign with a normal space after it is a word of its own: Write -5, not a comment that leaves 0 V (C2; space-character-13)', () => {
+    const plain = first('* t\nV1 a 0 - 5\nR1 a 0 1k\n.op\n.end\n', 'unknown-word');
+    expect([plain.ngspice, plain.fixes.map((f) => f.label)]).toEqual(["ngspice stops: 'unknown parameter (-)'. [space-character-13]", ['Write -5 (−5\u00a0V)']]);
+    expect(applyFix('* t\nV1 a 0 - 5\nR1 a 0 1k\n.op\n.end\n', plain.fixes[0]!)).toBe('* t\nV1 a 0 -5\nR1 a 0 1k\n.op\n.end\n');
+  });
+
+  it('the letter O where a zero belongs is flagged narrowly, and a unit after a number never is (C4; look-alike-letter-10, -11)', () => {
+    const r1 = (value: string): Trap[] => traps(`* t\nV1 in 0 10\nR1 in out ${value}\nR2 out 0 10k\n.op\n.end\n`);
+    for (const [value, written] of [['1Ok', '10k'], ['1оk', '10k'], ['1Оk', '10k'], ['1οk', '10k'], ['1Οk', '10k'], ['1ｏk', '10k'], ['1Ｏk', '10k'], ['1о000', '10000'], ['1O00', '1000'], ['10Ok', '100k'], ['1o0k', '100k']] as const) {
+      const found = r1(value);
+      expect(found.map((t) => [t.id, t.severity]), value).toEqual([['look-alike-letter', 'warning']]);
+      expect(found[0]!.why, value).toContain('not the digit 0');
+      expect(found[0]!.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), value).toEqual([`Write ${written}`]);
+    }
+    for (const value of ['O.47k', 'О.47k', 'o.5']) {
+      const found = r1(value);
+      expect(found.map((t) => [t.id, t.title]), value).toEqual([['look-alike-letter', "R1's value starts with the letter O, not the digit 0"]]);
+      expect(found[0]!.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), value).toEqual([`Write ${value.replace(/^./, '0')}`]);
+    }
+    // Units and words are left alone: 100Ом and 1kОм are read as meant; 10кОм keeps its к warning only.
+    for (const value of ['100Ом', '1kОм', '1Ohm', '10ohm', '2Ohms', '1Ом']) expect(r1(value).map((t) => t.id), value).toEqual([]);
+    expect(r1('10кОм').map((t) => [t.id, t.title])).toEqual([['look-alike-letter', "R1's value is read as 10\u00a0Ω, not 10\u00a0kΩ"]]);
+    expect(r1('10кОм')[0]!.why).toContain('the Cyrillic letter к');
+  });
+
+  it('every invisible character is named, never shown, and nothing throws (C5; invisible-character-23 to -25)', () => {
+    const codes: number[] = [0x85, 0x2028, 0x2029, 0x1bca0, 0x1d173, 0xe0001, 0xe0020, 0xe0041, 0xe0100, 0xe0fff];
+    for (let c = 0; c <= 0xffff; c++) if (/\p{Default_Ignorable_Code_Point}/u.test(String.fromCharCode(c))) codes.push(c);
+    expect(codes.length).toBeGreaterThan(70);
+    for (const code of codes) {
+      const ch = String.fromCodePoint(code);
+      for (const text of [`* t\nV1 in 0 10\nR1 in out 4${ch}.7k\nR2 out 0 10k\n.op\n.end\n`, `* t\nV1 in 0 10\nR1 in out ${ch}4.7k\nR2 out 0 10k\n.op\n.end\n`,
+        `* t\nV1 in 0 10\nR1 in out 2k\nR2 o${ch}ut 0 2k\n.op\n.end\n`]) {
+        const found = traps(text);
+        expect(found.length, `U+${code.toString(16)}`).toBeGreaterThan(0);
+        for (const t of found) for (const x of texts(t)) expect(x.includes(ch), `U+${code.toString(16)}: ${x}`).toBe(false);
+        expect(() => explainNetlist(parseNetlist(text))).not.toThrow();
+        for (const e of explainNetlist(parseNetlist(text))) for (const x of [e.summary, ...e.notes, ...e.fields.map((f) => f.meaning)]) expect(x.includes(ch), `U+${code.toString(16)}: ${x}`).toBe(false);
+      }
+      // Inside the value: read as 4 Ω, fixed to 4.7k; at the start: an error; in a node name: joined to out.
+      const inside = first(`* t\nV1 in 0 10\nR1 in out 4${ch}.7k\nR2 out 0 10k\n.op\n.end\n`, 'invisible-character');
+      expect([inside.title, inside.fixes.map((f) => f.label)], `U+${code.toString(16)}`).toEqual(["R1's value is read as 4\u00a0Ω, not 4.7\u00a0kΩ", ['Write 4.7k (4.7\u00a0kΩ)']]);
+      expect(first(`* t\nV1 in 0 10\nR1 in out 2k\nR2 o${ch}ut 0 2k\n.op\n.end\n`, 'invisible-character').fixes.map((f) => f.label), `U+${code.toString(16)}`).toEqual(['Take it out: connect to out']);
+    }
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 4\u2028.7k\n.op\n.end\n', 'invisible-character').why).toMatch(/^A line separator \(U\+2028\) sits between 4 and \.7k/);
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 4\u{e0001}.7k\n.op\n.end\n', 'invisible-character').why).toMatch(/^A language tag \(U\+E0001\) sits/);
+  });
+
+  it('a document\'s decimal point is named truly and written as a point; another character outside ASCII inside a number is said without a fix (C5; look-alike-letter-9, -12, -13, space-before-suffix-18)', () => {
+    const r1 = (value: string): Trap[] => traps(`* t\nV1 in 0 10\nR1 in out ${value}\nR2 out 0 10k\n.op\n.end\n`);
+    for (const [ch, name] of [['·', 'a middle dot (U+00B7), which some documents use as a decimal point'], ['․', 'a one-dot leader (U+2024), which looks like a decimal point'],
+      ['﹒', 'a small full stop (U+FE52), which looks like a decimal point'], ['٫', 'an Arabic decimal separator (U+066B), which is the decimal point of Arabic numbers']] as const) {
+      const t = r1(`4${ch}7k`)[0]!;
+      expect([t.id, t.title, t.fixes.map((f) => f.label)], ch).toEqual(['look-alike-letter', "R1's value is read as 4\u00a0Ω, not 4.7\u00a0kΩ", ['Write 4.7k (4.7\u00a0kΩ)']]);
+      expect(t.why, ch).toContain(`The value has ${name}.`);
+      expect(t.why, ch).not.toContain('a dash');
+      expect(t.ngspice, ch).toContain('[look-alike-letter-9]');
+    }
+    expect(r1('·47k')[0]!.ngspice).toContain('[look-alike-letter-13]');
+    // In a node name a middle dot stays the non-ascii-node check's: never "Rename a·b to a.b".
+    expect(traps('* t\nV1 a·b 0 1\nR1 a·b 0 1k\n.op\n.end\n').flatMap((t) => t.fixes.map((f) => f.label)).join(' ')).not.toContain('a.b');
+    // 4·7 kΩ as a British document writes it: one error, the space before the unit, and its fix writes 4.7k.
+    const british = r1('4·7 kΩ');
+    expect(british.map((t) => [t.id, t.fixes.map((f) => f.label)])).toEqual([['space-before-suffix', ['Write 4.7k']]]);
+    expect(british[0]!.ngspice).toContain('space-before-suffix-18]');
+    expect(r1('4·7\u2009kΩ').map((t) => [t.id, t.fixes.map((f) => f.label)])).toEqual([['look-alike-letter', ['Write 4.7k (4.7\u00a0kΩ)']]]);
+    // An ideographic full stop, a bullet, the Greek ano teleia: what ngspice reads, and no fix.
+    for (const ch of ['。', '•', '·']) {
+      const t = r1(`4${ch}7k`)[0]!;
+      expect([t.id, t.title, t.fixes], ch).toEqual(['look-alike-letter', "R1's value is read as 4\u00a0Ω", []]);
+      expect(t.ngspice, ch).toContain('[look-alike-letter-12]');
+    }
+    // A unit with a letter outside ASCII after a number is no stray character: 100Ω, 1µF.
+    expect(r1('100Ω').map((t) => t.id)).toEqual([]);
+  });
+});
+
+describe('after the critic of the re-check fixes (12 November 2026)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+  const texts = (t: Trap): string[] => [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)];
+  const silent = /without a message|says nothing/;
+
+  it('a resistor read as 0 is told what ngspice 47 does with 0 \u03a9, never "without a message" or "says nothing" (CR1-1; zero-ohm-4)', () => {
+    const cases: [value: string, id: string, written: string][] = [
+      ['0\u200b.47', 'invisible-character', '0.47'], ['0R47', 'rkm-notation', '0.47'], ['0k47', 'rkm-notation', '0.47k'],
+      ['0\uff0e47', 'look-alike-letter', '0.47'], ['0\u00b747', 'look-alike-letter', '0.47'], ['0\u2009.47', 'space-character', '0.47'],
+      ['0\u00a0.47', 'nbsp', '0.47'], ['0\u300247', 'look-alike-letter', ''], ['1,0', 'decimal-comma', '1.0'],
+    ];
+    for (const [value, id, written] of cases) {
+      const text = `* t\nV1 a 0 1\nR1 a b ${value}\nR2 b 0 1\n.op\n.end\n`;
+      const found = traps(text);
+      expect(found.map((t) => t.id), value).toEqual([id]);
+      const t = found[0]!;
+      expect(t.ngspice, value).toContain("warns 'Value of resistor r1 is too small, set to 1.000000e-12'");
+      expect(t.ngspice, value).toContain('zero-ohm-4');
+      expect(t.ngspice, value).not.toMatch(silent);
+      expect(t.severity, value).toBe('warning');
+      // The fix writes what was meant (no fix for the ideographic full stop, whose meaning is a guess).
+      if (written) expect(t.fixes.map((f) => applyFix(text, f)).some((x) => x.includes(`R1 a b ${written}\n`)), value).toBe(true);
+    }
+    // Read as 0 on a capacitor, an inductor or a source: what was recorded there, no zero-ohm words.
+    expect(first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in a 1k\nC1 a 0 0\u200b.1u\n.tran 0.1m 1m\n.end\n', 'invisible-character').ngspice).toContain("only warns that it can't find a model");
+    expect(first('* t\nV1 a 0 0\u200b.5\nR1 a 0 1k\n.op\n.end\n', 'invisible-character').ngspice).toContain(', without a message: it reads 0\u00a0V.');
+    // A plain 0 keeps zero-ohm, and straight across a source its error stays beside the character's words.
+    expect(ids('* t\nV1 a 0 1\nR1 a b 0\nR2 b 0 1\n.op\n.end\n')).toEqual(['zero-ohm']);
+    expect(traps('* t\nV1 a 0 6\nR1 a 0 0\u200b.47\n.op\n.end\n').map((t) => [t.id, t.severity])).toEqual([['invisible-character', 'warning'], ['zero-ohm', 'error']]);
+  });
+
+  it('a number read short on an analysis line says what ngspice does with it there: never "without a message" where it stops or warns (CR1-2; invisible-character-28 to -44)', () => {
+    const rc = '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    const dc = '* t\nV1 in 0 1\nR1 in 0 1k\n';
+    const ac = '* t\nV1 in 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n';
+    const no = '* t\nV1 in 0 DC 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n';
+    // [netlist with {c} for the character, what the trap says, severity]
+    const places: [string, string, TrapSeverity][] = [
+      [`${rc}.tran 0{c}.1m 2m\n.end\n`, "it reads 0, and ngspice stops: 'TSTEP is invalid, must be greater than zero.' [", 'error'],
+      [`${rc}.tran 0.1m 0{c}.5\n.end\n`, "it reads 0, and ngspice stops: 'TSTOP is invalid, must be greater than zero.' [", 'error'],
+      [`${rc}.tran 0.1m 2m 1{c}m\n.end\n`, "it reads 1, which is not before the stop time, so ngspice stops: 'TSTART is invalid, must be less than TSTOP.'", 'error'],
+      [`${rc}.tran 0.1 1{c}0 2\n.end\n`, "it reads 1, which is not after the start time, so ngspice stops: 'TSTART is invalid, must be less than TSTOP.'", 'error'],
+      [`${dc}.dc V1 0 5 0{c}.5\n.end\n`, "it reads 0, and a step of 0 stops ngspice 47: 'Bad syntax!'. ngspice 42 never finishes.", 'error'],
+      [`${dc}.dc V1 2 1{c}0 1\n.end\n`, 'it reads 1, so the sweep has no points: ngspice runs none and says nothing.', 'warning'],
+      [`${ac}.ac dec 0{c}.5 1 1k\n.end\n`, "it reads 0, so ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation', and runs anyway with a number of points of its own.", 'warning'],
+      [`${ac}.ac dec 10 0{c}.5 1k\n.end\n`, "it reads 0, and ngspice stops: 'AC startfreq <= 0'.", 'error'],
+      [`${ac}.ac dec 10 100 2{c}0k\n.end\n`, 'it reads 2, which is below the start frequency, so ngspice warns: \'Warning, ngspice assumes default parameter(s) for ac simulation\', and runs anyway, up to 1000 times the start frequency (100\u00a0kHz) instead.', 'warning'],
+      [`${ac}.ac dec 10 5{c}k 1\n.end\n`, 'it reads 5, which is above the stop frequency, so ngspice warns', 'warning'],
+      [`${no}.noise v(out) V1 dec 0{c}.5 1 1k\n.end\n`, "it reads 0, and ngspice warns: 'Number of steps for noise measurement has to be larger than 0', then stops: 'run simulation(s) aborted'.", 'error'],
+      [`${no}.noise v(out) V1 dec 10 0{c}.5 1k\n.end\n`, "it reads 0, and ngspice stops: 'Frequency of 0 is invalid'.", 'error'],
+      [`${no}.noise v(out) V1 dec 10 1 0{c}.5\n.end\n`, "it reads 0, and ngspice stops: 'Frequency of 0 is invalid'.", 'error'],
+      [`${no}.noise v(out) V1 dec 10 1 1{c}k\n.end\n`, "the same as the start frequency, so ngspice warns: 'Noise measurement at a single frequency ... only!'", 'warning'],
+      [`${no}.noise v(out) V1 dec 10 100 2{c}0k\n.end\n`, 'which is below the start frequency, so ngspice computes no frequencies', 'warning'],
+      [`${no}.noise v(out) V1 dec 10 5{c}k 1\n.end\n`, 'which is above the stop frequency, so ngspice computes no frequencies', 'warning'],
+    ];
+    for (const [netlist, says, severity] of places) {
+      // The character does not matter: a zero-width space, or a fullwidth full stop for the point.
+      for (const [ch, id] of [['\u200b', 'invisible-character'], ['\uff0e', 'look-alike-letter']] as const) {
+        const text = netlist.replace('{c}', ch).replace(`${ch}.`, ch === '\uff0e' ? '\uff0e' : `${ch}.`);
+        if (ch === '\uff0e' && !netlist.includes('{c}.')) continue;
+        const found = traps(text);
+        // One trap: the analysis checks leave the word to the character check (CR1-13), which says the consequence.
+        expect(found.map((t) => t.id), text).toEqual([id]);
+        expect(found[0]!.ngspice, text).toContain(says);
+        expect(found[0]!.severity, text).toBe(severity);
+        if (severity === 'error' || /warns/.test(says)) expect(found[0]!.ngspice, text).not.toMatch(/without a message/);
+        for (const x of texts(found[0]!)) expect(x, text).not.toMatch(/[\u200b]/);
+      }
+    }
+    // The number meant is said as it is written, as its fix writes it: 0.1m, never 1e-4.
+    expect(first(`${rc}.tran 0\u200b.1m 2m\n.end\n`, 'invisible-character').title).toBe('This value is read as 0, not 0.1m');
+    expect(first(`${rc}.tran 1u 2\u2009m\n.end\n`, 'space-character').title).toBe('This value is read as 2, not 2m');
+    // Where ngspice runs on with the number read, the words say so, with the runs that show it.
+    // A step read longer than the run is one ngspice runs with, without a message (tran-problems-3; re-check critic CR2-1).
+    for (const [line, claim] of [['.tran 1\u200b0u 2m', 'invisible-character-44, tran-problems-3'], ['.tran 0.1m 2m 0 1\u200b0u', 'invisible-character-44'], ['.tran 1m 2\u200bm', 'invisible-character-22']] as const) {
+      expect(first(`${rc}${line}\n.end\n`, 'invisible-character').ngspice, line).toMatch(new RegExp(`without a message: it reads \\d+\\. \\[.*${claim}\\]$`));
+    }
+    expect(first(`${dc}.dc V1 1\u200b0 20 1\n.end\n`, 'invisible-character').ngspice).toContain('without a message: it reads 1. [invisible-character-1, invisible-character-2, invisible-character-44]');
+    expect(first(`${ac}.ac dec 1\u200b0 1 1k\n.end\n`, 'invisible-character').ngspice).toContain('without a message');
+    expect(first(`${no}.noise v(out) V1 dec 10 1 2\u200b0k\n.end\n`, 'invisible-character').ngspice).toContain('without a message: it reads 2.');
+  });
+
+  it('a word in a source\'s function, its AC value or a setting is said as what it is, with what ngspice says there (CR1-5; invisible-character-45 to -53)', () => {
+    const src = (line: string): string => `* t\n${line}\n${line.startsWith('I') ? 'R1 out 0 1k\n' : 'R1 in out 1k\nC1 out 0 1u\n'}.tran 0.1m 2m\n.end\n`;
+    const cases: [line: string, title: string, says: string, fix: string][] = [
+      ['V1 in 0 PULSE(\u200b0 1 0 1n 1n 1 2)', "A word in V1's PULSE is not a number for SPICE", "ngspice stops: 'parameter value out of range or the wrong type'. [invisible-character-45]", 'Write 0'],
+      ['V1 in 0 PULSE(\u22121 1 0 1n 1n 1 2)', "A word in V1's PULSE is not a number for SPICE", "'parameter value out of range or the wrong type'", 'Write -1'],
+      ['V1 in 0 PULSE(-\u20091 1 0 1n 1n 1 2)', "A word in V1's PULSE is not a number for SPICE", "'parameter value out of range or the wrong type'", 'Write -1'],
+      ['V1 in 0 PULSE(0 \u200b1 0 1n 1n 1 2)', "A word in V1's PULSE is not a number for SPICE", "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'). [invisible-character-46]", 'Write 1'],
+      ['I1 0 out EXP(0 \u200b1m 0 1m 1m 1m)', "A word in I1's EXP is not a number for SPICE", "'no such parameter on this device or parameter is missing'", 'Write 1m'],
+      ['V1 in 0 PWL(0 0 \u200b1m 1)', "A word in V1's PWL is not a number for SPICE", "ngspice stops: 'unknown parameter (___1m)'. [invisible-character-47]", 'Write 1m'],
+      ['V1 in 0 SIN(0 1 \u200b1k)', "A word in V1's SIN is not a number for SPICE", "ngspice stops: 'unknown parameter (___1k)'. [invisible-character-47]", 'Write 1k'],
+      ['V1 in 0 1 AC \u200b1', "V1's AC value is not a number for SPICE", "ngspice stops: 'unknown parameter (___1)'. [invisible-character-48]", 'Write 1'],
+      ['V1 in 0 AC 1 \u200b90', "V1's AC phase is not a number for SPICE", "ngspice stops: 'unknown parameter (___90)'. [invisible-character-49]", 'Write 90'],
+      ['V1 in 0 dc=\u200b5', "V1's dc value is not a number for SPICE", "ngspice stops with a fatal error: 'Undefined parameter [___5]'.", 'Write 5'],
+    ];
+    for (const [line, title, says, fixLabel] of cases) {
+      const text = src(line);
+      const t = traps(text).find((x) => x.line === 2 && /character|look-alike|nbsp/.test(x.id))!;
+      expect([t.title, t.severity], line).toEqual([title, 'error']);
+      expect(t.ngspice, line).toContain(says);
+      expect(t.fixes.map((f) => f.label), line).toEqual([fixLabel]);
+      expect(ids(applyFix(text, t.fixes[0]!)).filter((id) => id !== 'dangling-node'), line).toEqual([]);
+    }
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u ic=\u200b1\n.tran 0.1m 2m uic\n.end\n', 'invisible-character').title).toBe("C1's ic value is not a number for SPICE");
+    expect(first('* t\nV1 a 0 1\nR1 a 0 1k m=\u200b2\n.op\n.end\n', 'invisible-character').ngspice).toBe("ngspice stops with a fatal error: 'Undefined parameter [___2]'. [invisible-character-50, invisible-character-52, invisible-character-53]");
+    // Read short: no message, never V1's value or its unit.
+    const pulse = first(src('V1 in 0 PULSE(0 1\u200b0 0 1n 1n 1 2)'), 'invisible-character');
+    expect([pulse.title, pulse.ngspice, pulse.fixes.map((f) => f.label)]).toEqual(["A word in V1's PULSE is read as 1, not 10",
+      'ngspice stops reading the number at the zero-width space and ignores the rest of the word, without a message: it reads 1. [invisible-character-1, invisible-character-2, invisible-character-51, invisible-character-56]', ['Write 10']]);
+    expect(first('* t\nV1 a 0 1\nR1 a 0 1k m=1\u200b0\n.op\n.end\n', 'invisible-character').title).toBe("R1's m value is read as 1, not 10");
+    // The guard: a function's first or second word, a setting: never "unknown parameter"; a place no run shows: no trap.
+    for (const line of ['V1 in 0 PULSE(\u200b0 1 0 1n 1n 1 2)', 'V1 in 0 SIN(\u200b0 1 1k)', 'V1 in 0 PWL(\u200b0 0 1m 1)', 'V1 in 0 EXP(0 \u200b1 0 1m 1m 1m)', 'V1 in 0 SFFM(0 \u200b1 1k 1 100)', 'C2 in 0 1u ic=\u200b2']) {
+      for (const t of traps(src(line))) expect(t.ngspice, line).not.toContain('unknown parameter (');
+    }
+    expect(traps(src('V1 in 0 AM(1 \u200b1 1k 10 0)')).filter((t) => t.line === 2)).toEqual([]);
+    expect(traps(src('V1 in 0 TRNOISE(\u200b1m 1n 0 0)')).filter((t) => t.line === 2)).toEqual([]);
+  });
+
+  it('a sign with a space after it is said part by part: a polynomial error natively on E, F, G and H, a model warning on C and L (CR1-3; unknown-word-25 to -32)', () => {
+    const net = (line: string): string => `* t\nV1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`;
+    for (const [line, claim] of [['E1 b 0 a 0 - 2', 25], ['F1 0 b V1 - 2', 26], ['G1 0 b a 0 - 1m', 27], ['H1 b 0 V1 + 2', 28]] as const) {
+      const t = first(net(line), 'unknown-word');
+      expect(t.ngspice, line).toBe(`PlainSpice's engine stops: 'unknown parameter (${line.includes('+') ? '+' : '-'})'. Native ngspice 47 and 42 read the line as a polynomial and stop: 'MIF-ERROR ... Bad real value'. [unknown-word-${claim}]`);
+      expect(ids(applyFix(net(line), t.fixes[0]!)), line).toEqual([]);
+    }
+    for (const [line, claim] of [['C1 b 0 - 5u', 29], ['L1 b 0 + 5u', 30]] as const) {
+      expect(first(net(line), 'unknown-word').ngspice, line).toMatch(new RegExp(`^ngspice looks for a model called [-+], warns 'can't find model', and stops: 'unknown parameter \\([-+]\\)'\\. \\[unknown-word-${claim}\\]$`));
+    }
+    expect(first(net('R2 b 0 - 5'), 'unknown-word').ngspice).toBe("ngspice stops: 'unknown parameter (-)'. [unknown-word-31]");
+    expect(first(net('I1 0 b + 1m'), 'unknown-word').ngspice).toBe("ngspice stops: 'unknown parameter (+)'. [unknown-word-32]");
+    expect(first('* t\nV1 a 0 - 5\nR1 a 0 1k\n.op\n.end\n', 'unknown-word').ngspice).toBe("ngspice stops: 'unknown parameter (-)'. [space-character-13]");
+  });
+
+  it('only a top-level .param line\'s names are values outside a subcircuit, after .end too (CR1-7; unknown-word-33 to -37)', () => {
+    const stops = ['* t\n.subckt foo x y Vs=5\nR1 x y 1k\n.ends\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n', '* t\n.subckt foo x y params: Vs=5\nR1 x y 1k\n.ends\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n',
+      '* t\n.subckt foo x y\n.param Vs=5\nR1 x y 1k\n.ends\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n', '* t\n.func f(x) {x*2}\nV1 a 0 f\nR1 a 0 1k\n.op\n.end\n'];
+    for (const text of stops) expect(ids(text), text).toEqual(['unknown-word']);
+    // Each said as what it is: a value only inside the subcircuit, or a function's name; never "no .param line".
+    for (const text of stops.slice(0, 3)) {
+      const t = first(text, 'unknown-word');
+      expect(t.why, text).toContain('it has a value only inside the subcircuit foo, and this line is outside it');
+      expect(t.why, text).not.toContain('no .param line');
+      expect(t.ngspice, text).toBe("ngspice stops: 'unknown parameter (vs)'. [unknown-word-16, unknown-word-23, unknown-word-33, unknown-word-34]");
+    }
+    expect(first(stops[3]!, 'unknown-word').why).toBe('f stands where V1\'s value goes, but it is the name of a function (on a .func line), not a number, so SPICE stops there. Write the number itself.');
+    expect(first(stops[3]!, 'unknown-word').ngspice).toBe("ngspice stops: 'unknown parameter (f)'. [unknown-word-16, unknown-word-35]");
+    for (const text of ['* t\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n.param Vs=5\n', '* t\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end;x\n.param Vs=5\n', '* t\n.param Vs=5\nV1 a 0 Vs\nR1 a 0 1k\n.op\n.end\n']) {
+      expect(ids(text), text).not.toContain('unknown-word');
+    }
+    // Inside a subcircuit its own parameters are left alone, as before.
+    expect(ids('* t\n.subckt foo x y Rv=5\nR1 x y Rv\n.ends\nX1 a 0 foo\nV1 a 0 1\n.op\n.end\n')).not.toContain('unknown-word');
+  });
+
+  it('reads a .dc line by place: missing numbers, a number too many, braces, a .param name, a name with a hidden character, words after the second sweep (CR1-4, CR1-6, CR1-12)', () => {
+    const net = (line: string): string => `* t\n.param st=1 lo=-5\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n${line}\n.end\n`;
+    for (const line of ['.dc V1', '.dc V1 0', '.dc V1 0 5 1 V2', '.dc V1 0 5 1 V2 0', '.dc temp']) {
+      const found = traps(net(line));
+      expect(found.map((t) => [t.id, t.title.replace(/ for \w+$/, '')]), line).toEqual([['dc-sweep-problems', '.dc needs a start, a stop and a step']]);
+      expect(found[0]!.ngspice, line).toMatch(/^ngspice 47 stops: 'Bad syntax!'\. ngspice 42 never finishes\. \[dc-sweep-problems-1[12]\]$/);
+    }
+    // A number where the second sweep's name goes: one number too many, deleted by the fix; never "Sweep V1 instead".
+    for (const [line, title, fixed] of [['.dc V1 0 5 1 2', 'One number too many on this .dc line', '.dc V1 0 5 1'], ['.dc V1 0 5 1 2 3', '2 numbers too many on this .dc line', '.dc V1 0 5 1'],
+      ['.dc V1 0 5 1 2 3 4 5', '4 numbers too many on this .dc line', '.dc V1 0 5 1']] as const) {
+      const t = first(net(line), 'dc-sweep-problems');
+      expect(t.title, line).toBe(title);
+      expect(applyFix(net(line), t.fixes[0]!), line).toBe(net(fixed));
+      expect(ids(net(fixed))).toEqual([]);
+    }
+    expect(first(net('.dc V1 0 5 1 2 3 4 5'), 'dc-sweep-problems').ngspice).toContain('[dc-sweep-problems-14]');
+    // "Sweep V1 instead" never makes the line sweep the same source twice.
+    const one = '* t\nV1 in 0 1\nR1 in 0 1k\n';
+    expect(first(`${one}.dc V1 0 5 1 V9 0 1 0.5\n.end\n`, 'dc-sweep-problems').fixes).toEqual([]);
+    expect(first(`${one}.dc V9 0 5 1\n.end\n`, 'dc-sweep-problems').fixes.map((f) => f.label)).toEqual(['Sweep V1 instead']);
+    // Braces and quotes are numbers numparam works out; a .param name without them is no number, and the fix writes the braces.
+    for (const line of ['.dc V1 0 5 {st}', '.dc V1 {lo} 5 1', ".dc V1 {lo} {lo*-1} 'st'"]) expect(ids(net(line)), line).toEqual([]);
+    const bare = first(net('.dc V1 0 5 st'), 'dc-sweep-problems');
+    expect([bare.title, bare.fixes.map((f) => f.label)]).toEqual(['The step of this sweep is not a number', ['Write {st}']]);
+    expect(bare.ngspice).toContain('dc-sweep-problems-18');
+    expect(ids(applyFix(net('.dc V1 0 5 st'), bare.fixes[0]!))).toEqual([]);
+    // A name with a hidden character or a look-alike: named, quoted as ngspice spells it, and taken out by the fix.
+    const zw = first(`${one}.dc \u200bV1 0 5 1\n.end\n`, 'dc-sweep-problems');
+    expect([zw.title, zw.fixes.map((f) => f.label)]).toEqual(['A zero-width space (U+200B) hides in the name V1', ['Take it out: sweep V1']]);
+    expect(zw.ngspice).toBe("ngspice stops when the sweep starts: 'Voltage source, current source, or resistor named \"___v1\" is not in the circuit'. [dc-sweep-problems-15]");
+    for (const x of texts(zw)) expect(x).not.toContain('\u200b');
+    expect(ids(applyFix(`${one}.dc \u200bV1 0 5 1\n.end\n`, zw.fixes[0]!))).toEqual([]);
+    const fw = first(`${one}.dc V\uff11 0 5 1\n.end\n`, 'dc-sweep-problems');
+    expect([fw.title, fw.fixes.map((f) => f.label), fw.ngspice.includes('"v___"')]).toEqual(['The name V1 is written with the fullwidth digit \uff11', ['Write V1'], true]);
+    // ngspice ignores words after the second sweep: no trap (dc-sweep-problems-19).
+    expect(ids(net('.dc V1 0 5 1 V2 0 1 0.5 7'))).toEqual([]);
+    // The letter O: Write 0 for the start and the stop, never a step of 0 (CR1-8).
+    expect(first(net('.dc V1 O 5 1'), 'dc-sweep-problems').fixes.map((f) => f.label)).toEqual(['Write 0']);
+    expect(first(net('.dc V1 -5 O 1'), 'dc-sweep-problems').fixes.map((f) => f.label)).toEqual(['Write 0']);
+    const stepO = first(net('.dc V1 0 5 O'), 'dc-sweep-problems');
+    expect(stepO.fixes).toEqual([]);
+    expect(stepO.why).toContain('Here O stands where the step goes: a letter O, not a number, and the digit 0 would not do either: a step of 0 never moves away from the start.');
+    expect(stepO.why).not.toContain('where the digit 0 belongs');
+  });
+
+  it('a .tran stop of 0 or less stops ngspice, and a word the character checks explain is left to them, with no raw character in any label (CR1-13; tran-problems-8, -9)', () => {
+    const rc = '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    for (const line of ['.tran 0.1m 0', '.tran 0.1m -1m']) {
+      const t = first(`${rc}${line}\n.end\n`, 'tran-problems');
+      expect([t.title, t.severity, t.ngspice], line).toEqual(['The stop time of .tran must be more than 0', 'error', "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [tran-problems-8]"]);
+    }
+    expect(ids(applyFix(`${rc}.tran 0.1m -1m\n.end\n`, first(`${rc}.tran 0.1m -1m\n.end\n`, 'tran-problems').fixes[0]!))).toEqual([]);
+    expect(ids(`${rc}.tran 0.1m 0\u200b.5\n.end\n`)).toEqual(['invisible-character']);
+    // A character after the scale letter changes nothing (invisible-character-4), and no label shows it.
+    const info = first(`${rc}.tran 1 5m\u200b\n.end\n`, 'tran-problems');
+    for (const x of texts(info)) expect(x).not.toContain('\u200b');
+  });
+
+  it('the letter O for a zero is caught with a unit, meg or two Os, and a lone A or F after it is a unit, never atto or femto (CR1-8, CR1-9; look-alike-letter-15)', () => {
+    const r1 = (value: string): Trap[] => traps(`* t\nV1 in 0 10\nR1 in out ${value}\nR2 out 0 10k\n.op\n.end\n`);
+    for (const [value, written] of [['1Ok\u03a9', '10k\u03a9'], ['1Omeg', '10meg'], ['1OOk', '100k'], ['1OkOhm', '10kOhm'], ['1Okohms', '10kohms'], ['1O\u03a9', '10'], ['1OOhm', '10']] as const) {
+      const found = r1(value);
+      expect(found.map((t) => t.id), value).toEqual(['look-alike-letter']);
+      expect(found[0]!.fixes.map((f) => f.label.replace(/ \(.*\)$/, '')), value).toEqual([`Write ${written}`]);
+      expect(ids(applyFix(`* t\nV1 in 0 10\nR1 in out ${value}\nR2 out 0 10k\n.op\n.end\n`, found[0]!.fixes[0]!)), value).toEqual([]);
+    }
+    for (const value of ['1Ohm', '100\u041e\u043c', '1k\u041e\u043c', '10ohm', '2Ohms', '1\u041e\u043c', '1OH']) expect(r1(value).map((t) => t.id), value).toEqual([]);
+    // A lone A or F is a unit: 10 A and 10 F, written without the letter, so no fix leads to atto or femto.
+    const amps = first('* t\nI1 0 a 1OA\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter');
+    expect([amps.title, amps.fixes.map((f) => f.label)]).toEqual(["I1's value is read as 1\u00a0A, not 10\u00a0A", ['Write 10 (10\u00a0A)']]);
+    expect(ids(applyFix('* t\nI1 0 a 1OA\nR1 a 0 1\n.op\n.end\n', amps.fixes[0]!))).toEqual([]);
+    const farads = first('* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in a 1k\nC1 a 0 1OF\n.tran 1m 2m\n.end\n', 'look-alike-letter');
+    expect(farads.fixes.map((f) => f.label)).toEqual(['Write 10 (10\u00a0F)']);
+    expect(first('* t\nI1 0 a 1OmA\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Write 10mA (10\u00a0mA)']);
+  });
+
+  it('E\'s and F\'s main value is their gain in every check, G\'s and H\'s their value (CR1-14)', () => {
+    const net = (line: string): string => `* t\nV1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`;
+    expect(first(net('E1 b 0 a 0 \u200b2'), 'invisible-character').title).toBe("E1's gain is not a number for SPICE");
+    expect(first(net('E1 b 0 a 0 2\u200b0'), 'invisible-character').title).toBe("E1's gain is read as a gain of 2, not a gain of 20");
+    expect(first(net('F1 0 b V1 \u22122'), 'look-alike-letter').title).toBe("F1's gain is not a number for SPICE");
+    expect(first(net('F1 0 b V1 -\u20092'), 'space-character').title).toBe("F1's gain is not a number for SPICE");
+    expect(first(net('E1 b 0 a 0 1Ok'), 'look-alike-letter').title).toBe("E1's gain is read as a gain of 1, not a gain of 10000");
+    expect(first(net('G1 0 b a 0 \u200b2m'), 'invisible-character').title).toBe("G1's value is not a number for SPICE");
+  });
+
+  it('a word glued by a space-like character on an analysis line is one number cut short: what its place does with it, never "says nothing" (CR1-2; space-character-16 to -18)', () => {
+    const dc = '* t\nV1 in 0 1\nR1 in 0 1k\n';
+    const rc = '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    // [netlist, trap id, severity, what the words say, the fixes, the line the fix writes]: only a fix that can make the
+    // line run, so a normal space only where the number read does no harm and the line lacks a word.
+    const cases: [string, string, TrapSeverity, string, string[], string][] = [
+      [`${dc}.dc V1 0 5 0\u2009.5\n.end\n`, 'space-character', 'error', "it reads 0, and a step of 0 stops ngspice 47: 'Bad syntax!'. ngspice 42 never finishes. [space-character-16, space-character-17, invisible-character-32, dc-sweep-problems-1]", ['Take it out: write 0.5'], '.dc V1 0 5 0.5'],
+      [`${dc}.dc V1 0 5 0\u00a0.5\n.end\n`, 'nbsp', 'error', "it reads 0, and a step of 0 stops ngspice 47: 'Bad syntax!'.", ['Take it out: write 0.5'], '.dc V1 0 5 0.5'],
+      [`${rc}.tran 0.1m 0\u2009.5\n.end\n`, 'space-character', 'error', "it reads 0, and ngspice stops: 'TSTOP is invalid, must be greater than zero.' [space-character-16, space-character-17, invisible-character-29]", ['Take it out: write 0.5'], '.tran 0.1m 0.5'],
+      [`${dc}.dc V1 0 1\u20090 1\n.end\n`, 'space-character', 'warning', 'so its number ends there: it reads 1. [space-character-18]', ['Take it out: write 10'], '.dc V1 0 10 1'],
+      // Two words meant: a space that became a thin one, where the line lacks a word.
+      [`${dc}.dc V1 0 5\u20091\n.end\n`, 'space-character', 'warning', 'so its number ends there: it reads 5. [space-character-18]', ['Replace it with a normal space'], '.dc V1 0 5 1'],
+      [`${rc}.tran 1u\u20092m\n.end\n`, 'space-character', 'warning', 'so its number ends there: it reads 1u. [space-character-18]', ['Replace it with a normal space'], '.tran 1u 2m'],
+    ];
+    for (const [text, id, severity, says, labels, line] of cases) {
+      const found = traps(text);
+      expect(found.map((t) => t.id), text).toEqual([id]);
+      const t = found[0]!;
+      expect(t.severity, text).toBe(severity);
+      expect(t.ngspice, text).toContain(says);
+      expect(t.ngspice, text).not.toMatch(/says nothing|without a message/);
+      expect(t.fixes.map((f) => f.label), text).toEqual(labels);
+      const fixed = applyFix(text, t.fixes[0]!);
+      expect(fixed, text).toContain(`\n${line}\n`);
+      expect(ids(fixed), text).toEqual([]);
+    }
+    // A word with an invisible character as well: neither the title nor the fix shows it.
+    const mixed = first(`${dc}.dc V1 0 5 0\u2009.5\u200b\n.end\n`, 'space-character');
+    for (const x of [mixed.title, ...mixed.fixes.map((f) => f.label)]) expect(x).not.toMatch(/\u200b/);
+    expect(mixed.fixes.map((f) => f.label)).toEqual(['Take it out: write 0.5']);
+    // A word with no recorded place makes no claim about what follows; on a part line the glue words stay.
+    expect(first(`${dc}.ac dec\u200910 1 1k\n.end\n`, 'space-character').ngspice).toBe('ngspice reads the thin space as part of the word, so the words on either side are one word for it. [space-character-2, space-character-16]');
+    expect(first('* t\nV1 in 0 PULSE(0\u20091 0 1n 1n 1 2)\nR1 in 0 1k\n.tran 1u 1m\n.end\n', 'space-character').ngspice).toContain('says nothing about it');
+  });
+});
+
+describe('after the second critic of the re-check fixes (12 November 2026)', () => {
+  const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+  const texts = (t: Trap): string[] => [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)];
+  const rc = '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+  const dc = '* t\nV1 in 0 1\nR1 in 0 1k\n';
+  const dc2 = '* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n';
+  const ac = '* t\nV1 in 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n';
+  const no = '* t\nV1 in 0 DC 0 AC 1\nR1 in out 1k\nR2 out 0 1k\n';
+  const CHARACTER = /^(invisible-character|look-alike-letter|space-character|nbsp|greek-mu)$/;
+
+  it('a character word on an analysis line never hides the line\'s other error, and never says "without a message" there (CR2-1; invisible-character-58, -60 to -63, space-character-19)', () => {
+    // [line with {c} where the character goes, the plain error's title]: each place with each other error.
+    const cases: [string, string][] = [
+      [`${rc}.tran 0 2{c}m\n.end\n`, 'The step of .tran must be more than 0'],
+      [`${rc}.tran -1u 2{c}m\n.end\n`, 'The step of .tran must be more than 0'],
+      [`${rc}.tran 2{c}m\n.end\n`, '.tran needs a stop time'],
+      [`${rc}.tran 1{c}u 0\n.end\n`, 'The stop time of .tran must be more than 0'],
+      [`${rc}.tran 1{c}u -1m\n.end\n`, 'The stop time of .tran must be more than 0'],
+      [`${rc}.tran 1{c}u 2m 3m\n.end\n`, 'The start time is not before the stop time'],
+      [`${rc}.tran 0 2m 1{c}m\n.end\n`, 'The step of .tran must be more than 0'],
+      [`${rc}.tran 1u 0 0 1{c}0u\n.end\n`, 'The stop time of .tran must be more than 0'],
+      [`${dc}.dc V1 0 5{c}0\n.end\n`, '.dc needs a step'],
+      [`${dc}.dc V1 0 5{c}0 0\n.end\n`, 'A step of 0 never reaches the stop'],
+      [`${dc}.dc V9 0 5{c}0 1\n.end\n`, '.dc sweeps V9, which is not in the circuit'],
+      [`${dc}.dc V1 1{c}0 20 0\n.end\n`, 'A step of 0 never reaches the stop'],
+      [`${dc2}.dc V1 0 5 1 V2 0 1{c}0\n.end\n`, '.dc needs a step'],
+      [`${dc2}.dc V1 0 5{c}0 1 V9 0 1 0.5\n.end\n`, '.dc sweeps V9, which is not in the circuit'],
+    ];
+    for (const [netlist, title] of cases) {
+      for (const ch of ['\u200b', '\u2009', '\u00a0']) {
+        // A space-like character between digits may be two words glued (5 0): its line is left to the glue check.
+        if (ch !== '\u200b' && /\{c\}\d/.test(netlist)) continue;
+        const text = netlist.replace('{c}', ch);
+        const found = traps(text);
+        expect(found.map((t) => t.title), text).toContain(title);
+        const odd = found.filter((t) => CHARACTER.test(t.id));
+        expect(odd.length, text).toBeGreaterThan(0);
+        for (const t of odd) {
+          expect(t.ngspice, text).not.toMatch(/without a message|says nothing/);
+          for (const x of texts(t)) expect(x, text).not.toMatch(/[\u200b]/);
+        }
+      }
+    }
+    // A Greek mu at a place, on a line with another problem: the same.
+    const mu = traps(`${rc}.tran 0 2\u03bc\n.end\n`);
+    expect(mu.map((t) => t.title)).toContain('The step of .tran must be more than 0');
+    expect(mu.find((t) => t.id === 'greek-mu')!.ngspice).not.toMatch(/says nothing/);
+    // .ac and .noise have no check of their own: where the line has a problem of its own, nothing is claimed.
+    for (const line of [`${ac}.ac dec 10 1\u200b0\n.end\n`, `${ac}.ac dec 10 0 1\u200b0k\n.end\n`, `${ac}.ac dec 10 1 1\u200bk\n.end\n`,
+      `${no}.noise v(out) V1 dec 10 1\u200b0\n.end\n`, `${no}.noise v(out) V1 dec 0 1 1\u200b0k\n.end\n`]) {
+      const t = first(line, 'invisible-character');
+      expect(t.ngspice, line).toMatch(/: it reads \d+\. \[/);
+      expect(t.severity, line).toBe('warning');
+    }
+    // A step read as 0 on a line whose stop time is wrong too: ngspice stops at the step first (invisible-character-58).
+    const both = traps(`${rc}.tran 0\u200b.1m -1m\n.end\n`);
+    expect(both.map((t) => t.id)).toEqual(['invisible-character']);
+    expect(both[0]!.ngspice).toContain("and ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-1, invisible-character-2, invisible-character-28, invisible-character-58]");
+    // A word ngspice reads no number from, on a line with an earlier problem: no claim of its own.
+    const unread = first(`${rc}.tran 0 \u200b2m\n.end\n`, 'invisible-character');
+    expect(unread.ngspice).toBe('ngspice reads no number from this word, which it spells ___2m. [invisible-character-9]');
+    expect(ids(`${rc}.tran 0 \u200b2m\n.end\n`)).toContain('tran-problems');
+    // Its own outcome, written as meant too (a minus sign: a step below 0 either way): said.
+    expect(first(`${rc}.tran \u22125 2m\n.end\n`, 'look-alike-letter').ngspice).toBe("ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-8]");
+    // The plain checks' fixes write the number meant, never a character back.
+    const one = first(`${rc}.tran 2\u2009ms\n.end\n`, 'tran-problems');
+    expect(one.fixes.map((f) => f.label)).toEqual(['Use 2m as the stop time: .tran 20u 2m']);
+    expect(ids(applyFix(`${rc}.tran 2\u2009ms\n.end\n`, one.fixes[0]!))).toEqual([]);
+    expect(first(`${dc}.dc V1 0 5\u200b0\n.end\n`, 'dc-sweep-problems').fixes.map((f) => f.label)).toEqual(['Add a step of 5 (10 steps)']);
+    // A .dc line ngspice 47 stops at ('Bad syntax!') never meets a missing source; 42 does (dc-sweep-problems-25).
+    const v9 = traps(`${dc}.dc V9 0 5 0\n.end\n`);
+    expect(v9.map((t) => t.ngspice)).toEqual([
+      "ngspice 47 stops reading the line first ('Bad syntax!'). ngspice 42 stops when the sweep starts: 'Voltage source, current source, or resistor named \"v9\" is not in the circuit'. [dc-sweep-problems-6, dc-sweep-problems-7, dc-sweep-problems-25]",
+      "ngspice 47 stops: 'Bad syntax!'. ngspice 42 stops at the missing source instead. [dc-sweep-problems-1, dc-sweep-problems-25]",
+    ]);
+    // A line ngspice stops at computes no points: no wrong-way words there.
+    expect(traps(`${dc}.dc V9 5 0 1\n.end\n`).map((t) => t.title)).toEqual(['.dc sweeps V9, which is not in the circuit']);
+    // .ac lin has no check of its start: a start read as 0 runs from 0 Hz (invisible-character-57).
+    expect(first(`${ac}.ac lin 10 0\u200b.5 1k\n.end\n`, 'invisible-character').ngspice).toContain('without a message: it reads 0. [invisible-character-1, invisible-character-2, invisible-character-44, invisible-character-57]');
+    expect(first(`${ac}.ac dec 10 0\u200b.5 1k\n.end\n`, 'invisible-character').ngspice).toContain("'AC startfreq <= 0'");
+  });
+
+  it('checks a long PWL in time that grows with its length, with or without a character in every time (CR2-2)', () => {
+    const pwl = (points: number, odd: string): string => {
+      const pts: string[] = [];
+      for (let i = 0; i < points; i++) pts.push(`${i}${odd}u ${i % 2}`);
+      return `* long pwl\nV1 in 0 PWL(${pts.join(' ')})\nR1 in out 1k\nC1 out 0 1u\n.tran 1u ${points}u\n.end\n`;
+    };
+    for (const odd of ['', '\u200b']) {
+      const small = parseNetlist(pwl(1000, odd));
+      const large = parseNetlist(pwl(10000, odd));
+      checkTraps(small);
+      // Ten PWLs of 1000 points against one of 10,000 (20,000 numbers): linear work takes about as long either
+      // way, work that grows with the square about ten times as long at once (it took 22 s for 16,000 points).
+      const [tenSmall, oneLarge] = leastWorkMs([() => { for (let k = 0; k < 10; k++) checkTraps(small); }, () => checkTraps(large)], 3);
+      expect(oneLarge, odd ? 'with characters' : 'plain').toBeLessThan(3 * tenSmall + 30);
+      expect(oneLarge, odd ? 'with characters' : 'plain').toBeLessThan(2000);
+    }
+  }, 60_000);
+
+  it('a number read short in a function or a setting says what ngspice does with it: PWL times out of order warn, r= read as 0 is too small, no claim where a run is missing (CR2-3; invisible-character-51, -56, -59, zero-ohm-5)', () => {
+    const src = (line: string): string => `* t\n${line}\n${line.startsWith('I') ? 'R1 in 0 1k\n' : 'R1 in out 1k\nC1 out 0 1u\n'}.tran 0.1m 3m\n.end\n`;
+    const warns = (who: string): string => `so the times are not in order, and ngspice warns: 'Warning : ${who} has non-increasing PWL time points.' [`;
+    for (const [line, who] of [['V1 in 0 PWL(0 0 1\u200bm 1 2m 0)', 'voltage source v1'], ['V1 in 0 PWL(1\u200bm 0 2m 1)', 'voltage source v1'], ['I1 0 in PWL(0 0 1\u200bm 1m 2m 0)', 'current source i1'],
+      ['V1 in 0 PWL(0 0 1\u2009m 1 2m 0)', 'voltage source v1'], ['V1 in 0 PWL(0 0 1\u00b75m 1 2m 0)', 'voltage source v1']] as const) {
+      const t = traps(src(line)).find((x) => CHARACTER.test(x.id))!;
+      expect(t.ngspice, line).toContain(warns(who));
+      expect(t.ngspice, line).toContain('invisible-character-59]');
+      expect(t.ngspice, line).not.toMatch(/without a message/);
+    }
+    // Times still in order: no message (invisible-character-51, -56).
+    expect(first(src('V1 in 0 PWL(0 0 1m 1 2\u200bk 0)'), 'invisible-character').ngspice).toContain('without a message: it reads 2.');
+    // Out of order whatever the word reads: no claim; a PWL with r= (which must match a time): no claim.
+    expect(first(src('V1 in 0 PWL(0 0 3m 1 1\u200bm 0)'), 'invisible-character').ngspice).toMatch(/: it reads 1\. \[/);
+    expect(first(src('V1 in 0 PWL(0 0 1\u200bm 1 2m 0) r=0'), 'invisible-character').ngspice).toMatch(/: it reads 1\. \[/);
+    // A resistor's value written r= or resistance= and read as 0: zero-ohm's words (zero-ohm-5).
+    for (const word of ['r', 'resistance']) {
+      const t = first(`* t\nV1 a 0 1\nR1 a b ${word}=0\u200b.47\nR2 b 0 1\n.op\n.end\n`, 'invisible-character');
+      expect(t.ngspice).toContain("which ngspice 47 cannot use: it uses 1e-12 \u03a9 instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12' (ngspice 42 used 0.001 \u03a9 without a word). [invisible-character-1, invisible-character-2, zero-ohm-1, zero-ohm-4, zero-ohm-5]");
+      expect(ids(applyFix(`* t\nV1 a 0 1\nR1 a b ${word}=0\u200b.47\nR2 b 0 1\n.op\n.end\n`, t.fixes[0]!))).toEqual([]);
+    }
+    // No claim where no run shows what ngspice does: SFFM's carrier, index and signal frequency; a value at time 0
+    // beside a DC value; a source's DC value beside a function; a setting with no run.
+    for (const line of ['V1 in 0 SFFM(0 1 1\u200bk 1 100)', 'V1 in 0 SFFM(0 1 1k 1\u200b0 100)', 'V1 in 0 DC 1 PULSE(1\u200b0 0 0 1n 1n 1 2)',
+      'V1 in 0 DC 1\u200b0 PULSE(10 0 0 1n 1n 1 2)', 'V1 in 0 PWL(0 1\u200b0 1m 2) DC 1', 'R2 in 0 1k tc1=1\u200b0']) {
+      const t = traps(src(line)).find((x) => x.id === 'invisible-character' && x.line === 2)!;
+      expect(t.ngspice, line).toMatch(/: it reads \d+(\u00a0V)?\. \[/);
+    }
+    // Recorded silent: every other place of each function, the AC phase, values written name=value (invisible-character-56).
+    for (const line of ['V1 in 0 PULSE(0 1 0 1n 1n 1 2 4\u200b5)', 'V1 in 0 SIN(0 1 1k 0 0 4\u200b5)', 'V1 in 0 EXP(0 1 0 0\u200b.1m 1m 1m)', 'V1 in 0 SFFM(0 1 1k 1 100 0 0 4\u200b5)',
+      'V1 in 0 DC 1 AC 1 4\u200b5', 'V1 in 0 dc=1\u200b0', 'C2 in 0 c=1\u200bu', 'E1 b 0 in 0 gain=1\u200b0']) {
+      expect(traps(src(line)).find((x) => x.id === 'invisible-character' && x.line === 2)!.ngspice, line).toContain('without a message');
+    }
+  });
+
+  it('a sweep the wrong way in a line of two sweeps never moves: never "no points", for the plain and the character words alike (CR2-4; dc-sweep-problems-20 to -27, invisible-character-54, -55)', () => {
+    const says = (line: string, id = 'dc-sweep-problems'): string => first(`${dc2}${line}\n.end\n`, id).ngspice;
+    expect(says('.dc V1 0 5 1 V2 2 1 1')).toBe('ngspice computes the sweep of V1 once, with V2 at its start, 2, and says nothing. [dc-sweep-problems-20]');
+    expect(says('.dc V1 0 5 1 V2 0 1 -0.5')).toBe('ngspice computes the sweep of V1 once, with V2 at its start, 0, and says nothing. [dc-sweep-problems-20]');
+    expect(says('.dc V1 2 1 1 V2 0 1 0.5')).toBe('ngspice keeps V1 at its start, 2, takes V2 from its second value on, and says nothing. [dc-sweep-problems-21]');
+    expect(says('.dc V1 0 5 -1 V2 0 1 0.5')).toBe('ngspice keeps V1 at its start, 0, takes V2 from its second value on, and says nothing. [dc-sweep-problems-21]');
+    expect(traps(`${dc2}.dc V1 2 1 1 V2 2 1 1\n.end\n`).map((t) => [t.severity, t.ngspice])).toEqual([
+      ['error', 'ngspice runs no sweep points and says nothing: the results are empty. [dc-sweep-problems-22]'],
+      ['error', 'ngspice runs no sweep points and says nothing: the results are empty. [dc-sweep-problems-22]'],
+    ]);
+    expect(says('.dc V1 0 5 1 V2 0 1 5')).toBe('ngspice computes the sweep of V1 once, with V2 at 0, and says nothing. [dc-sweep-problems-23]');
+    expect(says('.dc V1 0 1 5 V2 0 1 0.5')).toBe('ngspice computes V1 = 0 only, at each value of V2, and says nothing. [dc-sweep-problems-24]');
+    expect(first(`${dc2}.dc V1 0 5 1 V2 2 1 1\n.end\n`, 'dc-sweep-problems').severity).toBe('warning');
+    // The character words, at each place of each sweep.
+    expect(says('.dc V1 0 5 1 V2 2 1\u200b0 1', 'invisible-character')).toContain('it reads 1, so this sweep goes the wrong way and never moves: ngspice computes the sweep of V1 once, with V2 at 2, and says nothing. [invisible-character-1, invisible-character-2, dc-sweep-problems-20, invisible-character-54]');
+    expect(says('.dc V1 0 5 1 V2 2\u200b0 1 1', 'invisible-character')).toContain('it reads 2, so this sweep goes the wrong way and never moves: ngspice computes the sweep of V1 once, with V2 at 2');
+    expect(says('.dc V1 2 1\u200b0 1 V2 0 1 0.5', 'invisible-character')).toContain('it reads 1, so this sweep goes the wrong way and never moves: ngspice keeps V1 at 2, takes V2 from its second value on, and says nothing. [invisible-character-1, invisible-character-2, dc-sweep-problems-21, invisible-character-55]');
+    expect(says('.dc V1 0 5 1 V2 0 1 0\u200b.5', 'invisible-character')).toContain("it reads 0, and a step of 0 stops ngspice 47: 'Bad syntax!'. ngspice 42 never finishes.");
+    expect(says('.dc V1 0 5 1 V2 1\u200b0 20 1', 'invisible-character')).toContain('without a message: it reads 1.');
+    expect(says('.dc V1 0 5 1 V2 0 1\u200b0 2', 'invisible-character')).toContain('without a message: it reads 1. [invisible-character-1, invisible-character-2, invisible-character-22, dc-sweep-problems-23]');
+    // One sweep keeps its words (dc-sweep-problems-3, -4, invisible-character-33).
+    expect(first(`${dc}.dc V1 12 0 1\n.end\n`, 'dc-sweep-problems').ngspice).toContain('[dc-sweep-problems-4]');
+    expect(first(`${dc}.dc V1 2 1\u200b0 1\n.end\n`, 'invisible-character').ngspice).toContain('so the sweep has no points: ngspice runs none and says nothing. [invisible-character-1, invisible-character-2, invisible-character-33]');
+    // Explain says the same of a line of two sweeps.
+    const notes = (line: string): string[] => explainNetlist(parseNetlist(`${dc2}${line}\n.end\n`)).find((l) => l.line === 5)!.notes;
+    expect(notes('.dc V1 0 5 1 V2 2 1 1')).toEqual(['With these numbers this sweep goes the wrong way and never moves: ngspice computes the sweep of V1 once, with V2 at its start, 2\u00a0V, and says nothing.']);
+    expect(notes('.dc V1 2 1 1 V2 0 1 0.5')).toEqual(['With these numbers this sweep goes the wrong way and never moves: ngspice keeps V1 at its start, 2\u00a0V, takes V2 from its second value on, and says nothing.']);
+    expect(notes('.dc V1 2 1 1 V2 2 1 1')[0]).toContain('the sweep has no points');
+  });
+
+  it('inside a subcircuit only its own parameters and the top level\'s are values, never another subcircuit\'s or a .func\'s (CR2-5; unknown-word-38, -39)', () => {
+    const other = '* t\n.subckt foo x y Rv=2k\nR1 x y {Rv}\n.ends\n.subckt bar x y\nR1 x y Rv\n.ends\nV1 a 0 1\nX1 a 0 foo\nX2 a 0 bar\n.op\n.end\n';
+    const t = first(other, 'unknown-word');
+    expect(t.why).toContain('it has a value only inside the subcircuit foo, and this line is outside it');
+    expect(t.ngspice).toBe("ngspice looks for a model called rv, warns 'can't find model', and stops: 'unknown parameter (rv)'. [unknown-word-13, unknown-word-23, unknown-word-33, unknown-word-34, unknown-word-38]");
+    const func = first('* t\n.func f(x) {x*2}\n.subckt bar x y\nR1 x y f\n.ends\nV1 a 0 1\nX2 a 0 bar\n.op\n.end\n', 'unknown-word');
+    expect(func.why).toContain('the name of a function (on a .func line)');
+    expect(func.ngspice).toContain('[unknown-word-13, unknown-word-35, unknown-word-39]');
+    // Its own parameter (its .subckt line or a .param inside it) and the top level's run.
+    expect(ids('* t\n.subckt foo x y Rv=2k\nR1 x y Rv\n.ends\nV1 a 0 1\nX1 a 0 foo\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\n.subckt foo x y\n.param Rv=2k\nR1 x y Rv\n.ends\nV1 a 0 1\nX1 a 0 foo\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\n.param Rv=2k\n.subckt bar x y\nR1 x y Rv\n.ends\nV1 a 0 1\nX2 a 0 bar\n.op\n.end\n')).toEqual([]);
+  });
+
+  it('a sign with a space before a number with a hidden character: one error, its words and fix without the character (CR2-6; unknown-word-52)', () => {
+    for (const [text, label] of [['* t\nV1 a 0 1\nR3 a 0 - 1\u200b0\n.op\n.end\n', 'Write -10 (\u221210\u00a0\u03a9)'], ['* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 - 1\u200b0\nR1 b 0 1k\n.op\n.end\n', 'Write -10 (a gain of \u221210)'],
+      ['* t\nV1 a 0 - 1\u20090\nR1 a 0 1k\n.op\n.end\n', 'Write -10 (\u221210\u00a0V)']] as const) {
+      const found = traps(text);
+      expect(found.map((t) => t.id), text).toEqual(['unknown-word']);
+      expect(found[0]!.fixes.map((f) => f.label), text).toEqual([label]);
+      for (const x of texts(found[0]!)) expect(x, text).not.toMatch(/[\u200b\u2009]/);
+      expect(found[0]!.ngspice, text).not.toMatch(/without a message/);
+      expect(ids(applyFix(text, found[0]!.fixes[0]!)), text).toEqual([]);
+    }
+  });
+
+  it('zero-ohm names a resistor inside a subcircuit as ngspice does: r.x1.r1, for each X line (CR2-7; zero-ohm-6)', () => {
+    const sub = (value: string, uses: string): string => `* t\n.subckt div a b\nR1 a b ${value}\nR2 b 0 1\n.ends\nV1 in 0 1\n${uses}.op\n.end\n`;
+    expect(first(sub('0', 'X1 in out div\n'), 'zero-ohm').ngspice).toBe("ngspice 47 uses 1e-12 \u03a9 instead and warns 'Value of resistor r.x1.r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 \u03a9 without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2, zero-ohm-6]");
+    expect(first(sub('0\u200b.47', 'X1 in out div\nX2 in out2 div\n'), 'invisible-character').ngspice).toContain("warns 'Value of resistor r.x1.r1 is too small, set to 1.000000e-12', and the same for r.x2.r1 (ngspice 42 used 0.001 \u03a9 without a word). [invisible-character-1, invisible-character-2, zero-ohm-1, zero-ohm-4, zero-ohm-6]");
+    expect(first(sub('0', ''), 'zero-ohm').ngspice).toContain("warns that the resistor's value is too small, once for each use of its subcircuit");
+    // At the top level the name stays as written.
+    expect(first('* t\nV1 a 0 1\nR1 a b 0\nR2 b 0 1\n.op\n.end\n', 'zero-ohm').ngspice).toContain("warns 'Value of resistor r1 is too small");
+  });
+
+  it('a setting written name=value on an E to H line, or where any value goes, gets ngspice\'s own words (CR2-8; unknown-word-40 to -51)', () => {
+    for (const [line, n] of [['E1 b 0 a 0 2 m=3', 40], ['H1 b 0 V1 2 m=3', 41]] as const) {
+      const t = first(`* t\nV1 a 0 1\nR0 a 0 1k\n${line}\nR1 b 0 1k\n.op\n.end\n`, 'unknown-word');
+      expect(t.ngspice).toBe(`ngspice stops: 'unknown parameter (m)'. Native ngspice 47 and 42 stop there too: they read no polynomial here. [unknown-word-${n}]`);
+      expect(t.why).not.toContain('like m=2');
+    }
+    // F and G take m; another name=value after E's gain is read natively as a polynomial (unknown-word-51).
+    expect(ids('* t\nV1 a 0 1\nR0 a 0 1k\nF1 0 b V1 2 m=3\nR1 b 0 1k\n.op\n.end\n')).toEqual([]);
+    expect(first('* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 2 x=3\nR1 b 0 1k\n.op\n.end\n', 'unknown-word').ngspice).toContain("'MIF-ERROR ... Bad real value'");
+    const g = '* t\nV1 a 0 1\nR0 a 0 1k\nG1 0 b a 0 gm=1m\nR1 b 0 1k\n.op\n.end\n';
+    const t = first(g, 'unknown-word');
+    expect([t.title, t.why, t.ngspice, t.fixes.map((f) => f.label)]).toEqual(['G1 has no setting called gm',
+      'gm=1m stands where G1\'s value goes, but a G line has no setting called gm: its value is the number alone, so SPICE stops there. Write 1m.',
+      "ngspice stops: 'unknown parameter (gm)'. [unknown-word-49]", ['Write 1m']]);
+    expect(ids(applyFix(g, t.fixes[0]!))).toEqual([]);
+    // On every part, with no model warning on R, C and L.
+    expect(first('* t\nV1 a 0 1\nR1 a 0 x=5\n.op\n.end\n', 'unknown-word').ngspice).toBe("ngspice stops: 'unknown parameter (x)'. [unknown-word-42]");
   });
 });

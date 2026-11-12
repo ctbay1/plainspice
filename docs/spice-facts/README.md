@@ -101,6 +101,46 @@ name on a .print or .plot line (`.print dc çıkış`) and the other forms of th
 non-ascii-node-7 three more saves that leave the run going (savecurrents on a continuation line, a
 `reset`, a save inside `if 0`).
 
+After the re-check of those fixes, the same day, each run the same way: in traps.md,
+invisible-character-7 and look-alike-letter-7 (on a capacitor or an inductor ngspice also warns about a
+model), invisible-character-8 to -22 (what ngspice does with a word it cannot read at each place of
+`.tran`, `.dc`, `.ac` and `.noise`, never "unknown parameter"; inside such a number it ends it),
+invisible-character-23 to -27 (the other default-ignorable characters, the line and paragraph
+separators; an E's gain; a `.four` line, which a run with a results file skips), look-alike-letter-8 to -14 (a minus sign in a `.dc` line, a document's
+decimal point, the letter O where a zero belongs, other characters outside ASCII inside a number),
+space-character-12 to -15 and nbsp-3 (a sign followed by a character that looks like a space),
+space-before-suffix-18 (`4·7 kΩ`), missing-value-11 to -14 (settings but no gain: 0, silently, in
+native 47 too), unknown-word-13 to -24 (a word where a part's value goes; a `.param` name there is
+that value) and dc-sweep-problems-9, -10 (a word that is no number where a `.dc` number goes); and in
+explanations.md P16b (`dc` with no number: 0, without a note).
+
+After the critic of the re-check fixes, the same day, each run the same way: in traps.md, zero-ohm-4 (a
+value read as 0 because of how it is written: ngspice 47 warns for each resistor, 42 uses 1 mΩ),
+invisible-character-28 to -44 (a number read short is weighed at its place: a `.tran` step or stop of 0,
+a `.dc` step of 0, `.ac` and `.noise` numbers read as 0 or past the line's other numbers, and the places
+where ngspice runs on with it; invisible-character-22 now claims only the stops it recorded),
+invisible-character-45 to -53 (a word in a source's function, its AC value or phase, or a setting's
+value: what ngspice says at each), look-alike-letter-15 (the letter O before a unit, meg or another O),
+unknown-word-25 to -37 (a sign with a space after it, part by part: a polynomial natively on E-H; a
+subcircuit's parameter, a `.param` in a subcircuit and a `.func` name are no value outside it; a
+`.param` line after `.end` is read), dc-sweep-problems-11 to -19 (a sweep missing its numbers, a number
+too many, a name with a character that is not what it looks like, braces and quotes, a `.param` name
+without them, words after the second sweep), tran-problems-8, -9 (a stop time of 0 or less) and
+space-character-16 to -18 (a word glued by a thin space on an analysis line is one number, cut short).
+
+After the second critic of the re-check fixes, the same day, each run the same way: in traps.md,
+invisible-character-58, -60 to -63 and space-character-19 (a character word on an analysis line with a
+problem of its own: ngspice does what that problem does), -64 (a second sweep's step read as 0), -57 (a lin `.ac` start read as 0 runs from
+0 Hz), -54, -55 and dc-sweep-problems-20 to -24, -26, -27 (a sweep the wrong way in two sweeps never
+moves; both: no points), dc-sweep-problems-25 (a step of 0 and a missing source: 47 stops at the step,
+42 at the source), invisible-character-56 (the other places of the source functions, the AC phase and
+values written name=value, read short: no message) and -59 (PWL times read out of order: a warning),
+zero-ohm-5, -6 (r= read as 0; ngspice's names inside a subcircuit, r.x1.r1) and unknown-word-38 to -52
+(another subcircuit's parameter or a `.func` name inside a subcircuit, m= after an E or H gain, a
+setting where a part's value goes, another name=value after E's gain, a sign before a hidden character).
+A fact of two problems is marked `several` in its golden row: each fix takes its own trap away, and the
+fixes applied in turn give a clean run.
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the

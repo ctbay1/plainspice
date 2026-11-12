@@ -70,6 +70,7 @@ const FACTS: Fact[] = [
   { code: 'P15', id: 'part-r-no-value', netlist: "* a resistor with no value\nV1 a 0 6\nR0 a 0 3\nR1 a 0\n.op\n.end\n", vectors: { "v(a)": 6, "i(v1)": -2 }, prints: ["'r1 a 0' is not a valid resistor instance line, ignored!"], codes: ["line-ignored"] },
   { code: 'P15b', id: 'part-cl-no-value', netlist: "* a capacitor and an inductor with no value\nV1 a 0 6\nR1 a b 2\nC1 b 0\nL1 b c\nR2 b 0 4\n.op\n.end\n", vectors: { "v(b)": 4 }, prints: ["'c1 b 0' is not a valid capacitor instance line, ignored!","'l1 b c' is not a valid inductor instance line, ignored!"] },
   { code: 'P16', id: 'part-v-no-value', netlist: "* a source with no DC value\nV1 a 0\nR1 a 0 1\nV2 b 0 AC 1\nR2 b 0 1\nI1 0 c\nR3 c 0 1\n.op\n.end\n", vectors: { "v(a)": 0, "v(b)": 0, "v(c)": 0 }, prints: ["v1: has no value, DC 0 assumed","v2: has no value, DC 0 assumed","i1: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'P16b', id: 'part-v-dc-no-number', netlist: "* a source with dc but no number after it\nV1 a 0 dc\nR1 a 0 1\nV2 b 0 dc AC 1\nR2 b 0 1\nI1 0 c dc\nR3 c 0 1\n.op\n.end\n", vectors: { "v(a)": 0, "v(b)": 0, "v(c)": 0 } },
   { code: 'P17', id: 'part-tran-func-op', netlist: "* in .op a PULSE, SIN, PWL or EXP source uses its value at time 0\nV1 a 0 PULSE(1 3 1m 1m 2m 3m 10m)\nR1 a 0 1\nV2 b 0 SIN(2 1 1k)\nR2 b 0 1\nV3 c 0 PWL(0 4 1m 5)\nR3 c 0 1\nV4 d 0 EXP(3 5 1m 1m)\nR4 d 0 1\n.op\n.end\n", vectors: { "v(a)": 1, "v(b)": 2, "v(c)": 4, "v(d)": 3 } },
   { code: 'P18', id: 'part-pulse', netlist: "* PULSE(V1 V2 TD TR TF PW PER)\nV1 a 0 PULSE(1 3 1m 1m 2m 3m 10m)\nR1 a 0 1\n.tran 0.1m 13m\n.end\n", summaries: { "time": { points: 156, first: 0, last: 0.013000000000000001, maxStep: 0.0001 } }, at: { vector: "v(a)", times: [0, 0.001, 0.002, 0.005, 0.006, 0.007, 0.011, 0.012], values: [1, 1, 3, 3, 2, 1, 1, 3] } },
   { code: 'P19', id: 'part-sin', netlist: "* SIN(VO VA FREQ TD)\nV1 a 0 SIN(1 2 1k 1m)\nR1 a 0 1\n.tran 1u 2m\n.end\n", summaries: { "time": { points: 2008, first: 0, last: 0.002, maxStep: 0.000001 } }, at: { vector: "v(a)", times: [0, 0.0005, 0.001, 0.00125, 0.0015, 0.00175, 0.002], values: [1, 1, 1.00253337901, 2.99999204116, 0.999999992666, -0.999992041161, 1] } },
@@ -357,6 +358,20 @@ describe('what the explanations predict matches the run', () => {
       const v = op.nodes.find((x) => x.node === node)!.value;
       expect(explainLine(n, line.index)!.summary).toContain(`value at time 0: ${formatSI(v, 'V')}.`);
     }
+  });
+
+  it('says a source with dc and no number is 0 without a message, as the run prints none (P16b; re-check C3)', () => {
+    const f = fact('P16b');
+    const r = runs.get(f.id)!;
+    expect(`${r.stdout}\n${r.stderr}`).not.toContain('has no value');
+    const n = parseNetlist(f.netlist);
+    for (const [line, unit] of [[1, 'V'], [3, 'V'], [5, 'A']] as const) {
+      expect(explainLine(n, line)!.notes, f.code).toContain(`This source has dc but no number after it, so in .op ngspice uses 0 ${unit}, without a message.`);
+      expect(explainLine(n, line)!.notes.join(' '), f.code).not.toContain('says so in a note');
+    }
+    // A source with nothing after its nodes, or an AC value alone, keeps the note ngspice prints (P16).
+    const p16 = parseNetlist(fact('P16').netlist);
+    expect(explainLine(p16, 1)!.notes.join(' ')).toContain('says so in a note ("has no value, DC 0 assumed")');
   });
 
   it('says where a voltage source puts its node, as the run finds it (P3)', () => {

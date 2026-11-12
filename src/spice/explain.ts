@@ -15,7 +15,7 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
-import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces, zeroForLetterO } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { readNumber } from './numbers.ts';
@@ -187,6 +187,15 @@ export const EXPLAIN_STRINGS = {
     `${what}, a character you cannot see, ends the number here, so ngspice ignores it and everything after it. Delete it: write ${clean}.`,
   lookAlikeNote: (what: string, clean: string): string => `${what}, is a different character for SPICE, so ngspice ignores it and everything after it. Write ${clean}.`,
   invisibleHarmless: (what: string): string => `There is ${what} in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.`,
+  // Its ending by part, as Checks says it (re-check critic CR1-10): a model warning on C and L, nothing on
+  // a resistor read as 0 (zeroR says what ngspice 47 does then), no message elsewhere (look-alike-letter-12, -7).
+  strayNote: (what: string, after: string, ending: string): string =>
+    `${what} is no part of a number for SPICE, so ngspice stops reading the number at it and ignores the ${after} after it${ending}.`,
+  strayModel: ", and only warns that it can't find a model with the word's name",
+  strayQuiet: ', without a message',
+  // re-check critic CR1-9 (look-alike-letter-10, -15): the letter O typed for the digit 0, said as Checks says it.
+  letterONote: (the: string, before: string, read: string, meant: string): string =>
+    `${the} after the ${before} is not the digit 0: SPICE stops reading the number at a letter, so it reads ${read}. Write ${meant}.`,
   nodeWithInvisible: (clean: string, what: string): string => `${clean} (written with ${what} in it)`,
   // Critic of the final-review fixes: a character that looks like a space is named, never shown in
   // quotes as if it were a space (space-character-1 to -4, nbsp-1, nbsp-2).
@@ -203,6 +212,7 @@ export const EXPLAIN_STRINGS = {
   twoNumbersSign: 'A + or − after a digit or a letter starts a new word; for an exponent, write e (1e-3).',
   expression: 'an expression: ngspice works out its value before running',
   expressionParam: (name: string, value: string, line: number): string => `${value} (${name}, from .param on line ${line})`,
+  paramByName: (name: string): string => `${name}: a name from a .param line, whose value ngspice uses here`,
   negativeR: 'ngspice accepts a negative resistance without a message.',
   zeroR:
     'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name; to measure the current, use a 0 V source (the ammeter trick).',
@@ -213,6 +223,8 @@ export const EXPLAIN_STRINGS = {
   missingValueKept: (what: string, quantity: string): string => `This ${what} has settings but no value, so ngspice keeps it without any ${quantity}, and says nothing.`,
   missingValueSource: (unit: string): string =>
     `This source has no DC value, so in .op ngspice uses 0 ${unit} and says so in a note ("has no value, DC 0 assumed"). An AC value alone is not a DC value.`,
+  // P16b: "dc" with no number after it is a DC value of 0 as far as ngspice is concerned: no note.
+  dcNoNumber: (unit: string): string => `This source has dc but no number after it, so in .op ngspice uses 0 ${unit}, without a message.`,
   timeZeroValue: (fn: string, value: string): string =>
     `It has no DC value, so in .op ngspice uses the ${fn} source's value at time 0: ${value}.`,
   timeZeroValueUnknown: (fn: string): string => `It has no DC value, so in .op ngspice uses the ${fn} source's value at time 0.`,
@@ -275,6 +287,8 @@ export const EXPLAIN_STRINGS = {
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
   noGainNote: (word: string): string =>
     `This line has no ${word}. PlainSpice's engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".`,
+  // missing-value-11, -12: settings ("gain" with no number, "m=2") but no value: 0 in native 47, 42 and our engine.
+  settingsNoGainNote: (word: string): string => `This line has settings but no ${word}, so ngspice uses 0 and says nothing: the output is 0.`,
   gainRatio: (gain: string, what: string): string => `${gain}: the output ${what} is ${gain} × the ${what} it reads`,
   gmMeaning: (gm: string): string => `${gm} for every volt it reads (amps per volt)`,
   rmMeaning: (r: string): string => `${r} for every amp it reads (volts per amp, which is ohms)`,
@@ -339,7 +353,16 @@ export const EXPLAIN_STRINGS = {
   dcNested: (inner: string, outer: string, total: number): string =>
     `For each value of ${outer}, ${inner} runs through all its values: ${total} points in all.`,
   dcNoPoints: 'With these numbers the sweep has no points (start is past stop for this step), so ngspice runs nothing and says nothing.',
+  // In two sweeps a sweep the wrong way never moves (traps.md, dc-sweep-problems-20, -21; re-check critic CR2-4).
+  dcStuckSecond: (name: string, start: string, first: string): string =>
+    `With these numbers this sweep goes the wrong way and never moves: ngspice computes the sweep of ${first} once, with ${name} at its start, ${start}, and says nothing.`,
+  dcStuckFirst: (name: string, start: string, second: string): string =>
+    `With these numbers this sweep goes the wrong way and never moves: ngspice keeps ${name} at its start, ${start}, takes ${second} from its second value on, and says nothing.`,
   dcStepZero: 'A step of 0 (or no step at all) stops ngspice 47: "Bad syntax!".',
+  dcNotNumber: 'not a number for SPICE (see Checks)',
+  dcNotNumberNote: 'A word that is no number where a number goes stops ngspice 47: "Bad syntax!".',
+  // re-check critic CR1-11: a .dc line ngspice 47 cannot read is never told as a sweep that runs.
+  dcStops: 'ngspice 47 stops at this line ("Bad syntax!") and sweeps nothing: see Checks.',
   dcSourceMissing: (name: string): string => `There is no ${name} in the circuit, so ngspice stops: the source to sweep "is not in the circuit".`,
   dcSourceWrong: (name: string, what: string): string =>
     `${name} is ${withArticle(what)}, and .dc sweeps only a voltage source, a current source, a resistor or the temperature, so ngspice stops: the source to sweep "is not in the circuit".`,
@@ -470,6 +493,8 @@ interface Context {
   insideSubckt: Map<number, number>;
   /** .param values that are plain numbers. */
   params: Map<string, ParamValue>;
+  /** Every name a top-level .param line defines (after .end too), with any value (an expression too), lower-case. */
+  paramNames: Set<string>;
   /** Line where ngspice stops reading: the .end line or a line starting with '@'. */
   stop?: number;
   /** ngspice stops at the .end line itself (".end;comment") rather than reading on. */
@@ -505,6 +530,7 @@ function contextOf(netlist: Netlist): Context {
     subckts: new Map(),
     insideSubckt: new Map(),
     params: new Map(),
+    paramNames: new Set(),
     endStops: false,
     continuedBy: new Map(),
     hasSaveCurrents: false,
@@ -543,12 +569,9 @@ function contextOf(netlist: Netlist): Context {
       if (d.name === '.ends' || d.name === '.eom') {
         open.pop();
       }
-      if (d.name === '.param') {
-        for (const [name, value] of pairs(netlist, d.args)) {
-          const reading = value ? readNumber(value.text) : undefined;
-          if (reading && !reading.ignored && !reading.rest) ctx.params.set(lowerAscii(name.text), { line: line.index, reading });
-        }
-      }
+      // A .param line inside a subcircuit is that subcircuit's: no value for a part at the top level
+      // (unknown-word-34; re-check critic CR1-7).
+      if (d.name === '.param' && open.length === 0) addParams(ctx, netlist, line.index, d.args);
       if (d.name === '.dc') {
         for (let k = 0; k < d.args.length; k += 4) {
           const key = lowerAscii(d.args[k]!.text);
@@ -566,6 +589,8 @@ function contextOf(netlist: Netlist): Context {
         }
       }
     }
+    // ngspice reads a .param line after .end too, even after .end;comment (unknown-word-36, -37).
+    if (line.kind === 'after-end' && lowerAscii(line.tokens[0]?.text ?? '') === '.param') addParams(ctx, netlist, line.index, line.tokens.slice(1));
     if (ctx.stop === undefined && line.index > 0 && line.kind === 'invalid' && line.text.trimStart().startsWith('@')) {
       ctx.stop = line.index;
     }
@@ -586,6 +611,16 @@ function endIsGlued(line: NetlistLine): boolean {
 }
 
 /** name=value pairs of a dot command (and lone names, with no value). */
+/** The names a top-level .param line defines, with their values when they are plain numbers. */
+function addParams(ctx: Context, netlist: Netlist, line: number, args: readonly Token[]): void {
+  for (const [name, value] of pairs(netlist, args)) {
+    if (!value) continue;
+    const reading = readNumber(value.text);
+    if (reading && !reading.ignored && !reading.rest) ctx.params.set(lowerAscii(name.text), { line, reading });
+    ctx.paramNames.add(lowerAscii(name.text));
+  }
+}
+
 function pairs(netlist: Netlist, args: readonly Token[]): [Token, Token | undefined][] {
   const out: [Token, Token | undefined][] = [];
   for (let k = 0; k < args.length; k++) {
@@ -669,7 +704,16 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     trap = true;
   }
   const odd = reading.ignored ? [...reading.ignored][0]! : '';
-  if (reading.ignored && SPACE_LIKE.test(odd)) {
+  // The letter O where a zero belongs (1Ok, 1OOk, 1оk): said as Checks says it, never as a unit (CR1-9).
+  const letter = ({ '\u03a9': 'R', F: 'C', H: 'L', V: 'V', A: 'I' } as const)[unit as '\u03a9'];
+  const zero = odd && /^[Oo]$/.test(cleanWord(odd, true).clean) ? zeroForLetterO(token.text, letter) : undefined;
+  const meantO = zero === undefined ? undefined : readNumber(zero);
+  if (reading.ignored && meantO && meantO.value !== reading.value) {
+    marks.push(S.ignored(withoutInvisible(reading.ignored)));
+    const the = /[Oo]/.test(odd) ? `The letter ${odd}` : capitalized(describeCharacter(odd).replace(/, which .*$/, ''));
+    notes.push(S.letterONote(the, withoutInvisible(reading.text.slice(0, reading.text.length - reading.ignored.length)), shown, zero!));
+    trap = true;
+  } else if (reading.ignored && SPACE_LIKE.test(odd)) {
     // The number stops at a character that looks like a space: name it, and say what a document meant
     // by it (spacedValue: a number and its unit, or groups of digits).
     const what = describeCharacter(odd);
@@ -683,8 +727,8 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     }
   } else if (reading.ignored && (INVISIBLE.test(odd) || lookAlikeOf(odd) !== undefined)) {
     // The number stops at a character that is not what it looks like: name it, and say what was meant.
-    const after = cleanWord([...reading.ignored].slice(1).join('')).clean;
-    const clean = cleanWord(token.text).clean;
+    const after = cleanWord([...reading.ignored].slice(1).join(''), true).clean;
+    const clean = cleanWord(token.text, true).clean;
     const meant = readNumber(clean);
     marks.push(S.oddIgnored(describeCharacter(odd), after));
     if (meant && meant.value !== reading.value) {
@@ -710,6 +754,11 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     } else if (reading.ignored.includes('μ')) {
       // N5: the Greek letter mu is not the micro sign.
       notes.push(S.greekMuNote(token.text));
+      trap = true;
+    } else if (odd.codePointAt(0)! >= 0x80 && odd !== '\u00b5' && /^\d/.test([...reading.ignored][1] ?? '')) {
+      // A character outside plain ASCII inside the number (4。7k): no unit, and not ignored on purpose (re-check C5, look-alike-letter-12).
+      const ending = unit === 'F' || unit === 'H' ? S.strayModel : unit === '\u03a9' && reading.value === 0 ? '' : S.strayQuiet;
+      notes.push(S.strayNote(capitalized(describeCharacter(odd)), [...reading.ignored].slice(1).join(''), ending));
       trap = true;
     } else if (!trap && letters) {
       notes.push(S.unitsIgnoredNote(letters));
@@ -1059,6 +1108,22 @@ function vectorAt(netlist: Netlist, args: readonly Token[], k: number): VectorGr
   return { kind, names, span: { from: head.from, to: end }, text: netlist.text.slice(head.from, end), used: names.length + 1 };
 }
 
+/** A word in braces or quotes: a number numparam works out before ngspice reads the line (dc-sweep-problems-17). */
+export const isExpression = (t: Token): boolean => /^[{']/.test(t.text);
+
+/**
+ * Whether ngspice 47 stops at a .dc line ("Bad syntax!"), read by place as it reads it (inp2dot.c): a
+ * sweep without its start, its stop or its step, a word that is no number where a number goes, or a
+ * step of 0 (dc-sweep-problems-1, -2, -9 to -13, -18; re-check critic CR1-11). A word in braces or quotes
+ * is a number (dc-sweep-problems-17).
+ */
+export function dcStopsNgspice(r: Extract<AnalysisReading, { kind: 'dc' }>): boolean {
+  return r.sweeps.some((s) => {
+    const words: [Token | undefined, number | undefined][] = [[s.start, s.startValue], [s.stop, s.stopValue], [s.step, s.stepValue]];
+    return words.some(([t, x]) => !t || (x === undefined && !isExpression(t))) || s.stepValue === 0;
+  });
+}
+
 /** The first .dc line (0-based) that sweeps the part with lower-case name `key`, if any. */
 export function sweptBy(netlist: Netlist, key: string): number | undefined {
   return contextOf(netlist).swept.get(key);
@@ -1082,7 +1147,8 @@ export function readAnalysis(netlist: Netlist, lineIndex: number): AnalysisReadi
       return { kind: 'op', line: lineIndex };
     case '.dc': {
       const sweeps: SweepReading[] = [];
-      for (let k = 0; k < d.args.length; k += 4) {
+      // Two sweeps at most: ngspice 47 ignores the words after the second (dc-sweep-problems-19).
+      for (let k = 0; k < d.args.length && k < 8; k += 4) {
         const source = d.args[k]!;
         const sweep: SweepReading = { source, kind: 'unknown', unit: '' };
         if (lowerAscii(source.text) === 'temp') {
@@ -1359,6 +1425,16 @@ function partFields(p: PartContext): FieldExplanation[] {
           if (!found) addNote(p.notes, S.kMissingNote(f.token.text));
           return;
         }
+        if (valuePlaceWord(el) === f) {
+          // Where the value goes: a name from .param is that value (unknown-word-22, -24); any other word stops
+          // ngspice, on E, F, G and H lines too (unknown-word-13 to -21; re-check S6).
+          const named = contextOf(netlist).paramNames.has(lowerAscii(f.token.text));
+          // With more words after it on an E, F, G or H line (- 2), native ngspice 47 and 42 read a polynomial
+          // instead (unknown-word-25 to -28; re-check critic CR1-3).
+          const polynomial = !!el.letter && 'EFGH'.includes(el.letter) && el.fields.indexOf(f) < el.fields.length - 1;
+          rows.push(fieldOf(labelFor(el.letter, 'value', 0), f.token, paramValue(netlist, el)?.text ?? (named ? S.paramByName(f.token.text) : polynomial ? S.unknownWordEngine : S.unknownWord)));
+          return;
+        }
         rows.push(fieldOf(label, f.token, otherWordMeaning(el.letter, f.token.text)));
         return;
       default:
@@ -1390,6 +1466,38 @@ function partFields(p: PartContext): FieldExplanation[] {
     rows.push(fieldOf(label, f.token, f.token.text));
   });
   return rows;
+}
+
+/**
+ * The word where a part's value goes when it is no number (Av, −5, -<zero-width space>5 ...): the first
+ * word the parser could not place, with no value and no setting before it (re-check S6, C3).
+ */
+function valuePlaceWord(el: Element): Field | undefined {
+  if (el.value) return undefined;
+  const k = el.fields.findIndex((f) => f.role === 'other');
+  if (k < 0 || el.fields.slice(0, k).some((x) => x.role === 'parameter' || x.role === 'source-function' || x.role === 'model')) return undefined;
+  return el.fields[k];
+}
+
+/**
+ * A part's value written as a bare name from a .param line where the value goes (E1 b 0 a 0 Av with
+ * .param Av=10): ngspice uses the parameter's value (unknown-word-22). Undefined for anything else.
+ */
+function paramValue(netlist: Netlist, el: Element): ValueWords | undefined {
+  const f = valuePlaceWord(el);
+  const p = f ? contextOf(netlist).params.get(lowerAscii(f.token.text)) : undefined;
+  if (!f || !p) return undefined;
+  return { text: S.expressionParam(f.token.text, plain(p.reading.value, unitForValue(el.letter)), p.line + 1), value: p.reading.value, notes: [], trap: false };
+}
+
+/**
+ * The note for an E, F, G or H line with no gain, by what follows its nodes (re-check S6): nothing at
+ * all (missing-value-4 to -7), or settings but no number (missing-value-11, -12). A word ngspice cannot
+ * read where the gain goes gets no note: its row says that ngspice stops there.
+ */
+function noGainNoteOf(el: Element, word: string): string | undefined {
+  if (el.fields.some((f) => f.role === 'other')) return undefined;
+  return el.fields.length === (el.letter === 'E' || el.letter === 'G' ? 5 : 4) ? S.noGainNote(word) : S.settingsNoGainNote(word);
 }
 
 /**
@@ -1509,7 +1617,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
   const fields = partFields(p);
   const heading = S.partHeading(el.name.text, partWhat(info), info?.code);
   const [a, b, c, d] = el.nodes;
-  const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : undefined;
+  const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : paramValue(netlist, el);
   const sentences: string[] = [];
   const ctx = contextOf(netlist);
   switch (el.letter) {
@@ -1555,8 +1663,9 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         } else if (fn) {
           const t0 = valueAtTimeZero(fn);
           sentences.push(t0 === undefined ? S.timeZeroValueUnknown(fn.token.text) : S.timeZeroValue(fn.token.text, formatSI(t0, 'V'))); // P17
-        } else if (!el.value) {
-          addNote(p.notes, S.missingValueSource('V')); // P16
+        } else if (!el.value && !el.fields.some((f) => f.role === 'other')) {
+          // P16, P16b. A word ngspice cannot read stops it instead (its row says so; re-check C3).
+          addNote(p.notes, el.fields.some((f) => f.role === 'value') ? S.dcNoNumber('V') : S.missingValueSource('V'));
         }
       }
       // C1, C1b, C2: which sign means "delivers power" depends on which side is the higher one.
@@ -1574,7 +1683,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       if (v === undefined && el.sourceFunction) {
         const t0 = valueAtTimeZero(el.sourceFunction);
         sentences.push(t0 === undefined ? S.timeZeroValueUnknown(el.sourceFunction.token.text) : S.timeZeroValue(el.sourceFunction.token.text, formatSI(t0, 'A')));
-      } else if (!el.value && !el.sourceFunction) addNote(p.notes, S.missingValueSource('A')); // P16
+      } else if (!el.value && !el.sourceFunction && !el.fields.some((f) => f.role === 'other')) {
+        // P16, P16b. A word ngspice cannot read stops it instead (its row says so; re-check C3).
+        addNote(p.notes, el.fields.some((f) => f.role === 'value') ? S.dcNoNumber('A') : S.missingValueSource('A'));
+      }
       break;
     }
     case 'E': {
@@ -1583,7 +1695,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         const gain = value.value !== undefined ? formatNumber(value.value) : value.text;
         sentences.push(S.eSentence(voltagePhrase(a, b), gain, voltagePhrase(c, d)));
         sentences.push(S.eReads(nodeFormula(a), nodeFormula(b), gain, nodeFormula(c), nodeFormula(d)));
-      } else if (d && !value) addNote(p.notes, S.noGainNote('gain')); // missing-value-4 in traps.md
+      } else if (d && !value) addNote(p.notes, noGainNoteOf(el, 'gain')); // missing-value-4, -11 in traps.md
       else addNote(p.notes, S.eFieldsNote); // M9
       break;
     }
@@ -1595,7 +1707,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         sentences.push(capitalise(S.gSentence(gm, control, nodePhrase(a), nodePhrase(b))));
         const g = value.value !== undefined ? formatNumber(value.value) : value.text;
         sentences.push(S.gReads(g, nodeFormula(c), nodeFormula(d), nodeProse(a), el.name.text, nodeProse(b)));
-      } else if (d && !value) addNote(p.notes, S.noGainNote('value in amps per volt')); // missing-value-5
+      } else if (d && !value) addNote(p.notes, noGainNoteOf(el, 'value in amps per volt')); // missing-value-5, -12
       else addNote(p.notes, S.eFieldsNote); // M9
       break;
     }
@@ -1618,7 +1730,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
           sentences.push(S.controlCurrentSign(control.text, nodeProse(tl.nodes[0]), nodeProse(tl.nodes[1])));
         }
       } else if (a && b && control && !value && !readNumber(control.text)) {
-        addNote(p.notes, S.noGainNote(el.letter === 'F' ? 'gain' : 'value in volts per amp')); // missing-value-6, -7
+        addNote(p.notes, noGainNoteOf(el, el.letter === 'F' ? 'gain' : 'value in volts per amp')); // missing-value-6, -7, -11, -12
       }
       addNote(p.notes, S.ammeterTrick); // P9, P10
       break;
@@ -1889,12 +2001,24 @@ function explainDc(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
       fields.push(fieldOf(`${second}source`, s.source, S.dcSourceMissingField(s.source.text)));
       addNote(notes, S.dcSourceMissing(s.source.text)); // M12
     }
-    const v = (t: Token | undefined, x: number | undefined): string => (x !== undefined ? plain(x, s.unit) : (t?.text ?? '?'));
-    if (s.start) fields.push(fieldOf('start', s.start, S.dcStart(v(s.start, s.startValue))));
-    if (s.stop) fields.push(fieldOf('stop', s.stop, S.dcStop(v(s.stop, s.stopValue))));
-    if (s.step) fields.push(fieldOf('step', s.step, S.dcStep(v(s.step, s.stepValue))));
-    if (!s.step || s.stepValue === 0) addNote(notes, S.dcStepZero); // M13, M13b
-    else if (s.points === 0) addNote(notes, S.dcNoPoints); // A11
+    // An invisible character is never shown: the word without it (its row and Checks name it).
+    const v = (t: Token | undefined, x: number | undefined): string => (x !== undefined ? plain(x, s.unit) : t ? withSpaces(withoutInvisible(t.text)) : '?');
+    // A word that is no number where one goes stops ngspice 47 ("Bad syntax!"; dc-sweep-problems-9, -10,
+    // invisible-character-12 to -15, look-alike-letter-8): said so, never as a sweep that runs (re-check S5).
+    // A word in braces or quotes is a number numparam works out first (dc-sweep-problems-17; its critic, CR1-4).
+    const notNumber = (t: Token | undefined, x: number | undefined): boolean => t !== undefined && x === undefined && !isExpression(t);
+    const read = (t: Token | undefined, x: number | undefined, what: (v: string) => string): string =>
+      notNumber(t, x) ? S.dcNotNumber : t && isExpression(t) ? what(valueWords(netlist, t, s.unit).text) : what(v(t, x));
+    if (s.start) fields.push(fieldOf('start', s.start, read(s.start, s.startValue, S.dcStart)));
+    if (s.stop) fields.push(fieldOf('stop', s.stop, read(s.stop, s.stopValue, S.dcStop)));
+    if (s.step) fields.push(fieldOf('step', s.step, read(s.step, s.stepValue, S.dcStep)));
+    if (notNumber(s.start, s.startValue) || notNumber(s.stop, s.stopValue) || notNumber(s.step, s.stepValue)) addNote(notes, S.dcNotNumberNote);
+    else if (!s.step || s.stepValue === 0) addNote(notes, S.dcStepZero); // M13, M13b
+    else if (s.points === 0) {
+      // A11 on a line of one sweep, or when both sweeps have none; in two sweeps one the wrong way never moves.
+      const other = r.sweeps[1 - k];
+      addNote(notes, !other || other.points === 0 ? S.dcNoPoints : k === 1 ? S.dcStuckSecond(s.source.text, v(s.start, s.startValue), other.source.text) : S.dcStuckFirst(s.source.text, v(s.start, s.startValue), other.source.text));
+    }
     const name = s.kind === 'temperature' ? 'the temperature' : s.source.text;
     phrases.push(S.dcSweep(name, v(s.start, s.startValue), v(s.stop, s.stopValue), v(s.step, s.stepValue)));
   });
@@ -1904,6 +2028,8 @@ function explainDc(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
   if (r.sweeps.length > 1 && r.points !== undefined && r.points > 0) {
     summary += ` ${S.dcNested(r.sweeps[0]!.source.text, r.sweeps[1]!.source.text, r.points)}`; // A12
   }
+  // A line ngspice 47 cannot read is never told as a sweep that runs (re-check critic CR1-11).
+  if (dcStopsNgspice(r)) summary = S.dcStops;
   return out(S.dcWhat, summary, fields, notes);
 }
 
