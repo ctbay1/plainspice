@@ -65,6 +65,12 @@ the number, between two words it glues them), look-alike-letter-4 (a capital M f
 is no M), look-alike-letter-5 (a look-alike in a node name makes another node) and invisible-character-6
 (an invisible character right after a sign) in traps.md.
 
+After the critic of round 2, the same day: C9h, C9i, C9j (a tiny real current flows on through the
+parts in series and side by side with it, though their ends are a step of a double apart), C9k (a
+ladder of 1000 sections: real nanovolts and femtoamps, and a far end below the smallest normal
+double) and C9l (two ends more than a few steps of a double apart carry a real current; 300 random
+bridges) in explanations.md.
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the

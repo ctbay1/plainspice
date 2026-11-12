@@ -18,7 +18,7 @@ import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
-import { isBuilt } from './graph.ts';
+import { behaviouralKind, isBuilt } from './graph.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -502,7 +502,7 @@ export const DESCRIBE_STRINGS = {
   noiseNode: (n: string): string => `every other current at ${nodeIn(n)} is 0, and the currents at a node add up to 0`,
   /** For several parts: what each of them does, by the kinds of reason found ("has its two ends at the same voltage, or ..."). */
   noiseEach: (kinds: readonly ('same' | 'copies' | 'reads' | 'node')[]): string => {
-    const words = { same: 'has its two ends at the same voltage', copies: 'copies a current that is 0', reads: 'reads a voltage that is 0', node: 'is the only current left at one of its nodes (the currents at a node add up to 0)' };
+    const words = { same: 'has its two ends at the same voltage', copies: 'copies a current that is 0', reads: 'reads a voltage that is 0', node: 'carries the only current left at one of its nodes (the currents at a node add up to 0)' };
     const list = kinds.map((k) => words[k]);
     return `each of these parts ${list.length <= 1 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} or ${list[list.length - 1]}`}`;
   },
@@ -753,20 +753,35 @@ const SOURCE_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'I', 'E', 'F', 
 const DEVICE_LETTERS: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'F', 'G', 'I', 'B']);
 const BRANCH_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'E', 'H', 'L']);
 
-// ------------------------------------------------------------------ rounding noise (C9–C9e)
+// ------------------------------------------------------------------ rounding noise (C9–C9l)
 
 /** ngspice's current tolerance, abstol (C9c): only a current below it can be rounding noise. */
 export const ABSTOL = 1e-12;
-/** ngspice's voltage tolerance, vntol (C9c): only a node voltage below it can be rounding noise. */
+/**
+ * ngspice's voltage tolerance, vntol (C9c): only a node voltage below it can be rounding noise, and a
+ * voltage of at least this much across a resistor is a real voltage (C9f, C9i).
+ */
 export const VNTOL = 1e-6;
 /**
- * Two node voltages are the same, up to ngspice's rounding, when they differ by at most this fraction
- * of the larger one. Balanced circuits leave 1 to 50 units in the last place of a double (C9:
- * 4.499999999999999 against 4.5, a difference of 2e-16 of the voltage; 300 balanced bridges with
- * random values, at most 1e-14). A real current with its two ends this close needs a resistor a
- * million million times smaller than the one in series with it.
+ * Two node voltages are the same, up to ngspice's rounding, when they differ by at most this many
+ * units in the last place of the larger one (ulp, the step between two neighbouring doubles). A
+ * balanced bridge leaves 1 (C9: 4.499999999999999 against 4.5) or 2 (C9b). Beyond a few, the
+ * difference is real: ngspice then gives the current the netlist's own values make (C9l).
  */
-export const SAME_VOLTAGE = 1e-12;
+export const SAME_VOLTAGE_ULPS = 4;
+/**
+ * The currents known to be real at a node add up to 0, up to ngspice's rounding, when their sum is at
+ * most this fraction of the largest of them. C9's 0.45 mA in and out of node a leave 1.7e-19 A, 4e-16
+ * of them; a bridge whose middle resistor is a million times smaller than its arms leaves up to 8e-11
+ * (C9l).
+ */
+export const KCL_ROUNDING = 1e-9;
+/**
+ * Below the smallest normal double, 2^-1022 (about 2.2e-308), a double has fewer digits, down to one:
+ * what ngspice gives there is what is left of real values too small for a double (the far end of a
+ * ladder of 1000 sections, C9k), never called noise.
+ */
+const SMALLEST_NORMAL = 2 ** -1022;
 
 /** Why a current ngspice gave is rounding noise of a current that is 0 (roundingNoise). */
 export type NoiseWhy =
@@ -786,7 +801,16 @@ export interface RoundingNoise {
   nodes: Set<string>;
 }
 
-const sameVoltage = (a: number, b: number): boolean => Math.abs(a - b) <= SAME_VOLTAGE * Math.max(Math.abs(a), Math.abs(b));
+const ulpView = new DataView(new ArrayBuffer(8));
+/** The step from |x| to the next double: 2^-52 of |x|'s power of 2. */
+function ulp(x: number): number {
+  ulpView.setFloat64(0, Math.abs(x));
+  const exponent = ulpView.getUint16(0) >>> 4;
+  return exponent === 0 ? Number.MIN_VALUE : 2 ** (exponent - 1075);
+}
+
+/** The same voltage up to ngspice's rounding: at most SAME_VOLTAGE_ULPS apart (C9, C9b, C9l). */
+const sameVoltage = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= SAME_VOLTAGE_ULPS * ulp(Math.max(Math.abs(a), Math.abs(b)));
 
 /** Parts whose current flows in at their first node and out at their second, nowhere else (E's and G's control nodes take none). */
 const TWO_ENDED: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'B']);
@@ -796,19 +820,28 @@ const zeroVolts = (el: Element): boolean => el.letter === 'V' && !el.sourceFunct
 
 /**
  * Which currents and node voltages of an operating point ngspice gave as rounding noise of a 0 (C9,
- * C9b, C9d), decided part by part from the circuit's own numbers, never by comparing sizes across the
- * circuit: a 2 aA source next to a 4 mA circuit is a real 2 aA (C9e). Only a current below abstol can
- * be noise, and only when its true value is 0:
- * - never a current source's: its current is its own value;
+ * C9b, C9d), decided from the circuit's own numbers, never by comparing sizes across the circuit: a
+ * 2 aA source next to a 4 mA circuit is a real 2 aA (C9e). Linear in the size of the circuit: each
+ * step looks again only at the parts a change can affect.
+ *
+ * First, the currents that are real, which are never noise:
+ * - a current of at least 1 pA (abstol); a current source's (I, or B with I=): its own value;
+ * - a resistor with a real voltage across it (at least 1 µV and more than rounding), a G that reads one;
+ * - an F that copies a real current; a part at a node with a part whose current ngspice does not give
+ *   by name (a diode, a transistor, a subcircuit, a switch): it may carry that part's current;
+ * - Kirchhoff's current law: where the real currents at a node do not add up to 0 (by more than
+ *   rounding), the node's other parts carry the difference (C9h-C9k); and a part in series with a real
+ *   current (the only two parts at a node) carries it too.
+ * Then a current below 1 pA that is not real is noise when the circuit makes it 0:
  * - a resistor or capacitor whose two ends are at the same voltage (sameVoltage, or joined by parts
- *   with no voltage across them);
+ *   with no voltage across them by their own numbers: an inductor, a 0 V source, an E or H whose
+ *   control is 0, a resistor whose ends are the same);
  * - an F that copies a current that is 0, a G that reads a voltage that is 0;
- * - any other part that is the only current left at one of its nodes: every other current there is 0,
- *   and the currents at a node add up to 0 (Kirchhoff's current law). A node with a part whose current
- *   ngspice does not give by name (a diode, a transistor, a subcircuit, a switch) is never used.
+ * - any other part that carries the only current left at one of its nodes: every other current there
+ *   is 0, and the currents at a node add up to 0. A node with a part whose current ngspice does not
+ *   give by name is never used.
  * A node voltage below vntol is noise when the node is joined to ground through parts with no voltage
- * across them: a resistor that carries no current, an inductor (a short in .op, P12), a 0 V source,
- * an E whose control voltage is 0, an H whose control current is 0.
+ * across them: those above, and a resistor whose current is noise of 0 (C9d).
  */
 export function roundingNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const out: RoundingNoise = { currents: new Map(), nodes: new Set() };
@@ -825,35 +858,140 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
     .lines.map((l) => l.element!)
     .filter((el) => el.letter && isBuilt(el));
   const byKey = new Map(parts.map((el) => [el.key, el]));
-  // The parts that carry current at each node; a node with a part whose current is not known is never used.
+  const controlOf = (el: Element): string | undefined => (el.controlSource ? netlistPart(netlist, el.controlSource.text) : undefined);
+  const volt = (ref: NodeRef | undefined): number | undefined => (ref ? volts.get(nodeName(ref)) : undefined);
+
+  // Each part's two ends, and the parts whose current flows at each node. A node with a part whose
+  // current is not known is `unknown`: Kirchhoff's current law cannot be used there.
+  const ends = new Map<string, [string, string]>();
   const at = new Map<string, Element[]>();
   const unknown = new Set<string>();
   for (const el of parts) {
     const two = TWO_ENDED.has(el.letter!);
-    const known = two && amps.has(el.key);
-    for (const ref of two ? el.nodes.slice(0, 2) : el.nodes) {
-      const n = nodeName(ref);
-      const list = at.get(n);
-      if (!known) unknown.add(n);
-      else if (list) list.push(el);
-      else at.set(n, [el]);
+    if (!two || !amps.has(el.key)) {
+      for (const ref of two ? el.nodes.slice(0, 2) : el.nodes) unknown.add(nodeName(ref));
+      continue;
+    }
+    const [p, n] = el.nodes;
+    if (!p || !n || nodeName(p) === nodeName(n)) continue;
+    const pair: [string, string] = [nodeName(p), nodeName(n)];
+    ends.set(el.key, pair);
+    for (const node of pair) {
+      const list = at.get(node);
+      if (list) list.push(el);
+      else at.set(node, [el]);
     }
   }
-  // Nodes joined by parts with no voltage across them: one name per group.
+  const counted = (node: string): boolean => node !== '0' && !unknown.has(node);
+  // The F and H that read each source's current.
+  const readers = new Map<string, Element[]>();
+  for (const el of parts) {
+    const control = (el.letter === 'F' || el.letter === 'H') && controlOf(el);
+    if (!control) continue;
+    const list = readers.get(control);
+    if (list) list.push(el);
+    else readers.set(control, [el]);
+  }
+
+  // ---- 1. The currents that are real.
+  const real = new Set<string>();
+  interface Balance {
+    all: number;
+    largest: number;
+    tiny: number;
+    largestTiny: number;
+    open: number;
+    done: boolean;
+  }
+  const balance = new Map<string, Balance>();
+  for (const [node, list] of at) if (counted(node)) balance.set(node, { all: 0, largest: 0, tiny: 0, largestTiny: 0, open: list.length, done: false });
+  const toCheck: string[] = [];
+  const makeReal = (first: Element): void => {
+    const stack = [first];
+    for (let el = stack.pop(); el; el = stack.pop()) {
+      if (real.has(el.key)) continue;
+      real.add(el.key);
+      const amp = amps.get(el.key) ?? 0;
+      for (const node of ends.get(el.key) ?? []) {
+        const b = balance.get(node);
+        if (!b) continue;
+        // The current leaving the node through this part.
+        const leaving = node === ends.get(el.key)![0] ? amp : -amp;
+        b.all += leaving;
+        b.largest = Math.max(b.largest, Math.abs(amp));
+        if (Math.abs(amp) < ABSTOL) {
+          b.tiny += leaving;
+          b.largestTiny = Math.max(b.largestTiny, Math.abs(amp));
+        }
+        b.open -= 1;
+        toCheck.push(node);
+      }
+      // An F copies its control's current: a real current copied is real.
+      for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) stack.push(r);
+    }
+  };
+  const realVoltage = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
+    const [a, b] = [volt(x), volt(y)];
+    return a !== undefined && b !== undefined && Math.abs(a - b) >= VNTOL && !sameVoltage(a, b);
+  };
+  for (const el of parts) {
+    const amp = amps.get(el.key);
+    if (!amp) continue;
+    const [p, n, c, d] = el.nodes;
+    if (
+      !(Math.abs(amp) < ABSTOL) ||
+      el.letter === 'I' ||
+      (el.letter === 'B' && behaviouralKind(el) !== 'v') ||
+      (el.letter === 'R' && realVoltage(p, n)) ||
+      (el.letter === 'G' && realVoltage(c, d)) ||
+      ends.get(el.key)?.some((node) => unknown.has(node))
+    )
+      makeReal(el);
+  }
+  // Kirchhoff's current law: where the real currents at a node do not add up to 0, the other parts there
+  // carry the difference; the tiny ones are checked on their own, since they are below the rounding
+  // of large ones (C9h-C9k). A part in series with a real current carries it too.
+  const clearlyNot0 = (sum: number, largest: number): boolean => largest > 0 && Math.abs(sum) > KCL_ROUNDING * largest;
+  for (let node = toCheck.pop(); node !== undefined; node = toCheck.pop()) {
+    const b = balance.get(node)!;
+    const list = at.get(node)!;
+    if (b.done || !b.open) continue;
+    if ((list.length === 2 && b.open === 1) || clearlyNot0(b.tiny, b.largestTiny) || clearlyNot0(b.all, b.largest)) {
+      b.done = true;
+      for (const el of list) if (!real.has(el.key)) makeReal(el);
+    }
+  }
+
+  // ---- 2. The currents that are noise of a 0.
+  const zero = (key: string | undefined): boolean => key !== undefined && !real.has(key) && (amps.get(key) === 0 || out.currents.has(key));
+  const candidate = (el: Element): boolean => {
+    const amp = amps.get(el.key);
+    return amp !== undefined && Math.abs(amp) >= SMALLEST_NORMAL && Math.abs(amp) < ABSTOL && !real.has(el.key);
+  };
+  // Nodes joined by parts with no voltage across them: one name per group. A part whose test depends on
+  // two groups waits on both; when two groups become one, it is looked at again.
   const group = new Map<string, string>();
+  const waiting = new Map<string, Element[]>();
+  const queue: Element[] = [];
   const find = (n: string): string => {
     let r = n;
     for (let up = group.get(r); up !== undefined; up = group.get(r)) r = up;
-    if (r !== n) group.set(n, r);
+    for (let x = n, up = group.get(x); up !== undefined && up !== r; x = up, up = group.get(x)) group.set(x, r);
     return r;
   };
-  const join = (a: string, b: string): boolean => {
-    const [x, y] = [find(a), find(b)];
-    if (x === y) return false;
+  const join = (a: string, b: string): void => {
+    let [x, y] = [find(a), find(b)];
+    if (x === y) return;
+    if ((waiting.get(x)?.length ?? 0) > (waiting.get(y)?.length ?? 0)) [x, y] = [y, x];
     group.set(x, y);
-    return true;
+    const moved = waiting.get(x);
+    if (!moved) return;
+    waiting.delete(x);
+    const into = waiting.get(y);
+    if (into) for (const el of moved) into.push(el);
+    else waiting.set(y, moved);
+    for (const el of moved) queue.push(el);
   };
-  const zero = (key: string | undefined): boolean => key !== undefined && (amps.get(key) === 0 || out.currents.has(key));
   const equal = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
     if (!x || !y) return false;
     const [a, b] = [nodeName(x), nodeName(y)];
@@ -861,43 +999,84 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
     const [va, vb] = [volts.get(a), volts.get(b)];
     return va !== undefined && vb !== undefined && sameVoltage(va, vb);
   };
-  const controlOf = (el: Element): string | undefined => (el.controlSource ? netlistPart(netlist, el.controlSource.text) : undefined);
+  // Parts with no voltage across them by their own numbers.
+  for (const el of parts) {
+    const [p, n] = el.nodes;
+    if (!p || !n) continue;
+    const [vp, vn] = [volt(p), volt(n)];
+    const tied =
+      el.letter === 'L' ||
+      zeroVolts(el) ||
+      (el.letter === 'R' && !real.has(el.key) && vp !== undefined && vn !== undefined && sameVoltage(vp, vn)) ||
+      (el.letter === 'H' && zero(controlOf(el)));
+    if (tied) join(nodeName(p), nodeName(n));
+  }
+  const wait = (el: Element, x: NodeRef | undefined, y: NodeRef | undefined): void => {
+    for (const ref of [x, y]) {
+      if (!ref) continue;
+      const root = find(nodeName(ref));
+      const list = waiting.get(root);
+      if (list) list.push(el);
+      else waiting.set(root, [el]);
+    }
+  };
+  // How many currents at each node are not 0: when one is left, it is 0 too.
+  const left = new Map<string, number>();
+  for (const [node, list] of at) if (counted(node)) left.set(node, list.filter((el) => !zero(el.key)).length);
+  const tiedE = new Set<string>();
   const whyZero = (el: Element): NoiseWhy | undefined => {
     const [p, n, c, d] = el.nodes;
     if ((el.letter === 'R' || el.letter === 'C') && p && n && equal(p, n)) return { kind: 'same', a: nodeName(p), b: nodeName(n) };
     if (el.letter === 'F' && zero(controlOf(el))) return { kind: 'copies', control: byKey.get(controlOf(el)!)?.name.text ?? el.controlSource!.text };
     if (el.letter === 'G' && c && d && equal(c, d)) return { kind: 'reads', c: nodeName(c), d: nodeName(d) };
-    if (!p || !n || nodeName(p) === nodeName(n)) return undefined;
-    for (const ref of [p, n]) {
-      const node = nodeName(ref);
-      if (node === '0' || unknown.has(node)) continue;
-      if ((at.get(node) ?? []).every((o) => o === el || zero(o.key))) return { kind: 'node', node };
-    }
+    for (const node of ends.get(el.key) ?? []) if (counted(node) && left.get(node) === 1) return { kind: 'node', node };
     return undefined;
   };
-  // Each pass can only add; it stops when a pass adds nothing.
-  for (let changed = true, pass = 0; changed && pass <= parts.length + 1; pass++) {
-    changed = false;
-    for (const el of parts) {
-      const [p, n, c, d] = el.nodes;
-      const tied =
-        el.letter === 'L' ||
-        zeroVolts(el) ||
-        (el.letter === 'R' && zero(el.key)) ||
-        (el.letter === 'E' && equal(c, d)) ||
-        (el.letter === 'H' && zero(controlOf(el)));
-      if (tied && p && n && join(nodeName(p), nodeName(n))) changed = true;
-      const amp = amps.get(el.key);
-      if (amp === undefined || amp === 0 || !(Math.abs(amp) < ABSTOL) || el.letter === 'I' || out.currents.has(el.key)) continue;
-      const why = whyZero(el);
-      if (why) {
-        out.currents.set(el.key, why);
-        changed = true;
-      }
+  for (const el of parts) {
+    const [p, n, c, d] = el.nodes;
+    if (el.letter === 'E') {
+      wait(el, c, d);
+      queue.push(el);
+    } else if (candidate(el)) {
+      if (el.letter === 'R' || el.letter === 'C') wait(el, p, n);
+      if (el.letter === 'G') wait(el, c, d);
+      queue.push(el);
     }
   }
+  for (const [node, count] of left) if (count === 1) queue.push(at.get(node)!.find((el) => !zero(el.key))!);
+  for (let k = 0; k < queue.length; k++) {
+    const el = queue[k]!;
+    const [p, n, c, d] = el.nodes;
+    // An E whose control voltage is 0 makes 0 V: no voltage across it.
+    if (el.letter === 'E' && !tiedE.has(el.key) && p && n && equal(c, d)) {
+      tiedE.add(el.key);
+      join(nodeName(p), nodeName(n));
+    }
+    if (!candidate(el) || out.currents.has(el.key)) continue;
+    const why = whyZero(el);
+    if (!why) continue;
+    out.currents.set(el.key, why);
+    for (const node of ends.get(el.key) ?? []) {
+      const count = left.get(node);
+      if (count === undefined) continue;
+      left.set(node, count - 1);
+      if (count - 1 === 1) queue.push(at.get(node)!.find((x) => !zero(x.key))!);
+    }
+    for (const r of readers.get(el.key) ?? []) {
+      // An F copies a current that is 0; an H makes 0 V from it.
+      if (r.letter === 'F') queue.push(r);
+      else if (r.nodes[0] && r.nodes[1]) join(nodeName(r.nodes[0]), nodeName(r.nodes[1]));
+    }
+  }
+
+  // ---- 3. Node voltages that are noise of a 0: joined to ground through parts with no voltage across
+  // them, a resistor whose current is noise of 0 among them (C9d).
+  for (const key of out.currents.keys()) {
+    const pair = byKey.get(key)?.letter === 'R' ? ends.get(key) : undefined;
+    if (pair) join(pair[0], pair[1]);
+  }
   const ground = find('0');
-  for (const [node, value] of volts) if (node !== '0' && value !== 0 && Math.abs(value) < VNTOL && find(node) === ground) out.nodes.add(node);
+  for (const [node, value] of volts) if (node !== '0' && Math.abs(value) >= SMALLEST_NORMAL && Math.abs(value) < VNTOL && find(node) === ground) out.nodes.add(node);
   return out;
 }
 
