@@ -93,12 +93,22 @@ describe('Ctrl+K after the final reviews', () => {
     // Hyphens typed as shown (words W5).
     fireEvent.change(input, { target: { value: 'current-controlled current' } });
     expect(labels(palette)[0]).toBe(t('palettePlace', { part: toolPhrase('F') }));
-    // The channel's word finds the four tools (words W4), and "controlled" still does.
+    // The channel's word finds the four tools (words W4), first, before the examples named with it (the
+    // critic of W4: Enter opened an example over the open circuit), and "controlled" still does.
     const dependentTools = (['E', 'F', 'G', 'H'] as const).map((tl) => t('palettePlace', { part: toolPhrase(tl) }));
-    fireEvent.change(input, { target: { value: 'dependent' } });
-    expect(labels(palette)).toEqual(expect.arrayContaining(dependentTools));
+    for (const query of ['dependent', 'dependent source']) {
+      fireEvent.change(input, { target: { value: query } });
+      expect(labels(palette).slice(0, 4), query).toEqual(dependentTools);
+      expect(labels(palette).length, query).toBeGreaterThan(4);
+      expect(within(palette).getByRole('option', { selected: true }).textContent).toContain(dependentTools[0]);
+    }
     fireEvent.change(input, { target: { value: 'controlled' } });
     expect(labels(palette)).toEqual(expect.arrayContaining(dependentTools));
+    // And a textbook's initials: each its own source, first.
+    for (const [query, i] of [['vcvs', 0], ['cccs', 1], ['vccs', 2], ['ccvs', 3]] as const) {
+      fireEvent.change(input, { target: { value: query } });
+      expect(labels(palette)[0], query).toBe(dependentTools[i]);
+    }
     // Accents or not: the same examples (words W12).
     fireEvent.change(input, { target: { value: 'Thévenin' } });
     const accented = labels(palette);

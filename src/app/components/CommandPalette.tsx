@@ -19,6 +19,11 @@ export interface Command {
   group: string;
   /** Extra words that should find it. */
   keywords?: string;
+  /**
+   * Other names it has (the channel's word, a textbook's initials: "dependent source", "vcvs"):
+   * found, and ranked, as its own name is, so they bring it to the top, not only into the list.
+   */
+  aliases?: readonly string[];
   /** A shortcut to show. */
   shortcut?: string;
 }
@@ -41,10 +46,11 @@ export function commandWords(text: string): string[] {
 
 /**
  * The commands whose words start with every typed word (any order: "plain" finds "the plain font",
- * not "explain"; "net" finds "netlist"), best first: a command whose name starts with what was
- * typed, then one whose name has every typed word, then one found by its group or keywords ("open the
- * help" finds Open the help first, not Open the settings in "Settings and help"). Within each rank the
- * list keeps its order, and each group stays in one piece.
+ * not "explain"; "net" finds "netlist"), best first: a command whose name (or another name it has,
+ * its aliases) starts with what was typed, then one whose names have every typed word, then one
+ * found by its group or keywords ("open the help" finds Open the help first, not Open the settings
+ * in "Settings and help"). Within each rank the list keeps its order, and each group stays in one
+ * piece.
  */
 export function filterCommands(commands: readonly Command[], query: string): Command[] {
   const typed = commandWords(query);
@@ -52,10 +58,11 @@ export function filterCommands(commands: readonly Command[], query: string): Com
   const phrase = typed.join(' ');
   const ranked: { c: Command; rank: number; i: number }[] = [];
   commands.forEach((c, i) => {
-    const name = commandWords(c.label);
+    const names = [c.label, ...(c.aliases ?? [])].map(commandWords);
+    const name = names.flat();
     const all = [...name, ...commandWords(c.group), ...commandWords(c.keywords ?? '')];
     if (!typed.every((w) => all.some((x) => x.startsWith(w)))) return;
-    const rank = name.join(' ').startsWith(phrase) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
+    const rank = names.some((n) => n.join(' ').startsWith(phrase)) ? 0 : typed.every((w) => name.some((x) => x.startsWith(w))) ? 1 : 2;
     ranked.push({ c, rank, i });
   });
   // Groups stay whole (the list shows each group once, under its heading): a group goes where its best

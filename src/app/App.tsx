@@ -161,7 +161,7 @@ import {
   type WireDraft,
   type WireStart,
 } from './editing.ts';
-import { isPartKind, kindName, toolPhrase, type Tool } from './tools.ts';
+import { isPartKind, kindName, toolAliases, toolPhrase, type Tool } from './tools.ts';
 import { PlotPanel } from './components/PlotPanel.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
@@ -1402,9 +1402,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (schematic && !tooBig) {
       list.push({ id: 'add-part', group: gEdit, label: t('paletteAddPart'), keywords: 'add new part form nodes keyboard netlist line', shortcut: 'A' });
       for (const tl of ['R', 'C', 'L', 'V', 'I', 'E', 'F', 'G', 'H', 'ground'] as const) {
-        // E, F, G and H by both words a student brings: "dependent" (the channel's, the examples') and "controlled" (final reviews, words W4).
-        const dependent = tl === 'E' || tl === 'F' || tl === 'G' || tl === 'H' ? ' dependent controlled' : '';
-        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}${dependent}`}`, shortcut: tl === 'ground' ? '0' : tl });
+        // E to H also by their other names, ranked as their own: "dependent source" (the channel's word, the
+        // examples') and their initials, "vcvs" ... ("controlled" is in their names): final reviews, words W4.
+        const aliases = toolAliases(tl);
+        list.push({ id: `tool:${tl}`, group: gEdit, label: t('palettePlace', { part: toolPhrase(tl) }), keywords: `place add tool ${tl === 'ground' ? 'ground gnd 0' : `${tl} ${elementInfo(tl)?.name ?? ''}`}`, ...(aliases.length ? { aliases } : {}), shortcut: tl === 'ground' ? '0' : tl });
       }
       list.push({ id: 'tool:wire', group: gEdit, label: t('paletteWire'), keywords: 'wire draw line', shortcut: 'W' });
       const sel = selected?.kind === 'part' ? schematic.circuit.parts.find((p) => p.key === selected.key) : undefined;

@@ -178,8 +178,12 @@ Ctrl+K stay as they are.
 - **What is typed is cut into words as the commands are** (words W5, W12): at anything that is not a
   letter, a digit, _ or a dot, any case, accents or not. So a command's own name, typed as it is shown
   ("Place a current-controlled current source", "Example 3: short", "(V_Th)"), finds it, and
-  "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands are also
-  found by "dependent" and by "controlled" (words W4: the channel's word and the textbook's).
+  "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands have
+  other names of their own (a command's `aliases`, found and ranked as its name is): "dependent
+  source", the channel's word, and their textbook initials, "vcvs", "cccs", "vccs" and "ccvs" (read off
+  the catalog's names). So "dependent" lists them first, before the eight examples named with the word,
+  in view on a phone too, and Enter places a source rather than opening an example over the open
+  circuit (words W4 and its critic); "controlled", the textbook's word, is in their names.
 - **A fix takes with it the drawing lines it leaves with nothing to name** (kept F1). A check's fix
   changes part lines only; when it renames a node ("Make n3 the ground", "Rename n12 to n2") or takes
   a part away, the `*@ label` or `*@` position line of that node or part goes in the same step, as the

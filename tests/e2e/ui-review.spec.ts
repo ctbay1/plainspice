@@ -1,7 +1,8 @@
 /**
  * What the final reviews of milestone 2 found in the page (the ui lane), fixed, in a real browser:
  * Ctrl+K keeps the focus in its field (Tab stays there, a click on a group's name too, Escape closes
- * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); a fix on the video's
+ * it from anywhere) and its list passes axe's best-practice rules (a11y A1, A3); "dependent" lists the
+ * dependent sources' Place commands first (words W4); a fix on the video's
  * mistake examples leaves no drawing warning, and the tab and the announcement agree (kept F1); the
  * starter's why is shown in the hint line (words W9); the Netlist panel a SPICE for Beginners example
  * opened closes with the next video's example (student netlist-panel-stays); a new node never takes a
@@ -10,6 +11,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { starterWords } from '../../src/app/editing.ts';
+import { toolPhrase } from '../../src/app/tools.ts';
 import {
   checksCount,
   chooseExample,
@@ -77,6 +79,27 @@ test('axe: Ctrl+K’s list passes the best-practice rules too (its groups are al
   const results = await new AxeBuilder({ page }).withTags(['best-practice']).include('.palette').analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(' | ')}`)).toEqual([]);
   await expect(palette(page).getByRole('listbox').getByRole('group', { name: t('paletteGroupRun') })).toBeVisible();
+});
+
+test('Ctrl+K “dependent” lists the four Place commands first, in view on a phone too; “cccs” finds F (the critic of words W4)', async ({ page }) => {
+  await openApp(page);
+  await expectSolved(page);
+  await page.keyboard.press('ControlOrMeta+k');
+  await search(page).fill('dependent');
+  const tools = (['E', 'F', 'G', 'H'] as const).map((tl) => t('palettePlace', { part: toolPhrase(tl) }));
+  const options = palette(page).getByRole('option');
+  for (const [i, label] of tools.entries()) await expect(options.nth(i)).toContainText(label);
+  // In the list's view without scrolling (on a Pixel 7 the examples used to fill it), and Enter would place E.
+  const hidden = await palette(page).evaluate((dialog, count) => {
+    const list = dialog.querySelector('[role=listbox]')!.getBoundingClientRect();
+    return [...dialog.querySelectorAll('[role=option]')].slice(0, count).filter((o) => o.getBoundingClientRect().bottom > list.bottom + 1).map((o) => o.textContent);
+  }, tools.length);
+  expect(hidden).toEqual([]);
+  await expect(palette(page).getByRole('option', { selected: true })).toContainText(tools[0]!);
+  await search(page).fill('cccs');
+  await expect(options.first()).toContainText(tools[1]!);
+  await page.keyboard.press('Escape');
+  await expect(palette(page)).toHaveCount(0);
 });
 
 test('a fix on the video’s mistake examples leaves no drawing warning; the tab and what is said agree (kept F1)', async ({ page }) => {
