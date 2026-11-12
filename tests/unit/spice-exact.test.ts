@@ -10,6 +10,7 @@ import { roundingNoise } from '../../src/spice/describe.ts';
 import {
   agrees,
   exactModel,
+  exactValue,
   fraction,
   fromDouble,
   isZero,
@@ -22,6 +23,7 @@ import {
   solveExact,
   toDouble,
   ulp,
+  ZERO,
   type ExactModel,
   type Fraction,
 } from '../../src/spice/exact.ts';
@@ -99,6 +101,44 @@ describe('readExact: the value a word writes, read by ngspice\'s grammar', () =>
     }
     expect(words).toBeGreaterThan(1800);
     expect(nearest / words).toBeGreaterThan(0.95);
+  });
+
+  it('a word no double can be is not read, and builds no power of ten: 1e-999999999 at once, where it took half a minute and then failed (the critic of the re-check\'s fixes)', () => {
+    const quick = (word: string): Fraction | undefined => {
+      const t0 = performance.now();
+      const x = readExact(word);
+      // Microseconds when right; 26 s, then a RangeError, when 10^999999999 is built.
+      expect(performance.now() - t0, word.slice(0, 24)).toBeLessThan(50);
+      return x;
+    };
+    expect(quick('1e-999999999')).toBeUndefined();
+    expect(quick('1e-99999999')).toBeUndefined();
+    expect(quick('1e+999999999')).toBeUndefined();
+    expect(quick('1e-400')).toBeUndefined();
+    expect(quick('1e400')).toBeUndefined();
+    // Digits that are all 0 are 0, whatever the exponent: ngspice gives 0 too.
+    expect(quick('0e-999999999')).toEqual(ZERO);
+    expect(quick('-0.000e+999999999')).toEqual(ZERO);
+    // The ends of the doubles are still read, and long words of digits are read in one go.
+    expect(quick('1e308')).toEqual(q(10n ** 308n));
+    expect(quick('2.5e-308')).toEqual(q(25n, 10n ** 309n));
+    expect(quick(`0.${'0'.repeat(10_000)}1`)).toBeUndefined();
+    expect(quick(`1.${'0'.repeat(150)}1`)).toBeUndefined();
+    expect(quick(`1${'0'.repeat(200)}`)).toEqual(q(10n ** 200n));
+    // An exponent written with leading zeros is the same exponent, as in ngspice's int.
+    expect(quick('1e0000000003')).toEqual(q(1000n));
+  });
+
+  it('exactValue takes a word only when ngspice\'s double for it is that value to within READ_ULPS units in the last place', () => {
+    expect(exactValue({ text: '0.3', value: 0.30000000000000004 })).toEqual(q(3n, 10n));
+    expect(exactValue({ text: '1k', value: 1000 })).toEqual(q(1000n));
+    // A double that is not this word's (a reading changed on purpose): not read exactly.
+    expect(exactValue({ text: '1k', value: 1000.0000001 })).toBeUndefined();
+    expect(exactValue({ text: '0.3', value: 0.3 + 8 * ulp(0.3) })).toBeUndefined();
+    // ngspice's 0 for a word that is not 0 (1e-999999999 underflows): not this value; looked at before the word is read.
+    expect(exactValue({ text: '1e-999999999', value: 0 })).toBeUndefined();
+    expect(exactValue({ text: '0e-999999999', value: 0 })).toEqual(ZERO);
+    expect(exactValue({ text: '1e-320', value: 1e-320 })).toBeUndefined();
   });
 
   it('the suffix corpus: every word native ngspice 47 reads as a current source\'s value is that value to within READ_ULPS', () => {

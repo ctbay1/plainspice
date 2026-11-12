@@ -146,13 +146,28 @@ const pow10 = (k: number): bigint => TEN ** BigInt(k);
 const SCALES: Readonly<Record<string, number>> = { t: 12, g: 9, k: 3, u: -6, n: -9, p: -12, f: -15, a: -18, m: -3 };
 
 /**
+ * The most significant digits a word may write to be read exactly: a double holds 17, and no
+ * beginner writes 100. A longer word is left to the rule for other circuits.
+ */
+const MAX_DIGITS = 100;
+/**
+ * Doubles lie between 4.9e-324 and 1.8e308. A word whose value is outside 10^-325 to 10^310 is no
+ * double: ngspice reads it as 0 or as infinity, never as the value written. It is not read exactly,
+ * and no power of ten is built for it: 10^999999999 alone, for a word like 1e-999999999, takes half a
+ * minute and then fails (the critic of the re-check's fixes).
+ */
+const DECIMAL_EXPONENTS = { least: -325, most: 310 } as const;
+
+/**
  * The value ngspice reads from a value word, as the exact decimal the word writes: "4.7k" is 4700,
  * "0.3" is 3/10, "2A" is 2/10^18 (atto), "10M" is 1/100 (milli), "1mil" is 254/10^7. The grammar is
  * readNumber's (src/spice/numbers.ts), which mirrors ngspice's INPevaluate: the same word end, sign,
  * digits, exponent ('e' or 'd') and at most one scale letter; anything after it is ignored. ngspice
  * itself computes digits × 10^n in doubles (N15), so its value can be a unit or two in the last
  * place away from this one; `exactModel` checks that it is never more (`READ_ULPS`). Undefined where
- * readNumber reads no number, and for an exponent too long for ngspice's int.
+ * readNumber reads no number, for an exponent too long for ngspice's int, for more than MAX_DIGITS
+ * significant digits, and for a value no double can be (DECIMAL_EXPONENTS). Digits that are all 0
+ * are 0, whatever the exponent.
  */
 export function readExact(text: string): Fraction | undefined {
   const s = text.includes('\r') ? text.replaceAll('\r', '') : text;
@@ -173,20 +188,36 @@ export function readExact(text: string): Fraction | undefined {
   if (i >= end || (!digit(i) && t[i] !== '.')) return undefined;
   let digits = '';
   let exponent = 0;
-  while (digit(i)) digits += t[i++];
-  const done = (): Fraction => {
-    const n = BigInt(digits || '0');
-    const v = exponent >= 0 ? fraction(n * pow10(exponent)) : fraction(n, pow10(-exponent));
+  let mil = false;
+  /** The digits from i on, as one slice (a word can have thousands). */
+  const run = (): string => {
+    const from = i;
+    while (digit(i)) i += 1;
+    return t.slice(from, i);
+  };
+  digits = run();
+  const done = (): Fraction | undefined => {
+    // Leading zeros say nothing; trailing ones go into the exponent. Every size is checked before a power is built.
+    let lead = 0;
+    while (lead < digits.length && digits.charCodeAt(lead) === 48) lead += 1;
+    if (lead === digits.length) return ZERO;
+    let last = digits.length;
+    while (digits.charCodeAt(last - 1) === 48) last -= 1;
+    const sig = digits.slice(lead, last);
+    const e = exponent + digits.length - last;
+    const magnitude = sig.length - 1 + e + (mil ? 2 : 0);
+    if (sig.length > MAX_DIGITS || magnitude < DECIMAL_EXPONENTS.least || magnitude > DECIMAL_EXPONENTS.most) return undefined;
+    const n = BigInt(sig) * (mil ? 254n : 1n);
+    const v = e >= 0 ? fraction(n * pow10(e)) : fraction(n, pow10(-e));
     return negative ? neg(v) : v;
   };
   if (i >= end || t[i] === ':') return done();
   if (t[i] === '.') {
     i += 1;
     if (i >= end) return done();
-    while (digit(i)) {
-      digits += t[i++];
-      exponent -= 1;
-    }
+    const decimals = run();
+    digits += decimals;
+    exponent -= decimals.length;
   }
   const e = i < end ? t.charCodeAt(i) | 0x20 : 0;
   if (e === 0x65 || e === 0x64) {
@@ -197,8 +228,10 @@ export function readExact(text: string): Fraction | undefined {
       i += 1;
       sign = -1;
     }
-    let written = '';
-    while (digit(i)) written += t[i++];
+    let written = run();
+    let zeros = 0;
+    while (zeros < written.length && written.charCodeAt(zeros) === 48) zeros += 1;
+    written = written.slice(zeros);
     // ngspice keeps the exponent in a C int; a longer one wraps there (numbers.ts), so it is not read here.
     if (written.length > 9) return undefined;
     exponent += sign * Number(written || '0');
@@ -210,7 +243,7 @@ export function readExact(text: string): Fraction | undefined {
     if (t.charCodeAt(i) < 128 && c === 0x6d && i + 2 < end && c1 === 0x65 && c2 === 0x67 && t.charCodeAt(i + 1) < 128 && t.charCodeAt(i + 2) < 128) exponent += 6;
     else if (t.charCodeAt(i) < 128 && c === 0x6d && i + 2 < end && c1 === 0x69 && c2 === 0x6c && t.charCodeAt(i + 1) < 128 && t.charCodeAt(i + 2) < 128) {
       // mil: 25.4e-6, which ngspice applies as mantissa × 25.4 and an exponent 6 lower.
-      digits = (BigInt(digits || '0') * 254n).toString();
+      mil = true;
       exponent -= 7;
     } else if (t.charCodeAt(i) < 128) {
       const k = SCALES[String.fromCharCode(c)];
@@ -226,12 +259,12 @@ export const READ_ULPS = 4;
 /** The exact value of a value field, when ngspice's double for it is that value to within READ_ULPS. */
 export function exactValue(reading: NumberReading | undefined): Fraction | undefined {
   if (!reading || !Number.isFinite(reading.value)) return undefined;
+  const v = reading.value;
+  // Below the smallest normal double ngspice's value has fewer digits: not this value. Looked at before the word is read.
+  if (v !== 0 && Math.abs(v) < 2 ** -1022) return undefined;
   const x = readExact(reading.text);
   if (!x) return undefined;
-  const v = reading.value;
   if (v === 0) return isZero(x) ? x : undefined;
-  // Below the smallest normal double ngspice's value has fewer digits: not this value.
-  if (Math.abs(v) < 2 ** -1022) return undefined;
   const diff = abs(sub(x, fromDouble(v)));
   return compare(diff, fromDouble(READ_ULPS * ulp(v))) <= 0 ? x : undefined;
 }
