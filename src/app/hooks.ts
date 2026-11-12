@@ -74,6 +74,40 @@ export function useRect<T extends HTMLElement>(): [(el: T | null) => void, Rect]
   return [ref, rect];
 }
 
+/**
+ * Whether an element's content is taller than the element itself (so it scrolls), kept up to date as
+ * either changes: the element's size (a window resized, the stack around it squeezed), its children's
+ * sizes (the words in them wrapping again), and what is in it (other words, a child replaced by another,
+ * which is then watched in its turn).
+ */
+export function useOverflowing<T extends HTMLElement>(): [(el: T | null) => void, boolean] {
+  const [over, setOver] = useState(false);
+  const stop = useRef<(() => void) | undefined>(undefined);
+  const ref = useCallback((el: T | null) => {
+    stop.current?.();
+    stop.current = undefined;
+    if (!el) {
+      setOver(false);
+      return;
+    }
+    const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => update());
+    const update = (): void => {
+      setOver(el.scrollHeight > el.clientHeight + 1);
+      // Watching an element already watched does nothing; a new child is watched from now on.
+      for (const child of el.children) ro?.observe(child);
+    };
+    ro?.observe(el);
+    const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(update);
+    mo?.observe(el, { childList: true, subtree: true, characterData: true });
+    update();
+    stop.current = () => {
+      ro?.disconnect();
+      mo?.disconnect();
+    };
+  }, []);
+  return [ref, over];
+}
+
 /** The window's size, kept up to date. */
 export function useWindowSize(): { width: number; height: number } {
   const [size, setSize] = useState(() => ({ width: globalThis.innerWidth ?? 0, height: globalThis.innerHeight ?? 0 }));

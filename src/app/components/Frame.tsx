@@ -248,6 +248,8 @@ export function StatusLines({
   invite,
   undo,
   whole,
+  hintRef,
+  hintScrolls = false,
 }: {
   hint: string;
   status: StatusWords;
@@ -262,6 +264,14 @@ export function StatusLines({
   undo?: () => void;
   /** A phone whose drawing the reader moved partly out of view: the way back to all of it ("Show the whole drawing", Fit), at hand. */
   whole?: () => void;
+  /**
+   * A phone: the hint in a box of its own (hintRef), which gives way first when the stack along the
+   * bottom is short of room (large text on a small phone) and then scrolls, so the status and its
+   * buttons stay whole below it. hintScrolls (its words are taller than it): a named region a finger
+   * and the keys can scroll (WCAG 2.1.1).
+   */
+  hintRef?: (el: HTMLDivElement | null) => void;
+  hintScrolls?: boolean;
 }): ReactNode {
   const bad = status.tone === 'bad' || status.tone === 'paused';
   // A phone's pill with "Show the whole drawing" and another button (the turn, Undo): a calm status
@@ -271,21 +281,29 @@ export function StatusLines({
   // starts, and a tap is not met by Undo where "Show the whole drawing" was. A status to read (paused,
   // an error, one with a reason) keeps its words.
   const crowded = phone && (status.tone === 'ok' || status.tone === 'busy') && !status.detail && !!whole && (!!turn || !!undo);
+  const hintLine = invite ? (
+    <div className="hint-row">
+      <p className="hint" id="hint-line">
+        {hint}
+      </p>
+      <button type="button" className="button button--note hint__invite" onClick={invite.onClick}>
+        {invite.label}
+      </button>
+    </div>
+  ) : (
+    <p className="hint" id="hint-line">
+      {hint}
+    </p>
+  );
   return (
     <div className={`lines${bad ? ' is-bad' : ''}`}>
-      {invite ? (
-        <div className="hint-row">
-          <p className="hint" id="hint-line">
-            {hint}
-          </p>
-          <button type="button" className="button button--note hint__invite" onClick={invite.onClick}>
-            {invite.label}
-          </button>
+      {hintRef ? (
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/prefer-tag-over-role
+        <div className={`hint-scroll${hintScrolls ? ' is-squeezed' : ''}`} ref={hintRef} {...(hintScrolls ? { tabIndex: 0, role: 'region', 'aria-label': t('hintScrollLabel') } : {})}>
+          {hintLine}
         </div>
       ) : (
-        <p className="hint" id="hint-line">
-          {hint}
-        </p>
+        hintLine
       )}
       <div className={`status${crowded ? ' is-crowded' : ''}`} data-tone={status.tone}>
         {crowded ? null : <span className={`status__dot status__dot--${status.tone}`} aria-hidden="true" />}

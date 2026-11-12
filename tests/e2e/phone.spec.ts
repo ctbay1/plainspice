@@ -6,13 +6,13 @@
  * opens sheets, which take the focus and give it back; a part's card is a sheet, and while its value
  * is typed it becomes a strip held above the keyboard, the part and its numbers kept in view.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { stripDrawing } from '../../src/schematic/index.ts';
 import { encodeShare } from '../../src/share/link.ts';
 import { minUnitFor } from '../../src/notebook/fit.ts';
-import { chooseExample, closePanel, drawing, drawnText, expectSolved, gridPoint, hintLine, isPhone, openApp, openCard, partOnDrawing, setNetlist, settle, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
+import { chooseExample, closePanel, drawing, drawnText, expectSolved, gridPoint, hintLine, isPhone, newCircuit, openApp, openCard, partOnDrawing, setNetlist, settle, sidewaysScroll, statusLine, t, TYPING } from './helpers.ts';
 
 test.beforeEach(({ page }) => {
   test.skip(!isPhone(page), 'the phone’s layout');
@@ -671,4 +671,93 @@ test('the status line speaks of numbers in pencil only while the drawing shows s
   await expect(page.locator('.nb-results text')).toHaveCount(0);
   await expect(status).not.toContainText(t('statusOldPencil'));
   await expect(canvas).not.toHaveClass(/\bis-pending\b/);
+});
+
+// ------------------------------------------------------------------ a small phone with the largest text (12 November 2026)
+
+/**
+ * A control a finger can use: on the screen, below the top bar, and nothing over its middle (a tap
+ * there reaches it). Brought into view first inside whatever scrolls around it (a sheet, the lines).
+ */
+async function expectUsable(target: Locator, what: string): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
+  const seen = await target.evaluate((el) => {
+    const top = document.querySelector('.top-area header')!.getBoundingClientRect().bottom;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const over = hit && !el.contains(hit) ? `${hit.tagName.toLowerCase()}.${String((hit as HTMLElement).className).split(' ')[0]}` : '';
+    return { inside: r.top >= top - 1 && r.bottom <= innerHeight + 1 && r.left >= -1 && r.right <= innerWidth + 1, over, where: `${Math.round(r.top)} to ${Math.round(r.bottom)}, the top bar ending at ${Math.round(top)}, the screen at ${innerHeight}` };
+  });
+  expect(seen.inside, `${what} is on the screen, below the top bar (${seen.where})`).toBe(true);
+  expect(seen.over, `${what}: nothing over its middle`).toBe('');
+}
+
+/** The free paper: below the top bar, above the stack along the bottom and the hand bar. */
+async function paperLeft(page: Page): Promise<{ top: number; bottom: number }> {
+  return page.evaluate(() => ({
+    top: document.querySelector('.top-area header')!.getBoundingClientRect().bottom,
+    bottom: Math.min(...[...document.querySelectorAll('.phone-bottom, .hand-bar')].map((e) => e.getBoundingClientRect().top)),
+  }));
+}
+
+test('a small phone with the largest text keeps the hand bar, the sheets, the strip and the status line usable, and some paper (320 × 568, upright and on its side)', async ({ page }) => {
+  // The Settings' largest text (150 %): the critic found the hand bar under the top bar on an iPhone SE,
+  // Place out of reach, as soon as a resistor was in hand.
+  await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
+  for (const size of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+    const at = `${size.width} × ${size.height}`;
+    await page.setViewportSize(size);
+    await openApp(page);
+    await newCircuit(page);
+    const bar = page.getByRole('navigation', { name: t('barLabel') });
+    await expectUsable(bar.getByRole('button', { name: t('barParts') }), `${at}: Parts`);
+    await bar.getByRole('button', { name: t('barParts') }).tap();
+    const sheet = page.getByRole('dialog', { name: t('partsSheetTitle') });
+    await settle(page);
+    await expectUsable(sheet.getByRole('button', { name: t('partsClose') }), `${at}: the Parts sheet's ×`);
+    const resistor = sheet.getByRole('button', { name: /^Resistor/ });
+    await expectUsable(resistor, `${at}: Resistor in the Parts sheet`);
+    await resistor.tap();
+    await expect(sheet).toHaveCount(0);
+    // The hand bar, before and after a tap on the paper left free shows where the resistor goes (the
+    // hint then says more, and the lines under the hand bar grow).
+    const hand = page.getByRole('toolbar', { name: t('handLabel', { part: 'Resistor' }) });
+    await expect(hand).toBeVisible();
+    const place = hand.getByRole('button', { name: t('place') });
+    const handButtons = [[place, 'Place'], [hand.getByRole('button', { name: t('handTurn') }), 'Turn'], [hand.getByRole('button', { name: t('handMirror') }), 'Mirror'], [hand.getByRole('button', { name: t('cancel') }), 'Cancel']] as const;
+    await settle(page);
+    for (const [button, name] of handButtons) await expectUsable(button, `${at}: the hand bar's ${name}`);
+    let free = await paperLeft(page);
+    expect(free.bottom - free.top, `${at}: some paper shows above the hand bar`).toBeGreaterThanOrEqual(48);
+    await page.touchscreen.tap(size.width / 2, free.top + (free.bottom - free.top) * 0.4);
+    await expect(place).toBeEnabled();
+    await settle(page);
+    for (const [button, name] of handButtons) await expectUsable(button, `${at}: the hand bar's ${name}, a place chosen`);
+    await place.tap();
+    // The card's sheet, its value tapped: the strip, and Done.
+    const card = page.getByRole('dialog', { name: /^R1 / });
+    await expect(card).toBeVisible();
+    await settle(page);
+    await expectUsable(card.getByRole('button', { name: t('cardClose', { name: 'R1' }) }), `${at}: the card's ×`);
+    const field = card.getByRole('textbox');
+    await expectUsable(field, `${at}: the card's value`);
+    await field.tap();
+    await expect(page.locator('.app')).toHaveClass(/\bis-editing\b/);
+    const done = card.getByRole('button', { name: t('cardDone') });
+    await settle(page);
+    await expectUsable(field, `${at}: the strip's value`);
+    await expectUsable(done, `${at}: the strip's Done`);
+    await done.tap();
+    await expect(done).toHaveCount(0);
+    await card.getByRole('button', { name: t('cardClose', { name: 'R1' }) }).tap();
+    await expect(card).toHaveCount(0);
+    // The status line's Undo (a change made on the drawing), the part on the paper, and the paper itself.
+    await settle(page);
+    await expectUsable(statusLine(page).getByRole('button', { name: t('undo'), exact: true }), `${at}: the status line's Undo`);
+    await expectUsable(partOnDrawing(page, 'R1'), `${at}: R1 on the drawing`);
+    free = await paperLeft(page);
+    expect(free.bottom - free.top, `${at}: some paper shows`).toBeGreaterThanOrEqual(48);
+    await partOnDrawing(page, 'R1').tap();
+    await expect(card).toBeVisible();
+  }
 });

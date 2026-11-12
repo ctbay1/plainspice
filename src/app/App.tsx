@@ -168,7 +168,7 @@ import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts
 import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, drawnAsInVideo, exampleById, exampleName } from './examples.ts';
 import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedText, stillToChoose } from './fixes.ts';
 import { hintShowsNote, noteAfterTool, REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
-import { useKeyboardInset, useMedia, useRect, useTextScale, useWindowSize } from './hooks.ts';
+import { useKeyboardInset, useMedia, useOverflowing, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
 import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
 import { nodeColours, sameColours } from './nodes.ts';
@@ -212,6 +212,20 @@ const PHONE_QUERY = '(max-width: 899px), (max-height: 520px)';
 /** The same limits in pixels at the usual text size, scaled with the Text size setting. */
 const PHONE_WIDTH = 900;
 const PHONE_HEIGHT = 521;
+/**
+ * A phone's window short for its text, at the usual text size (scaled with it, as the limits above):
+ * below the first the hint line steps out of sight and the bars get compact (a phone on its side, a
+ * small phone with large text); below the second a calm status folds to its dot (decision 0018).
+ */
+const SHORT_HEIGHT = 420;
+const SHORTER_HEIGHT = 300;
+/**
+ * The free paper a phone keeps under its top bar, whatever the text size: a share of the window
+ * below that bar, never less than the pixels. The stack along the bottom (and the hand bar above it)
+ * never covers more: its lines and its sheet give way, and scroll (decision 0018).
+ */
+const PAPER_KEPT_SHARE = 0.15;
+const PAPER_KEPT_PX = 48;
 /** The card on a computer: as wide and as tall as its tallest state at the usual text size (it is measured, too). */
 const CARD_W = 680;
 const CARD_H = 218;
@@ -346,6 +360,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // The layout follows the room in text sizes, as a browser's zoom does: a 1280 × 800 window with
   // text at 150 % holds what an 853 × 533 one holds at 100 %, and gets the phone's layout too.
   const phone = narrow || win.width < PHONE_WIDTH * textScale || win.height < PHONE_HEIGHT * textScale;
+  // The same for a short window: 568 px of height with text at 150 % holds what 379 px hold at 100 %.
+  const short = phone && win.height < SHORT_HEIGHT * Math.max(1, textScale);
+  const shorter = phone && win.height < SHORTER_HEIGHT * Math.max(1, textScale);
 
   // ------------------------------------------------------------------ ngspice and live runs
   const [engineStatus, setEngineStatus] = useState<EngineStatus>({ status: 'loading' });
@@ -1572,6 +1589,27 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   }, [shown, card, nodeCard]);
   // As wide as the text needs (larger text, a wider card: it wraps less and stays short).
   const cardWidth = Math.min(CARD_W * textScale, Math.max(320, area.x1 - area.x0));
+  // On a phone the stack along the bottom (the hint and status lines, a sheet, the bar; the card's sheet
+  // or strip) never reaches higher than leaves the free paper it keeps under the top bar, and room for
+  // the hand bar above it while one is shown: with large text on a small phone it took the whole
+  // screen, and the hand bar went under the top bar (Place could not be tapped). The bar and the hand
+  // bar keep their size; the lines and a sheet give way, and scroll.
+  const paperKept = phone && topRect.height ? Math.max(PAPER_KEPT_PX, PAPER_KEPT_SHARE * (vh - keyboard - topRect.bottom)) : 0;
+  const stackMax = phone && topRect.height ? Math.max(0, Math.floor(vh - keyboard - topRect.bottom - paperKept - (handRect.height ? handRect.height + 12 : 0))) : undefined;
+  const [linesRef, linesSqueezed] = useOverflowing<HTMLElement>();
+  const [hintBoxRef, hintSqueezed] = useOverflowing<HTMLDivElement>();
+  // A sheet open on a phone (Parts, More, a panel) leaves the lines no room, even with the hint scrolled
+  // to its first line: they step out of sight (screen readers keep them) and the sheet keeps its size,
+  // until that sheet closes or the window changes; in a short window always, as the hint does there. Not
+  // a sliver of half a line over the sheet. (Out of sight they are not squeezed: kept for this sheet and
+  // window, not measured again, or they would come back and go again.)
+  const asideKey = phone && phoneSheet && phoneSheet !== 'card' ? `${phoneSheet}|${vw}|${vh}|${textScale}` : undefined;
+  const [linesAsideFor, setLinesAsideFor] = useState<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!asideKey) setLinesAsideFor(undefined);
+    else if (linesSqueezed) setLinesAsideFor(asideKey);
+  }, [asideKey, linesSqueezed]);
+  const linesAside = !!asideKey && (short || linesAsideFor === asideKey);
   const insets: Insets = phone
     ? // The stack along the bottom, lifted above the keyboard while a value is typed.
       { top: Math.max(topRect.bottom, stackBottom) + 4, right: 4, left: 16, bottom: bottomRect.height ? vh - bottomRect.top + 4 : 0 }
@@ -1841,8 +1879,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const noteInHint = hintShowsNote(noteLine, { refused: refusalShown, inHand: !!hand, moving: !!move });
   const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
-  // netlist being typed puts it aside.
-  const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist));
+  // netlist being typed puts it aside, as does a sheet that needs its room.
+  const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !linesAside));
   useEffect(() => {
     if (!refusal) return undefined;
     const timer = window.setTimeout(() => setRefusal(undefined), REFUSAL_SHOWN_MS);
@@ -1978,9 +2016,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const left = c.x0 < insets.left - 4;
     const right = c.x1 > viewInfo.size.width - insets.right + 4;
     if (!left && !right) return none;
-    // Half way down the free paper, or higher or lower where that keeps the button off the drawing's words.
+    // Half way down the free paper, or higher or lower where that keeps the button off the drawing's words;
+    // never above the free paper (under the top bar) when it is short for the button (2.75rem: it grows with the text).
     const y0 = insets.top + 8;
-    const y1 = viewInfo.size.height - insets.bottom - 52;
+    const y1 = Math.max(y0, viewInfo.size.height - insets.bottom - 8 - 44 * textScale);
     const onScreen = inkParts.map((b) => boxOnScreen(viewInfo.view, b));
     const clear = (top: number): boolean =>
       !onScreen.some((b) => b.y0 < top + 44 && b.y1 > top && ((left && b.x0 < insets.left + 90) || (right && b.x1 > viewInfo.size.width - insets.right - 90)));
@@ -1989,7 +2028,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     return { left, right, top: tries.find(clear) ?? middle };
     // insets by their numbers
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewInfo, ink, inkParts, shown, strip, insets.left, insets.right, insets.top, insets.bottom]);
+  }, [viewInfo, ink, inkParts, shown, strip, insets.left, insets.right, insets.top, insets.bottom, textScale]);
   /** The edge buttons: small, and where they cover none of the drawing's words if they can. */
   const edgeTop = edges.top;
   const panSideways = (dir: 1 | -1): void => {
@@ -2534,7 +2573,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         className={`hand-bar${phone ? ' hand-bar--phone' : ''}`}
         role="toolbar"
         aria-label={hand ? t('handLabel', { part: hand.kind === 'ground' ? t('toolGround') : kindName(hand.kind) }) : move ? t('editMove') : wireDraft ? t('wireLabel') : t('pieceLabel')}
-        style={phone ? { bottom: insets.bottom + 6 } : { bottom: (bottomRect.height ? vh - bottomRect.top : 0) + 10, left: area.x0, right: vw - area.x1 }}
+        // On a phone just above the stack along the bottom, which leaves it room (stackMax), and never under the top bar.
+        style={phone ? { bottom: Math.max(0, Math.min(insets.bottom + 6, vh - topRect.bottom - handRect.height - 6)) } : { bottom: (bottomRect.height ? vh - bottomRect.top : 0) + 10, left: area.x0, right: vw - area.x1 }}
       >
         {hand ? (
           <>
@@ -3154,6 +3194,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       {...(phone && !phoneSheet && viewInfo?.moved && !viewInfo.whole ? { whole: fit } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line.
       {...(phone && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
+      // On a phone the hint gives way first when the stack is short of room, and scrolls: the status stays whole.
+      {...(phone ? { hintRef: hintBoxRef, hintScrolls: hintSqueezed } : {})}
     />
   );
 
@@ -3182,7 +3224,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     ) : null;
 
   return (
-    <div className={`app nb-theme${phone ? ' is-phone' : ' is-desktop'}${plain ? ' nb-plain' : ''}${strip ? ' is-editing' : ''}${phone && typingNetlist ? ' is-typing-netlist' : ''}`} data-tool={tool}>
+    <div
+      className={`app nb-theme${phone ? ' is-phone' : ' is-desktop'}${short ? ' is-short' : ''}${shorter ? ' is-shorter' : ''}${plain ? ' nb-plain' : ''}${strip ? ' is-editing' : ''}${phone && typingNetlist ? ' is-typing-netlist' : ''}`}
+      data-tool={tool}
+    >
       <a
         className="skip-link"
         href="#drawing"
@@ -3358,8 +3403,26 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       {phone ? (
         // One stack along the bottom: the hint and status, a sheet, the bar. While a value is typed it
         // is only the card's strip, held above the keyboard.
-        <div className={`phone-bottom${strip ? ' is-strip' : ''}`} ref={bottomRef} inert={inert} style={keyboard ? { bottom: keyboard } : undefined}>
-          {phoneSheet === 'card' ? null : <footer className="phone-lines">{lines}</footer>}
+        <div
+          className={`phone-bottom${strip ? ' is-strip' : ''}`}
+          ref={bottomRef}
+          inert={inert}
+          style={{ ...(keyboard ? { bottom: keyboard } : {}), ...(stackMax !== undefined ? { maxHeight: stackMax } : {}) }}
+        >
+          {phoneSheet === 'card' ? null : (
+            // The hint gives way first and scrolls (StatusLines); should even the status be taller than
+            // the room left, the lines scroll as a whole: then they are a named region a finger can scroll
+            // and the keys can reach (WCAG 2.1.1), as a table too wide for the screen is. Behind a sheet
+            // that needs their room, out of sight (linesAside).
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            <footer
+              className={`phone-lines${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}`}
+              ref={linesRef}
+              {...(linesSqueezed && !linesAside ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
+            >
+              {lines}
+            </footer>
+          )}
           {phoneSheet === 'panel' ? panelSection : null}
           {phoneSheet === 'parts' ? partsSection : null}
           {phoneSheet === 'more' ? (

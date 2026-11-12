@@ -212,6 +212,37 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   error, a run with a reason beside it, such as the numbers kept in pencil) keeps its words. Where
   even the buttons alone are too wide (a 320 px phone, large text, or Undo as a third), they take
   two rows, each centred.
+- **Every bar and sheet on the screen, at every text size.** On an iPhone SE (320 × 568) with the
+  Settings' largest text (150 %), a resistor in hand put the hand bar under the top bar: Place could not
+  be tapped (a critic of these fixes). The stack along the bottom (the hint and status lines, a sheet, the
+  bar) had no greatest height, and the hand bar sat on top of it. Checked on four phones (320 × 568,
+  360 × 640, 375 × 667, the Pixel 7), upright and on their side, at the three text sizes, through the
+  first screen, a blank page, the Parts sheet, a part in hand, its card's sheet, the strip, the part
+  placed, the drawing moved, the More sheet and a turned example: before, every one of the 24 had
+  something off the screen or under the top bar (212 places, some at the usual text size: the Parts
+  sheet pushed the hint under the top bar on a 375 × 667 phone); now none. What changed:
+  the stack never covers more than leaves the free paper a share of the window below the top bar
+  (15 %, at least 48 px), and room for the hand bar above it while one is shown. The bar and the hand
+  bar keep their size; the lines give way before a sheet (the sheet is what the student is using), and
+  within them the hint gives way first: its box keeps its first line and scrolls, the status and its
+  buttons stay whole below it; should even the status not fit, the lines scroll as a whole. What scrolls
+  is then a named region a finger and the keys can scroll (WCAG 2.1.1), as a table too wide for the
+  screen is. A sheet that leaves the lines no room at all puts them out of sight while it is open
+  (screen readers keep them), rather than a sliver of half a line over the sheet. A short window is
+  short for its text, as the phone's layout itself is chosen: below 420 px of height at the usual text
+  size, 630 px at 150 %, so an iPhone SE upright with the largest text gets what a phone on its side
+  gets (the hint out of sight, the bar's words for screen readers only), and a sheet takes the lines'
+  place there; the bars get compact in a short window (their buttons 44 px, the smallest target the
+  phone's main buttons have, larger only for large text's icons; less padding; a sheet's head without
+  its grab), and below 300 px at the usual size (450 px at 150 %) a calm status folds to its dot. The
+  card for a blank page scrolls inside the free paper, and the "more" at a cut edge stays below the
+  top bar. Considered: the hand bar inside the stack, which would count in the drawing's free paper
+  and move the drawing as a part is taken in hand; the status's reason or the hint cut to a line or two,
+  which loses words (WCAG 1.4.4 and 1.4.10 allow scrolling, not cutting); the lines out of sight whenever
+  a sheet is open, which changes the usual layout, where there is room for both. Test:
+  `tests/e2e/phone.spec.ts`, "a small phone with the largest text keeps the hand bar, the sheets, the
+  strip and the status line usable, and some paper" (on fix-base it stops at Place, at 48 to 102 px with
+  the top bar ending at 85).
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the
