@@ -77,7 +77,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [missing-model](#missing-model) | D, Q, J, M without a .model line | error | stops |
 | [missing-subcircuit](#missing-subcircuit) | X without a .subckt | error | stops |
 | [model-not-in-engine](#model-not-in-engine) | BSIM, HiSIM, SOI, HICUM, JFET2 levels, and O lines (LTRA) | error | our engine stops; native 47 runs it |
-| [dc-sweep-problems](#dc-sweep-problems) | `.dc` with a zero or missing step, the wrong direction, a step past the end, a source not in the circuit | error, warning | stops, hangs (42), or no points |
+| [dc-sweep-problems](#dc-sweep-problems) | `.dc` with a zero or missing step, the wrong direction, a step past the end, a source not in the circuit, a word that is no number where a number goes | error, warning | stops, hangs (42), or no points |
 | [tran-problems](#tran-problems) | `.tran` with one number, a step of 0 or less, a start after the stop, a step longer than the run | error, info | stops; or runs anyway (info) |
 | [tf-problems](#tf-problems) | `.tf` of a missing node, i( ) of a non-source, a missing or wrong input | error | silent wrong answers, or stops |
 | [no-analysis](#no-analysis) | no analysis line | error | runs nothing |
@@ -5586,7 +5586,7 @@ PlainSpice's checks: no trap.
 
 ## dc-sweep-problems
 
-Each sweep of a `.dc` line (a second, nested one too). Errors, except a step bigger than the range (warning: one point). Fixes: ten steps across the range, swap the ends, or flip the step's sign; a sweep of a missing source gets the circuit's only source.
+Each sweep of a `.dc` line (a second, nested one too), read by place as ngspice 47 reads it: a name, then the start, the stop and the step. After the re-check of the fixes (12 November 2026, S5): a word that is no number where a number goes is said there (dc-sweep-problems-9, -10), never taken for the name of another sweep, and a word one of the character checks explains (`−5` with a minus sign from a document) leaves the line to that check, so no fix rewrites the sweep around it. Errors, except a step bigger than the range (warning: one point). Fixes: ten steps across the range, swap the ends, or flip the step's sign; a sweep of a missing source gets the circuit's only source.
 
 What PlainSpice shows for dc-sweep-problems-1 (error, line 5):
 
@@ -5839,6 +5839,97 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: no trap.
+
+What PlainSpice shows for dc-sweep-problems-9 (error, line 4):
+
+> **The start of this sweep is not a number.** .dc V1 needs three numbers after the name: the start, the stop and the step, for example .dc V1 0 5 1. Here O stands where the start goes, with a letter O where the digit 0 belongs.
+>
+> *ngspice:* ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]
+>
+> *Fixes:* "Write 0"
+
+What PlainSpice shows for dc-sweep-problems-10 (error, line 4):
+
+> **The stop of this sweep is not a number.** .dc V1 needs three numbers after the name: the start, the stop and the step, for example .dc V1 0 5 1. Here V1 stands where the stop goes.
+>
+> *ngspice:* ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]
+>
+> *Fixes:* none
+
+### dc-sweep-problems-9. A word that is no number where the start goes: ngspice 47 says 'Bad syntax!'
+
+Added after the re-check (12 November 2026, S5). The letter O typed for the digit 0; the fix writes 0. ngspice 42 reads the word as the name of a second sweep instead.
+
+==== facts/dc-sweep-problems-9.cir
+```spice
+* the letter O where the start of a .dc sweep goes
+V1 in 0 1
+R1 in 0 1k
+.dc V1 O 5 1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .dc v1 o 5 1
+    Bad syntax!
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Fatal error: DC Transfer Function: Voltage source, current source, or resistor named "o" is not in the circuit
+    doAnalyses: no such device
+    run simulation(s) aborted
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `dc-sweep-problems`.
+
+### dc-sweep-problems-10. The same where the stop goes
+
+ngspice 42 runs this line without a sweep: no points, no message.
+
+==== facts/dc-sweep-problems-10.cir
+```spice
+* the source named again where the stop of a .dc sweep goes
+V1 in 0 1
+R1 in 0 1k
+.dc V1 0 V1 1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      .dc v1 0 v1 1
+    Bad syntax!
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: (no rawfile data)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `dc-sweep-problems`.
 
 ## tran-problems
 

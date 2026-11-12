@@ -342,6 +342,8 @@ export const EXPLAIN_STRINGS = {
     `For each value of ${outer}, ${inner} runs through all its values: ${total} points in all.`,
   dcNoPoints: 'With these numbers the sweep has no points (start is past stop for this step), so ngspice runs nothing and says nothing.',
   dcStepZero: 'A step of 0 (or no step at all) stops ngspice 47: "Bad syntax!".',
+  dcNotNumber: 'not a number for SPICE (see Checks)',
+  dcNotNumberNote: 'A word that is no number where a number goes stops ngspice 47: "Bad syntax!".',
   dcSourceMissing: (name: string): string => `There is no ${name} in the circuit, so ngspice stops: the source to sweep "is not in the circuit".`,
   dcSourceWrong: (name: string, what: string): string =>
     `${name} is ${withArticle(what)}, and .dc sweeps only a voltage source, a current source, a resistor or the temperature, so ngspice stops: the source to sweep "is not in the circuit".`,
@@ -1895,11 +1897,16 @@ function explainDc(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
       fields.push(fieldOf(`${second}source`, s.source, S.dcSourceMissingField(s.source.text)));
       addNote(notes, S.dcSourceMissing(s.source.text)); // M12
     }
-    const v = (t: Token | undefined, x: number | undefined): string => (x !== undefined ? plain(x, s.unit) : (t?.text ?? '?'));
-    if (s.start) fields.push(fieldOf('start', s.start, S.dcStart(v(s.start, s.startValue))));
-    if (s.stop) fields.push(fieldOf('stop', s.stop, S.dcStop(v(s.stop, s.stopValue))));
-    if (s.step) fields.push(fieldOf('step', s.step, S.dcStep(v(s.step, s.stepValue))));
-    if (!s.step || s.stepValue === 0) addNote(notes, S.dcStepZero); // M13, M13b
+    // An invisible character is never shown: the word without it (its row and Checks name it).
+    const v = (t: Token | undefined, x: number | undefined): string => (x !== undefined ? plain(x, s.unit) : t ? withSpaces(withoutInvisible(t.text)) : '?');
+    // A word that is no number where one goes stops ngspice 47 ("Bad syntax!"; dc-sweep-problems-9, -10,
+    // invisible-character-12 to -15, look-alike-letter-8): said so, never as a sweep that runs (re-check S5).
+    const read = (t: Token | undefined, x: number | undefined, what: (v: string) => string): string => (t && x === undefined ? S.dcNotNumber : what(v(t, x)));
+    if (s.start) fields.push(fieldOf('start', s.start, read(s.start, s.startValue, S.dcStart)));
+    if (s.stop) fields.push(fieldOf('stop', s.stop, read(s.stop, s.stopValue, S.dcStop)));
+    if (s.step) fields.push(fieldOf('step', s.step, read(s.step, s.stepValue, S.dcStep)));
+    if ((s.start && s.startValue === undefined) || (s.stop && s.stopValue === undefined) || (s.step && s.stepValue === undefined)) addNote(notes, S.dcNotNumberNote);
+    else if (!s.step || s.stepValue === 0) addNote(notes, S.dcStepZero); // M13, M13b
     else if (s.points === 0) addNote(notes, S.dcNoPoints); // A11
     const name = s.kind === 'temperature' ? 'the temperature' : s.source.text;
     phrases.push(S.dcSweep(name, v(s.start, s.startValue), v(s.stop, s.stopValue), v(s.step, s.stepValue)));

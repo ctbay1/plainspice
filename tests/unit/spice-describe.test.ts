@@ -412,7 +412,7 @@ describe('the core review of 10 Nov 2026 (docs/spice-facts/review.md)', () => {
 
 describe('explainDiagnostic: every code in plain words', () => {
   const net = parseNetlist(
-    '* t\nV1 n1 0 6\nR1 n1 0 2\nr1 n1 0 4\n1k a 0 5\nX1 a 0 amp\nD1 a 0 dmod\nM1 d g 0 0 nm\n.model nm nmos level=8\nK1 L1 L2 0.9\nB1 a 0 5\n.tf v(n1) V9\n.dc V9 0 1 1\n.tran 5m\n.foo\n$ odd\n',
+    '* t\nV1 n1 0 6\nR1 n1 0 2\nr1 n1 0 4\n1k a 0 5\nX1 a 0 amp\nD1 a 0 dmod\nM1 d g 0 0 nm\n.model nm nmos level=8\nK1 L1 L2 0.9\nB1 a 0 5\n.tf v(n1) V9\n.dc V9 0 1\n.tran 5m\n.foo\n$ odd\n',
   );
   const cases: [EngineDiagnostic, string, number | undefined][] = [
     [diag('singular-matrix', '', { severity: 'warning', subject: 'v1#branch' }), 'V1 is in a loop of voltage sources or shorts', 2],
@@ -875,5 +875,16 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     // Four times the parts: about four times the time. Each pass over the whole netlist marked one more part (sixteen times or worse).
     expect(largeLadder.noiseMs).toBeLessThan(10 * Math.max(smallLadder.noiseMs, 1));
     expect(largeChain.noiseMs).toBeLessThan(10 * Math.max(smallChain.noiseMs, 1));
+  });
+});
+
+describe('after the re-check of the fixes (12 November 2026)', () => {
+  it('a .dc line\'s "Bad syntax!" is its step only when the step is missing or 0; a word that is no number is "ngspice cannot read this line" (S5)', () => {
+    const title = (line: string): string => {
+      const net = parseNetlist(`* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n${line}\n.end\n`);
+      return explainDiagnostic({ severity: 'error', code: 'bad-syntax', text: 'Bad syntax!', line: 5 }, net).title;
+    };
+    for (const line of ['.dc V1 0 5', '.dc V1 0 5 0', '.dc V1 0 5 V2 0 1 0.5', '.dc V1 0 5 1 V2 0 1', '.dc V1 0 5 1 V2 0 1 0']) expect(title(line), line).toBe('.dc needs a step that is not 0');
+    for (const line of ['.dc V1 −5 5 1', '.dc V1 0 \u200b5 1', '.dc V1 V1 5 1 -400m', '.dc V1 0 V1 1', '.dc V1 O 5 1', '.dc V1 0 5 1 V2 −1 1 0.5']) expect(title(line), line).toBe('ngspice cannot read this line');
   });
 });

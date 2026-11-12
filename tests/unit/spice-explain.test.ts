@@ -836,6 +836,18 @@ describe('after the final reviews (12 November 2026)', () => {
 describe('after the re-check of the fixes (12 November 2026)', () => {
   const allNotes = (e: LineExplanation): string => e.notes.map(sp).join(' ');
 
+  it('a .dc number ngspice cannot read is said to stop ngspice 47, never read as a sweep that runs (S5; dc-sweep-problems-9)', () => {
+    for (const [dc, label] of [['.dc V1 \u22125 5 1', 'start'], ['.dc V1 0 \u200b5 1', 'stop'], ['.dc V1 O 5 1', 'start'], ['.dc V1 0 V1 1', 'stop']] as const) {
+      const e = line(`* t\nV1 in 0 1\nR1 in 0 1k\n${dc}\n.end\n`, 4);
+      expect(meaningOf(e, label), dc).toBe('not a number for SPICE (see Checks)');
+      expect(allNotes(e), dc).toContain('A word that is no number where a number goes stops ngspice 47: "Bad syntax!".');
+      expect(allNotes(e), dc).not.toContain('A step of 0');
+      expect(e.summary.includes('\u200b'), dc).toBe(false);
+    }
+    // A plain sweep keeps its words.
+    expect(meaningOf(line('* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 -5 5 1\n.end\n', 4), 'start')).toBe('start: \u22125 V');
+  });
+
   it('a character outside ASCII inside a number is named, never "Don\'t type units" (C5; look-alike-letter-9, -12)', () => {
     for (const ch of ['。', '•', '·']) {
       const e = line(`* t\nI1 0 n1 1\nR1 n1 0 4${ch}7k\n.op\n.end\n`, 3);

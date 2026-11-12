@@ -1075,6 +1075,40 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
   const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
   const texts = (t: Trap): string[] => [t.title, t.why, t.ngspice, ...t.fixes.map((f) => f.label)];
 
+  it('says what ngspice does with a word it cannot read on an analysis line, by its place, never "unknown parameter" (S2; invisible-character-8 to -21)', () => {
+    const rc = '* t\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
+    const ac = '* t\nV1 in 0 DC 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n';
+    const dc = '* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n';
+    // Each place, with a zero-width space, a minus sign from a document, a thin space and a fullwidth digit at its start.
+    const places: [netlist: (w: string) => string, says: string][] = [
+      [(w) => `${rc}.tran ${w} 2m\n.end\n`, "ngspice stops: 'TSTEP is invalid, must be greater than zero.' [invisible-character-8]"],
+      [(w) => `${rc}.tran 0.1m ${w}\n.end\n`, "ngspice stops: 'TSTOP is invalid, must be greater than zero.' [invisible-character-9]"],
+      [(w) => `${rc}.tran 0.1m 2m ${w}\n.end\n`, "ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-10]"],
+      [(w) => `${rc}.tran 0.1m 2m 0 ${w}\n.end\n`, "ngspice stops: 'Error: unknown parameter on .tran - ignored'. It says ignored, but it runs nothing. [invisible-character-11]"],
+      [(w) => `${dc}.dc V1 ${w} 5 1\n.end\n`, "ngspice 47 stops: 'Bad syntax!'. ngspice 42 takes the word for the name of a second source to sweep"],
+      [(w) => `${dc}.dc V1 0 ${w} 1\n.end\n`, '[invisible-character-13]'],
+      [(w) => `${dc}.dc V1 0 5 ${w}\n.end\n`, '[invisible-character-14]'],
+      [(w) => `${dc}.dc V1 0 5 1 V2 ${w} 1 0.5\n.end\n`, "ngspice 47 stops: 'Bad syntax!'. [invisible-character-15]"],
+      [(w) => `${ac}.ac dec ${w} 1 1k\n.end\n`, "ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation', then stops: 'AC startfreq <= 0'. [invisible-character-16]"],
+      [(w) => `${ac}.ac dec 10 ${w} 1k\n.end\n`, '[invisible-character-17]'],
+      [(w) => `${ac}.ac dec 10 1 ${w}\n.end\n`, "ngspice warns: 'Warning, ngspice assumes default parameter(s) for ac simulation', and runs anyway, up to 1000 times the start frequency (1\u00a0kHz) instead of the stop written here. [invisible-character-18]"],
+      [(w) => `${ac}.noise v(out) V1 dec ${w} 1 1k\n.end\n`, "ngspice stops: 'Frequency of 0 is invalid'. [invisible-character-19]"],
+      [(w) => `${ac}.noise v(out) V1 dec 10 ${w} 1k\n.end\n`, '[invisible-character-20]'],
+      [(w) => `${ac}.noise v(out) V1 dec 10 1 ${w}\n.end\n`, '[invisible-character-21]'],
+    ];
+    for (const [netlist, says] of places) {
+      for (const w of ['\u200b5', '−5', '\u20095', '５']) {
+        const text = netlist(w);
+        const n = parseNetlist(text);
+        const found = traps(text).filter((t) => n.lines[t.line - 1]!.directive);
+        expect(found.map((t) => t.id), text).toHaveLength(1);
+        expect(found[0]!.severity, text).toBe('error');
+        expect(found[0]!.ngspice, text).toContain(says);
+        expect(found[0]!.fixes.map((f) => f.label), text).toEqual([`Write ${w === '−5' ? '-5' : '5'}`]);
+      }
+    }
+  });
+
   it('no trap on an analysis line quotes "unknown parameter", and places no run shows are left alone (S2 guard)', () => {
     const rc = '* t\nV1 in 0 DC 0 AC 1 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n';
     const lines = ['.tran {w} 2m', '.tran 0.1m {w}', '.tran 0.1m 2m {w}', '.tran 0.1m 2m 0 {w}', '.dc V1 {w} 5 1', '.dc V1 0 {w} 1', '.dc V1 0 5 {w}',
@@ -1096,6 +1130,36 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
       }
     }
     expect(checked).toBeGreaterThan(100);
+  });
+
+  it('a .dc line with a word that is a number once its character is fixed gets that check alone, and its fix leaves no trap (S5)', () => {
+    for (const text of ['* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 −5 5 1\n.end\n', '* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 \u200b5 1\n.end\n',
+      '* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 5 -5 −1\n.end\n', '* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2 −1 1 0.5\n.end\n',
+      '* t\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0<\u2009>5 1\n.end\n'.replace('<\u2009>', '\u2009')]) {
+      const found = traps(text);
+      expect(found.map((t) => t.id), text).not.toContain('dc-sweep-problems');
+      expect(found, text).toHaveLength(1);
+      for (const x of texts(found[0]!)) expect(x).not.toMatch(/[\u200b\u2009]/);
+      expect(ids(applyFix(text, found[0]!.fixes[0]!)), text).toEqual([]);
+    }
+  });
+
+  it('reads a .dc sweep by place, as ngspice 47 does: a word that is no number where one goes is said there (S5; dc-sweep-problems-9, -10)', () => {
+    const net = (line: string): string => `* t\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n${line}\n.end\n`;
+    const letterO = first(net('.dc V1 O 5 1'), 'dc-sweep-problems');
+    expect([letterO.title, letterO.ngspice, letterO.fixes.map((f) => f.label)]).toEqual(['The start of this sweep is not a number', "ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]", ['Write 0']]);
+    expect(letterO.why).toContain('with a letter O where the digit 0 belongs');
+    expect(ids(applyFix(net('.dc V1 O 5 1'), letterO.fixes[0]!))).toEqual([]);
+    // The skeptic's dead ends: no "Sweep V1 instead" that writes V1 twice, no step added to a line ngspice cannot read.
+    for (const line of ['.dc V1 V1 5 1 -400m', '.dc V1 0 V1 1', '.dc V1 V1 5 1']) {
+      const found = traps(net(line));
+      expect(found.map((t) => [t.id, t.title]), line).toEqual([['dc-sweep-problems', `The ${line === '.dc V1 0 V1 1' ? 'stop' : 'start'} of this sweep is not a number`]]);
+      expect(found[0]!.fixes, line).toEqual([]);
+    }
+    // A sweep with no step before the next one still gets "needs a step", and its fix (as before).
+    const step = first(net('.dc V1 0 5 V2 0 1 0.5'), 'dc-sweep-problems');
+    expect([step.title, step.fixes.map((f) => f.label)]).toEqual(['.dc needs a step', ['Add a step of 500m (10 steps)']]);
+    expect(ids(net('.dc V1 0 5 1 V2 0 1 0.5'))).toEqual([]);
   });
 
   it('on a capacitor or an inductor says ngspice warns about a model, never "without a message"; on the other parts, no message (S4; invisible-character-7, look-alike-letter-7)', () => {

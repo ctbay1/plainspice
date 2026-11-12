@@ -1663,6 +1663,23 @@ function written(netlist: Netlist, name: string, line?: number): string {
   return name;
 }
 
+/**
+ * Whether ngspice 47's 'Bad syntax!' on a .dc line is its step: missing or 0 in a sweep whose other
+ * numbers read. A word that is no number where a number goes (−5 with a minus sign from a document,
+ * V1 again) stops it too, and then the step is not the problem. Read by place, as checkDc does: where
+ * the step goes, a part's name or temp starts the next sweep, so that sweep has no step.
+ */
+function dcStepIsTheProblem(netlist: Netlist, line: number | undefined): boolean {
+  const reading = line === undefined ? undefined : readAnalysis(netlist, line - 1);
+  if (reading?.kind !== 'dc') return true;
+  for (const s of reading.sweeps) {
+    if ((s.start && s.startValue === undefined) || (s.stop && s.stopValue === undefined)) return false;
+    if (s.step && s.stepValue === undefined) return lowerAscii(s.step.text) === 'temp' || partNamed(netlist, s.step.text) !== undefined;
+    if (!s.step || s.stepValue === 0) return true;
+  }
+  return false;
+}
+
 function lineText(netlist: Netlist, line: number | undefined): string {
   return line === undefined ? '' : (netlist.lines[line - 1]?.text ?? '');
 }
@@ -1815,8 +1832,10 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       return withLine({ title: S.sweepMissingTitle(name), why: S.sweepMissingWhy(name) }, at); // M12
     }
     case 'bad-syntax': {
-      const isDc = /^\s*\.dc\b/i.test(lineText(netlist, d.line));
-      return withLine(isDc ? { title: S.badSyntaxDcTitle, why: S.badSyntaxDcWhy } : { title: S.badSyntaxTitle, why: S.badSyntaxWhy }); // M13, M13b
+      // M13, M13b: on a .dc line, the step only when it is missing or 0 (dc-sweep-problems-1, -2); a word that is
+      // no number where one goes says 'Bad syntax!' too (dc-sweep-problems-9, -10; re-check S5).
+      const isDc = /^\s*\.dc\b/i.test(lineText(netlist, d.line)) && dcStepIsTheProblem(netlist, d.line);
+      return withLine(isDc ? { title: S.badSyntaxDcTitle, why: S.badSyntaxDcWhy } : { title: S.badSyntaxTitle, why: S.badSyntaxWhy });
     }
     case 'bad-tran-arguments': {
       const which = (d.subject ?? '').toUpperCase();

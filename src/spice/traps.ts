@@ -2014,14 +2014,43 @@ function independentSources(c: Ctx): Element[] {
   return c.top.map((k) => el(c, k)).filter((e) => e.letter === 'V' || e.letter === 'I');
 }
 
+/**
+ * Each sweep of a .dc line, read by place as ngspice 47 reads it (inp2dot.c, dot_dc): a name, then
+ * three numbers, the start, the stop and the step. A word that is no number in a number's place
+ * stops ngspice 47 ('Bad syntax!', dc-sweep-problems-9, -10): it is said there, never taken for the
+ * name of another sweep. A word another check already explains (an invisible character, a look-alike,
+ * a character that looks like a space, the Greek mu) is left to that check, and the rest of the line
+ * with it: no fix may rewrite the sweep around it (re-check S5). Where the step goes, a word that names
+ * a part or temp starts the next sweep: the step is missing.
+ */
 function checkDc(c: Ctx, d: NonNullable<NetlistLine['directive']>): void {
   const args = d.args;
+  const line = c.byLine.get(lineAt(c.n, d.token.from).number) ?? [];
+  const covered = (t: Token): boolean => line.some((x) => x.id !== 'dc-sweep-problems' && x.span.from <= t.from && t.to <= x.span.to);
+  const sweepName = (t: Token): boolean => lowerAscii(t.text) === 'temp' || c.byKey.has(lowerAscii(t.text));
   let k = 0;
   while (k < args.length) {
     const src = args[k]!;
     const nums: Token[] = [];
-    for (let j = k + 1; j < args.length && nums.length < 3 && readNumber(args[j]!.text); j++) nums.push(args[j]!);
-    k += 1 + nums.length;
+    let j = k + 1;
+    for (; j < args.length && nums.length < 3; j++) {
+      if (nums.length === 2 && !readNumber(args[j]!.text) && sweepName(args[j]!)) break;
+      nums.push(args[j]!);
+    }
+    k = j;
+    if ([src, ...nums].some(covered)) return;
+    const bad = nums.findIndex((t) => !readNumber(t.text));
+    if (bad >= 0) {
+      const t = nums[bad]!;
+      const place = ['start', 'stop', 'step'][bad]!;
+      // The letter O typed for the digit 0 (.dc V1 O 5 1): say so, and write the zero (re-check C4).
+      const zero = /^[Oo]$/.test(cleanWord(t.text, true).clean) ? '0' : zeroForLetterO(t.text);
+      add(c, 'dc-sweep-problems', 'error', t, `The ${place} of this sweep is not a number`,
+        `.dc ${src.text} needs three numbers after the name: the start, the stop and the step, for example .dc ${src.text} 0 5 1. Here ${t.text} stands where the ${place} goes${zero ? ', with a letter O where the digit 0 belongs' : ''}.`,
+        `ngspice 47 stops: 'Bad syntax!'. [dc-sweep-problems-9, dc-sweep-problems-10]`,
+        zero ? [fix(`Write ${zero}`, replace(t, zero))] : []);
+      return;
+    }
     const name = lowerAscii(src.text);
     if (name !== 'temp') {
       const target = c.byKey.get(name);
