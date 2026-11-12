@@ -8584,6 +8584,115 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `invisible-character`.
 
+### invisible-character-7. On a .print line ngspice reads the name with the character as written: ngspice -b finds no such node there
+
+Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
+(non-ascii-node-3), ngspice leaves .print and .plot lines out of the step that writes such characters as
+`_`, so there `ou<ZWSP>t` is not `ou___t`, the node it built: run as `ngspice -b`, it warns that it
+can't parse the name and prints nothing for that line, and runs no analysis when that line was all it
+had to print; PlainSpice's run leaves the line out. The check said "without a message" here; now it says
+so only when no such line names the node, and its words name the character, never show it.
+
+What PlainSpice shows for invisible-character-7 (warning, line 3):
+
+> **A zero-width space (U+200B) hides in the node name out.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is a node called ou___t for ngspice.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [invisible-character-3, invisible-character-7]
+>
+> *Fixes:* "Take it out: name the node out"
+
+```spice
+* a zero-width space in a node name, on a .print line
+V1 in 0 12
+R1 in ou<ZWSP>t 1k
+R2 ou<ZWSP>t 0 2k
+.dc V1 0 12 6
+.print dc v(ou<ZWSP>t)
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Warning: can't parse 'ou<ZWSP>t': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: .print: no dc analysis found.
+  ngspice -b -r out.raw (exit 0), which prints instead:
+    .print line ignored since rawfile was produced.
+    rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(ou___t) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    .print line ignored since rawfile was produced.
+    vectors: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(ou___t) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+after the fix ("Take it out: name the node out"), native 47 and 42 and our engine: ngspice -b prints the v(out) table (exit 0);
+  -b -r gives v(out) = 0, 4, 8
+```
+
+PlainSpice's checks: `invisible-character`.
+
+### invisible-character-8. In a .control block too: a save of the name saves nothing, and with nothing else saved PlainSpice's run gives no results
+
+Added after the critic of the names lane, 12 November 2026 (4). As non-ascii-node-4 for a letter outside
+ASCII: a command for ngspice reads the name as written, so `save v(ou<ZWSP>t)` saves nothing, and with
+nothing else to save the analysis does not run, in PlainSpice's run too. The rename used to leave the
+.control line as it was, so the fixed netlist still gave no results; it now writes the plain name there
+too. When the save also names something ngspice finds, the run goes on (as non-ascii-node-7: `save
+v(ou<ZWSP>t) i(v1)`, native 47 and 42 and our engine, -b -r, exit 0, v(v-sweep) and i(v1) saved), and
+the check says only that ngspice finds no such node there.
+
+What PlainSpice shows for invisible-character-8 (warning, line 3):
+
+> **A zero-width space (U+200B) hides in the node name out.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is a node called ou___t for ngspice.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [invisible-character-3, invisible-character-8]
+>
+> *Fixes:* "Take it out: name the node out"
+
+```spice
+* a zero-width space in a node name, saved in a .control block
+V1 in 0 12
+R1 in ou<ZWSP>t 1k
+R2 ou<ZWSP>t 0 2k
+.dc V1 0 12 6
+.control
+save v(ou<ZWSP>t)
+run
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    vectors: (none)
+after the fix ("Take it out: name the node out", which now writes out in the save too), native 47 and 42 and our engine,
+  -b -r (exit 0): v(v-sweep) = 0, 6, 12, v(out) = 0, 4, 8
+```
+
+PlainSpice's checks: `invisible-character`.
+
 ## look-alike-letter
 
 Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,
@@ -8861,6 +8970,111 @@ ngspice 42, ngspice -b (exit 1):
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
+```
+
+PlainSpice's checks: `look-alike-letter`.
+
+### look-alike-letter-7. On a .print line ngspice reads a look-alike as written: ngspice -b finds no node оut there
+
+Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
+(non-ascii-node-3): on a .print or .plot line `оut`, with a Cyrillic о, is not `__ut`, the node ngspice
+built, so run as `ngspice -b` it warns "can't parse 'оut'", prints nothing for that line, and runs no
+analysis when that line was all it had to print; PlainSpice's run leaves the line out. The check said
+"without a message" here; now it says so only when no such line names the node.
+
+What PlainSpice shows for look-alike-letter-7 (warning, line 3):
+
+> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so ngspice calls this node __ut.
+>
+> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-7]
+>
+> *Fixes:* "Rename оut to out"
+
+```spice
+* a Cyrillic о in a node name, on a .print line
+V1 in 0 12
+R1 in оut 1k
+R2 оut 0 2k
+.dc V1 0 12 6
+.print dc v(оut)
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Warning: can't parse 'оut': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: .print: no dc analysis found.
+  ngspice -b -r out.raw (exit 0), which prints instead:
+    .print line ignored since rawfile was produced.
+    rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(__ut) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    .print line ignored since rawfile was produced.
+    vectors: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(__ut) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+after the fix ("Rename оut to out"), native 47 and 42 and our engine: ngspice -b prints the v(out) table (exit 0);
+  -b -r gives v(out) = 0, 4, 8
+```
+
+PlainSpice's checks: `look-alike-letter`.
+
+### look-alike-letter-8. In a .control block too: save v(оut) saves nothing, and with nothing else saved PlainSpice's run gives no results
+
+Added after the critic of the names lane, 12 November 2026 (4). As non-ascii-node-4: `save v(оut)` saves
+nothing, and with nothing else to save the analysis does not run, in PlainSpice's run too; the rename
+now writes `out` on the .control line too. With something else saved the run goes on (`save v(оut)
+i(v1)`, native 47 and 42 and our engine, -b -r, exit 0).
+
+What PlainSpice shows for look-alike-letter-8 (warning, line 3):
+
+> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so ngspice calls this node __ut.
+>
+> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [look-alike-letter-5, look-alike-letter-8]
+>
+> *Fixes:* "Rename оut to out"
+
+```spice
+* a Cyrillic о in a node name, saved in a .control block
+V1 in 0 12
+R1 in оut 1k
+R2 оut 0 2k
+.dc V1 0 12 6
+.control
+save v(оut)
+run
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    vectors: (none)
+after the fix ("Rename оut to out", which now writes out in the save too), native 47 and 42 and our engine,
+  -b -r (exit 0): v(v-sweep) = 0, 6, 12, v(out) = 0, 4, 8
 ```
 
 PlainSpice's checks: `look-alike-letter`.
@@ -9413,3 +9627,117 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `space-character`, `zero-ohm`, `space-character`.
+
+### space-character-12. On a .print line ngspice reads the name with the character as written: ngspice -b finds no such node there
+
+Added after the critic of the names lane, 12 November 2026 (4). As for a letter outside ASCII
+(non-ascii-node-3): on a .print or .plot line `o<THIN>ut` is not `o___ut`, the node ngspice built (its
+words end only at an ASCII space or tab), so run as `ngspice -b` it warns that it can't parse the name,
+prints nothing for that line, and runs no analysis when that line was all it had to print; PlainSpice's
+run leaves the line out. The check said "without a message" here; now it says so only when no such line
+names the node, and its words name the character, never show it.
+
+What PlainSpice shows for space-character-12 (warning, line 3):
+
+> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is a node called o___ut for ngspice.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [space-character-10, space-character-12]
+>
+> *Fixes:* "Take it out: name the node out"
+
+```spice
+* a thin space in a node name, on a .print line
+V1 in 0 12
+R1 in o<THIN>ut 1k
+R2 o<THIN>ut 0 2k
+.dc V1 0 12 6
+.print dc v(o<THIN>ut)
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Warning: can't parse 'o<THIN>ut': ignored
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: .print: no dc analysis found.
+  ngspice -b -r out.raw (exit 0), which prints instead:
+    .print line ignored since rawfile was produced.
+    rawfile: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(o___ut) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    .print line ignored since rawfile was produced.
+    vectors: v(v-sweep) = 0, 6, 12, v(in) = 0, 6, 12, v(o___ut) = 0, 4, 8, i(v1) = 0, -0.002, -0.004
+after the fix ("Take it out: name the node out"), native 47 and 42 and our engine: ngspice -b prints the v(out) table (exit 0);
+  -b -r gives v(out) = 0, 4, 8
+```
+
+The same with a no-break space, `o<NBSP>ut` (ngspice's node `o__ut`; the check's id is `nbsp`), native 47
+and 42: `ngspice -b` warns "can't parse 'o<NBSP>ut': ignored" and runs no analysis (exit 1); `-b -r`
+leaves the line out and gives v(o__ut) = 0, 4, 8 (exit 0), as our engine does.
+
+PlainSpice's checks: `space-character`.
+
+### space-character-13. In a .control block too: a save of the name saves nothing, and with nothing else saved PlainSpice's run gives no results
+
+Added after the critic of the names lane, 12 November 2026 (4). As non-ascii-node-4: `save v(o<THIN>ut)`
+saves nothing (a thin space does not end a word there either), and with nothing else to save the
+analysis does not run, in PlainSpice's run too; the rename now writes `out` on the .control line too.
+
+What PlainSpice shows for space-character-13 (warning, line 3):
+
+> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is a node called o___ut for ngspice.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [space-character-10, space-character-13]
+>
+> *Fixes:* "Take it out: name the node out"
+
+```spice
+* a thin space in a node name, saved in a .control block
+V1 in 0 12
+R1 in o<THIN>ut 1k
+R2 o<THIN>ut 0 2k
+.dc V1 0 12 6
+.control
+save v(o<THIN>ut)
+run
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    doAnalyses: not found
+    run simulation(s) aborted
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: no data saved for D.C. Transfer curve analysis; analysis not run
+    vectors: (none)
+after the fix ("Take it out: name the node out", which now writes out in the save too), native 47 and 42 and our engine,
+  -b -r (exit 0): v(v-sweep) = 0, 6, 12, v(out) = 0, 4, 8
+```
+
+The same with a no-break space, `o<NBSP>ut` (the check's id is `nbsp`), native 47 and 42 and our engine,
+`-b -r`: "no data saved for D.C. Transfer curve analysis", exit 1, no results; with the fix, v(out) = 0,
+4, 8. With something else saved the run goes on (`save v(o<THIN>ut) i(v1)`, `save v(o<NBSP>ut) i(v1)`:
+exit 0, i(v1) saved).
+
+PlainSpice's checks: `space-character`.

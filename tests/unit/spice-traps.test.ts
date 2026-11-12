@@ -1022,6 +1022,38 @@ describe('after the final reviews (12 November 2026)', () => {
     ]);
   });
 
+  it('says "without a message" for an invisible character, a look-alike or a character that looks like a space in a node name only when no .print, .plot or .control line names it, and renames it there too (names lane critic, 4; invisible-character-7, -8, look-alike-letter-7, -8, space-character-12, -13)', () => {
+    const net = (name: string, extra: string): string => `* t\nV1 in 0 12\nR1 in ${name} 1k\nR2 ${name} 0 2k\n.dc V1 0 12 6\n${extra}.end\n`;
+    const print = (name: string): string => net(name, `.print dc v(${name})\n`);
+    const save = (name: string): string => net(name, `.control\nsave v(${name})\nrun\n.endc\n`);
+    const left = 'PlainSpice\'s run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced.").';
+    // The words never show an invisible character or one that looks like a space: "the name".
+    const unseenPrint = `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it warns that it can't parse the name and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${left}`;
+    const unseenSave = 'In a .control block it reads the name as written too, with the character in it, so it finds no such node there: the save of that name saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").';
+    const kept = (spelled: string): string => `ngspice keeps the character in the name, as underscores (${spelled}), and makes a separate node`;
+    const cases: [id: string, name: string, first: string, print: string, save: string, facts: [string, string, string]][] = [
+      ['invisible-character', 'ou​t', kept('ou___t'), unseenPrint, unseenSave, ['invisible-character-3', 'invisible-character-7', 'invisible-character-8']],
+      ['space-character', 'o ut', kept('o___ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['nbsp', 'o ut', kept('o__ut'), unseenPrint, unseenSave, ['space-character-10', 'space-character-12', 'space-character-13']],
+      ['look-alike-letter', 'оut', 'ngspice writes the letter\'s bytes as underscores (__ut) and makes a separate node',
+        `On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line, and when that line was all it had to print it runs no analysis. ${left}`,
+        'In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice\'s run gives no results ("no data saved").',
+        ['look-alike-letter-5', 'look-alike-letter-7', 'look-alike-letter-8']],
+    ];
+    for (const [id, name, said, printed, saved, [base, onPrint, onSave]] of cases) {
+      const noted = ': in one test the resistor on it carried no current.';
+      // Native ngspice 47 -b: "can't parse …" and no analysis; with .control, "no data saved" (-b -r too).
+      expect(first(net(name, ''), id).ngspice, id).toBe(`${said}, without a message${noted} [${base}]`);
+      expect(first(print(name), id).ngspice, id).toBe(`${said}${noted} ${printed} [${base}, ${onPrint}]`);
+      const t = first(save(name), id);
+      expect(t.ngspice, id).toBe(`${said}${noted} ${saved} [${base}, ${onSave}]`);
+      if (id !== 'look-alike-letter') expect(t.ngspice, id).not.toMatch(/[​  ]/);
+      // The fix writes the plain name on the .control line too: before, the fixed netlist still saved nothing.
+      expect(applyFix(save(name), t.fixes[0]!), id).toBe(save('out'));
+      expect(applyFix(print(name), first(print(name), id).fixes[0]!), id).toBe(print('out'));
+    }
+  });
+
   it('a look-alike in a node name is named, and its fix connects it to the node it looks like (critic of round 1; look-alike-letter-5)', () => {
     // The critic's netlist: R2 on оut (Cyrillic о). It said "ngspice calls the node оut __ut ... (о as __)" and "Rename оut to ut".
     const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n';

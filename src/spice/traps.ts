@@ -1815,10 +1815,13 @@ function checkInvisibleNodes(c: Ctx): void {
     const what = nameOfCharacter(ch)!;
     const clean = withoutInvisible(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const { said, print, command } = asWritten(c, info, false);
+    // Cites [invisible-character-3, invisible-character-7, invisible-character-8], the last two for their sentences.
+    const facts = ['invisible-character-3', ...(print ? ['invisible-character-7'] : []), ...(command ? ['invisible-character-8'] : [])];
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
       `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
-      `ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]`,
+      [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
       [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
@@ -1845,10 +1848,13 @@ function checkSpaceNodes(c: Ctx): void {
     const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
     const clean = withoutSpaces(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const { said, print, command } = asWritten(c, info, false);
+    // Cites [space-character-10, space-character-12, space-character-13], the last two for their sentences.
+    const facts = ['space-character-10', ...(print ? ['space-character-12'] : []), ...(command ? ['space-character-13'] : [])];
     add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `The node ${withSpaces(t.text)} has ${nameOfCharacter(ch)!} in it`,
       `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node, and the parts on it are not connected to ${clean}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
-      `ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]`,
+      [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
       [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
@@ -1870,12 +1876,15 @@ function checkLookAlikeNodes(c: Ctx): void {
     const ch = cleanWord(t.text).odd[0]!;
     const like = lookAlikeOf(ch)!;
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const { said, print, command } = asWritten(c, info, true);
+    // Cites [look-alike-letter-5, look-alike-letter-7, look-alike-letter-8], the last two for their sentences.
+    const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-7'] : []), ...(command ? ['look-alike-letter-8'] : [])];
     add(c, 'look-alike-letter', 'warning', t, `The node ${t.text} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
       other
         ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not the node ${clean} the other lines name: it is another node, and the parts on it are not connected to ${clean}.`
         : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`,
-      `ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node, without a message: in one test the resistor on it carried no current. [look-alike-letter-5]`,
+      [`ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
       [fix(other ? `Connect to ${clean}` : `Rename ${t.text} to ${clean}`, ...changes)]);
   }
 }
