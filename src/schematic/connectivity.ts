@@ -233,8 +233,9 @@ export class SegmentIndex {
   at(p: Point): readonly Seg[] {
     const h = this.rows.at(p.y, p.x);
     const v = this.cols.at(p.x, p.y);
-    let s: readonly Seg[] = keyable(p) ? (this.slanted.get(gridKey(p.x, p.y)) ?? NONE) : this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y && pointOnSegment(p, t.a, t.b));
-    if (this.loose.length && keyable(p)) {
+    const grid = keyable(p);
+    let s: readonly Seg[] = grid ? (this.slanted.size ? (this.slanted.get(gridKey(p.x, p.y)) ?? NONE) : NONE) : this.segments.filter((t) => t.a.x !== t.b.x && t.a.y !== t.b.y && pointOnSegment(p, t.a, t.b));
+    if (this.loose.length && grid) {
       const extra = this.loose.filter((t) => pointOnSegment(p, t.a, t.b));
       if (extra.length) s = this.segments.filter((t) => s.includes(t) || extra.includes(t));
     }
