@@ -7,8 +7,8 @@
  * part on a blank page also wrote .op and .end, words W9), is held for its reading time instead: about
  * 60 ms a character, counted only while the hint line shows it, whatever the pointer does. On a phone
  * the new part's card opens as a sheet over the hint line, so that time starts when the sheet closes.
- * (Held only as long as the drawing note, it went 1.5 s after the first part at the first pointer
- * move, after 6 s at most, and a phone never showed it: the critic of words W9.)
+ * (Held only as long as the drawing note, it went at the first pointer move after 1.5 s, after 6 s at
+ * most, and a phone never showed it: the critic of words W9.)
  */
 import { useEffect, useRef } from 'react';
 
