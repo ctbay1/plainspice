@@ -267,6 +267,20 @@ describe('words re-check 11: Shift+R and Delete on a part being moved say what c
     await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R1 out in 1k'));
   }, 30000);
 
+  it('keys pressed back to back, before the move is drawn again, get the sentence of where it is now (critic of the fix)', async () => {
+    render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
+    await solved();
+    await pickUp();
+    // Two half turns, then Shift+R and Delete at once: the preview drawn is still of the first turn.
+    key('t');
+    key('t');
+    key('R', true);
+    key('Delete');
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Reverse swaps its two ends in the netlist.'));
+    await waitFor(() => expect(polite()).toContain('R1 can’t go here: Esc puts it back, then Delete deletes it.'));
+    expect(polite()).not.toContain('Put R1 down first');
+  }, 30000);
+
   it('the ground symbol: "Put the ground symbol down first", and "The ground symbol can’t go here" (critic of the fix)', async () => {
     render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     await solved();
