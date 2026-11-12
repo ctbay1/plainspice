@@ -573,7 +573,7 @@ export const en = {
   netlistCopyLabel: 'Copy the netlist',
   netlistHintPhone: 'Type here and the drawing follows; ngspice runs the netlist a moment after each change.',
   netlistFoot:
-    'Type here and the drawing follows; change a value on the drawing and its line changes here. Lines that start with *@ say where parts are drawn: ngspice ignores them.',
+    'Type here and the drawing follows; change a value on the drawing and its line changes here. Lines that start with *@ say where parts are drawn: ngspice skips them.',
   drawingShow_one: 'Show the {count} drawing line',
   drawingShow_other: 'Show the {count} drawing lines',
   drawingHide: 'Hide the drawing lines',
