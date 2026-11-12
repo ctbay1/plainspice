@@ -437,10 +437,10 @@ What they say now (`src/i18n/en.ts`; `tests/unit/app-words-review.test.tsx` and
   the run summary ('node "ground" is 5 volts'), the currents ('5 mA from ground to node "ground"'), the
   notes, the sweep and .tf words, the rounding-noise note and the names after the counts. The part
   sentences of the overview are also built by `src/schematic/navigate.ts`, and a test holds the two to
-  the same words; both pass the word "ground" for ground, so the overview's part sentences quote such a
-  name only when navigate.ts takes the overview's own sentence (`partSentenceFor`) and
-  `src/app/card.ts` and `src/notebook/words.ts` pass node names through `sentenceNode` (both exported
-  for them), which their lanes can do at the merge.
+  the same words; both pass the word "ground" for ground. When the lanes were merged, navigate.ts took
+  the overview's own sentence (`partSentenceFor`), and `src/app/card.ts` and `src/notebook/words.ts`
+  pass node names through `sentenceNode`, so the drawing's descriptions and the card quote such a name
+  too: 'R1: a 1 kΩ resistor between node "ground" and ground.', 'node "ground" is higher'.
 - **The missing-end check says what the blank page's sentence says** (words review W1): .end is the
   netlist's last line, new lines go above it, and ngspice still reads lines written after .end
   (missing-end-1, after-end-1, S25); nothing about other SPICE programs, which no fact here backs.

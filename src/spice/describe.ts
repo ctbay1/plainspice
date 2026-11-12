@@ -583,7 +583,7 @@ const nodeName = (ref: NodeRef): string => (ref.ground ? '0' : ref.name);
  * too (src/schematic/navigate.ts builds the same ones), so a node named like ground is not quoted
  * here until both quote it (sentenceNode).
  */
-const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.ground ? S.ground : ref.token.text);
+const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.ground ? S.ground : said(ref.token.text));
 /** A node in a short note at the end of a line: its bare name, "0" for ground, quoted when it is named like ground. */
 const bare = (n: string): string => (n !== '0' && GROUND_LIKE.test(n) ? `"${n}"` : n);
 

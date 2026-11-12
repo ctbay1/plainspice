@@ -240,6 +240,15 @@ describe('W8: a node in the card’s sentences', () => {
     expect(v.sub?.[0]).toBe('ground is higher');
     expect(v.speech).toContain('6 volts across R1, ground is higher.');
   }, 30000);
+
+  it('quotes an ordinary node named like ground, as the overview does: node "ground" is higher (W13, merge of the lanes)', async () => {
+    const named = await opened('* a node named ground\nV1 ground 0 5\nR1 ground 0 1k\n.op\n.end\n', 'R1');
+    const across = named.card.readouts.find((r) => r.tone === 'voltage')!;
+    expect(across.sub?.[0]).toBe('node "ground" is higher');
+    expect(across.speech).toContain('5 volts across R1, node "ground" is higher.');
+    // The short line under the current stays a label: the name bare, quoted only because it reads as ground.
+    expect(named.card.readouts.find((r) => r.tone === 'current')!.sub).toEqual(['from "ground" to ground']);
+  }, 30000);
 });
 
 describe('W11: whole lines ngspice does not read', () => {

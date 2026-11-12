@@ -108,3 +108,13 @@ describe('nodes that go on to parts the drawing does not show', () => {
     expect(describeNode(s, '0')).toBe('Ground (node 0) connects V1. It also connects D1 (line 4), which the drawing does not show.');
   });
 });
+
+describe('after the critic of the final-review fixes (12 November 2026)', () => {
+  it('describes an AC source and a node named ground as the overview does: "an AC source", node "ground" (W8, W13)', () => {
+    const ac = buildSchematic('* RC low-pass\nV1 in 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n.ac dec 5 10 10k\n.end\n');
+    expect(describePart(ac, 'V1').replace(/ /g, ' ')).toBe('V1: an AC source of 1 V in an .ac analysis, 0 V in DC, with its + side at node in and its − side at ground.');
+    const named = buildSchematic('* t\nV1 ground 0 5\nR1 ground 0 1k\n.op\n.end\n');
+    expect(describePart(named, 'R1').replace(/ /g, ' ')).toBe('R1: a 1 kΩ resistor between node "ground" and ground.');
+    expect(describeCircuit(named.netlist)).toContain(describePart(named, 'V1'));
+  });
+});

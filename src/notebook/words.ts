@@ -11,7 +11,7 @@
  * Plain TypeScript.
  */
 import { formatSI, speakSI } from '../format/si.ts';
-import { DESCRIBE_STRINGS as S, type CurrentWords } from '../spice/describe.ts';
+import { DESCRIBE_STRINGS as S, sentenceNode, type CurrentWords } from '../spice/describe.ts';
 
 const MARK = '\u0000';
 
@@ -32,7 +32,7 @@ export function withoutResultsPointer(summary: string): string {
 }
 
 /** A node's name in sentences: ground (node 0) is "ground", as everywhere in the model's words. */
-export const nodeWord = (node: string, text: (node: string) => string = (n) => n): string => (node === '0' ? S.ground : text(node));
+export const nodeWord = (node: string, text: (node: string) => string = (n) => n): string => (node === '0' ? S.ground : sentenceNode(text(node)));
 
 /** A current in the model's words, ground called "ground": "4 A from ground to a through G1". */
 export function currentText(c: CurrentWords, text?: (node: string) => string): string {

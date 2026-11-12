@@ -5,15 +5,12 @@
  * descriptions. Plain TypeScript: no DOM.
  *
  * A part's description is the sentence the circuit overview already says for it
- * (src/spice/describe.ts, describeCircuit: "R1: a 1 kΩ resistor between in and out."), built from
- * the same words (DESCRIBE_STRINGS), so the drawing makes no claim about SPICE the overview does
- * not. A node's description only says what the drawing shows: which parts it connects.
+ * (src/spice/describe.ts, partSentenceFor: "R1: a 1 kΩ resistor between node in and node out."), so
+ * the drawing makes no claim about SPICE the overview does not. A node's description only says what the drawing shows: which parts it connects.
  */
-import { formatNumber, formatSI } from '../format/si.ts';
-import { DESCRIBE_STRINGS, describeCircuit } from '../spice/describe.ts';
-import { sweptBy } from '../spice/explain.ts';
+import { describeCircuit, partSentenceFor } from '../spice/describe.ts';
 import { lowerAscii } from '../spice/parse.ts';
-import { GROUND, labelNode, type CircuitPart } from './circuit.ts';
+import { GROUND, labelNode } from './circuit.ts';
 import { DIRECTION_VECTORS, OPPOSITE, type Direction, type Point } from './geometry.ts';
 import type { Schematic } from './schematic.ts';
 
@@ -32,7 +29,6 @@ export const NAVIGATE_STRINGS = {
   notDrawnItem: (name: string, line: number): string => `${name} (line ${line})`,
 } as const;
 
-const S = DESCRIBE_STRINGS;
 const N = NAVIGATE_STRINGS;
 
 const itemKey = (i: NavItem): string => (i.kind === 'part' ? `p:${i.key}` : `n:${i.name}`);
@@ -114,57 +110,15 @@ function nearestThatWay(s: Schematic, origin: Point, v: Point, accept: (i: NavIt
   return best?.item;
 }
 
-/** How describe.ts writes a node in a part's sentence: as written on the line; ground is "ground". */
-const written = (part: CircuitPart, i: 0 | 1): string => (part.nodes[i] === GROUND ? S.ground : part.nodeText[i]);
-
-/** A dependent source's control node as written, "ground" for node 0, "?" when missing. */
-function controlNode(text: string, name: string): string {
-  if (!text) return '?';
-  return name === GROUND ? S.ground : text;
-}
-
 /**
  * The sentence describeCircuit (src/spice/describe.ts) says for this part, e.g.
- * "R1: a 1 kΩ resistor between in and out." or "V1: a 6 V source with its + side at n1 and its − side at ground."
+ * "R1: a 1 kΩ resistor between node in and node out." or "V1: a 6 V source with its + side at node n1
+ * and its − side at ground."
  */
 export function describePart(s: Schematic, name: string): string {
   const part = s.circuit.parts.find((p) => p.key === lowerAscii(name));
-  if (!part) return '';
-  const a = written(part, 0);
-  const b = written(part, 1);
-  const v = part.value;
-  const fmt = (unit: string): string => (v === undefined ? '' : formatSI(v, unit));
-  const fn = part.sourceFunction ? part.sourceFunction.split(/[\s(]/)[0]!.toUpperCase() : undefined;
-  switch (part.letter) {
-    case 'R':
-      return S.resistor(part.name, fmt('Ω'), a, b);
-    case 'C':
-      return S.capacitor(part.name, fmt('F'), a, b);
-    case 'L':
-      return S.inductor(part.name, fmt('H'), a, b);
-    case 'V':
-      if (sweptBy(s.netlist, part.key) !== undefined) return S.swept(part.name, a, b);
-      if (fn && v === undefined) return S.vFunction(part.name, fn, a, b);
-      if (!fn && (v === undefined ? part.valueText === '' : v === 0)) return S.ammeter(part.name, a, b);
-      return S.vSource(part.name, fmt('V'), a, b);
-    case 'I':
-      if (fn && v === undefined) return S.iFunction(part.name, fn, a, b);
-      return S.iSource(part.name, fmt('A'), a, b);
-    case 'E': {
-      const c = part.control?.kind === 'voltage' ? part.control : undefined;
-      return S.vcvs(part.name, S.voltageAt(a, b), v === undefined ? '?' : formatNumber(v), S.voltageAt(controlNode(c?.plusText ?? '', c?.plus ?? ''), controlNode(c?.minusText ?? '', c?.minus ?? '')));
-    }
-    case 'G': {
-      const c = part.control?.kind === 'voltage' ? part.control : undefined;
-      const plus = controlNode(c?.plusText ?? '', c?.plus ?? '');
-      const control = c?.minus === GROUND ? S.at(plus) : S.between(plus, controlNode(c?.minusText ?? '', c?.minus ?? ''));
-      return S.vccs(part.name, v === undefined ? '?' : formatSI(v, 'A'), control, a, b);
-    }
-    case 'F':
-      return S.cccs(part.name, v === undefined ? '?' : formatNumber(v), part.control?.kind === 'current' && part.control.sourceText ? part.control.sourceText : '?', a, b);
-    case 'H':
-      return S.ccvs(part.name, S.voltageAt(a, b), v === undefined ? '?' : formatSI(v, 'V'), part.control?.kind === 'current' && part.control.sourceText ? part.control.sourceText : '?');
-  }
+  // The overview's own sentence, so the two never differ (an AC source, a node named like ground).
+  return part ? partSentenceFor(s.netlist, part.key) : '';
 }
 
 /**
