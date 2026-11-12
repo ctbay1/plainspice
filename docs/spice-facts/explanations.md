@@ -1359,12 +1359,13 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ### A3e. After .end too, a current output is the current in its source: i(Vm), A/A from a current source
 
 A current source drives a current output, with the `.tf` after `.end`. I1 pushes 1 A into a; all of it
-flows through R1 to b, where it splits between R3 (6 Ω) and Vm with R2 (3 Ω): i(Vm) = 1 A × 6/9 = 2/3 A,
-a transfer function of 2/3 A per ampere. I1 sees R1 + (6 Ω ∥ 3 Ω) = 4 Ω, and for a current output
-ngspice's output impedance is 1e20 Ω, as in A5. ngspice names the output by its source (`vm#output_impedance`), so PlainSpice's words name that
-part as the netlist writes it, "i(Vm)" and "the current in Vm", where they said "i(vm)" and "the
-current in i(vm)", and in A/A (critic of the words re-check's fix, 12 November 2026). Written above
-`.end`, the same netlist gives the same three numbers.
+flows through R1 to b, where it splits between R3 (6 Ω) and Vm with R2 (3 Ω): i(Vm) = 1 A × 6/9 = 2/3
+A, a transfer function of 2/3 A per ampere. I1 sees R1 + (6 Ω ∥ 3 Ω) = 4 Ω, and for a current output
+ngspice's output impedance is 1e20 Ω, as in A5. ngspice names the output by its source
+(`vm#output_impedance`), so PlainSpice's words name that part as the netlist writes it, "i(Vm)" and
+"the current in Vm", where they said "i(vm)" and "the current in i(vm)", and in A/A (critic of the
+words re-check's fix, 12 November 2026). Written above `.end`, the same netlist gives the same three
+numbers.
 
 ```spice
 * .tf from a current source to a current, written after .end
