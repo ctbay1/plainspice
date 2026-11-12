@@ -294,6 +294,19 @@ describe('code review 1, 4 and 5, words re-check 3: the .tf words name each outp
     expect(at.speech).toContain('the transfer function from V1 to the voltage at ground is 0 volts per volt');
   });
 
+  it('ground in a .tf output is never "not a node of the circuit", even in a circuit with nothing on ground', () => {
+    // No part on ground: ngspice's own singular-matrix message speaks for that (M1), not the A6 note.
+    const text = '* nothing on ground\nV1 in out 5\nR1 in out 1k\n.tf v(out,gnd) V1\n.end\n';
+    const n = parseNetlist(text);
+    const tf = explainNetlist(n).find((e) => e.heading.startsWith('.tf'))!;
+    expect(tf.notes.filter((x) => /not a node of the circuit/.test(x))).toEqual([]);
+    const w = describeResults(n, { tf: { transferFunction: 0, outputImpedance: { at: 'v(out,0)', value: 1 }, inputImpedance: { source: 'v1', value: 1000 } }, other: [] }, run());
+    expect(w.warnings.filter((m) => m.code === 'tf-node-missing')).toEqual([]);
+    // An ordinary missing node still gets it (A6).
+    const missing = describeResults(parseNetlist('* a6\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n'), { tf: { transferFunction: 0, outputImpedance: { at: 'v(n9)', value: 1 }, inputImpedance: { source: 'v1', value: 2 } }, other: [] }, run());
+    expect(missing.warnings.map((m) => m.title)).toContain('n9 is not a node of the circuit');
+  });
+
   it('an ordinary node named ground or 00 is quoted in the text and the speech alike: at node "ground"', () => {
     // Native ngspice 47 and 42: transfer_function = 0.5, output_impedance_at_v(ground) = 500 (W13: ground is an ordinary node).
     const w = tfWords('* tf at ground\nV1 in 0 5\nR1 in ground 1k\nR2 ground 0 1k\n.tf v(ground) V1\n.end\n', tf(0.5, 'v(ground)', 500, 'v1', 2000));

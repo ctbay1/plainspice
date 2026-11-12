@@ -1497,9 +1497,10 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
       if (r?.kind !== 'tf' || r.outputKind !== 'voltage') continue;
       // The nodes as the parser reads them (a gnd ngspice makes 0 is ground: A3b), named as said.
       for (const n of r.outputNodes) {
+        // Ground is always a node; a circuit with nothing on it gets ngspice's own message (M1).
         const info = netlist.nodes.get(n.name);
         const name = said(n.token.text);
-        if (!info || info.connections.length === 0) push({ code: 'tf-node-missing', severity: 'warning', title: S.tfNodeTitle(name), why: S.tfNodeWhy(name), line: i + 1 });
+        if (!n.ground && (!info || info.connections.length === 0)) push({ code: 'tf-node-missing', severity: 'warning', title: S.tfNodeTitle(name), why: S.tfNodeWhy(name), line: i + 1 });
       }
     }
   }

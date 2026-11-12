@@ -1913,8 +1913,9 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     const meaning = g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(nodeProse(n1), n2 ? nodeProse(n2) : '');
     fields.push({ label: 'output', text: g.text, span: g.span, meaning });
     for (const n of r.outputNodes) {
+      // Ground is always a node (every voltage is measured from it); a circuit with nothing on it has its own check.
       const info = netlist.nodes.get(n.name);
-      if (!info || info.connections.length === 0) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
+      if (!n.ground && (!info || info.connections.length === 0)) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
     }
   }
   const input = r.input;
