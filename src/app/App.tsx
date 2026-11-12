@@ -71,7 +71,6 @@ import {
   EDIT_STRINGS,
   GROUND,
   NAVIGATE_STRINGS,
-  applyChanges,
   applyEdit,
   buildSchematic,
   describeNode,
@@ -164,6 +163,7 @@ import { PlotPanel } from './components/PlotPanel.tsx';
 import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
 import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, drawnAsInVideo, exampleById, exampleName } from './examples.ts';
+import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedText, stillToChoose } from './fixes.ts';
 import { useKeyboardInset, useMedia, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
 import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
@@ -632,16 +632,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const related = useMemo(() => relatedOf(selectedPart?.part), [selectedPart]);
   const checks = current ? record.checks : traps;
   /** What is wrong with the drawing lines (a *@ line PlainSpice cannot read or use): in the Checks panel, counted with the checks. */
-  const drawingWarnings = useMemo(() => (schematic?.problems ?? []).filter((p) => p.severity === 'warning'), [schematic]);
+  const drawingWarnings = useMemo(() => drawingWarningsOf(schematic), [schematic]);
   /** The controlled sources placed on the drawing that still read what PlainSpice chose for them (in the Checks panel too). */
-  const unchosenNow = useMemo(() => {
-    if (!schematic) return [];
-    return [...unchosen].flatMap((key) => {
-      const part = schematic.circuit.parts.find((p) => p.key === key);
-      const control = part ? controlWords(part) : undefined;
-      return part && control ? [{ key, name: part.name, control }] : [];
-    });
-  }, [schematic, unchosen]);
+  const unchosenNow = useMemo(() => stillToChoose(schematic, unchosen), [schematic, unchosen]);
   const checkCount = checks.length + drawingWarnings.length + unchosenNow.length;
   /** Checks on part lines (not notes): each part's first, which its symbol shows in red pen. */
   const partTraps = useMemo(() => {
@@ -680,12 +673,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     SAVE_DELAY_MS,
     { flushOnUnmount: true },
   );
-  const announcedChecks = useRef(traps.length);
+  /** The Checks tab's count as last said: said again only when it changes (what is heard is the number the tab shows). */
+  const announcedChecks = useRef(tn('checksCount', traps.length));
   const announceChecksSoon = useDebounced(() => {
-    const count = readNetlist(store.get()).traps.length;
-    if (count === announcedChecks.current) return;
-    announcedChecks.current = count;
-    announce(tn('checksCount', count));
+    const now = store.get();
+    // The tab's own count, for the text as it is now (counted afresh when the drawing is still a frame behind).
+    const said = shownText === now ? checksSaid(checks.length, drawingWarnings.length + unchosenNow.length) : checksSaidFor(now, unchosen, MAX_DRAWN_PARTS);
+    if (said === announcedChecks.current) return;
+    announcedChecks.current = said;
+    announce(said);
   }, ANNOUNCE_CHECKS_DELAY_MS);
   // A circuit just opened: its traps are said once, after what opened it (the red pen on the drawing
   // is a picture; the parts' descriptions carry it too).
@@ -756,7 +752,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setFitCount((n) => n + 1);
       store.set(next, { source: 'load' });
       live.load(next, { run: how.run, manual: how.manual ?? false });
-      announcedChecks.current = readNetlist(next).traps.length;
+      announcedChecks.current = tn('checksCount', readNetlist(next).traps.length);
       announceOpenedSoon();
     },
     [store, live, saveSoon, announceOpenedSoon],
@@ -793,13 +789,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         if (!fresh) return;
         changes = fresh.changes;
       }
-      const next = applyChanges(now, changes);
+      // The fix's changes, and the drawing lines it leaves with no node or part to name taken out with
+      // them (final reviews, kept F1); said with the count the Checks tab then shows.
+      const next = fixedText(now, changes, MAX_DRAWN_PARTS);
       store.set(next, { source: 'fix' });
-      const count = readNetlist(next).traps.length;
-      announcedChecks.current = count;
-      announce(`${t('fixApplied', { label: fix.label })}. ${tn('checksCount', count)}`);
+      const said = checksSaidFor(next, unchosen, MAX_DRAWN_PARTS);
+      announcedChecks.current = said;
+      announce(`${t('fixApplied', { label: fix.label })}. ${said}`);
     },
-    [store, read.text, announce],
+    [store, read.text, announce, unchosen],
   );
 
   /** After an undo or a redo: what was being done on the drawing stops (the text it was for is gone). */

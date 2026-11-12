@@ -603,6 +603,9 @@ export const en = {
   checksCount_zero: 'No traps found.',
   checksCount_one: '{count} trap found.',
   checksCount_other: '{count} traps found.',
+  // Said when the Checks tab counts more than traps (a drawing line it cannot use, a dependent source still to choose): the tab's own words.
+  checksFound_one: '{count} found in Checks.',
+  checksFound_other: '{count} found in Checks.',
   checksMore_one: 'And {count} more, shown once the ones above are fixed.',
   checksMore_other: 'And {count} more, shown once the ones above are fixed.',
 

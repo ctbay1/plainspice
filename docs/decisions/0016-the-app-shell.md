@@ -180,3 +180,14 @@ Ctrl+K stay as they are.
   ("Place a current-controlled current source", "Example 3: short", "(V_Th)"), finds it, and
   "Thévenin" and "Thevenin" find the same examples. The four dependent sources' Place commands are also
   found by "dependent" and by "controlled" (words W4: the channel's word and the textbook's).
+- **A fix takes with it the drawing lines it leaves with nothing to name** (kept F1). A check's fix
+  changes part lines only; when it renames a node ("Make n3 the ground", "Rename n12 to n2") or takes
+  a part away, the `*@ label` or `*@` position line of that node or part goes in the same step, as the
+  editor's own rename takes a node's name off the drawing, so the Checks tab never warns about a line
+  the student never wrote. A drawing line that already named nothing before the fix stays (the
+  student's, and the panel says what is wrong with it). Every fix offered on every video example now
+  ends with no trap and no drawing warning (`app-fixes.test.ts`).
+- **What is said is the number the Checks tab shows**: after a fix and after an edit, the count says
+  the checks, the drawing lines PlainSpice cannot use and the dependent sources still to choose, as
+  the tab counts them. While everything counted is a trap it is said as before ("1 trap found.": the
+  checks find traps); otherwise in the tab's own words, "2 found in Checks."

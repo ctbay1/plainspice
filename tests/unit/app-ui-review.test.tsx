@@ -2,7 +2,8 @@
 /**
  * The page after the final reviews of milestone 2 (the ui lane), in jsdom with the real ngspice as
  * in app-smoke.test.tsx: Ctrl+K's real list found by the words it shows (words W4, W5, W12) and its
- * field keeping the focus (a11y A1, A3). Focus order and axe in a real browser:
+ * field keeping the focus (a11y A1, A3); a fix on a video's mistake example leaving no drawing
+ * warning, and said with the tab's count (kept F1). Focus order and axe in a real browser:
  * tests/e2e/ui-review.spec.ts.
  */
 import { readFileSync } from 'node:fs';
@@ -21,6 +22,7 @@ import { t } from '../../src/i18n/index.ts';
 const root = resolve(import.meta.dirname, '../..');
 const read = (path: string): string => readFileSync(resolve(root, path), 'utf8');
 const START = read('examples/start-here.cir');
+const MISTAKE_1 = read('examples/sp01/sp01-4-no-ground.cir');
 
 let ngspice: Promise<NgspiceEngine>;
 
@@ -58,7 +60,10 @@ function realEngine(): Engine {
 }
 
 const firstVisit = (): StartupDecision => ({ source: 'example', netlist: START, exampleId: START_HERE_ID });
+const saved = (netlist: string): StartupDecision => ({ source: 'saved', netlist });
+const polite = (): string => screen.getByTestId('live-polite').textContent ?? '';
 const statusLine = (): string => document.querySelector('.status')?.textContent ?? '';
+const tab = (name: string): HTMLElement => within(screen.getByRole('navigation', { name: 'Panels' })).getByRole('button', { name: new RegExp(`^${name}`) });
 const openPalette = (): HTMLElement => {
   fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
   return screen.getByRole('dialog', { name: t('paletteTitle') });
@@ -132,5 +137,23 @@ describe('Ctrl+K after the final reviews', () => {
     expect(group.parentElement?.tagName).toBe('DIV');
     expect(within(group).getAllByRole('option')[0]!.tagName).toBe('LI');
     fireEvent.keyDown(within(palette).getByRole('combobox'), { key: 'Escape' });
+  }, 30000);
+});
+
+describe('a fix on a video’s mistake example (kept F1)', () => {
+  it('leaves no drawing warning behind, and is said with the count the Checks tab shows', async () => {
+    render(<App startup={saved(MISTAKE_1)} engine={realEngine()} serviceWorker={false} />);
+    // ngspice answered (with no ground, its numbers are not answers: the status says so).
+    await waitFor(() => expect(statusLine()).toMatch(/Not reliable/), { timeout: 15000 });
+    expect(tab('Checks').textContent).toBe('Checks1 found');
+    fireEvent.click(tab('Checks'));
+    const region = screen.getByRole('region', { name: 'Checks' });
+    fireEvent.click(within(region).getByRole('button', { name: 'Make n3 the ground (rename it to 0)' }));
+    await waitFor(() => expect(polite()).toContain('Done: Make n3 the ground (rename it to 0). No traps found.'));
+    await waitFor(() => expect(tab('Checks').textContent).toBe('Checks'));
+    expect(within(screen.getByRole('region', { name: 'Checks' })).getByText(t('checksNone'))).toBeTruthy();
+    await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R2 n2 0 4'));
+    expect(localStorage.getItem('plainspice:netlist')).not.toContain('*@ label n3');
+    expect(localStorage.getItem('plainspice:netlist')).toContain('*@ label n2');
   }, 30000);
 });
