@@ -189,8 +189,10 @@ export const en = {
 
   // ---------------------------------------------------------------- editing the drawing (decision 0017)
   placeGroundFirst: 'Place a part first: a ground symbol connects to the node its pin touches, and there is no node yet.',
-  // A1: .op gives the DC voltages and currents; no-analysis-1: without it nothing runs; missing-end-1: .end marks the end (ngspice reads a file without it).
-  starterAdded: 'PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the {op}), so the circuit runs as you build it, and .end, which marks where the netlist stops.',
+  // A1: .op gives the DC voltages and currents; no-analysis-1: without it nothing runs. .end is the
+  // netlist's last line, but it stops nothing: ngspice still reads the lines after it (S25,
+  // after-end-1), so new lines go above it (and runs a file without it, missing-end-1).
+  starterAdded: 'PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the {op}), so the circuit runs as you build it, and .end, the netlist’s last line (keep new lines above it: ngspice still reads lines after .end).',
   /** An edit made on the drawing wrote the drawing lines into a netlist that had none (drawing-1: ngspice skips them). */
   drawingWritten: 'The netlist now also says where each part is drawn, in lines starting with *@ that ngspice skips, so the drawing stays as it is.',
   wireSamePoint: 'The wire would start and end at the same point.',

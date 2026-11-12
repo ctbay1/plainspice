@@ -175,7 +175,7 @@ describe('a blank page: the first part also writes .op and .end', () => {
     const r = placeEdit(build(''), handFor('V'), { x: 0, y: 3 });
     expect(r.ok).toBe(true);
     expect(r.summary).toBe(
-      'V1 added between node n1 and node n2. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it, and .end, which marks where the netlist stops.',
+      'V1 added between node n1 and node n2. PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the operating point), so the circuit runs as you build it, and .end, the netlist’s last line (keep new lines above it: ngspice still reads lines after .end).',
     );
     expect(r.text).toBe('* circuit\nV1 n1 n2 5\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0\n*@ label n1 0 1\n*@ label n2 0 5\n.end\n');
     expect(traps(r.text)).not.toContain('no-analysis');

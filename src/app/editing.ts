@@ -330,9 +330,10 @@ export function joinsWords(s: Schematic, p: PlacePreview): string {
 /**
  * A page with no parts and nothing to run: what it lacks (decision 0017, from the checks
  * no-analysis and missing-end). Without an analysis line ngspice runs nothing (no-analysis-1), so
- * the first part placed also writes .op, which finds the DC voltages and currents, and .end, which
- * ngspice does not need from a file (missing-end-1) but which marks where the circuit stops. Both go
- * where the editor's own lines expect them: new part lines before .op, the drawing lines before .end.
+ * the first part placed also writes .op, which finds the DC voltages and currents, and .end, the
+ * netlist's last line: ngspice runs a file without it (missing-end-1) and still reads lines after it
+ * (S25, after-end-1), so it stops nothing, and new lines go above it. Both go where the editor's own
+ * lines expect them: new part lines before .op, the drawing lines before .end.
  */
 export function needsStarter(netlist: Netlist): boolean {
   return !netlist.lines.some((l) => l.kind === 'element') && netlist.analyses.length === 0 && !netlist.lines.some((l) => l.kind === 'control');

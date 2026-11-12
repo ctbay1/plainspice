@@ -55,8 +55,9 @@ hears what they did.
 - **A blank page gets `.op` and `.end`.** The first part placed on a page with no parts and no analysis
   also writes `.op` (before the drawing lines) and `.end`, and the announcement says so in one
   sentence: "PlainSpice also wrote .op, which asks ngspice for the DC voltages and currents (the
-  operating point), so the circuit runs as you build it, and .end, which marks where the netlist
-  stops." (facts A1, no-analysis-1, missing-end-1). It does not make the circuit solvable: until a
+  operating point), so the circuit runs as you build it, and .end, the netlist’s last line (keep new
+  lines above it: ngspice still reads lines after .end)." (facts A1, no-analysis-1, missing-end-1,
+  S25 and after-end-1: `.end` stops nothing). It does not make the circuit solvable: until a
   ground symbol is placed, the checks say there is no ground (no-ground-1).
   The model writes the title line (`* circuit`) a SPICE file needs first. Start here built from a blank
   page by mouse, and again by keyboard, is solved by ngspice to out = 4 V (`editor.spec.ts`).
