@@ -16,7 +16,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
-import { partsAtOnePoint } from './schematic-hostile.ts';
+import { partsAtOnePoint, piled } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0 }));
 
@@ -110,6 +110,33 @@ describe('parts piled on one point move from one scene (second re-check, P3)', (
     // place tried was 400,000 and more for this drawing.
     const sixty = counted(() => build(partsAtOnePoint(60)));
     expect(sixty.geometries).toBeLessThan(20_000);
+  });
+});
+
+describe('names and ground symbols piled on one point or one square cost what the lines do, not their square (P3)', () => {
+  // The extra work of each pile over the 60 parts alone, at 950 and at 1900 lines: piled lines cost a
+  // few checks each (they are read, and those that say the same as another go), never one check for
+  // each line already there. Before, 1900 names at the point made 63 scenes place each name against
+  // all the others: 46.6 s of work here; 1900 ground symbols, 11 s.
+  const piles: [string, (n: number) => string[]][] = [
+    ['names of every node at the point', (n) => piled('names', n)],
+    ['the name of one node at the point', (n) => piled('names', n, { oneNode: true })],
+    ['names of every node over a 4 × 4 square', (n) => piled('names', n, { spread: true })],
+    ['ground symbols at the point', (n) => piled('grounds', n)],
+    ['ground symbols over a 4 × 4 square, turned every way', (n) => piled('grounds', n, { spread: true })],
+  ];
+  const alone = (): ReturnType<typeof counted> => counted(() => build(partsAtOnePoint(60)));
+
+  it.each(piles)('%s', { timeout: 120_000 }, (_, lines) => {
+    const base = alone();
+    const half = counted(() => build(partsAtOnePoint(60, lines(950))));
+    const full = counted(() => build(partsAtOnePoint(60, lines(1900))));
+    expect(schematicConnectivity(full.result)).toEqual([]);
+    expect(full.scenes).toBeLessThanOrEqual(base.scenes + 1);
+    // At most 300 checks for each line piled (a name of a node over a square that the repairs move
+    // next to its copper, say), and no more for the second 950 lines than for the first.
+    expect(full.checks - base.checks).toBeLessThan(300 * 1900);
+    expect(full.checks - half.checks).toBeLessThanOrEqual(Math.max(1000, 1.2 * (half.checks - base.checks)));
   });
 });
 

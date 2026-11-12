@@ -26,7 +26,7 @@ import { lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Netlist } from '../spice/types.ts';
 import { circuitFromNetlist, GROUND, labelNode, subCircuit, type Circuit } from './circuit.ts';
 import { SegmentIndex, checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin, type Islands } from './connectivity.ts';
-import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type NodeLabel, type PartPlacement } from './drawing.ts';
+import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type GroundPlacement, type NodeLabel, type PartPlacement } from './drawing.ts';
 import { parseDrawingLines, readDrawing, type DrawingLines, type DrawingProblem, type PositionLine } from './format.ts';
 import { boxesOverlap, inflate, isOrthogonal, manhattan, pointKey, pt, samePoint, segmentCrossesBox, segmentsOf, unionBoxes, type Box, type Direction, type Point } from './geometry.ts';
 import { autoLayout, layOut, placeMoved, placeParts, type LayoutOptions } from './layout.ts';
@@ -129,13 +129,17 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     if (keys.has(key)) given.set(key, placementOf(pos));
     else unknown.push({ key, pos });
   }
+  // The copper merged once, before anything looks at it: wire drawn over wire (a share link may
+  // repeat one piece two thousand times) becomes one piece, so no later step sees the repeats. A
+  // ground symbol drawn twice at one place, turned the same way, is one symbol, for the same reason
+  // (1900 of them at one point made every step that looks at the pins look at each; second re-check, P3).
+  const wires = normalizeWires(lines.wires);
+  const grounds = uniqueGrounds(lines.grounds.map((g) => ({ at: g.at, rot: g.rot })));
   const base = (): Drawing => {
     const d = emptyDrawing();
     for (const [k, p] of given) d.parts.set(k, p);
-    d.grounds = lines.grounds.map((g) => ({ at: g.at, rot: g.rot }));
-    // The copper merged once, before anything looks at it: wire drawn over wire (a share link may
-    // repeat one piece two thousand times) becomes one piece, so no later step sees the repeats.
-    d.wires = normalizeWires(lines.wires);
+    d.grounds = grounds.map((g) => ({ at: g.at, rot: g.rot }));
+    d.wires = wires.slice();
     d.labels = lines.labels.map((l) => {
       const node = labelNode(circuit, l.node);
       return l.side ? { node, at: l.at, side: l.side } : { node, at: l.at };
@@ -170,14 +174,17 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     origin = 'auto';
   } else {
     drawing = base();
-    drawing.labels = labelsInStep(circuit, drawing, lines, problems, orphans);
+    // A name written twice at one point (the same node) is written once: the repairs would keep only
+    // the first anyway (reconcile, step 3), and until then every scene made on the way places each
+    // (1900 at one point took most of a minute to build; second re-check, P3).
+    drawing.labels = uniqueLabels(labelsInStep(circuit, drawing, lines, problems, orphans));
     origin = given.size === circuit.parts.length ? 'given' : 'partial';
     const missing = circuit.parts.filter((p) => !given.has(p.key));
     if (missing.length) {
       const onlyPositions = !lines.wires.length && !lines.grounds.length && !lines.labels.length;
       const shifted = onlyPositions ? shiftedLayout(circuit, given, options) : undefined;
       if (shifted) drawing = shifted;
-      else if (missing.length <= 2) placeParts(circuit, drawing, missing.map((p) => p.key), options);
+      else if (missing.length <= 2) placeParts(circuit, oneNamePerPoint(drawing), missing.map((p) => p.key), options);
       else layOutBeside(circuit, drawing, new Set(missing.map((p) => p.key)), options);
       problems.push({ kind: 'placed-part', severity: 'info', message: BUILD_STRINGS.placed(missing.map((p) => p.name)) });
     }
@@ -193,11 +200,51 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
   return { netlist, circuit, drawing, scene, origin, problems, kept, orphans, foreign: lines.foreign.slice(), options };
 }
 
+/** The ground symbols, each place and turn once (the first of those drawn there). */
+function uniqueGrounds(grounds: GroundPlacement[]): GroundPlacement[] {
+  const seen = new Set<string>();
+  return grounds.filter((g) => {
+    const k = `${pointKey(g.at)} ${g.rot}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** The names of nodes, each node once at each point (the first written there). */
+function uniqueLabels(labels: NodeLabel[]): NodeLabel[] {
+  const seen = new Set<string>();
+  return labels.filter((l) => {
+    const k = `${l.node} ${pointKey(l.at)}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * The drawing as the scenes made on the way to place parts see it (sharing its parts, ground symbols
+ * and wires, which placing a part changes): one name at each point, the first written there. A
+ * drawing PlainSpice writes has one at most; lines can pile a name of every node on each point of a
+ * square (61 × 25), and each scene placed each against all the others (second re-check, P3). All the
+ * names are put in order afterwards (reconcile, step 3).
+ */
+function oneNamePerPoint(drawing: Drawing): Drawing {
+  const seen = new Set<string>();
+  const labels = drawing.labels.filter((l) => {
+    const k = pointKey(l.at);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return labels.length === drawing.labels.length ? drawing : { ...drawing, labels };
+}
+
 /** True when a part could stand at a placement: its symbol and words clear of the other symbols, and no pin on another node's copper. */
 function placeIsFree(circuit: Circuit, drawing: Drawing, key: string, placement: PartPlacement, options: LayoutOptions): boolean {
   const part = circuit.parts.find((p) => p.key === key);
   if (!part) return false;
-  const scene = buildScene(circuit, drawing, options);
+  const scene = buildScene(circuit, oneNamePerPoint(drawing), options);
   const geom = partGeometry(part, placement);
   const own = new Set(geom.pins.map(pointKey));
   for (const p of scene.parts) if (boxesOverlap(inflate(geom.box, 0.2), p.box) || boxesOverlap(geom.box, p.labelBox)) return false;
@@ -299,14 +346,14 @@ function layOutBeside(circuit: Circuit, drawing: Drawing, keys: ReadonlySet<stri
   for (const l of drawing.labels) shared.add(l.node);
   const start = [...sub.nodes.keys()].find((n) => n !== GROUND && shared.has(n));
   const laid = layOut(sub, options, start);
-  const here = buildScene(circuit, drawing, options).bounds;
+  const here = buildScene(circuit, oneNamePerPoint(drawing), options).bounds;
   const there = buildScene(sub, laid, options).bounds;
   const dx = Math.ceil(here.x1 + 3 - there.x0);
   // The start node's highest copper in the given drawing: a pin pointing up meets a rail just above it.
   let railY: number | undefined;
   if (start !== undefined) {
     const copper = copperOf(circuit, drawing, toSegments(drawing.wires)).get(start) ?? [];
-    const scene = buildScene(circuit, drawing, options);
+    const scene = buildScene(circuit, oneNamePerPoint(drawing), options);
     const up = new Set(scene.parts.flatMap((p) => p.pins.filter((q) => q.outward === 'up').map((q) => pointKey(q.at))));
     for (const q of copper) {
       const y = up.has(pointKey(q)) ? q.y - 1 : q.y;
@@ -373,7 +420,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     }
   }
   if (movers.length) {
-    placeMoved(circuit, { ...drawing, wires: segs }, movers, options);
+    placeMoved(circuit, { ...oneNamePerPoint(drawing), wires: segs }, movers, options);
     for (const key of movers) problems.push({ kind: 'moved-part', severity: 'info', message: `${circuit.parts.find((p) => p.key === key)!.name} was moved: a pin of it touched a pin of another node.` });
   }
   for (let round = 0; round < circuit.parts.length + 1; round++) {
@@ -387,7 +434,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     }
     const part = circuit.parts.find((p) => p.key === mover.part)!;
     drawing.parts.delete(part.key);
-    placeParts(circuit, { ...drawing, wires: segs }, [part.key], options);
+    placeParts(circuit, { ...oneNamePerPoint(drawing), wires: segs }, [part.key], options);
     problems.push({ kind: 'moved-part', severity: 'info', message: `${part.name} was moved: a pin of it touched a pin of another node.` });
   }
 
