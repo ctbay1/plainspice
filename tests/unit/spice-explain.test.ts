@@ -753,6 +753,24 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(sp(line('* t\nV1 in 0 6\nR2 ou​t 0 2k\n.op\n.end\n', 3).summary)).toBe('R2 is a 2 kΩ resistor between out (written with a zero-width space in it) and ground (node 0).');
   });
 
+  it('names a character that looks like a space in a value instead of quoting it, and says what a document meant by it (critic of round 1; space-character-1 to -6, nbsp-2)', () => {
+    // The critic's divider: Explain said "ngspice ignores ' kΩ' after the number. Don't type units", the space inside the quotes.
+    const thin = line('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 3);
+    expect(sp(meaningOf(thin, 'value'))).toBe("4.7 Ω (a thin space (U+2009) and the 'kΩ' after it are ignored)");
+    expect(notes(thin)).toContain('A thin space (U+2009) looks like a space but is none for SPICE, so ngspice stops reading the number at it and ignores everything after it. SPICE needs no space and no units: write 4.7k.');
+    expect(notes(thin)).not.toContain("Don't type units");
+    for (const text of [thin.summary, ...thin.notes, ...thin.fields.map((f) => f.meaning)]) expect(text).not.toMatch(/[\u1680\u2000-\u200a\u202f\u205f\u3000]/);
+    // Groups of digits, mega after the space, a no-break space, and harmless after the scale letter.
+    expect(notes(line('* t\nI1 0 n1 1\nR1 n1 0 10\u2009000\n.op\n.end\n', 3))).toContain('Write the number without it: 10000.');
+    expect(notes(line('* t\nV1 in 0 10\nR1 in out 1\u2009M\u03a9\n.op\n.end\n', 3))).toContain('SPICE needs no space and no units, and a capital M is milli in SPICE: for mega, write 1meg.');
+    expect(notes(line('* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\n.op\n.end\n', 3))).toContain('A no-break space (U+00A0) looks like a space but is none for SPICE');
+    expect(notes(line('* t\nV1 in 0 10\nR1 in out 4.7k\u2009\u03a9\n.op\n.end\n', 3))).toContain(
+      'There is a thin space (U+2009) in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.',
+    );
+    // Between two words: one word for SPICE, named in the sentence.
+    expect(sp(line('* t\nI1 0 n1 1\nR1 n1 0\u20092\n.op\n.end\n', 3).summary)).toBe('R1 is a resistor between n1 and 0 2 (one word for SPICE: written with a thin space, not a space).');
+  });
+
   const examples = readdirSync(join(root, 'examples'), { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .flatMap((d) => readdirSync(join(root, 'examples', d.name)).filter((f) => f.endsWith('.cir')).map((f) => join('examples', d.name, f)));

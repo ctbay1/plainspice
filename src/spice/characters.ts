@@ -11,8 +11,14 @@
  * - a letter from another alphabet that looks like a scale letter is no scale letter: 1к (Cyrillic),
  *   1κ (Greek), 1ｋ (fullwidth) are 1, and 2м is 2 (look-alike-letter-1);
  * - a node name with a letter outside a to z is written with underscores (giriş is giri__), so two
- *   names can become one node (non-ascii-node-1, -2).
+ *   names can become one node (non-ascii-node-1, -2);
+ * - a character that looks like a space (a no-break, thin or ideographic space ...) is no space for
+ *   ngspice, which splits words only at spaces and tabs: inside a value it ends the number, so
+ *   4.7<thin space>kΩ is 4.7 Ω (space-character-1, -2, nbsp-2), and between two words it glues them
+ *   into one (space-character-4, nbsp-1).
  */
+
+import { readNumber } from './numbers.ts';
 
 /**
  * Characters with no width that text copied from web pages and PDFs can carry: the soft hyphen,
@@ -46,9 +52,110 @@ const INVISIBLE_NAMES: Readonly<Record<string, string>> = {
   '﻿': 'a byte order mark',
 };
 
-/** An invisible character's name in plain words, with its code unless `code` is false: "a zero-width space (U+200B)"; undefined for others. */
+/**
+ * Characters that look like a space but are none for SPICE: ngspice splits words only at spaces and
+ * tabs, so it reads these as part of the word (W16). Documents put a no-break, narrow no-break or thin
+ * space between a number and its unit (4.7 kΩ) and between groups of digits (10 000); Chinese and
+ * Japanese input gives the ideographic space; the rest are Unicode's other spaces (space-character-1
+ * to -5, nbsp-1, nbsp-2 in docs/spice-facts/traps.md).
+ */
+export const SPACE_LIKE = /[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/;
+const SPACE_LIKE_ALL = new RegExp(SPACE_LIKE.source, 'g');
+
+const SPACE_NAMES: Readonly<Record<string, string>> = {
+  '\u00a0': 'a no-break space',
+  '\u1680': 'an ogham space mark',
+  '\u2000': 'an en quad',
+  '\u2001': 'an em quad',
+  '\u2002': 'an en space',
+  '\u2003': 'an em space',
+  '\u2004': 'a three-per-em space',
+  '\u2005': 'a four-per-em space',
+  '\u2006': 'a six-per-em space',
+  '\u2007': 'a figure space',
+  '\u2008': 'a punctuation space',
+  '\u2009': 'a thin space',
+  '\u200a': 'a hair space',
+  '\u202f': 'a narrow no-break space',
+  '\u205f': 'a medium mathematical space',
+  '\u3000': 'an ideographic space',
+};
+
+/** True when the text has a character that looks like a space but is none for SPICE. */
+export const hasSpaceLike = (s: string): boolean => SPACE_LIKE.test(s);
+
+/** The text with each character that looks like a space written as a space. */
+export const withSpaces = (s: string): string => s.replace(SPACE_LIKE_ALL, ' ');
+
+/** The text without its characters that look like a space. */
+export const withoutSpaces = (s: string): string => s.replace(SPACE_LIKE_ALL, '');
+
+/**
+ * A scale letter, a unit, or both, as a document writes them after a number and a space: "kΩ", "MΩ",
+ * "µF", "μF", "mA", "V". The scale letters and units of space-before-suffix (traps.ts), with the ohm
+ * sign Ω (U+2126) and the Greek mu μ, which documents use too.
+ */
+const SI_SUFFIX = /^(meg|mil|[tgkmunpfa\u00b5\u03bc])?(ohms?|\u03a9|\u2126|volts?|v|amps?|a|f|h|hz|s)?$/i;
+const DIGIT_GROUPS = new RegExp(`^\\d{3}(?:${SPACE_LIKE.source}\\d{3})*$`);
+
+/** A value word read the way the document it came from meant it (spacedValue). */
+export interface SpacedValue {
+  /** The number before the character that looks like a space, as written ("4.7"). */
+  before: string;
+  /** What follows it ("kΩ", "000"; empty when it ends the word). */
+  after: string;
+  /** How documents use the space here: between a number and its unit, or between groups of digits. */
+  kind: 'unit' | 'digits';
+  /** The value written for SPICE: "4.7k", "10000"; for a capital M, mega: "1meg". */
+  spice: string;
+  /** What SPICE reads `spice` as. */
+  value: number;
+  /** After a capital M, which is mega in a document and milli in SPICE: the milli spelling ("1m") and value. */
+  milli?: { spice: string; value: number };
+}
+
+/**
+ * A value word with a character that looks like a space in it, read the way documents write values:
+ * "4.7<thin space>kΩ" is 4.7k (a number, the space, a scale letter and a unit), "10<thin space>000" is
+ * 10000 (groups of three digits), "1<thin space>MΩ" is 1meg, mega, as a document means it (SPICE would
+ * read 1M as milli). A lone a or f after the space is a unit, amps or farads, not atto or femto.
+ * Undefined for a word not written that way: ngspice reads such a word as one word all the same
+ * (space-character-1 to -4), but what was meant is not clear.
+ */
+export function spacedValue(word: string): SpacedValue | undefined {
+  const chars = [...word];
+  const at = chars.findIndex((ch) => SPACE_LIKE.test(ch));
+  if (at <= 0) return undefined;
+  const before = chars.slice(0, at).join('');
+  const after = chars.slice(at + 1).join('');
+  const first = readNumber(before);
+  if (!first || first.ignored || first.rest) return undefined;
+  if (!after) return { before, after, kind: 'unit', spice: before, value: first.value };
+  if (/^[+-]?\d{1,3}$/.test(before) && DIGIT_GROUPS.test(after)) {
+    const spice = `${before}${withoutSpaces(after)}`;
+    const r = readNumber(spice);
+    return r && !r.rest ? { before, after, kind: 'digits', spice, value: r.value } : undefined;
+  }
+  const m = SI_SUFFIX.exec(after);
+  if (!m || (!m[1] && !m[2])) return undefined;
+  let scale = m[1] ?? '';
+  if (!m[2] && /^[af]$/i.test(scale)) scale = '';
+  if (scale && first.scale) return undefined;
+  if (scale === 'M') {
+    const milli = `${before}m`;
+    return { before, after, kind: 'unit', spice: `${before}meg`, value: readNumber(`${before}meg`)!.value, milli: { spice: milli, value: readNumber(milli)!.value } };
+  }
+  const spice = `${before}${/^[\u00b5\u03bc]$/.test(scale) ? 'u' : scale.toLowerCase()}`;
+  const r = readNumber(spice);
+  return r && !r.rest ? { before, after, kind: 'unit', spice, value: r.value } : undefined;
+}
+
+/**
+ * The name in plain words of an invisible character or of one that looks like a space, with its code
+ * unless `code` is false: "a zero-width space (U+200B)", "a thin space (U+2009)"; undefined for others.
+ */
 export function nameOfCharacter(ch: string, code = true): string | undefined {
-  const name = INVISIBLE_NAMES[ch];
+  const name = INVISIBLE_NAMES[ch] ?? SPACE_NAMES[ch];
   if (!name) return undefined;
   return code ? `${name} (U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')})` : name;
 }
@@ -105,7 +212,7 @@ const SCRIPT_NAMES: readonly [RegExp, string][] = [
  */
 export function describeCharacter(ch: string): string {
   const code = `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
-  const invisible = INVISIBLE_NAMES[ch];
+  const invisible = INVISIBLE_NAMES[ch] ?? SPACE_NAMES[ch];
   if (invisible) return `${invisible} (${code})`;
   const like = LOOK_ALIKES[ch];
   if (!like) return `the character ${ch} (${code})`;

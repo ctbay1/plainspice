@@ -64,3 +64,21 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   What the checks say of each kind was run: letters from other alphabets (look-alike-letter-1), and
   the Kelvin sign, fullwidth digits and full stop, minus signs and dashes (look-alike-letter-3), each
   said in a whole sentence ("The value has a minus sign (U+2212), which looks like -.").
+- **Characters that look like a space but are none for SPICE** (critic of the fixes above). Documents
+  write a thin or narrow no-break space between a number and its unit (`4.7 kΩ`) and between groups
+  of digits (`10 000`); Chinese and Japanese input gives the ideographic space. ngspice splits words
+  only at spaces and tabs, so it reads these as part of the word: `4.7<thin space>kΩ` is 4.7 Ω and
+  `10<thin space>000` is 10, without a message (space-character-1 to -3; the no-break space does the
+  same, nbsp-2). The check space-character covers U+1680, U+2000–U+200A, U+202F, U+205F and U+3000;
+  the no-break space U+00A0 keeps its own check, nbsp, which now reads a value the same way. A value
+  word is read the way documents write values (`spacedValue` in `src/spice/characters.ts`): a number,
+  the space, then a scale letter and a unit, or groups of three digits; a lone a or f after the space
+  is a unit (amps, farads), as space-before-suffix reads it. It is flagged only when that differs from
+  what ngspice reads (`4.7k<thin space>Ω` is still 4.7 kΩ, space-character-6), with a fix that writes
+  the value for SPICE, `4.7k` or `10000`, never just the space taken out, which would turn `2 A` into
+  `2A`, 2 attoamps. After a capital M, mega in a document and milli in SPICE, the fixes are
+  "Make it 1meg" and "Keep milli: write 1m", as mega-as-milli offers them. Elsewhere on a line such a
+  character glues two words into one (space-character-4, nbsp-1): a warning that names it, with the
+  fix "Replace it with a normal space". A value that starts with one is an error (space-character-5).
+  The words name the character ("a thin space (U+2009)"), in the checks and in Explain, and the
+  netlist editor shows it, the no-break space too, as a dot with that name.

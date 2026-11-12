@@ -168,6 +168,10 @@ const CASES: Case[] = [
   { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
   { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
   { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
+  { name: "a thin space between a value and its unit", id: 'space-character', severity: 'warning', line: 3, at: "4.7\u2009k\u03a9", all: ["space-character"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
+  { name: "a thin space between two words", id: 'space-character', severity: 'warning', line: 3, at: "0\u20092", all: ["missing-value", "space-character"], fixes: ["Replace it with a normal space"], netlist: "* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n" },
+  { name: "a thin space before a value", id: 'space-character', severity: 'error', line: 4, at: "\u20092k", all: ["space-character"], fixes: ["Write 2k (2\u00a0k\u03a9)"], netlist: "* t\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 \u20092k\n.op\n.end\n" },
+  { name: "a no-break space between a value and its unit", id: 'nbsp', severity: 'warning', line: 3, at: "4.7\u00a0k\u03a9", all: ["nbsp"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
   { name: "two part names ngspice spells the same", id: 'duplicate-name', severity: 'error', line: 4, at: "R\u00e7", all: ["duplicate-name"], fixes: ["Rename it Rc"], netlist: "* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n" },
 ];
 
@@ -842,6 +846,43 @@ describe('after the final reviews (12 November 2026)', () => {
       expect(t.why).toBe(why);
       expect(t.ngspice).toBe(ngspice);
     }
+  });
+
+  it('reads a value with a character that looks like a space the way documents write it, names the character, and says what ngspice reads (critic of round 1; space-character-1 to -5, nbsp-2)', () => {
+    // The critic's divider, copied from a PDF: R1 4.7<thin space>kΩ. Native 47 and 42: R1 = 4.7 Ω, out = 9.99 V.
+    const thin = first('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 'space-character');
+    expect([thin.title, thin.why, thin.ngspice]).toEqual([
+      'R1\'s value is read as 4.7\u00a0\u03a9, not 4.7\u00a0k\u03a9',
+      'A thin space (U+2009) sits between 4.7 and k\u03a9, as documents write a number and its unit. It looks like a space, but SPICE does not treat it as one: it stops reading the number there, so the k\u03a9 after it does not count. SPICE needs no space and no units: write 4.7k.',
+      'ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 4.7\u00a0\u03a9. [space-character-1]',
+    ]);
+    // The words never show the character: they name it.
+    for (const text of [thin.title, thin.why, thin.ngspice, ...thin.fixes.map((f) => f.label)]) expect(text).not.toMatch(/[\u1680\u2000-\u200a\u202f\u205f\u3000]/);
+    // The narrow no-break space and the ideographic space (critic's 1<U+202F>k, 1<U+3000>k), and groups of digits.
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 1\u202fk\n.op\n.end\n', 'space-character').why).toContain('A narrow no-break space (U+202F) sits between 1 and k');
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 1\u3000k\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Write 1k (1\u00a0k\u03a9)']);
+    const groups = first('* t\nI1 0 n1 1\nR1 n1 0 10\u2009000\n.op\n.end\n', 'space-character');
+    expect([groups.title, groups.fixes.map((f) => f.label)]).toEqual(['R1\'s value is read as 10\u00a0\u03a9, not 10\u00a0k\u03a9', ['Write 10000 (10\u00a0k\u03a9)']]);
+    expect(groups.why).toContain('as documents group digits');
+    // A capital M after the space is mega in a document: never "Write 1M", which is milli (mega-as-milli).
+    const mega = first('* t\nV1 in 0 10\nR1 in out 1\u2009M\u03a9\nR2 out 0 1meg\n.op\n.end\n', 'space-character');
+    expect(mega.fixes.map((f) => f.label)).toEqual(['Make it 1meg (1\u00a0M\u03a9)', 'Keep milli: write 1m']);
+    expect(mega.why).toContain('a capital M is milli in SPICE: for mega, write meg: 1meg.');
+    expect(first('* t\nV1 a 0 5\u2009MV\nR1 a 0 1\n.op\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    // A no-break space in a value: the same reading, under the no-break space's own check.
+    expect(first('* t\nV1 in 0 10\nR1 in out 4.7\u00a0k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', 'nbsp').ngspice).toContain('[nbsp-2]');
+    // Harmless, no trap: after the scale letter; a unit alone (2 A means 2 amps, and SPICE reads 2); at the end of the word.
+    expect(ids('* t\nV1 in 0 10\nR1 in out 4.7k\u2009\u03a9\nR2 out 0 4.7k\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nI1 0 a 2\u2009A\nR1 a 0 1\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 10\u2009\nR1 in 0 1\n.op\n.end\n')).toEqual([]);
+    // The fix gives what was meant: 4.7k, and 10000.
+    expect(applyFix('* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n', thin.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 4.7k\nR2 out 0 4.7k\n.op\n.end\n');
+    // The numbers of an analysis line too: .tran 1u 5<thin space>ms is 5 s.
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5\u2009ms\n.end\n', 'space-character').title).toBe('This value is read as 5, not 0.005');
+    // Between two words it glues them, named; in a node name the non-ascii-node check stays quiet.
+    const glue = first('* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n', 'space-character');
+    expect(glue.title).toBe('A thin space (U+2009) glues "0 2" into one word');
+    expect(ids('* t\nV1 in 0 6\nR1 in ou\u2009t 1k\nR2 ou\u2009t 0 2k\n.op\n.end\n')).toEqual(['space-character', 'space-character']);
   });
 
   it('a node name with an invisible character: no "Rename out to out", and no dangling-node notes for the two names (security review F2)', () => {

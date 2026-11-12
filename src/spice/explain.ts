@@ -15,7 +15,7 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
-import { cleanWord, describeCharacter, hasInvisible, INVISIBLE, lookAlikeOf, nameOfCharacter, withoutInvisible } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { readNumber } from './numbers.ts';
@@ -187,6 +187,15 @@ export const EXPLAIN_STRINGS = {
   lookAlikeNote: (what: string, clean: string): string => `${what}, is a different character for SPICE, so ngspice ignores it and everything after it. Write ${clean}.`,
   invisibleHarmless: (what: string): string => `There is ${what} in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.`,
   nodeWithInvisible: (clean: string, what: string): string => `${clean} (written with ${what} in it)`,
+  // Critic of the final-review fixes: a character that looks like a space is named, never shown in
+  // quotes as if it were a space (space-character-1 to -4, nbsp-1, nbsp-2).
+  spaceNote: (what: string, write: string): string =>
+    `${what} looks like a space but is none for SPICE, so ngspice stops reading the number at it and ignores everything after it.${write ? ` ${write}` : ''}`,
+  spaceWrite: (spice: string): string => `SPICE needs no space and no units: write ${spice}.`,
+  spaceWriteMega: (spice: string): string => `SPICE needs no space and no units, and a capital M is milli in SPICE: for mega, write ${spice}.`,
+  spaceWriteDigits: (spice: string): string => `Write the number without it: ${spice}.`,
+  spaceHarmless: (what: string): string => `There is ${what} in this value, which looks like a space but is none for SPICE. ngspice ignores it and what follows it, and here that changes nothing.`,
+  nodeWithSpace: (shown: string, what: string): string => `${shown} (one word for SPICE: written with ${what}, not a space)`,
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
     `ngspice read two numbers for the value, ${first} and ${second}, and uses the last one: ${used}.${why ? ` ${why}` : ''}`,
   twoNumbersComma: 'A comma separates words in SPICE: use a decimal point.',
@@ -656,7 +665,19 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     trap = true;
   }
   const odd = reading.ignored ? [...reading.ignored][0]! : '';
-  if (reading.ignored && (INVISIBLE.test(odd) || lookAlikeOf(odd) !== undefined)) {
+  if (reading.ignored && SPACE_LIKE.test(odd)) {
+    // The number stops at a character that looks like a space: name it, and say what a document meant
+    // by it (spacedValue: a number and its unit, or groups of digits).
+    const what = describeCharacter(odd);
+    marks.push(S.oddIgnored(what, withSpaces([...reading.ignored].slice(1).join(''))));
+    const meant = spacedValue(token.text);
+    if (meant && meant.value === reading.value) notes.push(S.spaceHarmless(what));
+    else {
+      const write = !meant ? '' : meant.kind === 'digits' ? S.spaceWriteDigits(meant.spice) : meant.milli ? S.spaceWriteMega(meant.spice) : S.spaceWrite(meant.spice);
+      notes.push(S.spaceNote(capitalized(what), write));
+      trap = true;
+    }
+  } else if (reading.ignored && (INVISIBLE.test(odd) || lookAlikeOf(odd) !== undefined)) {
     // The number stops at a character that is not what it looks like: name it, and say what was meant.
     const after = cleanWord([...reading.ignored].slice(1).join('')).clean;
     const clean = cleanWord(token.text).clean;
@@ -709,6 +730,8 @@ function nodeText(ref: NodeRef): string {
   if (ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00') return S.quotedNode(ref.token.text);
   // invisible-character-3: the character is named, not hidden in the sentence.
   if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
+  // space-character-4, nbsp-1: one word for SPICE, though it reads as two.
+  if (hasSpaceLike(ref.token.text)) return S.nodeWithSpace(withSpaces(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
   return S.nodeWord(ref.token.text);
 }
 

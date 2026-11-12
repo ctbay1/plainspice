@@ -24,7 +24,7 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view';
-import { INVISIBLE, nameOfCharacter } from '../spice/characters.ts';
+import { INVISIBLE, nameOfCharacter, SPACE_LIKE } from '../spice/characters.ts';
 import type { Fix, Span, TextChange, Trap } from '../spice/types.ts';
 import { mapFix, trapsToDiagnostics } from './diagnostics.ts';
 import { drawingFold, setDrawingFoldedEffect } from './drawing-fold.ts';
@@ -184,10 +184,12 @@ export function createEditor(opts: EditorOptions): PlainSpiceEditor {
     // Long lines and results wrap instead of scrolling sideways (WCAG 1.4.10 at 320 px).
     EditorView.lineWrapping,
     lineNumbers(),
-    // Invisible characters (a zero-width space, a word joiner, a direction mark ...) are shown as a
-    // dot named in words, so a value that reads 1k but is 1 Ω shows why (security review F2;
-    // invisible-character-1). CodeMirror's own set has some of them; INVISIBLE adds the rest.
-    highlightSpecialChars({ addSpecialChars: INVISIBLE, render: specialChar }),
+    // Invisible characters (a zero-width space, a word joiner, a direction mark ...) and those that
+    // look like a space but are none for SPICE (a no-break, thin or ideographic space ...) are shown
+    // as a dot named in words, so a value that reads 1k or 4.7 kΩ but is 1 Ω or 4.7 Ω shows why
+    // (security review F2; invisible-character-1, space-character-1). CodeMirror's own set has some
+    // of the invisible ones; INVISIBLE and SPACE_LIKE add the rest.
+    highlightSpecialChars({ addSpecialChars: new RegExp(`${INVISIBLE.source}|${SPACE_LIKE.source}`), render: specialChar }),
     // No pop-up on the gutter markers: it cannot be closed with Escape, and hovering the
     // underlined text (or F8) shows the same pop-up.
     lintGutter({ tooltipFilter: () => [] }),
