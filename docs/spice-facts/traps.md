@@ -21,7 +21,9 @@ The excerpts are verbatim, with these cuts: the start-up banner, the device and 
 resource report are left out; the "Last Node Voltages" table ngspice prints when its DC solution fails is
 replaced by a marker; a warning repeated word for word is shown once; file paths are shortened to the file
 name; long vectors are shown by their length and last value; invisible characters are written `<NBSP>`,
-`<CR>`, `<FF>`.
+`<CR>`, `<FF>`, and in the sections added after the final reviews `<ZWSP>` (a zero-width space), `<BOM>`
+(a byte order mark), `<WJ>` (a word joiner), `<SHY>` (a soft hyphen), `<LRM>` (a left-to-right mark),
+`<RLO>` (a right-to-left override) and `<ZWJ>` (a zero-width joiner).
 
 **Where our engine differs from native ngspice 47.** It is built without XSPICE, OSDI and some device
 models (`engine/README.md`). The trap texts say so where it shows: native 47 reads extra numbers after an
@@ -83,6 +85,8 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [unknown-word](#unknown-word) | a word after a part's value that is no setting of the part: `R1 a 0 1k load`, `V1 a 0 5 battery`, `1d-3` on a source | error | stops ("unknown parameter") |
 | [unknown-dot-command](#unknown-dot-command) | a dot command ngspice does not know: `.tarn`, `.pss` | error | stops before anything runs |
 | [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
+| [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`) | warning, error | ends the number silently; another node; at the start of a value: stops |
+| [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), a minus sign from a document (`−5`) | warning, error | ignores it like a unit, silently; at the start of a value: stops |
 
 ## mega-as-milli
 
@@ -1386,6 +1390,91 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
     no such parameter on this device or parameter is missing
         Simulation interrupted due to error!
     Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-before-suffix`.
+
+### space-before-suffix-16. R1 n1 0 1 Ω: ngspice quotes the Ω as __
+
+Added after the final reviews of 12 November 2026. ngspice writes each byte of a letter outside ASCII as `_` (W16), so its message names the word `__`, while the model warning shows the Ω as written.
+
+```spice
+* a space before the ohm sign
+I1 0 n1 1
+R1 n1 0 1 Ω
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model 'Ω' from line
+    r1 n1 0 1 Ω
+    Error on line 3 or its substitute:
+      r1 n1 0 1 __
+      unknown parameter (__)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model 'Ω' from line
+    r1 n1 0 1 Ω
+    Error on line 3 or its substitute:
+      r1 n1 0 1 __
+      unknown parameter (__)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-before-suffix`.
+
+### space-before-suffix-17. C1 out 0 1 µ: ngspice quotes the µ as u
+
+ngspice turns the micro sign into `u` before it reads the line (N5, W16).
+
+```spice
+* a space before the micro sign
+V1 in 0 1
+R1 in out 1k
+C1 out 0 1 µ
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      c1 out 0 1 u
+      unknown parameter (u)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      c1 out 0 1 u
+      unknown parameter (u)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
     vectors: (none)
 ```
 
@@ -7408,6 +7497,50 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `unknown-word`.
 
+### unknown-word-12. A word with a letter outside ASCII is quoted with underscores: yük is y__k
+
+Added after the final reviews of 12 November 2026 (W16).
+
+```spice
+* a word with a Turkish letter after a value
+V1 a 0 5
+R1 a 0 1k yük
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model 'yük' from line
+    r1 a 0 1k yük
+    Error on line 3 or its substitute:
+      r1 a 0 1k y__k
+      unknown parameter (y__k)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model 'yük' from line
+    r1 a 0 1k yük
+    Error on line 3 or its substitute:
+      r1 a 0 1k y__k
+      unknown parameter (y__k)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `unknown-word`.
+
 ## unknown-dot-command
 
 A line starting with a dot that is not a dot command ngspice 47 knows (the list is `isKnownDotCommand` in `src/spice/explain.ts`, A29). Error: ngspice stops before anything runs. When it looks like a slip in a common command (a letter more, less, swapped or changed), the fix offers that command, and the no-analysis trap stays quiet for a misspelt analysis. Fix: the command it looks like, or make the line a comment.
@@ -7610,8 +7743,8 @@ nearest plain letters (`giris`; the letters that have no plain form are left out
 node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
 ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
 letters. The fixes rename the node everywhere it is named, and on the drawing's `*@ label` line, and
-never give a name another node has (that would join two nodes). A name with a no-break space is left
-to the nbsp check. PlainSpice matches ngspice's
+never give a name another node has (that would join two nodes). A name with an invisible character or
+a no-break space is left to those checks (invisible-character, nbsp). PlainSpice matches ngspice's
 results back to the netlist's names (`src/spice/describe.ts`), so the drawing, the Numbers panel and
 the announcement say `giriş`.
 
@@ -7682,3 +7815,295 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `non-ascii-node`.
+
+## invisible-character
+
+Added after the final reviews of 12 November 2026 (security review F2). An invisible character (a
+zero-width space, a zero-width joiner or non-joiner, a word joiner, a byte order mark, a soft hyphen, a
+direction mark, embedding, override or isolate) in a value or a node name, as text copied from a web
+page or a PDF can carry. ngspice reads bytes and writes every byte outside printable ASCII as `_`
+(W16), so in a value the character ends the number and the rest of the word is ignored, and in a node
+name it makes another node. A value is flagged only when its reading changes once the invisible
+characters are removed and look-alike letters written as the letters they look like: `1k<ZWSP>` is still
+1 kΩ (invisible-character-4), and no trap. Warning, with a fix that writes the value without it; error
+when the value starts with one, because ngspice then stops. In a node name: warning, with a fix that
+takes the character out (and so joins the node to the one of that name, if there is one, as was meant).
+The words name the character ("a zero-width space (U+200B)") and never show it; the netlist editor
+shows it as a dot with that name.
+
+What PlainSpice shows for invisible-character-1 (warning, line 3):
+
+> **R1's value is read as 1 Ω, not 1 kΩ.** A zero-width space (U+200B) sits between 1 and k: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the k after it does not count. Write 1k.
+>
+> *ngspice:* ngspice stops reading the number at the zero-width space and ignores the rest of the word, without a message: it reads 1 Ω. [invisible-character-1, invisible-character-2]
+>
+> *Fixes:* "Write 1k (1 kΩ)"
+
+What PlainSpice shows for invisible-character-3 (warning, line 4):
+
+> **A zero-width space (U+200B) hides in the node name out.** It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is not the node out the other lines name but another node.
+>
+> *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]
+>
+> *Fixes:* "Take it out: connect to out"
+
+What PlainSpice shows for invisible-character-5 (error, line 4):
+
+> **R1's value is not a number for SPICE.** It starts with a zero-width space (U+200B), a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write 2k.
+>
+> *ngspice:* ngspice stops: 'unknown parameter (___2k)'. [invisible-character-5]
+>
+> *Fixes:* "Write 2k (2 kΩ)"
+
+### invisible-character-1. A zero-width space inside a value ends the number: 1<ZWSP>k is 1 Ω
+
+```spice
+* a zero-width space inside a value
+V1 in 0 6
+R1 in out 1<ZWSP>k
+R2 out 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              5.997001e+00
+        in                               6.000000e+00
+        v1#branch                        -2.99850e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 6, v(out) = 5.997001499250375, i(v1) = -0.0029985007496247107
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 6, v(out) = 5.997001499250375, i(v1) = -0.0029985007496247107
+```
+
+PlainSpice's checks: `invisible-character`.
+
+### invisible-character-2. So do the other invisible characters: a byte order mark, a word joiner, a soft hyphen, a direction mark, a zero-width joiner
+
+```spice
+* other invisible characters inside a value
+I1 0 n1 1
+R1 n1 0 1<BOM>k
+I2 0 n2 1
+R2 n2 0 1<WJ>k
+I3 0 n3 1
+R3 n3 0 1<SHY>k
+I4 0 n4 1
+R4 n4 0 1<LRM>k
+I5 0 n5 1
+R5 n5 0 1<RLO>k
+I6 0 n6 1
+R6 n6 0 1<ZWJ>k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n6                               1.000000e+00
+        n5                               1.000000e+00
+        n4                               1.000000e+00
+        n3                               1.000000e+00
+        n2                               1.000000e+00
+        n1                               1.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1, v(n2) = 1, v(n3) = 1, v(n4) = 1, v(n5) = 1, v(n6) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(n1) = 1, v(n2) = 1, v(n3) = 1, v(n4) = 1, v(n5) = 1, v(n6) = 1
+```
+
+PlainSpice's checks: `invisible-character` (six times).
+
+### invisible-character-3. In a node name it makes another node: ou<ZWSP>t is ou___t, not out
+
+R2 hangs on its own node, so no current flows: out stays at 6 V.
+
+```spice
+* a zero-width space inside a node name
+V1 in 0 6
+R1 in out 1k
+R2 ou<ZWSP>t 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ou___t                           0.000000e+00
+        out                              6.000000e+00
+        in                               6.000000e+00
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 6, v(out) = 6, v(ou___t) = 0, i(v1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 6, v(out) = 6, v(ou___t) = 0, i(v1) = 0
+```
+
+PlainSpice's checks: `invisible-character`.
+
+### invisible-character-4. After the scale letter it changes nothing: 1k<ZWSP> is 1 kΩ (no trap)
+
+```spice
+* a zero-width space after the scale letter
+V1 in 0 6
+R1 in out 1k<ZWSP>
+R2 out 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              4.000000e+00
+        in                               6.000000e+00
+        v1#branch                        -2.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 6, v(out) = 4, i(v1) = -0.002
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 6, v(out) = 4, i(v1) = -0.002
+```
+
+PlainSpice's checks: none.
+
+### invisible-character-5. At the start of a value the word is no number: ngspice stops
+
+```spice
+* a zero-width space before a resistor value
+I1 0 a 1
+R0 a 0 1k
+R1 a 0 <ZWSP>2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model '<ZWSP>2k' from line
+    r1 a 0 <ZWSP>2k
+    Error on line 4 or its substitute:
+      r1 a 0 ___2k
+      unknown parameter (___2k)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model '<ZWSP>2k' from line
+    r1 a 0 <ZWSP>2k
+    Error on line 4 or its substitute:
+      r1 a 0 ___2k
+      unknown parameter (___2k)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `invisible-character`.
+
+## look-alike-letter
+
+Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,
+or the fullwidth form of a letter or digit, that looks like the scale letter or digit a value needs:
+the Cyrillic к and м, the Greek κ, the fullwidth ｋ, a minus sign or a dash from a document. ngspice
+writes their bytes as `_` (W16), so it ignores them like a unit, or, when the value starts with one,
+reads no number and stops. Flagged only when the reading changes once they are written as the letters
+they look like (the Greek mu has a check of its own, greek-mu). Warning, or error when ngspice stops;
+the fix writes the plain letter.
+
+What PlainSpice shows for look-alike-letter-1 (warning, line 3):
+
+> **R1's value is read as 1 Ω, not 1 kΩ.** This Cyrillic letter к, which looks like k: SPICE knows only the plain letter, so it ignores this one like a unit. Write 1k.
+>
+> *ngspice:* ngspice ignores the Cyrillic letter к like a unit, without a message: it reads 1 Ω. [look-alike-letter-1]
+>
+> *Fixes:* "Write 1k (1 kΩ)"
+
+What PlainSpice shows for look-alike-letter-2 (error, line 2):
+
+> **V1's value is not a number for SPICE.** It starts with a minus sign (U+2212), which looks like -, so SPICE does not read the word as a number. Write -5.
+>
+> *ngspice:* ngspice stops: 'unknown parameter (___5)'. [look-alike-letter-2]
+>
+> *Fixes:* "Write -5 (−5 V)"
+
+### look-alike-letter-1. к (Cyrillic), κ (Greek) and ｋ (fullwidth) are not k, and м (Cyrillic) is not m: ngspice ignores them
+
+```spice
+* letters that look like k and m
+I1 0 n1 1
+R1 n1 0 1к
+I2 0 n2 1
+R2 n2 0 1κ
+I3 0 n3 1
+R3 n3 0 1ｋ
+I4 0 n4 1
+R4 n4 0 2м
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n4                               2.000000e+00
+        n3                               1.000000e+00
+        n2                               1.000000e+00
+        n1                               1.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1, v(n2) = 1, v(n3) = 1, v(n4) = 2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(n1) = 1, v(n2) = 1, v(n3) = 1, v(n4) = 2
+```
+
+PlainSpice's checks: `look-alike-letter` (four times).
+
+### look-alike-letter-2. A value starting with a minus sign from a document (U+2212) is no number: ngspice stops
+
+```spice
+* a minus sign copied from a document on a voltage source
+V1 a 0 −5
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 ___5
+      unknown parameter (___5)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 ___5
+      unknown parameter (___5)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `look-alike-letter`.

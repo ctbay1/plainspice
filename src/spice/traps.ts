@@ -17,7 +17,7 @@
  * skips the DC operating point).
  */
 import { formatNumber, formatSI, speakSI } from '../format/si.ts';
-import { hasInvisible, isPlainName, plainLetters } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, INVISIBLE, isPlainName, nameOfCharacter, plainLetters, withoutInvisible } from './characters.ts';
 import { isKnownDotCommand, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -78,6 +78,8 @@ export const TRAP_IDS = [
   'unknown-word',
   'unknown-dot-command',
   'non-ascii-node',
+  'invisible-character',
+  'look-alike-letter',
 ] as const;
 
 export type TrapId = (typeof TRAP_IDS)[number];
@@ -468,6 +470,65 @@ function checkValueSpelling(c: Ctx, i: number): void {
   }
 }
 
+/** "A zero-width space" from "a zero-width space (U+200B)": the start of a sentence. */
+const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * A value with an invisible character or a letter from another alphabet in it (security review F2):
+ * ngspice reads bytes, so an invisible character ends the number and the rest of the word is ignored
+ * (1<zero-width space>k is 1 Ω: invisible-character-1, -2), and к, κ, ｋ or м is no scale letter (1к is
+ * 1, look-alike-letter-1); a word that starts with one is no number at all, and ngspice stops
+ * (invisible-character-5, look-alike-letter-2). Flagged only when the reading changes once the
+ * invisible characters are removed and the look-alikes written as the letters they look like, so 1kΩ,
+ * or a zero-width space after the scale letter, is no trap (invisible-character-4). The Greek mu and
+ * the no-break space have checks of their own. The words never show an invisible character: they
+ * name it. Runs before checkUnknownWord, which leaves the words it covers alone.
+ */
+function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: ElementLetter | undefined, name: string | undefined): void {
+  const { clean, odd } = cleanWord(t.text);
+  if (!odd.length) return;
+  const meant = readNumber(clean);
+  if (!meant || meant.rest) return;
+  const read = readNumber(t.text);
+  if (read && read.value === meant.value) return;
+  const hidden = odd.find((ch) => INVISIBLE.test(ch));
+  const ch = hidden ?? odd[0]!;
+  const what = describeCharacter(ch);
+  const id: TrapId = hidden ? 'invisible-character' : 'look-alike-letter';
+  const shown = (v: number): string => (letter && unit !== undefined ? amount(v, letter) : formatNumber(v));
+  const subject = name ? `${name}'s value` : 'This value';
+  const fixes = [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(meant.value, letter)})` : ''}`, replace(t, clean))];
+  if (!read) {
+    add(c, id, 'error', t, `${subject} is not a number for SPICE`,
+      `It starts with ${what}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
+      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? 'invisible-character-5' : 'look-alike-letter-2'}]`,
+      fixes);
+    return;
+  }
+  // Where the character sits: what is read before it, and what it hides after it.
+  const at = [...t.text].indexOf(ch);
+  const before = withoutInvisible([...t.text].slice(0, at).join(''));
+  const after = cleanWord([...t.text].slice(at + 1).join('')).clean;
+  add(c, id, 'warning', t, `${subject} is read as ${shown(read.value)}, not ${shown(meant.value)}`,
+    hidden
+      ? `${capital(what)} sits between ${before} and ${after}: a character you cannot see, which often comes with text copied from a web page or a PDF. SPICE stops reading the number at it, so the ${after} after it does not count. Write ${clean}.`
+      : `This ${what.replace(/^the /, '')}: SPICE knows only the plain letter, so it ignores this one like a unit${after ? `, and the ${after} after it` : ''}. Write ${clean}.`,
+    hidden
+      ? `ngspice stops reading the number at the ${nameOfCharacter(ch)!.replace(/^an? /, '').replace(/ \(U\+[0-9A-F]+\)$/, '')} and ignores the rest of the word, without a message: it reads ${shown(read.value)}. [invisible-character-1, invisible-character-2]`
+      : `ngspice ignores the ${what.replace(/^the /, '').replace(/, which looks like .*$/, '')} like a unit, without a message: it reads ${shown(read.value)}. [look-alike-letter-1]`,
+    fixes);
+}
+
+/** Every value word of a part line, and the numbers of the analysis lines, through checkOddValue. */
+function checkOddValues(c: Ctx, i: number): void {
+  const e = el(c, i);
+  for (const f of e.fields) {
+    if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role)) continue;
+    const main = e.value?.token === f.token || (!e.value && f.role === 'other' && e.fields.indexOf(f) === e.fields.findIndex((x) => x.role === 'other'));
+    checkOddValue(c, f.token, main && e.letter ? (UNIT[e.letter] ?? '') : undefined, main ? e.letter : undefined, main ? nameOf(e) : undefined);
+  }
+}
+
 /** Number-like words with the Greek letter mu, which ngspice ignores (the micro sign works). */
 function checkGreekMu(c: Ctx): void {
   const looksLikeNumber = /^[+-]?(\d+\.?\d*|\.\d+)([eEdD][+-]?\d+)?\u03bc/;
@@ -522,8 +583,8 @@ function checkDecimalComma(c: Ctx, i: number): void {
     const ngspice = passive
       ? `ngspice reads two numbers, ${f1.token.text} and ${f2.token.text}, keeps the second one and says nothing${e.letter === 'C' || e.letter === 'L' ? ` except a warning that it can't find a model called '${lowerAscii(written)}'` : ''}: ${nameOf(e)} gets ${second ? amount(second.value, e.letter) : f2.token.text}. [decimal-comma-1, decimal-comma-2, decimal-comma-3]`
       : source
-        ? `ngspice stops: 'unknown parameter (${lowerAscii(f2.token.text)})'. [decimal-comma-4, decimal-comma-5]`
-        : `PlainSpice's engine stops: 'unknown parameter (${lowerAscii(f2.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the two numbers as the coefficients of a polynomial instead. [decimal-comma-6, decimal-comma-7, decimal-comma-8, decimal-comma-9]`;
+        ? `ngspice stops: 'unknown parameter (${ngspiceSpelling(f2.token.text)})'. [decimal-comma-4, decimal-comma-5]`
+        : `PlainSpice's engine stops: 'unknown parameter (${ngspiceSpelling(f2.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the two numbers as the coefficients of a polynomial instead. [decimal-comma-6, decimal-comma-7, decimal-comma-8, decimal-comma-9]`;
     add(
       c,
       'decimal-comma',
@@ -586,6 +647,8 @@ const SUFFIX = /^(meg|mil|[tgkmunpfa\u00b5])?(ohms?|\u03a9|volts?|v|amps?|a|f|h|
  */
 function suffixVerdict(letter: ElementLetter, word: string, name: string): string {
   const w = lowerAscii(word);
+  // As ngspice quotes the word: µ as u, Ω as __ (space-before-suffix-16, -17; W16).
+  const said = ngspiceSpelling(word);
   if (w === 'm') {
     const silent: Partial<Record<ElementLetter, string>> = {
       R: `${name} then carries no current at all`,
@@ -602,11 +665,11 @@ function suffixVerdict(letter: ElementLetter, word: string, name: string): strin
   }
   if ('EFGH'.includes(letter)) {
     // p, v (and i) name values E, F, G and H can only report: a different message (space-before-suffix-15).
-    const message = isReportOnlyParameter(letter, w) ? 'no such parameter on this device or parameter is missing' : `unknown parameter (${w})`;
+    const message = isReportOnlyParameter(letter, w) ? 'no such parameter on this device or parameter is missing' : `unknown parameter (${said})`;
     return `PlainSpice's engine stops: '${message}'. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [space-before-suffix-6, space-before-suffix-13, space-before-suffix-14, space-before-suffix-15]`;
   }
-  if (letter === 'R') return `ngspice looks for a model called ${w}, warns 'can't find model', and stops: 'unknown parameter (${w})'. [space-before-suffix-1]`;
-  return `ngspice stops: 'unknown parameter (${w})'. [space-before-suffix-2, space-before-suffix-3, space-before-suffix-4, space-before-suffix-5]`;
+  if (letter === 'R') return `ngspice looks for a model called ${w}, warns 'can't find model', and stops: 'unknown parameter (${said})'. [space-before-suffix-1${said !== w ? ', space-before-suffix-16' : ''}]`;
+  return `ngspice stops: 'unknown parameter (${said})'. [space-before-suffix-2, space-before-suffix-3, space-before-suffix-4, space-before-suffix-5${said !== w ? ', space-before-suffix-17' : ''}]`;
 }
 
 function checkSpaceBeforeSuffix(c: Ctx, i: number): void {
@@ -661,8 +724,8 @@ function checkMidlineComment(c: Ctx, i: number): void {
     `${ch} in the middle of a line is not a comment`,
     `A ${ch} starts a comment only at the beginning of a line. For a comment after a part, use a semicolon: ; like this.`,
     'EFGH'.includes(e.letter)
-      ? `PlainSpice's engine stops: 'unknown parameter (${lowerAscii(f.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the rest as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [midline-comment-7, midline-comment-10, midline-comment-11, midline-comment-12]`
-      : `ngspice stops: 'unknown parameter (${lowerAscii(f.token.text)})'. [midline-comment-1 ... midline-comment-6, midline-comment-9]`,
+      ? `PlainSpice's engine stops: 'unknown parameter (${ngspiceSpelling(f.token.text)})'. Native ngspice 47, which has the XSPICE extension, reads the rest as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [midline-comment-7, midline-comment-10, midline-comment-11, midline-comment-12]`
+      : `ngspice stops: 'unknown parameter (${ngspiceSpelling(f.token.text)})'. [midline-comment-1 ... midline-comment-6, midline-comment-9]`,
     [fix('Use ; for the comment', change(f.token.from, f.token.from + 1, ';'))],
   );
 }
@@ -695,8 +758,10 @@ function checkUnknownWord(c: Ctx, i: number): void {
       : number
         ? `${efgh ? "PlainSpice's engine" : 'SPICE'} reads ${word} as one number too many for ${name}, so it stops there.`
         : `SPICE reads the words after a part's value as its settings, written name=value (like m=2), and ${word} is not a setting of ${kind}, so it stops there. To add a note at the end of a line, start it with a semicolon: ; like this.`;
-  const message = report ? 'no such parameter on this device or parameter is missing' : `unknown parameter (${lower})`;
-  const claims = report ? 'unknown-word-6' : glued ? 'unknown-word-9' : number ? 'unknown-word-8' : 'unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7';
+  // ngspice quotes the word as it spells it: each byte of a letter outside ASCII is _ (unknown-word-12, W16).
+  const message = report ? 'no such parameter on this device or parameter is missing' : `unknown parameter (${ngspiceSpelling(word)})`;
+  const spelled = ngspiceSpelling(word) !== lowerAscii(word) ? ', unknown-word-12' : '';
+  const claims = report ? 'unknown-word-6' : glued ? 'unknown-word-9' : number ? 'unknown-word-8' : `unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7${spelled}`;
   const ngspice = efgh
     ? number
       ? `PlainSpice's engine stops: '${message}'. Native ngspice 47, which has the XSPICE extension, reads the extra number as part of a polynomial and runs. [unknown-word-4]`
@@ -944,11 +1009,15 @@ function checkDangling(c: Ctx): void {
   if (!c.graph.hasGround) return;
   const nodes = [...c.n.nodes.values()];
   const floating = new Set(c.graph.floating.flatMap((g) => g.nodes));
-  const connected = nodes.filter((y) => y.connections.length > 0);
+  // A name with an invisible character, and the name it looks like, are the invisible-character
+  // check's: its fix joins them, so no "Did you mean" offers to rename out to ou<zero-width space>t.
+  const hidden = new Set(nodes.filter((y) => hasInvisible(y.name)).map((y) => lowerAscii(withoutInvisible(y.name))));
+  const connected = nodes.filter((y) => y.connections.length > 0 && !hasInvisible(y.name));
   let index: TypoIndex | undefined;
   let sourcePairs: Set<string> | undefined;
   for (const x of nodes) {
     if (x.ground || x.connections.length !== 1 || x.refs.length !== 1) continue;
+    if (hasInvisible(x.name) || hidden.has(x.name)) continue;
     const conn = x.connections[0]!;
     const e = el(c, conn.line);
     if ((e.letter !== 'R' && e.letter !== 'L') || e.nodes.length !== 2 || !c.built.has(conn.line)) continue;
@@ -1264,6 +1333,28 @@ function checkNodeNames(c: Ctx): void {
       `ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
       `ngspice runs it and spells the node ${spelled}, without a message. [non-ascii-node-1]`,
       [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
+  }
+}
+
+/**
+ * A node name with an invisible character in it (security review F2; invisible-character-3): ngspice
+ * keeps it in the name, written with underscores, so ou<zero-width space>t is the node ou___t, not out,
+ * and the parts on it are not connected to out. The fix takes the character out; when a node of that
+ * name exists, that joins them, as the student meant. The words name the character, never show it.
+ */
+function checkInvisibleNodes(c: Ctx): void {
+  for (const info of c.n.nodes.values()) {
+    if (info.ground || info.refs.length === 0 || !hasInvisible(info.name)) continue;
+    const t = info.refs[0]!;
+    const ch = [...t.text].find((x) => INVISIBLE.test(x))!;
+    const what = nameOfCharacter(ch)!;
+    const clean = withoutInvisible(t.text);
+    const other = c.n.nodes.get(lowerAscii(clean));
+    const changes = [...renameNode(info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
+      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]`,
+      [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
 
@@ -2020,6 +2111,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
     checkSignInValue(c, i);
     checkSpaceBeforeSuffix(c, i);
     checkMidlineComment(c, i);
+    checkOddValues(c, i);
     checkUnknownWord(c, i);
     checkIncomplete(c, i);
     checkZeroOhm(c, i);
@@ -2029,6 +2121,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   checkModels(c);
   checkSyntax(c);
   checkGreekMu(c);
+  for (const i of netlist.analyses) for (const t of netlist.lines[i]!.directive!.args) checkOddValue(c, t, undefined, undefined, undefined);
   checkNbsp(c);
   checkTitle(c);
   checkDuplicates(c);
@@ -2037,6 +2130,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   c.analysisTypo = checkUnknownDots(c).size > 0;
   // Then the circuit as a whole.
   checkGround(c);
+  checkInvisibleNodes(c);
   checkNodeNames(c);
   checkDangling(c);
   checkFloating(c);

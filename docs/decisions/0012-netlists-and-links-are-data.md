@@ -41,3 +41,23 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - Resolved on 10 November 2026: the site has its own origin, `https://plainspice.com/`, so its
   local storage and the service worker's caches are no longer shared with the account's other
   GitHub Pages sites (the old `ctbay1.github.io` address only forwards).
+
+## After the final reviews (12 November 2026)
+
+- **Characters that are not what they look like** (security review F2). Text copied from a web page
+  or a PDF can carry invisible characters, and a phone or another keyboard can type a letter from
+  another alphabet that looks like a scale letter. ngspice reads bytes and writes each byte outside
+  printable ASCII as `_` (W16), so `1<zero-width space>k` is 1 Ω and `1к` (Cyrillic) is 1 Ω while the
+  netlist reads 1k; a node name with an invisible character is another node. The checks
+  invisible-character and look-alike-letter (`src/spice/traps.ts`, `src/spice/characters.ts`) flag a
+  value only when its reading changes once the invisible characters are removed and the look-alikes
+  written as the letters they look like, so `1kΩ`, a Turkish node name or a zero-width space after
+  the scale letter is no trap; they say what ngspice reads and offer the plain value ("Write 1k").
+  Invisible means U+00AD, U+200B–U+200F, U+202A–U+202E, U+2060–U+2064, U+2066–U+2069 and U+FEFF; the
+  look-alikes are the Cyrillic and Greek letters that look like Latin ones, the fullwidth letters and
+  digits, a minus sign, dashes and the Kelvin sign (the Greek mu keeps its own check). A node name with
+  an invisible character gets a fix that takes it out, which joins it to the node of that name when
+  there is one, as was meant, so no fix reads "Rename out to out". The words never show such a
+  character: they name it ("a zero-width space (U+200B)"), in the checks and in Explain, and the
+  netlist editor shows it as a dot with that name (CodeMirror's highlightSpecialChars, with the set
+  above added). ngspice's own messages are quoted with its spelling ("unknown parameter (y__k)").

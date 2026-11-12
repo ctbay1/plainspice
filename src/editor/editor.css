@@ -122,6 +122,15 @@
   text-underline-offset: 0.18em;
 }
 
+/* ---------------------------------------------------------------- invisible characters (highlightSpecialChars) */
+
+/* A zero-width space and the like, shown as a dot in the colour of words SPICE cannot use, with a box so it is seen. */
+.cm-editor.ps-editor .ps-special {
+  color: var(--ps-syn-invalid, #b42318);
+  outline: 1px dotted currentColor;
+  outline-offset: -1px;
+}
+
 /* ---------------------------------------------------------------- the dark "simulator screen" (look: 'screen') */
 
 /* Its colours come from highlight.ts (editorScreenTheme), white again in high contrast. */

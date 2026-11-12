@@ -162,6 +162,12 @@ const CASES: Case[] = [
   // After the final reviews (12 November 2026): names ngspice spells with underscores (kept review F3).
   { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
   { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
+  // Characters that are not what they look like (security review F2).
+  { name: "a zero-width space inside a value", id: 'invisible-character', severity: 'warning', line: 3, at: "1​k", all: ["invisible-character"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space inside a node name", id: 'invisible-character', severity: 'warning', line: 4, at: "ou​t", all: ["invisible-character"], fixes: ["Take it out: connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
+  { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
+  { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
   { name: "two part names ngspice spells the same", id: 'duplicate-name', severity: 'error', line: 4, at: "R\u00e7", all: ["duplicate-name"], fixes: ["Rename it Rc"], netlist: "* t\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n" },
 ];
 
@@ -793,6 +799,39 @@ describe('the evidence', () => {
 
 describe('after the final reviews (12 November 2026)', () => {
   const first = (netlist: string, id: string): Trap => traps(netlist).find((t) => t.id === id)!;
+
+  it('flags an invisible character or a look-alike only when the reading changes, and never shows it (security review F2)', () => {
+    // The reviewer's link: "R1 in out 1<zero-width space>k" with R2 1k. Native 47: v(out) = 5.994006 (R1 = 1 Ω).
+    const zwsp = first('* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 1k\n.op\n.end\n', 'invisible-character');
+    expect(zwsp.title).toBe('R1\'s value is read as 1 Ω, not 1 kΩ');
+    for (const text of [zwsp.title, zwsp.why, zwsp.ngspice, ...zwsp.fixes.map((f) => f.label)]) expect(text).not.toMatch(/[​-‏⁠-⁤﻿­]/);
+    expect(zwsp.why).toContain('A zero-width space (U+200B) sits between 1 and k');
+    // Harmless: after the scale letter, or a unit written after it; Turkish node names are another check's.
+    expect(ids('* t\nV1 in 0 6\nR1 in out 1k​\nR2 out 0 2k\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 6\nR1 in out 1kΩ\nR2 out 0 2k\n.op\n.end\n')).toEqual([]);
+    expect(ids('* t\nV1 in 0 6\nR1 in out 1k \nR2 out 0 2k\n.op\n.end\n')).not.toContain('invisible-character');
+    // The Greek mu keeps its own check.
+    expect(ids('* t\nI1 0 n1 1\nR1 n1 0 4.7μ\n.op\n.end\n')).toEqual(['greek-mu']);
+    // The numbers of an analysis line too: 5<zero-width space>m is 5 s.
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1u\n.tran 1u 5​m\n.end\n', 'invisible-character').title).toBe('This value is read as 5, not 0.005');
+  });
+
+  it('a node name with an invisible character: no "Rename out to out", and no dangling-node notes for the two names (security review F2)', () => {
+    const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['invisible-character']);
+    expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Take it out: connect to out']);
+    expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
+    // On its own, the fix just takes the character out of the name.
+    const alone = first('* t\nV1 a 0 6\nR1 a ou​t 1k\nR2 ou​t 0 2k\n.op\n.end\n', 'invisible-character');
+    expect(alone.fixes.map((f) => f.label)).toEqual(['Take it out: name the node out']);
+  });
+
+  it('quotes ngspice\'s message with ngspice\'s own spelling of the word (W16; unknown-word-12, space-before-suffix-16, -17)', () => {
+    expect(first('* t\nV1 a 0 5\nR1 a 0 1k yük\n.op\n.end\n', 'unknown-word').ngspice).toContain("'unknown parameter (y__k)'");
+    expect(first('* t\nI1 0 n1 1\nR1 n1 0 1 Ω\n.op\n.end\n', 'space-before-suffix').ngspice).toContain("'unknown parameter (__)'");
+    expect(first('* t\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1 µ\n.op\n.end\n', 'space-before-suffix').ngspice).toContain("'unknown parameter (u)'");
+  });
 
   it('renames a node with a Turkish letter everywhere, on the drawing\'s label line too, and never onto a name ngspice already has (kept F3)', () => {
     const text = '* t\nV1 giri\u015f 0 12\nR1 giri\u015f giris 1k\nR2 giris 0 2k\n.tf v(giri\u015f) V1\n.end\n* plainspice-drawing v1\n*@ label giri\u015f 0 0\n*@ label giris 4 0\n';

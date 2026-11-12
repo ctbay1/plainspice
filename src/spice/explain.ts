@@ -15,6 +15,7 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
+import { cleanWord, describeCharacter, hasInvisible, INVISIBLE, lookAlikeOf, nameOfCharacter, withoutInvisible } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { readNumber } from './numbers.ts';
@@ -178,6 +179,14 @@ export const EXPLAIN_STRINGS = {
   greekMuNote: (text: string): string =>
     `The Greek letter μ is not a scale letter, so ngspice ignores it and everything after it in ${text}. For micro, write u.`,
   unitsIgnoredNote: (letters: string): string => `ngspice ignores '${letters}' after the number. Don't type units after numbers.`,
+  // Security review F2: a character that is not what it looks like is named, never shown in quotes
+  // (invisible-character-1, -4, look-alike-letter-1).
+  oddIgnored: (what: string, after: string): string => (after ? `${what}${what.includes(', which') ? ',' : ''} and the '${after}' after it are ignored` : `${what}${what.includes(', which') ? ',' : ''} is ignored`),
+  invisibleNote: (what: string, clean: string): string =>
+    `${what}, a character you cannot see, ends the number here, so ngspice ignores it and everything after it. Delete it: write ${clean}.`,
+  lookAlikeNote: (what: string, clean: string): string => `${what}, is a different character for SPICE, so ngspice ignores it and everything after it. Write ${clean}.`,
+  invisibleHarmless: (what: string): string => `There is ${what} in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.`,
+  nodeWithInvisible: (clean: string, what: string): string => `${clean} (written with ${what} in it)`,
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
     `ngspice read two numbers for the value, ${first} and ${second}, and uses the last one: ${used}.${why ? ` ${why}` : ''}`,
   twoNumbersComma: 'A comma separates words in SPICE: use a decimal point.',
@@ -646,8 +655,22 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
     notes.push(S.femtoNote(token.text, numberPart(token.text)));
     trap = true;
   }
-  if (reading.ignored) {
-    marks.push(S.ignored(reading.ignored));
+  const odd = reading.ignored ? [...reading.ignored][0]! : '';
+  if (reading.ignored && (INVISIBLE.test(odd) || lookAlikeOf(odd) !== undefined)) {
+    // The number stops at a character that is not what it looks like: name it, and say what was meant.
+    const after = cleanWord([...reading.ignored].slice(1).join('')).clean;
+    const clean = cleanWord(token.text).clean;
+    const meant = readNumber(clean);
+    marks.push(S.oddIgnored(describeCharacter(odd), after));
+    if (meant && meant.value !== reading.value) {
+      notes.push((INVISIBLE.test(odd) ? S.invisibleNote : S.lookAlikeNote)(capitalized(describeCharacter(odd)), clean));
+      trap = true;
+    } else if (INVISIBLE.test(odd)) notes.push(S.invisibleHarmless(nameOfCharacter(odd)!));
+  } else if (reading.ignored) {
+    const hidden = [...reading.ignored].find((ch) => INVISIBLE.test(ch));
+    const letters = withoutInvisible(reading.ignored);
+    marks.push(S.ignored(letters));
+    if (hidden) notes.push(S.invisibleHarmless(nameOfCharacter(hidden)!));
     if (/^\d/.test(reading.ignored) && scale) {
       // N6: 2k2 is 2 k, not 2.2 k.
       const digits = /^\d+/.exec(reading.ignored)![0];
@@ -663,12 +686,15 @@ export function valueWords(netlist: Netlist, token: Token, unit: string, reading
       // N5: the Greek letter mu is not the micro sign.
       notes.push(S.greekMuNote(token.text));
       trap = true;
-    } else if (!trap) {
-      notes.push(S.unitsIgnoredNote(reading.ignored));
+    } else if (!trap && letters) {
+      notes.push(S.unitsIgnoredNote(letters));
     }
   }
   return { text: marks.length ? `${shown} (${marks.join('; ')})` : shown, value: reading.value, notes, trap };
 }
+
+/** "A zero-width space (U+200B)" from "a zero-width space (U+200B)". */
+const capitalized = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The digits of a value word, without its scale letter and units: "4.7" in "4.7MOhm". */
 function numberPart(text: string): string {
@@ -681,6 +707,8 @@ function nodeText(ref: NodeRef): string {
   if (ref.ground) return S.ground;
   // W9, W13, W14: names that look like ground but are ordinary nodes are quoted, so "ground" never reads as ground.
   if (ref.name === 'gnd' || ref.name === 'ground' || ref.name === '00') return S.quotedNode(ref.token.text);
+  // invisible-character-3: the character is named, not hidden in the sentence.
+  if (hasInvisible(ref.token.text)) return S.nodeWithInvisible(withoutInvisible(ref.token.text), nameOfCharacter([...ref.token.text].find((ch) => INVISIBLE.test(ch))!, false)!);
   return S.nodeWord(ref.token.text);
 }
 

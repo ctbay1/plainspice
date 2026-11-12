@@ -738,6 +738,21 @@ describe('the string catalog', () => {
 });
 
 describe('after the final reviews (12 November 2026)', () => {
+  it('names an invisible character or a look-alike in a value instead of quoting it, and says what was meant (security review F2)', () => {
+    const zwsp = line('* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 1k\n.op\n.end\n', 3);
+    expect(meaningOf(zwsp, 'value')).toBe("1 Ω (a zero-width space (U+200B) and the 'k' after it are ignored)");
+    expect(notes(zwsp)).toContain('A zero-width space (U+200B), a character you cannot see, ends the number here, so ngspice ignores it and everything after it. Delete it: write 1k.');
+    expect(notes(zwsp)).not.toContain("Don't type units");
+    for (const text of [zwsp.summary, ...zwsp.notes, ...zwsp.fields.map((f) => f.meaning)]) expect(text).not.toMatch(/[​⁠﻿]/);
+    const cyr = line('* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n', 3);
+    expect(meaningOf(cyr, 'value')).toBe('1 Ω (the Cyrillic letter к, which looks like k, is ignored)');
+    expect(notes(cyr)).toContain('The Cyrillic letter к, which looks like k, is a different character for SPICE, so ngspice ignores it and everything after it. Write 1k.');
+    // Harmless after the scale letter: said, not called a trap.
+    expect(notes(line('* t\nV1 in 0 6\nR1 in out 1k​\n.op\n.end\n', 3))).toContain('There is a zero-width space (U+200B) in this value, a character you cannot see. ngspice ignores it, and here it changes nothing.');
+    // In a node name it is named in the sentence too.
+    expect(sp(line('* t\nV1 in 0 6\nR2 ou​t 0 2k\n.op\n.end\n', 3).summary)).toBe('R2 is a 2 kΩ resistor between out (written with a zero-width space in it) and ground (node 0).');
+  });
+
   const examples = readdirSync(join(root, 'examples'), { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .flatMap((d) => readdirSync(join(root, 'examples', d.name)).filter((f) => f.endsWith('.cir')).map((f) => join('examples', d.name, f)));

@@ -46,6 +46,13 @@ const INVISIBLE_NAMES: Readonly<Record<string, string>> = {
   '﻿': 'a byte order mark',
 };
 
+/** An invisible character's name in plain words, with its code unless `code` is false: "a zero-width space (U+200B)"; undefined for others. */
+export function nameOfCharacter(ch: string, code = true): string | undefined {
+  const name = INVISIBLE_NAMES[ch];
+  if (!name) return undefined;
+  return code ? `${name} (U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')})` : name;
+}
+
 /** True when the text has an invisible character. */
 export const hasInvisible = (s: string): boolean => INVISIBLE.test(s);
 

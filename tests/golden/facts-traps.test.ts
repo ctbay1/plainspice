@@ -251,6 +251,17 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-1', netlist: "* node names with Turkish letters\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n", vectors: { "v(giri__)": 12, "v(____k____)": 8, "i(v1)": -0.004 }, traps: ['non-ascii-node', 'non-ascii-node'] },
   { code: 'non-ascii-node-2', netlist: "* two node names that become one\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n", vectors: { "v(__)": 12, "i(v1)": -0.006 }, traps: ['non-ascii-node'] },
   { code: 'duplicate-name-3', netlist: "* two part names that become one\nV1 a 0 6\nR\u015f a 0 2\nR\u00e7 a 0 3\n.op\n.end\n", prints: ["device already exists"], fails: true, traps: ['duplicate-name'] },
+  // Added after the final reviews of 12 Nov 2026: characters that are not what they look like (W16).
+  { code: 'space-before-suffix-16', netlist: "* a space before the ohm sign\nI1 0 n1 1\nR1 n1 0 1 Ω\n.op\n.end\n", prints: ["unknown parameter (__)"], fails: true, traps: ['space-before-suffix'] },
+  { code: 'space-before-suffix-17', netlist: "* a space before the micro sign\nV1 in 0 1\nR1 in out 1k\nC1 out 0 1 µ\n.op\n.end\n", prints: ["unknown parameter (u)"], fails: true, traps: ['space-before-suffix'] },
+  { code: 'unknown-word-12', netlist: "* a word with a Turkish letter after a value\nV1 a 0 5\nR1 a 0 1k yük\n.op\n.end\n", prints: ["unknown parameter (y__k)"], fails: true, traps: ['unknown-word'] },
+  { code: 'invisible-character-1', netlist: "* a zero-width space inside a value\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n", vectors: { "v(out)": 5.997001499250375, "i(v1)": -0.0029985007496247107 }, traps: ['invisible-character'] },
+  { code: 'invisible-character-2', netlist: "* other invisible characters inside a value\nI1 0 n1 1\nR1 n1 0 1﻿k\nI2 0 n2 1\nR2 n2 0 1⁠k\nI3 0 n3 1\nR3 n3 0 1­k\nI4 0 n4 1\nR4 n4 0 1‎k\nI5 0 n5 1\nR5 n5 0 1‮k\nI6 0 n6 1\nR6 n6 0 1‍k\n.op\n.end\n", vectors: { "v(n1)": 1, "v(n2)": 1, "v(n3)": 1, "v(n4)": 1, "v(n5)": 1, "v(n6)": 1 }, traps: ['invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character', 'invisible-character'] },
+  { code: 'invisible-character-3', netlist: "* a zero-width space inside a node name\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n", vectors: { "v(out)": 6, "v(ou___t)": 0, "i(v1)": 0 }, traps: ['invisible-character'] },
+  { code: 'invisible-character-4', netlist: "* a zero-width space after the scale letter\nV1 in 0 6\nR1 in out 1k​\nR2 out 0 2k\n.op\n.end\n", vectors: { "v(out)": 4, "i(v1)": -0.002 }, traps: [] },
+  { code: 'invisible-character-5', netlist: "* a zero-width space before a resistor value\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 ​2k\n.op\n.end\n", prints: ["unknown parameter (___2k)"], fails: true, traps: ['invisible-character'] },
+  { code: 'look-alike-letter-1', netlist: "* letters that look like k and m\nI1 0 n1 1\nR1 n1 0 1к\nI2 0 n2 1\nR2 n2 0 1κ\nI3 0 n3 1\nR3 n3 0 1ｋ\nI4 0 n4 1\nR4 n4 0 2м\n.op\n.end\n", vectors: { "v(n1)": 1, "v(n2)": 1, "v(n3)": 1, "v(n4)": 2 }, traps: ['look-alike-letter', 'look-alike-letter', 'look-alike-letter', 'look-alike-letter'] },
+  { code: 'look-alike-letter-2', netlist: "* a minus sign copied from a document on a voltage source\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n", prints: ["unknown parameter (___5)"], fails: true, traps: ['look-alike-letter'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
