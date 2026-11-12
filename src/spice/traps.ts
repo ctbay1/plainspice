@@ -2370,11 +2370,6 @@ function checkZeroOhm(c: Ctx, i: number): void {
   const v = e.value?.number?.value;
   if (e.letter !== 'R' || v === undefined || Math.abs(v) >= 1e-12 || e.nodes.length < 2) return;
   const [a, b] = [e.nodes[0]!.name, e.nodes[1]!.name];
-  const fixes: Fix[] = [];
-  if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
-    const name = freshName(c, `V${e.name.text}`);
-    fixes.push(fix(`Use a 0 V source instead (${name})`, replace(e.name, name), replace(e.value!.token, '0')));
-  }
   const across = a !== b && !c.graph.inSubcircuit.has(i) && c.graph.voltagePaths.same(a, b) ? voltageAcross(c, a, b) : undefined;
   if (across?.nonzero) {
     // zero-ohm-2: ngspice puts 1e-12 ohm there, so the current is the voltage times a million million.
@@ -2383,6 +2378,16 @@ function checkZeroOhm(c: Ctx, i: number): void {
       `A resistance of 0 straight across ${sources.length === 1 ? 'a voltage source' : 'voltage sources'} would need an endless current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where ${nameOf(e)} should go.`,
       `ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to 1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2]`);
     return;
+  }
+  // A 0 that another check already explains (0<zero-width space>.47, 0R47, 0k47, 0．47 ...: the student
+  // meant 470 mΩ, and ngspice reads 0 only because of how it is written) is that check's: its fix
+  // writes what was meant, where "Use a 0 V source" would make a short (re-check C1).
+  const tok = e.value!.token;
+  if ((c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
+  const fixes: Fix[] = [];
+  if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
+    const name = freshName(c, `V${e.name.text}`);
+    fixes.push(fix(`Use a 0 V source instead (${name})`, replace(e.name, name), replace(e.value!.token, '0')));
   }
   add(c, 'zero-ohm', 'warning', e.value!.token, `${nameOf(e)} has a resistance of ${formatSI(v, 'Ω')}`,
     "SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).",

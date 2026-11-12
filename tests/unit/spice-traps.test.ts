@@ -1231,6 +1231,22 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
     expect(first('* t\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0\nR1 b 0 1k\n.op\n.end\n', 'missing-value').ngspice).toContain("Native ngspice 47 stops: 'not enough parameters in line'.");
   });
 
+  it('a 0 that another check explains is that check\'s: no "Use a 0 V source" for 0<zero-width space>.47, 0R47, 0k47 (C1)', () => {
+    for (const value of ['0\u200b.47', '0．47', '0\u2009.47', '0\u00a0.47', '0R47', '0k47', '0\u200b.1meg']) {
+      const text = `* t\nV1 a 0 1\nR1 a b ${value}\nR2 b 0 1\n.op\n.end\n`;
+      const found = traps(text);
+      expect(found, value).toHaveLength(1);
+      expect(found[0]!.id, value).not.toBe('zero-ohm');
+      expect(found.flatMap((t) => t.fixes.map((f) => f.label)).join(' '), value).not.toContain('0 V source');
+    }
+    // Straight across a source the error stays: it is the only thing that keeps 6e12 A from reading as an answer (zero-ohm-2).
+    expect(traps('* t\nV1 a 0 6\nR1 a 0 0\u200b.47\n.op\n.end\n').map((t) => [t.id, t.severity])).toEqual([['invisible-character', 'warning'], ['zero-ohm', 'error']]);
+    // A plain 0 keeps its warning and its fix.
+    for (const value of ['0', '0R0', '-0']) {
+      expect(first(`* t\nV1 a 0 1\nR1 a b ${value}\nR2 b 0 1\n.op\n.end\n`, 'zero-ohm').fixes.map((f) => f.label), value).toEqual(['Use a 0 V source instead (VR1)']);
+    }
+  });
+
   it('a sign then a character that looks like a space: one error whose fix writes the value, no glue warning, no comment fix (C2; space-character-12 to -14, nbsp-3)', () => {
     const spaces = ['\u00a0', '\u1680', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009', '\u200a', '\u202f', '\u205f', '\u3000'];
     for (const ch of spaces) {
