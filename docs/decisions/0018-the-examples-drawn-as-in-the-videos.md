@@ -150,7 +150,7 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   30 px a grid unit: most of the circuit shows at once. A ladder built with the mouse and shared to a
   Pixel 7 showed V1 and half of R1; it now shows all five parts, F1's words cut at the edge, and Fit
   shows all of it. This changes how "As in the video" looked at Tarık's checkpoint (decision 0015: 30
-  px a unit); it is one line of `App.tsx` (the canvas's `fill`) to take back.
+  px a unit); the canvas keeps its `fill: 'height'`, so `App.tsx` can take it back in a few lines.
 - **Old numbers only when there are some.** A paused status adds "The numbers are from before your last
   change." only when the last run gave answers, which the drawing keeps in pencil; after a run that gave
   none (a check found an error) the paper shows none, and the sentence only made the status longer.
