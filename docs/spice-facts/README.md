@@ -75,6 +75,12 @@ spaces the groups are three words and ngspice stops; in a node name the characte
 digits not grouped in threes end the number too) and look-alike-letter-6 (a look-alike right after a
 sign: `-５` stops ngspice).
 
+After the words re-check of the merged fixes, the same day: A3b (a gnd inside `.tf`'s `v( )` is
+ground, even beside an ordinary node called gnd) and A3c (a `.tf` written after `.end` runs, and
+ngspice names its output in its own words, `v(out,mid)`) in explanations.md, on which the .tf words
+rely; P3 and P4 now also run a source with a negative value between two nodes, which Explain says by
+its size ("3 V below", "the current flows the other way").
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the

@@ -163,3 +163,23 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   space (U+2009) in it") and, as for an invisible character, its fix takes it out, "Take it out:
   connect to out" when a node out exists, else "Take it out: name the node out"; the dangling-node
   check says nothing about the pair, so no button reads "Rename out to o ut".
+- **Such a character in a node name is named on every line** (re-check S11). Explain named an
+  invisible character in a node name on part lines only. On .tf, .ic, .save and .print lines (and in
+  the .tf note for a node that is not in the circuit) it wrote the name with the character hidden in
+  it ("the output resistance at node ou<ZWSP>t", which reads as the node out); it never named a
+  look-alike letter in a node name; and the circuit overview and the results' words did the same. Now
+  one function, `nodeNameInWords` (`src/spice/explain.ts`), names it wherever a sentence names the
+  node: "node out (written with a zero-width space in it)", "node o ut (one word for SPICE: written
+  with a thin space, not a space)", "node оut (written with the Cyrillic letter о, which looks like
+  o)". On .ic, .save and .print lines such a voltage is said in words ("the voltage at node out
+  (written with a zero-width space in it) starts at 1 V"), and the .tf formula leaves the character
+  out, the words after it naming it. A name all in another alphabet (α) or with a Turkish letter is
+  meant as written, and not named. The .tf check leaves a name that is a node of the circuit but for
+  such a character to the invisible-character, space-character or look-alike-letter warning, which
+  names it and offers the same fix, so it never says "There is no node called out" with a button "Use
+  out"; the run is then marked by that warning and the results' own note that the .tf node is no node
+  of the circuit (A6), not as an error. For a name that is no node either, the error names the
+  character too. Known gap: the short forms still write such a name as it is written, so the
+  character is there unseen: a sweep's "v(out) = 3.5 V", the Plot's legend, the Numbers panel's Node
+  column and the notes at the end of netlist lines (the checks warn about the node, and the sentences
+  beside them name the character).

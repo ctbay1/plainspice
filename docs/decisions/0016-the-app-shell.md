@@ -253,3 +253,18 @@ Ctrl+K stay as they are.
   right, because a name in plain letters is what keeps two nodes apart; a fix never gives a name
   another node has (it would join them), so `giriş` next to a node `giris` becomes `giris2`; the fix
   renames the node on the drawing's `*@ label` line too.
+- **A node name outside ASCII is said as first written** (re-check S7 and words re-check 8). The
+  results' words named a node by its key, the name with lowerAscii applied, which lower-cases only A
+  to Z: `GİRİŞ` was "gİrİŞ" in the Numbers panel's Node column, the summary and the live region, the
+  currents, the sweeps, the Plot and the overview's list, beside the drawing's GİRİŞ, and `aµ` was
+  "au", ngspice's spelling. `NodeVoltageWords.name` (and `shownNode` in `describe.ts`, for the other
+  words) is the node's name as first written (its first reference in the netlist) when it has a
+  character outside printable ASCII, else the key. The key, `node`, stays for every lookup: the
+  Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
+  with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
+  (g__r____, au). Chosen for this release: a name in plain ASCII keeps ngspice's own spelling, in
+  lower case ("in" for IN, as W6 says SPICE reads it), as these words always said it; every name as
+  written, which would make the words agree with the drawing for capitals too, changes the words of
+  every circuit written in capitals, and is left for after the release. Nothing is lower-cased with
+  toLowerCase, which turns İ into i with a combining dot and knows no Turkish ı. Known gap: the
+  rounding-noise note (another lane's) still names a node by its key.
