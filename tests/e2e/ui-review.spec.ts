@@ -5,9 +5,9 @@
  * dependent sources' Place commands first (words W4); a fix on the video's mistake examples leaves no
  * drawing warning, the tab and the announcement agree, and a fix that renames a part keeps it where it
  * was drawn (kept F1); the starter's why is shown in the hint line until it has been read, on a phone
- * too (words W9); the Netlist panel a SPICE for Beginners example opened closes with the next video's
- * example (student netlist-panel-stays); a new node never takes a name just said to be ground
- * (student node-name-reused).
+ * too, and after a Shift+click (words W9); the Netlist panel a SPICE for Beginners example opened
+ * closes with the next video's example (student netlist-panel-stays); a new node never takes a name
+ * just said to be ground (student node-name-reused).
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -38,11 +38,13 @@ import {
 const palette = (page: Page) => page.getByRole('dialog', { name: t('paletteTitle') });
 const search = (page: Page) => palette(page).getByRole('combobox', { name: t('paletteLabel') });
 
-/** Click a grid point (a place on the paper) with the mouse. */
-async function clickAt(page: Page, x: number, y: number): Promise<void> {
+/** Click a grid point (a place on the paper) with the mouse; `shift`: Shift held, so the part in hand stays. */
+async function clickAt(page: Page, x: number, y: number, shift = false): Promise<void> {
   const p = await gridPoint(page, x, y);
   await page.mouse.move(p.x, p.y);
+  if (shift) await page.keyboard.down('Shift');
   await page.mouse.click(p.x, p.y);
+  if (shift) await page.keyboard.up('Shift');
 }
 
 test('Ctrl+K keeps the focus in its field: Tab stays there, Escape closes it, and a click on a group’s name keeps the focus (a11y A1)', async ({ page }) => {
@@ -233,6 +235,38 @@ test('on a phone the why for .op and .end shows once the first part’s card she
   await card.getByRole('button', { name: t('cardClose', { name: 'R1' }) }).click();
   await expect(card).toHaveCount(0);
   await expect(hintLine(page)).toHaveText(`${starterWords()} ${t('drawingWritten')}`);
+});
+
+test('a first part placed with Shift+click shows the why for .op and .end at once, and Escape back to Select keeps it (the second critic of words W9)', async ({ page }) => {
+  test.skip(isPhone(page), 'Shift+click is a mouse’s way to place more than one');
+  await openApp(page);
+  await newCircuit(page);
+  const why = `${starterWords()} ${t('drawingWritten')}`;
+  const hand = page.getByRole('toolbar', { name: t('handLabel', { part: 'Resistor' }) });
+  await partsToolbar(page).getByRole('button', { name: /^Resistor/ }).click();
+  await clickAt(page, 2, 2, true);
+  const placed = Date.now();
+  await expect.poll(() => savedNetlist(page)).toMatch(/^R1 /m);
+  // Shift keeps the tool, as the hint line offered: the resistor is still in hand, and the why is shown
+  // at once, as after a plain click (it waited unseen, and Escape took it away).
+  await expect(hand).toBeVisible();
+  await expect(hintLine(page)).toHaveText(why);
+  // Another resistor with Shift (a change with nothing to say), and the pointer moving on: still there.
+  await clickAt(page, 8, 2, true);
+  await expect.poll(() => savedNetlist(page)).toMatch(/^R2 /m);
+  const empty = await gridPoint(page, 12, 9);
+  await page.mouse.move(empty.x, empty.y, { steps: 4 });
+  await expect(hintLine(page)).toHaveText(why);
+  // Escape goes back to Select, as the hint line says: the resistor is put down, the why stays.
+  await page.keyboard.press('Escape');
+  await expect(hand).toHaveCount(0);
+  await expect(hintLine(page)).toHaveText(why);
+  // Past the 6 s an ordinary note has: still there.
+  await page.waitForTimeout(Math.max(0, 7000 - (Date.now() - placed)));
+  await expect(hintLine(page)).toHaveText(why);
+  // The next thing, another tool chosen: the hint line says what the tool does.
+  await partsToolbar(page).getByRole('button', { name: /^Capacitor/ }).click();
+  await expect(hintLine(page)).not.toHaveText(why);
 });
 
 test('the Netlist panel a SPICE for Beginners example opened closes with the next video’s example (student netlist-panel-stays)', async ({ page }) => {

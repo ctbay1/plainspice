@@ -3,12 +3,13 @@
  * How long an edit's note stays in the hint line (src/app/hint-note.ts): an ordinary note a few
  * seconds; a note that must be read (the starter's why: the critic of words W9) its reading time,
  * counted only while the hint line shows it, so a phone's card sheet over the hint line does not
- * use it up.
+ * use it up. And when the hint line shows a note, and which note a tool chosen leaves: one that must
+ * be read shows with a part in hand, and stays when the tool goes back to Select (the second critic).
  */
 import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { starterWords } from '../../src/app/editing.ts';
-import { READ_MS_PER_CHAR, REFUSAL_SHOWN_MS, readingMs, useNoteTimer, type HintNote } from '../../src/app/hint-note.ts';
+import { hintShowsNote, noteAfterTool, READ_MS_PER_CHAR, REFUSAL_SHOWN_MS, readingMs, useNoteTimer, type HintNote } from '../../src/app/hint-note.ts';
 import { t } from '../../src/i18n/index.ts';
 
 beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] }));
@@ -86,5 +87,35 @@ describe('an edit’s note in the hint line', () => {
     expect(cleared).toEqual([next]);
     vi.advanceTimersByTime(1);
     expect(cleared).toEqual([next, again]);
+  });
+});
+
+describe('when the hint line shows a note, and what a tool chosen leaves (the second critic of words W9)', () => {
+  const why: HintNote = { words: starterWords(), read: true };
+  const drawn: HintNote = { words: t('drawingWritten') };
+  const idle = { refused: false, inHand: false, moving: false };
+
+  it('a note that must be read shows with a part still in hand (Shift+click keeps the tool); an ordinary note does not', () => {
+    expect(hintShowsNote(why, idle)).toBe(true);
+    expect(hintShowsNote(drawn, idle)).toBe(true);
+    expect(hintShowsNote(why, { ...idle, inHand: true })).toBe(true);
+    expect(hintShowsNote(drawn, { ...idle, inHand: true })).toBe(false);
+    // Never over a refusal the hint line shows, nor while a part is moved, nor with no note.
+    for (const note of [why, drawn]) {
+      expect(hintShowsNote(note, { ...idle, refused: true })).toBe(false);
+      expect(hintShowsNote(note, { ...idle, moving: true })).toBe(false);
+      expect(hintShowsNote(note, { ...idle, inHand: true, moving: true })).toBe(false);
+    }
+    expect(hintShowsNote(undefined, idle)).toBe(false);
+  });
+
+  it('back to Select keeps a note that must be read (it only puts the part in hand down); another tool takes any note away', () => {
+    expect(noteAfterTool(why, 'select')).toBe(why);
+    expect(noteAfterTool(drawn, 'select')).toBeUndefined();
+    for (const next of ['R', 'C', 'V', 'E', 'ground', 'wire'] as const) {
+      expect(noteAfterTool(why, next), next).toBeUndefined();
+      expect(noteAfterTool(drawn, next), next).toBeUndefined();
+    }
+    expect(noteAfterTool(undefined, 'select')).toBeUndefined();
   });
 });

@@ -167,7 +167,7 @@ import { TopBar } from './components/TopBar.tsx';
 import { isCancelled, isTimeout, RUN_TIMEOUT_MS, type Engine } from './engine.ts';
 import { EXAMPLE_GROUPS, EXAMPLES, START_HERE_ID, drawnAsInVideo, exampleById, exampleName } from './examples.ts';
 import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedText, stillToChoose } from './fixes.ts';
-import { REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
+import { hintShowsNote, noteAfterTool, REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
 import { useKeyboardInset, useMedia, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
 import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
@@ -1234,7 +1234,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setWireDraft(undefined);
       setLookAt(undefined);
       setRefusal(undefined);
-      setNoteLine(undefined);
+      // Back to Select only puts the part in hand down: a note that must be read stays (hint-note.ts; the
+      // second critic of words W9: after a Shift+click, Escape took the starter's why away unseen).
+      setNoteLine((now) => noteAfterTool(now, next));
       setMove(undefined);
       setPartsSheet(false);
       if (next === 'select') {
@@ -1797,7 +1799,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // A refused edit's reason is in the hint line until the next thing happens, or for a few seconds
   // (it was said aloud too): then the hint says again what can be done now.
   const refusalShown = !!refusal && !hand && tool !== 'wire' && !move;
-  const noteInHint = !refusalShown && !!noteLine && !hand && !move;
+  // (A note that must be read shows with a part still in hand too: Shift+click keeps the tool.)
+  const noteInHint = hintShowsNote(noteLine, { refused: refusalShown, inHand: !!hand, moving: !!move });
   const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
   // netlist being typed puts it aside.
@@ -2770,8 +2773,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (e.key === 'Escape') {
       // What is in progress stops first, then the tool goes back to Select, as the hint line says.
       let acted = true;
-      /** This Escape closed a card (the one that opened on a new part, say). */
-      let closedCard = false;
+      /** This Escape only closed a card (the one that opened on a new part, say) or put the part in hand down. */
+      let keepsNote = false;
       if (move) cancelMove();
       else if (wireDraft) {
         setWireDraft(undefined);
@@ -2780,12 +2783,14 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else if (moreSheet) setMoreSheet(false);
       else if (card) {
         closeCard();
-        closedCard = true;
+        keepsNote = true;
       } else if (nodeCard) {
         closeNodeCard();
-        closedCard = true;
-      } else if (tool !== 'select') chooseTool('select');
-      else if (panel && !inEditor) setPanel(undefined);
+        keepsNote = true;
+      } else if (tool !== 'select') {
+        chooseTool('select');
+        keepsNote = true;
+      } else if (panel && !inEditor) setPanel(undefined);
       else if (selectedWire && !inEditor) setSelectedWire(undefined);
       else if (selected && !inEditor) setSelected(undefined);
       // Nothing left to stop or let go of: on the drawing, its own Esc may have let go of the selection
@@ -2793,9 +2798,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       else acted = false;
       // The next thing has happened: the hint line says again what can be done now, not an older refusal
       // or an edit's note (they were said aloud when they came). A note that must be read stays when
-      // Escape only closed a card: on a phone that brings the hint line, and the note, back into view.
+      // Escape only closed a card (on a phone that brings the hint line, and the note, back into view)
+      // or only went back to Select, as the hint line offers after a Shift+click (chooseTool keeps it).
       setRefusal(undefined);
-      if (!(closedCard && noteLine?.read)) setNoteLine(undefined);
+      if (!(keepsNote && noteLine?.read)) setNoteLine(undefined);
       if (acted) e.preventDefault();
       return;
     }

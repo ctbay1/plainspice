@@ -8,9 +8,12 @@
  * 60 ms a character, counted only while the hint line shows it, whatever the pointer does. On a phone
  * the new part's card opens as a sheet over the hint line, so that time starts when the sheet closes.
  * (Held only as long as the drawing note, it went at the first pointer move after 1.5 s, after 6 s at
- * most, and a phone never showed it: the critic of words W9.)
+ * most, and a phone never showed it: the critic of words W9.) It shows with a part still in hand too
+ * (Shift+click keeps the tool), and going back to Select leaves it in place (App.tsx: after a
+ * Shift+click it was never shown, and Escape back to Select took it away: the second critic of W9).
  */
 import { useEffect, useRef } from 'react';
+import type { Tool } from './tools.ts';
 
 /** How long a refused edit's reason, or an edit's note, stays in the hint line (each is announced as well). */
 export const REFUSAL_SHOWN_MS = 6000;
@@ -28,6 +31,23 @@ export interface HintNote {
 
 /** How long a note that must be read stays in view: its length at READ_MS_PER_CHAR, never less than REFUSAL_SHOWN_MS. */
 export const readingMs = (words: string): number => Math.max(REFUSAL_SHOWN_MS, words.length * READ_MS_PER_CHAR);
+
+/**
+ * Whether the hint line shows the note now, in place of what can be done: not while it shows a
+ * refusal (`refused`) or a part is being moved (`moving`). With a part in hand (`inHand`) the hint
+ * line says where it would go, so only a note that must be read shows then: Shift+click keeps the
+ * tool, and the starter's why shows at once, as after a plain click (the second critic of words W9).
+ */
+export function hintShowsNote(note: HintNote | undefined, now: { refused: boolean; inHand: boolean; moving: boolean }): boolean {
+  return !!note && !now.refused && (!now.inHand || !!note.read) && !now.moving;
+}
+
+/**
+ * The note left when a tool is chosen (`next`): going back to Select (Escape, Cancel, the Select tool,
+ * the click that places the last part) only puts the part in hand down, so a note that must be read
+ * stays; another tool is the next thing, and takes any note away.
+ */
+export const noteAfterTool = (note: HintNote | undefined, next: Tool): HintNote | undefined => (next === 'select' && note?.read ? note : undefined);
 
 /**
  * Takes the note out of the hint line when its time is up (`clear`, called with the note it was

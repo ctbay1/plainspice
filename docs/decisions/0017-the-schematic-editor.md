@@ -336,10 +336,14 @@ browsers other than Chromium.
   time, 60 ms a character, about 170 words a minute (never less than a refusal's 6 s; about 19 s for
   the sentence and the drawing note together), counted only while the hint line shows it: on a phone
   the new part's card opens as a sheet in the hint line's place, so the time starts when the sheet
-  closes (`src/app/hint-note.ts`). Moving the pointer, closing the card (Escape or its close button),
-  typing its value, or another change with nothing to say leaves it in place; a change with a note of
-  its own, a refusal, a tool chosen, Undo or Redo, another circuit opened, or an Escape for anything
-  but closing a card takes it away at once.
+  closes (`src/app/hint-note.ts`). It shows with a part still in hand too: Shift+click keeps the tool,
+  as the hint line offers, and the why shows at once, as after a plain click (the second critic of W9:
+  placed that way, it was never shown). Moving the pointer, closing the card (Escape or its close
+  button), typing its value, another change with nothing to say (another part placed with Shift+click),
+  or going back to Select (Escape, Cancel, the Select tool, or the click that places the last part)
+  leaves it in place; a change with a note of its own, a refusal, another tool chosen, Undo or Redo,
+  another circuit opened, or any other Escape (letting go of the selection, closing a panel or a
+  sheet, stopping a wire or a move) takes it away at once.
 - **A new node never takes a name the circuit had** (student node-name-reused: right after "Node n2 is
   now ground", a resistor on empty paper got node n2 again, which reads as grounded). New nodes skip
   every node name in the circuit's undo history: the texts Undo can go back to since the circuit was
