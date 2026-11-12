@@ -85,6 +85,9 @@ const FACTS: Fact[] = [
   { code: 'A2', id: 'an-savecurrents', netlist: "* .op with .options savecurrents\nV1 a 0 10\nR1 a b 2\nL1 b c 1m\nR2 c 0 3\nC1 c 0 1u\nI1 0 c 1\nE1 e 0 c 0 2\nRE e 0 4\nVs c d 0\nRD d 0 5\nF1 0 f Vs 3\nRF f 0 1\nG1 0 g c 0 0.1\nRG g 0 1\nH1 h 0 Vs 7\nRH h 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 10, "v(b)": 5.806451612903226, "v(c)": 5.806451612903226, "v(e)": 11.612903225806452, "v(d)": 5.806451612903226, "v(f)": 3.483870967741936, "v(g)": 0.5806451612903226, "v(h)": 8.129032258064516, "i(vs)": 1.1612903225806452, "i(h1)": -8.129032258064516, "i(l1)": 2.096774193548387, "i(e1)": -2.903225806451613, "i(v1)": -2.096774193548387, "i(@r1[i])": 2.096774193548387, "i(@l1[i])": 2.096774193548387, "i(@r2[i])": 1.935483870967742, "i(@c1[i])": 0, "i(@i1[current])": 1, "i(@re[i])": 2.903225806451613, "i(@rd[i])": 1.1612903225806452, "i(@f1[i])": 3.483870967741936, "i(@rf[i])": 3.483870967741936, "i(@g1[i])": 0.5806451612903226, "i(@rg[i])": 0.5806451612903226, "i(@rh[i])": 8.129032258064516 } },
   { code: 'A2b', id: 'an-savecurrents-semiconductors', netlist: "* savecurrents with a diode, a BJT and a MOSFET\nV1 a 0 5\nR1 a b 1k\nD1 b 0 dmod\n.model dmod D\nVc c 0 5\nVb bb 0 0.7\nQ1 c bb 0 qm\n.model qm npn\nM1 c bb 0 0 nm\n.model nm nmos\n.options savecurrents\n.op\n.end\n", vectors: { "i(@d1[id])": 0.004307674725988779, "i(@q1[ic])": 0.00005670347201442283, "i(@m1[id])": 0.0000049000050100000015 } },
   { code: 'A3', id: 'an-tf', netlist: "* F4: output impedance at v(a) with .tf\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n.end\n", vectors: { "v(Transfer_function)": 0.33333333333333337, "v(v1#Input_impedance)": 9, "v(output_impedance_at_V(a))": 4 } },
+  { code: 'A3b', id: 'an-tf-gnd', netlist: "* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(out,gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(out,0))": 500 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'A3b-op', id: 'an-tf-gnd-op', netlist: "* .op beside the .tf of a3b: the ordinary node gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "v(x)": 2.5, "v(gnd)": 2.5, "i(vx)": 0, "i(v1)": -0.004999999999999999 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
+  { code: 'A3c', id: 'an-tf-after-end', netlist: "* a .tf written after .end\nV1 in 0 5\nR1 in out 1k\nR2 out mid 1k\nR3 mid 0 1k\n.end\n.tf v(out,mid) V1\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 2999.9999999999995, "v(output_impedance_at_V(out,mid))": 666.6666666666667 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -434,6 +437,21 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(plain(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
     expect(plain(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thévenin resistance seen at node a (ngspice calls it the output impedance)');
     expect(tf.outputResistance?.speech).toBe('the output resistance at node a is 4 ohms, the Thévenin resistance');
+  });
+
+  it('.tf words on real runs name each output node one way: a gnd in v( ) is ground (A3b); a .tf after .end takes ngspice\'s names (A3c)', () => {
+    const gnd = describeRun(fact('A3b').netlist, runs.get('an-tf-gnd')!);
+    expect(gnd.words.tf?.at).toBe('between node out and ground');
+    expect(plain(gnd.words.tf?.outputResistance?.text)).toBe('output resistance between node out and ground: 500 Ω, the Thévenin resistance seen between node out and ground (ngspice calls it the output impedance)');
+    expect(gnd.words.tf?.transferFunction?.speech).toBe('the transfer function from V1 to the voltage between node out and ground is 0.5 volts per volt');
+    expect(explainLine(gnd.netlist, 7)!.fields.find((f) => f.label === 'output')?.meaning).toBe('the output: the voltage at node out, measured from ground');
+    // The .op of the same circuit: the ordinary node gnd the .tf's gnd is not.
+    expect(describeRun(fact('A3b-op').netlist, runs.get('an-tf-gnd-op')!).words.nodes.find((n) => n.node === 'gnd')?.value).toBe(2.5);
+    const after = describeRun(fact('A3c').netlist, runs.get('an-tf-after-end')!);
+    expect(after.words.tf?.at).toBe('between node out and node mid');
+    expect(plain(after.words.tf?.transferFunction?.text)).toBe('v(out,mid)/V1 = 0.3333 (V/V)');
+    expect(plain(after.words.tf?.inputResistance?.text)).toBe('input resistance seen by V1: 3 kΩ (ngspice calls it the input impedance)');
+    expect(after.words.tf?.outputResistance?.speech).toBe('the output resistance between node out and node mid is 666.7 ohms, the Thévenin resistance');
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {

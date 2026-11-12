@@ -20,7 +20,7 @@ import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -30,6 +30,7 @@ import type {
   LineExplanation,
   Netlist,
   NetlistLine,
+  NodeInfo,
   NodeRef,
   NumberReading,
   Span,
@@ -774,11 +775,6 @@ function nodeProse(ref: NodeRef | undefined): string {
   return !ref ? '?' : ref.ground ? S.groundShort : nodeText(ref);
 }
 
-/** A node named on an analysis line (.tf v(a,b)), in a sentence: "node a"; 0 is ground. */
-function nodeNameProse(text: string): string {
-  return text === '0' ? S.groundShort : text === '' || text === '?' ? text : S.nodeWord(text);
-}
-
 /** The node's name in a formula: as written; ground as written too ("0", "gnd"). */
 function nodeFormula(ref: NodeRef | undefined): string {
   return ref ? ref.token.text : '?';
@@ -973,6 +969,12 @@ export type AnalysisReading =
       outputKind: 'voltage' | 'current';
       /** Output nodes (voltage output) or the source (current output), as written. */
       outputNames: string[];
+      /**
+       * A voltage output's nodes as the parser reads them (empty for a current output): ground ('0')
+       * for 0, and for gnd where ngspice makes it 0, before ')' or ',' (inp_fix_gnd_name: `.tf v(out,gnd)`
+       * is v(out,0), A3b), so the words never call that gnd a node (code review 1).
+       */
+      outputNodes: NodeRef[];
       input?: Token;
       inputKind?: 'voltage' | 'current' | 'other' | 'missing';
     }
@@ -1071,6 +1073,26 @@ function vectorAt(netlist: Netlist, args: readonly Token[], k: number): VectorGr
   return { kind, names, span: { from: head.from, to: end }, text: netlist.text.slice(head.from, end), used: names.length + 1 };
 }
 
+/** For each word the parser read as a node on a dot command's line (the words in v(...)), the node it filed it under, by where the word starts. */
+const wordNodes = new WeakMap<Netlist, Map<number, NodeInfo>>();
+
+/**
+ * A word inside v(...) on a dot command's line as the node the parser read it as: ground for 0, and
+ * for a gnd that ngspice turns into 0 there (gndIsGround in parse.ts); otherwise the node of that name.
+ */
+function nodeOfWord(netlist: Netlist, token: Token): NodeRef {
+  let byStart = wordNodes.get(netlist);
+  if (!byStart) {
+    byStart = new Map();
+    for (const info of netlist.nodes.values()) for (const t of info.refs) byStart.set(t.from, info);
+    wordNodes.set(netlist, byStart);
+  }
+  const info = byStart.get(token.from);
+  if (info) return { token, name: info.name, ground: info.ground };
+  const name = ngspiceName(token.text);
+  return { token, name, ground: name === '0' };
+}
+
 /** The first .dc line (0-based) that sweeps the part with lower-case name `key`, if any. */
 export function sweptBy(netlist: Netlist, key: string): number | undefined {
   return contextOf(netlist).swept.get(key);
@@ -1158,6 +1180,7 @@ export function readAnalysis(netlist: Netlist, lineIndex: number): AnalysisReadi
         output: out?.text ?? d.args[0]?.text ?? '',
         outputKind: out?.kind ?? 'voltage',
         outputNames: (out?.names ?? []).map((t) => t.text),
+        outputNodes: out?.kind === 'voltage' ? out.names.map((t) => nodeOfWord(netlist, t)) : [],
       };
       if (input) {
         reading.input = input;
@@ -1848,15 +1871,15 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
   const fields: FieldExplanation[] = [];
   const notes: string[] = [];
   const g = vectorAt(netlist, d.args, 0);
+  // The output's nodes as the parser reads them, each said one way here and in the results: a gnd that
+  // ngspice makes 0 is ground (A3b), a name like ground is quoted (W13), a hidden character named.
+  const [n1, n2] = r.outputNodes;
   if (g) {
-    const meaning =
-      g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(nodeNameProse(g.names[0]?.text ?? ''), nodeNameProse(g.names[1]?.text ?? ''));
+    const meaning = g.kind === 'current' ? S.tfOutputI(g.names[0]?.text ?? '') : S.tfOutputV(nodeProse(n1), n2 ? nodeProse(n2) : '');
     fields.push({ label: 'output', text: g.text, span: g.span, meaning });
-    if (g.kind === 'voltage') {
-      for (const n of g.names) {
-        const info = netlist.nodes.get(lowerAscii(n.text) === 'gnd' ? '0' : lowerAscii(n.text));
-        if (!info || info.connections.length === 0) addNote(notes, S.tfNodeMissingNote(n.text)); // A6
-      }
+    for (const n of r.outputNodes) {
+      const info = netlist.nodes.get(n.name);
+      if (!info || info.connections.length === 0) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
     }
   }
   const input = r.input;
@@ -1874,8 +1897,7 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
   }
   const outText = r.output;
   const inText = input?.text ?? '?';
-  const [o1, o2] = r.outputNames;
-  const at = o2 ? S.tfBetween(nodeNameProse(o1 ?? '?'), nodeNameProse(o2)) : S.tfAt(nodeNameProse(o1 ?? '?'));
+  const at = n2 ? S.tfBetween(nodeProse(n1), nodeProse(n2)) : S.tfAt(nodeProse(n1));
   const ratio = `${r.outputKind === 'current' ? 'A' : 'V'}/${r.inputKind === 'current' ? 'A' : 'V'}`;
   const ratioWords = ratio === 'V/A' ? 'V/A, which is ohms' : ratio;
   let summary = r.outputKind === 'current' ? S.tfCurrent(outText, inText) : S.tf(outText, inText, at); // A3, A4

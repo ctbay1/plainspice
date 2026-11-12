@@ -252,6 +252,8 @@ export const DESCRIBE_STRINGS = {
     `${name}: a current-controlled voltage source: ${out}, is ${r} for every amp in ${control}.`,
   voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
   at: (n: string): string => `at ${nodeIn(n)}`,
+  /** A .tf output that is no node's name (ngspice's own words for it, when they do not read as v(...)). */
+  atVector: (v: string): string => `at ${v}`,
   between: (a: string, b: string): string => `between ${nodeIn(a)} and ${nodeIn(b)}`,
   coupling: (name: string, l1: string, l2: string, k: string): string => `${name}: couples ${l1} and ${l2} (coupling ${k}).`,
   otherPart: (name: string, what: string, nodes: string): string => `${name}: ${what}${nodes ? ` (${nodes})` : ''}.`,
@@ -1273,16 +1275,17 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const reading = r?.kind === 'tf' ? r : undefined;
-  const output = reading?.output ?? tf.outputImpedance?.at ?? '?';
-  const input = reading?.input?.text ?? tf.inputImpedance?.source ?? '?';
+  // A .tf after .end, which ngspice runs (S25, A3c), has no reading: ngspice's names, as the netlist writes them (W16).
+  const output = reading?.output ?? (tf.outputImpedance ? netlistVector(netlist, tf.outputImpedance.at) : '?');
+  const input = reading?.input?.text ?? (tf.inputImpedance ? (partsOf(netlist).byKey.get(netlistPart(netlist, tf.inputImpedance.source))?.element?.name.text ?? tf.inputImpedance.source) : '?');
   const outKind = reading?.outputKind ?? (tf.outputImpedance?.at.startsWith('i(') ? 'current' : 'voltage');
   const inKind = reading?.inputKind === 'current' ? 'current' : 'voltage';
   const ratio = `${outKind === 'current' ? 'A' : 'V'}/${inKind === 'current' ? 'A' : 'V'}`;
   const words: TransferFunctionWords = { output, input, ratio };
   if (tf.transferFunction !== undefined) {
     const v = formatNumber(tf.transferFunction);
-    const [n1, n2] = reading?.outputNames ?? [];
-    const outSpeech = outKind === 'current' ? S.currentIn(n1 ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(said(n1)) : S.voltageBetween(said(n1), said(n2));
+    const [n1, n2] = tfNodes(netlist, reading, tf);
+    const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
     words.transferFunction = {
       value: tf.transferFunction,
       text: S.transfer(output, input, v, ratio),
@@ -1299,13 +1302,26 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
       // A5: for a current output ngspice reports 1e20 Ω, which is not a resistance of the circuit.
       words.outputResistance = { value: tf.outputImpedance.value, text: S.outputRCurrent(output, o.text), speech: S.outputRCurrentSpeech(output, o.speech) };
     } else {
-      const [a, b] = reading?.outputNames ?? [];
-      const at = b ? S.between(a ?? '?', b) : S.at(a ?? tf.outputImpedance.at);
+      const [a, b] = tfNodes(netlist, reading, tf);
+      const at = b ? S.between(a ?? '?', b) : a !== undefined ? S.at(a) : S.atVector(tf.outputImpedance.at);
       words.at = at;
       words.outputResistance = { value: tf.outputImpedance.value, text: S.outputR(at, o.text), speech: S.outputRSpeech(at, o.speech) };
     }
   }
   return words;
+}
+
+/**
+ * A voltage output's nodes in the .tf words, each said one way in the text and in the speech (code
+ * review 1, 4, 5): ground is "ground", a gnd that ngspice makes 0 there included (A3b); an
+ * ordinary node named like ground is quoted (W13). With no reading of the line (a .tf written after
+ * .end, which ngspice runs: S25, A3c), the nodes in ngspice's own name for the output, "v(out,mid)", as the
+ * netlist writes them (W16), never "node v(out)".
+ */
+function tfNodes(netlist: Netlist, reading: Extract<AnalysisReading, { kind: 'tf' }> | undefined, tf: NonNullable<AnalysisResults['tf']>): string[] {
+  if (reading) return reading.outputNodes.map((n) => said(n.ground ? '0' : n.token.text));
+  const m = /^v\((.*)\)$/i.exec(tf.outputImpedance?.at ?? '');
+  return m ? m[1]!.split(',').map((x) => said(shownNode(netlist, netlistNode(netlist, x)))) : [];
 }
 
 /** "the voltage at out" / "the current in V1" for a sweep result's name. */
@@ -1469,10 +1485,11 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
     for (const i of netlist.analyses) {
       const r = readAnalysis(netlist, i);
       if (r?.kind !== 'tf' || r.outputKind !== 'voltage') continue;
-      for (const n of r.outputNames) {
-        const key = lowerAscii(n);
-        const info = netlist.nodes.get(key === 'gnd' ? '0' : key);
-        if (!info || info.connections.length === 0) push({ code: 'tf-node-missing', severity: 'warning', title: S.tfNodeTitle(n), why: S.tfNodeWhy(n), line: i + 1 });
+      // The nodes as the parser reads them (a gnd ngspice makes 0 is ground: A3b), named as said.
+      for (const n of r.outputNodes) {
+        const info = netlist.nodes.get(n.name);
+        const name = said(n.token.text);
+        if (!info || info.connections.length === 0) push({ code: 'tf-node-missing', severity: 'warning', title: S.tfNodeTitle(name), why: S.tfNodeWhy(name), line: i + 1 });
       }
     }
   }

@@ -253,3 +253,72 @@ describe('S7 and words re-check 8: a node name outside ASCII is said as first wr
     expect(sp(w.summary)).toContain('node in = 6 V, node out = 4 V');
   });
 });
+
+describe('code review 1, 4 and 5, words re-check 3: the .tf words name each output node one way', () => {
+  /** .tf results as ngspice gives them: v(Transfer_function), v(output_impedance_at_V(...)), v(<source>#Input_impedance). */
+  const tf = (value: number, at: string, out: number, source: string, input: number): AnalysisResults => ({
+    tf: { transferFunction: value, outputImpedance: { at, value: out }, inputImpedance: { source, value: input } },
+    other: [],
+  });
+  /** Every .tf word: the text and the speech of the results, and Explain's .tf line. */
+  function tfWords(text: string, results: AnalysisResults): { at: string; text: string; speech: string; explain: string; output: string } {
+    const n = parseNetlist(text);
+    const w = describeResults(n, results, run());
+    const ex = explainNetlist(n).find((e) => e.heading.startsWith('.tf'));
+    return {
+      at: w.tf?.at ?? '',
+      text: sp([w.summary, w.tf?.transferFunction?.text, w.tf?.outputResistance?.text].join(' | ')),
+      speech: w.summarySpeech,
+      explain: sp(ex?.summary),
+      output: ex?.fields.find((f) => f.label === 'output')?.meaning ?? '',
+    };
+  }
+
+  it('a gnd inside v( ) is ground, as ngspice reads it (A3b): "between node out and ground", never "node gnd"', () => {
+    // Native ngspice 47 and 42: transfer_function = 0.5, output_impedance_at_v(out,0) = 500, v1#input_impedance = 2000.
+    for (const gnd of ['gnd', 'GND']) {
+      const w = tfWords(`* tf to gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.tf v(out,${gnd}) V1\n.end\n`, tf(0.5, 'v(out,0)', 500, 'v1', 2000));
+      expect(w.at).toBe('between node out and ground');
+      expect(w.text).toContain('output resistance between node out and ground: 500 Ω');
+      expect(w.speech).toContain('the transfer function from V1 to the voltage between node out and ground is 0.5 volts per volt');
+      expect(w.speech).toContain('the output resistance between node out and ground is 500 ohms');
+      expect(w.explain).toContain('the output resistance between node out and ground, which is the Thévenin resistance seen between node out and ground');
+      expect(w.output).toBe('the output: the voltage at node out, measured from ground');
+      expect([w.text, w.speech, w.explain, w.output].join(' ')).not.toMatch(/node "?gnd/i);
+    }
+    // v(gnd) alone: the voltage at ground, whose output resistance ngspice gives as 0 (A3b).
+    const at = tfWords('* tf at gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.tf v(gnd) V1\n.end\n', tf(0, 'v(0)', 0, 'v1', 2000));
+    expect(at.at).toBe('at ground');
+    expect(at.speech).toContain('the transfer function from V1 to the voltage at ground is 0 volts per volt');
+  });
+
+  it('an ordinary node named ground or 00 is quoted in the text and the speech alike: at node "ground"', () => {
+    // Native ngspice 47 and 42: transfer_function = 0.5, output_impedance_at_v(ground) = 500 (W13: ground is an ordinary node).
+    const w = tfWords('* tf at ground\nV1 in 0 5\nR1 in ground 1k\nR2 ground 0 1k\n.tf v(ground) V1\n.end\n', tf(0.5, 'v(ground)', 500, 'v1', 2000));
+    expect(w.at).toBe('at node "ground"');
+    expect(w.text).toContain('output resistance at node "ground": 500 Ω');
+    expect(w.speech).toContain('the voltage at node "ground" is 0.5 volts per volt');
+    expect(w.speech).toContain('the output resistance at node "ground" is 500 ohms');
+    expect(w.explain).toContain('the output resistance at the node "ground", which is the Thévenin resistance seen at the node "ground"');
+    expect(w.output).toBe('the output: the voltage at the node "ground", measured from ground');
+    const between = tfWords('* tf in to ground\nV1 in 0 5\nR1 in ground 1k\nR2 ground 0 1k\n.tf v(in,ground) V1\n.end\n', tf(0, 'v(in,ground)', 500, 'v1', 2000));
+    expect(between.at).toBe('between node in and node "ground"');
+    const zeros = tfWords('* tf at 00\nV1 in 0 5\nR1 in 00 1k\nR2 00 0 1k\n.tf v(00) V1\n.end\n', tf(0.5, 'v(00)', 500, 'v1', 2000));
+    expect(zeros.at).toBe('at node "00"');
+    expect(zeros.speech).toContain('the voltage at node "00"');
+  });
+
+  it('a .tf written after .end, which ngspice runs (A3c), is named from ngspice\'s own name for it, never "node v(out)"', () => {
+    // Native ngspice 47 and 42: transfer_function = 0.3333, output_impedance_at_v(out,mid) = 666.67, v1#input_impedance = 3000.
+    const w = tfWords('* tf after end\nV1 in 0 5\nR1 in out 1k\nR2 out mid 1k\nR3 mid 0 1k\n.end\n.tf v(out,mid) V1\n', tf(1 / 3, 'v(out,mid)', 666.6666666666667, 'v1', 3000));
+    expect(w.at).toBe('between node out and node mid');
+    expect(w.text).toContain('transfer function v(out,mid)/V1 = 0.3333 (V/V)');
+    expect(w.text).toContain('input resistance seen by V1: 3 kΩ');
+    expect(w.speech).toContain('the transfer function from V1 to the voltage between node out and node mid is 0.3333 volts per volt');
+    expect(w.text + w.speech).not.toMatch(/node v\(/);
+    // A name outside ASCII, which ngspice spells with underscores (W16): as the netlist writes it.
+    const tr = tfWords('* tf after end\nV1 in 0 5\nR1 in çıkış 1k\nR2 çıkış 0 1k\n.end\n.tf v(çıkış) V1\n', tf(0.5, 'v(____k____)', 500, 'v1', 2000));
+    expect(tr.at).toBe('at node çıkış');
+    expect(tr.text).toContain('transfer function v(çıkış)/V1 = 0.5 (V/V)');
+  });
+});

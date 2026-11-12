@@ -63,7 +63,9 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 - `.op` saves every node voltage and the current of every V, E, H and L; `.options savecurrents` adds
   every R, C, L, F, G and I current (A1, A2).
 - `.tf v(a) V1` gives v(a)/V1, the input resistance seen by V1 and the output (Thévenin) resistance
-  at a, which ngspice calls impedances (A3); the input can be a current source (A4); for a current
+  at a, which ngspice calls impedances (A3); a gnd inside `v( )` there is ground, even beside an ordinary
+  node called gnd (A3b); a `.tf` written after `.end` runs too, and ngspice names its output in its
+  own words, `v(out,mid)` (A3c); the input can be a current source (A4); for a current
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
   0 without a message (A6).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
@@ -1233,6 +1235,72 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(Transfer_function) = 0.33333333333333337, v(v1#Input_impedance) = 9, v(output_impedance_at_V(a)) = 4
+```
+
+### A3b. In .tf's v( ), gnd is ground, even beside an ordinary node called gnd
+
+ngspice reads a gnd that a `)` or a `,` follows as node 0 (it rewrites the word before reading the line),
+so `.tf v(out,gnd) V1` is v(out,0), the voltage at out measured from ground: ngspice names the output
+`v(out,0)`, and the transfer function is out's 0.5. Here the circuit also has an ordinary node called
+gnd, at 2.5 V in `.op` (`Vx x gnd`: as the last word of a line gnd is no ground, W9). Were the `.tf`'s
+gnd that node, the output would be v(out) − v(gnd), whose transfer function is 0.5 − 0.5 = 0. So the
+.tf words say "between node out and ground", never "node gnd" (code review 1, 12 November 2026).
+
+```spice
+* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+R3 in x 1k
+Vx x gnd
+R4 x 0 1k
+.tf v(out,gnd) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Note: vx: has no value, DC 0 assumed
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(out,0) = 5.000000e+02
+    v1#input_impedance = 1.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500
+  the same netlist with .op for .tf, ngspice -b (exit 0): gnd 2.500000e+00, x 2.500000e+00, out 2.500000e+00, in 5.000000e+00; rawfile v(gnd) = 2.5
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, the note "vx: has no value, DC 0 assumed"):
+  vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 1000, v(output_impedance_at_V(out,0)) = 500; with .op: v(gnd) = 2.5
+```
+
+### A3c. A .tf written after .end runs too, and ngspice names its output in its own words
+
+ngspice keeps reading after a plain `.end` (S25 in numbers-and-syntax.md), so a `.tf` written there
+runs. PlainSpice does not read lines after `.end` as dot commands (the after-end check asks for them
+to be moved), so its .tf words take the nodes from ngspice's own name for the output,
+`output_impedance_at_v(out,mid)`: "between node out and node mid", as for a `.tf` above `.end` (code
+review 5, 12 November 2026). out − mid is 5 V × 1k/3k, a transfer function of 1/3; V1 sees 3 kΩ; and
+between out and mid the resistance is R2 ∥ (R1 + R3) = 1k ∥ 2k = 666.7 Ω.
+
+```spice
+* a .tf written after .end
+V1 in 0 5
+R1 in out 1k
+R2 out mid 1k
+R3 mid 0 1k
+.end
+.tf v(out,mid) V1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out,mid) = 6.666667e+02
+    v1#input_impedance = 3.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out,mid)) = 666.6666666666667
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out,mid)) = 666.6666666666667
 ```
 
 ### A4. The .tf input can be a current source: the transfer function is then in V/A
