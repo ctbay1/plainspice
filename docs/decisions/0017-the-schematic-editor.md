@@ -511,8 +511,9 @@ what they look like):
   quoted ('Use "ground"'). After the second critic of the fix: a .tf in a subcircuit no X line uses,
   which ngspice ignores (A3f: it ran the .tf after .ends, whose 0.5 and 500 Ω were labelled
   "Transfer function v(a,gnd) / V1"), is left out of the .tf words, the check, the missing-node
-  message and the overview's analyses, and Explain says that ngspice ignores it (so for any analysis
-  line there); in a subcircuit an X line uses, ngspice runs the line as the main circuit's, so it is
+  message and the overview's analyses, and Explain says that ngspice ignores it (so for a .op, .dc,
+  .tran, .ac or .noise line there, which A3f ran too); in a subcircuit an X line uses, ngspice runs the
+  line as the main circuit's, so it is
   read as before. A .tf after .end is checked as one above it is, and its words take its nodes from
   that line as written when ngspice spells them otherwise ("node out (written with a zero-width space
   in it)", never "node ou___t"). The .tf box and the Numbers panel's .tf table say a ratio of 1 in the
