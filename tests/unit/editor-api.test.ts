@@ -612,4 +612,18 @@ describe('after the final reviews (12 November 2026)', () => {
     const plain = make({ doc: '* t\nV1 in 0 10\nR1 in\tout 4.7k\n.op\n.end\n' });
     expect(plain.parent.querySelectorAll('.cm-specialChar')).toHaveLength(0);
   });
+
+  it('shows the other invisible characters too, each named in words, a language tag outside the first plane included (re-check C5; invisible-character-23)', () => {
+    const { parent, editor } = make({ doc: '* t\nV1 in 0 10\nR1 in out 4\u180e.7k\nR2 out 0 4.7\u3164k\nR3 out 0 4\u2028.7k\nR4 out 0 4\u{e0001}.7k\nR5 out 0 4\ufe0f.7k\n.op\n.end\n' });
+    // A line separator inside a line stays in that line, as for ngspice.
+    expect(editor.view.state.doc.lines).toBe(10);
+    const dots = [...parent.querySelectorAll('.cm-specialChar')];
+    expect(dots.map((d) => d.getAttribute('aria-label'))).toEqual([
+      'a Mongolian vowel separator (U+180E)',
+      'a Hangul filler (U+3164)',
+      'a line separator (U+2028)',
+      'a language tag (U+E0001)',
+      'a variation selector (U+FE0F)',
+    ]);
+  });
 });

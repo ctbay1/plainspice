@@ -23,10 +23,14 @@ import { readNumber } from './numbers.ts';
 /**
  * Characters with no width that text copied from web pages and PDFs can carry: the soft hyphen,
  * the zero-width space, non-joiner and joiner, the direction marks, embeddings, overrides and
- * isolates, the word joiner and the invisible operators, and the byte order mark.
+ * isolates, the word joiner and the invisible operators, the byte order mark, and the rest of
+ * Unicode's default-ignorable characters (the Hangul fillers, the Mongolian vowel separator, the
+ * variation selectors, the tag characters ...), with the line and paragraph separators and the
+ * next-line character, which draw nothing in a line either (re-check C5). Written with escapes and
+ * the u flag: a raw line separator would end a regular expression literal.
  */
-export const INVISIBLE = /[­​-‏‪-‮⁠-⁤⁦-⁩﻿]/;
-const INVISIBLE_ALL = new RegExp(INVISIBLE.source, 'g');
+export const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\u0085\u2028\u2029]/u;
+const INVISIBLE_ALL = new RegExp(INVISIBLE.source, 'gu');
 
 const INVISIBLE_NAMES: Readonly<Record<string, string>> = {
   '­': 'a soft hyphen',
@@ -50,7 +54,36 @@ const INVISIBLE_NAMES: Readonly<Record<string, string>> = {
   '⁨': 'a first strong isolate',
   '⁩': 'a pop directional isolate',
   '﻿': 'a byte order mark',
+  '\u0085': 'a next-line character',
+  '\u034f': 'a combining grapheme joiner',
+  '\u061c': 'an Arabic letter mark',
+  '\u115f': 'a Hangul choseong filler',
+  '\u1160': 'a Hangul jungseong filler',
+  '\u180e': 'a Mongolian vowel separator',
+  '\u2028': 'a line separator',
+  '\u2029': 'a paragraph separator',
+  '\u3164': 'a Hangul filler',
+  '\uffa0': 'a halfwidth Hangul filler',
+  '\u{e0001}': 'a language tag',
 };
+
+/** The other invisible characters by range, in plain words; the rest are "an invisible character". */
+const INVISIBLE_RANGES: readonly [from: number, to: number, name: string][] = [
+  [0x17b4, 0x17b5, 'a Khmer inherent vowel'],
+  [0x180b, 0x180f, 'a Mongolian free variation selector'],
+  [0xfe00, 0xfe0f, 'a variation selector'],
+  [0xe0020, 0xe007f, 'a tag character'],
+  [0xe0100, 0xe01ef, 'a variation selector'],
+];
+
+/** The name of an invisible character: its own, its range's, or "an invisible character". */
+function invisibleName(ch: string): string | undefined {
+  const own = INVISIBLE_NAMES[ch];
+  if (own) return own;
+  if (!INVISIBLE.test(ch)) return undefined;
+  const c = ch.codePointAt(0)!;
+  return INVISIBLE_RANGES.find(([from, to]) => c >= from && c <= to)?.[2] ?? 'an invisible character';
+}
 
 /**
  * Characters that look like a space but are none for SPICE: ngspice splits words only at ASCII white
@@ -192,10 +225,13 @@ export function spacedValue(word: string): SpacedValue | undefined {
  * unless `code` is false: "a zero-width space (U+200B)", "a thin space (U+2009)"; undefined for others.
  */
 export function nameOfCharacter(ch: string, code = true): string | undefined {
-  const name = INVISIBLE_NAMES[ch] ?? SPACE_NAMES[ch];
+  const name = invisibleName(ch) ?? SPACE_NAMES[ch];
   if (!name) return undefined;
-  return code ? `${name} (U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')})` : name;
+  return code ? `${name} (${codeOf(ch)})` : name;
 }
+
+/** "U+00B7", "U+E0001". */
+const codeOf = (ch: string): string => `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
 
 /** True when the text has an invisible character. */
 export const hasInvisible = (s: string): boolean => INVISIBLE.test(s);
@@ -233,8 +269,22 @@ const LOOK_ALIKES: Readonly<Record<string, string>> = (() => {
   return map;
 })();
 
-/** The ASCII character a look-alike stands for, or undefined. */
-export const lookAlikeOf = (ch: string): string | undefined => LOOK_ALIKES[ch];
+/**
+ * Characters that documents (or another script) use as a decimal point, which SPICE does not read as
+ * one: a middle dot (British documents write 4·7 kΩ), a one-dot leader, a small full stop and the
+ * Arabic decimal separator; ngspice stops reading the number at each, so 4·7k is 4 Ω (re-check C5,
+ * look-alike-letter-9). Only a value's words read them as a decimal point (cleanWord's `value`): in a
+ * node name they stay the non-ascii-node check's.
+ */
+const DECIMAL_POINTS: Readonly<Record<string, string>> = {
+  '\u00b7': 'a middle dot (U+00B7), which some documents use as a decimal point',
+  '\u2024': 'a one-dot leader (U+2024), which looks like a decimal point',
+  '\ufe52': 'a small full stop (U+FE52), which looks like a decimal point',
+  '\u066b': 'an Arabic decimal separator (U+066B), which is the decimal point of Arabic numbers',
+};
+
+/** The ASCII character a look-alike stands for ("." for the decimal points of documents), or undefined. */
+export const lookAlikeOf = (ch: string): string | undefined => LOOK_ALIKES[ch] ?? (DECIMAL_POINTS[ch] ? '.' : undefined);
 
 const SCRIPT_NAMES: readonly [RegExp, string][] = [
   [/[Ѐ-ӿ]/, 'Cyrillic'],
@@ -248,9 +298,9 @@ const SCRIPT_NAMES: readonly [RegExp, string][] = [
  * which looks like -", "the fullwidth sign ．, which looks like a decimal point".
  */
 export function describeCharacter(ch: string): string {
-  const code = `U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`;
-  const invisible = INVISIBLE_NAMES[ch] ?? SPACE_NAMES[ch];
-  if (invisible) return `${invisible} (${code})`;
+  const code = codeOf(ch);
+  const named = nameOfCharacter(ch) ?? DECIMAL_POINTS[ch];
+  if (named) return named;
   const like = LOOK_ALIKES[ch];
   if (!like) return `the character ${ch} (${code})`;
   const script = SCRIPT_NAMES.find(([re]) => re.test(ch))?.[1];
@@ -263,8 +313,9 @@ export function describeCharacter(ch: string): string {
 /**
  * A word with its invisible characters removed and its look-alikes written as the ASCII characters
  * they look like ("1<zero-width space>k" and "1к" are both "1k"), and the characters changed, in order.
+ * A value's word (`value`) also reads the decimal points of documents as one: "4·7k" is "4.7k".
  */
-export function cleanWord(word: string): { clean: string; odd: string[] } {
+export function cleanWord(word: string, value = false): { clean: string; odd: string[] } {
   let clean = '';
   const odd: string[] = [];
   for (const ch of word) {
@@ -272,6 +323,9 @@ export function cleanWord(word: string): { clean: string; odd: string[] } {
     else if (LOOK_ALIKES[ch] !== undefined) {
       odd.push(ch);
       clean += LOOK_ALIKES[ch];
+    } else if (value && DECIMAL_POINTS[ch]) {
+      odd.push(ch);
+      clean += '.';
     } else clean += ch;
   }
   return { clean, odd };
