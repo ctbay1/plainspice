@@ -3,7 +3,8 @@
  * tables: the line with each field's name written over its word, then the table), with its current
  * and power from the last run; or the selected node and what it connects; then the whole circuit in
  * words (describeCircuit, also what a screen reader user gets instead of the picture); then every
- * line of the netlist explained, each with a "Go to line n" button. Every sentence comes from the
+ * line of the netlist explained, each with a "Go to line n" button; the drawing lines are one entry,
+ * "Lines 11–32: Drawing lines", with one button (it unfolds them). Every sentence comes from the
  * model (src/spice/explain.ts, describe.ts, src/schematic/navigate.ts).
  *
  * Typing re-reads the netlist on every change, so the list is kept cheap (perf review 1): it
@@ -27,16 +28,27 @@ export type ExplainSelection =
 const ExplainedLine = memo(
   function ExplainedLine({ explanation, onGoToLine }: { explanation: LineExplanation; onGoToLine: (line: number) => void }): ReactNode {
     const e = explanation;
+    // Several lines in one entry (the drawing lines): their range in the heading, then what they are.
+    const range = e.lastLine !== undefined && e.lastLine !== e.line;
+    const heading = range ? t('explainedLines', { first: e.line, last: e.lastLine!, heading: e.heading }) : t('explainedLine', { line: e.line, heading: e.heading });
     return (
-      <article className="explain" aria-label={t('explainedLine', { line: e.line, heading: e.heading })}>
-        <LineExplanationView explanation={e} headingLevel={4} />
+      <article className="explain" aria-label={heading}>
+        {range ? (
+          <>
+            <h4 className="explain__heading">{heading}</h4>
+            {e.summary ? <p className="explain__summary">{e.summary}</p> : null}
+            <LineExplanationView explanation={e} headingLevel={4} hideHeading />
+          </>
+        ) : (
+          <LineExplanationView explanation={e} headingLevel={4} />
+        )}
         <button type="button" className="link-button explain__go" onClick={() => onGoToLine(e.line)}>
           {t('goToLine', { line: e.line })}
         </button>
       </article>
     );
   },
-  (a, b) => a.onGoToLine === b.onGoToLine && sameExplanation(a.explanation, b.explanation),
+  (a, b) => a.onGoToLine === b.onGoToLine && a.explanation.lastLine === b.explanation.lastLine && sameExplanation(a.explanation, b.explanation),
 );
 
 /** The netlist line with each field's name written over its word (decorative: the table below says the same). */
@@ -74,18 +86,20 @@ export function ExplainPanel({
 }): ReactNode {
   const shown = useDeferredValue(netlist);
   const [all, setAll] = useState(false);
-  // Only the lines shown are explained: a pasted netlist can have thousands.
-  const visible = useMemo(
-    () =>
-      all
-        ? explainNetlist(shown)
-        : shown.lines.slice(0, FIRST_LINES).flatMap((l) => {
-            const e = explainLine(shown, l.index);
-            return e ? [e] : [];
-          }),
-    [all, shown],
-  );
-  const hidden = all ? 0 : Math.max(0, shown.lines.length - FIRST_LINES);
+  // Only the lines shown are explained: a pasted netlist can have thousands. A run of drawing lines
+  // is one entry, whichever of its lines is asked for, so it is listed once.
+  const visible = useMemo(() => {
+    if (all) return explainNetlist(shown);
+    const out: LineExplanation[] = [];
+    for (const l of shown.lines.slice(0, FIRST_LINES)) {
+      const e = explainLine(shown, l.index);
+      if (e && out[out.length - 1]?.line !== e.line) out.push(e);
+    }
+    return out;
+  }, [all, shown]);
+  // Lines past the first FIRST_LINES that an entry already covers (drawing lines) are not counted again.
+  const covered = visible.reduce((m, e) => Math.max(m, e.lastLine ?? e.line), Math.min(FIRST_LINES, shown.lines.length));
+  const hidden = all ? 0 : Math.max(0, shown.lines.length - covered);
   const circuit = useMemo(() => describeCircuit(shown), [shown]);
   const selected = selection?.kind === 'line' ? explainLine(shown, selection.line - 1) : undefined;
 

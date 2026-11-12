@@ -573,6 +573,7 @@ export const en = {
   explainedHeading: 'Every line, explained',
   explainedIntro: 'Each line of the netlist in plain words, with what every word on it means.',
   explainedLine: 'Line {line}: {heading}',
+  explainedLines: 'Lines {first}–{last}: {heading}',
   explainedShowAll_one: 'Show the other {count} line',
   explainedShowAll_other: 'Show the other {count} lines',
   fieldTableCaption: 'What each word of line {line} means',

@@ -162,3 +162,16 @@ Ctrl+K stay as they are.
   screen, live runs, every fixture and every video example against native ngspice, traps and fixes,
   share links including a link made for the old address, export, plots, keyboard only, the phone's
   turned drawing and sheets, offline, and axe in every main state).
+
+## After the final reviews (12 November 2026)
+
+- **Explain lists the drawing lines once** (kept review F2, words review W11). A run of drawing lines
+  (`* plainspice-drawing v1` and the `*@` lines after it, found the way `src/schematic/format.ts` finds
+  them) is one entry in "Every line, explained": "Lines 11–32: Drawing lines", what they are for
+  (where each part, wire and node name is drawn, which PlainSpice reads to draw the circuit) and that
+  ngspice skips them, a line starting with `*` being a comment (drawing-1, S6), with one "Go to line
+  11" button, which unfolds them. Every line of the run gives that same entry, so the list shows it
+  once, also within the first lines shown before "Show the other n lines", and those lines are not
+  counted again. Explain says "skips" for whole lines ngspice does not read (comments, blank lines,
+  lines after a glued `.end` or an `@` line) and keeps "ignores" for characters inside a line, as the
+  Netlist and Checks panels do.

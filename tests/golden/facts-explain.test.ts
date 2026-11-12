@@ -631,3 +631,32 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     }
   });
 });
+
+// ------------------------------------------------------------------ after the final reviews
+
+describe('after the final reviews (12 November 2026)', () => {
+  it('drawing-1: a video example runs the same with and without its drawing lines, and Explain gives them one entry that says ngspice skips them (kept F2)', async () => {
+    const text = readFileSync(join(root, 'examples/p01/p01-3-ccvs-supernode.cir'), 'utf8');
+    const bare = text
+      .split('\n')
+      .filter((l) => !/^\s*\*(@|\s*plainspice-drawing)/i.test(l))
+      .join('\n');
+    const [drawn, plain] = [await engine.run(text), await engine.run(bare)];
+    expect(drawn.ok && plain.ok).toBe(true);
+    expect(drawn.plots.map((p) => p.variables.map((v) => v.name))).toEqual(plain.plots.map((p) => p.variables.map((v) => v.name)));
+    drawn.plots.forEach((p, k) => p.real.forEach((v, i) => expect(Array.from(v), p.variables[i]!.name).toEqual(Array.from(plain.plots[k]!.real[i]!))));
+    expect(drawn.diagnostics).toEqual(plain.diagnostics);
+    const entries = explainNetlist(parseNetlist(text));
+    expect(entries.filter((e) => /^Drawing line/.test(e.heading))).toEqual([
+      {
+        line: 11,
+        lastLine: 32,
+        heading: 'Drawing lines',
+        summary: 'These lines say where each part, wire and node name is drawn; PlainSpice reads them to draw the circuit. ngspice skips them: a line that starts with * is a comment.',
+        fields: [],
+        notes: [],
+      },
+    ]);
+    expect(entries.filter((e) => e.heading === 'Comment')).toHaveLength(1);
+  });
+});

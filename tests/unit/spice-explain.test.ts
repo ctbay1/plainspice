@@ -14,12 +14,14 @@ import {
   dcSweepPoints,
   explainLine,
   explainNetlist,
+  isDrawingComment,
   isKnownDotCommand,
   leftOutModel,
   readAnalysis,
   valueWords,
 } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { isDrawingLine } from '../../src/schematic/format.ts';
 import type { LineExplanation } from '../../src/spice/types.ts';
 
 const MINUS = '−';
@@ -433,12 +435,12 @@ describe('lines that are not parts', () => {
 
   it('blank lines and every kind of comment (S6, S8, S10, S11, S19, S36, P22)', () => {
     const text = '* t\n\n* star\n# hash\n; semicolon\n$ dollar\n// slashes\n\fformfeed\n! bang\n';
-    expect(line(text, 2)).toMatchObject({ heading: 'Blank line', summary: 'SPICE ignores blank lines.' });
-    expect(line(text, 3).summary).toBe('The star marks a comment, a line SPICE ignores.');
+    expect(line(text, 2)).toMatchObject({ heading: 'Blank line', summary: 'SPICE skips blank lines.' });
+    expect(line(text, 3).summary).toBe('The star marks a comment, a line SPICE skips.');
     expect(line(text, 4).summary).toContain('in ngspice 47, the version PlainSpice runs');
-    expect(line(text, 5).summary).toBe('A line starting with ; is a comment, a line SPICE ignores.');
-    expect(line(text, 6).summary).toBe('ngspice turns a line starting with $ into a comment and ignores it, with a warning ("Unusual leading characters").');
-    expect(line(text, 7).summary).toBe('A line starting with // is a comment, a line SPICE ignores.');
+    expect(line(text, 5).summary).toBe('A line starting with ; is a comment, a line SPICE skips.');
+    expect(line(text, 6).summary).toBe('ngspice turns a line starting with $ into a comment and skips it, with a warning ("Unusual leading characters").');
+    expect(line(text, 7).summary).toBe('A line starting with // is a comment, a line SPICE skips.');
     expect(line(text, 8).summary).toContain('a form feed');
     expect(line(text, 9).summary).toContain('starting with !');
   });
@@ -452,7 +454,7 @@ describe('lines that are not parts', () => {
     expect(line(swallowed, 4).summary).toBe('The line it continues, line 3, is a comment, so ngspice adds these words to that comment and ignores them.');
     expect(notes(line(swallowed, 4))).toBe('So R1 on line 2 does not get these words.');
     expect(notes(line(swallowed, 3))).toContain('A + line below continues this comment');
-    expect(line('* t\n+ R1 n1 0 2\n', 2).summary).toBe('There is no line before it to continue (only the title), so ngspice ignores it silently.');
+    expect(line('* t\n+ R1 n1 0 2\n', 2).summary).toBe('There is no line before it to continue (only the title), so ngspice skips it silently.');
     expect(line('* t\n.dc V1 0 2\n+ 1\n', 3).summary).toContain('part of line 2 (.dc)');
   });
 
@@ -468,8 +470,8 @@ describe('lines that are not parts', () => {
 
   it('after .end: still read, or not read after .end;comment or @ (S25–S29)', () => {
     expect(line('* t\nR1 a 0 1\n.end\nR2 a 0 1\n', 4).summary).toBe('This line comes after .end (line 3). ngspice does not stop reading at .end, so it still reads this line. Put it above .end, where it belongs.');
-    expect(line('* t\nR1 a 0 1\n.end;x\nR2 a 0 1\n', 4).summary).toBe('ngspice stopped reading at line 3, so it ignores this line. A comment glued to .end (.end;…) makes ngspice stop reading there.');
-    expect(line('* t\nR1 a 0 1\n@ x\nR2 a 0 1\n', 4).summary).toBe('Line 3 starts with @, so ngspice stopped reading there and ignores this line.');
+    expect(line('* t\nR1 a 0 1\n.end;x\nR2 a 0 1\n', 4).summary).toBe('ngspice stopped reading at line 3, so it skips this line. A comment glued to .end (.end;…) makes ngspice stop reading there.');
+    expect(line('* t\nR1 a 0 1\n@ x\nR2 a 0 1\n', 4).summary).toBe('Line 3 starts with @, so ngspice stopped reading there and skips this line.');
     expect(line('* t\nR1 a 0 1\n@ x\n', 3).summary).toBe('A line starting with @ ends the netlist here: ngspice silently reads nothing after it.');
     expect(notes(line('* t\n.end\n', 2))).toBe('ngspice does not stop reading at .end: it still reads the lines after it. Keep .end as the last line.');
     expect(notes(line('* t\n.end;x\n', 2))).toBe('A comment glued to .end (.end;…) makes ngspice stop reading here.');
@@ -732,5 +734,40 @@ describe('the string catalog', () => {
     expect(EXPLAIN_STRINGS.ground).toBe('ground (node 0)');
     // The channel's words for the field tables.
     expect(EXPLAIN_STRINGS.iPattern).toContain('name, from node, to node, current');
+  });
+});
+
+describe('after the final reviews (12 November 2026)', () => {
+  const examples = readdirSync(join(root, 'examples'), { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .flatMap((d) => readdirSync(join(root, 'examples', d.name)).filter((f) => f.endsWith('.cir')).map((f) => join('examples', d.name, f)));
+
+  it('gives the drawing lines one entry, in the Netlist and Checks panels\' words, not one "Comment" per line (kept F2, words W11; drawing-1)', () => {
+    const n = parseNetlist(readFileSync(join(root, 'examples/p01/p01-3-ccvs-supernode.cir'), 'utf8'));
+    const all = explainNetlist(n);
+    const drawing = all.filter((e) => e.heading === 'Drawing lines');
+    expect(drawing).toHaveLength(1);
+    expect(drawing[0]).toMatchObject({ line: 11, lastLine: 32, fields: [], notes: [] });
+    expect(drawing[0]!.summary).toBe(
+      'These lines say where each part, wire and node name is drawn; PlainSpice reads them to draw the circuit. ngspice skips them: a line that starts with * is a comment.',
+    );
+    expect(all.filter((e) => e.heading === 'Comment').map((e) => e.line)).toEqual([2]);
+    expect(all.map((e) => e.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, ...n.lines.slice(32).map((l) => l.number)]);
+    // Asked for any one of the lines, the answer is the same entry.
+    for (let i = 10; i < 32; i++) expect(explainLine(n, i)).toEqual(drawing[0]);
+  });
+
+  it('a lone drawing line is one too, and an ordinary star comment stays a comment', () => {
+    const n = parseNetlist('* t\nR1 a 0 1\n*@ R1 0 0 0\n* a note\n.op\n.end\n');
+    expect(explainLine(n, 2)).toMatchObject({ line: 3, heading: 'Drawing line', summary: expect.stringContaining('ngspice skips it: a line that starts with * is a comment.') });
+    expect(explainLine(n, 2)!.lastLine).toBeUndefined();
+    expect(explainLine(n, 3)).toMatchObject({ line: 4, heading: 'Comment' });
+  });
+
+  it.each(examples)('%s: Explain finds the drawing lines exactly where the drawing code does (isDrawingLine)', (path) => {
+    const n = parseNetlist(readFileSync(join(root, path), 'utf8'));
+    for (const l of n.lines) expect(isDrawingComment(l), `line ${l.number}`).toBe(l.index > 0 && isDrawingLine(l.text));
+    const covered = explainNetlist(n).flatMap((e) => Array.from({ length: (e.lastLine ?? e.line) - e.line + 1 }, (_, k) => e.line + k));
+    expect(covered).toEqual(n.lines.map((l) => l.number));
   });
 });
