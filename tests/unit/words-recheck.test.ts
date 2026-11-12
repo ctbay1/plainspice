@@ -446,3 +446,26 @@ describe('words re-check 9: a node name with a letter outside a to z is refused 
     expect(!line.ok && line.reason).toBe('ngspice writes each letter other than a to z (or A to Z) in a node name as underscores (ç as __), so PlainSpice can\'t use "çıkış": ngspice would call it ____k____. Write cikis.');
   });
 });
+
+describe('words re-check 12: a source with a negative value between two nodes is said by its size and the right word', () => {
+  const summary = (text: string, line: number): string => sp(explainNetlist(parseNetlist(text))[line - 1]!.summary);
+
+  it('"So node a sits 3 V below node b.", never "−3 V above", however the value is written', () => {
+    // Native ngspice 47 and 42: V1 a 0 6 / V2 a b -3 gives a = 6 V and b = 9 V (P3).
+    for (const value of ['-3', 'DC -3', '-3V']) {
+      const s = summary(`* negative\nV1 a 0 6\nV2 a b ${value}\nR1 b 0 1k\n.op\n.end\n`, 3);
+      expect(s, value).toContain('So node a sits 3 V below node b.');
+      expect(s, value).not.toMatch(/above/);
+    }
+    expect(summary('* milli\nV1 a 0 6\nV2 a b -3m\nR1 b 0 1k\n.op\n.end\n', 3)).toContain('So node a sits 3 mV below node b.');
+    expect(summary('* positive\nV1 a 0 6\nV2 a b 3\nR1 b 0 1k\n.op\n.end\n', 3)).toContain('So node a sits 3 V above node b.');
+  });
+
+  it('a current source with a negative value pushes its size the other way: "from node a, through the source, into ground"', () => {
+    // Native ngspice 47 and 42: I1 0 a -3m with 1 kΩ to ground gives a = −3 V (P4).
+    const s = summary('* negative I\nI1 0 a -3m\nR1 a 0 1k\n.op\n.end\n', 2);
+    expect(s).toContain('Its value is negative, so the current flows the other way: I1 pushes 3 mA from node a, through the source, into ground (node 0).');
+    expect(s).not.toMatch(/pushes −/);
+    expect(summary('* positive I\nI1 0 a 3m\nR1 a 0 1k\n.op\n.end\n', 2)).toContain('So I1 pushes 3 mA from ground (node 0), through the source, into node a.');
+  });
+});

@@ -52,8 +52,8 @@ interface Fact {
 const FACTS: Fact[] = [
   { code: 'P1', id: 'part-either-way', netlist: "* a resistor works either way round\nV1 a 0 6\nR1 a 0 2\nV2 b 0 6\nR2 0 b 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 6, "v(b)": 6, "i(v1)": -3, "i(v2)": -3, "i(@r1[i])": 3, "i(@r2[i])": -3 } },
   { code: 'P2', id: 'part-line-order', netlist: "* the order of the lines does not matter\nF1 0 n1 Vx 2\nR1 n1 0 4\nR2 x n1 2\nVx a x 0\nItest 0 a 1\n.op\n.end\n", vectors: { "v(a)": 14, "v(x)": 14, "v(n1)": 12, "i(vx)": 1 } },
-  { code: 'P3', id: 'part-vsource', netlist: "* a voltage source sets V(+) - V(-)\nV1 n1 0 6\nR1 n1 0 2\nV2 0 n2 6\nR2 n2 0 2\nV3 a 0 10\nV4 a b 6\nR3 b 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "v(n2)": -6, "v(a)": 10, "v(b)": 4 } },
-  { code: 'P4', id: 'part-isource', netlist: "* a current source pushes current from its first node to its second\nI1 0 a 3\nR1 a 0 4\nI2 b 0 3\nR2 b 0 4\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": -12 } },
+  { code: 'P3', id: 'part-vsource', netlist: "* a voltage source sets V(+) - V(-)\nV1 n1 0 6\nR1 n1 0 2\nV2 0 n2 6\nR2 n2 0 2\nV3 a 0 10\nV4 a b 6\nR3 b 0 2\nV5 c 0 6\nV6 c d -3\nR4 d 0 2\n.op\n.end\n", vectors: { "v(n1)": 6, "v(n2)": -6, "v(a)": 10, "v(b)": 4, "v(c)": 6, "v(d)": 9 } },
+  { code: 'P4', id: 'part-isource', netlist: "* a current source pushes current from its first node to its second\nI1 0 a 3\nR1 a 0 4\nI2 b 0 3\nR2 b 0 4\nI3 0 c -3\nR3 c 0 4\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": -12, "v(c)": -12 } },
   { code: 'P5', id: 'part-vcvs', netlist: "* E: the voltage at out1 is 2 x the voltage at c\nV1 c 0 2\nE1 out1 0 c 0 2\nR1 out1 0 1\nE2 out2 0 0 c 2\nR2 out2 0 1\n.op\n.end\n", vectors: { "v(c)": 2, "v(out1)": 4, "v(out2)": -4 } },
   { code: 'P6', id: 'part-vccs', netlist: "* G: 0.5 amps for every volt at c, pushed from ground into out2\nV1 c 0 2\nG1 0 out2 c 0 0.5\nR2 out2 0 1\nG2 out3 0 c 0 0.5\nR3 out3 0 1\n.op\n.end\n", vectors: { "v(c)": 2, "v(out2)": 1, "v(out3)": -1 } },
   { code: 'P7', id: 'part-cccs', netlist: "* F: 3 x the current in Vs, pushed from ground into out3\nV1 c 0 2\nVs c d 0\nRd d 0 1\nF1 0 out3 Vs 3\nR3 out3 0 1\n.op\n.end\n", vectors: { "i(vs)": 2, "v(out3)": 6 } },
@@ -369,6 +369,23 @@ describe('what the explanations predict matches the run', () => {
     expect(explainLine(n, 6)!.summary).toContain('So node a sits 6 V above node b.');
     expect(v('a')).toBe('10 V');
     expect(v('b')).toBe('4 V');
+    // A negative value between two nodes: its size and "below", as the run finds it (words re-check 12).
+    expect(plain(explainLine(n, 9)!.summary)).toContain('SPICE reads that as V(c) − V(d) = −3 V. So node c sits 3 V below node d.');
+    expect(explainLine(n, 9)!.summary).not.toContain('above');
+    expect(plain(v('c'))).toBe('6 V');
+    expect(plain(v('d'))).toBe('9 V');
+  });
+
+  it('says which way a current source with a negative value pushes its current, as the run finds it (P4)', () => {
+    const f = fact('P4');
+    const n = parseNetlist(f.netlist);
+    const v = (node: string): number => interpretPlots(runs.get(f.id)!.plots).op!.nodes.find((x) => x.node === node)!.value;
+    expect(plain(explainLine(n, 1)!.summary)).toContain('So I1 pushes 3 A from ground (node 0), through the source, into node a.');
+    // I3 0 c -3: 3 A from c into ground, so c is below ground, as b is (words re-check 12).
+    expect(plain(explainLine(n, 5)!.summary)).toContain('Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).');
+    expect(v('a')).toBe(12);
+    expect(v('c')).toBe(-12);
+    expect(v('c')).toBe(v('b'));
   });
 
   it('says what E, G, F and H do in the channel\'s words (P5–P8)', () => {

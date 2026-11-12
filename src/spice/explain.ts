@@ -241,6 +241,8 @@ export const EXPLAIN_STRINGS = {
   vReads: (plus: string, minusNode: string, value: string): string => `SPICE reads that as V(${plus}) ${MINUS} V(${minusNode}) = ${value}.`,
   vGround: (node: string, value: string): string => `Ground is 0 V, so ${node} sits at ${value}.`,
   vAbove: (plus: string, minusNode: string, value: string): string => `So ${plus} sits ${value} above ${minusNode}.`,
+  /** A negative value between two nodes: its size and the word that fits (P3), never "−3 V above" (words re-check 12). */
+  vBelow: (plus: string, minusNode: string, value: string): string => `So ${plus} sits ${value} below ${minusNode}.`,
   vZero: (plus: string, minusNode: string, name: string): string =>
     `So ${plus} and ${minusNode} are at the same voltage: ${name} works like a wire. A 0 V source is how SPICE measures a current: the ammeter trick.`,
   vSwept: (line: number): string => `The .dc on line ${line} sweeps this source, so in that analysis its value changes.`,
@@ -255,6 +257,9 @@ export const EXPLAIN_STRINGS = {
     "A current source has its own pattern: name, from node, to node, current. The current flows from the first node, through the source, into the second, the way the arrow points.",
   iPushes: (name: string, value: string, from: string, to: string): string =>
     `So ${name} pushes ${value} from ${from}, through the source, into ${to}.`,
+  /** A negative value (P4): the size, and the current the way it flows, from the second node into the first (words re-check 12). */
+  iPushesBack: (name: string, value: string, from: string, to: string): string =>
+    `Its value is negative, so the current flows the other way: ${name} pushes ${value} from ${from}, through the source, into ${to}.`,
   iPushesNoValue: (name: string, from: string, to: string): string =>
     `So ${name} pushes its current from ${from}, through the source, into ${to}.`,
   voltageAt: (node: string, ref: string): string => `the voltage at ${node}, measured from ${ref}`,
@@ -1600,7 +1605,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
             addNote(p.notes, S.vZeroCurrent(el.name.text, nodeProse(a), nodeProse(b)));
           } else if (b.ground && !a.ground) sentences.push(S.vGround(nodeProse(a), shown));
           else if (a.ground && !b.ground) sentences.push(S.vGround(nodeProse(b), formatSI(-v, 'V')));
-          else if (!a.ground && !b.ground) sentences.push(S.vAbove(nodeProse(a), nodeProse(b), shown));
+          else if (!a.ground && !b.ground) sentences.push(v < 0 ? S.vBelow(nodeProse(a), nodeProse(b), formatSI(-v, 'V')) : S.vAbove(nodeProse(a), nodeProse(b), shown));
         } else if (fn) {
           const t0 = valueAtTimeZero(fn);
           sentences.push(t0 === undefined ? S.timeZeroValueUnknown(fn.token.text) : S.timeZeroValue(fn.token.text, formatSI(t0, 'V'))); // P17
@@ -1617,7 +1622,8 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       sentences.push(S.iPattern); // P4
       const v = value?.value;
       if (a && b) {
-        if (v !== undefined) sentences.push(S.iPushes(el.name.text, formatSI(v, 'A'), nodePhrase(a), nodePhrase(b)));
+        if (v !== undefined && v < 0) sentences.push(S.iPushesBack(el.name.text, formatSI(-v, 'A'), nodePhrase(b), nodePhrase(a)));
+        else if (v !== undefined) sentences.push(S.iPushes(el.name.text, formatSI(v, 'A'), nodePhrase(a), nodePhrase(b)));
         else sentences.push(S.iPushesNoValue(el.name.text, nodePhrase(a), nodePhrase(b)));
       }
       if (v === undefined && el.sourceFunction) {

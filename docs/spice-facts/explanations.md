@@ -42,8 +42,9 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 
 - A resistor works either way round, and the part lines can come in any order (P1, P2); line 1 is
   always the title (S1 in numbers-and-syntax.md).
-- `V1 n1 0 6` means V(n1) − V(0) = 6 V; written `V1 0 n1 6` it makes n1 −6 V (P3). `I1 0 a 3` pushes
-  3 A from node 0, through the source, into a (P4).
+- `V1 n1 0 6` means V(n1) − V(0) = 6 V; written `V1 0 n1 6` it makes n1 −6 V; `V6 c d -3` holds c 3 V
+  below d (P3). `I1 0 a 3` pushes 3 A from node 0, through the source, into a; `I3 0 c -3` pushes 3 A the
+  other way, from c into node 0 (P4).
 - E: V(+) − V(−) = gain × (V(c+) − V(c−)). G: gain × (V(c+) − V(c−)) amps from its first node into its
   second. F: gain × the current in its control source, the same way. H: V(+) − V(−) = gain × that
   current (P5–P8). The control source of F and H must be a voltage source: V, E, H or a B line
@@ -163,7 +164,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### P3. A voltage source sets V(+ node) − V(− node) to its value
 
-`V1 n1 0 6` makes n1 6 V above ground; written `V2 0 n2 6`, the source makes ground 6 V above n2, so n2 is −6 V. Between two nodes, `V4 a b 6` holds a 6 V above b: a = 10 V, so b = 4 V.
+`V1 n1 0 6` makes n1 6 V above ground; written `V2 0 n2 6`, the source makes ground 6 V above n2, so n2 is −6 V. Between two nodes, `V4 a b 6` holds a 6 V above b: a = 10 V, so b = 4 V. A negative value between two nodes holds the + node below the − node by its size: `V6 c d -3` with c = 6 V gives d = 9 V, so c sits 3 V below d (Explain says "So node c sits 3 V below node d.", never "−3 V above": words re-check 12, 12 November 2026).
 
 ```spice
 * a voltage source sets V(+) - V(-)
@@ -174,12 +175,17 @@ R2 n2 0 2
 V3 a 0 10
 V4 a b 6
 R3 b 0 2
+V5 c 0 6
+V6 c d -3
+R4 d 0 2
 .op
 .end
 ```
 
 ```text
 ngspice 47, ngspice -b (exit 0):
+        d                                9.000000e+00
+        c                                6.000000e+00
         b                                4.000000e+00
         a                                1.000000e+01
         n2                               -6.00000e+00
@@ -188,15 +194,17 @@ ngspice 47, ngspice -b (exit 0):
         v2#branch                        -3.00000e+00
         v3#branch                        -2.00000e+00
         v4#branch                        2.000000e+00
-  rawfile from ngspice -b -r (exit 0): v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4
+        v5#branch                        -4.50000e+00
+        v6#branch                        4.500000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4, v(c) = 6, v(d) = 9
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
-  vectors: v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4
+  vectors: v(n1) = 6, v(n2) = -6, v(a) = 10, v(b) = 4, v(c) = 6, v(d) = 9
 ```
 
 ### P4. A current source pushes its current from its first node, through the source, into its second
 
-`I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V.
+`I1 0 a 3` pulls 3 A out of ground and pushes it into a, so 3 A flow down through the 4 Ω resistor: a = +12 V. Written `I2 b 0 3`, the current is pulled out of b instead: b = −12 V. A negative value pushes the current the other way: `I3 0 c -3` pulls 3 A out of c and pushes it into ground, so c = −12 V, as for I2 (Explain says "Its value is negative, so the current flows the other way: I3 pushes 3 A from node c, through the source, into ground (node 0).": words re-check 12, 12 November 2026).
 
 ```spice
 * a current source pushes current from its first node to its second
@@ -204,18 +212,21 @@ I1 0 a 3
 R1 a 0 4
 I2 b 0 3
 R2 b 0 4
+I3 0 c -3
+R3 c 0 4
 .op
 .end
 ```
 
 ```text
 ngspice 47, ngspice -b (exit 0):
+        c                                -1.20000e+01
         b                                -1.20000e+01
         a                                1.200000e+01
-  rawfile from ngspice -b -r (exit 0): v(a) = 12, v(b) = -12
+  rawfile from ngspice -b -r (exit 0): v(a) = 12, v(b) = -12, v(c) = -12
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
-  vectors: v(a) = 12, v(b) = -12
+  vectors: v(a) = 12, v(b) = -12, v(c) = -12
 ```
 
 ### P5. E: V(+ node) − V(− node) = gain × (V(control + node) − V(control − node))
