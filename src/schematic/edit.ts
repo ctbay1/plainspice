@@ -188,7 +188,9 @@ export const EDIT_STRINGS = {
   noRoute: 'There is no way for a wire between those two points.',
   noWay: (name: string): string => `${cap(name)}'s wires would find no way there. Try a place with more room.`,
   noTurn: (name: string): string => `${name} can't turn there: its wires would find no way. Move it to a place with more room first, or use Reverse to swap its ends.`,
-  noHalfTurn: (name: string): string => `A half turn of ${name} where it stands would loop its wires round it. To swap its two ends, put it down, then use Reverse.`,
+  // Said while the part is in hand ("can't go here"), when it goes back, and for a half turn of a
+  // placed part: so it never asks to put the part down where it cannot go (words:W7).
+  noHalfTurn: (name: string): string => `A half turn of ${name} where it stands would loop its wires round it. To swap its two ends, use Reverse once ${name} is back in place.`,
   slanted: 'A wire runs only across and up or down.',
   offGrid: `That place is off the grid: x and y must be whole numbers from −${COORD_LIMIT} to ${COORD_LIMIT}.`,
   badTurn: 'A part turns in quarter turns: 0, 90, 180 or 270.',

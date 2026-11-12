@@ -387,7 +387,7 @@ describe('turning round and reversing', () => {
   it('refuses to turn a wired part round where it stands, pointing to Reverse', () => {
     const s = buildSchematic(DIVIDER);
     expect(applyEdit(s, { kind: 'rotate-part', part: 'V1', rot: 180 }).reason).toBe(
-      'A half turn of V1 where it stands would loop its wires round it. To swap its two ends, put it down, then use Reverse.',
+      'A half turn of V1 where it stands would loop its wires round it. To swap its two ends, use Reverse once V1 is back in place.',
     );
     expect(applyEdit(s, { kind: 'rotate-part', part: 'V1', rot: 0 }).reason).toBe('V1 is already turned that way.');
   });

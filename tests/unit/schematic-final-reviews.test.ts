@@ -162,12 +162,15 @@ describe('the editor says what happens and why (words:W6, W7, W10)', () => {
     expect(stripDrawing(own.text)).toContain('R1 in OUT 1k\nR2 OUT 0 2k');
   });
 
-  it('W7: a half turn where a part stands is refused in words that never call Reverse a turn', () => {
+  it('W7: a half turn where a part stands is refused in words that never call Reverse a turn, nor ask to put the part down where it cannot go', () => {
     const s = buildSchematic(DIVIDER);
     const r1 = s.drawing.parts.get('r1')!;
     const r = applyEdit(s, { kind: 'move-part', part: 'R1', to: r1.at, rot: ((r1.rot + 180) % 360) as 0 | 90 | 180 | 270 });
-    expect(r).toMatchObject({ ok: false, reason: 'A half turn of R1 where it stands would loop its wires round it. To swap its two ends, put it down, then use Reverse.' });
+    expect(r).toMatchObject({ ok: false, reason: 'A half turn of R1 where it stands would loop its wires round it. To swap its two ends, use Reverse once R1 is back in place.' });
     expect(EDIT_STRINGS.noHalfTurn('R1')).not.toMatch(/turning|round where/i);
+    // The same words are the hint while R1 is in hand ("R1 can't go here: ..."), and what is said when
+    // it goes back ("R1 went back: ..."): never "put it down" (words:W7, critic).
+    expect(EDIT_STRINGS.noHalfTurn('R1')).not.toMatch(/put it down/i);
   });
 
   it.each(['gnd', 'GND'])('W10: Reverse refused on a line ending with %s names the Checks panel\'s own fix', (word) => {

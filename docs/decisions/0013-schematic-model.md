@@ -210,6 +210,11 @@ drawings turn one unit tighter, the examples' turned views are unchanged, and no
   which was already there: the two are now one node, in."
 - A half turn of a wired part where it stands is refused in words that no longer call it "turning
   round" (which also named Reverse): "A half turn of R1 where it stands would loop its wires round
-  it. To swap its two ends, put it down, then use Reverse."
+  it. To swap its two ends, use Reverse once R1 is back in place." The same words are the hint
+  while R1 is in hand ("R1 can't go here: ..."), what is said when it goes back ("R1 went back:
+  ..."), and the answer to a half turn of a placed part, so they never ask to put R1 down where it
+  cannot go (the first wording, "put it down, then use Reverse", did; critic of the fix round).
+  They do not say Reverse leaves the part unturned: Reverse turns its symbol round so its wires
+  stay.
 - Reverse refused on a line ending with gnd names the Checks panel's own button, spelled as the
   panel spells it: "... Rename gnd first: the Checks panel says why and offers “Rename gnd to 0”."
