@@ -82,3 +82,17 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   fix "Replace it with a normal space". A value that starts with one is an error (space-character-5).
   The words name the character ("a thin space (U+2009)"), in the checks and in Explain, and the
   netlist editor shows it, the no-break space too, as a dot with that name.
+- **A capital M that is no M** (critic of the fixes above). A Greek capital Μ (the M key of a Greek
+  keyboard), a Cyrillic М or a fullwidth Ｍ looks like M, which is milli in SPICE; a student who types
+  one means mega. So for those look-alikes the check offers "Make it 10meg" first for a resistor or a
+  gain, and "Keep milli: write 10m", as mega-as-milli does, never "Write 10M", which that check would
+  then flag. A small м stays m, milli.
+- **A look-alike letter in a node name** (critic of the fixes above). `оut` with a Cyrillic о is the
+  node __ut for ngspice, not out (look-alike-letter-5). When a node name is a Latin word with such
+  letters in it, the look-alike-letter check names the letter ("The node оut has the Cyrillic letter
+  о") and its fix writes the plain letters: "Connect to out" when a node out exists, as the
+  invisible-character check does, else "Rename оut to out". A name with no Latin letter (α, Ом) is
+  meant as written and stays the non-ascii-node check's, whose fix still gives a plain name (n1); a
+  name with a Turkish letter too (çоk) stays that check's, and its fix writes the look-alike plain
+  (cok, not ck). An invisible character right after a sign is said where it is: "It has a zero-width
+  space (U+200B) right after the -" (invisible-character-6).

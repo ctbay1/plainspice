@@ -250,19 +250,36 @@ const PLAIN: Readonly<Record<string, string>> = {
  * A name in plain ASCII letters, for a name ngspice would write with underscores (W16): the marks
  * taken off (ş is s, ö is o, İ is I), a few letters spelled out (ı is i, ß is ss), µ as u and
  * invisible characters dropped. A letter with no plain form (Greek, Cyrillic, an emoji ...) makes it
- * undefined, or with `drop` is left out.
+ * undefined, or with `drop` is left out. Among Latin letters, a letter that looks like a Latin one (the
+ * Cyrillic о in оut) is that letter.
  */
 export function plainLetters(name: string, drop = false): string | undefined {
   let out = '';
+  // Among Latin letters, a look-alike is a slip of the keyboard (оut); a name all in Greek is meant so.
+  const latin = /[A-Za-z]/.test(name);
   for (const ch of name.normalize('NFD')) {
     const c = ch.codePointAt(0)!;
     if (c < 0x80) out += ch;
     else if (c === 0xb5) out += 'u';
     else if (/\p{M}/u.test(ch) || INVISIBLE.test(ch)) continue;
     else if (PLAIN[ch] !== undefined) out += PLAIN[ch];
+    // A letter from another alphabet that looks like a Latin one is written as that letter (оut is out).
+    else if (latin && LOOK_ALIKES[ch] !== undefined && /[A-Za-z0-9]/.test(LOOK_ALIKES[ch]!)) out += LOOK_ALIKES[ch];
     else if (!drop) return undefined;
   }
   return out;
+}
+
+/**
+ * The name a node name was meant to have when it is a Latin word with letters from another alphabet
+ * that look like Latin ones in it: "out" for оut (Cyrillic о); undefined otherwise. A name with no
+ * Latin letter (α, Ом) is meant as written, and one with another letter outside ASCII (çоk) is not
+ * only a slip of the keyboard.
+ */
+export function lookAlikeName(name: string): string | undefined {
+  if (!/[A-Za-z]/.test(name)) return undefined;
+  const { clean, odd } = cleanWord(name);
+  return odd.length && !odd.some((ch) => INVISIBLE.test(ch)) && isPlainName(clean) ? clean : undefined;
 }
 
 /** True when ngspice writes the name as it is (lower case aside): every character printable ASCII, or µ. */

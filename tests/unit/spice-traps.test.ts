@@ -168,6 +168,9 @@ const CASES: Case[] = [
   { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
   { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
   { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
+  { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Keep milli: write 10m"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
+  { name: "a Cyrillic o in a node name", id: 'look-alike-letter', severity: 'warning', line: 4, at: "\u043eut", all: ["look-alike-letter"], fixes: ["Connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space right after a minus sign", id: 'invisible-character', severity: 'error', line: 2, at: "-\u200b5", all: ["invisible-character"], fixes: ["Write -5 (\u22125\u00a0V)"], netlist: "* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n" },
   { name: "a thin space between a value and its unit", id: 'space-character', severity: 'warning', line: 3, at: "4.7\u2009k\u03a9", all: ["space-character"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
   { name: "a thin space between two words", id: 'space-character', severity: 'warning', line: 3, at: "0\u20092", all: ["missing-value", "space-character"], fixes: ["Replace it with a normal space"], netlist: "* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n" },
   { name: "a thin space before a value", id: 'space-character', severity: 'error', line: 4, at: "\u20092k", all: ["space-character"], fixes: ["Write 2k (2\u00a0k\u03a9)"], netlist: "* t\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 \u20092k\n.op\n.end\n" },
@@ -883,6 +886,40 @@ describe('after the final reviews (12 November 2026)', () => {
     const glue = first('* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n', 'space-character');
     expect(glue.title).toBe('A thin space (U+2009) glues "0 2" into one word');
     expect(ids('* t\nV1 in 0 6\nR1 in ou\u2009t 1k\nR2 ou\u2009t 0 2k\n.op\n.end\n')).toEqual(['space-character', 'space-character']);
+  });
+
+  it('a look-alike in a node name is named, and its fix connects it to the node it looks like (critic of round 1; look-alike-letter-5)', () => {
+    // The critic's netlist: R2 on оut (Cyrillic о). It said "ngspice calls the node оut __ut ... (о as __)" and "Rename оut to ut".
+    const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => t.id)).toEqual(['look-alike-letter']);
+    expect([found[0]!.title, found[0]!.why]).toEqual([
+      'The node \u043eut has the Cyrillic letter \u043e',
+      'It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to out.',
+    ]);
+    expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
+    // Alone, it renames the node to its plain letters, and the drawing's label with it.
+    expect(first('* t\nV1 a 0 6\nR1 a \u043eut 1k\nR2 \u043eut 0 2k\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Rename \u043eut to out']);
+    // A name with a Turkish letter too stays the non-ascii-node check's, and its fix writes the look-alike plain (çоk is cok, not ck).
+    expect(first('* t\nV1 in 0 6\nR1 in \u00e7\u043ek 1k\nR2 \u00e7\u043ek 0 2k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename \u00e7\u043ek to cok']);
+  });
+
+  it('a capital M from another alphabet is meant as mega: the fixes are mega-as-milli\'s, never "Write 10M" (critic of round 1; look-alike-letter-4)', () => {
+    const t = first('* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n', 'look-alike-letter');
+    expect(t.title).toBe('R1\'s value is read as 10\u00a0\u03a9, not 10\u00a0M\u03a9');
+    expect(t.why).toBe('The value has the Greek letter \u039c, which looks like M. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): 10meg.');
+    // Neither fix leads into the mega-as-milli check.
+    for (const f of t.fixes) expect(ids(applyFix('* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n', f))).toEqual([]);
+    // On a source, milli first, as mega-as-milli orders them; a small Cyrillic м stays milli.
+    expect(first('* t\nV1 a 0 5\u041c\nR1 a 0 1\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Keep milli: write 5m', 'Make it 5meg (5\u00a0MV)']);
+    expect(first('* t\nI1 0 n4 1\nR4 n4 0 2\u043c\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Write 2m (2\u00a0m\u03a9)']);
+  });
+
+  it('says where an invisible character sits when the word is no number: right after the -, not "starts with" (critic of round 1; invisible-character-6)', () => {
+    const t = first('* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n', 'invisible-character');
+    expect(t.why).toBe('It has a zero-width space (U+200B) right after the -, a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.');
+    expect(t.ngspice).toBe("ngspice stops: 'unknown parameter (-___5)'. [invisible-character-6]");
+    expect(first('* t\nI1 0 a 1\nR1 a 0 \u200b2k\n.op\n.end\n', 'invisible-character').why).toMatch(/^It starts with a zero-width space \(U\+200B\)/);
   });
 
   it('a node name with an invisible character: no "Rename out to out", and no dangling-node notes for the two names (security review F2)', () => {

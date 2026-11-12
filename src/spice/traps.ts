@@ -24,6 +24,7 @@ import {
   hasSpaceLike,
   INVISIBLE,
   isPlainName,
+  lookAlikeName,
   lookAlikeOf,
   nameOfCharacter,
   plainLetters,
@@ -523,10 +524,27 @@ function checkOddValue(c: Ctx, t: Token, unit: string | undefined, letter: Eleme
   const subject = name ? `${name}'s value` : 'This value';
   const fixes = [fix(`Write ${clean}${letter && unit !== undefined ? ` (${amount(meant.value, letter)})` : ''}`, replace(t, clean))];
   if (!read) {
+    // Where it is, from the text before it: "-<zero-width space>5" starts with the - (invisible-character-6).
+    const lead = withoutInvisible([...t.text].slice(0, [...t.text].indexOf(ch)).join(''));
     add(c, id, 'error', t, `${subject} is not a number for SPICE`,
-      `It starts with ${what}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
-      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? 'invisible-character-5' : 'look-alike-letter-2'}]`,
+      `${lead ? `It has ${what} right after the ${lead}` : `It starts with ${what}`}${hidden ? ', a character you cannot see (it often comes with text copied from a web page or a PDF)' : ''}, so SPICE does not read the word as a number. Write ${clean}.`,
+      `ngspice stops: 'unknown parameter (${ngspiceSpelling(t.text)})'. [${hidden ? (lead ? 'invisible-character-6' : 'invisible-character-5') : 'look-alike-letter-2'}]`,
       fixes);
+    return;
+  }
+  // A capital M from another alphabet (the M key of a Greek keyboard): the student means mega, and a
+  // plain M is milli in SPICE, so the fixes are mega-as-milli's, never "Write 10M" (look-alike-letter-4).
+  if (!hidden && lookAlikeOf(ch) === 'M' && meant.scale?.name === 'milli' && letter && unit !== undefined) {
+    const digits = numberPart(meant);
+    const megaValue = (readNumber(digits)?.value ?? 0) * 1e6;
+    const big = letter === 'R' || 'EFGH'.includes(letter);
+    const mega = fix(`Make it ${digits}meg (${amount(megaValue, letter)})`, replace(t, `${digits}meg`));
+    const milli = fix(`Keep milli: write ${digits}m`, replace(t, `${digits}m`));
+    add(c, id, 'warning', t,
+      big ? `${subject} is read as ${shown(read.value)}, not ${shown(megaValue)}` : `${subject} is read as ${shown(read.value)}`,
+      `The value has ${what}. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): ${digits}meg.`,
+      `ngspice stops reading the number at ${what.replace(/, which looks like .*$/, '')}, without a message: it reads ${shown(read.value)}. [look-alike-letter-4, mega-as-milli-1]`,
+      big ? [mega, milli] : [milli, mega]);
     return;
   }
   // Where the character sits: what is read before it, and what it hides after it.
@@ -1117,15 +1135,18 @@ function checkDangling(c: Ctx): void {
   if (!c.graph.hasGround) return;
   const nodes = [...c.n.nodes.values()];
   const floating = new Set(c.graph.floating.flatMap((g) => g.nodes));
-  // A name with an invisible character, and the name it looks like, are the invisible-character
-  // check's: its fix joins them, so no "Did you mean" offers to rename out to ou<zero-width space>t.
-  const hidden = new Set(nodes.filter((y) => hasInvisible(y.name)).map((y) => lowerAscii(withoutInvisible(y.name))));
-  const connected = nodes.filter((y) => y.connections.length > 0 && !hasInvisible(y.name));
+  // A name with an invisible character or a look-alike letter, and the name it looks like, are the
+  // invisible-character and look-alike-letter checks': their fix joins them, so no "Did you mean"
+  // offers to rename out to ou<zero-width space>t or to оut (Cyrillic о).
+  const odd = (y: NodeInfo): boolean => !y.ground && y.refs.length > 0 && (hasInvisible(y.name) || lookAlikeName(y.refs[0]!.text) !== undefined);
+  const meantOf = (y: NodeInfo): string => lowerAscii(lookAlikeName(y.refs[0]!.text) ?? withoutInvisible(y.name));
+  const hidden = new Set(nodes.filter(odd).map(meantOf));
+  const connected = nodes.filter((y) => y.connections.length > 0 && !odd(y));
   let index: TypoIndex | undefined;
   let sourcePairs: Set<string> | undefined;
   for (const x of nodes) {
     if (x.ground || x.connections.length !== 1 || x.refs.length !== 1) continue;
-    if (hasInvisible(x.name) || hidden.has(x.name)) continue;
+    if (odd(x) || hidden.has(x.name)) continue;
     const conn = x.connections[0]!;
     const e = el(c, conn.line);
     if ((e.letter !== 'R' && e.letter !== 'L') || e.nodes.length !== 2 || !c.built.has(conn.line)) continue;
@@ -1432,8 +1453,9 @@ function checkNodeNames(c: Ctx): void {
       continue;
     }
     const info = infos[0]!;
-    // The characters that look like a space and the invisible ones have checks of their own (nbsp, space-character, invisible-character).
-    if (isPlainName(info.name) || hasInvisible(info.name) || hasSpaceLike(info.name)) continue;
+    // The characters that look like a space, the invisible ones and the look-alikes have checks of their
+    // own (nbsp, space-character, invisible-character, look-alike-letter).
+    if (isPlainName(info.name) || hasInvisible(info.name) || hasSpaceLike(info.name) || lookAlikeName(info.refs[0]!.text) !== undefined) continue;
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
     const to = plainFor(info);
@@ -1463,6 +1485,33 @@ function checkInvisibleNodes(c: Ctx): void {
       `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
       `ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]`,
       [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
+  }
+}
+
+/**
+ * A node name with a letter from another alphabet that looks like a Latin one (critic of the
+ * final-review fixes; look-alike-letter-5): ngspice writes its bytes as '_', so оut with a Cyrillic о is
+ * the node __ut, not out, and the parts on it are not connected to out. The words name the letter
+ * ("the Cyrillic letter о, which looks like o"); the fix writes the plain letters, which joins the node
+ * to the one of that name when there is one, as was meant. Only when every letter outside ASCII is such
+ * a look-alike: a name with a Turkish letter too is the non-ascii-node check's.
+ */
+function checkLookAlikeNodes(c: Ctx): void {
+  for (const info of c.n.nodes.values()) {
+    if (info.ground || info.refs.length === 0 || hasInvisible(info.name) || hasSpaceLike(info.name)) continue;
+    const t = info.refs[0]!;
+    const clean = lookAlikeName(t.text);
+    if (clean === undefined) continue;
+    const ch = cleanWord(t.text).odd[0]!;
+    const like = lookAlikeOf(ch)!;
+    const other = c.n.nodes.get(lowerAscii(clean));
+    const changes = [...renameNode(info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    add(c, 'look-alike-letter', 'warning', t, `The node ${t.text} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
+      other
+        ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not the node ${clean} the other lines name: it is another node, and the parts on it are not connected to ${clean}.`
+        : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`,
+      `ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node, without a message: in one test the resistor on it carried no current. [look-alike-letter-5]`,
+      [fix(other ? `Connect to ${clean}` : `Rename ${t.text} to ${clean}`, ...changes)]);
   }
 }
 
@@ -2239,6 +2288,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   // Then the circuit as a whole.
   checkGround(c);
   checkInvisibleNodes(c);
+  checkLookAlikeNodes(c);
   checkNodeNames(c);
   checkDangling(c);
   checkFloating(c);

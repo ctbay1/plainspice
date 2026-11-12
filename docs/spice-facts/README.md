@@ -61,7 +61,9 @@ After the critic of those fixes, the same day: C9d (the noise passes on through 
 node voltage can be noise too; vntol, ngspice's voltage tolerance, is 1 µV) and C9e, C9f, C9g (a
 tiny current the circuit makes is real, next to large currents too) in explanations.md; nbsp-2 and
 space-character-1 to -6 (a character that looks like a space is none for ngspice: in a value it ends
-the number, between two words it glues them) in traps.md.
+the number, between two words it glues them), look-alike-letter-4 (a capital M from another alphabet
+is no M), look-alike-letter-5 (a look-alike in a node name makes another node) and invisible-character-6
+(an invisible character right after a sign) in traps.md.
 
 ## Where the evidence came from
 

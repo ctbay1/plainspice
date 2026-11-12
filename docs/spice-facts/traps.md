@@ -7896,6 +7896,14 @@ What PlainSpice shows for invisible-character-5 (error, line 4):
 >
 > *Fixes:* "Write 2k (2 kΩ)"
 
+What PlainSpice shows for invisible-character-6 (error, line 2):
+
+> **V1's value is not a number for SPICE.** It has a zero-width space (U+200B) right after the -, a character you cannot see (it often comes with text copied from a web page or a PDF), so SPICE does not read the word as a number. Write -5.
+>
+> *ngspice:* ngspice stops: 'unknown parameter (-___5)'. [invisible-character-6]
+>
+> *Fixes:* "Write -5 (−5 V)"
+
 ### invisible-character-1. A zero-width space inside a value ends the number: 1<ZWSP>k is 1 Ω
 
 ```spice
@@ -8054,6 +8062,46 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `invisible-character`.
 
+### invisible-character-6. Right after a sign it makes the word no number too: -<ZWSP>5, and ngspice stops
+
+Added after the critic of the fixes for the final reviews (12 November 2026): the check now says where the character is, right after the -, instead of "it starts with" it.
+
+```spice
+* a zero-width space right after the minus sign of a value
+V1 a 0 -<ZWSP>5
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 -___5
+      unknown parameter (-___5)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 -___5
+      unknown parameter (-___5)
+    Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+```
+
+PlainSpice's checks: `invisible-character`.
+
 ## look-alike-letter
 
 Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,
@@ -8063,7 +8111,12 @@ a minus sign or a dash from a document. ngspice writes their bytes as `_` (W16),
 the number at them and ignores the rest of the word, like a unit, or, when the value starts with one,
 reads no number and stops. Flagged only when the reading changes once they are written as the letters
 they look like (the Greek mu has a check of its own, greek-mu). Warning, or error when ngspice stops;
-the fix writes the plain letter.
+the fix writes the plain letter. Added after the critic of those fixes (12 November 2026): a capital M
+from another alphabet (the M key of a Greek keyboard) is meant as mega, so its fixes are mega-as-milli's,
+"Make it 10meg" and "Keep milli: write 10m", never "Write 10M", which is milli (look-alike-letter-4);
+and a node name whose letters outside ASCII all look like Latin ones (`оut` with a Cyrillic о) gets
+the fix that writes them plain, which joins it to the node of that name, "Connect to out"
+(look-alike-letter-5).
 
 What PlainSpice shows for look-alike-letter-1 (warning, line 3):
 
@@ -8088,6 +8141,38 @@ What PlainSpice shows for look-alike-letter-3 (warning, line 9):
 > *ngspice:* ngspice stops reading the number at the minus sign (U+2212), without a message: it reads 1 Ω. [look-alike-letter-3]
 >
 > *Fixes:* "Write 1e-3 (1 mΩ)"
+
+What PlainSpice shows for look-alike-letter-4 (warning, line 3):
+
+> **R1's value is read as 10 Ω, not 10 MΩ.** The value has the Greek letter Μ, which looks like M. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): 10meg.
+>
+> *ngspice:* ngspice stops reading the number at the Greek letter Μ, without a message: it reads 10 Ω. [look-alike-letter-4, mega-as-milli-1]
+>
+> *Fixes:* "Make it 10meg (10 MΩ)", "Keep milli: write 10m"
+
+What PlainSpice shows for look-alike-letter-4 (warning, line 5):
+
+> **R2's value is read as 10 Ω, not 10 MΩ.** The value has the Cyrillic letter М, which looks like M. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): 10meg.
+>
+> *ngspice:* ngspice stops reading the number at the Cyrillic letter М, without a message: it reads 10 Ω. [look-alike-letter-4, mega-as-milli-1]
+>
+> *Fixes:* "Make it 10meg (10 MΩ)", "Keep milli: write 10m"
+
+What PlainSpice shows for look-alike-letter-4 (warning, line 7):
+
+> **R3's value is read as 10 Ω, not 10 MΩ.** The value has the fullwidth letter Ｍ, which looks like M. SPICE knows only the plain letter M, so it ignores this one like a unit. For mega, write meg (a capital M is milli in SPICE): 10meg.
+>
+> *ngspice:* ngspice stops reading the number at the fullwidth letter Ｍ, without a message: it reads 10 Ω. [look-alike-letter-4, mega-as-milli-1]
+>
+> *Fixes:* "Make it 10meg (10 MΩ)", "Keep milli: write 10m"
+
+What PlainSpice shows for look-alike-letter-5 (warning, line 4):
+
+> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to out.
+>
+> *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node, without a message: in one test the resistor on it carried no current. [look-alike-letter-5]
+>
+> *Fixes:* "Connect to out"
 
 ### look-alike-letter-1. к (Cyrillic), κ (Greek) and ｋ (fullwidth) are not k, and м (Cyrillic) is not m: ngspice ignores them
 
@@ -8191,6 +8276,64 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `look-alike-letter` (five times).
+
+### look-alike-letter-4. Nor is a capital M from another alphabet an M: 10Μ (Greek), 10М (Cyrillic) and 10Ｍ (fullwidth) are 10 Ω
+
+Each node sits at 10 µV with 1 µA in, so each resistor is 10 Ω. A plain capital M would make it 10 mΩ, milli (mega-as-milli-1); the student who types one of these letters means mega.
+
+```spice
+* letters that look like a capital M: Greek, Cyrillic and fullwidth
+I1 0 n1 1u
+R1 n1 0 10Μ
+I2 0 n2 1u
+R2 n2 0 10М
+I3 0 n3 1u
+R3 n3 0 10Ｍ
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n3                               1.000000e-05
+        n2                               1.000000e-05
+        n1                               1.000000e-05
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 0.000009999999999999999, v(n2) = 0.000009999999999999999, v(n3) = 0.000009999999999999999
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(n1) = 0.000009999999999999999, v(n2) = 0.000009999999999999999, v(n3) = 0.000009999999999999999
+```
+
+PlainSpice's checks: `look-alike-letter` (three times).
+
+### look-alike-letter-5. In a node name a look-alike makes another node: оut (Cyrillic о) is __ut, not out
+
+As an invisible character does (invisible-character-3): out is left with only R1, which carries no current, and R2 sits on the node __ut.
+
+```spice
+* a Cyrillic o in a node name
+V1 in 0 6
+R1 in out 1k
+R2 оut 0 2k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        __ut                             0.000000e+00
+        out                              6.000000e+00
+        in                               6.000000e+00
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 6, v(out) = 6, v(__ut) = 0, i(v1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 6, v(out) = 6, v(__ut) = 0, i(v1) = 0
+```
+
+PlainSpice's checks: `look-alike-letter`.
 
 ## space-character
 
