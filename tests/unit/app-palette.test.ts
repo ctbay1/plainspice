@@ -136,14 +136,14 @@ describe('after the final reviews: Ctrl+K finds a command by the words it shows'
     const list: Command[] = [
       command('example', 'Open the example “Dependent sources”', 'Examples'),
       { ...command('tool', 'Place a current-controlled current source', 'Edit the drawing', 'place F'), aliases: ['dependent source', 'cccs'] },
-      command('kw', 'Something else', 'Other', 'dependent'),
+      command('kw', 'Something else', 'Other', 'dependent current'),
     ];
     const order = (q: string): string[] => filterCommands(list, q).map((c) => c.id);
     // An alias starting with what was typed: first; the example, by its name: next; a keyword: last.
     expect(order('dependent')).toEqual(['tool', 'example', 'kw']);
     expect(order('cccs')).toEqual(['tool']);
     // Every typed word in its names (an alias's words and the label's together): before a keyword.
-    expect(order('dependent current')).toEqual(['tool']);
+    expect(order('dependent current')).toEqual(['tool', 'kw']);
     // Both by their names: the list's order (and the alias never makes "sources" a word of the tool).
     expect(order('source')).toEqual(['example', 'tool']);
     expect(order('sources')).toEqual(['example']);
