@@ -20,7 +20,7 @@ import type { RunResult } from '../../src/engine/types.ts';
 import { t } from '../../src/i18n/index.ts';
 import { NOTEBOOK_OPTIONS, solve } from '../../src/notebook/index.ts';
 import { EDIT_STRINGS, applyEdit, buildSchematic } from '../../src/schematic/index.ts';
-import { DESCRIBE_STRINGS, annotateLines, describeCircuit, describeResults, netlistVector } from '../../src/spice/describe.ts';
+import { DESCRIBE_STRINGS, annotateLines, describeCircuit, describeResults, explainDiagnostic, netlistVector } from '../../src/spice/describe.ts';
 import { INVISIBLE } from '../../src/spice/characters.ts';
 import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
 import { nameSaysNode } from '../../src/spice/node-words.ts';
@@ -490,6 +490,33 @@ describe('S11: a character in a node name that is not what it looks like is name
     expect(none.title).toBe('.tf asks about node xyz (written with a zero-width space in it), which is not in the circuit');
     expect(none.why).toBe('There is no node called xyz (written with a zero-width space in it): no part connects to it. .tf v(xyz) needs a node of the circuit.');
   }, 30000);
+});
+
+describe('critic of the fix: the no-single-answer message names the node ngspice points at as written, and the drawing finds it', () => {
+  const ZW = '\u200b';
+  // Native ngspice 47 and 42 (M2d): "singular matrix: check node __iki__" for ÇIKIŞ, "au" for aµ, "ou___t" for ou<ZWSP>t.
+  it.each([
+    ['ÇIKIŞ', '* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', 'Node ÇIKIŞ has no DC path to ground', 'ÇikiŞ'],
+    ['aµ', '* t\nV1 in 0 5\nC1 in aµ 1u\nC2 aµ 0 1u\n.op\n.end\n', 'Node aµ has no DC path to ground', 'au'],
+    ['ou<ZWSP>t', `* t\nV1 in 0 5\nC1 in ou${ZW}t 1u\nC2 ou${ZW}t 0 1u\n.op\n.end\n`, 'Node out (written with a zero-width space in it) has no DC path to ground', `ou${ZW}t`],
+  ])('%s: its title, why and the summary name it as written; the note goes to its node', async (_, text, title, key) => {
+    const s = await solve(text, await engine);
+    const m = s.words.warnings.find((w) => w.code === 'singular-matrix')!;
+    expect(m.title).toBe(title);
+    expect(s.words.summary).toContain(`its numbers can't be trusted: n${title.slice(1)}.`);
+    expect([m.title, m.why, s.words.summary, s.words.summarySpeech].filter((w) => /__|\bau\b|gİrİŞ|ÇikiŞ/.test(w) || INVISIBLE.test(w))).toEqual([]);
+    // The drawing writes the note at that node: ngspice's name is mapped back to the drawing's.
+    expect(s.noSingleAnswer?.at).toBe(key);
+    expect(buildSchematic(text, NOTEBOOK_OPTIONS).circuit.nodes.has(key)).toBe(true);
+  }, 30000);
+
+  it('the other message too: "No single answer at node ÇIKIŞ", "ngspice points at node ÇIKIŞ"', () => {
+    // Neither capacitors only nor cut off: the general words, for a node ngspice spells __iki__ (M2d).
+    const n = parseNetlist('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nR1 ÇIKIŞ x 1k\nC2 x 0 1u\n.op\n.end\n');
+    const w = explainDiagnostic({ code: 'singular-matrix', severity: 'warning', text: 'singular matrix:  check node __iki__', subject: '__iki__' }, n);
+    expect(w.title).toBe('No single answer at node ÇIKIŞ');
+    expect(w.why).toContain('ngspice points at node ÇIKIŞ: check that it has a DC path to ground (node 0).');
+  });
 });
 
 describe('words re-check 9: a node name with a letter outside a to z is refused with why, and a plain spelling no node has', () => {

@@ -82,7 +82,9 @@ rely; P3 and P4 now also run a source with a negative value between two nodes, w
 its size ("3 V below", "the current flows the other way"). After the critic of those fixes:
 tf-problems-8 in traps.md (a `.tf` output written with an invisible character, one that looks like a
 space or a look-alike letter is another node with nothing on it: a transfer function of 0 and an
-output impedance of 1 Ω, so the .tf check keeps its error there).
+output impedance of 1 Ω, so the .tf check keeps its error there) and M2d in explanations.md (ngspice
+points at a node in its own spelling, `check node ou___t`, `check node __iki__`, which the words map
+back to the node).
 
 ## Where the evidence came from
 

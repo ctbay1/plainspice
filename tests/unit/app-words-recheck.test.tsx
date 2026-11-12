@@ -185,6 +185,11 @@ describe('S7: the Numbers panel names a node outside ASCII as first written', ()
     ]);
     expect(screen.queryAllByRole('table').some((t) => /node/i.test(t.querySelector('caption')?.textContent ?? ''))).toBe(false);
   }, 30000);
+
+  it('the no-single-answer note goes to the node ngspice spells __iki__, and names it ÇIKIŞ (M2d)', async () => {
+    const record = await solveText('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', await ngspice);
+    expect(record.noSingleAnswer).toEqual({ at: 'ÇikiŞ', title: 'Node ÇIKIŞ has no DC path to ground' });
+  }, 30000);
 });
 
 describe('S11, critic of its fix: a .tf on a node written with a hidden or look-alike character gives no answers', () => {

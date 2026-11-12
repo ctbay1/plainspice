@@ -397,7 +397,7 @@ export const DESCRIBE_STRINGS = {
     `An E or G line needs four nodes and a number, and ${name} has fewer, so PlainSpice's engine finds no single answer (a singular matrix) and gives no results. (Native ngspice says "not enough parameters".)`,
   singularTitle: (n: string): string => `No single answer at ${nodeIn(said(n))}`,
   singularWhy: (n: string): string =>
-    `ngspice's equations have no single answer (a singular matrix), so the numbers it prints can't be trusted. ngspice points at ${n}: check that it has a DC path to ground (node 0).`,
+    `ngspice's equations have no single answer (a singular matrix), so the numbers it prints can't be trusted. ngspice points at ${nodeIn(said(n))}: check that it has a DC path to ground (node 0).`,
   steppingTitle: "ngspice's other ways to find a DC solution failed too",
   steppingWhy: 'After the singular matrix, ngspice tried gmin stepping and source stepping, ways to approach the solution gradually. They failed as well.',
   fallbackTitle: 'The numbers come from a fallback and can be wrong',
@@ -1154,8 +1154,8 @@ function shownNode(netlist: Netlist, key: string): string {
 }
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 
-/** A node ngspice names in its results, as the netlist writes it (W16). */
-function netlistNode(netlist: Netlist, name: string): string {
+/** A node ngspice names in its results or messages, as the netlist writes it (W16): its key ("ÇikiŞ" for ngspice's "__iki__"). */
+export function netlistNode(netlist: Netlist, name: string): string {
   const key = lowerAscii(name);
   return spellingsOf(netlist).nodes.get(key) ?? key;
 }
@@ -1759,7 +1759,11 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
     if (part) w.line = part.number;
     return w;
   }
-  const node = netlist.nodes.get(lowerAscii(subject));
+  // ngspice points at the node in its own spelling ("__iki__" for ÇIKIŞ, "ou___t": W16, M2d): its key finds
+  // it, and the words name it as the results' words do, as first written, the character named (S7, S11).
+  const key = netlistNode(netlist, subject);
+  const node = netlist.nodes.get(key);
+  const shown = shownNode(netlist, key);
   // M9: an E or G line with fewer than four nodes leaves a node with no single answer in our engine.
   // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count.
   const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && l.element.nodes.length < 4);
@@ -1768,16 +1772,16 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
     const letters = node.connections.map((c) => partsOf(netlist).byKey.get(c.element)?.element?.letter);
     if (letters.every((l) => l === 'C' || l === 'I')) {
       const what = letters.every((l) => l === 'C') ? S.onlyCapacitors : letters.every((l) => l === 'I') ? S.onlyCurrentSources : S.capacitorsAndCurrentSources;
-      return { title: S.capNodeTitle(subject), why: S.capNodeWhy(subject, what) }; // M2, M2b
+      return { title: S.capNodeTitle(shown), why: S.capNodeWhy(shown, what) }; // M2, M2b, M2d
     }
     // A node whose parts lead nowhere else: every part on it has its other end on nodes with nothing more (M2c).
     const isolated = node.connections.every((c) => {
       const el = partsOf(netlist).byKey.get(c.element)?.element;
       return el !== undefined && el.nodes.every((r) => !r.ground && (netlist.nodes.get(r.name)?.connections.length ?? 0) <= 1);
     });
-    if (isolated) return { title: S.floatingTitle(subject), why: S.floatingWhy(subject) };
+    if (isolated) return { title: S.floatingTitle(shown), why: S.floatingWhy(shown) };
   }
-  return { title: S.singularTitle(subject), why: S.singularWhy(subject) };
+  return { title: S.singularTitle(shown), why: S.singularWhy(shown) };
 }
 
 const SCALE_WORDS = new Set(['t', 'g', 'meg', 'k', 'm', 'u', 'n', 'p', 'f', 'a', 'mil']);

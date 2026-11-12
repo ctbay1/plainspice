@@ -262,7 +262,11 @@ Ctrl+K stay as they are.
   character outside printable ASCII, else the key; `CurrentWords.fromName` and `toName` are a current's
   two nodes so named, which the Numbers panel's current table uses (it took the names from the node
   rows, and said "from ground to gİrİŞ" for results with no node voltage, a `.save` of a current only:
-  critic of the fix). The key, `node`, stays for every lookup: the
+  critic of the fix). So does the no-single-answer message: ngspice points at a node in its own
+  spelling ("singular matrix: check node __iki__", M2d), which the message said as it came ("No single
+  answer at node __iki__"); it is mapped back to the node (`netlistNode`), which finds it and its
+  parts, so the words say "Node ÇIKIŞ has no DC path to ground" and the drawing writes that note at
+  ÇIKIŞ. The key, `node`, stays for every lookup: the
   Numbers panel's colours and row keys, the card's and the drawing's voltages (lowerAscii of a name
   with µ is not its key), the rounding-noise sets; ngspice's column keeps ngspice's spelling
   (g__r____, au). The .tf check's fix offers such a node as first written too ("Use ÇIKIŞ", never

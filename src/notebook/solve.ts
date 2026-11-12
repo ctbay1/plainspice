@@ -11,8 +11,8 @@
  */
 import { interpretPlots } from '../engine/results.ts';
 import type { RunResult } from '../engine/types.ts';
-import { annotateLines, describeResults, type LineAnnotation, type ResultsInWords } from '../spice/describe.ts';
-import { lowerAscii, parseNetlist } from '../spice/parse.ts';
+import { annotateLines, describeResults, netlistNode, type LineAnnotation, type ResultsInWords } from '../spice/describe.ts';
+import { parseNetlist } from '../spice/parse.ts';
 import { netlistToRun } from '../spice/run-netlist.ts';
 import { checkTraps } from '../spice/traps.ts';
 import type { Trap } from '../spice/types.ts';
@@ -35,8 +35,9 @@ export interface Solution {
   ms: number;
   /**
    * When the numbers are not answers because ngspice's equations have no single answer: the node
-   * (or branch) it points at, as ngspice names it ("singular matrix: check node n1"), and the
-   * model's words for it (describe.ts: "No single answer at node n1"), for the drawing to say there.
+   * (or branch) it points at ("singular matrix: check node n1"), by the netlist's key (ngspice's
+   * "__iki__" is ÇIKIŞ, M2d), and the model's words for it (describe.ts: "No single answer at node
+   * n1"), for the drawing to say there.
    */
   noSingleAnswer?: { at: string; title: string };
 }
@@ -57,7 +58,7 @@ export async function solve(text: string, runner: Runner, now: () => number = ()
   const solution: Solution = { text, status, words, annotations, checks, ms };
   const singular = status === 'ok' ? undefined : run.diagnostics.find((d) => d.code === 'singular-matrix' && d.subject);
   const title = words.warnings.find((m) => m.code === 'singular-matrix')?.title;
-  if (singular?.subject && title) solution.noSingleAnswer = { at: lowerAscii(singular.subject), title };
+  if (singular?.subject && title) solution.noSingleAnswer = { at: netlistNode(netlist, singular.subject), title };
   return solution;
 }
 

@@ -3372,6 +3372,59 @@ our engine (wasm), as ngspice -b -r (exit 0, marked unreliable):
   diagnostics: singular-matrix (n3), gmin-stepping-failed, source-stepping-failed, transient-op-fallback
 ```
 
+### M2d. ngspice points at a node in its own spelling: ou___t for a name with a hidden character, __iki__ for ÇIKIŞ
+
+Added after the critic of the words re-check's fix (12 November 2026). As in M2, the node between the
+two capacitors has no DC path; here its name is written with a zero-width space, which ngspice keeps
+as underscores (W16, invisible-character-3), so it points at `ou___t`. With `ÇIKIŞ` in its place (and
+`GİRİŞ` for `in`) it points at `__iki__`, with `aµ` at `au`, and with an ordinary node named `ground` at
+`ground`. So the words map ngspice's name back to the node it spells, as the results' words do (W16),
+and name it as written: "Node out (written with a zero-width space in it) has no DC path to ground",
+"Node ÇIKIŞ has no DC path to ground", 'Node "ground" has no DC path to ground' (they said "No single
+answer at node ou___t" and "at node __iki__"); the drawing writes the note at that node; and the
+floating-dc check quotes the warning as ngspice prints it ('singular matrix: check node ou___t').
+
+```spice
+* t
+V1 in 0 5
+C1 in ou<ZWSP>t 1u
+C2 ou<ZWSP>t 0 1u
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ou___t                           2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -1.57030e-12
+    Warning: singular matrix:  check node ou___t
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node ou___t
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: singular matrix:  check node ou___t
+    Warning: singular matrix:  check node ou___t
+    Warning: singular matrix:  check node ou___t
+    Warning: singular matrix:  check node ou___t
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Note: Transient op finished successfully
+  rawfile from ngspice -b -r (exit 0): v(in) = 4.9999999999949996, v(ou___t) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12
+  the same with V1 GİRİŞ 0 5, C1 GİRİŞ ÇIKIŞ 1u, C2 ÇIKIŞ 0 1u: the same warnings with "check node __iki__";
+    rawfile v(g__r____) = 4.9999999999949996, v(__iki__) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12
+  with aµ for ou<ZWSP>t: "check node au", rawfile v(au) = 2.4999999999849893; with ground: "check node ground",
+    rawfile v(ground) = 2.4999999999849893 (an ordinary node, W13)
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0, marked unreliable): the same messages ("check node ou___t";
+  "check node __iki__" for ÇIKIŞ)
+  vectors: v(in) = 4.9999999999949996, v(ou___t) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12; for ÇIKIŞ:
+    v(g__r____) = 4.9999999999949996, v(__iki__) = 2.4999999999849893, i(v1) = -1.5702994460298214e-12
+  diagnostics: singular-matrix (ou___t; __iki__), gmin-stepping-failed, source-stepping-failed, transient-op-fallback
+```
+
 ### M3. Two voltage sources in parallel: singular matrix at a branch, and no results
 
 V1 and V2 both set n1, to different values: the current in V1 has no single answer. Here even the fallback fails, and there are no results.
