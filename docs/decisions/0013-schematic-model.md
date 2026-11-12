@@ -170,8 +170,25 @@ and compared; anything they need that v1 cannot say becomes a new field (read pa
 **Wire work is bounded at the format's limits** (security:F1, with decision 0012):
 
 - Segments at a point are found by their row or column (sorted, a binary search) or, for slanted
-  ones, by the grid points they pass; islands of copper visit each point once; the obstacles words
-  avoid are filed by squares of the grid. No lookup scans the whole drawing.
+  ones, by the grid points they pass; the wires through a box (a place for a ground symbol, for a
+  node's name) by the rows and columns inside it and, for slanted ones, the squares of the grid it
+  covers; islands of copper visit each point once; the obstacles words avoid are filed by squares of
+  the grid. The rows and columns are kept in a few flat sorted arrays, not an object each, and
+  reconcile indexes and merges each version of the copper once.
+- Corrected after the critic of the fix round: "no lookup scans the whole drawing" was not true. The
+  search for a ground symbol's place, added by the phone fix below, checked every point of ground's
+  copper against every wire: a 31 kB link with a wire through every such point and a 9,900-piece
+  wave of another node took about 4 s to build and half a minute on a slowed phone (decision 0012).
+  It now looks only at the wires near each place and tries at most 100 places, lowest first (and as
+  many ends for a lead); real drawings have a few dozen. Checking overlaps (`findOverlaps`, used to
+  judge a turned view and an edit's stored sides) still compares every symbol and name with every
+  wire, which is small for the drawings it is used on.
+- **The phone tries to turn a drawing only up to 100 parts and 1000 pieces of wire**
+  (`TURN_LIMITS`, `src/notebook/turn.ts`). Each try rebuilds the whole drawing, up to four tries, so
+  a drawing line with thousands of pieces kept the phone busy to find no clean turn. No circuit a
+  student draws comes near (the largest example has 9 parts and 21 pieces), and a drawing that
+  large does not fit a phone at a size its words can be read, turned or not: it is shown as drawn,
+  and the phone can pan it.
 - The copper is merged once when the lines are read, and a slanted piece drawn twice is kept once,
   so no later step sees repeats.
 - **A piece of wire drawn twice over the same place is one piece**: its copy no longer keeps the
@@ -180,7 +197,9 @@ and compared; anything they need that v1 cannot say becomes a new field (read pa
   of wire hanging from one pin goes in one sweep. The drawing written is pruned once more after
   merging, so it reads back the same.
 - Every example, fixture and corpus netlist builds to exactly the same drawing and scene as
-  before, and a 300-part ladder and a dense mesh build faster.
+  before, and a 300-part ladder and a dense mesh build faster. After this round's changes too, all
+  145 repository netlists give the same drawing, scene, problems and turned view as the first fix,
+  and the wire functions match the release reviewed on 25,000 random wire sets.
 
 **A node's name goes where it is read clear of the parts, wherever its copper or its end leaves
 room** (student:label-on-part). A name with no spot of its own (no `side=`) that touches a symbol,
@@ -219,10 +238,10 @@ spot an edit puts something on), and the scene chooses afresh.
 
 **A ground symbol is never put where a wire runs through it** (student:phone-link-unturned). When
 the drawing has no ground symbol (the turned phone view never has one), the symbol goes at the
-lowest point of ground's copper that is clear of symbols, words and wires; when none is (a ground
-wire drawn straight through the pins, turned upright), it hangs on a one-unit lead below the
-lowest end of ground's copper that has room, best where the lead goes straight on from a wire
-coming down, and the lead is drawn as wire. Ladders built with the mouse now turn for a phone held
+lowest point of ground's copper that is clear of symbols, words and wires (the 100 lowest points
+are tried); when none is (a ground wire drawn straight through the pins, turned upright), it hangs on
+a one-unit lead below the lowest end of ground's copper that has room, best where the lead goes
+straight on from a wire coming down, and the lead is drawn as wire. Ladders built with the mouse now turn for a phone held
 upright; of the other netlists, 52 corpus drawings now turn that did not, 4 fixtures and 28 corpus
 drawings turn one unit tighter, the examples' turned views are unchanged, and none lost its turn.
 

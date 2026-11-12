@@ -51,9 +51,24 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   pass over the whole drawing. Now its work grows with the drawing lines and the wire they draw,
   both bounded by the format (2000 lines, 20,000 grid units, 20,000 points), never with their
   square; decision 0013 says how. The same links now draw in about 0.4 s on a computer (as fast as
-  the circuit without the extra lines) and about 1 s on the slowed phone; the worst drawings at the
-  format's limits take 20 to 400 ms to build on a developer's machine (they took seconds to
+  the circuit without the extra lines) and about 1 s on the slowed phone; the reviewer's patterns at
+  the format's limits take 20 to 400 ms to build on a developer's machine (they took seconds to
   minutes). The tests build each pattern at the limits (`tests/unit/schematic-format.test.ts`,
   "limits: wire over wire ..."; `tests/unit/schematic-route.test.ts`, "wire over wire ...") with
   limits about ten times what they take on a developer's machine (1 s at 100 lines, 5 s at the
   limits, 2 s for the long chain), so a busy CI machine passes and the old code still fails.
+- **Corrected after the critic of the fix round.** "The worst drawings at the format's limits take
+  20 to 400 ms" did not hold. A 31 kB link inside the limits, with no ground symbol, a wire through
+  every place one could go, and a 9,900-piece square wave of another node, took about 4 s to build
+  and kept a phone slowed four times busy for 27 to 31 s: the search for the ground symbol's place
+  checked every point of ground's wire against every wire, and the phone then rebuilt the drawing up
+  to four times to find no clean turn. Now that search looks only at the wires near each place and
+  tries at most 100 places; the phone does not try to turn a drawing of more than 100 parts or 1000
+  pieces of wire (decision 0013); and the wire handling indexes and merges each version of the
+  copper once, in flat arrays. That link now draws in 0.9 s on a computer (9.8 s on the release
+  reviewed, fix-base) and 3.3 s on the slowed phone. A drawing at the limits like it, with tens of
+  thousands of grid points of wire, takes about half a second to build on a developer's machine
+  (0.8 s the first time), not milliseconds; turning it takes none. Its test allows 5 s for the build
+  and 1 s for the turn (`tests/unit/schematic-format.test.ts`, "finds a ground symbol's place
+  quickly ..."). An edit on such a drawing rebuilds it about three times: 0.6 to 1 s here (0.9 to
+  1.5 s before this round). Separately, a netlist with thousands of parts still lays out slowly.
