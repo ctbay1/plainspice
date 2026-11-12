@@ -75,6 +75,13 @@ spaces the groups are three words and ngspice stops; in a node name the characte
 digits not grouped in threes end the number too) and look-alike-letter-6 (a look-alike right after a
 sign: `-５` stops ngspice).
 
+After the re-check of the merged build, the same day (the names lane): in traps.md non-ascii-node-3 (a
+.print or .plot line keeps a node's letters as written, so `ngspice -b` finds no such node there),
+non-ascii-node-4 (so does a command for ngspice: `save v(çıkış)` stops the analysis, in PlainSpice's run
+too), non-ascii-node-5 (ngspice reads the micro sign as u, so `aµ` and `au` are one node), non-ascii-node-6
+(`gñd` is the ordinary node `g__d`, while `gnd` is ground) and duplicate-name-4 (`Rµ` and `Ru` are the
+same name); in explanations.md M4b and M4c (the Numbers panel's words for `Rş` and `Rç`, `Rµ` and `Ru`).
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the
