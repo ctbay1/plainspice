@@ -180,9 +180,9 @@ that a phone left no room to watch the numbers move; this record says what the c
 - **.tf and .dc of a circuit solved exactly are decided the same way** (C9p). Every value is a + b·s in
   the source s, so one more exact solution, with that source at 1 V or 1 A and the others at 0, gives
   the .tf ratio (b of the output) and every point of a .dc sweep of one V or I source. ngspice's .tf
-  gives no node voltages to check its circuit against, so its input and output resistances (and a
-  ratio) must be the exact ones within its reltol, 10⁻³, and a ratio shown as 0 must be
-  smaller than 2⁻³⁰ of the largest change the input makes in a value of the output's kind. A .dc sweep
+  gives no node voltages to check its circuit against, so its input and output resistances must be
+  the exact ones within its reltol, 10⁻³, and a ratio shown as 0 must be smaller than 2⁻³⁰ of the
+  largest change the input makes in a value of the output's kind. A .dc sweep
   is checked at 5 of its points (its first, its last, and three between). The Numbers panel then shows
   "v(a,b)/V1 = 0 (V/V)" with ngspice's −5.551115e-17 in its "In ngspice's format" column; the Plot panel
   draws the sweep's noise points at 0 and its table has a column "… as ngspice gave it" with ngspice's
