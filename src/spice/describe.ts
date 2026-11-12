@@ -222,7 +222,7 @@ export const DESCRIBE_STRINGS = {
     `${name}: ${v ? `${articleBefore(v)} ${v} source` : 'a voltage source'} with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
   vFunction: (name: string, fn: string, a: string, b: string): string =>
     `${name}: a ${fn} voltage source with its + side at ${nodeIn(a)} and its ${MINUS} side at ${nodeIn(b)}.`,
-  // P9: true of every 0 V source, the turned-off source of a Thevenin example too (student review): what
+  // P9: true of every 0 V source, the turned-off source of a Thévenin example too (student review): what
   // it is and what ngspice does with it, not a purpose the circuit may not have.
   ammeter: (name: string, a: string, b: string): string =>
     `${name}: a 0 V source from ${nodeIn(a)} to ${nodeIn(b)}: a wire, through which ngspice measures the current (the ammeter trick).`,
@@ -287,8 +287,8 @@ export const DESCRIBE_STRINGS = {
     `the transfer function from ${input} to ${out} is ${value} ${ratio}`,
   inputR: (input: string, r: string): string => `input resistance seen by ${input}: ${r} (ngspice calls it the input impedance)`,
   inputRSpeech: (input: string, r: string): string => `the input resistance seen by ${input} is ${r}`,
-  outputR: (at: string, r: string): string => `output resistance ${at}: ${r}, the Thevenin resistance seen ${at} (ngspice calls it the output impedance)`,
-  outputRSpeech: (at: string, r: string): string => `the output resistance ${at} is ${r}, the Thevenin resistance`,
+  outputR: (at: string, r: string): string => `output resistance ${at}: ${r}, the Thévenin resistance seen ${at} (ngspice calls it the output impedance)`,
+  outputRSpeech: (at: string, r: string): string => `the output resistance ${at} is ${r}, the Thévenin resistance`,
   outputRCurrent: (out: string, r: string): string =>
     `ngspice's output impedance for ${out}: ${r}, a stand-in number rather than a resistance of your circuit`,
   outputRCurrentSpeech: (out: string, r: string): string => `ngspice reports ${r} as the output impedance for ${out}; it is not a resistance of your circuit`,
@@ -1479,7 +1479,7 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   const tf = words.tf;
   if (tf?.transferFunction) parts.push(speech ? tf.transferFunction.speech : S.summaryTf(tf.transferFunction.text));
   if (tf?.inputResistance) parts.push(speech ? tf.inputResistance.speech : tf.inputResistance.text.replace(/ \(ngspice calls.*\)$/, ''));
-  if (tf?.outputResistance) parts.push(speech ? tf.outputResistance.speech : tf.outputResistance.text.replace(/, the Thevenin.*$| \(ngspice calls.*\)$/, ''));
+  if (tf?.outputResistance) parts.push(speech ? tf.outputResistance.speech : tf.outputResistance.text.replace(/, the Thévenin.*$| \(ngspice calls.*\)$/, ''));
   for (const s of words.sweeps) {
     if (s.kind === 'dc') parts.push(S.summaryDc(s.points));
     else {

@@ -427,13 +427,13 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(plain(currentText(b, 'R1'))).toBe('3 µA from node n1 to node n2 through R1');
   });
 
-  it('F4: the output resistance at v(a) is 4 Ω, the Thevenin resistance (A3)', () => {
+  it('F4: the output resistance at v(a) is 4 Ω, the Thévenin resistance (A3)', () => {
     const d = ofFixture('f4-tf-output-impedance');
     const tf = d.words.tf!;
     expect(plain(tf.transferFunction?.text)).toBe('v(a)/V1 = 0.3333 (V/V)');
     expect(plain(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
-    expect(plain(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thevenin resistance seen at node a (ngspice calls it the output impedance)');
-    expect(tf.outputResistance?.speech).toBe('the output resistance at node a is 4 ohms, the Thevenin resistance');
+    expect(plain(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thévenin resistance seen at node a (ngspice calls it the output impedance)');
+    expect(tf.outputResistance?.speech).toBe('the output resistance at node a is 4 ohms, the Thévenin resistance');
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {

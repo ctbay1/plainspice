@@ -310,7 +310,7 @@ export const EXPLAIN_STRINGS = {
   opSaveCurrents: 'ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.',
   tfWhat: 'transfer function',
   tf: (out: string, input: string, at: string): string =>
-    `Find three DC quantities: the transfer function ${out}/${input} (output ÷ input), the input resistance seen by ${input}, and the output resistance ${at}, which is the Thevenin resistance seen ${at}. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms.`,
+    `Find three DC quantities: the transfer function ${out}/${input} (output ÷ input), the input resistance seen by ${input}, and the output resistance ${at}, which is the Thévenin resistance seen ${at}. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms.`,
   tfAt: (node: string): string => `at ${node}`,
   tfBetween: (a: string, b: string): string => `between ${a} and ${b}`,
   tfCurrent: (out: string, input: string): string =>

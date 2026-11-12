@@ -62,7 +62,7 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 
 - `.op` saves every node voltage and the current of every V, E, H and L; `.options savecurrents` adds
   every R, C, L, F, G and I current (A1, A2).
-- `.tf v(a) V1` gives v(a)/V1, the input resistance seen by V1 and the output (Thevenin) resistance
+- `.tf v(a) V1` gives v(a)/V1, the input resistance seen by V1 and the output (Thévenin) resistance
   at a, which ngspice calls impedances (A3); the input can be a current source (A4); for a current
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
   0 without a message (A6).
@@ -1211,7 +1211,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### A3. .tf v(a) V1 gives the transfer function v(a)/V1, the input resistance seen by V1 and the output resistance at a
 
-F4: v(a) = 24 × 3/9 = 8 V, so the transfer function is 8/24 = 1/3; V1 sees R1 + R2 = 9 Ω; looking back into a with V1 replaced by a short, the resistance is R3 + R1 ‖ R2 = 2 + 2 = 4 Ω, the Thevenin resistance at a. ngspice writes the three as `transfer_function`, `v1#input_impedance` and `output_impedance_at_v(a)`.
+F4: v(a) = 24 × 3/9 = 8 V, so the transfer function is 8/24 = 1/3; V1 sees R1 + R2 = 9 Ω; looking back into a with V1 replaced by a short, the resistance is R3 + R1 ‖ R2 = 2 + 2 = 4 Ω, the Thévenin resistance at a. ngspice writes the three as `transfer_function`, `v1#input_impedance` and `output_impedance_at_v(a)`.
 
 ```spice
 * F4: output impedance at v(a) with .tf
@@ -2519,7 +2519,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: i(vs) = 2, v(o) = 4, v(p) = -4, v(q) = 1, v(r) = -1, i(@f1[i]) = 4, i(@f2[i]) = 4, i(@g1[i]) = 1, i(@g2[i]) = 1
 ```
 
-### C5. F5 with savecurrents: every current of the Thevenin test circuit
+### C5. F5 with savecurrents: every current of the Thévenin test circuit
 
 The words `describe.ts` gives these numbers are checked in tests/golden/facts-explain.test.ts: "3 A from n1 to 0 through R1", "Vx measures 1 A flowing from a to x", "Itest delivers 14 W", "F1 delivers 24 W".
 

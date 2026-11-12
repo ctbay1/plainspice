@@ -129,7 +129,7 @@ describe('the fixtures, in the channel\'s words', () => {
     const tf = line(fixture('f4-tf-output-impedance.cir'), 6);
     expect(tf.heading).toBe('.tf: transfer function');
     expect(tf.summary).toBe(
-      'Find three DC quantities: the transfer function v(a)/V1 (output ÷ input), the input resistance seen by V1, and the output resistance at a, which is the Thevenin resistance seen at a. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms. The transfer function is in V/V.',
+      'Find three DC quantities: the transfer function v(a)/V1 (output ÷ input), the input resistance seen by V1, and the output resistance at a, which is the Thévenin resistance seen at a. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms. The transfer function is in V/V.',
     );
     expect(rows(tf)).toEqual([
       ['command', '.tf', 'transfer function'],

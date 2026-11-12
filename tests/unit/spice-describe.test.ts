@@ -206,7 +206,7 @@ describe('describeResults: .tf', () => {
     other: [],
   });
 
-  it('F4: the ratio, the input resistance and the Thevenin resistance (A3)', () => {
+  it('F4: the ratio, the input resistance and the Thévenin resistance (A3)', () => {
     const w = describeResults(parseNetlist('* F4\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n'), tfResults(1 / 3, { at: 'v(a)', value: 4 }, { source: 'v1', value: 9 }), run());
     const tf = w.tf!;
     expect(tf).toMatchObject({ output: 'v(a)', input: 'V1', ratio: 'V/V' });
@@ -214,7 +214,7 @@ describe('describeResults: .tf', () => {
     expect(tf.transferFunction?.speech).toBe('the transfer function from V1 to the voltage at node a is 0.3333 volts per volt');
     expect(sp(tf.inputResistance?.text)).toBe('input resistance seen by V1: 9 Ω (ngspice calls it the input impedance)');
     expect(tf.inputResistance?.speech).toBe('the input resistance seen by V1 is 9 ohms');
-    expect(sp(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thevenin resistance seen at node a (ngspice calls it the output impedance)');
+    expect(sp(tf.outputResistance?.text)).toBe('output resistance at node a: 4 Ω, the Thévenin resistance seen at node a (ngspice calls it the output impedance)');
     expect(sp(w.summary)).toBe('Simulation finished: transfer function v(a)/V1 = 0.3333 (V/V); input resistance seen by V1: 9 Ω; output resistance at node a: 4 Ω. Open the results for details.');
   });
 
