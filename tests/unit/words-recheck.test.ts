@@ -697,6 +697,15 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     expect(joined.ngspice).toBe("ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4, floating-dc-9]");
   });
 
+  it('a name with a hidden character and a look-alike letter has both named in every sentence, each character once', () => {
+    const F7 = `* t\nV1 in 0 5\nC1 in ${CY}u${ZW}t 1u\nC2 ${CY}u${ZW}t 0 1u\n.op\n.end\n`;
+    expect(traps(F7, 'floating-dc')[0]!.title).toBe('оut (written with the Cyrillic letter о, which looks like o, and a zero-width space) has no DC path to ground');
+    expect(describeCircuit(parseNetlist(F7))).toContain('node оut (written with the Cyrillic letter о, which looks like o, and a zero-width space) and ground');
+    // A character that looks like a space keeps "one word for SPICE"; one kind alone keeps its words.
+    expect(describeCircuit(parseNetlist(F7.replaceAll(ZW, '\u2009')))).toContain('node оu t (one word for SPICE: written with the Cyrillic letter о, which looks like o, and a thin space, not a space) and ground');
+    expect(describeCircuit(parseNetlist(F7.replaceAll(CY, 'o')))).toContain('node out (written with a zero-width space in it) and ground');
+  });
+
   it('a current source .dc sweeps, or with a SIN, is never said to push its value where the run does not (P4b, P4c)', () => {
     const summary = (text: string): string => sp(explainNetlist(parseNetlist(text))[1]!.summary);
     // Native ngspice 47 and 42 (P4b): at I1 = 5 mA, a = −5 V; the source's own −2 mA is not used.

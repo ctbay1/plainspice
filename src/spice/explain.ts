@@ -15,7 +15,7 @@
  * minus sign (−, U+2212); netlist text is always quoted as written.
  */
 import { formatNumber, formatSI } from '../format/si.ts';
-import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeName, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withSpaces } from './characters.ts';
+import { cleanWord, describeCharacter, hasInvisible, hasSpaceLike, INVISIBLE, lookAlikeName, lookAlikeOf, nameOfCharacter, SPACE_LIKE, spacedValue, withoutInvisible, withoutSpaces, withSpaces } from './characters.ts';
 import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
@@ -206,6 +206,13 @@ export const EXPLAIN_STRINGS = {
   nodeWithSpace: (shown: string, what: string): string => `${shown} (one word for SPICE: written with ${what}, not a space)`,
   // S11: a letter from another alphabet that looks like a Latin one is named in a node's name too, as in a value (look-alike-letter-5).
   nodeWithLookAlike: (shown: string, what: string): string => `${shown} (written with ${what})`,
+  /** Characters of more than one kind, or more than one character, each named (critic of the S11 fix, round 2). */
+  nodeWithSeveral: (shown: string, whats: string[], space: boolean): string => {
+    const last = whats[whats.length - 1]!;
+    const rest = whats.slice(0, -1);
+    const list = rest.length === 1 ? `${rest[0]!}${rest[0]!.includes(',') ? ',' : ''} and ${last}` : `${rest.join(', ')}, and ${last}`;
+    return `${shown} (${space ? 'one word for SPICE: ' : ''}written with ${list})`;
+  },
   twoNumbersNote: (first: string, second: string, used: string, why: string): string =>
     `ngspice read two numbers for the value, ${first} and ${second}, and uses the last one: ${used}.${why ? ` ${why}` : ''}`,
   twoNumbersComma: 'A comma separates words in SPICE: use a decimal point.',
@@ -772,10 +779,41 @@ function nodeName(ref: NodeRef): string {
 export function nodeNameInWords(text: string): string {
   // A name has no space in it (SPICE splits words at spaces): words with one were said already.
   if (text.includes(' ')) return text;
+  const odd = oddCharacters(text);
+  if (odd.length > 1) {
+    // Each one named, in the order they come: "out (written with a zero-width space and the Cyrillic
+    // letter о, which looks like o)", never only the first kind (critic of the S11 fix, round 2).
+    const whats = odd.map((ch) => (INVISIBLE.test(ch) ? nameOfCharacter(ch, false)! : SPACE_LIKE.test(ch) ? `${nameOfCharacter(ch, false)!}, not a space` : describeCharacter(ch)));
+    return S.nodeWithSeveral(withSpaces(withoutInvisible(text)), whats, odd.some((ch) => SPACE_LIKE.test(ch)));
+  }
   if (hasInvisible(text)) return S.nodeWithInvisible(withoutInvisible(text), nameOfCharacter([...text].find((ch) => INVISIBLE.test(ch))!, false)!);
   if (hasSpaceLike(text)) return S.nodeWithSpace(withSpaces(text), nameOfCharacter([...text].find((ch) => SPACE_LIKE.test(ch))!, false)!);
   if (lookAlikeName(text) !== undefined) return S.nodeWithLookAlike(text, describeCharacter(cleanWord(text).odd[0]!));
   return text;
+}
+
+/**
+ * The characters of a name that are not what they look like, each once, in the order they come: the
+ * invisible ones, those that look like a space, and letters from another alphabet that look like Latin
+ * ones in a Latin word (look-alike-letter-5; a name all in another alphabet is meant as written).
+ */
+export function oddCharacters(text: string): string[] {
+  const base = withoutSpaces(withoutInvisible(text));
+  const looks = new Set(lookAlikeName(base) !== undefined ? cleanWord(base).odd : []);
+  return [...new Set([...text].filter((ch) => INVISIBLE.test(ch) || SPACE_LIKE.test(ch) || looks.has(ch)))];
+}
+
+/**
+ * The names a name written with such characters may have meant, in turn: without its invisible
+ * characters, then without those that look like a space too, then with its look-alike letters written
+ * as the Latin ones (the last is the plain name: "out" for о<zero-width space>ut). Each differs from the
+ * name and from the one before; none for a name without such characters.
+ */
+export function plainForms(text: string): string[] {
+  const a = withoutInvisible(text);
+  const b = withoutSpaces(a);
+  const c = lookAlikeName(b) ?? b;
+  return [...new Set([a, b, c])].filter((x) => x !== text);
 }
 
 /**
