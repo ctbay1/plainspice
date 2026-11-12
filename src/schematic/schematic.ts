@@ -29,7 +29,7 @@ import { SegmentIndex, checkConnectivity, drawnPins, findIslands, type Connectiv
 import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type NodeLabel, type PartPlacement } from './drawing.ts';
 import { parseDrawingLines, readDrawing, type DrawingLines, type DrawingProblem, type PositionLine } from './format.ts';
 import { boxesOverlap, inflate, isOrthogonal, manhattan, pointKey, pt, samePoint, segmentCrossesBox, segmentsOf, unionBoxes, type Box, type Direction, type Point } from './geometry.ts';
-import { autoLayout, layOut, placeParts, type LayoutOptions } from './layout.ts';
+import { autoLayout, layOut, placeMoved, placeParts, type LayoutOptions } from './layout.ts';
 import { ROUTE_COSTS, findRoute, type RouteEnd } from './route.ts';
 import { buildScene, nodeLabelLines, type Scene } from './scene.ts';
 import { cutAt, normalizeWires, pruneDangling, toSegments, type Segment } from './wires.ts';
@@ -351,12 +351,33 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   const pinsOf = (): DrawnPin[] => drawnPins(circuit, drawing);
   const nodeOrder = new Map([...circuit.nodes.keys()].map((n, i) => [n, i]));
 
-  // 1. Pins of different nodes touching: a part whose pin sits on another node's pin moves.
+  // 1. Pins of different nodes touching: a part whose pin sits on another node's pin moves. The parts
+  //    to move are found from the pins alone (the last part at such a point, until no point has pins
+  //    of two nodes), then placed from one scene of the drawing (placeMoved), not one scene each
+  //    (second re-check, P3). The loop after it moves any part still on another node's pin.
+  const movers: string[] = [];
+  {
+    let pins = pinsOf();
+    for (let round = 0; round < circuit.parts.length + 1; round++) {
+      const clash = clashOf(pins);
+      if (!clash) break;
+      const mover = clash.slice().reverse().find((p) => p.part !== undefined);
+      if (!mover?.part) {
+        const g = clash.find((p) => p.ground !== undefined);
+        if (g?.ground !== undefined) drawing.grounds.splice(g.ground, 1);
+        pins = pinsOf().filter((p) => p.part === undefined || !movers.includes(p.part));
+        continue;
+      }
+      movers.push(mover.part);
+      pins = pins.filter((p) => p.part !== mover.part);
+    }
+  }
+  if (movers.length) {
+    placeMoved(circuit, { ...drawing, wires: segs }, movers, options);
+    for (const key of movers) problems.push({ kind: 'moved-part', severity: 'info', message: `${circuit.parts.find((p) => p.key === key)!.name} was moved: a pin of it touched a pin of another node.` });
+  }
   for (let round = 0; round < circuit.parts.length + 1; round++) {
-    const pins = pinsOf();
-    const byPoint = new Map<string, DrawnPin[]>();
-    for (const p of pins) (byPoint.get(pointKey(p.at)) ?? byPoint.set(pointKey(p.at), []).get(pointKey(p.at))!).push(p);
-    const clash = [...byPoint.values()].find((list) => new Set(list.map((p) => p.node)).size > 1);
+    const clash = clashOf(pinsOf());
     if (!clash) break;
     const mover = clash.slice().reverse().find((p) => p.part !== undefined);
     if (!mover?.part) {
@@ -558,6 +579,13 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     problems.push({ kind: 'wires-redrawn', severity: 'info', message: 'Some wires were redrawn so that the drawing connects what the netlist connects.' });
   }
   return drawing;
+}
+
+/** The pins at the first point where pins of two nodes touch (in the order of the pins), if any. */
+function clashOf(pins: readonly DrawnPin[]): DrawnPin[] | undefined {
+  const byPoint = new Map<string, DrawnPin[]>();
+  for (const p of pins) (byPoint.get(pointKey(p.at)) ?? byPoint.set(pointKey(p.at), []).get(pointKey(p.at))!).push(p);
+  return [...byPoint.values()].find((list) => new Set(list.map((p) => p.node)).size > 1);
 }
 
 /** True when two lists of polylines are the same, point for point. */

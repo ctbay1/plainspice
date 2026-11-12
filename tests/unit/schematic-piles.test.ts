@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
-import { buildSchematic, buildScene, type Schematic } from '../../src/schematic/index.ts';
+import { buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
 import { partsAtOnePoint } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0 }));
@@ -83,6 +83,35 @@ function counted<T>(f: () => T): { result: T; scenes: number; checks: number; ge
 }
 
 const build = (text: string): Schematic => buildSchematic(text, NOTEBOOK_OPTIONS);
+const moved = (s: Schematic): number => s.problems.filter((p) => p.kind === 'moved-part').length;
+
+describe('parts piled on one point move from one scene (second re-check, P3)', () => {
+  it('30 or 60 parts at one point: the same few scenes, whatever the number of parts moved', { timeout: 60_000 }, () => {
+    const thirty = counted(() => build(partsAtOnePoint(30)));
+    const sixty = counted(() => build(partsAtOnePoint(60)));
+    expect(moved(thirty.result)).toBe(29);
+    expect(moved(sixty.result)).toBe(59);
+    // One scene to place the parts that move, then those the repairs and the page need: 63 scenes for
+    // 60 parts before (one for each part moved), 33 for 30.
+    expect(sixty.scenes).toBe(thirty.scenes);
+    expect(sixty.scenes).toBeLessThanOrEqual(6);
+    for (const s of [thirty.result, sixty.result]) {
+      expect(schematicConnectivity(s)).toEqual([]);
+      // No symbol on another, and drawn together: not in one long row (a first prototype drew the 60 in
+      // a row of 358 × 11 squares; one scene each drew them in 56 × 61).
+      expect(findOverlaps(s.scene).filter((o) => (o.a.kind === 'part' || o.a.kind === 'ground') && (o.b.kind === 'part' || o.b.kind === 'ground'))).toEqual([]);
+      const b = s.scene.bounds;
+      expect(Math.max(b.x1 - b.x0, b.y1 - b.y0)).toBeLessThan(90);
+    }
+  });
+
+  it('a place for a part is tried without making a symbol for each place tried', { timeout: 60_000 }, () => {
+    // 59 parts moved, each tried at up to 48 × 36 places in four turns: one symbol geometry for each
+    // place tried was 400,000 and more for this drawing.
+    const sixty = counted(() => build(partsAtOnePoint(60)));
+    expect(sixty.geometries).toBeLessThan(20_000);
+  });
+});
 
 describe('a look at what words must avoid does not sort what it looks at (P3)', () => {
   it('2,000 names written at one point: each look sorts a few ids, not every id in its squares, twice', { timeout: 60_000 }, () => {
