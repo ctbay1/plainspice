@@ -231,10 +231,13 @@ that a phone left no room to watch the numbers move; this record says what the c
   exact solve alone, over 840 random networks of 40 to 600 resistors of six densities: at most 30 ms
   where it solves, 45 ms where it stops at the limits. A unit test keeps 60 parts under 50 ms and the
   limits under 200 ms.
-- **Our own netlists.** The words of all 186 netlists with `.op` we have (the 20 examples, the 7
-  fixtures, the trap and letter corpora's 99, and the channel's 60 episode netlists) are the same,
-  letter for letter, as at cd20fe9: none of them has rounding noise that cd20fe9 decided wrongly. The
-  floors are ngspice's defaults: a netlist's `.options abstol` or `vntol` does not move them.
+- **Our own netlists.** The words of all 210 netlists we have (the examples, the fixtures, the trap
+  and letter corpora, the engine settings' goldens and the channel's episode netlists; 186 of them
+  with `.op`) are the same, letter for letter, as at cd20fe9, and no point of a sweep is drawn
+  differently; so are the cards of every part of the 186, also with a crossed-out number from before
+  a change of every resistor by 20 % (633 such readouts): none of them has rounding noise that
+  cd20fe9 decided wrongly. The floors are ngspice's defaults: a netlist's `.options abstol` or `vntol`
+  does not move them.
 - **A 0 V source is "a wire, through which ngspice measures the current (the ammeter trick)"** in the
   circuit's description and on its card (student review): true of every 0 V source (P9), the
   turned-off source of a Thevenin example too, where "used as an ammeter" claimed a purpose the
