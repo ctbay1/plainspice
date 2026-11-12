@@ -189,9 +189,14 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   out its dot, so the line is just the buttons, on one row: at 360 px the two buttons take 175 and
   115 px of the 328 px there are, and with the words beside them the line grew from one row to two
   (36 to 74 px tall) over the drawing as soon as the reader moved it. The words come back with the
-  whole drawing. A status to read (running, paused, an error) keeps its words. Where even the buttons
-  alone are too wide (a 320 px phone, large text, or Undo as a third), they take two rows, each
-  centred.
+  whole drawing. "Running…" does the same (the numbers in pencil show the run): each edit on the
+  drawing starts a run, and with its words and dot back for it the line grew to two rows and folded
+  again a fifth of a second later, the hint and the "more" at the edge jumping with it, and Undo
+  sliding to where "Show the whole drawing" had been, under a finger about to tap it (the critic of
+  these fixes, at 360 px; on a Pixel 7 the buttons slid sideways). A status to read (paused, an
+  error, a run with a reason beside it, such as the numbers kept in pencil) keeps its words. Where
+  even the buttons alone are too wide (a 320 px phone, large text, or Undo as a third), they take
+  two rows, each centred.
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the

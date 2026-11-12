@@ -541,3 +541,71 @@ test('a turned drawing that fits, moved partly off the screen: the hint still sa
   await expect(statusLine(page).getByRole('button', { name: t('zoomFit'), exact: true })).toBeVisible();
   await expect(hintLine(page)).toHaveText(t('hintTurnedPan'));
 });
+
+test('a run started by an edit leaves the status line, its buttons, the hint and the “more” at the edge where they were', async ({ page }) => {
+  type Frame = { running: boolean; status: string; hint: string; edges: string };
+  for (const size of [undefined, { width: 360, height: 780 }]) {
+    if (size) await page.setViewportSize(size);
+    await openApp(page);
+    await expectSolved(page);
+    // Moved partly off to the left, from empty paper: "Show the whole drawing" joins the status line.
+    const paper = (await page.locator('.nb-canvas').boundingBox())!;
+    const from = { x: paper.x + paper.width * 0.55, y: paper.y + paper.height * 0.3 };
+    await fingers(page, [from], [{ x: from.x - 160, y: from.y }]);
+    const status = statusLine(page);
+    await expect(status.getByRole('button', { name: t('zoomFit'), exact: true })).toBeVisible();
+    // R2 turned with the keys, twice: Undo joins them, and the hint is R2's again once the first
+    // edit's note has gone.
+    await partOnDrawing(page, 'R2').focus();
+    await page.keyboard.press('t');
+    await expect(status.getByRole('button', { name: t('undo'), exact: true })).toBeVisible();
+    await page.keyboard.press('t');
+    await expect(hintLine(page)).toHaveText(t('hintSelectedPhone', { name: 'R2' }), { timeout: 15_000 });
+    await expectSolved(page);
+    await settle(page);
+    // Turned once more on a phone four times slower: every frame from "Running…" to "Finished".
+    await page.evaluate(() => {
+      const box = (e: Element | null): string => {
+        const r = e?.getBoundingClientRect();
+        return r ? [r.left, r.top, r.right, r.bottom].map(Math.round).join(',') : '';
+      };
+      const w = window as unknown as { __frames: Frame[]; __stop?: boolean };
+      w.__frames = [];
+      w.__stop = false;
+      const tick = (): void => {
+        const s = document.querySelector('.status');
+        w.__frames.push({
+          running: /Running/.test(s?.textContent ?? ''),
+          // The pill and each of its buttons.
+          status: [box(s), ...[...(s?.querySelectorAll('button') ?? [])].map((b) => `${b.textContent}@${box(b)}`)].join(' '),
+          hint: box(document.querySelector('#hint-line')),
+          edges: [...document.querySelectorAll('.more-edge')].map(box).join(' '),
+        });
+        if (!w.__stop) requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    await page.keyboard.press('t');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __frames: Frame[] }).__frames.some((f) => f.running))).toBe(true);
+    await expectSolved(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    await cdp.detach();
+    await settle(page);
+    const frames = await page.evaluate(() => {
+      const w = window as unknown as { __frames: Frame[]; __stop?: boolean };
+      w.__stop = true;
+      return w.__frames;
+    });
+    const end = frames.at(-1)!;
+    const running = frames.filter((f) => f.running);
+    expect(running.length).toBeGreaterThan(0);
+    for (const f of running) {
+      expect(f.status, `the status line and its buttons while “Running…” shows, at ${page.viewportSize()!.width} px`).toBe(end.status);
+      expect(f.hint, 'the hint while “Running…” shows').toBe(end.hint);
+    }
+    // The "more" at the edge goes where the free paper lets it: the same place once the run is over.
+    expect(running.at(-1)!.edges, 'the “more” at the edge').toBe(end.edges);
+  }
+});

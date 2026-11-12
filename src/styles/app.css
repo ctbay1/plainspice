@@ -3334,9 +3334,10 @@ html[data-contrast='more'] .lines .hint {
 .is-phone .status .turn-button:first-of-type {
   margin-left: auto;
 }
-/* "Show the whole drawing" and another button on the pill: a calm status keeps its words for screen
-   readers only (Frame.tsx), so the pill is just its buttons, on one row, evenly padded; where even
-   they do not fit (320 px, large text), each row of them is centred rather than pushed apart. */
+/* "Show the whole drawing" and another button on the pill: a calm status, and "Running…", keep their
+   words for screen readers only (Frame.tsx), so the pill is just its buttons, on one row, evenly
+   padded, and stays so through a run; where even they do not fit (320 px, large text), each row of
+   them is centred rather than pushed apart. */
 .is-phone .status.is-crowded {
   justify-content: center;
   padding-left: 0.25rem;

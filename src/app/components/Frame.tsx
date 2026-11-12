@@ -266,8 +266,11 @@ export function StatusLines({
   const bad = status.tone === 'bad' || status.tone === 'paused';
   // A phone's pill with "Show the whole drawing" and another button (the turn, Undo): a calm status
   // keeps its words for screen readers only, and no dot, so the buttons share one row over the drawing
-  // (175 and 115 px of buttons in a 360 px phone's 328 px). A status to read keeps its words.
-  const crowded = phone && status.tone === 'ok' && !!whole && (!!turn || !!undo);
+  // (175 and 115 px of buttons in a 360 px phone's 328 px). So does "Running…" (the numbers in pencil
+  // show the run), so the pill, the hint and the buttons keep their place through each run an edit
+  // starts, and a tap is not met by Undo where "Show the whole drawing" was. A status to read (paused,
+  // an error, one with a reason) keeps its words.
+  const crowded = phone && (status.tone === 'ok' || status.tone === 'busy') && !status.detail && !!whole && (!!turn || !!undo);
   return (
     <div className={`lines${bad ? ' is-bad' : ''}`}>
       {invite ? (
