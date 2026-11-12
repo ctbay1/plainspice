@@ -1310,7 +1310,7 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const part = (name: string): Element | undefined => partsOf(netlist).byKey.get(netlistPart(netlist, name))?.element;
   const inPart = reading || !tf.inputImpedance ? undefined : part(tf.inputImpedance.source);
   const outPart = reading || !tf.outputImpedance?.at.startsWith('i(') ? undefined : part(tf.outputImpedance.at.slice(2, -1));
-  const output = withoutInvisible(reading?.output ?? (outPart ? `i(${outPart.name.text})` : tf.outputImpedance ? netlistVector(netlist, tf.outputImpedance.at) : '?'));
+  const output = withoutInvisible(reading?.output ?? (outPart ? `i(${outPart.name.text})` : tf.outputImpedance ? tfVector(netlist, tf.outputImpedance.at) : '?'));
   const input = reading?.input?.text ?? inPart?.name.text ?? tf.inputImpedance?.source ?? '?';
   const outKind = reading?.outputKind ?? (tf.outputImpedance?.at.startsWith('i(') ? 'current' : 'voltage');
   const inKind = (reading ? reading.inputKind === 'current' : inPart?.letter === 'I') ? 'current' : 'voltage';
@@ -1355,7 +1355,25 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
 function tfNodes(netlist: Netlist, reading: Extract<AnalysisReading, { kind: 'tf' }> | undefined, tf: NonNullable<AnalysisResults['tf']>): string[] {
   if (reading) return reading.outputNodes.map((n) => said(n.ground ? '0' : n.token.text));
   const m = /^v\((.*)\)$/i.exec(tf.outputImpedance?.at ?? '');
-  return m ? m[1]!.split(',').map((x) => said(shownNode(netlist, netlistNode(netlist, x)))) : [];
+  return m ? m[1]!.split(',').map((x) => said(afterEndNode(netlist, x) ?? shownNode(netlist, netlistNode(netlist, x)))) : [];
+}
+
+/**
+ * A node of a .tf written after .end (S25, A3c) as that line writes it, for ngspice's spelling of it,
+ * when it has a character outside ASCII ("ou<zero-width space>t" for ou___t, which no other line may
+ * name: critic of the S11 fix, round 2); undefined otherwise, and ngspice's own name in lower case
+ * stays for a plain one (W6).
+ */
+function afterEndNode(netlist: Netlist, spelling: string): string | undefined {
+  const line = readAfterEnd(netlist).find((l) => /^\s*\.tf\b/i.test(l.text));
+  const word = line?.tokens.slice(1).find((t) => ngspiceSpelling(t.text) === spelling)?.text;
+  return word !== undefined && !/^[\x20-\x7e]*$/.test(word) ? word : undefined;
+}
+
+/** A .tf output's formula from ngspice's name for it, as netlistVector writes it, with the nodes of a .tf after .end as written. */
+function tfVector(netlist: Netlist, name: string): string {
+  const m = /^v\((.*)\)$/i.exec(name);
+  return m ? `v(${m[1]!.split(',').map((x) => afterEndNode(netlist, x) ?? shownNode(netlist, netlistNode(netlist, x))).join(',')})` : netlistVector(netlist, name);
 }
 
 /** "the voltage at out" / "the current in V1" for a sweep result's name. */

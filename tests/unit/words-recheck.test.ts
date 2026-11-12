@@ -697,6 +697,47 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     expect(joined.ngspice).toBe("ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4, floating-dc-9]");
   });
 
+  it('the .tf error on a hidden character names the node as the other words do: \'the node "ground"\', "node1"', () => {
+    const cases: [string, string, string, string][] = [
+      [`* t\n${DIV('ground')}.tf v(gro${ZW}und) V1\n.end\n`, 'a zero-width space (U+200B)', 'the node "ground"', 'Take it out: use "ground"'],
+      [`* t\n${DIV('node1')}.tf v(no${ZW}de1) V1\n.end\n`, 'a zero-width space (U+200B)', 'node1', 'Take it out: use node1'],
+      [`* t\n${DIV('00')}.tf v(0${ZW}0) V1\n.end\n`, 'a zero-width space (U+200B)', 'the node "00"', 'Take it out: use "00"'],
+      [`* t\n${DIV('node1')}.tf v(n${CY}de1) V1\n.end\n`, 'the Cyrillic letter о', 'node1', 'Write the plain letter o: node1'],
+    ];
+    for (const [text, what, node, label] of cases) {
+      const [c] = traps(text, 'tf-problems');
+      expect(c!.title, text).toBe(`.tf asks about a node with ${what} in its name, not ${node}`);
+      expect(c!.why, text).toContain(`so this is not ${node} the other lines name but another node`);
+      expect(c!.fixes.map((f) => f.label), text).toEqual([label]);
+      expect(words(c!).join(' '), text).not.toMatch(/node node1|not the node ground|use ground\b|node 00\b/);
+    }
+    // An ordinary node called gnd: written in v( ), gnd is ground (A3b), so no fix writes it.
+    const [gnd] = traps(`* t\nV1 in 0 6\nR1 in mid 1k\nR2 mid gnd\nR3 mid 0 2k\n.tf v(gn${ZW}d) V1\n.end\n`, 'tf-problems');
+    expect([gnd!.title, gnd!.fixes]).toEqual(['.tf asks about a node with a zero-width space (U+200B) in its name, not the node "gnd"', []]);
+  });
+
+  it('the mirror: the parts\' node has the hidden character and the .tf does not: said so, and no button writes the character (tf-problems-9)', async () => {
+    // Native ngspice 47 and 42: .tf v(out) with R1 and R2 on ou<ZWSP>t gives 0 and 1 Ω at out, a node with nothing on it.
+    const T8 = `* t\n${DIV(`ou${ZW}t`)}.tf v(out) V1\n.end\n`;
+    const [c] = traps(T8, 'tf-problems');
+    expect(c!.title).toBe('.tf asks about node out, but the parts are on another node: out (written with a zero-width space in it)');
+    expect(c!.why).toBe('The part lines write their node with a zero-width space (U+200B), a character you cannot see, and SPICE keeps it in the name, so no part connects to the node out, which .tf asks about. Take the character out of the part lines, and the .tf asks about their node.');
+    expect(c!.ngspice).toContain('[tf-problems-1, tf-problems-9]');
+    expect(c!.fixes).toEqual([]);
+    expect(words(c!).filter((w) => INVISIBLE.test(w) || /There is no node called/.test(w))).toEqual([]);
+    const [cy] = traps(`* t\n${DIV(`${CY}ut`)}.tf v(out) V1\n.end\n`, 'tf-problems');
+    expect(cy!.title).toBe('.tf asks about node out, but the parts are on another node: оut (written with the Cyrillic letter о, which looks like o)');
+    expect(cy!.fixes).toEqual([]);
+    // A typo near such a node is never offered it either.
+    const [typo] = traps(`* t\n${DIV(`ou${ZW}t`)}.tf v(outt) V1\n.end\n`, 'tf-problems');
+    expect(typo!.fixes).toEqual([]);
+    // The character's own check takes it out of the part lines; then the .tf is right.
+    const own = checkTraps(parseNetlist(T8)).find((x) => x.id === 'invisible-character')!;
+    const fixed = applyFix(T8, own.fixes[0]!);
+    expect(checkTraps(parseNetlist(fixed)).map((x) => x.id)).toEqual([]);
+    expect(sp((await solve(fixed, await engine)).words.tf?.transferFunction?.text)).toBe('v(out)/V1 = 0.6667 (V/V)');
+  }, 30000);
+
   it('a name with a hidden character and a look-alike letter has both named in every sentence, each character once', () => {
     const F7 = `* t\nV1 in 0 5\nC1 in ${CY}u${ZW}t 1u\nC2 ${CY}u${ZW}t 0 1u\n.op\n.end\n`;
     expect(traps(F7, 'floating-dc')[0]!.title).toBe('оut (written with the Cyrillic letter о, which looks like o, and a zero-width space) has no DC path to ground');
@@ -704,6 +745,16 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     // A character that looks like a space keeps "one word for SPICE"; one kind alone keeps its words.
     expect(describeCircuit(parseNetlist(F7.replaceAll(ZW, '\u2009')))).toContain('node оu t (one word for SPICE: written with the Cyrillic letter о, which looks like o, and a thin space, not a space) and ground');
     expect(describeCircuit(parseNetlist(F7.replaceAll(CY, 'o')))).toContain('node out (written with a zero-width space in it) and ground');
+  });
+
+  it('and the .tf check names both, and writes the plain name', () => {
+    // Native ngspice 47 and 42: v(о<ZWSP>ut) is the node _____ut, 0 and 1 Ω (tf-problems-8).
+    const T3 = `* t\n${DIV('out')}.tf v(${CY}${ZW}ut) V1\n.end\n`;
+    const [c] = traps(T3, 'tf-problems');
+    expect(c!.title).toBe('.tf asks about a node with the Cyrillic letter о and a zero-width space (U+200B) in its name, not the node out');
+    expect(c!.why).toBe('The Cyrillic letter о looks like o, but SPICE knows only the plain letter o; a zero-width space is a character you cannot see, and SPICE keeps it in the name, so this is not the node out the other lines name but another node, one no part connects to.');
+    expect(c!.fixes.map((f) => f.label)).toEqual(['Write the name in plain letters: out']);
+    expect(applyFix(T3, c!.fixes[0]!)).toContain('.tf v(out) V1');
   });
 
   it('a current source .dc sweeps, or with a SIN, is never said to push its value where the run does not (P4b, P4c)', () => {
@@ -726,4 +777,55 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     // A 0 V source with a SIN is no ammeter in .tran.
     expect(summary('* t\nV1 a 0 0 SIN(0 1 1k)\nR1 a 0 1k\n.tran 0.1m 2m\n.end\n')).not.toContain('ammeter');
   });
+
+  it('round 1\'s other words have tests: a dangling node beside ou<ZWSP>t, a second output, the card\'s lower end', async () => {
+    // A node dangling off a node with a hidden character: its voltage is that node's, named.
+    const [d] = traps(`* t\nV1 in 0 5\nR1 in ou${ZW}t 1k\nR2 ou${ZW}t 0 1k\nR3 ou${ZW}t x 1k\n.op\n.end\n`, 'dangling-node');
+    expect(d!.why).toContain('so x sits at the same voltage as out (written with a zero-width space in it).');
+    // A second output with a hidden character: ngspice gives 0.75 and 751 Ω (native 47 and 42, tf-problems-8),
+    // so its words are tf-problems-2's, never "comes out 0 and the output impedance 1 Ω".
+    const [second] = traps(`* t\nV1 in 0 6\nR1 in out 1k\nR2 out mid 2k\nR3 mid 0 1k\n.tf v(out,mi${ZW}d) V1\n.end\n`, 'tf-problems');
+    expect(second!.ngspice).toBe('ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2, tf-problems-8]');
+    // The card's lower end with a look-alike letter: native 47 and 42 give in = 6 V, __ut = 4 V.
+    const text = `* cy divider\nV1 in 0 6\nR1 in ${CY}ut 1k\nR2 ${CY}ut 0 2k\n.op\n.end\n`;
+    const s = buildSchematic(text, NOTEBOOK_OPTIONS);
+    const part = s.circuit.parts.find((p) => p.name === 'R1')!;
+    const state: CardState = { key: part.key, start: part.valueText, input: part.valueText, before: undefined, session: 1, kept: part.valueText };
+    const across = cardContent(part, state, s, await solve(text, await engine), text).readouts.find((r) => r.tone === 'voltage')!;
+    expect(across.speech).toBe(`2 volts across R1, node in is higher. V(in) minus V(${CY}ut) is 2 volts, where ${CY}ut is node ${CY}ut (written with the Cyrillic letter ${CY}, which looks like o)`);
+  }, 30000);
+
+  it('the .tf errors about parts name a hidden character and quote ngspice\'s spelling (tf-problems-10)', () => {
+    // Native ngspice 47 and 42: i(V<ZWSP>m) gives 0 and 1e20 Ω (v___m); V<ZWSP>1 as the input stops: "v___1 not in circuit".
+    const PARTS = 'V1 in 0 6\nR1 in out 1k\nVm out mid 0\nR2 mid 0 2k\n';
+    const [i] = traps(`* t\n${PARTS}.tf i(V${ZW}m) V1\n.end\n`, 'tf-problems');
+    expect([i!.title, i!.fixes.map((f) => f.label)]).toEqual(['i( ) in .tf asks about a part with a zero-width space (U+200B) in its name, not Vm', ['Take it out: use Vm']]);
+    expect(i!.ngspice).toContain('[tf-problems-7, tf-problems-10]');
+    const [input] = traps(`* t\n${PARTS}.tf i(Vm) V${ZW}1\n.end\n`, 'tf-problems');
+    expect([input!.title, input!.fixes.map((f) => f.label)]).toEqual(['.tf\'s input is a part with a zero-width space (U+200B) in its name, not V1', ['Take it out: use V1']]);
+    expect(input!.ngspice).toBe("ngspice stops: 'Transfer function source v___1 not in circuit'. [tf-problems-3, tf-problems-10]");
+    for (const c of [i!, input!]) expect(words(c).filter((w) => INVISIBLE.test(w))).toEqual([]);
+    expect(applyFix(`* t\n${PARTS}.tf i(Vm) V${ZW}1\n.end\n`, input!.fixes[0]!)).toContain('.tf i(Vm) V1\n');
+    // No such part even without it: the old words, the character named.
+    const [none] = traps(`* t\n${PARTS}.tf i(Vm) V${ZW}9\n.end\n`, 'tf-problems');
+    expect(none!.title).toBe('.tf\'s input V9 (written with a zero-width space in it) is not in the circuit');
+    expect(none!.ngspice).toBe("ngspice stops: 'Transfer function source v___9 not in circuit'. [tf-problems-3]");
+  });
+
+  it('a .tf after .end is checked as one above it is: a hidden character or a typo there is an error (A3c, tf-problems-8)', async () => {
+    // Native ngspice 47 and 42 run it: v(ou___t) and v(outt) give 0 and 1 Ω.
+    const ZW_AFTER = `* t\n${DIV('out')}.end\n.tf v(ou${ZW}t) V1\n`;
+    const [c] = traps(ZW_AFTER, 'tf-problems');
+    expect([c!.title, c!.fixes.map((f) => f.label)]).toEqual(['.tf asks about a node with a zero-width space (U+200B) in its name, not the node out', ['Take it out: use out']]);
+    expect(applyFix(ZW_AFTER, c!.fixes[0]!)).toContain('.end\n.tf v(out) V1\n');
+    const s = await solve(ZW_AFTER, await engine);
+    expect(s.status).toBe('check');
+    // Its words name the node as written, never in ngspice's spelling.
+    expect(s.words.tf?.at).toBe('at node out (written with a zero-width space in it)');
+    expect(s.words.tf?.output).toBe('v(out)');
+    expect(traps(`* t\n${DIV('out')}.end\n.tf v(outt) V1\n`, 'tf-problems').map((x) => x.fixes.map((f) => f.label))).toEqual([['Use out']]);
+    // A node a part after .end makes is a node of the circuit (S25): no error.
+    expect(traps(`* t\n${DIV('out')}.end\nR3 out x 1k\n.tf v(x) V1\n`, 'tf-problems')).toEqual([]);
+    expect((await solve(`* t\n${DIV('out')}.end\n.tf v(out) V1\n`, await engine)).status).toBe('ok');
+  }, 30000);
 });

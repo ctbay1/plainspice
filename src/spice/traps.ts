@@ -34,7 +34,7 @@ import {
   withoutSpaces,
   withSpaces,
 } from './characters.ts';
-import { isKnownDotCommand, nodeNameInWords, readAfterEnd } from './explain.ts';
+import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -1173,9 +1173,10 @@ function checkDangling(c: Ctx): void {
   // A name with an invisible character, a character that looks like a space or a look-alike letter,
   // and the name it looks like, are the invisible-character, space-character and look-alike-letter
   // checks': their fix joins them, so no "Did you mean" offers to rename out to ou<zero-width space>t,
-  // to o<thin space>ut or to оut (Cyrillic о).
-  const odd = (y: NodeInfo): boolean => !y.ground && y.refs.length > 0 && (hasInvisible(y.name) || hasSpaceLike(y.name) || lookAlikeName(y.refs[0]!.text) !== undefined);
-  const meantOf = (y: NodeInfo): string => lowerAscii(lookAlikeName(y.refs[0]!.text) ?? withoutSpaces(withoutInvisible(y.name)));
+  // to o<thin space>ut or to оut (Cyrillic о). The name it looks like is the plain one, with every such
+  // character taken out (о<zero-width space>ut is out: critic of the S11 fix, round 2).
+  const odd = oddNode;
+  const meantOf = (y: NodeInfo): string => lowerAscii(plainForms(y.refs[0]!.text).at(-1) ?? y.name);
   const hidden = new Set(nodes.filter(odd).map(meantOf));
   const connected = nodes.filter((y) => y.connections.length > 0 && !odd(y));
   let index: TypoIndex | undefined;
@@ -1979,31 +1980,51 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
     k = 3;
   } else k = 2;
   const src = args[k];
+  // The circuit's nodes and parts, with those of the parts written after a plain .end, which ngspice
+  // reads (S25): a .tf after .end (A3c) may name them.
+  const late = afterEndParts(c.n);
+  const connected = (key: string): boolean => (c.n.nodes.get(key)?.connections.length ?? 0) > 0 || late.some((e) => e.nodes.some((r) => r.name === key));
+  const partOf = (key: string): Element | undefined => {
+    const at = c.byKey.get(key);
+    return at !== undefined ? el(c, at) : late.find((e) => e.key === key);
+  };
   // A node is offered as first written when it has a character outside ASCII ("Use ÇIKIŞ", never the
   // key's "Use ÇikiŞ": S7, decision 0016), a name like ground quoted and such a character named. Never an
-  // ordinary node called gnd: written in v( ), gnd is ground (A3b).
+  // ordinary node called gnd: written in v( ), gnd is ground (A3b). Never a node whose name has a
+  // character that is not what it looks like: the button would write it into the .tf (critic of the
+  // fix, round 2); the character's own check takes it out of the part lines.
   const nodeCandidates = (t: Token): Fix[] =>
     [...c.n.nodes.values()]
-      .filter((y) => y.connections.length > 0 && y.name !== 'gnd' && looksLikeTypo(lowerAscii(t.text), y.name))
+      .filter((y) => y.connections.length > 0 && y.name !== 'gnd' && !oddNode(y) && looksLikeTypo(lowerAscii(t.text), y.name))
       .slice(0, 2)
       .map((y) => fix(`Use ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name))));
   if (kind === 'v') {
     outputs.forEach((t, idx) => {
       const name = lowerAscii(t.text);
-      if (name === GROUND || name === 'gnd' || (c.n.nodes.get(name)?.connections.length ?? 0) > 0) return;
-      // S11: a name that is a node of the circuit but for a character that is not what it looks like (an
-      // invisible one, one that looks like a space, a letter from another alphabet) is another node with
-      // nothing on it, so ngspice's .tf numbers mean nothing, as for any such node (tf-problems-8): an
-      // error, in words that name the character, never "There is no node called out" nor "Use out".
-      const clean = hasInvisible(t.text) ? withoutInvisible(t.text) : hasSpaceLike(t.text) ? withoutSpaces(t.text) : lookAlikeName(t.text);
-      if (clean !== undefined && (c.n.nodes.get(lowerAscii(clean))?.connections.length ?? 0) > 0) {
-        oddTfNode(c, t, clean, idx);
+      if (name === GROUND || name === 'gnd' || connected(name)) return;
+      // S11: a name that is a node of the circuit but for characters that are not what they look like
+      // (invisible ones, ones that look like a space, letters from another alphabet; one kind or more:
+      // о<zero-width space>ut is out, critic of the fix, round 2) is another node with nothing on it, so
+      // ngspice's .tf numbers mean nothing, as for any such node (tf-problems-8): an error, in words
+      // that name the characters, never "There is no node called out" nor "Use out".
+      const near = plainForms(t.text).find((x) => connected(lowerAscii(x)));
+      if (near !== undefined) {
+        oddTfNode(c, t, near, idx);
+        return;
+      }
+      // Its mirror: the parts' node has such a character and the .tf writes the name plainly (critic of
+      // the fix, round 2: "There is no node called out", with a button that wrote a third hidden
+      // character into the .tf). Said so, and left to the character's own check on the part lines.
+      const plain = lowerAscii(plainForms(t.text).at(-1) ?? t.text);
+      const mirror = [...c.n.nodes.values()].find((y) => y.connections.length > 0 && oddNode(y) && lowerAscii(plainForms(y.refs[0]!.text).at(-1)!) === plain);
+      if (mirror) {
+        mirrorTfNode(c, t, mirror, idx);
         return;
       }
       // Otherwise such a character is named, never shown hidden in the name (decision 0012); a name like
       // ground is quoted, and a name that says node goes alone ("node5", never "node node5"), as Explain
       // says them on the same line (words re-check 3 and 4, decision 0017).
-      const named = name === 'ground' || name === '00' ? `"${t.text}"` : nodeNameInWords(t.text);
+      const named = tfNamed(t.text);
       add(c, 'tf-problems', 'error', t, `.tf asks about ${nameSaysNode(named) ? named : `node ${named}`}, which is not in the circuit`,
         `There is no node called ${named}: no part connects to it. .tf v(${withoutInvisible(t.text)}) needs a node of the circuit.`,
         idx === 0
@@ -2013,11 +2034,16 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
     });
   } else if (outputs[0]) {
     const t = outputs[0];
-    const target = c.byKey.get(lowerAscii(t.text));
-    if (target === undefined || el(c, target).letter !== 'V') {
-      add(c, 'tf-problems', 'error', t, `i(${t.text}) needs a voltage source`,
-        `i( ) in .tf reads the current through a voltage source${target === undefined ? `, and there is no part called ${t.text}` : `; ${t.text} is not one`}. To measure a current, put a 0 V source in that branch (the ammeter trick) and write i( ) with its name.`,
-        'ngspice says nothing and gives a transfer function of 0 and an output impedance of 1e20 Ω. [tf-problems-5, tf-problems-7]');
+    const target = partOf(lowerAscii(t.text));
+    if (target === undefined || target.letter !== 'V') {
+      // A voltage source but for a character that is not what it looks like (critic of the fix, round 2).
+      const near = target === undefined ? plainForms(t.text).map((x) => partOf(lowerAscii(x))).find((e) => e?.letter === 'V') : undefined;
+      if (near) oddTfPart(c, t, near, 'output');
+      else {
+        add(c, 'tf-problems', 'error', t, `i(${withoutInvisible(t.text)}) needs a voltage source`,
+          `i( ) in .tf reads the current through a voltage source${target === undefined ? `, and there is no part called ${nodeNameInWords(t.text)}` : `; ${t.text} is not one`}. To measure a current, put a 0 V source in that branch (the ammeter trick) and write i( ) with its name.`,
+          'ngspice says nothing and gives a transfer function of 0 and an output impedance of 1e20 Ω. [tf-problems-5, tf-problems-7]');
+      }
     }
   }
   const sources = independentSources(c);
@@ -2030,37 +2056,153 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
       sources.length === 1 ? [fix(`Use ${nameOf(sources[0]!)} as the input`, change(last.to + (c.text[last.to] === ')' ? 1 : 0), last.to + (c.text[last.to] === ')' ? 1 : 0), ` ${nameOf(sources[0]!)}`))] : []);
     return;
   }
-  const target = c.byKey.get(lowerAscii(src.text));
-  const targetEl = target === undefined ? undefined : el(c, target);
+  const targetEl = partOf(lowerAscii(src.text));
   if (!targetEl) {
-    add(c, 'tf-problems', 'error', src, `.tf's input ${src.text} is not in the circuit`,
-      `The last word of .tf names the input source. There is no part called ${src.text}.`,
-      `ngspice stops: 'Transfer function source ${lowerAscii(src.text)} not in circuit'. [tf-problems-3]`, useOnly(src));
+    // A source but for a character that is not what it looks like: named, never shown (critic of the fix, round 2).
+    const near = plainForms(src.text).map((x) => partOf(lowerAscii(x))).find((e) => e?.letter === 'V' || e?.letter === 'I');
+    if (near) oddTfPart(c, src, near, 'input');
+    else {
+      const named = nodeNameInWords(src.text);
+      add(c, 'tf-problems', 'error', src, `.tf's input ${named} is not in the circuit`,
+        `The last word of .tf names the input source. There is no part called ${named}.`,
+        `ngspice stops: 'Transfer function source ${ngspiceSpelling(src.text)} not in circuit'. [tf-problems-3]`, useOnly(src));
+    }
   } else if (targetEl.letter !== 'V' && targetEl.letter !== 'I') {
     add(c, 'tf-problems', 'error', src, `.tf's input must be a source, not ${src.text}`,
       `The input of .tf must be an independent source: a voltage source (V) or a current source (I). ${nameOf(targetEl)} is not.`,
-      `ngspice stops: 'Transfer function source ${lowerAscii(src.text)} not of proper type'. [tf-problems-4]`, useOnly(src));
+      `ngspice stops: 'Transfer function source ${ngspiceSpelling(src.text)} not of proper type'. [tf-problems-4]`, useOnly(src));
   }
 }
 
+/** A .tf node's name in a check's words: a name like ground quoted (W13), a character that is not what it looks like named (S11). */
+const tfNamed = (text: string): string => (/^(gnd|ground|00)$/i.test(text) ? `"${text}"` : nodeNameInWords(text));
+
+/** "the node out", 'the node "ground"', and a name that says node alone: "node1" (words re-check 3 and 4, critic of the fix, round 2). */
+function theNode(text: string): string {
+  const named = tfNamed(text);
+  return nameSaysNode(named) ? named : `the node ${named}`;
+}
+
 /**
- * A .tf output written with a character that is not what it looks like, which makes it another node
- * than `clean`, the node of the circuit it looks like (S11, critic of its fix; tf-problems-8). The
- * character is named, never shown; the fix writes the name as the other lines do, as the character's
- * own warning does for the whole node.
+ * A node of the circuit whose name has a character that is not what it looks like: an invisible one,
+ * one that looks like a space, or a letter from another alphabet in a Latin word. Its own check names
+ * it on the part lines (invisible-character, space-character, look-alike-letter), and its fix joins it
+ * to the node it looks like, so no other check offers it.
+ */
+function oddNode(y: NodeInfo): boolean {
+  return !y.ground && y.refs.length > 0 && (hasInvisible(y.name) || hasSpaceLike(y.name) || lookAlikeName(y.refs[0]!.text) !== undefined);
+}
+
+const afterEndCache = new WeakMap<Netlist, Element[]>();
+
+/** The parts written after a plain .end, which ngspice reads (S25, after-end-1), each line read on its own. */
+function afterEndParts(n: Netlist): Element[] {
+  let parts = afterEndCache.get(n);
+  if (!parts) {
+    parts = readAfterEnd(n).flatMap((l) => {
+      const e = parseNetlist(`*\n${l.text}`).lines[1]?.element;
+      return e ? [e] : [];
+    });
+    afterEndCache.set(n, parts);
+  }
+  return parts;
+}
+
+/** A character in a title: "a zero-width space (U+200B)", "the Cyrillic letter о". */
+const characterWhat = (ch: string): string => nameOfCharacter(ch) ?? describeCharacter(ch).replace(/, which looks like .*$/, '');
+
+/** Why such a character makes another name, for a name with several of them. */
+function characterWhy(ch: string): string {
+  if (INVISIBLE.test(ch)) return `${nameOfCharacter(ch, false)!} is a character you cannot see, and SPICE keeps it in the name`;
+  if (SPACE_LIKE.test(ch)) return `${nameOfCharacter(ch, false)!} looks like a space, but SPICE keeps it in the name`;
+  const like = lookAlikeOf(ch)!;
+  return `${characterWhat(ch)} looks like ${like}, but SPICE knows only the plain letter ${like}`;
+}
+
+/** Why the characters `odd` of a name make another name: one character's words as before (S11), several each named. */
+function oddWhy(odd: readonly string[]): string {
+  const one = odd.length === 1 ? odd[0]! : undefined;
+  if (one === undefined) return odd.map(characterWhy).join('; ').replace(/^./, (x) => x.toUpperCase());
+  if (INVISIBLE.test(one)) return 'It is a character you cannot see, and SPICE keeps it in the name';
+  if (SPACE_LIKE.test(one)) return 'It looks like a space, but SPICE keeps it in the name';
+  const like = lookAlikeOf(one)!;
+  return `It looks like ${like}, but SPICE knows only the plain letter ${like}`;
+}
+
+/** The fix's label for writing a name without the characters `odd`: "Take it out: use out", "Write the plain letter o: out". */
+function oddFixLabel(odd: readonly string[], shown: string): string {
+  const one = odd.length === 1 ? odd[0]! : undefined;
+  if (one === undefined) return `Write the name in plain letters: ${shown}`;
+  return INVISIBLE.test(one) || SPACE_LIKE.test(one) ? `Take it out: use ${shown}` : `Write the plain letter ${lookAlikeOf(one)!}: ${shown}`;
+}
+
+/**
+ * A .tf output written with characters that are not what they look like, which make it another node
+ * than `clean`, the node of the circuit it looks like (S11, critic of its fix, rounds 1 and 2;
+ * tf-problems-8). The characters are named, never shown, the node as the other words name it ('the
+ * node "ground"', "node1"); the fix writes the name as the other lines do, as the character's own
+ * warning does for the whole node. An ordinary node called gnd gets none: written in v( ), gnd is
+ * ground (A3b).
  */
 function oddTfNode(c: Ctx, t: Token, clean: string, idx: number): void {
-  // The character `clean` was made without, in the same order: an invisible one, one that looks like a space, a look-alike.
-  const chars = [...t.text];
-  const ch = chars.find((x) => INVISIBLE.test(x)) ?? chars.find((x) => SPACE_LIKE.test(x)) ?? cleanWord(t.text).odd[0]!;
-  const like = INVISIBLE.test(ch) || SPACE_LIKE.test(ch) ? undefined : lookAlikeOf(ch)!;
-  const what = like === undefined ? nameOfCharacter(ch)! : describeCharacter(ch).replace(/, which looks like .*$/, '');
-  add(c, 'tf-problems', 'error', t, `.tf asks about a node with ${what} in its name, not the node ${clean}`,
-    `${like !== undefined ? `It looks like ${like}, but SPICE knows only the plain letter ${like}` : INVISIBLE.test(ch) ? 'It is a character you cannot see, and SPICE keeps it in the name' : 'It looks like a space, but SPICE keeps it in the name'}, so this is not the node ${clean} the other lines name but another node, one no part connects to.`,
+  // The characters `clean` was made without, each once, in the order they come.
+  const odd = oddCharacters(t.text).filter((ch) => !clean.includes(ch));
+  const node = theNode(clean);
+  add(c, 'tf-problems', 'error', t, `.tf asks about a node with ${list(odd.map(characterWhat))} in its name, not ${node}`,
+    `${oddWhy(odd)}, so this is not ${node} the other lines name but another node, one no part connects to.`,
     idx === 0
       ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1, tf-problems-8]'
       : 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2, tf-problems-8]',
-    [fix(like === undefined ? `Take it out: use ${clean}` : `Write the plain letter ${like}: ${clean}`, replace(t, clean))]);
+    lowerAscii(clean) === 'gnd' ? [] : [fix(oddFixLabel(odd, tfNamed(clean)), replace(t, clean))]);
+}
+
+/**
+ * A .tf output written plainly where the parts' node has a character that is not what it looks like
+ * (critic of the S11 fix, round 2; tf-problems-9): the .tf asks about another node, one no part
+ * connects to. No fix: a button here would write the character into the .tf; taking it out of the part
+ * lines, as the character's own check does, makes the .tf right.
+ */
+function mirrorTfNode(c: Ctx, t: Token, y: NodeInfo, idx: number): void {
+  const odd = oddCharacters(y.refs[0]!.text);
+  const one = odd.length === 1 ? odd[0]! : undefined;
+  const what = list(odd.map(characterWhat));
+  const like = one !== undefined && !INVISIBLE.test(one) && !SPACE_LIKE.test(one) ? lookAlikeOf(one)! : undefined;
+  const reason = one === undefined
+    ? `${what}, and SPICE keeps such characters in the name`
+    : like !== undefined
+      ? `${what}, which looks like ${like}, but SPICE knows only the plain letter ${like}`
+      : INVISIBLE.test(one)
+        ? `${what}, a character you cannot see, and SPICE keeps it in the name`
+        : `${what}, which looks like a space, but SPICE keeps it in the name`;
+  const mend = one === undefined ? 'Write the name in plain letters in the part lines' : like !== undefined ? `Write the plain letter ${like} in the part lines` : 'Take the character out of the part lines';
+  const asked = tfNamed(t.text);
+  add(c, 'tf-problems', 'error', t, `.tf asks about ${nameSaysNode(asked) ? asked : `node ${asked}`}, but the parts are on another node: ${nodeWords(c, y.name)}`,
+    `The part lines write their node with ${reason}, so no part connects to ${theNode(t.text)}, which .tf asks about. ${mend}, and the .tf asks about their node.`,
+    idx === 0
+      ? 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground. The transfer function comes out 0 and the output impedance 1 Ω. [tf-problems-1, tf-problems-9]'
+      : 'ngspice says nothing: it makes a new node with nothing connected, as if 1 Ω went from it to ground, which adds 1 Ω to the output impedance. [tf-problems-2, tf-problems-9]');
+}
+
+/**
+ * A .tf's i( ) or input written with characters that are not what they look like, where the name
+ * without them is a source of the circuit (critic of the S11 fix, round 2; tf-problems-10). The
+ * characters are named, never shown, and ngspice's message is quoted in its own spelling (v___1).
+ */
+function oddTfPart(c: Ctx, t: Token, part: Element, role: 'output' | 'input'): void {
+  const odd = oddCharacters(t.text).filter((ch) => !part.name.text.includes(ch));
+  const what = list(odd.map(characterWhat));
+  const name = nameOf(part);
+  if (role === 'output') {
+    add(c, 'tf-problems', 'error', t, `i( ) in .tf asks about a part with ${what} in its name, not ${name}`,
+      `${oddWhy(odd)}, so this is not the voltage source ${name} the other lines name: no part has this name, so i( ) reads no current.`,
+      'ngspice says nothing and gives a transfer function of 0 and an output impedance of 1e20 Ω. [tf-problems-7, tf-problems-10]',
+      [fix(oddFixLabel(odd, name), replace(t, name))]);
+  } else {
+    add(c, 'tf-problems', 'error', t, `.tf's input is a part with ${what} in its name, not ${name}`,
+      `${oddWhy(odd)}, so this is not the source ${name} the other lines name: no part has this name.`,
+      `ngspice stops: 'Transfer function source ${ngspiceSpelling(t.text)} not in circuit'. [tf-problems-3, tf-problems-10]`,
+      [fix(oddFixLabel(odd, name), replace(t, name))]);
+  }
 }
 
 function checkAnalyses(c: Ctx): void {
@@ -2070,6 +2212,13 @@ function checkAnalyses(c: Ctx): void {
     if (d.name === '.dc') checkDc(c, d);
     else if (d.name === '.tran') checkTran(c, d);
     else if (d.name === '.tf') checkTf(c, d, l);
+  }
+  // ngspice runs a .tf written after a plain .end (S25, A3c), so it is checked as one above it is (critic
+  // of the S11 fix, round 2: a hidden character there drew its 0 as an answer). The parser keeps such a
+  // line's words in order: the command, then its arguments.
+  for (const l of readAfterEnd(c.n)) {
+    const [first, ...args] = l.tokens;
+    if (first && lowerAscii(first.text) === '.tf') checkTf(c, { name: '.tf', token: first, args }, l);
   }
 }
 

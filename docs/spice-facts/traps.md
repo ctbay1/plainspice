@@ -6189,7 +6189,7 @@ PlainSpice's checks: `tran-problems`.
 
 ## tf-problems
 
-The output and the input of a `.tf` line. A missing output node and `i( )` of anything but a voltage source give wrong numbers silently; a missing input or one that is not V or I stops ngspice. Error. Fixes: a node whose name looks like a typo of the one written; the circuit's only source as the input. An output written with an invisible character, one that looks like a space or a look-alike letter is another node with nothing on it (tf-problems-8): the error names the character, and its fix writes the name as the other lines do.
+The output and the input of a `.tf` line. A missing output node and `i( )` of anything but a voltage source give wrong numbers silently; a missing input or one that is not V or I stops ngspice. Error. Fixes: a node whose name looks like a typo of the one written; the circuit's only source as the input. An output written with an invisible character, one that looks like a space or a look-alike letter is another node with nothing on it (tf-problems-8): the error names the character, and its fix writes the name as the other lines do; the other way round, with the character in the parts' node, it says so and leaves the fix to the character's own warning (tf-problems-9); a part's name in `.tf` written so is named the same way (tf-problems-10). A `.tf` after `.end`, which ngspice runs, is checked too (tf-problems-11).
 
 What PlainSpice shows for tf-problems-1 (error, line 5):
 
@@ -6420,15 +6420,172 @@ ngspice 47, ngspice -b (exit 0):
     transfer_function = 6.666667e-01
     output_impedance_at_v(out) = 6.666667e+02
     v1#input_impedance = 3.000000e+03
+  the same with .tf v(о<ZWSP>ut) V1 (a Cyrillic о and a zero-width space), ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(_____ut) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
 ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1;
-    with v(оut): v(output_impedance_at_V(__ut)) = 1; with v(o<THIN>ut): v(output_impedance_at_V(o___ut)) = 1, each with a
-    transfer function of 0; with v(out): v(Transfer_function) = 0.6666666666666666, v(output_impedance_at_V(out)) = 666.6666666666666
+    with v(оut): v(output_impedance_at_V(__ut)) = 1; with v(o<THIN>ut): v(output_impedance_at_V(o___ut)) = 1; with
+    v(о<ZWSP>ut): v(output_impedance_at_V(_____ut)) = 1, each with a transfer function of 0; with v(out):
+    v(Transfer_function) = 0.6666666666666666, v(output_impedance_at_V(out)) = 666.6666666666666
+```
+
+As a second output the character adds 1 Ω, as tf-problems-2 says: v(out,mi<ZWSP>d) is v(out) less a node
+with nothing on it, so the transfer function is out's 0.75 and the output impedance 750 + 1 = 751 Ω, where
+v(out,mid) gives 0.5 and 1 kΩ. So that error quotes tf-problems-2's words, never "comes out 0" (critic of
+the S11 fix, round 2).
+
+```spice
+* .tf with a second output node written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+R2 out mid 2k
+R3 mid 0 1k
+.tf v(out,mi<ZWSP>d) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 7.500000e-01
+    output_impedance_at_v(out,mi___d) = 7.510000e+02
+    v1#input_impedance = 4.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0.75, v(v1#Input_impedance) = 4000, v(output_impedance_at_V(out,mi___d)) = 751
+  the same with .tf v(out,mid) V1, ngspice -b (exit 0):
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(out,mid) = 1.000000e+03
+    v1#input_impedance = 4.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0.75, v(v1#Input_impedance) = 4000, v(output_impedance_at_V(out,mi___d)) = 751
 ```
 
 PlainSpice's checks: `invisible-character`, `tf-problems` (with v(оut): `look-alike-letter`, `tf-problems`; with
-v(o<THIN>ut): `space-character`, `tf-problems`).
+v(o<THIN>ut): `space-character`, `tf-problems`; with v(о<ZWSP>ut): `invisible-character`, `tf-problems`, whose
+words name both characters; with v(out,mi<ZWSP>d): `invisible-character`, `tf-problems`).
+
+### tf-problems-9. The other way round: the parts' node has the character, and .tf writes the name plainly
+
+Added after the second critic of the S11 fix (12 November 2026). R1 and R2 are on `ou<ZWSP>t` (`ou___t`
+for ngspice), and `.tf v(out)` asks about out, a node no part connects to: 0 and 1 Ω, as in
+tf-problems-1. The check says so, ".tf asks about node out, but the parts are on another node: out
+(written with a zero-width space in it)", and offers no button: one writing the parts' name into the
+.tf would put a third hidden character in the netlist (the critic's case); the character's own warning
+on the part lines takes it out, and then the .tf asks about their node. A Cyrillic о on the part
+lines does the same.
+
+```spice
+* .tf v(out) with the parts on a node written with a zero-width space
+V1 in 0 6
+R1 in ou<ZWSP>t 1k
+R2 ou<ZWSP>t 0 2k
+.tf v(out) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(out) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out)) = 1
+  the same with R1 in оut 1k and R2 оut 0 2k (a Cyrillic о), ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(out) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(out)) = 1,
+    the same with the Cyrillic о
+```
+
+PlainSpice's checks: `invisible-character`, `tf-problems` (with the Cyrillic о: `look-alike-letter`, `tf-problems`).
+
+### tf-problems-10. A part's name in .tf written with such a character is another name: i( ) reads nothing, and an input stops ngspice
+
+Added after the second critic of the S11 fix (12 November 2026). `i(V<ZWSP>m)` names no part (ngspice
+spells it `v___m`), so ngspice gives tf-problems-7's numbers, a transfer function of 0 and an output
+impedance of 1e20 Ω, without a message; `V<ZWSP>1` as the input stops ngspice, which quotes it in its
+own spelling, `v___1`. The check names the character, never shows it, quotes ngspice's message as it
+prints it, and its fix writes the name as the other lines do ("Take it out: use Vm").
+
+```spice
+* .tf i( ) of a source written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+Vm out mid 0
+R2 mid 0 2k
+.tf i(V<ZWSP>m) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    v1#input_impedance = 3.000000e+03
+    v___m#output_impedance = 1.000000e+20
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 3000.0000000000005, v(v___m#Output_impedance) = 1e+20
+  the same netlist with .tf i(Vm) V<ZWSP>1, ngspice -b (exit 1):
+    Warning: Transfer function source v___1 not in circuit
+  ngspice -b -r out.raw (exit 1): no rawfile
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r:
+    exit 0, vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 3000.0000000000005, v(v___m#Output_impedance) = 1e+20;
+    with V<ZWSP>1 as the input: exit 1, "Warning: Transfer function source v___1 not in circuit", no results
+```
+
+PlainSpice's checks: `tf-problems` (each).
+
+### tf-problems-11. A .tf written after .end is checked too: ngspice runs it, a typo or a hidden character there included
+
+Added after the second critic of the S11 fix (12 November 2026). ngspice reads the lines after a plain
+`.end` (after-end-1) and runs a `.tf` there (A3c in explanations.md), so a `.tf v(ou<ZWSP>t)` or
+`.tf v(outt)` after `.end` gives a transfer function of 0 and an output impedance of 1 Ω, as above
+`.end` (tf-problems-1, -8). The check reads such a line as one above `.end` (the run is "Not reliable",
+and its fix writes the name as the other lines do); a node that a part written after `.end` makes is a
+node of the circuit, as for ngspice.
+
+```spice
+* .tf after .end on a node written with a zero-width space
+V1 in 0 6
+R1 in out 1k
+R2 out 0 2k
+.end
+.tf v(ou<ZWSP>t) V1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(ou___t) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1
+  the same with .tf v(outt) V1 after .end, ngspice -b (exit 0):
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(outt) = 1.000000e+00
+    v1#input_impedance = 3.000000e+03
+  the same with R3 out x 1k and .tf v(x) V1 after .end, ngspice -b (exit 0):
+    transfer_function = 6.666667e-01
+    output_impedance_at_v(x) = 1.666667e+03
+    v1#input_impedance = 3.000000e+03
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0, v(v1#Input_impedance) = 2999.9999999999995, v(output_impedance_at_V(ou___t)) = 1;
+    with v(outt): v(output_impedance_at_V(outt)) = 1; with v(x): v(Transfer_function) = 0.6666666666666666,
+    v(output_impedance_at_V(x)) = 1666.6666666666665
+```
+
+PlainSpice's checks: `after-end`, `tf-problems` (with v(x): `after-end` only).
 
 ## no-analysis
 
