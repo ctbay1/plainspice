@@ -65,7 +65,10 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
     return { main: t('noAnalysisTitle'), detail: parts ? t('statusNothingDetail') : t('statusNoParts'), tone: 'paused' };
   }
   if (p && o.kind === 'failed' && o.text === text) return failedWords(o);
-  if (p) {
+  // A run of it that finished, while paused, is the slow run that paused live runs (a quick Run turns them on
+  // again): when its numbers are not answers, the status line says so, as the cards do, and the pause is said
+  // aloud (the round-2 critic's CR2-2). Its numbers are answers: the pause is what to know.
+  if (p && !(o.kind === 'done' && o.text === text && o.result.status !== 'ok')) {
     // Only when there are old numbers to see: the last run gave answers and the drawing still shows
     // some of them, in pencil. A run that gave none, or a circuit whose names are all new, leaves none to warn of.
     const old = o.kind === 'done' && o.text !== text && o.result.status === 'ok' && oldShown ? ` ${t('statusOldNumbers')}` : '';

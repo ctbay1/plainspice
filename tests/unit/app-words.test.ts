@@ -102,6 +102,24 @@ describe('the status line', () => {
     }
   });
 
+  it('a run whose numbers are not answers says so, though it took so long that live runs paused (the round-2 critic’s CR2-2)', () => {
+    // The slow pause comes from the run that just ended (live.ts): the status line says how that run went, as
+    // it does after a quick one, and as the cards do; the pause is said aloud.
+    const slow = (base: LiveState<RunRecord>): LiveState<RunRecord> => ({ ...base, paused: { reason: 'slow', ms: 9100 } });
+    const checked = done('check', { checks: [{ id: 'floating-dc', severity: 'error', line: 4, span: { from: 0, to: 1 }, title: 'b has no DC path to ground.', why: '', ngspice: '', fixes: [] }] });
+    expect(statusWords(READY, slow(checked), TEXT)).toEqual({ main: 'Not reliable', detail: 'A check found an error: b has no DC path to ground.', tone: 'bad' });
+    const noAnswer = done('failed', { words: { summary: 'x.', ngspiceError: true } as unknown as RunRecord['words'] });
+    for (const quick of [checked, done('unreliable'), noAnswer]) expect(statusWords(READY, slow(quick), TEXT)).toEqual(statusWords(READY, quick, TEXT));
+    // Numbers that are answers: the pause is what to know.
+    const pause = { main: 'Live runs paused', detail: 'The last run took 9.1 s, so ngspice does not run after every change: press Run (Ctrl+Enter).', tone: 'paused' };
+    expect(statusWords(READY, slow(done('ok')), TEXT)).toEqual(pause);
+    // A change since: the pause's words, as before (no old numbers to speak of after numbers that were not answers).
+    expect(statusWords(READY, slow(checked), `${TEXT}* x\n`)).toEqual(pause);
+    expect(statusWords(READY, slow(done('unreliable')), `${TEXT}* x\n`)).toEqual(pause);
+    // On a phone, the same words with its Run button.
+    expect(statusWords(READY, slow(checked), TEXT, true)).toEqual({ main: 'Not reliable', detail: 'A check found an error: b has no DC path to ground.', tone: 'bad' });
+  });
+
   it('nothing to run, a run that failed, and ngspice that could not start', () => {
     expect(statusWords(READY, live({ outcome: { kind: 'nothing', text: TEXT } }), TEXT)).toEqual({
       main: 'Nothing to run yet',
