@@ -188,7 +188,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     with `;` too), with `pre_` taken off and the commands a `;` separates on a `*#` line (limit-18); its
     words are read as ngspice's control reader makes them, blanks kept in quotes, a `~` as the engine's
     home folder, and a command with choices in braces (`{a,b}`, a word each) is not run (limit-19). The
-    words are measured as ngspice makes them: without the blanks inside brackets where it takes them out (`.save i( a b c )` is one name,
+    lines after `.end` are part of the circuit to ngspice, which makes `.end` a comment and reads on, and
+    get every check of the lines before it (limit-18). The words are measured as ngspice makes them: without the blanks inside brackets where it takes them out (`.save i( a b c )` is one name,
     limit-13), with the text a string parameter stands for where `{…}` puts it (limit-14), the names a
     `.probe` line makes and the formula it writes for `p(…)` (limit-15), and the name `print`, `write`,
     `fft`, `psd`, `spec` and `asciiplot` give a formula, its words with one blank each and the quotes
