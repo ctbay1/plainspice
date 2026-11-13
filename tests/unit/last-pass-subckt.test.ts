@@ -230,3 +230,14 @@ describe('facts F2: ngspice "skips" an analysis line in a subcircuit no X line u
     expect([...note, describeCircuit(n), describeResults(n, { other: [] }, nothing()).warnings[0]!.why].filter((x) => /ignor/.test(x))).toEqual([]);
   });
 });
+
+// ------------------------------------------------------------------ the round-1 critic of these fixes
+
+describe('critic1-7: a .tf inside a used subcircuit with 200,000 continuation lines is explained', () => {
+  it('explains it without overflowing the stack (Math.max over every continuation line did, at 150,000)', () => {
+    const k = 200000;
+    const text = `* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(out,gnd)\n${'+ \n'.repeat(k)}+ V1\n.ends\n.end\n`;
+    const ex = explainNetlist(parseNetlist(text));
+    expect(ex[7]?.heading).toBe('.tf: transfer function');
+  }, 60000);
+});

@@ -1252,8 +1252,11 @@ function subcircuitWords(netlist: Netlist): Map<number, NodeInfo> {
   for (const i of ctx.insideSubckt.keys()) {
     const line = netlist.lines[i]!;
     if (!line.directive) continue;
-    // The line and its continuation lines, which the parser reads as one (comment lines between them too).
-    const last = netlist.lines[Math.max(i, ...(ctx.continuedBy.get(i) ?? []))]!;
+    // The line and its continuation lines, which the parser reads as one (comment lines between them too):
+    // continuedBy lists them in line order, so the last is the last (never spread into Math.max, whose
+    // arguments overflow the stack at 150,000 such lines: last pass critic1-7).
+    const more = ctx.continuedBy.get(i);
+    const last = netlist.lines[more?.length ? more[more.length - 1]! : i]!;
     const alone = parseNetlist(`*\n${netlist.text.slice(line.span.from, last.span.to)}`);
     for (const node of alone.nodes.values()) for (const t of node.refs) byStart.set(line.span.from + t.from - 2, node);
   }
