@@ -1,4 +1,7 @@
-/** The ngspice output panel: exactly what ngspice printed, the command it was run like, and the line PlainSpice added. */
+/**
+ * The ngspice output panel: exactly what ngspice printed, the command it was run like, the line
+ * PlainSpice added, and what else PlainSpice did to the copy ngspice ran (a title cut).
+ */
 import type { ReactNode } from 'react';
 import type { RunResult } from '../../engine/types.ts';
 import { t } from '../../i18n/index.ts';
@@ -16,7 +19,7 @@ function Printed({ id, title, text }: { id: string; title: string; text: string 
   );
 }
 
-export function OutputPanel({ result, added }: { result: RunResult | undefined; added: readonly string[] }): ReactNode {
+export function OutputPanel({ result, added, notes = [] }: { result: RunResult | undefined; added: readonly string[]; notes?: readonly string[] }): ReactNode {
   return (
     <div className="output">
       <p>{t('outputIntro')}</p>
@@ -34,6 +37,9 @@ export function OutputPanel({ result, added }: { result: RunResult | undefined; 
               </pre>
             </>
           )}
+          {notes.map((note) => (
+            <p key={note}>{note}</p>
+          ))}
           <Printed id="ngspice-stdout" title={t('outputStdout')} text={result.stdout} />
           <Printed id="ngspice-stderr" title={t('outputStderr')} text={result.stderr} />
         </>

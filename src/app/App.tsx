@@ -3234,7 +3234,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         return <p className="muted">{[t('plotWaiting'), status.tone === 'paused' ? status.detail : undefined].filter(Boolean).join(' ')}</p>;
       }
       case 'output':
-        return <OutputPanel result={record?.run} added={record?.added ?? []} />;
+        return <OutputPanel result={record?.run} added={record?.added ?? []} notes={record?.notes ?? []} />;
     }
   };
 
