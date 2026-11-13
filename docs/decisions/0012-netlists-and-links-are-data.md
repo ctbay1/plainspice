@@ -104,57 +104,77 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   the drawing once, not twice: the page takes the schematic `keepDrawing` built to tell whether the
   new value would move a part (`schematicOf`, `src/app/card-edit.ts`).
 
+  Corrected after the critic of these fixes: the budget first written here did not hold. Long
+  slanted wire far from 60 parts piled at one point (159 pieces of 62 × 62) was checked by every
+  place tried for every part, and the routes that joined the parts again went through all the wire
+  for each route: 1 s to open or for each key on a computer and 3.5 to 5.8 s on the slowed phone,
+  where the parts alone took 0.25 s. And every key typed on a card built the piled lines again. Now
+  a piece of wire is filed where it runs (decision 0013), the routes keep the islands up to date and
+  look only near themselves, a value typed on a card where the lines pile parts writes where the
+  parts are drawn without building the pile again (`keepDrawing`), and an undo or a redo draws a
+  text the page has just built without building it again. The budget below is for every shape the
+  reviewers, the skeptics, the critic and this lane built inside the limits, each named in
+  `tests/unit/schematic-shapes-work.test.ts`.
+
   The budget at the format's limits (2000 drawing lines, 20,000 grid units and points, 60 parts
   drawn, a 32,000-character link, or saved work as large), as the page's longest task on a computer
   and on a Pixel 7 slowed four times:
-  - opening: up to about 0.6 s on a computer, and up to about two and a half seconds on the slowed
-    phone, four for the heaviest drawings (30 kB of wire, the 100 × 100 grid kept as saved work, 60
-    parts in one square turned every way: 2.5 to 3.7 s; a build of each is 0.25 to 0.7 s of CPU in
-    Node, where a pile of parts, names or ground symbols at one point is about 0.2 s);
-  - a hover, a selection or the focus ring: no long task (only the highlights are drawn again); a
-    click on a part with its card placed: up to about 0.1 s, and a tap 0.17 s on the phone;
-  - a key typed on a card (one build) or an edit (move, turn, mirror, wire, delete, rename,
-    disconnect, a name moved, undo: two to four builds): up to about 0.45 s on a computer and 1.4 s
-    on the slowed phone, and up to 0.55 s and 2.4 s on the heaviest drawings of wire.
+  - opening: up to about 0.75 s on a computer and 4 s on the slowed phone (the 542-character link
+    that P3 reported: 0.25 s and 1.4 s);
+  - a hover, a selection or the focus ring: no long task; a click on a part with its card placed: up
+    to about 0.1 s;
+  - a key typed on a card: up to 0.45 s on a computer and 1.4 s on the slowed phone (the heaviest
+    wire, which every build goes through); where the lines pile parts, up to 0.2 s and 0.6 s, as the
+    pile is not built again; an undo of the card's change: no build;
+  - an edit made in the drawing (move, turn, mirror, wire, delete, rename, disconnect, a name moved):
+    two to four builds of what the edit writes (the lines as the page shows them, so a pile no
+    longer), up to 0.45 s on a computer and 1.4 s on the slowed phone, and its undo no build.
   The tests count the work, so they hold on any machine (decision 0013 lists them).
 
-  Measured on 13 November on the shared machine, this build first and the build re-checked (b060bc8)
-  in brackets; the load was 1 to 4 for this build (7.5 for the long names) and 2 to 10 for the other,
-  and the builds' CPU time in Node, best of three at load 5, depends little on it:
-  - the 542-character link: on a computer opening 0.27 s (0.97 s), a key 0.18 s (0.91 s, then
-    0.76 s: two builds), Delete 0.09 s (0.25 s), Undo no long task (0.90 s); on the slowed Pixel 7,
-    opening 1.44 s (4.10 s) and a key 0.60 s (3.63 s, then 3.08 s); a build 0.20 s of CPU (1.53 s);
-  - the 1007-character link with 1900 names: opening 0.29 s (33.8 s), a key 0.20 s (36.2 s, then
-    33.6 s), Undo no long task (34.2 s); on the phone, opening 1.6 s (164 s, the re-check's); a
-    build 0.17 s (40.2 s); the same names over one square, 1900 ground symbols at the point, every
-    part in one square: builds of 0.25 s, 0.13 s and 0.26 s (53.6 s, 10.0 s and 1.52 s), opening
-    0.31 to 0.52 s and a key 0.24 to 0.44 s, on the phone opening 1.6 to 3.7 s and a key 0.75 to
-    1.3 s;
-  - the 861-character link, 60 parts at one point with 500-character node names (load 7.5 to 10):
-    a build 0.18 s (1.22 s); opening 0.62 s (1.52 s), a key 0.38 s (1.13 s, then 0.89 s); on the
-    phone opening 2.5 s (6.0 s) and a key 1.1 s (4.05 s, then 3.34 s);
-  - the slanted lattice (30 kB): opening 0.43 s (1.01 s), a hover no long task and 30 ms of CPU
-    (0.49 s), a click 0.06 s (0.95 s), a key 0.28 s (0.80 s), Escape 0.06 s (0.61 s), Delete 0.19 s
-    (0.77 s), Undo 0.31 s (1.01 s); on the phone, opening 1.86 s (3.67 s), a tap 0.12 s (2.43 s), a
-    key 0.97 s (3.21 s); with a trap on R1 (its red-pen note), opening 0.56 s (1.66 s) and on the
-    phone 1.94 s (6.31 s), a tap 0.17 s (2.32 s) and a key 1.38 s (4.23 s);
-  - a red-pen note next to R1 on a drawing that reaches ±2000, the whole drawing in view: 2 ms of
-    CPU in Node (1.7 s, every place along the paper made and sorted);
-  - the heaviest drawings of wire, already linear: the first critic's 31 kB wave opens in 0.59 s
-    (0.66 s), takes a key in 0.39 s (0.53 s, then 0.39 s) and Delete in 0.55 s (0.77 s); on the
-    phone it opens in 2.5 s (2.7 s) and takes a key in 2.35 s, in one task now (1.69 s, then
-    1.43 s); the 100 × 100 grid kept as saved work (122 kB) opens in 0.61 s (0.75 s at load 7) and
-    takes a click in 0.07 s (0.78 s) and a key in 0.35 s (0.45 s, then 0.49 s), on the phone 3.0 s
-    (3.1 s) and a key in 1.8 s (1.84 s, then 1.97 s); builds of 0.69 s and 0.62 s (0.78 s and
-    0.80 s).
+  Measured on 13 November on the shared machine at a load of 0.4 to 1.5 (3 for the keys on the
+  lattice round the parts), this build first and the build re-checked (b060bc8) in brackets
+  (computer: 1280 × 800; phone: Pixel 7 slowed four times; the page's longest task each time):
+  - the 542-character link: on a computer opening 0.24 s (0.74 s), two keys no long task (0.64 and
+    0.56 s, then 0.60 and 0.55 s), an undo no long task (0.58 s); on the phone opening 1.35 s, keys
+    0.16 s at most;
+  - the critic's long slanted wire with the 60 parts (a 1,557-character link): opening 0.26 s
+    (1.81 s), keys and undo no long task (1.73 and 1.70 s, then 1.64 and 1.55 s; undo 1.69 s); phone
+    opening 1.45 s (the critic measured 7.4 s on the build re-checked), keys 0.15 s;
+  - with 1650 ground symbols in a block round the parts too (6,897 characters): opening 0.46 s
+    (2.94 s), keys 0.08 and 0.06 s (3.07 and 2.94 s, then 3.03 and 3.09 s), undo no long task
+    (2.71 s); phone opening 2.38 s, keys 0.29 s at most (the critic measured 5.3 to 5.8 s on the
+    first fix); with 1650 names instead (10,127 characters): 0.40 s (10.1 s), keys no long task;
+    phone 1.79 s, keys 0.16 s;
+  - the 60 parts with their own nodes among the ground symbols and the long wire: 0.68 s (2.78 s),
+    keys 0.09 and 0.05 s (3.01 and 2.84 s); phone 2.11 s, keys 0.39 s;
+  - turning, moving and deleting a part with the keys on these piles and the lattices: 0.06 to
+    0.34 s each on a computer, each undo no long task;
+  - this lane's own: 115 routes beside a 70 × 70 grid (29,137 characters): 0.59 s (2.73 s), keys
+    0.09 s (2.28 and 1.95 s); beside a 99 × 99 grid kept as saved work (160 kB): 0.74 s (3.57 s), keys
+    0.12 s (3.27 and 3.28 s), an undo 0.42 s (the editor taking back the whole drawing block); the
+    parts inside a slanted lattice that touches none of them (30,174 characters): 0.68 s (2.95 s),
+    keys no long task (2.97 and 2.75 s); a lattice hanging from V1's pin: 0.65 s (3.59 s), keys
+    0.17 s (2.81 and 3.33 s); on the phone these open in 3.0 to 3.8 s, and take a key in 0.55 s at
+    most;
+  - the heaviest wire, which every build goes through (no pile): the first critic's 31 kB wave opens
+    in 0.43 s and takes a key in 0.44 s; the 100 × 100 grid kept as saved work 0.50 s and 0.28 s;
+    the slanted lattice (29,278 characters) 0.53 s and 0.18 s, a hover no long task (0.42 s), a
+    click 0.10 s (1.22 s), Escape 0.05 s (0.56 s); on the phone they open in 1.7 to 2.1 s and take a
+    key in 0.7 to 1.3 s, and a tap on the lattice makes no long task;
+  - a build in Node, the process's CPU time, best of three at a load of 0.7 to 1.9: the 542-character
+    link 0.13 s (0.18 s on the first fix of this round), the critic's shapes 0.12 to 0.44 s (0.88 to
+    1.73 s), this lane's heaviest 0.47 to 0.95 s (0.59 to 3.36 s).
 
-  The first value typed on a card does not write the repaired drawing lines when they differ from the
-  lines in the text (the 60 parts at one point, say), though later visits would then build faster
-  (27 ms instead of 190 ms here). The card's rule stays the one decision 0016 gives: a value changes
-  only the value, unless the new value would move a part. Writing them would rewrite 60 lines of the
-  student's text for one key, and drop the lines kept for parts not in the netlist yet, which only a
-  change made in the drawing drops; and once each build is bounded, a visit costs a build like the
-  one that opened the link.
+  Each value typed on a card where the drawing lines put parts on other nodes' pins (the build
+  moves those parts, so the lines are not what the page shows) writes where the parts are drawn.
+  Every build of such lines moves the parts again whatever the value, and the card builds each key
+  from the text it opened on, so without it each key and each visit built the pile again. This is
+  the card's rule of decisions 0016 and 0017 widened by one case: a value changes only the value,
+  unless the new value would move a part, or the lines pile parts that every build moves. The lines
+  of parts and nodes the netlist does not have yet stay as written, as decision 0013 says (writing
+  the drawing for a value that would move a part dropped them too, before this round). The page
+  keeps the last four schematics it built and the one a card opened on while it types, so an undo
+  or a redo of a card's change builds nothing.
 - **Characters that are not what they look like** (security review F2). Text copied from a web page
   or a PDF can carry invisible characters, and a phone or another keyboard can type a letter from
   another alphabet that looks like a scale letter. ngspice reads bytes and writes each byte outside

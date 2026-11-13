@@ -262,6 +262,45 @@ step and the render as well as the wires.
   card, the notes, the old voltages crossed out and the sticky note keep only a free place, so they
   ask for one (`freeOnly`) and nothing sums what every place covers to find the least.
 
+Corrected after the critic of these fixes: two kinds of work still grew with the wire times something
+else, and a key typed on a card still built a pile again (decision 0012 has the times).
+
+- **A piece of wire is filed in the squares it runs through** (`squaresAlong`, `geometry.ts`), in
+  every index that finds what lies near a place: the room reconcile's first step places parts in,
+  the obstacles words avoid, the overlaps, and the wires through a box. Each filed a piece in the
+  squares of its box, and a long slanted one, whose box covered more than 256 squares, in none:
+  every look checked it. So 159 long slanted pieces far from 60 parts piled at one point were checked
+  167,000 times each (28 million checks), and 170 slanted pieces whose boxes covered where the parts
+  go, each filed in all 225 squares of its box, were checked by every place tried. A straight piece's
+  squares are still those of its box; a slanted one is followed a column at a time, with the squares
+  it only touches at an edge or a corner. A box (a symbol, words) covering more than 256 squares is
+  still checked by every look. What each look finds is the same. The room the parts are placed in
+  also keeps one index of every wire, asked for other nodes' wires at a point, where it made one
+  index of the other nodes' wires for each node it was asked about.
+- **The routes keep the islands up to date and look near themselves** (reconcile's fifth step,
+  `RouteCopper`). Every island of the copper was found again after each route, and each route went
+  through every piece of wire (for its ends, the points where a wire ends, the other nodes' wires and
+  the drawing's span): 60 parts between node 1 and ground piled at one point, 115 routes, beside a
+  99 × 99 grid named 1 took 2 s to route. Now the islands are found once and each route's pieces
+  join the islands they touch, exactly as finding them again would (findIslands joins the pieces at
+  each end of a piece, passing or ending there, and each pin to the pieces at its point: so the
+  islands with a piece or a pin at a corner or an end of the route, or with a piece ending or a pin
+  on it); each route is handed the pieces of its own islands and the other nodes' wire with a point
+  in its area, which is all a route there can meet. The search keeps its states in flat arrays. And
+  each end a route starts from or goes to counts as a step of the routing budget, as the area it
+  searches already did: a pin on a slanted lattice made each route of its node start from all
+  9,800 of the lattice's points, 622,000 ends in 32 routes; when the budget runs out, the pieces left
+  are joined by name, as before.
+- **A name the repairs write never goes where another node's wire crosses its own** (the critic's
+  D4, older than this round). Reconcile's last step writes the name of each node that has none at
+  the first free point of its copper, and the middle of one of its wires could be where a wire
+  routed for another node crosses it: the name was then read as the other node's ("A label says 3 on
+  wires of 2." for V1 and R2 … R10 at one point; 4 piles of 2 to 60 parts at one point, 11 in three
+  groups, 3 in six, and 3 of the 1,857 drawings with a part on another node's pin). Such points are
+  left out; when every point is crossed, the first is still taken.
+- **The highlighter reads only the names it highlights.** It read the lines of every node's name on
+  each hover to find where a highlighter would go.
+
 All 147 netlists of the repository, as written and without their drawing lines, give the same drawing
 lines, scene, problems and turned view as before (294 builds), and every edit on them the same result
 (6,843 edits: each kind on each part, wire, node, name and ground symbol); 1,857 drawings with a part
@@ -274,7 +313,15 @@ the same picture as a second run of the build re-checked (two runs of that build
 pixels of the netlist panel over the drawing on six pictures). The tests count the work, not the
 time (`tests/unit/schematic-piles.test.ts`, `schematic-shapes-work.test.ts`,
 `notebook-drawing-work.test.tsx`, `app-card-builds.test.tsx`), and those of each fix fail on the
-build re-checked.
+build re-checked. After the critic's corrections, the same holds for the repository's netlists and
+their edits, and the drawings with a part on another node's pin draw as before except the three
+whose name sat on a crossing; 41 crafted shapes, 40 fuzzed piles and 700 random drawings with
+9,000 edits give the same drawing lines, scene and problems with the routes kept up to date as with
+the islands found again for each route (two crafted lattices through a pin now join more pieces by
+name, the routing budget counting their ends). `schematic-piles.test.ts` also sweeps the piles and
+groups for names on crossings and counts the pieces of wire indexed, handed to routes and routed
+from; `schematic-shapes-work.test.ts` counts the work of every shape decision 0012 measures, the
+pieces of wire its lines draw counted in its size.
 
 **A node's name goes where it is read clear of the parts, wherever its copper or its end leaves
 room** (student:label-on-part). A name with no spot of its own (no `side=`) that touches a symbol,
