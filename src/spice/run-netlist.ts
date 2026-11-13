@@ -9,17 +9,17 @@
  *   the voltage sources (claim A2 in docs/spice-facts/explanations.md), so the results can show
  *   which way every current flows. The node voltages are the same with or without it (A1 and A2
  *   give the same values). The line goes just before `.end`, so it moves none of the student's
- *   lines: "line N" in ngspice's messages still points at line N of the editor. It is left out
- *   when a part's full name inside subcircuits is too long for ngspice to save its current (limit-3).
+ *   lines: "line N" in ngspice's messages still points at line N of the editor.
  * - **The title.** Line 1, and any `.title` line, keeps at most its first 504 bytes: ngspice writes
  *   the title into a space of 513 bytes when it writes its results file, and stops on a longer one
  *   (limit-1). Only the title is cut, so the numbers are those of the whole netlist (limit-2).
- * - **Words that do not fit.** ngspice copies names into spaces of 512 bytes in several places,
- *   sometimes two of them into one, without checking their length (limit-3 to limit-7). Past the end of the
- *   space, native ngspice stops ("buffer overflow detected", "stack smashing detected") or runs on
- *   with its memory overwritten, and PlainSpice's engine runs on, gives no results or crashes. So
- *   PlainSpice does not give ngspice a netlist with such a word (`notRun`, with the line and why):
- *   the student shortens it. No real netlist comes near these lengths; a link can.
+ * - **Names that do not fit.** ngspice copies names into spaces of fixed size in several places,
+ *   sometimes two of them into one, without checking their length (limit-3 to limit-7, limit-9,
+ *   limit-10). Past the end of the space, native ngspice stops ("buffer overflow detected", "stack
+ *   smashing detected") or runs on with its memory overwritten, and PlainSpice's engine runs on,
+ *   gives no results or crashes. So PlainSpice does not give ngspice a netlist with such a name
+ *   (`notRun`, with the line and why): the student shortens it. No real netlist comes near these
+ *   lengths; a link can.
  *
  * The ngspice output tab lists what PlainSpice added and changed (`added`, `notes`).
  */
@@ -29,10 +29,16 @@ export const SAVE_CURRENTS_LINE = '.options savecurrents';
 
 /** The most bytes of a title ngspice can write to its results file: "Title: " + 504 + newline + end = 513 (limit-1). */
 export const TITLE_BYTES = 504;
-/** The most bytes of a word PlainSpice gives ngspice: two of them, and a few characters, fit in 512 (limit-3 to limit-7). */
+/**
+ * The most bytes of a name PlainSpice gives ngspice, as written or as ngspice names it inside
+ * subcircuits (r.x1.x2.r1): two of them, or one and the words around it, fit in 512 (limit-3 to
+ * limit-7, limit-10).
+ */
 export const WORD_BYTES = 250;
-/** The most bytes of a v(…) in a formula, a .control line, or a part's full name inside subcircuits (limit-3, limit-5, limit-6, limit-7). */
+/** The most bytes of a v(…) in a formula or of a .control line (limit-5, limit-6). */
 export const RUN_BYTES = 500;
+/** The most bytes of a .model line's version: ngspice copies it into 100 bytes (limit-9). */
+export const VERSION_BYTES = 90;
 
 export interface NotRun {
   /** The line (1-based, as the editor numbers it) where the word or line is. */
@@ -46,7 +52,7 @@ export interface NetlistToRun {
   text: string;
   /** The lines PlainSpice added to that text (empty when it is the student's text unchanged). */
   added: string[];
-  /** What else PlainSpice did to that copy, a sentence each: a title cut, every current not saved. */
+  /** What else PlainSpice did to that copy, a sentence each: a title cut. */
   notes: string[];
   /** Set when PlainSpice must not give this netlist to ngspice: `text` is then not to be run. */
   notRun?: NotRun;
@@ -56,8 +62,6 @@ export interface NetlistToRun {
 const S = {
   titleCut: (line: number, bytes: number): string =>
     `PlainSpice cut the title on line ${line} from ${bytes} to ${TITLE_BYTES} bytes in the copy ngspice ran: ngspice copies the title into a space of 513 bytes when it writes its results file, and stops on a longer one. A plain letter is one byte; ş or é is two. Your netlist keeps the whole title.`,
-  noSaveCurrents: (name: string, bytes: number): string =>
-    `PlainSpice did not add ${SAVE_CURRENTS_LINE} to the copy ngspice ran: inside the subcircuits a part is named ${name}, ${bytes} bytes, and ngspice copies the name of each part whose current it saves into a space of 512 bytes. So ngspice saved only the currents it always saves (voltage sources, E and H sources, inductors).`,
   longWord: (line: number, word: string, bytes: number): string =>
     `Line ${line} has a word of ${bytes} bytes (${shown(word)}). PlainSpice gives ngspice words of at most ${WORD_BYTES} bytes: ngspice copies names into spaces of 512 bytes, sometimes two names into one, and writes past the end with longer ones, so its results could not be trusted. Shorten the word.`,
   noClose: (line: number, open: string): string =>
@@ -66,8 +70,10 @@ const S = {
     `Line ${line}: ${shown(run)}) is ${bytes} bytes long from ${run.slice(0, 2)} to ). ngspice copies it into a space of 512 bytes when it reads a formula, so PlainSpice gives it at most ${RUN_BYTES}. Shorten the names in it.`,
   longCommand: (line: number, bytes: number): string =>
     `Line ${line} is a command for ngspice of ${bytes} bytes. ngspice copies a command into a space of 512 bytes, so PlainSpice gives it commands of at most ${RUN_BYTES} bytes. Split the line or shorten it.`,
-  longFullName: (line: number, what: string, name: string, bytes: number): string =>
-    `Line ${line} asks ngspice to ${what}, and inside the subcircuits a part is named ${name}, ${bytes} bytes. ngspice copies such a name into a space of 512 bytes, so PlainSpice gives it names of at most ${RUN_BYTES} bytes. Shorten the names of the X lines or of the parts in the subcircuits.`,
+  longFullName: (line: number, name: string, bytes: number): string =>
+    `Line ${line}: inside the subcircuits of this X line, ngspice names a part or a node ${name}, ${bytes} bytes (the names of the X lines, then its own). PlainSpice gives ngspice names of at most ${WORD_BYTES} bytes, these too: ngspice copies such a name, and a few more characters, into a space of 512 bytes when it saves a current or prints it. Shorten the names of the X lines, or of the parts and nodes in the subcircuits.`,
+  longVersion: (line: number, version: string, bytes: number): string =>
+    `Line ${line}: the version on this .model line, ${shown(version)}, is ${bytes} bytes. ngspice copies it into a space of 100 bytes when a part uses the model, so PlainSpice gives it at most ${VERSION_BYTES}. Shorten it.`,
   failed: 'PlainSpice could not prepare this netlist for ngspice (a bug in PlainSpice), so it did not run it.',
 };
 
@@ -120,7 +126,7 @@ const SPACES = /[ \t\n\v\f\r]+/;
 const NAME_END = /[ \t\n\v\f\r(),={}'"+\-*/^<>?:&|;~`]+/;
 
 /** A .title line: its first word starts with .title (in any case, after blanks or a byte order mark), anywhere, even after .end (limit-1). */
-const DOT_TITLE = /^[\uFEFF \t\v\f\r]*\.title/i;
+const DOT_TITLE = /^[﻿ \t\v\f\r]*\.title/i;
 /** A title line for ngspice: line 1, and any .title line (limit-1). */
 const isTitleLine = (text: string, index: number): boolean => index === 0 || DOT_TITLE.test(text);
 
@@ -130,7 +136,7 @@ const isTitleLine = (text: string, index: number): boolean => index === 0 || DOT
  */
 function titleStart(text: string): number {
   if (!DOT_TITLE.test(text)) return 0;
-  return /^[\uFEFF \t\v\f\r]*\S*[ \t\v\f\r]*/.exec(text)![0].length;
+  return /^[﻿ \t\v\f\r]*\S*[ \t\v\f\r]*/.exec(text)![0].length;
 }
 
 /**
@@ -159,12 +165,38 @@ function gettokWords(s: string, count: number): string[] {
   return out;
 }
 
-/** The code of a line before anything that may start an end-of-line comment (; $ //): no more than ngspice keeps. */
-const beforeComment = (s: string): string => s.split(/;|\$|\/\//, 1)[0]!;
+/** A line as ngspice's reader gives it: every '\r' and the leading blanks gone, then a byte order mark (limit-5). */
+const asRead = (text: string): string => text.replace(/\r/g, '').replace(/^[ \t]+/, '').replace(/^﻿/, '');
+
+/**
+ * A line without its end-of-line comment, exactly as ngspice cuts it (inp_stripcomments_line,
+ * limit-5): at a ';' (not the first character), at '//', and at a '$' after a blank or a comma
+ * (inside a .control block: a '$' before a blank), but not inside quotes. A shorter cut would hide
+ * words that ngspice reads: `B1 c 0 V=1$+v(b` is a formula to ngspice.
+ */
+function withoutComment(s: string, control: boolean): string {
+  if (s === '' || s[0] === '*' || s[0] === '#') return s;
+  let d = 0;
+  while (d < s.length) {
+    const c = s[d]!;
+    d += 1;
+    if (c === '"' || c === "'") {
+      while (d < s.length && (s[d] !== c || s[d - 1] === '\\')) d += 1;
+      if (d < s.length) d += 1;
+      continue;
+    }
+    if (s[d] === ';') return s.slice(0, d);
+    if (!control && c === '$') {
+      if (d - 2 >= 0 && (s[d - 2] === ' ' || s[d - 2] === ',' || s[d - 2] === '\t')) return s.slice(0, d - 1);
+    } else if (control && c === '$' && s[d] === ' ') return s.slice(0, d - 1);
+    else if (c === '/' && s[d] === '/') return s.slice(0, d - 1);
+  }
+  return s;
+}
 
 /**
  * A card as ngspice joins it: the line, then each + line after it, with a space for the '+'. `code`
- * is the same without what may be an end-of-line comment of each line, which ngspice cuts first.
+ * is the same without each line's end-of-line comment, which ngspice cuts first.
  */
 interface Card {
   line: NetlistLine;
@@ -175,16 +207,23 @@ interface Card {
 function cardsOf(netlist: Netlist): Card[] {
   const cards = new Map<number, Card>();
   const out: Card[] = [];
+  // Every line of an *ng_script file is a command, as in a .control block (from .control to the line before .endc).
+  const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));
+  let control = false;
   for (const line of netlist.lines) {
+    const read = asRead(line.text);
+    if (/^\.control/i.test(read)) control = true;
+    if (/^\.endc/i.test(read)) control = false;
+    // ngspice cuts no comment from line 1, the title.
+    const code = line.index === 0 ? line.text : withoutComment(read, control || script);
     // A + line is checked on its own after a title line, whose words are cut, not checked.
     const head = line.kind === 'continuation' && line.continues !== undefined ? cards.get(line.continues) : undefined;
     if (head && !isTitleLine(head.line.text, head.line.index)) {
-      const rest = line.text.replace(/^\s*\+/, '');
-      head.text += ` ${rest}`;
-      head.code += ` ${beforeComment(rest)}`;
+      head.text += ` ${line.text.replace(/^\s*\+/, '')}`;
+      head.code += ` ${code.replace(/^\+/, '')}`;
       continue;
     }
-    const card = { line, text: line.text, code: beforeComment(line.text) };
+    const card = { line, text: line.text, code };
     cards.set(line.index, card);
     out.push(card);
   }
@@ -193,23 +232,38 @@ function cardsOf(netlist: Netlist): Card[] {
 
 // ------------------------------------------------------------------ names inside subcircuits
 
+export interface FullName {
+  /** The name as ngspice makes it, lower-case: r.x1.x2.r1 for a part, x1.x2.n1 for a node. */
+  name: string;
+  bytes: number;
+  /** The X line outside every subcircuit that the name comes through. */
+  line: number;
+}
+
 /**
- * The longest name ngspice gives a part, in bytes: its own name at the top, and "letter.x1.x2.name"
- * inside subcircuits, e.g. r.xzz.xxx.rz for Rz inside Xxx inside Xzz (limit-3).
+ * The longest name ngspice gives a part or a node inside the subcircuits, in bytes (limit-3,
+ * limit-10): a part is "letter.x1.x2.name" (r.xzz.xxx.rz for Rz inside Xxx inside Xzz), a node
+ * "x1.x2.name". The nodes of an X line inside a subcircuit count too, though ngspice gives a pin of
+ * the subcircuit the name outside: a little longer than ngspice's, never shorter.
  */
-export function longestPartName(netlist: Netlist): { name: string; bytes: number; line: number } | undefined {
+export function longestFullName(netlist: Netlist): FullName | undefined {
+  /** A name at the end of a full name: a part's (with its letter in front, "r.") or a node's. */
+  interface Tail {
+    text: string;
+    bytes: number;
+    letter: string;
+  }
   interface Inside {
-    parts: { name: string; bytes: number; line: number }[];
+    tails: Tail[];
     xs: { name: string; bytes: number; target: string; line: number }[];
   }
-  const top: Inside = { parts: [], xs: [] };
+  const top: Inside = { tails: [], xs: [] };
   const defs = new Map<string, Inside[]>();
   const open: Inside[] = [];
-  const cards = cardsOf(netlist);
-  for (const { line, code } of cards) {
+  for (const line of netlist.lines) {
     const d = line.directive;
     if (d && (d.name === '.subckt' || d.name === '.macro')) {
-      const def: Inside = { parts: [], xs: [] };
+      const def: Inside = { tails: [], xs: [] };
       const name = d.args[0]?.text.toLowerCase() ?? '';
       const same = defs.get(name);
       if (same) same.push(def);
@@ -221,50 +275,50 @@ export function longestPartName(netlist: Netlist): { name: string; bytes: number
       open.pop();
       continue;
     }
-    if (line.kind !== 'element' || !line.element) continue;
+    const e = line.kind === 'element' ? line.element : undefined;
+    if (!e) continue;
     const here = open.at(-1) ?? top;
-    const words = gettokWords(code.replace(/[ \t]*=[ \t]*/g, '='), Number.MAX_SAFE_INTEGER);
-    const name = (words[0] ?? '').toLowerCase();
-    const bytes = utf8Bytes(name);
-    if (line.element.letter === 'X') {
-      // The subcircuit is the last word before the parameters (name=value, or after "params:").
-      const params = words.findIndex((w) => w.toLowerCase() === 'params:');
-      const target = (params < 0 ? words : words.slice(0, params)).filter((w) => !w.includes('=')).at(-1)?.toLowerCase() ?? '';
-      here.xs.push({ name, bytes, target, line: line.number });
-    } else here.parts.push({ name, bytes, line: line.number });
+    if (e.letter === 'X') {
+      const target = e.fields.find((f) => f.role === 'model')?.token.text.toLowerCase() ?? '';
+      here.xs.push({ name: e.key, bytes: utf8Bytes(e.key), target, line: line.number });
+    }
+    // Outside every subcircuit a name stays as written (the word rule covers it).
+    if (here === top) continue;
+    for (const node of e.nodes) if (!node.ground) here.tails.push({ text: node.name, bytes: utf8Bytes(node.name), letter: '' });
+    if (e.letter !== 'X') here.tails.push({ text: e.key, bytes: utf8Bytes(e.key), letter: e.key[0] ?? '' });
   }
-  // The longest "x.….name" inside a subcircuit (without the letter in front), and that part's letter.
-  type Path = { name: string; bytes: number; letter: string };
+  // The longest "x.….name" inside a subcircuit (without a part's letter in front), and that letter.
+  type Path = { text: string; bytes: number; letter: string };
+  const weight = (p: Path): number => p.bytes + (p.letter ? 2 : 0);
   const memo = new Map<string, Path | undefined>();
   const visiting = new Set<string>();
   const inside = (target: string, depth: number): Path | undefined => {
     if (memo.has(target)) return memo.get(target);
     if (visiting.has(target)) return undefined; // ngspice refuses a subcircuit inside itself
-    // Each level adds at least "x." to a name, so past 250 levels every name inside is over 500 bytes.
-    if (depth > 250) return { name: target, bytes: Number.MAX_SAFE_INTEGER, letter: 'x' };
+    // Each level adds at least "x." to a name, so past 125 levels every name inside is over 250 bytes.
+    if (depth > 125) return { text: target, bytes: Number.MAX_SAFE_INTEGER, letter: '' };
     visiting.add(target);
     let best: Path | undefined;
     for (const def of defs.get(target) ?? []) {
-      for (const p of def.parts) if (!best || p.bytes > best.bytes) best = { name: p.name, bytes: p.bytes, letter: p.name[0] ?? '' };
+      for (const t of def.tails) if (!best || weight(t) > weight(best)) best = t;
       for (const x of def.xs) {
         const deeper = inside(x.target, depth + 1);
         if (!deeper) continue;
-        const bytes = Math.min(Number.MAX_SAFE_INTEGER, x.bytes + 1 + deeper.bytes);
-        if (!best || bytes > best.bytes) best = { name: `${x.name}.${deeper.name}`, bytes, letter: deeper.letter };
+        const path = { text: `${x.name}.${deeper.text}`, bytes: Math.min(Number.MAX_SAFE_INTEGER, x.bytes + 1 + deeper.bytes), letter: deeper.letter };
+        if (!best || weight(path) > weight(best)) best = path;
       }
     }
     visiting.delete(target);
     memo.set(target, best);
     return best;
   };
-  let longest: { name: string; bytes: number; line: number } | undefined;
-  for (const p of top.parts) if (!longest || p.bytes > longest.bytes) longest = p;
+  let longest: FullName | undefined;
   for (const x of top.xs) {
     const deeper = inside(x.target, 1);
     if (!deeper) continue;
-    // ngspice puts the part's letter in front: r.x1.r1.
-    const name = `${deeper.letter}.${x.name}.${deeper.name}`;
-    const bytes = Math.min(Number.MAX_SAFE_INTEGER, 2 + x.bytes + 1 + deeper.bytes);
+    // ngspice puts a part's letter in front: r.x1.r1; a node has none: x1.n1.
+    const name = `${deeper.letter ? `${deeper.letter}.` : ''}${x.name}.${deeper.text}`;
+    const bytes = Math.min(Number.MAX_SAFE_INTEGER, weight(deeper) + x.bytes + 1);
     if (!longest || bytes > longest.bytes) longest = { name, bytes, line: x.line };
   }
   return longest;
@@ -278,6 +332,8 @@ const SAVING = new Set(['.save', '.print', '.plot', '.four', '.fourier', '.probe
 const FORMULA_LETTERS = new Set(['E', 'G', 'F', 'H', 'R', 'C', 'L']);
 /** Where a v( or i( starts in a formula: not inside a longer name (inp_modify_exp, limit-5). */
 const OPENING = /(?<![A-Za-z0-9_!#$%[\]])[vi]\(/gi;
+/** "version" on a .model line, and the word ngspice reads after it (INPfindVer: blanks, = , ( ) + skipped, then up to a blank; limit-9). */
+const VERSION = /version[ \t=,()+]*([^ \t\n\v\f\r]*)/gi;
 
 /**
  * Each v( or i( of a formula's code, with the ) that ends it for ngspice (-1: none) and its length in
@@ -322,7 +378,7 @@ function formulaRuns(code: string): { at: number; close: number; bytes: number }
 export function whyNotRun(netlist: Netlist): NotRun | undefined {
   const found: NotRun[] = [];
   const note = (line: number, reason: string): void => void found.push({ line, reason });
-  const script = /^\uFEFF?\*ng_script/i.test(netlist.lines[0]?.text ?? '');
+  const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));
   for (const { line, text, code } of cardsOf(netlist)) {
     if (line.kind === 'blank' || line.kind === 'comment' || isTitleLine(line.text, line.index)) continue;
     const number = line.number;
@@ -347,6 +403,15 @@ export function whyNotRun(netlist: Netlist): NotRun | undefined {
       const word = text.split(SPACES).find((w) => utf8Bytes(w) > WORD_BYTES);
       if (word !== undefined) {
         note(number, S.longWord(number, word, utf8Bytes(word)));
+        continue;
+      }
+    }
+    // limit-9: a .model line's version, whole up to a blank (the whole line is searched, its comment too: a little
+    // more than ngspice reads, never less).
+    if (line.directive?.name === '.model') {
+      const version = [...text.matchAll(VERSION)].map((m) => m[1]!).find((v) => utf8Bytes(v) > VERSION_BYTES);
+      if (version !== undefined) {
+        note(number, S.longVersion(number, version, utf8Bytes(version)));
         continue;
       }
     }
@@ -384,27 +449,22 @@ export function whyNotRun(netlist: Netlist): NotRun | undefined {
       if (bytes > RUN_BYTES) note(number, S.longCommand(number, bytes));
     }
   }
-  // limit-3, limit-7: the student's own request to save every current, or the currents inside every part.
-  const request =
-    netlist.lines.find((l) => l.directive && OPTIONS.has(l.directive.name) && l.directive.args.some((a) => a.text.toLowerCase() === 'savecurrents')) ??
-    netlist.lines.find((l) => l.directive?.name === '.save' && l.directive.args.some((a) => a.text.toLowerCase() === 'alli'));
-  if (request) {
-    const longest = longestPartName(netlist);
-    if (longest && longest.bytes > RUN_BYTES) {
-      const what = request.directive?.name === '.save' ? 'save the currents inside every part (.save alli)' : `save every part's current (${SAVE_CURRENTS_LINE})`;
-      note(request.number, S.longFullName(request.number, what, shown(longest.name), longest.bytes));
-    }
-  }
+  // limit-3, limit-7, limit-10: the names ngspice makes inside subcircuits, saved as currents (with
+  // .options savecurrents, which PlainSpice adds for .op, or .save alli) or printed by a .control block.
+  const longest = longestFullName(netlist);
+  if (longest && longest.bytes > WORD_BYTES) note(longest.line, S.longFullName(longest.line, shown(longest.name), longest.bytes));
   return found.sort((a, b) => a.line - b.line)[0];
 }
 
 // ------------------------------------------------------------------ the copy
 
-export function netlistToRun(netlist: Netlist): NetlistToRun {
+/**
+ * The text with each title cut to its first 504 bytes, between two characters (limit-1, limit-2), and
+ * what was cut, a sentence each. Every line keeps its place.
+ */
+export function cutTitles(text: string): { text: string; notes: string[] } {
   const notes: string[] = [];
-  const notRun = whyNotRun(netlist);
-  // limit-1: each title keeps its first 504 bytes; every line keeps its place.
-  const lines = netlist.text.split('\n');
+  const lines = text.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (!isTitleLine(line, i)) continue;
@@ -414,20 +474,19 @@ export function netlistToRun(netlist: Netlist): NetlistToRun {
     lines[i] = line.slice(0, start) + cutToBytes(line.slice(start), TITLE_BYTES);
     notes.push(S.titleCut(i + 1, bytes));
   }
-  const text = notes.length ? lines.join('\n') : netlist.text;
+  return { text: notes.length ? lines.join('\n') : text, notes };
+}
+
+export function netlistToRun(netlist: Netlist): NetlistToRun {
+  const notRun = whyNotRun(netlist);
+  const { text, notes } = cutTitles(netlist.text);
   const done = (added: string[], copy: string): NetlistToRun => (notRun ? { text: copy, added, notes, notRun } : { text: copy, added, notes });
   const hasOp = netlist.analyses.some((i) => netlist.lines[i]?.directive?.name === '.op');
   if (!hasOp || hasSaveCurrents(netlist)) return done([], text);
-  // limit-3: ngspice saves a part's current under its full name; a name too long for that space is not saved.
-  const longest = longestPartName(netlist);
-  if (longest && longest.bytes > RUN_BYTES) {
-    notes.push(S.noSaveCurrents(shown(longest.name), longest.bytes));
-    return done([], text);
-  }
   const end = netlist.end === undefined ? undefined : netlist.lines[netlist.end];
   if (end) {
-    // Where .end starts in the copy, after any title cut before it.
-    const at = lines.slice(0, end.index).reduce((n, l) => n + l.length + 1, 0);
+    // Where .end starts in the copy, after any title cut before it (every line keeps its place).
+    const at = text.split('\n', end.index).reduce((n, l) => n + l.length + 1, 0);
     return done([SAVE_CURRENTS_LINE], `${text.slice(0, at)}${SAVE_CURRENTS_LINE}\n${text.slice(at)}`);
   }
   const gap = text === '' || text.endsWith('\n') ? '' : '\n';

@@ -3,7 +3,7 @@ import { leastWorkMs } from './work-time.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import {
   hasSaveCurrents,
-  longestPartName,
+  longestFullName,
   netlistToRun,
   RUN_COPY_WORDS,
   SAVE_CURRENTS_LINE,
@@ -128,23 +128,40 @@ describe('the title in the copy that runs (limit-1: ngspice -b -r writes at most
   });
 });
 
-describe('every current, with names inside subcircuits (limit-3: ngspice saves each under its full name, in 512 bytes)', () => {
-  const nested = (x: number, y: number, r: number): string =>
-    `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s2 p q\nR${w(r - 1, 'r')} p q 1k\n.ends\n.subckt s1 p q\nX${w(y - 1, 'y')} p q s2 ; comment s9\n.ends\nX${w(x - 1, 'z')} b 0 s1\n.op\n.end\n`;
+describe('names inside subcircuits (limit-3, limit-7, limit-10: ngspice saves and prints a part or node under its full name)', () => {
+  /** Rr… inside Xy… inside Xz…, and a node n… beside it: full names "r.xz….xy….rr…" and "xz….xy….n…". */
+  const nested = (x: number, y: number, r: number, node = 1, request = ''): string =>
+    `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s2 p q\nR${w(r - 1, 'r')} p ${w(node, 'n')} 1k\nRm ${w(node, 'n')} q 1\n.ends\n.subckt s1 p q\nX${w(y - 1, 'y')} p q s2 ; comment s9\n.ends\nX${w(x - 1, 'z')} b 0 s1\n${request}.op\n.end\n`;
 
-  it('names a part inside subcircuits as ngspice does: its letter, the X lines, its name', () => {
+  it('names a part as ngspice does (its letter, the X lines, its name) and a node (the X lines, its name)', () => {
     const text = '* t\nV1 a 0 9\nR1 a b 1k\n.subckt s3 p q\nRz p q 1k\n.ends\n.subckt s2 p q\nXyy p q s3\nRw p q 1k\n.ends\n.subckt s1 p q\nXxx p q s2\n.ends\nXzz b 0 s1\n.op\n.end\n';
-    expect(longestPartName(parseNetlist(text))).toEqual({ name: 'r.xzz.xxx.xyy.rz', bytes: 16, line: 14 });
-    expect(longestPartName(parseNetlist(nested(200, 200, 96)))).toMatchObject({ bytes: 500, line: 10 });
+    expect(longestFullName(parseNetlist(text))).toEqual({ name: 'r.xzz.xxx.xyy.rz', bytes: 16, line: 14 });
+    expect(longestFullName(parseNetlist(nested(100, 100, 46)))).toEqual({ name: `r.x${w(99, 'z')}.x${w(99, 'y')}.r${w(45, 'r')}`, bytes: 250, line: 11 });
+    expect(longestFullName(parseNetlist(nested(100, 100, 1, 48)))).toEqual({ name: `x${w(99, 'z')}.x${w(99, 'y')}.${w(48, 'n')}`, bytes: 250, line: 11 });
   });
 
-  it('adds .options savecurrents up to a full name of 500 bytes, and leaves it out above, saying why', () => {
-    expect(toRun(nested(200, 200, 96))).toMatchObject({ added: [SAVE_CURRENTS_LINE], notes: [] });
-    const longer = toRun(nested(200, 200, 97));
-    expect(longer.added).toEqual([]);
-    expect(longer.notes).toEqual([RUN_COPY_WORDS.noSaveCurrents(`r.x${w(13, 'z')}…`, 501)]);
-    expect(longer.notRun).toBeUndefined();
-    expect(longer.text).toBe(nested(200, 200, 97));
+  it('runs full names of 250 bytes with every current saved, and refuses 251, for a part and for a node, asked for or not', () => {
+    for (const request of ['', '.options savecurrents\n', '.save alli\n']) {
+      expect(toRun(nested(100, 100, 46, 1, request)), request).toMatchObject({ added: request.startsWith('.options') ? [] : [SAVE_CURRENTS_LINE], notes: [] });
+      expect(toRun(nested(100, 100, 46, 1, request)).notRun, request).toBeUndefined();
+      expect(toRun(nested(100, 100, 1, 48, request)).notRun, request).toBeUndefined();
+      expect(toRun(nested(100, 100, 47, 1, request)).notRun, request).toEqual({
+        line: 11,
+        reason: RUN_COPY_WORDS.longFullName(11, `r.x${w(13, 'z')}…`, 251),
+      });
+      expect(toRun(nested(100, 100, 1, 49, request)).notRun, request).toEqual({
+        line: 11,
+        reason: RUN_COPY_WORDS.longFullName(11, `x${w(15, 'z')}…`, 251),
+      });
+    }
+  });
+
+  it('counts a long node inside a subcircuit printed by a .control block (limit-10), and nothing outside the subcircuits', () => {
+    const text = (node: number) =>
+      `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s p q\nRi p ${w(node, 'n')} 1k\nRj ${w(node, 'n')} q 1k\n.ends\nX${w(149, 'a')} b 0 s\n.op\n.control\nop\nprint all\n.endc\n.end\n`;
+    expect(whyNotRun(parseNetlist(text(99)))).toBeUndefined();
+    expect(whyNotRun(parseNetlist(text(100)))?.line).toBe(8);
+    expect(longestFullName(parseNetlist(`* t\nV1 ${w(250, 'n')} 0 9\nR${w(249)} ${w(250, 'n')} 0 1k\n.op\n.end\n`))).toBeUndefined();
   });
 });
 
@@ -241,16 +258,25 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
     expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n${cmd(501)}\n.op\n.end\n`)).toBeUndefined();
   });
 
-  it("refuses the student's own savecurrents or .save alli with a full part name of more than 500 bytes", () => {
-    const nested = (r: number, request: string): string =>
-      `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s2 p q\nR${w(r - 1, 'r')} p q 1k\n.ends\n.subckt s1 p q\nX${w(199, 'y')} p q s2\n.ends\nX${w(199, 'z')} b 0 s1\n${request}\n.op\n.end\n`;
-    for (const request of ['.options savecurrents', '.save alli']) {
-      expect(reasonAt(nested(96, request)), request).toBeUndefined();
-      expect(reasonAt(nested(97, request))?.line, request).toBe(11);
-    }
-    expect(reasonAt(nested(97, '.options savecurrents'))?.reason).toBe(
-      RUN_COPY_WORDS.longFullName(11, `save every part's current (${SAVE_CURRENTS_LINE})`, `r.x${w(13, 'z')}…`, 501),
-    );
+  it('refuses a .model line whose version is over 90 bytes, the word ngspice reads after "version" (limit-9)', () => {
+    const model = (version: string, more = ''): string => `* t\nV1 a 0 9\nR1 a b 1k\nM1 b b 0 0 mm\n.model mm nmos level=8 ${version}${more}\n.op\n.end\n`;
+    expect(reasonAt(model(`version=4${w(89, 'W')}`))).toBeUndefined();
+    expect(reasonAt(model(`version=4${w(90, 'W')}`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.longVersion(5, `4${w(90, 'W')}`, 91) });
+    // ngspice skips blanks, = , ( ) + after "version" and reads on to a blank: commas and brackets are inside the word.
+    const glued = `4,${w(40)},${w(40)},${w(40)}`;
+    expect(reasonAt(model(`VERSION = (${glued})`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.longVersion(5, `${glued})`, 125) });
+    expect(reasonAt(model('version=4.8', `\n+ tox=1n version=${glued}`))?.line).toBe(5);
+    expect(reasonAt(model('version=3.3.0 ', `; ${w(10)} version=${glued}`))?.line).toBe(5);
+    expect(reasonAt(model('version=3.3.0'))).toBeUndefined();
+  });
+
+  it('cuts an end-of-line comment exactly where ngspice does: a $ glued to a word starts none (limit-5)', () => {
+    const at = (line: string) => reasonAt(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n${line}\nR4 c 0 1k\n.op\n.end\n`);
+    for (const line of ['B1 c 0 V=1$+v(b', 'B1 c 0 V=v(b)*1 ";" + v(b', "B1 c 0 V=v(b)*1 ';' + v(b", 'B1 c 0 V=1 *$ v(b'])
+      expect(at(line), line).toEqual({ line: 5, reason: RUN_COPY_WORDS.noClose(5, 'v(') });
+    for (const line of ['B1 c 0 V=v(b) $ v(b', 'B1 c 0 V=v(b),$ v(b', 'B1 c 0 V=v(b)\t$ v(b', 'B1 c 0 V=v(b); v(b', 'B1 c 0 V=v(b) // v(b'])
+      expect(at(line), line).toBeUndefined();
+    expect(at(`B1 c 0 V=1$+v(b ${'b '.repeat(300)})`)?.reason).toMatch(/is 605 bytes long from v\( to \)/);
   });
 
   it('says the first problem, by line', () => {
@@ -296,19 +322,24 @@ describe('the checks of the run copy, on netlists made to be slow or deep', () =
   });
 
   it('finds the subcircuit of an X line written with blanks around its parameters’ =', () => {
-    const text = `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s2 p q\nR${w(199, 'r')} p q 1k\n.ends\n.subckt s1 p q w=1\nX${w(199, 'y')} p q s2\n.ends\nX${w(199, 'z')} b 0 s1 w = 2\n.op\n.end\n`;
-    expect(longestPartName(parseNetlist(text))?.bytes).toBe(2 + 200 + 1 + 200 + 1 + 200);
-    expect(toRun(text).added).toEqual([]);
+    const text = `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s2 p q\nR${w(79, 'r')} p q 1k\n.ends\n.subckt s1 p q w=1\nX${w(79, 'y')} p q s2\n.ends\nX${w(79, 'z')} b 0 s1 w = 2\n.op\n.end\n`;
+    expect(longestFullName(parseNetlist(text))?.bytes).toBe(2 + 80 + 1 + 80 + 1 + 80);
+    expect(toRun(text).notRun).toBeUndefined();
+    expect(longestFullName(parseNetlist(text.replace(`R${w(79, 'r')}`, `R${w(87, 'r')}`)))?.bytes).toBe(252);
+    expect(toRun(text.replace(`R${w(79, 'r')}`, `R${w(87, 'r')}`)).notRun?.line).toBe(10);
   });
 
-  it('works out the names of 5,000 nested subcircuits without running out of stack: past 250 levels every name is too long', () => {
+  it('works out the names of 5,000 nested subcircuits without running out of stack: past 125 levels every name is too long', () => {
     const lines = ['* t', 'V1 a 0 1', 'R1 a 0 1'];
     for (let i = 0; i < 5000; i++) lines.push(`.subckt s${i} p q`, `X${i} p q s${i + 1}`, '.ends');
     lines.push('.subckt s5000 p q', 'R9 p q 1', '.ends', 'X0 a 0 s0', '.op', '.end', '');
     const netlist = parseNetlist(lines.join('\n'));
-    expect(longestPartName(netlist)!.bytes).toBeGreaterThan(500);
-    const run = netlistToRun(netlist);
-    expect(run.added).toEqual([]);
-    expect(run.notes).toHaveLength(1);
+    expect(longestFullName(netlist)!.bytes).toBeGreaterThan(250);
+    expect(netlistToRun(netlist).notRun?.line).toBe(15007);
+    // 60 levels of x1.x2.…: 2 bytes a level, and room for r.….r9.
+    const sixty = ['* t', 'V1 a 0 1', 'R1 a 0 1'];
+    for (let i = 0; i < 60; i++) sixty.push(`.subckt s${i} p q`, `X p q s${i + 1}`, '.ends');
+    sixty.push('.subckt s60 p q', 'R9 p q 1', '.ends', 'X a 0 s0', '.op', '.end', '');
+    expect(longestFullName(parseNetlist(sixty.join('\n')))).toMatchObject({ name: `r.${'x.'.repeat(61)}r9`, bytes: 126 });
   });
 });
