@@ -14,7 +14,7 @@ import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { annotateLines, describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
-import { add, agrees, answersGap, div, exactModel, fromDouble, MAX_PARTS, mul, operatingPoint, readExact, shares, solveExact, toDouble, unitSource, type ExactModel, type Fraction } from '../../src/spice/exact.ts';
+import { add, agrees, answersGap, div, exactModel, fromDouble, MAX_PARTS, mul, operatingPoint, readExact, shares, solveExact, sub, toDouble, unitSource, type ExactModel, type Fraction } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
@@ -1332,6 +1332,40 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     a[at] = a[at]! * (1 + 1e-6);
     const netlist = parseNetlist(text);
     expect([roundingNoise(netlist, doctored).by, shownSweep(netlist, doctored) === doctored.dc]).toEqual(['rule', true]);
+  });
+
+  it('two diode arms placed alike, at rest in the .op beside their sweep from 0 V: no diode is free at rest, so the .op takes them neither as alike nor as one by one, and both are decided exactly (the .op said "one by one", the sweep "alike", and the mismatch left both to the rule, which drew the leftovers with arrows)', async () => {
+    const r = await solveText(arms('R0b top t2 100').replace('V1 top 0 9', 'V1 top 0 0').replace('.op\n', '.op\n.dc V1 0 9 3\n'), ngspice);
+    expect([roundingNoise(r.netlist, r.results).by, current(r.words, 'R5'), node(r.words, 'c')]).toEqual(['exact', 'no current through R5', '0 V']);
+    expect(series(r, 'i(@r5[i])')).toEqual([0, 0, 0, 0]);
+  });
+
+  it('even() sizes a swept current source\'s term at the sweep\'s point: two diodes placed alike, fed by a source swept from its netlist 0 to 1 mA, whose currents at 1 mA are doctored 1.5 pA apart as an exact solution, within 2^-30 of the 2 mA of terms at their node, are taken as alike there, the link 0; sized by the netlist\'s 0 A, the terms looked 1.2 mA and the diodes were taken one by one', async () => {
+    const text = '* t\nI1 0 t 0\nRt t 0 1meg\nD1 t a dmod\nR1 a 0 1k\nD2 t b dmod\nR2 b 0 1k\nR5 a b 4.7k\n.model dmod d\n.options savecurrents\n.op\n.dc I1 0 1m 0.25m\n.end\n';
+    const r = await solveText(text, ngspice);
+    const netlist = parseNetlist(text);
+    const model = exactModel(netlist, netlist.lines.flatMap((l) => (l.element ? [l.element] : [])), readAfterEnd(netlist)) as ExactModel;
+    const k = (name: string): number => model.parts.findIndex((p) => p.key === name);
+    const [x0, sI, s1, s2] = solveExact(model, [operatingPoint(model), unitSource(model, k('i1')), unitSource(model, k('d1')), unitSource(model, k('d2'))])!;
+    const last = r.results.dc!.scale.values.length - 1;
+    const at = fromDouble(r.results.dc!.scale.values[last]!);
+    const half = div(at, fromDouble(2));
+    const [i1, i2] = [add(half, fromDouble(0.75e-12)), sub(half, fromDouble(0.75e-12))];
+    const x = x0!.map((v, j) => add(v, add(mul(at, sI![j]!), add(mul(i1, s1![j]!), mul(i2, s2![j]!)))));
+    const doctored = structuredClone(r.results);
+    const volt = (n: number): number => (n < 0 ? 0 : toDouble(x[n]!));
+    for (const s of doctored.dc!.series) {
+      const [, kind, inner] = /^([vi])\((.*)\)$/i.exec(s.name)!;
+      const device = /^@([^[\]]+)\[(i|id|current)\]$/i.exec(inner!);
+      const p = device ? model.parts[k(device[1]!)] : undefined;
+      if (kind === 'v') s.values[last] = volt(model.nodes.indexOf(inner!));
+      else if (p?.kind === 'R') s.values[last] = (volt(p.a) - volt(p.b)) / toDouble(p.value);
+      else if (p?.kind === 'D') s.values[last] = toDouble(p.key === 'd1' ? i1 : i2);
+    }
+    const r5 = doctored.dc!.series.find((s) => s.name === 'i(@r5[i])')!.values[last]!;
+    expect(r5).not.toBe(0);
+    expect(roundingNoise(netlist, doctored).by).toBe('exact');
+    expect(shownSweep(netlist, doctored)!.series.find((s) => s.name === 'i(@r5[i])')!.values[last]).toBe(0);
   });
 
   it('a circuit at rest beside a sweep takes leftovers up to 2^-30 of the sweep\'s largest voltage: a diode\'s I-V sweep to 1 V doctored 0.5 nV at node a in its .op is 0 V there; with no sweep beside it, 0.5 nV is beyond 2^-30 of vntol and the rule decides', async () => {

@@ -1045,7 +1045,7 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
     const sweep = results.dc ? sweepNoise(netlist, results) : undefined;
     // With diodes placed alike, both must take them as carrying equal currents, or neither (a sweep with no point
     // checked takes them neither way).
-    if (!results.dc || (sweep && (!ex.diodes || sweep.alike === undefined || sweep.alike === seen.view.alike))) return exactNoise(netlist, ex, seen.view, op);
+    if (!results.dc || (sweep && (!ex.diodes || sweep.alike === undefined || seen.view.alike === undefined || sweep.alike === seen.view.alike))) return exactNoise(netlist, ex, seen.view, op);
     return withExact(netlist, ex, seen.view, ruleNoise(netlist, results), []);
   }
   const rule = ruleNoise(netlist, results);
@@ -1296,16 +1296,18 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
     const zero0 = (t: number): boolean => across(op0, tree[t]!) === 0n;
     const key0 = (t: number): string => across(op0, tree[t]!).toString(16);
     let shape = diodeStructure(ex, zero0, key0, beta, true);
+    const sitAlike = hasAlike(shape);
     // ngspice must have settled on the even solution, or the diodes are taken one by one (a circuit that sits
     // alike can settle unevenly, as a latch does).
-    const alike = hasAlike(shape) && even(ex, shape, currents, ng);
+    const alike = sitAlike && even(ex, shape, currents, ng);
     if (!alike) shape = diodeStructure(ex, zero0, key0, beta, false);
     // A diode taken as carrying 0 A must carry less than ngspice's current tolerance by ngspice's numbers:
     // ngspice can settle on a current that nothing drives (s5-137: a diode and 2.2 MΩ in a loop, 0.31 µA
     // through the 2.2 MΩ at 0.68 V, the diode given 2.5 mA), and its numbers are then not this circuit's.
     if (!quietAgrees(tree.filter((_, t) => shape.quiet[t]), currents)) return { check: 'other' };
     view = viewOf(ex, ex.op, slopes, shape, currents);
-    view.alike = alike;
+    // Undefined where no diodes sit alike (at rest none is free): either way is then the same decision.
+    if (sitAlike) view.alike = alike;
     view.shape = shape;
   }
   // At rest, every value exactly 0 (every source at 0, every diode carrying 0 A at 0 V): no equation has anything
@@ -2073,8 +2075,8 @@ function opStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
   for (const k of at.points) {
     const op = pointOp(dc, k);
     const seen = opCheck(ex, op, 0, dc, budget);
-    if (seen.check !== 'same' || (alike !== undefined && seen.view.alike !== alike)) return undefined;
-    alike = seen.view.alike;
+    if (seen.check !== 'same' || (alike !== undefined && seen.view.alike !== undefined && seen.view.alike !== alike)) return undefined;
+    alike ??= seen.view.alike;
     const noise = exactNoise(netlist, ex, seen.view, op);
     const { same } = exactly(ex, seen.view);
     for (const q of noise.diodeWhy?.quiet ?? []) quiet.add(q);
@@ -2499,7 +2501,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   });
   const out: SweepNoise = { zero, lost, source: sweep.source.text, temperature: !swept, diodes: !!ex.diodes };
   if (ex.diodes) {
-    out.alike = alike;
+    if (tryAlike) out.alike = alike;
     const quiet = new Set<string>();
     const classes = new Map<string, string[]>();
     for (const { shape, cs } of needs) {
