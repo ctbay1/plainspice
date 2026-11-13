@@ -184,15 +184,17 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     to do: the status line says "ngspice could not run" and why, the Numbers panel and the live region
     too (the path a failed run already had), and nothing reaches ngspice, from the app, the checkpoint
     or the prototypes. The alert says a reason once: while the student types on in a refused line,
-    each pause fails again with the same reason, which is not said again until it changes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
-    formula into a B source (`v(n1, n2)`), and one number for every word is simpler to say than one per
-    place. No netlist we have comes near: all 147 in the repository give the same copy as before.
+    each pause fails again with the same reason, which is not said again until it changes. 250, not
+    511: ngspice joins two names in one space when it turns a resistor's formula into a B source
+    (`v(n1, n2)`), and one number for every word is simpler to say than one per place. No netlist we
+    have comes near: all 147 in the repository give the same copy as before.
   - Checked with ngspice 47 built with AddressSanitizer, configured like the engine: every kind of
     word at 600, 5,000 and 20,000 bytes, at the limits and one byte over (452 netlists); the 109 copies
     PlainSpice runs give no report. The limits are below ngspice's own (504 to 511 bytes), so a little
     room is left for what the search did not try.
-  - **A typo found on the way**: a B source, or an E or G source with a formula, whose `v(` or `i(` has
-    no `)` (`B1 c 0 V=v(b`) makes ngspice look for the `)` past the end of the line. Native ngspice 47
+  - **A typo found on the way**: a B source, an E or G source with a formula, or a `.model` line with
+    `temper`, whose `v(` or `i(` has no `)` (`B1 c 0 V=v(b`) makes ngspice look for the `)` past the
+    end of the line. Native ngspice 47
     and 42 stop ("stack smashing detected") or print bytes they read past it; our engine crashed, so
     typing such a formula with live runs crashed it at every pause. It is not run either: "the v( in this
     formula has no ) after it … Add the )". Only where ngspice reads on (limit-5): in an R, C or L
