@@ -126,9 +126,10 @@ describe('F4, F5: a resistance below 1e-12 Ω, said as each ngspice version trea
     expect(sub.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r.x1.r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-6]`);
   });
 
-  it('a value of exactly 0 keeps ngspice 42’s 1 mΩ, and the 4th digit is said as one test’s (zero-ohm-1; F5)', () => {
+  it('a value of exactly 0 keeps ngspice 42’s 1 mΩ, with no digit of one test said as every circuit’s (zero-ohm-1; F5)', () => {
     const f = first('* a 0 ohm resistor\nV1 a 0 6\nR1 a b 0\nR2 b 0 2\n.op\n.end\n', 'zero-ohm');
-    expect(f.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r1')}. ngspice 42 used 0.001 Ω without a word, which, in one test, changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]`);
+    expect(f.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r1')}. ngspice 42 used 0.001 Ω without a word. [zero-ohm-1, zero-ohm-2]`);
+    expect(f.ngspice).not.toMatch(/digit/);
     expect(f.why).toMatch(/^SPICE can't use a resistance of exactly 0/);
     // Never "0.001" or the 4th digit for a value that is not 0.
     for (const value of ['1f', '1e-15', '-1e-13', '0.5p', '999999a']) {

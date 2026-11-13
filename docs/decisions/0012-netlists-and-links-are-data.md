@@ -765,9 +765,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   that is not 0; 6e12 A in ngspice 47 with 3a too). We chose this over the reviewer's other ways (no
   unit-letter card on a resistor, which would leave only the 0 V source; or "see the other check",
   which keeps two cards for one word), as the skeptic of the problem argued.
-- **"In one test"** (last pass F5). "ngspice 42 used 0.001 Ω without a word, which changed the answer
-  in the 4th digit" was said for every 0 Ω resistor, but holds for zero-ohm-1's circuit only: with a
-  subcircuit the answer changes in the 3rd digit (zero-ohm-6), in series with 1 kΩ the current in the
-  2nd (P13), across a source by a factor of 1e9 (zero-ohm-2). The words now say "which, in one test,
-  changed the answer in the 4th digit", as the other checks say a test's numbers ("in one test a 6 V
-  source then gave 6e12 A").
+- **No digit of one test** (last pass F5). "ngspice 42 used 0.001 Ω without a word, which changed the
+  answer in the 4th digit" was said for every 0 Ω resistor, but holds for zero-ohm-1's circuit (a load of
+  a few ohms) only: with a subcircuit the answer changes in the 3rd digit (zero-ohm-6), in series with
+  1 kΩ in the 6th (P13), and the skeptic of the problem found the 6th to 8th digit for the kΩ circuits
+  beginners draw. The trap's sources are not shown on the page, so a student would read the digit as
+  the size of the change in their own circuit. The words now stop at "ngspice 42 used 0.001 Ω without a
+  word", as the character checks' words for a 0 do. We chose this over "which, in one test, changed the
+  answer in the 4th digit", the reviewer's first way.

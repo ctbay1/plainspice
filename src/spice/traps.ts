@@ -4123,9 +4123,10 @@ function checkZeroOhm(c: Ctx, i: number): void {
   const inside = !(who?.length === 1 && !who[0]!.includes('.'));
   add(c, 'zero-ohm', 'warning', e.value!.token, `${nameOf(e)} has a resistance of ${formatSI(v, 'Ω')}`,
     `${zero ? "SPICE can't use a resistance of exactly 0" : "A resistance this small is almost 0, and SPICE can't use a resistance of 0"}: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).`,
-    // The 4th digit is zero-ohm-1's; other circuits change elsewhere, or by far more (last pass F5).
+    // No digit: how far 42's 1 mΩ moves an answer depends on the circuit (4th digit in zero-ohm-1, 3rd in zero-ohm-6,
+    // 6th in P13), and a beginner would read one test's digit as their own (last pass F5).
     zero
-      ? `ngspice 47 uses 1e-12 Ω instead and ${tooSmall(who)}. ngspice 42 used 0.001 Ω without a word, which, in one test, changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2${inside ? ', zero-ohm-6' : ''}]`
+      ? `ngspice 47 uses 1e-12 Ω instead and ${tooSmall(who)}. ngspice 42 used 0.001 Ω without a word. [zero-ohm-1, zero-ohm-2${inside ? ', zero-ohm-6' : ''}]`
       : `ngspice 47 uses ${sign ? MINUS : ''}1e-12 Ω instead and ${tooSmall(who, v)}. ngspice 42 keeps it as written, without a word. [zero-ohm-7${inside ? ', zero-ohm-6' : ''}]`,
     fixes);
 }
