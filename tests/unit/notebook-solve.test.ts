@@ -1,6 +1,8 @@
 /** src/notebook/solve.ts: live solving (runs never overlap, the newest text wins) and when numbers are answers. */
 import { describe, expect, it } from 'vitest';
 import { answers, liveSolver, type Solution } from '../../src/notebook/index.ts';
+import { solve } from '../../src/notebook/solve.ts';
+import { RUN_COPY_WORDS } from '../../src/spice/run-netlist.ts';
 
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
   let resolve!: (v: T) => void;
@@ -72,5 +74,14 @@ describe('answers', () => {
     expect(answers(sol('unreliable'))).toBeUndefined();
     expect(answers(sol('failed'))).toBeUndefined();
     expect(answers(undefined)).toBeUndefined();
+  });
+});
+
+describe('solve', () => {
+  it('never gives ngspice a text it cannot take: it fails with the reason instead (the checkpoint shows it)', async () => {
+    const ran: string[] = [];
+    const runner = { run: async (t: string) => (ran.push(t), Promise.reject(new Error('ran'))) };
+    await expect(solve('* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n', runner)).rejects.toThrow(RUN_COPY_WORDS.noClose(4, 'v('));
+    expect(ran).toEqual([]);
   });
 });
