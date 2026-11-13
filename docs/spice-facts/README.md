@@ -220,3 +220,16 @@ space in a formula, by what stands before it: at the start, after an operator, a
 formula's brace, after a bracket or a comma, elsewhere; before B's own `tc1=` a normal space must stay),
 fatal-syntax-17 (a node called `value` on an E or G line), missing-fields-10 (one word before a formula with
 a bracket in it: native ngspice runs it too), and unknown-word-53 gained the G line of eight words.
+
+After the round-2 critic of those fixes (13 November 2026), run the same way: fatal-syntax-18 and -19 (after
+`=`, ngspice puts braces round a formula unless it starts with a number, a sign and a number, or true or
+false: `VALUE=-v(out)*2` and `VALUE=(1+v(out))*2` run, `VALUE=-2*v(out)` stops), fatal-syntax-20 (a node
+called `value` as an E's control − node, an output node or a POLY control node is read as VALUE too, and
+braces after it make a constant), nbsp-7 and missing-fields-11 (after VALUE without `=`, ngspice takes the
+formula from its `{` and drops what stands before it, a no-break space or a word), space-character-31 (a
+character that looks like a space inside `i(...)` is part of the source's name: "unknown controlling
+source v___s", after any other such character's message), space-character-32, nbsp-8,
+invisible-character-68, look-alike-letter-19 and non-ascii-node-26 (a name with such a character that
+only a formula reads, with no part on it, is a node nothing connects to: "singular matrix", no results),
+and non-ascii-node-27 (`Çıkış` and `çıkış` on part lines are one node, as written: the same numbers before
+and after the rename, in either order with "Move .end to the bottom").
