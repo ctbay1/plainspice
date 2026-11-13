@@ -1252,7 +1252,7 @@ const larger = (a: Fraction, b: Fraction): Fraction => (b.n * a.d > a.n * b.d ? 
  * equation's one denominator passes MAX_BITS, or when the check would take more work than `budget` has
  * left (each term counts TERM_WORK; the work is taken from `budget`).
  */
-export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget()): Shares | undefined {
+export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget(), allow?: Allowance): Shares | undefined {
   const volts: (Dyadic | undefined)[] = model.nodes.map((n) => {
     const v = ng.voltage(n);
     return v === undefined || !Number.isFinite(v) ? undefined : dyadic(v);
@@ -1275,6 +1275,8 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
   budget.left -= work;
   const nodeTerms: Dyadic[][] = model.nodes.map(() => []);
   const ownTerms: Dyadic[][] = [];
+  /** The allowance of each own equation, by its part (Allowance). */
+  const ownFactors: number[] = [];
   let products: Fraction = ZERO;
   /** v(x) − v(y) is not a near cancellation of the two: at least 2^-20 of the larger. */
   const resolved = (x: number, y: number): boolean => {
@@ -1286,7 +1288,7 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
     }, 0n);
     return absBig(d.m) << 20n >= big;
   };
-  for (const p of model.parts) {
+  for (const [j, p] of model.parts.entries()) {
     let terms: Dyadic[] = [];
     let product: Dyadic | undefined;
     switch (p.kind) {
@@ -1323,6 +1325,7 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
         else if (p.kind === 'E') own.push(negD(times(v(p.c), p.value)), times(v(p.d), p.value));
         else if (p.kind === 'H') own.push(negD(times(branch.get(model.parts[p.control]!.branch)!, p.value)));
         ownTerms.push(own);
+        ownFactors.push(allow?.part[j] ?? 1);
       }
     }
     for (const t of terms) {
@@ -1347,19 +1350,28 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
   // Each kind of equation against its own kind: Kirchhoff's law at the nodes in amps, the branches' own
   // equations in volts (a 9 V source's equation made a node's 5 nA of misread current look like nothing).
   const limit = 1n << BigInt(MAX_BITS);
-  const share = (list: readonly Dyadic[][]): Fraction | undefined => {
+  /**
+   * The largest leftover of the equations, over the largest sum of the sizes of their terms; with `factors`, each leftover
+   * over its equation's own allowance first (Allowance), so that the share is held to RESIDUAL_SHARE alone. An allowance
+   * of 1 or more holds whatever its equation leaves (a share is never more than 1).
+   */
+  const share = (list: readonly Dyadic[][], factors?: ArrayLike<number>): Fraction | undefined => {
     let largest: Fraction = ZERO;
     let left: Fraction = ZERO;
-    for (const terms of list) {
-      const s = sumOf(terms, limit);
+    for (let i = 0; i < list.length; i++) {
+      const s = sumOf(list[i]!, limit);
       if (!s) return undefined;
       largest = larger(largest, { n: s.size, d: s.den });
-      left = larger(left, { n: s.value, d: s.den });
+      const raw = factors?.[i];
+      const f = raw !== undefined && raw >= 1 ? raw : 1;
+      if (!(RESIDUAL_SHARE * f < 1)) continue;
+      const F = f === 1 ? ONE : fromDouble(f);
+      left = larger(left, { n: s.value * F.d, d: s.den * F.n });
     }
     return left.n === 0n ? ZERO : largest.n === 0n ? ONE : { n: left.n * largest.d, d: left.d * largest.n };
   };
-  const atNodes = share(nodeTerms);
-  const atBranches = share(ownTerms);
+  const atNodes = share(nodeTerms, allow?.node);
+  const atBranches = share(ownTerms, allow ? ownFactors : undefined);
   if (!atNodes || !atBranches) return undefined;
   return { equations: larger(atNodes, atBranches), products };
 }
@@ -1384,11 +1396,74 @@ export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
  * larger than the sum of its terms' sizes), so an allowance of 1 or more, or past the largest double, holds whatever is
  * left.
  */
-export function sameCircuit(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget(), spread = 1): 'agrees' | 'residual' | 'other' {
-  const s = shares(model, ng, level, budget);
+export function sameCircuit(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget(), spread: number | Allowance = 1): 'agrees' | 'residual' | 'other' {
+  // Each equation's own allowance (Allowance) is in its share already; one number allows every equation alike.
+  const each = typeof spread === 'number' ? undefined : spread;
+  const s = shares(model, ng, level, budget, each);
   if (!s || compare(s.products, fromDouble(PRODUCT_SHARE)) > 0) return 'other';
-  const allowed = RESIDUAL_SHARE * Math.max(1, spread);
+  const allowed = RESIDUAL_SHARE * (each ? 1 : Math.max(1, spread as number));
   return !(allowed < 1) || compare(s.equations, fromDouble(allowed)) <= 0 ? 'agrees' : 'residual';
+}
+
+/**
+ * How many times RESIDUAL_SHARE ngspice's arithmetic may leave of each equation (sameCircuit). Each connected part of the
+ * circuit (the parts that conduct to each other, ground taken out, as carrierSides finds them) gets the spread of the
+ * conductances and what the controlled sources amplify (conductanceSpread, amplification), counted over its own parts and
+ * those of every part it reads through its controlled sources, as far as they go: ngspice's rounding in what an E reads
+ * comes out at its output times its gain, but the parts beside it, which nothing joins to it, keep their own. Counted over
+ * the whole circuit, an op-amp modelled as an E of 1e6 (or three of 1e5) beside S28's I1 and R1 let S28's "+ 3" after
+ * .end, which makes ngspice's R1 3 Ω, pass as lost digits: "node n1 is at 2 V, where ngspice gives 3 V" (the critic of
+ * round 2 of the last pass's fixes). A Kirchhoff's law is its node's part's; a V, E, H or L's own equation, its ends'.
+ */
+export interface Allowance {
+  /** By node index. */
+  node: Float64Array;
+  /** By part index: a V, E, H or L's own equation (1 for the others, which have none). */
+  part: Float64Array;
+}
+
+export function allowances(model: ExactModel): Allowance {
+  const n = model.nodes.length;
+  const joined = unionFind(n);
+  for (const p of model.parts) if (p.kind !== 'C') joined.join(p.a, p.b);
+  const of = (k: number): number => (k < 0 ? -1 : joined.find(k));
+  const partOf = model.parts.map((p) => (p.a >= 0 ? of(p.a) : of(p.b)));
+  // The parts each part of the circuit reads: an E's or G's control nodes, the source whose current an F or H reads.
+  const reads = new Map<number, Set<number>>();
+  model.parts.forEach((p, j) => {
+    const at = partOf[j]!;
+    const read = p.kind === 'E' || p.kind === 'G' ? [of(p.c), of(p.d)] : p.kind === 'F' || p.kind === 'H' ? [partOf[p.control]!] : [];
+    for (const r of read) {
+      if (at < 0 || r < 0 || r === at) continue;
+      const set = reads.get(at);
+      if (set) set.add(r);
+      else reads.set(at, new Set([r]));
+    }
+  });
+  const whole = conductanceSpread(model) * amplification(model);
+  const factors = new Map<number, number>();
+  const factorOf = (at: number): number => {
+    if (at < 0) return whole;
+    let f = factors.get(at);
+    if (f !== undefined) return f;
+    const reached = new Set([at]);
+    const stack = [at];
+    for (let k = stack.pop(); k !== undefined; k = stack.pop()) {
+      for (const r of reads.get(k) ?? []) {
+        if (reached.has(r)) continue;
+        reached.add(r);
+        stack.push(r);
+      }
+    }
+    const parts = model.parts.filter((_, j) => reached.has(partOf[j]!));
+    f = spreadOf(parts) * amplificationOf(parts);
+    factors.set(at, f);
+    return f;
+  };
+  return {
+    node: Float64Array.from(model.nodes, (_, k) => factorOf(of(k))),
+    part: Float64Array.from(model.parts, (p, j) => (p.branch >= 0 ? factorOf(partOf[j]!) : 1)),
+  };
 }
 
 /**
@@ -1400,9 +1475,14 @@ export function sameCircuit(model: ExactModel, ng: NgspiceValues, level: (p: Exa
  * share, which no spread changes.
  */
 export function conductanceSpread(model: ExactModel): number {
+  return spreadOf(model.parts);
+}
+
+/** conductanceSpread over some of a circuit's parts (allowances). */
+function spreadOf(parts: readonly ExactPart[]): number {
   let lo = Number.POSITIVE_INFINITY;
   let hi = 0;
-  for (const p of model.parts) {
+  for (const p of parts) {
     if (p.kind !== 'R' && p.kind !== 'G') continue;
     const v = Math.abs(toDouble(p.value));
     const g = p.kind === 'R' ? 1 / v : v;
@@ -1424,15 +1504,20 @@ export function conductanceSpread(model: ExactModel): number {
  * conductanceSpread together (describe.ts).
  */
 export function amplification(model: ExactModel): number {
+  return amplificationOf(model.parts);
+}
+
+/** amplification over some of a circuit's parts (allowances). */
+function amplificationOf(parts: readonly ExactPart[]): number {
   let largest = 0;
-  for (const p of model.parts) {
+  for (const p of parts) {
     if (p.kind !== 'R' && p.kind !== 'G') continue;
     const v = Math.abs(toDouble(p.value));
     const g = p.kind === 'R' ? 1 / v : v;
     if (Number.isFinite(g) && g > largest) largest = g;
   }
   let a = 1;
-  for (const p of model.parts) {
+  for (const p of parts) {
     const gain = Math.abs(toDouble(p.value));
     if (p.kind === 'E' || p.kind === 'F') a *= Math.max(1, gain);
     else if (p.kind === 'H') a *= Math.max(1, gain * (largest || 1));

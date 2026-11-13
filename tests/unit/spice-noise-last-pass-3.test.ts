@@ -61,3 +61,19 @@ describe('by the rule, a real current ngspice gives as exactly 0 is given back b
     expect([text(bridge.words, 'R5'), text(bridge.words, 'Vm'), message(bridge.words, 'rounded-to-0')]).toEqual(['no current through R5', 'Vm measures no current', undefined]);
   });
 });
+
+describe('a controlled source\'s gain widens the same-circuit check only for the part of the circuit it drives (N4: S28\'s false warning beside an op-amp of 1e6)', () => {
+  it('S28\'s "+ 3" after .end beside an op-amp buffer of gain 1e6, or three of 1e5, in parts of the circuit nothing joins to n1: the note that ngspice\'s numbers could not be checked, never "node n1 is at 2 V, where ngspice gives 3 V"', async () => {
+    for (const amp of [['E1 y 0 x y 1e6', 'R2 y 0 1k'], ['E1 y 0 x y 1e5', 'E2 z 0 y z 1e5', 'E3 w 0 z w 1e5', 'R2 w 0 1k']]) {
+      const r = await solveText(`* S28 beside an op-amp\nV2 x 0 1\n${amp.join('\n')}\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n`, ngspice);
+      expect([sp(r.words.nodes.find((n) => n.node === 'n1')?.text), message(r.words, 'imprecise-answers')], amp[0]).toEqual(['3 V', undefined]);
+      expect(message(r.words, 'unchecked-answers'), amp[0]).toContain("ngspice's numbers in the operating point do not fit the circuit PlainSpice reads from this netlist");
+    }
+  });
+
+  it('within the part an op-amp drives, its gain is still counted: the non-inverting amplifier of an E of 1e15 keeps its warning, "node out is at 9.15 V, where ngspice gives 9.5 V", beside a separate 1 A source and 2 Ω', async () => {
+    const r = await solveText(netlist('V1 in 0 3.3', 'E1 out 0 in inm 1e15', 'R1 inm 0 220', 'R2 out inm 390', 'Rl out 0 390', 'I1 0 n1 1', 'R3 n1 0 2', '.op'), ngspice);
+    expect(message(r.words, 'imprecise-answers')).toContain('node out is at 9.15 V, where ngspice gives 9.5 V');
+    expect(sp(r.words.nodes.find((n) => n.node === 'n1')?.text)).toBe('2 V');
+  });
+});

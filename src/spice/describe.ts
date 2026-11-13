@@ -21,7 +21,7 @@ import { elementInfo } from './elements.ts';
 import { articleBefore, dcStopsNgspice, ignoredAnalysis, isExpression, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
-import { add, amplification, ANSWER_FLOOR, ANSWER_GAP, answers, carried, carrierSides, checkWork, conductanceSpread, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, RESIDUAL_SHARE, sameCircuit, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type Carried, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
+import { add, allowances, ANSWER_FLOOR, ANSWER_GAP, answers, carried, carrierSides, checkWork, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, RESIDUAL_SHARE, sameCircuit, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Allowance, type Answer, type Budget, type Carried, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -1325,10 +1325,11 @@ interface Exact {
    */
   diodes?: { tree: number[]; slopes: Fraction[][]; own: boolean[]; line: string[] };
   /**
-   * The largest conductance of its R and G over the smallest, times how much its E, F and H amplify (exact.ts
-   * conductanceSpread, amplification): the same-circuit check allows its residual that many times over.
+   * How many times RESIDUAL_SHARE the same-circuit check allows each equation to leave: the largest conductance over the
+   * smallest, times how much the E, F and H amplify, over the equation's own part of the circuit and the parts it reads
+   * (exact.ts allowances, conductanceSpread, amplification).
    */
-  spread: number;
+  allow: Allowance;
   /** The netlist has a .save line, so ngspice gives only the values it names, and those are judged alone (opCheck). */
   saves: boolean;
 }
@@ -1435,7 +1436,7 @@ function exactOf(netlist: Netlist): Exact | undefined {
     const budget = newBudget();
     const x = solveExact(model, sides, budget);
     if (x) {
-      ex = { model, op: x[0]!, part, node, solveWork: MAX_WORK - budget.left, carried: carried(carriers, x.slice(carriersAt)), spread: conductanceSpread(model) * amplification(model), saves: netlist.lines.some((l) => l.directive?.name === '.save') };
+      ex = { model, op: x[0]!, part, node, solveWork: MAX_WORK - budget.left, carried: carried(carriers, x.slice(carriersAt)), allow: allowances(model), saves: netlist.lines.some((l) => l.directive?.name === '.save') };
       if (diodes) ex.diodes = { tree, slopes: x.slice(1, 1 + tree.length), own: ownCurrent, line: tree.map(lineOf) };
       if (sweep) ex.sweep = { part: sweep.part, slope: sweep.at < 0 ? x[0]!.map(() => ZERO) : x[sweep.at]! };
       if (tf) {
@@ -1562,7 +1563,7 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
   // nothing said (the last pass, silent-rule-same-circuit-check; its critic). The check allows both; such a run is then
   // judged by what the page draws: the exact solution decides where every answer is drawn with its exact digits, and
   // the warning names the others.
-  const verdict = complete ? sameCircuit(ex.model, ng, view.level, budget, ex.spread) : 'agrees';
+  const verdict = complete ? sameCircuit(ex.model, ng, view.level, budget, ex.allow) : 'agrees';
   if (verdict !== 'agrees') {
     if (still(ex, view) && atRest(ex, view, op, dc)) return { check: 'same', view, off: [] };
     // Past even that, PlainSpice cannot tell whether ngspice lost its digits or read the netlist otherwise than it
@@ -2853,7 +2854,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       // operating point is (the last pass).
       const complete = kinds.filter((k) => k.kind === 'voltage').length === model.nodes.length && model.parts.every((p) => p.branch < 0 || branch.has(p.key));
       if (!complete && !ex.saves) return undefined;
-      const verdict = complete ? sameCircuit(model, ng, view.level, budget, ex.spread) : 'agrees';
+      const verdict = complete ? sameCircuit(model, ng, view.level, budget, ex.allow) : 'agrees';
       if (verdict !== 'agrees') {
         if (!shape.classes.length && stillAt(x) && settled()) continue;
         // As for an operating point (opCheck): where only the equations do not agree, a note says that ngspice's
