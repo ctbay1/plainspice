@@ -2178,7 +2178,7 @@ function checkGround(c: Ctx): void {
       t,
       gnd ? `${atSentenceStart(nodeIn(shown))} at the end of a line is not ground` : `${atSentenceStart(nodeIn(shown))} is not ground: ground is node 0`,
       gnd
-        ? `ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, it is an ordinary node, ${nodeIn(shown)}, so this part is not connected to ground.`
+        ? `ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, ${t.text} names an ordinary node, ${nodeIn(shown)}, so this part is not connected to ground.`
         : `In SPICE, ground is the node called 0 (gnd works too). ${atSentenceStart(nodeIn(shown))} is just an ordinary node, so the parts on it are not connected to ground.`,
       gnd
         ? 'ngspice says nothing. In one test a 0 V ammeter written Vx b gnd read 0 A, because its gnd was a separate node. [ground-misnamed-2]'

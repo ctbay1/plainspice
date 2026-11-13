@@ -199,6 +199,11 @@ describe('F6: every check names a node as the rest of the page does: "node in", 
     expect(first('* t\nV1 n1 earth 6\nR1 n1 0 2\n.op\n.end\n', 'ground-misnamed').fixes.map((f) => f.label)).toEqual(['Rename node earth to 0']);
     const last = first('* t\nV1 a 0 6\nR1 a b 2\nVx b gnd\n.op\n.end\n', 'ground-misnamed');
     expect([last.title, last.fixes.map((f) => f.label)]).toEqual(['Node "gnd" at the end of a line is not ground', ['Rename node "gnd" to 0']]);
+    // The why names the word as written, then the node it makes (round-1 critic C2).
+    expect(last.why).toBe('ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, gnd names an ordinary node, node "gnd", so this part is not connected to ground.');
+    expect(first('* t\nV1 a 0 6\nR1 a b 2\nVx b GND\n.op\n.end\n', 'ground-misnamed').why).toBe(
+      'ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, GND names an ordinary node, node "GND", so this part is not connected to ground.',
+    );
   });
 
   it('dangling-node: "Only R2 touches node n12", "Did you mean node n2 or node n1?", "Rename node n12 to n2"', () => {
