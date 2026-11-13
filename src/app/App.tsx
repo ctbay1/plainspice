@@ -354,6 +354,8 @@ interface SheetHold {
   height: number;
   head: number;
   scroll: number;
+  /** Laid out afresh and not yet drawn: the steps above it may still settle, so it follows them. */
+  fresh: boolean;
   release: () => void;
 }
 
@@ -364,20 +366,39 @@ const headOf = (sheet: HTMLElement): number => {
   return head ? head.offsetTop + head.offsetHeight : 0;
 };
 
-/** Holds a sheet as it is laid out now: its scroll is followed as the student scrolls it. */
+/**
+ * Holds a sheet as it is laid out, from the frame it is first drawn in (until then the lines above it may
+ * still take a step: it follows them); its scroll is followed as the student scrolls it.
+ */
 function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement): SheetHold {
   sheet.style.removeProperty('max-height');
   const cap = Number.parseFloat(getComputedStyle(sheet).maxHeight);
-  const held: SheetHold = { room, sheet, body, rows: sheetRowsOf({ body }), cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY, height: sheet.offsetHeight, head: headOf(sheet), scroll: body.scrollTop, release: () => undefined };
+  const held: SheetHold = { room, sheet, body, rows: 0, cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY, height: 0, head: 0, scroll: 0, fresh: true, release: () => undefined };
+  measureSheet(held);
   const onScroll = (): void => {
     held.scroll = body.scrollTop;
   };
   body.addEventListener('scroll', onScroll, { passive: true });
+  let frame = requestAnimationFrame(() => {
+    frame = requestAnimationFrame(() => {
+      held.fresh = false;
+    });
+  });
   held.release = () => {
+    cancelAnimationFrame(frame);
     body.removeEventListener('scroll', onScroll);
     sheet.style.removeProperty('max-height');
   };
   return held;
+}
+
+/** The sheet as it is laid out now, by itself. */
+function measureSheet(held: SheetHold): void {
+  held.sheet.style.removeProperty('max-height');
+  held.rows = sheetRowsOf(held);
+  held.height = held.sheet.offsetHeight;
+  held.head = headOf(held.sheet);
+  held.scroll = held.body.scrollTop;
 }
 
 /** What the polite region says after a run (decision 0010): the summary, and each sweep's last point. */
@@ -2016,6 +2037,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (!sheetRoom || !sheet || !body) return;
     if (!held) {
       sheetHold.current = holdSheet(sheetRoom, sheet, body);
+      return;
+    }
+    if (held.fresh) {
+      measureSheet(held);
       return;
     }
     // Where its rows are: the sheet's top (its height, the stack standing on the bar), below its head, less
