@@ -986,6 +986,11 @@ describe('after the critic of round 2: with a diode, a run\'s .op and its .dc ar
 });
 
 describe('after the critic of round 2: a diode\'s current, worked out from ngspice\'s numbers, and the warning beside it', () => {
+  it('a .tf of a circuit with a diode is left as ngspice gives it: a reverse-biased diode from a to top passes a change as its conductance, so the bridge\'s v(a,b)/V1 is a real 2.994e-10 V/V, which the circuit with the diode at 0 A makes 0 (C9t.11)', async () => {
+    const r = await solveText('* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nD1 a top dmod\n.model dmod d\n.op\n.tf v(a,b) V1\n.end\n', ngspice);
+    expect([roundingNoise(r.netlist, r.results).by, r.words.tf!.transferFunction!.value, r.words.tf!.transferFunction!.noise]).toEqual(['exact', 2.994011705226285e-10, undefined]);
+  });
+
   it('a diode taken as carrying 0 A must carry less than ngspice\'s 1 pA by ngspice\'s numbers: in s5-137 nothing drives the loop of D1 and 2.2 MΩ, but ngspice settles on 0.31 µA there, which the circuit\'s gigavolts and kiloamps hid from the checks; the rule decides, in the .op and in the sweep (C9t.10)', async () => {
     const circuit = [
       'V1 top1 0 100', 'R1 top1 a2 3.3k', 'R2 a2 0 12', 'R3 top1 b3 330', 'R4 b3 0 1.2', 'R5 a2 m4 560', 'V2 m4 b3 0', 'F1 0 o5 V2 1e9', 'R6 o5 0 22k', 'H1 h6 0 V2 1meg', 'R7 h6 0 270k',

@@ -4528,6 +4528,44 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(top1) = 100, v(a2) = 0.3612333515243817, v(b3) = 0.31039299140572524, v(m4) = 0.31039299140572524, v(o5) = 1997299861.804358, v(h6) = 90.78635735474354, v(v7) = 0.31039299140572524, v(v8) = 0.31039299140572524, v(v9) = 0.31039299140572524, v(v10) = 0.31039299140572524, v(a11) = 0.09876140798879642, v(b12) = 0.09882708871827177, v(m13) = 0.09876192103799805, v(m14) = 0.09880467513813368, v(m15) = 0.09880467607872388, v(m16) = 0.09881408198065472, v(m17) = 0.09881408292124493, v(m18) = 0.09881417698026354, v(m19) = 0.09881768281641147, v(d20) = 100.67855799103364, v(e21) = 0.31039299140572524, i(v2) = 0.00009078635735474354, i(h1) = -0.00033624576798053164, i(e1) = -0.011496036718730564, i(v6) = 0.02586608261714377, i(v5) = 0.02586608261714377, i(v4) = 0.02586608261714377, i(v3) = 0.02586608261714377, i(v1) = -0.33228328385891703, i(@r1[i]) = 0.03019356565105322, i(@r2[i]) = 0.03010277929369847, i(@r3[i]) = 0.30208971820786146, i(@r4[i]) = 0.25866082617143765, i(@r5[i]) = 0.00009078635735474365, i(@f1[i]) = 90786.35735474354, i(@r6[i]) = 90786.35735474354, i(@r7[i]) = 0.00033624576798053164, i(@r8[i]) = 0.02586608261714377, i(@r9[i]) = 0.01763596528474407, i(@r10[i]) = 0.01763596571228507, i(@r11[i]) = 0.00001763049189062112, i(@r12[i]) = 0.000017630064349627473, i(@r13[i]) = -4.2754100136368123e-10, i(@r14[i]) = -4.275410013562797e-10, i(@r15[i]) = -4.2754100133950016e-10, i(@r16[i]) = -4.275409968563439e-10, i(@r17[i]) = -4.2754100133950016e-10, i(@r18[i]) = -4.275409937067169e-10, i(@r19[i]) = -4.2754099364994414e-10, i(@r20[i]) = -4.275409936499441e-10, i(@d1[id]) = 0.0024750251429858545, i(@r21[i]) = 3.084354504698374e-7, i(@r22[i]) = 0.011496036718730564
 ```
 
+Added after the critic of round 2 of the re-check's fixes (13 November 2026), with its second fix (C9t.11): the balanced bridge of C9 with a diode from a to top, reverse-biased by 4.5 V, with .op and ".tf v(a,b) V1". In the operating point a diode's current is left free (C9t). A .tf's ratio is a small change, and a diode passes a small change as a conductance at its operating point (here about gmin, 10⁻¹² S), not as a fixed current: with it beside R1, the bridge is no longer balanced for a change of V1, and ngspice gives v(a,b)/V1 = 2.994e−10 V/V, a real ratio. With the diode at 0 A the circuit's ratio is exactly 0, so PlainSpice leaves the .tf of a circuit with a diode as ngspice gives it, and shows 2.994e−10 (V/V). ngspice 42 −b, with .op and .tf together, prints "no data saved for transfer function analysis" and exits 1 but writes the same values to its rawfile; native 47 and our engine give the same doubles.
+
+```spice
+* the balanced bridge of C9 with a reverse-biased diode from a to top, .op and .tf v(a,b) V1
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+D1 a top dmod
+.model dmod d
+.op
+.tf v(a,b) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        v1#branch                        -1.40745e-03
+        transfer_function = 2.994012e-10
+        output_impedance_at_v(a,b) = 8.802395e+02
+        v1#input_impedance = 6.394558e+03
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.500000009047006, v(b) = 4.500000006346407, i(v1) = -0.0014074468107656381; v(Transfer_function) = 2.994011705226285e-10, v(v1#Input_impedance) = 6394.557812906659, v(output_impedance_at_V(a,b)) = 880.2395205995194
+ngspice 42, ngspice -b (exit 1):
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        v1#branch                        -1.40745e-03
+    Error: no data saved for transfer function analysis; analysis not run
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.500000009047006, v(b) = 4.500000006346407, i(v1) = -0.0014074468107656381; v(Transfer_function) = 2.994011705226285e-10, v(v1#Input_impedance) = 6394.557812906659, v(output_impedance_at_V(a,b)) = 880.2395205995194
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(a) = 4.500000009047006, v(b) = 4.500000006346407, i(v1) = -0.0014074468107656381; v(Transfer_function) = 2.994011705226285e-10, v(v1#Input_impedance) = 6394.557812906659, v(output_impedance_at_V(a,b)) = 880.2395205995194
+```
+
 ## 4. Messages
 
 Each message explainDiagnostic puts into plain words, with the netlist that makes ngspice print it and the codes `src/engine/diagnostics.ts` gives it in our engine.
