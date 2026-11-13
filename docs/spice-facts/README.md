@@ -209,16 +209,16 @@ keeps it as written, silently; 3a in series and across a source), with rows in
 `tests/golden/facts-traps.test.ts`; and, after the round-1 critic of those fixes, zero-ohm-9 (below
 1e-12 Ω but not 0, the currents next to the resistor can come out inaccurate, in ngspice 47 as for a 0
 and in ngspice 42 too) and the values a part can only report, each part's runs a record of its own:
-space-before-suffix-19 (a capacitor's p, an inductor's v and volt after a space), -20 (a voltage
-source's p, a current source's p and v), unknown-word-56 (a capacitor's i, an inductor's flux, a
-resistor's sens_dc) and -57 (a voltage source's i, a current source's v), 47's "no such parameter on this
-device or parameter is missing" and 42's "no such parameter on this device"; their rows, and the
-header-only results files our engine reports, are in `tests/golden/facts-traps-last-pass.test.ts`. The
-records corrected after native re-runs, which no engine run can check, are pinned by
-`tests/unit/facts-records.test.ts`, which also checks that no fact ID heads two sections. Records corrected after native re-runs: limit-9 (native 47
+space-before-suffix-19 (a capacitor's or an inductor's p, an inductor's v and volt, after a space), -20
+(a voltage source's p, a current source's p and v), unknown-word-56 (a capacitor's i, an inductor's
+flux, a resistor's sens_dc) and -57 (a voltage source's i, a current source's v), 47's "no such
+parameter on this device or parameter is missing" and 42's "no such parameter on this device"; their
+rows, and the header-only results files our engine reports, are in
+`tests/golden/facts-traps-last-pass.test.ts`. Records corrected after native re-runs: limit-9 (native 47
 and 42 stop from a 105-byte version, not 150, and level 73 copies it too), the results file of 16 traps.md
 facts (15 hold a plot's header with 0 points where they said no file or no data; unknown-dot-command-2's
 ngspice 42 file holds the .op point), in the words A11, M3 and M3b in explanations.md now use for such a
 file too ("a … plot with 0 points, its header only"), and the ngspice 42 lines of P18, P19, P19b, P19c,
 P20b, A17, A18 and non-ascii-node-12 (the same output and summary, but their time points differ, said
-where).
+where). No engine run can check those, so `tests/unit/facts-records.test.ts` pins the records themselves,
+and checks that no fact ID heads two sections.
