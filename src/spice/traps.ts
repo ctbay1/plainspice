@@ -190,6 +190,8 @@ interface Ctx {
   savedNodes?: Map<string, Token[]>;
   /** The fix that renames a node called value, on every E or G line that reads it as VALUE (valueAsNodeWord), made once; null with no such node. */
   valueRename?: { to: string; fix: Fix | null };
+  /** The part whose formula reads a node's name, by where the name stands, read on the first use (formulaReader). */
+  formulaReaders?: Map<number, number>;
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
@@ -3549,6 +3551,16 @@ function checkNodeNames(c: Ctx): void {
     if (isPlainName(info.name) || hasInvisible(info.name) || hasSpaceLike(info.name) || lookAlikeName(info.refs[0]!.text) !== undefined) continue;
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
+    const reader = formulaReader(c, info);
+    if (reader) {
+      // No part is on a node ngspice spells so (ownerOf): a rename alone leaves it failing; a node the parts are on
+      // with the name's plain letters (cikis for çıkış) is the one meant.
+      const plain = plainLetters(written, true);
+      const meant = plain ? c.n.nodes.get(lowerAscii(plain)) : undefined;
+      formulaOnlyNode(c, 'non-ascii-node', info, reader, written, `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}).`,
+        'non-ascii-node-26', meant?.connections.length ? plain : undefined, plain ? [fix(`Connect to ${plain}`, ...renaming(info, plain))] : []);
+      continue;
+    }
     const to = plainFor(info);
     add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells the node ${written} as ${spelled}`,
       `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
@@ -3642,6 +3654,39 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
  * and the parts on it are not connected to out. The fix takes the character out; when a node of that
  * name exists, that joins them, as the student meant. The words name the character, never show it.
  */
+/**
+ * The part whose formula reads a name that no part connects to (CR2-2): a name only formulas read (Element.reads),
+ * with a character ngspice keeps in names, is a node of its own for ngspice that nothing connects to, so its matrix
+ * is singular and it stops, whatever the analysis (space-character-32, nbsp-8, invisible-character-68,
+ * look-alike-letter-19, non-ascii-node-26). Undefined for a name a part connects to, or that no formula reads.
+ */
+function formulaReader(c: Ctx, info: NodeInfo): Element | undefined {
+  if (info.ground || info.connections.length > 0) return undefined;
+  if (!c.formulaReaders) {
+    c.formulaReaders = new Map();
+    for (const k of c.top) for (const r of el(c, k).reads ?? []) c.formulaReaders.set(r.token.from, k);
+  }
+  for (const t of info.refs) {
+    const k = c.formulaReaders.get(t.from);
+    if (k !== undefined) return el(c, k);
+  }
+  return undefined;
+}
+
+/**
+ * The error for a name only a formula reads (formulaReader), in place of the words for a node the parts are on: no
+ * part is, so ngspice warns 'singular matrix' and gives no results. `why` says what the name has; `meant`, a node the
+ * parts are on that the name was written for, which the fix connects to (the critic's fixes, e = 5 V after them).
+ */
+function formulaOnlyNode(c: Ctx, id: TrapId, info: NodeInfo, reader: Element, shown: string, why: string, fact: string, meant: string | undefined, fixes: Fix[]): void {
+  const t = info.refs.find((r) => c.formulaReaders!.has(r.from)) ?? info.refs[0]!;
+  const spelled = ngspiceSpelling(info.name);
+  add(c, id, 'error', t, `${nameOf(reader)}'s formula reads a node nothing connects to: ${shown}`,
+    `${why} So the formula reads the node ${spelled}${meant ? `, not ${meant}` : ''}, and no part connects to that node.`,
+    `ngspice warns 'singular matrix: check node ${spelled}' and then stops: 'The operating point could not be simulated successfully'. No results. [${fact}]`,
+    meant ? fixes : []);
+}
+
 function checkInvisibleNodes(c: Ctx): void {
   for (const info of c.n.nodes.values()) {
     if (info.ground || info.refs.length === 0 || !hasInvisible(info.name) || ownerOf(c, info.name) !== info.name) continue;
@@ -3651,6 +3696,12 @@ function checkInvisibleNodes(c: Ctx): void {
     const clean = withoutInvisible(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const reader = formulaReader(c, info);
+    if (reader) {
+      formulaOnlyNode(c, 'invisible-character', info, reader, `${clean} with ${nameOfCharacter(ch, false)!}`, `The name has ${what}, a character you cannot see, which SPICE keeps in the name.`,
+        'invisible-character-68', other?.connections.length ? clean : undefined, [fix(`Take it out: connect to ${clean}`, ...changes)]);
+      continue;
+    }
     const { said, print, command } = asWritten(c, [info], false);
     // Cites [invisible-character-3, invisible-character-65, invisible-character-66], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-65'] : []), ...(command ? ['invisible-character-66'] : [])];
@@ -3693,6 +3744,12 @@ function checkSpaceNodes(c: Ctx): void {
     const clean = withoutSpaces(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const reader = formulaReader(c, info);
+    if (reader) {
+      formulaOnlyNode(c, ch === '\u00a0' ? 'nbsp' : 'space-character', info, reader, `${clean} with ${nameOfCharacter(ch, false)!}`, `The name has ${nameOfCharacter(ch)!}. It looks like a space, but SPICE keeps it in the name.`,
+        ch === '\u00a0' ? 'nbsp-8' : 'space-character-32', other?.connections.length ? clean : undefined, [fix(`Take it out: connect to ${clean}`, ...changes)]);
+      continue;
+    }
     const { said, print, command } = asWritten(c, [info], false);
     // Cites [space-character-10, space-character-20, space-character-21], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-20'] : []), ...(command ? ['space-character-21'] : [])];
@@ -3721,6 +3778,12 @@ function checkLookAlikeNodes(c: Ctx): void {
     const like = lookAlikeOf(ch)!;
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const reader = formulaReader(c, info);
+    if (reader) {
+      formulaOnlyNode(c, 'look-alike-letter', info, reader, `${t.text} with ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`, `The name has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}. It looks like ${like}, but SPICE knows only the plain letter ${like}.`,
+        'look-alike-letter-19', other?.connections.length ? clean : undefined, [fix(`Connect to ${clean}`, ...changes)]);
+      continue;
+    }
     const { said, print, command } = asWritten(c, [info], true);
     // Cites [look-alike-letter-5, look-alike-letter-16, look-alike-letter-17], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-16'] : []), ...(command ? ['look-alike-letter-17'] : [])];

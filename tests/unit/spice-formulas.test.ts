@@ -791,4 +791,36 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     const t = traps(net(`B1 e 0 V=i(V${THIN}s)*1k`))[0]!;
     expect(applyFix(net(`B1 e 0 V=i(V${THIN}s)*1k`), t.fixes[0]!)).toBe(net('B1 e 0 V=i(Vs)*1k'));
   });
+  it("CR2-2: a name only a formula reads, with a character ngspice keeps, and no part on it: an error saying ngspice stops ('singular matrix'), never 'without a message' (space-character-32, nbsp-8, invisible-character-68, look-alike-letter-19, non-ascii-node-26)", () => {
+    const net = (name: string, line = 'B1 e 0 V=v(NAME)*2', parts = 'out'): string => `* t\nV1 in 0 5\nR1 in ${parts} 1k\nR2 ${parts} 0 1k\n${line.replace('NAME', name)}\nRe e 0 1k\n.op\n.end\n`;
+    for (const [name, id, title, spelled, fact, fixLabel] of [
+      [`out${NBSP}`, 'nbsp', 'out with a no-break space', 'out__', 'nbsp-8', 'Take it out: connect to out'],
+      [`o${THIN}ut`, 'space-character', 'out with a thin space', 'o___ut', 'space-character-32', 'Take it out: connect to out'],
+      [`out${ZW}`, 'invisible-character', 'out with a zero-width space', 'out___', 'invisible-character-68', 'Take it out: connect to out'],
+      [`${CYR_O}ut`, 'look-alike-letter', `${CYR_O}ut with the Cyrillic letter ${CYR_O}`, '__ut', 'look-alike-letter-19', 'Connect to out'],
+    ] as const) {
+      const found = traps(net(name));
+      expect(found.map((t) => [t.id, t.severity, t.title]), id).toEqual([[id, 'error', `B1's formula reads a node nothing connects to: ${title}`]]);
+      expect(found[0]!.ngspice, id).toBe(`ngspice warns 'singular matrix: check node ${spelled}' and then stops: 'The operating point could not be simulated successfully'. No results. [${fact}]`);
+      expect(found[0]!.why, id).toContain(`So the formula reads the node ${spelled}, not out, and no part connects to that node.`);
+      expect(found[0]!.why, id).not.toContain('the parts on it');
+      expect(found[0]!.fixes.map((f) => f.label), id).toEqual([fixLabel]);
+      expect(applyFix(net(name), found[0]!.fixes[0]!), id).toBe(net('out'));
+      // An E's formula too.
+      expect(traps(net(name, 'E1 e 0 VALUE={v(NAME)*2}')).map((t) => [t.id, t.severity]), id).toEqual([[id, 'error']]);
+      // With no node out for the parts, taking the character out would mend nothing: no fix.
+      expect(traps(net(name, undefined, 'mid'))[0]!.fixes, id).toEqual([]);
+    }
+    // Turkish letters: no part is on a node ngspice spells ____k____, so "Rename çıkış to cikis" would leave it failing.
+    const turk = traps(net(T));
+    expect(turk.map((t) => [t.id, t.severity, t.title])).toEqual([['non-ascii-node', 'error', `B1's formula reads a node nothing connects to: ${T}`]]);
+    expect(turk[0]!.ngspice).toBe("ngspice warns 'singular matrix: check node ____k____' and then stops: 'The operating point could not be simulated successfully'. No results. [non-ascii-node-26]");
+    expect(turk[0]!.fixes).toEqual([]);
+    // With the parts on cikis, the name was written for that node: the fix connects the formula to it.
+    const there = traps(net(T, undefined, 'cikis'));
+    expect(there[0]!.fixes.map((f) => f.label)).toEqual(['Connect to cikis']);
+    expect(applyFix(net(T, undefined, 'cikis'), there[0]!.fixes[0]!)).toBe(net('cikis', undefined, 'cikis'));
+    // A part on the name: the words for a node the parts are on, as before (space-character-10).
+    expect(traps(`* t\nV1 in 0 5\nR1 in o${THIN}ut 1k\nR2 o${THIN}ut 0 1k\n.op\n.end\n`)[0]!.ngspice).toContain('[space-character-10]');
+  });
 });

@@ -2381,6 +2381,63 @@ E1 e 0 VALUE=<NBSP>{v(out)*2}, the character right after =, which PlainSpice's c
 
 PlainSpice's checks: no trap.
 
+### nbsp-8. A name with a no-break space that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). As space-character-32: ngspice reads v(out<NBSP>) as the node out__, which no part connects to, warns "singular matrix: check node out__" and stops. Taken out, the formula reads out: e = 5 V.
+
+```spice
+* a no-break space in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out<NBSP>)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    out__                                             0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node out__
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out: connect to out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `nbsp`.
+
 ## missing-value
 
 A part line with its nodes but no value. R, C and L: warning (ngspice leaves the part out when nothing follows the nodes; with settings such as m=2 or ic=0 it keeps it: a resistor at 1 mΩ with a warning, a capacitor or inductor without capacitance or inductance, silently: missing-value-8 to -10). V and I: warning (ngspice uses 0); for V the fix writes the 0 explicitly, which is right for an ammeter. E, F, G and H: error, because native ngspice 47 stops while PlainSpice's engine silently uses 0. After the re-check of the fixes (12 November 2026, S6), E, F, G and H are told apart by what follows the nodes: with nothing at all, native 47 stops (missing-value-4 to -7); with settings but no number (`gain`, `m=2`), native 47 and 42, like our engine, use 0 and say nothing (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain, but the character checks' or unknown-word's (invisible-character-26, look-alike-letter-14, unknown-word-18 to -21). After the last pass (13 November 2026, code review C3-5): an E given by a formula, `VALUE={...}` or `vol={...}`, and a G given by `VALUE={...}` or `cur={...}`, has two nodes and no gain, and needs none: ngspice turns the line into a B source, and native 47 and 42 and our engine run it (missing-value-15 to -17). Before, its words were read as control nodes and a gain: "E1 has no gain", "value has no DC path to ground", and no numbers.
@@ -13842,6 +13899,74 @@ a .func with words of its own inside v(...):
 
 PlainSpice's checks: `non-ascii-node`.
 
+### non-ascii-node-26. A name with Turkish letters that only a formula reads, and no part is on: a node nothing connects to, 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice spells çıkış as ____k____, and when no part is on a node it spells that way (here the parts are on out), the formula reads a node nothing connects to: "singular matrix: check node ____k____", and no results. Renaming it to cikis would leave it so; the checks offer no fix then. When the parts are on cikis (the second run), the formula was written for that node, and the fix connects it there: e = 10 V.
+
+```spice
+* Turkish letters in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(çıkış)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    ____k____                                         0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node ____k____
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+with the parts on cikis, V1 giris 0 10 / R1 giris cikis 1k / R2 cikis 0 1k and B1 e 0 V=v(çıkış)*2, which PlainSpice's checks say the same way, with the fix "Connect to cikis":
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check node ____k____
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after that fix, B1 e 0 V=v(cikis)*2:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(b1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
 ## invisible-character
 
 Added after the final reviews of 12 November 2026 (security review F2). An invisible character (a
@@ -16676,6 +16801,63 @@ after the fix "Take it out: name the node out" (invisible-character), which writ
 
 PlainSpice's checks: `invisible-character`.
 
+### invisible-character-68. A name with a zero-width space that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice keeps the character in the name (out___), as on a part line (invisible-character-3), but no part is on that node, so it warns "singular matrix: check node out___" and stops. Taken out, the formula reads out: e = 5 V.
+
+```spice
+* a zero-width space in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out<ZWSP>)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    out___                                            0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node out___
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out: connect to out" (invisible-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `invisible-character`.
+
 ## look-alike-letter
 
 Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,
@@ -17558,6 +17740,63 @@ our engine (wasm), as ngspice -b -r (exit 0):
     vectors: v(giris) = 10, v(__ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
 after the fix "Rename оut to out" (look-alike-letter), which writes `R1 giris out 1k`, `R2 out 0 1k`, `B1 b 0 V=v(out)*2`:
     native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(out) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's checks: `look-alike-letter`.
+
+### look-alike-letter-19. A name with a Cyrillic о that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice writes the letter's bytes as underscores (__ut), as on a part line (look-alike-letter-5), but no part is on that node, so it warns "singular matrix: check node __ut" and stops. With the plain letter, the formula reads out: e = 5 V.
+
+```spice
+* a Cyrillic o in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(оut)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    __ut                                              0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node __ut
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Connect to out" (look-alike-letter), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
 ```
 
 PlainSpice's checks: `look-alike-letter`.
@@ -19628,6 +19867,91 @@ with another one after an operator, B1 e 0 V=i(V<THIN>s)*<THIN>1k: the operator'
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
       Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-32. A name with a thin space that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice keeps the character in the name (o___ut), as on a part line (space-character-10), but here no part is on that node: only B1's formula reads it, so the circuit's matrix has a row of nothing. ngspice warns "singular matrix: check node o___ut" six times and stops ("The operating point could not be simulated successfully"), with any analysis (the rawfile of a .tran or .dc run has no points). The same for an E's formula. Taken out, the formula reads out: e = 5 V.
+
+```spice
+* a thin space in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(o<THIN>ut)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    o___ut                                            0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node o___ut
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out: connect to out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+in an E's formula, E1 e 0 VALUE={v(out<THIN>)*2}:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check node out___
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+with .tran 1u 10u instead of .op:
+    ngspice 47, -b -r (exit 1): (no rawfile data)
+      Error: incomplete or empty netlist
+      Warning: singular matrix:  check node o___ut
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+      Error: Finding the operating point for transient simulation failed
+    ngspice 42, -b -r (exit 1): (no rawfile data)
+      Warning: singular matrix:  check node o___ut
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
     our engine (exit 1, no results): (none), with the same messages as ngspice 47
 ```
 
