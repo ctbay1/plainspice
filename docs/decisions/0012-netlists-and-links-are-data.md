@@ -756,7 +756,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   parameter on this device…", as V's i and p and I's v and p are values the source can only report;
   the checks now say so (`SOURCE_REPORTS` in `src/spice/traps.ts`: the parser's tables, which the
   editor's highlighting shares, are left as they are), from runs recorded beside space-before-suffix-12
-  and unknown-word-6.
+  and unknown-word-6. We chose naming each version over the skeptic's other way, quoting under plain
+  "ngspice" only the words both versions print ("no such parameter on this device", "no simulations
+  run"), which is shorter: the texts beside these already name each version where the two differ
+  (invisible-character-46 with this very message, the .dc checks, zero-ohm), the ngspice output panel
+  shows ngspice 47's whole line, and for a B line the two messages share only "mal formed B".
 - **A resistance below 1e-12 Ω that is not 0** (last pass F4). The words for a 0 (C1, CR1-1 above)
   covered a value of exactly 0 only: on `R1 n1 0 3a` the unit-letter card said "ngspice reads 3a as 3
   attoohms and says nothing", where native ngspice 47 warns "Value of resistor r1 is too small, set to
