@@ -97,7 +97,8 @@ before it copies it: blanks taken out of brackets, string parameters joined, the
 circuits built inside built ones, the names `print` and `write` give a formula, and `meas` words in 100
 bytes. limit-18 and limit-19, after a review of the second fix, are the lines ngspice runs as commands
 besides a `.control` block's (a `*#` line anywhere, `##` and `;#`, a `.control` block or a `*#` line after
-`.end`, a `;` line in an `*ng_script` file, `pre_`) and how its control reader makes their words (blanks
-kept in quotes, a backslash dropped, choices in braces made into words, `~` made the home folder); limit-16
-and limit-17 gained a built circuit's `.title` line, a formula's name with its blanks and quotes, and
+`.end`, a `;` line in an `*ng_script` file, `pre_`), the lines after `.end`, which are part of the circuit
+to it, and how its control reader makes their words (blanks kept in quotes, a backslash dropped, choices in
+braces made into words, `~` made the home folder); limit-12, limit-16 and limit-17 gained `ngbehavior` set
+before a built circuit, a built circuit's `.title` line, a formula's name with its blanks and quotes, and
 `fft`, `psd`, `spec` and `asciiplot`.
