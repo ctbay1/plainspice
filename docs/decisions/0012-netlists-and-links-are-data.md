@@ -789,4 +789,28 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   the reason; Ctrl+Enter on the 120,001-point sweep with the B line typed in gives the same, for line 6; Run
   on a link opened without running of a netlist with no analysis line gives "Nothing to run yet · Add an
   analysis line…" (a0fcb61: "Not run yet" or "Live runs paused" and "press Run", each time).
+- **A slow run whose numbers are not answers says so on the status line** (the round-2 critic of these
+  fixes, CR2-2). A run over 1.5 s pauses live runs itself, and the status line gave the pause's words for
+  every outcome but CR1-1's two: after a 9 s run that found an error (two capacitors in series, 2,000,000
+  points), "Live runs paused · The last run took 9.1 s, so ngspice does not run after every change: press
+  Run (Ctrl+Enter)." in the paused tone, while the drawing's red pen, both cards, the Numbers panel and the
+  announcements said the numbers were not answers. While live runs are paused, a finished run of the text
+  as it is now is that slow run (a quick Run turns live runs on again, `live.ts`), so when its numbers are
+  not answers the status line now says how it went, as after a quick run ("Not reliable · A check found an
+  error: …", in the bad tone); the pause is still said aloud ("That run took … s, so ngspice now runs only
+  when you press Run"), and a change brings the pause's words back. A slow run whose numbers are answers
+  keeps the pause's words: they are what to know then. Tests: `tests/unit/app-words.test.ts` (fails on
+  0104ec1). In the built site (1280 × 800, the critic's link): after a 10.7 s run, "Not reliable · A check
+  found an error: b has no DC path to ground." (rc3: "Live runs paused · …"); after a change, the pause's
+  words.
+- **The Plot panel gives the reason too** (the round-2 critic, CR2-3). For a sweep PlainSpice does not run,
+  the Plot panel, and the Plot sheet on a phone, said only "The plot comes once ngspice has run this
+  netlist.", a run that does not come until the netlist changes (it added the status line's words for the
+  paused tone only). For a run of the netlist as it is now that failed (a netlist PlainSpice does not run,
+  or an engine that stopped), it now says "The simulation could not run:" and why, as the ngspice output
+  panel does (above). Not taken: the status line's words after "The plot comes once…" for the bad tone too,
+  which would keep that promise. Tests: `tests/unit/app-run-copy.test.tsx` (fails on 0104ec1). In the built
+  site (the critic's refused `.tran` link, 1280 × 800 and the Plot sheet on an iPhone SE): "The simulation
+  could not run: Line 5: …" (rc3: "The plot comes once ngspice has run this netlist."), with no sideways
+  scroll and the zoom where it was.
 
