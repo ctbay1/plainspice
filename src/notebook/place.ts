@@ -48,6 +48,8 @@ export interface BesideOptions {
    * side with room wins, however far along it). A note prefers the nearest free paper on any side.
    */
   sidePenalty?: number;
+  /** Only a place that covers nothing: none when every place covers something (the least is then not looked for). */
+  freeOnly?: boolean;
 }
 
 const width = (b: Box): number => b.x1 - b.x0;
@@ -112,6 +114,26 @@ function covers(box: Box, room: Room): boolean {
   return grid.covers(box, room);
 }
 
+/**
+ * coverCost, summed in the same order, but stopping once the sum reaches `bound`: below `bound` it is
+ * coverCost; otherwise it is no less than `bound` (the parts summed, which never decrease the sum).
+ */
+function coverCostBelow(box: Box, room: Room, bound: number): number {
+  for (const n of room.never ?? []) if (boxesOverlap(box, n)) return Infinity;
+  let cost = 0;
+  for (const b of room.boxes) {
+    if (!boxesOverlap(box, b)) continue;
+    cost += 1 + overlapArea(box, b);
+    if (cost >= bound) return cost;
+  }
+  for (const [a, b] of room.segments) {
+    if (!segmentCrossesBox(a, b, box)) continue;
+    cost += 1;
+    if (cost >= bound) return cost;
+  }
+  return cost;
+}
+
 /** How much of the room's boxes and wires `box` covers (0: none; Infinity: a box it may never cover). */
 export function coverCost(box: Box, room: Room): number {
   for (const n of room.never ?? []) if (boxesOverlap(box, n)) return Infinity;
@@ -160,13 +182,14 @@ export function placeBeside(target: Box, w: number, h: number, room: Room, optio
   if (pen === undefined) candidates.sort((p, q) => p.rank - q.rank || p.distance - q.distance);
   else candidates.sort((p, q) => p.distance + p.rank * pen - (q.distance + q.rank * pen));
   // The first place that covers nothing, found by looking near each place and stopping at the first
-  // thing it covers; only when every place covers something is each one's cover summed, for the least
-  // (on a drawing at the format's limits, summing each place's cover took two seconds a click; second
-  // re-check, P2).
+  // thing it covers; only when every place covers something is each one's cover summed, for the least,
+  // each sum stopping once it is no less than the least so far (on a drawing at the format's limits,
+  // summing each place's whole cover took two seconds a click; second re-check, P2).
   for (const c of candidates) if (!covers(c.box, room)) return { box: c.box, side: c.side, cost: 0 };
+  if (options.freeOnly) return undefined;
   let best: Placement | undefined;
   for (const c of candidates) {
-    const cost = coverCost(c.box, room);
+    const cost = coverCostBelow(c.box, room, best ? best.cost : Infinity);
     if (!best || cost < best.cost) best = { box: c.box, side: c.side, cost };
   }
   return best && Number.isFinite(best.cost) ? best : undefined;
@@ -225,6 +248,11 @@ export interface CardRequest {
   avoid?: readonly Box[];
   /** The drawing may be panned once to make room (default true); not when the reader (or an edit) holds the view. */
   pan?: boolean;
+  /**
+   * Only a place that covers nothing (the page docks the card otherwise): none when no place is free,
+   * instead of the one that covers least, which takes summing what every place tried covers.
+   */
+  freeOnly?: boolean;
 }
 
 export interface CardPlacement {
@@ -258,7 +286,7 @@ export function placeCard(req: CardRequest): CardPlacement | undefined {
     const room: Room = { ...drawingRoom(req.scene, view, req.area, req.avoid ?? []), never: [boxOnScreen(view, own)] };
     const target = boxOnScreen(view, own);
     // The nearest free place on any side; above or below is worth a little more than beside.
-    const p = placeBeside(target, req.width, req.height, room, { gap, sides: SIDES_BY_ROOM, step: 8, sidePenalty: SIDE_PENALTY });
+    const p = placeBeside(target, req.width, req.height, room, { gap, sides: SIDES_BY_ROOM, step: 8, sidePenalty: SIDE_PENALTY, ...(req.freeOnly ? { freeOnly: true } : {}) });
     if (!p) return undefined;
     const body = boxOnScreen(view, 'symbol' in placed ? placed.symbol : placed.body);
     const notch = notchFor(p.box, p.side, body);

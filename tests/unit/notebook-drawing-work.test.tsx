@@ -178,4 +178,20 @@ describe('a click’s card finds its place by looking near each place it tries (
     // About 114,000 checks here; summing each place's cover was 140 million.
     expect(looked).toBeLessThan(1_000_000);
   });
+
+  it('where no place beside R1 is free, the page’s card (docked then) is not given the least-covering place, found by summing every place', { timeout: 60_000 }, () => {
+    // The card's paper inside the lattice: every place covers wire. The page docks the card then
+    // (App.tsx), so it asks only for a free place (freeOnly): about 5,000 checks here, where summing what
+    // each place tried covers, to find the least, takes 10 million (each sum stopping once it is no less
+    // than the least so far).
+    const sc = lattice.scene;
+    const b = sc.bounds;
+    const unit = Math.min(1100 / (b.x1 - b.x0), 660 / (b.y1 - b.y0));
+    const view = { unit, x: 130 - b.x0 * unit, y: 90 - b.y0 * unit };
+    const area = { x0: 400, y0: 200, x1: 1000, y1: 700 };
+    expect(placeCard({ scene: sc, part: 'r1', view, area, width: 340, height: 230, pan: true })?.cost).toBeGreaterThan(0);
+    checks.count = 0;
+    expect(placeCard({ scene: sc, part: 'r1', view, area, width: 340, height: 230, pan: true, freeOnly: true })).toBeUndefined();
+    expect(checks.count).toBeLessThan(1_000_000);
+  });
 });

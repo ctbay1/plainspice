@@ -1745,8 +1745,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     }
     placedFor.current = what;
     const p = card
-      ? placeCard({ scene: shown.scene, part: card.key, view: base, area, width: cardWidth, height: cardH, pan })
-      : placeCard({ scene: shown.scene, part: '', target: cardTarget, view: base, area, width: cardWidth, height: cardH, pan });
+      ? placeCard({ scene: shown.scene, part: card.key, view: base, area, width: cardWidth, height: cardH, pan, freeOnly: true })
+      : placeCard({ scene: shown.scene, part: '', target: cardTarget, view: base, area, width: cardWidth, height: cardH, pan, freeOnly: true });
     if (!p || p.cost > 0) {
       setPlacement(undefined);
       setDockedSession(openSession);
