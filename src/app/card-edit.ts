@@ -236,18 +236,19 @@ const shownLines = new WeakMap<Schematic, string[] | null>();
 /**
  * `next` as it should be written: unchanged when its parts are drawn where they were in `drawn`
  * (the drawing of the text the card opened on), or with `drawn`'s drawing written in (the *@ lines)
- * when the new value would move them, or when the build moves PILED parts or more (lines that put
- * parts' pins on other nodes' pins). Every build of such lines moves the parts again, whatever the
- * value (where a part's pins are does not depend on it): a crafted link with 60 parts at one point
- * took a fifth of a second for each key on a computer, and a second on a phone. So each value typed
- * then writes the drawing shown (the parts where they are drawn, and the wires, names and ground
- * symbols the repairs drew) without building the piled lines again (second re-check's critic), but
- * only when those lines read back as that drawing: checked once for each text a card opens on, by
- * building the first value's text, which the page then draws. Otherwise (D5 of its critic: the first
- * value made most of a joined grid vanish, and wrote 4,900 lines) each value changes only the value
- * and is built as the general case is. Lines of parts and nodes the netlist does not have yet are
- * kept as written (decision 0013: only a change made in the drawing drops them). The value as the
- * card opened (Put back) gives the text it opened on, exactly (D6).
+ * when the new value would move them (and those lines fit what a reading takes), or when the build
+ * moves PILED parts or more (lines that put parts' pins on other nodes' pins). Every build of such
+ * lines moves the parts again, whatever the value (where a part's pins are does not depend on it): a
+ * crafted link with 60 parts at one point took a fifth of a second for each key on a computer, and a
+ * second on a phone. So each value typed then writes the drawing shown (the parts where they are
+ * drawn, and the wires, names and ground symbols the repairs drew) without building the piled lines
+ * again (second re-check's critic), but only when those lines read back as that drawing: checked
+ * once for each text a card opens on, by building the first value's text, which the page then draws.
+ * Otherwise (D5 of its critic: the first value made most of a joined grid vanish, and wrote 4,900
+ * lines) each value changes only the value and is built as the general case is. Lines of parts and
+ * nodes the netlist does not have yet are kept as written (decision 0013: only a change made in the
+ * drawing drops them). The value as the card opened (Put back) gives the text it opened on, exactly
+ * (D6).
  */
 export function keepDrawing(drawn: Schematic, next: string): string {
   // The text the card opened on stays among the last built while the card types: an undo goes back to it.
@@ -275,5 +276,7 @@ export function keepDrawing(drawn: Schematic, next: string): string {
   const after = builtOf(next);
   const now = serializeDrawing(after.circuit, after.drawing, after.kept);
   if (sameLines(was, now)) return next;
-  return applyChanges(next, drawingBlockChanges(after.netlist, lines()));
+  // Never lines past what a reading takes: the drawing after them would be lost (its critic, D5).
+  const all = lines();
+  return linesFit(all) ? applyChanges(next, drawingBlockChanges(after.netlist, all)) : next;
 }

@@ -224,6 +224,26 @@ describe('where the parts are drawn', () => {
     }
   }, 120_000);
 
+  it('a value that would move the drawing writes its lines only when a reading takes them all (its critic, D5)', { timeout: 120_000 }, () => {
+    // A 0 V source is drawn as an ammeter, so V1 = 0 moves the parts the repairs placed, and the lines
+    // keep them still. Nine parts between node 1 and ground at one point beside a 99 × 99 grid named 1:
+    // the lines, wire chained (format.ts), fit and read back as drawn (b060bc8 wrote 9,633 lines, and the
+    // grid was gone).
+    const nine = starAtOnePoint(10, namedGrid(99, '1'));
+    const nineDrawn = drawnOf(nine);
+    const kept = keepDrawing(nineDrawn, withValue(valueSpot(nine, 'v1')!, '0'));
+    expect(drawingLines(kept)).toBeLessThanOrEqual(MAX_DRAWING_LINES);
+    const again = drawnOf(kept);
+    expect(again.problems).toEqual([]);
+    expect(picture(again)).toEqual(picture(nineDrawn));
+    // Sixty: the drawing shown has 20,077 grid units of wire, more than a reading takes (20,000). Its
+    // lines written, the last wire was dropped as out of range; so the value is written alone, and the
+    // drawing is the new value's, every unit of its wire read.
+    const sixty = starAtOnePoint(60, namedGrid(99, '1'));
+    const next = withValue(valueSpot(sixty, 'v1')!, '0');
+    expect(keepDrawing(drawnOf(sixty), next)).toBe(next);
+  });
+
   it('Put back where the lines pile parts gives the text the card opened on, exactly (its critic, D6)', () => {
     const text = partsAtOnePoint(12);
     const drawn = drawnOf(text);
