@@ -318,6 +318,20 @@ describe('limit-13: ngspice takes the blanks out of brackets on some lines, join
     }
   });
 
+  it('with 511 letters in a B source’s brackets, our engine stops with native 47’s own message, not 42’s; PlainSpice does not run it', async () => {
+    const text = `* t\n${DIVIDER}B1 c 0 V=i(R1)*1+( ${w(200)} ${w(200)} ${w(111)} )\nR3 c 0 1k\n.op\n.end\n`;
+    const run = await engine.run(text);
+    // Native 47, -b -r and -b: exit 1 with these lines. Native 42: exit 1, with "Netlist line no. 5:" in
+    // place of 47's first line, before each of its messages.
+    expect(run.exitCode).toBe(1);
+    expect(crashed(run)).toBe(false);
+    expect(run.stderr).toContain('Error in netlist line no. 8, new internal line no. 5:');
+    expect(run.stderr).toContain(`Undefined parameter [${w(200, 'w')}`);
+    expect(run.stderr).toContain('Cannot compute substitute');
+    expect(run.stderr).not.toContain('Netlist line no. 5:');
+    expect(runCopy(text)).toBeUndefined();
+  });
+
   it('print v( … .x ): ngspice copies the joined name up to the dot into 512 bytes; PlainSpice does not run a joined name over 250 bytes', async () => {
     const text = (last: number): string => `* t\n${DIVIDER}.op\n.control\nop\nprint v( ${w(200)} ${w(200)} ${w(last)} .x )\n.endc\n.end\n`;
     // 512 bytes before the dot: native 47 and 42 run on, the sanitized build stops in vec_get; our engine runs on.
