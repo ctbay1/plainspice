@@ -13,6 +13,7 @@ import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts'
 import type { AnalysisResults } from '../../src/engine/results.ts';
 import type { RunResult } from '../../src/engine/types.ts';
 import { errorTrap, groupTraps, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from '../../src/app/model.ts';
+import { RUN_COPY_WORDS } from '../../src/spice/run-netlist.ts';
 import type { Trap } from '../../src/spice/types.ts';
 
 const DIVIDER = '* Start here\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
@@ -114,6 +115,24 @@ describe('solveText', () => {
     expect(errorTrap(record)?.id).toBe('floating-dc');
     expect(record.annotations).toEqual([]);
     expect(record.noSingleAnswer?.at).toBe('b');
+  });
+
+  it('a text ngspice cannot take is never given to it: the run fails with the reason', async () => {
+    const ran: string[] = [];
+    const text = '* typo\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n';
+    await expect(solveText(text, { run: async (t) => (ran.push(t), run()) })).rejects.toThrow(RUN_COPY_WORDS.noClose(4, 'v('));
+    expect(ran).toEqual([]);
+  });
+
+  it('a long title runs, cut in the copy, with the numbers of a short one, and the record says so', async () => {
+    const long = DIVIDER.replace('* Start here', `* ${'Ş'.repeat(300)}`);
+    const ran: string[] = [];
+    const record = await solveText(long, { run: async (t) => (ran.push(t), ngspice.run(t)) });
+    expect(ran[0]?.split('\n')[0]).toBe(`* ${'Ş'.repeat(251)}`);
+    expect(record.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 602, 504)]);
+    expect(record.status).toBe('ok');
+    const short = await solveText(DIVIDER, ngspice);
+    expect(record.results.op?.nodes).toEqual(short.results.op?.nodes);
   });
 });
 

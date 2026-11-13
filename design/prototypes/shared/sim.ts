@@ -13,7 +13,7 @@ import { formatSI, speakSI } from '../../../src/format/si.ts';
 import { describeCircuit, describeResults, annotateLines, type CurrentWords, type LineAnnotation, type NodeVoltageWords, type ResultsInWords } from '../../../src/spice/describe.ts';
 import { explainNetlist } from '../../../src/spice/explain.ts';
 import { parseNetlist } from '../../../src/spice/parse.ts';
-import { netlistToRun } from '../../../src/spice/run-netlist.ts';
+import { textToRun } from '../../../src/spice/run-netlist.ts';
 import { checkTraps } from '../../../src/spice/traps.ts';
 import type { LineExplanation, Trap } from '../../../src/spice/types.ts';
 import { assignNodeColours } from '../../../src/theme/nodes.ts';
@@ -73,7 +73,7 @@ export async function solve(netlistText: string): Promise<Solution> {
   const netlist = parseNetlist(netlistText);
   const checks = checkTraps(netlist);
   const t0 = performance.now();
-  const run = await engine().run(netlistToRun(netlist).text);
+  const run = await engine().run(textToRun(netlist));
   const ms = performance.now() - t0;
   const results = interpretPlots(run.plots);
   const words = describeResults(netlist, results, run);

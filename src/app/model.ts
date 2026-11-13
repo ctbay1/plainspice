@@ -29,7 +29,7 @@ import {
 } from '../spice/describe.ts';
 import { explainLine as explainLineImpl, explainNetlist as explainNetlistImpl, readAnalysis } from '../spice/explain.ts';
 import { parseNetlist } from '../spice/parse.ts';
-import { netlistToRun as netlistToRunImpl, type NetlistToRun } from '../spice/run-netlist.ts';
+import { netlistToRun as netlistToRunImpl, RUN_COPY_WORDS, type NetlistToRun } from '../spice/run-netlist.ts';
 import { checkTraps as checkTrapsImpl } from '../spice/traps.ts';
 import type { LineExplanation, Netlist, Trap } from '../spice/types.ts';
 import type { LivePlan } from './live.ts';
@@ -115,11 +115,17 @@ export function pointsAskedFor(netlist: Netlist): number | undefined {
 
 /**
  * The text ngspice runs: the student's text, plus `.options savecurrents` before .end for an
- * operating point, so every part's current is saved (src/spice/run-netlist.ts). If that fails,
- * the student's text unchanged.
+ * operating point, so every part's current is saved, with titles cut to what ngspice can write, or
+ * nothing to run when a word would not fit in ngspice (src/spice/run-netlist.ts). If preparing it
+ * fails, nothing runs: the student's text unchanged could be one that ngspice cannot take.
  */
 export function netlistToRun(netlist: Netlist): NetlistToRun {
-  return guarded('preparing the run', () => netlistToRunImpl(netlist), { text: netlist.text, added: [] });
+  return guarded('preparing the run', () => netlistToRunImpl(netlist), {
+    text: netlist.text,
+    added: [],
+    notes: [],
+    notRun: { line: 1, reason: RUN_COPY_WORDS.failed },
+  });
 }
 
 // ------------------------------------------------------------------ reading a text once
@@ -155,6 +161,8 @@ export interface RunRecord extends Solution {
   results: AnalysisResults;
   /** Lines PlainSpice added to the copy ngspice ran (shown in the ngspice output panel). */
   added: readonly string[];
+  /** What else PlainSpice did to that copy, a sentence each (shown there too): a title cut. */
+  notes: readonly string[];
 }
 
 /** What runs ngspice (the app's Engine, or the engine itself in tests). */
@@ -164,11 +172,14 @@ export interface Runner {
 
 /**
  * Runs a text and reads its results. The numbers are answers only when ngspice found them
- * trustworthy and no check found an error (status 'ok'): otherwise the drawing shows none.
+ * trustworthy and no check found an error (status 'ok'): otherwise the drawing shows none. A text
+ * with a word ngspice cannot take is not run: the run fails with the reason (the status line and
+ * the Numbers panel say it, "ngspice could not run").
  */
 export async function solveText(text: string, runner: Runner, now: () => number = () => performance.now()): Promise<RunRecord> {
   const { netlist, traps } = readNetlist(text);
   const toRun = netlistToRun(netlist);
+  if (toRun.notRun) throw new Error(toRun.notRun.reason);
   const t0 = now();
   const run = await runner.run(toRun.text);
   const ms = now() - t0;
@@ -176,7 +187,7 @@ export async function solveText(text: string, runner: Runner, now: () => number 
   const words = describeResults(netlist, results, run);
   const status: Solution['status'] = traps.some((c) => c.severity === 'error') ? 'check' : words.status;
   const annotations = status === 'ok' ? annotateLines(netlist, results, run) : [];
-  const record: RunRecord = { text, status, words, annotations, checks: traps, ms, netlist, run, results, added: toRun.added };
+  const record: RunRecord = { text, status, words, annotations, checks: traps, ms, netlist, run, results, added: toRun.added, notes: toRun.notes };
   const singular = status === 'ok' ? undefined : run.diagnostics.find((d) => d.code === 'singular-matrix' && d.subject);
   const title = words.warnings.find((m) => m.code === 'singular-matrix')?.title;
   if (singular?.subject && title) record.noSingleAnswer = { at: netlistNode(netlist, singular.subject), title };

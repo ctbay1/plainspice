@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
+import { checkLinks, describeBroken } from './scripts/dist-links.ts';
 
 const root = import.meta.dirname;
 
@@ -227,6 +228,35 @@ function pageHead(): Plugin {
 }
 
 /**
+ * The build fails when a page links to a file that is not in dist/ (scripts/dist-links.ts, decision
+ * 0009): GitHub Pages answers it with 404, while vite preview answers with the app page, so no
+ * browser test sees it. The engine's source tarball may be missing from a build made without it:
+ * CI fetches it (scripts/fetch-ngspice-source.sh) for the build it deploys, where it is checked too.
+ */
+function checkSiteLinks(): Plugin {
+  let outDir = resolve(root, 'dist');
+  return {
+    name: 'plainspice-check-site-links',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      handler() {
+        const version = /^NGSPICE_VERSION=(\S+)/m.exec(readFileSync(resolve(root, 'engine/build.sh'), 'utf8'))?.[1] ?? '?';
+        const shipped = existsSync(resolve(root, `.engine-work/download/ngspice-${version}.tar.gz`));
+        const check = checkLinks(outDir, { mayBeMissing: shipped ? [] : [`engine/source/ngspice-${version}.tar.gz`] });
+        if (check.broken.length) {
+          throw new Error(`${check.broken.length} link(s) in the built pages point at no file of the site (GitHub Pages would answer 404):\n${describeBroken(check.broken)}`);
+        }
+      },
+    },
+  };
+}
+
+/**
  * Milestone 2's design prototypes (design/prototypes/<direction>/index.html, and design/index.html
  * comparing them), the schematic lab (design/lab/: every example drawn by the automatic layout) and
  * Tarık's checkpoint of the chosen look (design/checkpoint/: the Notebook canvas on p02's circuits):
@@ -340,6 +370,7 @@ export default defineConfig({
     shipDependencyLicences(),
     offlineApp(),
     pageHead(),
+    checkSiteLinks(),
   ],
   build: {
     target: 'es2022',

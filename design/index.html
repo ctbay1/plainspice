@@ -32,6 +32,7 @@
       figure img { width: 100%; height: auto; display: block; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
       figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
       .pair { display: grid; grid-template-columns: 3fr 1fr; gap: 10px; align-items: start; }
+      .views { max-width: 640px; }
       details { border-top: 1px solid var(--line); padding-top: 10px; }
       summary { cursor: pointer; color: var(--link); font-weight: 600; }
       .more { display: grid; gap: 10px; grid-template-columns: 3fr 1fr; margin-top: 10px; }
@@ -55,7 +56,7 @@
           The Notebook look, built for real, on the dependent-source circuits of “Thévenin Equivalent with Dependent Sources”:
           drawn from the netlist, solved live by ngspice, with the named parts toolbar and its hint line, Ctrl+K and the status
           line, and the handwriting / plain font setting. Try it on a computer and on a phone. On a phone, “As in the video”
-          shows the drawing the usual way round: <a href="../docs/design/checkpoint/p02-4-open-phone-views.png">both views side by side</a>.
+          shows the drawing the usual way round: <a href="#phone-views">both views side by side</a>.
         </p>
         <a class="open" href="./checkpoint/">Open the checkpoint</a>
         <div class="pair">
@@ -66,6 +67,7 @@
           <figure><img loading="lazy" src="../docs/design/checkpoint/p02-4-open-G1-typing-desktop.png" alt="G1 changed from 0.25 to 0.3 amps per volt: the card beside G1, a now 32 V with 24 V crossed out on the paper" /><figcaption>Changing G1: the numbers move, the old ones crossed out</figcaption></figure>
           <figure><img loading="lazy" src="../docs/design/checkpoint/p02-4-open-G1-typing-phone-keyboard.png" alt="On a phone while typing: one strip above the keyboard, G1 and the nodes it changes above it" /><figcaption>Typing on a phone</figcaption></figure>
         </div>
+        <figure id="phone-views" class="views"><img loading="lazy" width="1720" height="1938" src="../docs/design/checkpoint/p02-4-open-phone-views.png" alt="Both phone views of the checkpoint side by side. Turned to fit: the whole circuit at a readable size, ground down the left. As in the video: it opens at V1 and s; drag the paper, or press more, for the rest." /><figcaption>The two views on a phone</figcaption></figure>
       </section>
 
       <div class="directions">

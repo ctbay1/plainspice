@@ -1322,11 +1322,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const outcome = liveState.outcome;
   const paused = liveState.paused;
   const lastSaid = useRef<unknown>(undefined);
+  // The same reason again is not said again: a netlist PlainSpice does not give ngspice fails at every
+  // pause while it is typed (src/spice/run-netlist.ts), until it is mended.
+  const lastFailed = useRef('');
   useEffect(() => {
     if (outcome === lastSaid.current) return;
     if (outcome.kind === 'stopped') announce(t('announceStopped'));
     else if (outcome.kind === 'timeout') announce(t('announceTimeout', { seconds: outcome.seconds }));
-    else if (outcome.kind === 'failed') announce(t('announceFailed', { reason: outcome.reason }), 'assertive');
+    else if (outcome.kind === 'failed' && outcome.reason !== lastFailed.current) announce(t('announceFailed', { reason: outcome.reason }), 'assertive');
+    if (outcome.kind !== 'none') lastFailed.current = outcome.kind === 'failed' ? outcome.reason : '';
     lastSaid.current = outcome;
   }, [outcome, announce]);
   const lastPause = useRef(paused);
@@ -3686,7 +3690,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         return <p className="muted">{[t('plotWaiting'), status.tone === 'paused' ? status.detail : undefined].filter(Boolean).join(' ')}</p>;
       }
       case 'output':
-        return <OutputPanel result={record?.run} added={record?.added ?? []} />;
+        return <OutputPanel result={record?.run} added={record?.added ?? []} notes={record?.notes ?? []} />;
     }
   };
 

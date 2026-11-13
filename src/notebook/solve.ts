@@ -13,7 +13,7 @@ import { interpretPlots } from '../engine/results.ts';
 import type { RunResult } from '../engine/types.ts';
 import { annotateLines, describeResults, netlistNode, type LineAnnotation, type ResultsInWords } from '../spice/describe.ts';
 import { parseNetlist } from '../spice/parse.ts';
-import { netlistToRun } from '../spice/run-netlist.ts';
+import { textToRun } from '../spice/run-netlist.ts';
 import { checkTraps } from '../spice/traps.ts';
 import type { Trap } from '../spice/types.ts';
 
@@ -49,7 +49,7 @@ export async function solve(text: string, runner: Runner, now: () => number = ()
   const netlist = parseNetlist(text);
   const checks = checkTraps(netlist);
   const t0 = now();
-  const run = await runner.run(netlistToRun(netlist).text);
+  const run = await runner.run(textToRun(netlist));
   const ms = now() - t0;
   const results = interpretPlots(run.plots);
   const words = describeResults(netlist, results, run);

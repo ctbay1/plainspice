@@ -617,3 +617,118 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   sweep's "v(out) = 3.5 V", the Plot's legend, the Numbers panel's Node column and the notes at the
   end of netlist lines (the checks warn about the node, and the sentences beside them name the
   character).
+- **Never a netlist that ngspice would write past the end of a fixed space** (second re-check, P1). A
+  title of more than 504 bytes stops `ngspice -b -r` ("buffer overflow detected": it writes
+  `Title: ` and the title into 513 bytes), and in a few other places ngspice copies a name into 100
+  or 512 bytes without checking (limit-1 to limit-19 in [`../spice-facts/limits.md`](../spice-facts/limits.md)).
+  Our engine has no such check: a title of 505 to 523 bytes ran on overwritten memory, a longer one
+  crashed it, which Playwright's browser shows as a crashed page; a real Chromium said "the simulation
+  engine crashed", and saved work with such a title did that on every visit. The copy ngspice runs
+  (`src/spice/run-netlist.ts`) now:
+  - cuts line 1, whole (native ngspice reads ` .title …` there as written), and every `.title` line's
+    title (a `.title` line counts anywhere, even after `.end`) to its first 504 bytes, between two
+    characters; the student's text keeps it, and the ngspice
+    output panel says what was cut and why. The numbers are those of a short title (limit-2). A title
+    is the one thing a student pastes long: a problem statement.
+  - is not run at all when ngspice would write past a space: a word of more than 250 bytes (anything
+    between blanks, brackets, commas, `=`, `{ }`, quotes and operators; a part line's first words and
+    a `.save` line's words as ngspice takes them whole), a name ngspice makes inside subcircuits of
+    more than 250 bytes (a part's `r.x1.x2.r1`, a node's `x1.x2.n1`: it saves currents under them and
+    a `.control` block prints them), a formula's `v(…)` or `i(…)` of more than 500 bytes, an analysis
+    command of more than 500 bytes as ngspice writes it (`.op` and its words with one blank each), or a
+    `.model` line's version of more than 90 bytes (ngspice copies it into 100, limit-9). An analysis
+    command is any line ngspice runs as one: a `.control` block's, after `.end` too, a line that starts
+    with `*#` anywhere (and `##`, `;#` and the like), every line of an `*ng_script` file (one that starts
+    with `;` too), with `pre_` taken off and the commands a `;` separates on a `*#` line (limit-18); its
+    words are read as ngspice's control reader makes them, blanks kept in quotes, a `~` as the engine's
+    home folder, and a command with choices in braces (`{a,b}`, a word each) is not run (limit-19). The
+    lines after `.end` are part of the circuit to ngspice, which makes `.end` a comment and reads on, and
+    get every check of the lines before it (limit-18). The words are measured as ngspice makes them: without the blanks inside brackets where it takes them out (`.save i( a b c )` is one name,
+    limit-13), with the text a string parameter stands for where `{…}` puts it (limit-14), the names a
+    `.probe` line makes and the formula it writes for `p(…)` (limit-15), and the name `print`, `write`,
+    `fft`, `psd`, `spec` and `asciiplot` give a formula, its words with one blank each and the quotes
+    ngspice adds (limit-17); a `meas` command's words keep to 50 bytes, as ngspice writes a
+    wrong one with its message into 100 (limit-17). A line's comment is cut exactly where ngspice cuts
+    it, before these checks, and its words are never read: a `$` glued to a word starts none, so
+    `B1 c 0 V=1$+v(b` is a formula with a `v(` and no `)`. The lines of `circbyline` commands, which
+    ngspice reads as a netlist, are checked as one, a circuit at each `.end`, once: its title (its first
+    line, and a `.title` line's words) keeps to 504 bytes, and a `circbyline` command inside it is
+    refused, as ngspice crashes on it (limit-12, limit-16); so is a netlist that sets `ngbehavior` and
+    builds a circuit, which ngspice then reads in another mode (with `ps` a `$` starts no comment). The run fails with the reason, the line and
+    what to do: the status line says "ngspice could not run" and why, the Numbers panel and the live
+    region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
+    checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
+    types on in a refused line, each pause fails again with the same reason, which is not said again
+    until it changes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
+    formula into a B source (`v(n1, n2)`), and a `.control` block's `display` writes about 40 more
+    bytes around a name (limit-10); one number for every name, written or made inside subcircuits, is
+    simpler to say than one per place. Where ngspice joins more than two (a `.probe` line's formula: a
+    part's, a terminal's and a node's name; words in brackets), the word it makes is measured, not the
+    names in it. With every name that short, `.options savecurrents` is added
+    for every `.op` that runs (decision 0011). No netlist we have comes near: all 147 in the repository
+    give the same copy as before.
+  - Checked with ngspice 47 built with AddressSanitizer, configured like the engine: every kind of
+    word at 600, 5,000 and 20,000 bytes, at the limits and one byte over, each place found by reading
+    every fixed-size array of the source that a netlist reaches, and, after a review of the first fix,
+    what ngspice does to a line before it copies it (1,154 netlists). Of the 301 copies PlainSpice runs,
+    291 give no report and no stop; three are limit-11 (below), five are lines starting with a vertical
+    tab, or a byte order mark and a blank, before `.title`, which ngspice refuses and which the
+    sanitized build reports as an overlapping `memcpy` at any length (no write past a space), and two
+    include a file that crashes native ngspice for no length (`/proc/meminfo`, the netlist itself). Our
+    engine crashes on one, again no length: a netlist that includes itself. After a review of the second
+    fix, which found commands where no check looked (`*#` lines, after `.end`) and words longer than they
+    are written (braces, quotes, `~`), 367 more netlists: of the 184 copies PlainSpice runs, two stop
+    native 47 and the sanitized build for a length, both what this record leaves open (limit-11, below),
+    eleven for something else (a `compose` of a formula, `.param=` at any length), and none crashes our
+    engine; no copy it ran before changed. The limits
+    are below ngspice's own (100 and 504 to 511 bytes), so a little room is left for what the search did
+    not try.
+  - **Only analysis commands keep to 500 bytes** in a `.control` block, as only they are copied into 512
+    (limit-6). The first version of this fix refused every `.control` line over 500 bytes, though
+    ngspice runs a long `print`, `echo` or `let` line, and said a reason that was not true; such
+    netlists, which ran on b060bc8, run again. The checks of a circuit built with `circbyline` went
+    one level deeper for each circuit built inside it, so a 2 kB link took a second of processor time
+    at every pause; such a circuit is now checked once, and one inside it refused. Three checks added then
+    grew with the square of the text too, and froze the page at every pause: a 5.6 kB link of 1,500 parts
+    and 30,000 empty `.probe` lines for 4 s on a computer and 16 s on a phone (each `.probe` line walked
+    every part), a `.model` line of 20,000 `version={x}` (each looked through every `{…}`), a chain of string
+    parameters (one name a pass, and a chain of 12,000 ran out of stack, "a bug in PlainSpice"); and three
+    regular expressions tried every start of a long line (a `.probe` line's `a( a( …`, blanks in a `.probe`
+    request or a `meas` line). What `alli` keeps is now worked out once, braces found by place, string
+    parameters once each without recursion, and the lines read in one pass: the longest task of those
+    links is that of b060bc8 again (computer: 142, 97 and 92 ms; Pixel 7 at four times slower: 589, 385
+    and 364 ms), and unit tests hold each to ten small netlists' time.
+  - **A typo found on the way**: a B source, an E or G source with a formula, or a `.model` line with
+    `temper`, whose `v(` or `i(` has no `)` (`B1 c 0 V=v(b`) makes ngspice look for the `)` past the
+    end of the line. Native ngspice 47
+    and 42 stop ("stack smashing detected") or print bytes they read past it; our engine crashed, so
+    typing such a formula with live runs crashed it at every pause. It is not run either: "the v( in this
+    formula has no ) after it … Add the )". Only where ngspice reads on (limit-5): in an R, C or L
+    formula, an F with `temper`, a `.tf` or `.save` line, ngspice stops with its own message, which the
+    student sees as before.
+  - **Checks say nothing** about these. A title cut is no mistake: the run gives every number, and the
+    output panel says what the copy changed. A refused netlist already says which line and why in the
+    status line, the Numbers panel and the live region, and the run copy, not the trap checks, decides
+    what ngspice gets: the checks may fail softly (a bug there shows fewer checks), while this must
+    hold. If preparing the copy fails (a bug), nothing runs.
+  - Not taken: making the engine itself check (a patch to ngspice's C code). It would need the engine
+    rebuilt, and native ngspice, which PlainSpice runs like, stops the same way; it is the better fix
+    for later, sent upstream.
+  - **Still open: what ngspice's commands compute while they run** (limit-11). Commands make a small
+    program, in a `.control` block, on `*#` lines anywhere or in an `*ng_script` file (limit-18): `set t =
+    $s$s$s$s$s$s` joins short words into a 600-byte name, and `display` then writes it past 512 bytes;
+    `alias xx op` makes `xx` and long words an analysis command of more than 512 bytes; after `op`,
+    `$curplottitle` is the circuit's title, so `op $curplottitle $curplottitle` writes two titles; `echo`
+    with `>` writes a file of commands that `source` then runs. Native
+    ngspice stops; our engine runs on with its memory overwritten. PlainSpice does not run the program
+    before ngspice does, so it gives ngspice the commands as written, measured as their words are
+    (limit-19). Backquotes, which put a shell command's output in a command, are no way past: our engine
+    runs no shell command. A `.control` block writes nothing to the results file (A36): PlainSpice shows
+    its words in the ngspice output panel only. Not running any command (no `.control` block, no `*#`
+    line or its kin, no `*ng_script` file) would close this; refusing only commands with a `$`, an
+    `alias` or a `source` would too, with fewer netlists refused, but a `foreach` over values with `$`, the way
+    ngspice's manual sweeps a part, is one. Either changes what this record allows above ("Never a
+    program": the commands run, `system()` refuses), so it is Tarık's choice. An earlier version of this
+    bullet said not running `.control` blocks would close it: it would not, as `*#` lines run outside
+    them.
+

@@ -38,3 +38,24 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   from what `ngspice -b` prints for the student's file; the tab says why.
 - `.dc` and `.tran` runs are left alone: saving every current there would make the plots and the
   rawfile much larger for little gain. A student who wants those currents adds the line.
+
+## After the final reviews (12 November 2026)
+
+- **Added for every `.op` that runs, long names too** (second re-check, P1). To save a part's
+  current, ngspice copies its full name (inside subcircuits its letter, the X lines and its name,
+  `r.x1.x2.r1`) into a space of 512 bytes without checking (limit-3 in
+  [`../spice-facts/limits.md`](../spice-facts/limits.md)); our engine crashed on a part name of 600
+  bytes with the line added, and ran it without. A netlist with a name that long is not run at all
+  (decision 0012: every name, as written or as ngspice makes it inside subcircuits, at most 250
+  bytes), so the line can always be added: every name it saves fits, with `.save alli` too (limit-7).
+  Not taken: leaving the line out when a name is too long to save, which an earlier version of this
+  fix did. It saved fewer currents with only a note in the ngspice output tab, and the names it let
+  through reach other spaces as well: a `.control` block's `print` and `display` (limit-10).
+- **Not added when a `+` line just after `.end` continues the line before it** (round-2 critic of the
+  second re-check). ngspice makes `.end` a comment and reads on, so such a `+` line continues the last
+  line before `.end` (limit-18 in [`../spice-facts/limits.md`](../spice-facts/limits.md)); with
+  `.options savecurrents` added just before `.end` it would continue that line instead: `B1 c 0 V=1+`,
+  `.end`, `+ v(b)` runs natively with v(c) = 7 V, and with the line added stops with "YYparse error". The
+  copy then runs as written, every voltage the same (A2), without the extra currents. Not taken: adding the
+  line after the `+` lines, at the end of the text, where a `.control` block left open would take it as a
+  command; the case is a `+` line after `.end`, which no netlist we have comes near.
