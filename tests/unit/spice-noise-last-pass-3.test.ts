@@ -136,3 +136,22 @@ describe('a point found within the step\'s rounding of the .op\'s value stands f
     expect([by(r), text(r.words, 'V2')]).toEqual(['exact', 'no current through V2']);
   }, 120_000);
 });
+
+describe('the rule gives a current back only where rounding can hide it, and a point is renamed only where its label reads as the value it is meant to have', () => {
+  it('a current Kirchhoff\'s law gives a wire is drawn only where the voltage it makes across the wire is within a few steps of a double of its ends: doctored to 1 mA, which across 1 µΩ is 1 nV beside node p\'s 732.4 nV, it is not (ngspice\'s numbers then break Kirchhoff\'s law: w9711-10 had 2.33e18 A "through" a resistor at 0 V)', async () => {
+    const source = netlist(...ladder, 'Rw n3 p 1u', 'Vm p q 0', 'Rvm q 0 1t', '.options gmin=1e-12', '.options savecurrents', '.op');
+    const r = await solveText(source, ngspice);
+    expect(text(r.words, 'Rw')).toBe('7.324e-19 A from node n3 to node p through Rw');
+    const doctored = structuredClone(r.results);
+    for (const c of doctored.op!.currents) if (c.element === 'vm' || c.element === 'rvm') c.value = 1e-3;
+    const w = describeResults(parseNetlist(source), doctored, r.run);
+    expect([text(w, 'Rw'), w.warnings.some((m) => m.code === 'rounded-to-0')]).toEqual(['no current through Rw', false]);
+  });
+
+  it('a sweep from −1 V up to 0 V in 0.2 V steps ends at −55.51 aV, where it is meant to be at 0 V: its label, "V1 = −55.51 aV", already says where it is, so the words keep it, with no note about the point', async () => {
+    const r = await solveText(netlist('V1 top 0 9', 'R1 top 0 1k', '.op', '.dc V1 -1 0 0.2'), ngspice);
+    expect(r.results.dc!.scale.values[5]).toBe(-5.551115123125783e-17);
+    expect(sweepText(r)).toContain('At V1 = −55.51 aV: v(top) = −55.51 aV');
+    expect(message(r.words, 'sweep-point')).toBeUndefined();
+  });
+});

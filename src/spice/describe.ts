@@ -3737,6 +3737,15 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     // What leaves the node through the gap makes the currents leaving it add up to 0; a part's current flows from its first node.
     const [first, second] = ends.get(gap.key)!;
     const value = node === first ? -sum : sum;
+    // Only a current the rounding of the gap's two equal voltages can hide: the voltage it makes across a resistor (or that
+    // a G reads) within SAME_VOLTAGE_ULPS of them. Past that, ngspice's own numbers break Kirchhoff's law at the node, and
+    // nothing is given back (w9711-10: 2.33e18 A "through" a resistor whose two ends ngspice gives as 0 V).
+    const [p, n] = gap.letter === 'G' ? [gap.nodes[2], gap.nodes[3]] : [gap.nodes[0], gap.nodes[1]];
+    const [vp, vn] = [volt(p), volt(n)];
+    const ohms0 = gap.letter === 'R' ? gap.value?.number?.value : undefined;
+    const gm = gap.letter === 'G' ? gap.value?.number?.value : undefined;
+    const across = ohms0 !== undefined ? Math.abs(value * ohms0) : gm ? Math.abs(value / gm) : Number.NaN;
+    if (vp === undefined || vn === undefined || !(across <= SAME_VOLTAGE_ULPS * ulp(Math.max(Math.abs(vp), Math.abs(vn))))) return;
     filled.set(gap.key, value);
     sure.add(gap.key);
     const ohms = gap.letter === 'R' ? gap.value?.number?.value : undefined;
@@ -4595,17 +4604,23 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
   const step = sw?.step ? readExact(sw.step.text) : undefined;
   const intended = (k: number): Fraction | undefined => (start && step ? add(start, mul(fraction(BigInt(k)), step)) : undefined);
   const otherwise = new Map<number, Otherwise | null>();
+  const states = dc ? opStatePoints(netlist, results) : undefined;
   const why = (k: number): Otherwise | undefined => {
     let w = otherwise.get(k);
     if (w === undefined) {
       // The rule's state points are decided first (decidedSweep); the exact solution tells for any point.
       if (results.op) decidedSweep(netlist, results);
-      const failed = otherwiseCache.get(results);
-      w = failed?.netlist === netlist ? failed.failed.get(k) : undefined;
-      // Only where ngspice's x drifted from the double ngspice reads for the value the steps say (adding up the step): a
-      // point at that very double is where the steps say, as any value of the netlist is (exact.ts READ_ULPS).
+      const cached = otherwiseCache.get(results);
+      const failed = cached?.netlist === netlist ? cached.failed.get(k) : undefined;
       const at = intended(k);
-      if (!w && at && toDouble(at) !== xs[k] && exactOf(netlist)?.sweep) w = exactOtherwise(netlist, results, k, at);
+      // The value the point's label stands for: the .op's, for a point found near its state; else the steps'. Only where
+      // ngspice's x drifted from it (adding up the step: at that very double the point is where the steps say, as any
+      // value of the netlist is, exact.ts READ_ULPS), and the label still reads as it ("9 V" for 8.999999999999853 V;
+      // "−55.51 aV" for a point meant to be 0 V already says where it is).
+      const meant = failed ? states?.target : at ? toDouble(at) : undefined;
+      const x = xs[k]!;
+      if (meant !== undefined && meant !== x && formatSI(x, unit) === formatSI(meant, unit))
+        w = failed ?? (at && exactOf(netlist)?.sweep ? exactOtherwise(netlist, results, k, at) : undefined);
       otherwise.set(k, w ?? null);
     }
     return w ?? undefined;
@@ -4619,7 +4634,6 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
     const v = speech ? speakSI(x, unit, digits) : formatSI(x, unit, digits);
     return !sw || sw.kind === 'temperature' ? v : speech ? S.sweepAtSpeech(sweepName(sw), v) : S.sweepAt(sweepName(sw), v);
   };
-  const states = dc ? opStatePoints(netlist, results) : undefined;
   const names: PointNames = {
     text: (k) => (sw ? value(k, false) : (states?.name(k) ?? `point ${k + 1}`)),
     speech: (k) => (sw ? value(k, true) : (states?.name(k) ?? `point ${k + 1}`)),
