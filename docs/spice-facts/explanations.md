@@ -6243,6 +6243,56 @@ ngspice 42: the same exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
 ```
 
+Added after the last pass (13 November 2026) (C9w.13, C9w.14; rule-op-vs-sweep-tf): the bridge of C9 with a .param
+line, and beside a transistor, each with its .op and ".dc V1 0 9 3". The rule decides their .op (PlainSpice does not
+model a .param line or a transistor exactly) and shows R5's −8.882e−19 A as 0 A, "its two ends at the same voltage";
+at V1 = 9 V, the .op's own state, ngspice's sweep gives R5 the very same −8.881784197001253e−19 A, and the sweep's
+words and Plot panel showed it there beside the .op's 0. Now the sweep shows 0 at that point too, with a note: "ngspice
+gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. That is the operating point's own state, where ngspice gives the operating
+point's numbers, and the operating point shows it as 0, as its note says. So PlainSpice shows 0 there too, in these
+words and in the Plot panel; at the other points the sweep is as ngspice gives it." The other points keep ngspice's
+numbers (at 8.5 V, a step of 0.5 V, R5's −8.882e−19 A stays). Beside the transistor, the .tf of v(a,b) keeps ngspice's
+−5.551e−17 V/V: a slope, which the rule cannot decide.
+
+```spice
+* the balanced bridge of C9 with a .param line, its .op and a sweep of V1 to its own 9 V
+.param rtop=10k rbot=10k
+V1 top 0 9
+R1 top a {rtop}
+R2 a 0 {rbot}
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+.options savecurrents
+.op
+.dc V1 0 9 3
+.end
+```
+
+```spice
+* the balanced bridge of C9 beside a transistor, with .op and .dc V1 0 9 3
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+Q1 top x 0 qmod
+Rx x 0 1meg
+.model qmod npn
+.options savecurrents
+.op
+.dc V1 0 9 3
+.tf v(a,b) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r out.raw (exit 0), both: the sweep's i(@r5[i]) = [0, 0, 0, -8.881784197001253e-19]; the .op's i(@r5[i]) = -8.881784197001253e-19, v(a) = 4.499999999999999, v(b) = 4.5; beside the transistor, v(Transfer_function) = -5.551115123125783e-17
+ngspice 42: the same exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47 (beside the transistor, but for i(@q1[is]) at V1 = 0, which native gives as −0 and our engine as 0)
+```
+
 ## 4. Messages
 
 Each message explainDiagnostic puts into plain words, with the netlist that makes ngspice print it and the codes `src/engine/diagnostics.ts` gives it in our engine.

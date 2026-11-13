@@ -308,3 +308,27 @@ describe('a .tf ratio is judged against the exact one as the .op beside it is (l
     expect([sp(q.text), q.given, q.exact, offTf(r.words), lostNote(r.words)]).toEqual(['i(Vm)/V1 = 1e-20 (A/V)', undefined, undefined, '', '']);
   });
 });
+
+describe('beside an .op the rule decides, the sweep never gives a number at the .op\'s own state where the .op shows 0 (last pass: rule-op-vs-sweep-tf; C9w.13, C9w.14)', () => {
+  const bridge = ['V1 top 0 9', 'R1 top a {rtop}', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', '.options savecurrents', '.op'];
+  const r5 = (r: Awaited<ReturnType<typeof solveText>>): number[] => Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r5[i])')!.values);
+  const given = (r: Awaited<ReturnType<typeof solveText>>): number[] => Array.from(r.results.dc!.series.find((s) => s.name === 'i(@r5[i])')!.values);
+
+  it('C9 with a .param line swept in steps of 0.5 V: at 9 V, the .op\'s state, R5 is 0 as in the .op, with a note; the other points keep ngspice\'s numbers', async () => {
+    const r = await solveText(netlist('.param rtop=10k', ...bridge, '.dc V1 1 9 0.5'), ngspice);
+    expect([roundingNoise(r.netlist, r.results).by, sp(r.words.currents.find((c) => c.name === 'R5')!.text)]).toEqual(['rule', 'no current through R5']);
+    const [shown, raw] = [r5(r), given(r)];
+    expect([raw[16], shown[16], shown[15], shown[7]]).toEqual([-8.881784197001253e-19, 0, raw[15], raw[7]]);
+    expect(raw[15]).not.toBe(0);
+    expect(sp(r.words.sweeps[0]!.text)).toContain('i(@r5[i]) = 0 A');
+    expect(sp(r.words.warnings.find((m) => m.title === 'i(@r5[i]) is shown as 0 at some points of the DC sweep')?.why)).toContain('at V1 = 9 V. That is the operating point\'s own state');
+  });
+
+  it('a sweep of two sources marks its point at V1 = 9 V, V2 = 0 V; beside a transistor the point at 9 V too, and the .tf, a slope the rule cannot decide, stays ngspice\'s', async () => {
+    const two = await solveText(netlist('.param rtop=10k', ...bridge, 'V2 x 0 0', 'Rx x 0 1k', '.dc V1 0 9 3 V2 0 1 1'), ngspice);
+    expect(sp(two.words.warnings.find((m) => m.title === 'i(@r5[i]) is shown as 0 at some points of the DC sweep')?.why)).toContain('at V1 = 9 V, V2 = 0 V.');
+    expect(r5(two)[3]).toBe(0);
+    const q = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.options savecurrents', '.op', '.dc V1 0 9 3', '.tf v(a,b) V1'), ngspice);
+    expect([roundingNoise(q.netlist, q.results).by, r5(q), sp(q.words.tf!.transferFunction!.text)]).toEqual(['rule', [0, 0, 0, 0], 'v(a,b)/V1 = −5.551e-17 (V/V)']);
+  });
+});

@@ -343,7 +343,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   too, and the sweep is shown decided only beside an .op that is (an .op decided exactly beside a sweep
   left as ngspice gives it said 0 V where the sweep's words, at the same point, said ngspice's −931.3 pV;
   the critic of round 3 found it again beside sweeps of the temperature, of a resistor and of two
-  sources, and beside an .op the rule decided while its sweep was decided exactly). Their checks share the
+  sources, and beside an .op the rule decided while its sweep was decided exactly; beside an .op the rule decides,
+  the sweep's points at the .op's own state show the .op's 0s since the last pass, below). Their checks share the
   run's budget (below), the .op's check keeping what the sweep's points need. A sweep of the temperature
   is decided exactly: no part modelled exactly changes with it (a resistor's temperature coefficients are
   settings, which leave the netlist to the rule), so each point is the .op's circuit (C9u.4). A sweep of a
@@ -746,3 +747,19 @@ that a phone left no room to watch the numbers move; this record says what the c
   ones to within 5e−5, a ratio below the smallest double stays ngspice's, and a circuit with a diode keeps its
   ratio. NumbersPanel's `tfRows` takes ngspice's value from `given` before `noise` (a two-line change outside the
   noise lane's files).
+- **Beside an .op the rule decides, the sweep says what the .op says at the .op's own state** (rule-op-vs-sweep-tf;
+  C9w.13, C9w.14). The rule's 0s were the .op's alone: C9 with a .param line or a transistor showed R5 "0 A", with
+  the note, beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A" and a Plot panel that fell to −8.882e-19 A at 9 V
+  (the sentence that recorded it was dropped in round 4). Now, beside such an .op, the sweep's points at the .op's
+  own state (one source at its netlist value, a resistor at its own, two sources at theirs; found from the
+  netlist's parts, as the rule path has no exact model) show a current the .op shows as 0 as 0 too, where ngspice
+  gives there the very number the .op's 0 stands for, or the rule, run on the point's own values, writes it as 0
+  (a transistor's isolated nodes differ there by a few steps of a double); a note says so ("ngspice gave
+  i(@r5[i]) -8.881784e-19 A at V1 = 9 V. That is the operating point's own state, … So PlainSpice shows 0 there
+  too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it."). The other
+  points keep ngspice's numbers, as before. Measured on the generated r9731 and a9721 (rule-path runs with an .op
+  and a .dc whose sweep, at a point with all the .op's node voltages, shows a number the .op shows as 0): 36 runs
+  (66 values) and 1 at c520a49, none now. What stays: the .tf beside such an .op keeps ngspice's ratio
+  (v(a,b)/V1 = −5.551e−17 V/V beside R5's 0): the ratio is a slope, which the rule cannot decide from the .op's
+  numbers (with a transistor it depends on its small-signal model), and it says how the voltage changes, not
+  what it is.

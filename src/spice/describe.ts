@@ -717,6 +717,9 @@ export const DESCRIBE_STRINGS = {
   sweepLargeTitle: (kind: string): string => `The ${kind} is shown as ngspice gives it`,
   sweepLargeWhy: (points: number, results: number, most: number, at: string | undefined): string =>
     `It has ${points} points of ${results} ${results === 1 ? 'result' : 'results'}, more values than PlainSpice looks through for rounding noise (${most} in all). So at its points a value the circuit makes exactly 0 may show ngspice's rounding noise, and a tiny value ngspice's arithmetic rounded to 0 shows 0${at ? `, except at ${at}, the operating point's own state, where the sweep shows what the operating point shows` : ''}.`,
+  /** Beside an .op the rule decides (ruleStateSweep): the points at the .op's own state show its 0s. */
+  noiseSweepRuleWhy: (gave: string, one: boolean): string =>
+    `ngspice gave ${gave}. That is the operating point's own state, where ngspice gives the operating point's numbers, and the operating point shows ${one ? 'it' : 'each of them'} as 0, as its note says. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.`,
   noiseSweepWhy: (gave: string, one: boolean, diodes?: DiodeWhy): string =>
     `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${one ? 'a value' : 'values'} that ${one ? 'is' : 'are'} 0 there. Solved exactly, with fractions, from the netlist's values, the circuit makes ${one ? 'it' : 'each of them'} exactly 0 there${diodeClause(diodes, true)}, so PlainSpice shows 0 in these words and in the Plot panel.`,
 } as const;
@@ -1197,10 +1200,52 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
  * resistor as rounding noise of 0 at the .op's own 100 V; the critic of round 3).
  */
 function decidedSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | undefined {
+  if (results.op && results.dc && noiseOf(netlist, results).by !== 'exact') return ruleStateSweep(netlist, results);
   const noise = results.dc ? sweepNoise(netlist, results) : undefined;
   if (!noise || !results.op) return noise;
   return noiseOf(netlist, results).by === 'exact' ? noise : undefined;
 }
+
+/**
+ * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints): there a current the .op
+ * shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or the rule, run on the
+ * point's own values (pointOp), writes it as 0 too (a transistor's isolated nodes differ there by a few steps of a
+ * double); every other point is left as ngspice gives it (the last pass, rule-op-vs-sweep-tf: C9 with a .param line
+ * showed R5 "0 A" beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A"). Once per run.
+ */
+function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | undefined {
+  const cached = ruleSweepCache.get(results);
+  if (cached?.netlist === netlist) return cached.noise;
+  let noise: SweepNoise | undefined;
+  const dc = results.dc;
+  const at = dc && results.op ? opStatePoints(netlist, results) : undefined;
+  const zeros = noiseOf(netlist, results).currents;
+  if (dc && results.op && at?.points.length && zeros.size) {
+    const given = new Map<string, number>();
+    for (const c of results.op.currents) given.set(`${c.origin === 'branch' ? 'b' : 'd'} ${netlistPart(netlist, c.element)}`, c.value);
+    const zero = new Map<number, number[]>();
+    for (const k of at.points) {
+      let own: RoundingNoise | undefined;
+      dc.series.forEach((series, j) => {
+        const value = series.values[k]!;
+        const m = /^i\((.*)\)$/i.exec(series.name);
+        if (!m || value === 0 || !Number.isFinite(value)) return;
+        const device = /^@([^[\]]+)\[(i|current)\]$/i.exec(m[1]!);
+        const key = netlistPart(netlist, device ? device[1]! : m[1]!);
+        if (!zeros.has(key)) return;
+        if (given.get(`${device ? 'd' : 'b'} ${key}`) !== value && !(own ??= ruleNoise(netlist, { op: pointOp(dc, k), other: [] })).currents.has(key)) return;
+        const list = zero.get(j);
+        if (list) list.push(k);
+        else zero.set(j, [k]);
+      });
+    }
+    if (zero.size) noise = { zero, lost: new Map(), source: '', temperature: false, diodes: false, name: at.name, rule: true };
+  }
+  ruleSweepCache.set(results, { netlist, noise });
+  return noise;
+}
+
+const ruleSweepCache = new WeakMap<AnalysisResults, { netlist: Netlist; noise: SweepNoise | undefined }>();
 
 // ---- the exact solution (exact.ts)
 
@@ -1785,7 +1830,7 @@ function sweepReserve(netlist: Netlist, results: AnalysisResults, ex: Exact): nu
   if (!dc) return 0;
   // A sweep the exact solution does not follow, or one too large to look through (SWEEP_VALUES), is checked only at its
   // points at the .op's own state (opStateSweep).
-  if (!ex.sweep || sweepTooLarge(dc)) return (opStatePoints(netlist, results, ex)?.points.length ?? 0) * checkCost(ex);
+  if (!ex.sweep || sweepTooLarge(dc)) return (opStatePoints(netlist, results)?.points.length ?? 0) * checkCost(ex);
   return (sweepPlan(netlist, results)?.checks.length ?? checkPoints(dc.scale.values.length).length) * checkCost(ex);
 }
 
@@ -2118,6 +2163,8 @@ interface SweepNoise {
   diodeWhy?: DiodeWhy;
   /** A point's name for the notes, when the swept source and its value do not say it (a sweep of two sources). */
   name?: (k: number) => string;
+  /** Beside an .op the rule decides: only the points at the .op's own state are marked, with the .op's 0s (ruleStateSweep). */
+  rule?: boolean;
 }
 
 /**
@@ -2241,19 +2288,19 @@ const sweepOffCache = new WeakMap<AnalysisResults, { netlist: Netlist; offAt: { 
  * it. With each point's name for the notes. Undefined for any other sweep, or when the points do not come as the
  * two sweeps' counts say.
  */
-function opStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact): { points: number[]; name: (k: number) => string } | undefined {
+function opStatePoints(netlist: Netlist, results: AnalysisResults): { points: number[]; name: (k: number) => string } | undefined {
   // Once per run: the .op's check, the sweep's decision and the size note each need them, and a sweep can have
   // hundreds of thousands of points.
   const cached = statePointsCache.get(results);
   if (cached?.netlist === netlist) return cached.at;
-  const at = findStatePoints(netlist, results, ex);
+  const at = findStatePoints(netlist, results);
   statePointsCache.set(results, { netlist, at });
   return at;
 }
 
 const statePointsCache = new WeakMap<AnalysisResults, { netlist: Netlist; at: { points: number[]; name: (k: number) => string } | undefined }>();
 
-function findStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact): { points: number[]; name: (k: number) => string } | undefined {
+function findStatePoints(netlist: Netlist, results: AnalysisResults): { points: number[]; name: (k: number) => string } | undefined {
   const dc = results.dc;
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
@@ -2263,10 +2310,10 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact):
   const target = (sw: SweepReading): number | undefined | null => {
     if (sw.kind === 'temperature') return undefined;
     const kind = sw.kind === 'voltage' ? 'V' : sw.kind === 'current' ? 'I' : sw.kind === 'resistance' ? 'R' : undefined;
-    const k = kind ? ex.part.get(ngspiceSpelling(sw.source.text)) : undefined;
-    const p = k === undefined ? undefined : ex.model.parts[k]!;
-    if (!p || p.kind !== kind) return null;
-    const v = partsOf(netlist).byKey.get(netlistPart(netlist, p.key))?.element?.value?.number?.value ?? (kind === 'R' ? undefined : 0);
+    // The part as the netlist writes it (the rule path has no exact model to look it up in).
+    const el = kind ? partsOf(netlist).byKey.get(netlistPart(netlist, ngspiceSpelling(sw.source.text)))?.element : undefined;
+    if (!el || el.letter !== kind) return null;
+    const v = el.value?.number?.value ?? (kind === 'R' ? undefined : 0);
     return v === undefined || !Number.isFinite(v) ? null : v;
   };
   const label = (sw: SweepReading, v: number): string => (sw.kind === 'temperature' ? formatSI(v, sw.unit) : S.sweepAt(sweepName(sw), formatSI(v, sw.unit)));
@@ -2324,7 +2371,7 @@ function opStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
   const dc = results.dc;
   const ex = exactOf(netlist);
   if (!dc || !ex) return undefined;
-  const at = opStatePoints(netlist, results, ex);
+  const at = opStatePoints(netlist, results);
   if (!at) return undefined;
   const budget = checkBudget(ex, results.op ? checkCost(ex) : 0);
   const zero = new Map<number, number[]>();
@@ -4043,7 +4090,8 @@ function sweepNoiseNote(netlist: Netlist, results: AnalysisResults): MessageWord
   if (!count) return undefined;
   const list = count <= NOTE_LIST + 1 ? listWords(gave) : S.noiseSweepMore(gave.slice(0, NOTE_LIST).join(', '), count - NOTE_LIST);
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
-  const m: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseSweepTitle(names, 'DC sweep'), why: S.noiseSweepWhy(list, count === 1, noise.diodes ? (noise.diodeWhy ?? { quiet: [], alike: [] }) : undefined) };
+  const why = noise.rule ? S.noiseSweepRuleWhy(list, count === 1) : S.noiseSweepWhy(list, count === 1, noise.diodes ? (noise.diodeWhy ?? { quiet: [], alike: [] }) : undefined);
+  const m: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseSweepTitle(names, 'DC sweep'), why };
   if (line !== undefined) m.line = line + 1;
   return m;
 }
@@ -4111,7 +4159,7 @@ function sweepOffNote(netlist: Netlist, results: AnalysisResults): MessageWords 
   if (!items.length) return undefined;
   const noise = decidedSweep(netlist, results);
   const ex = exactOf(netlist);
-  const state = results.op && noise && ex ? (opStatePoints(netlist, results, ex)?.points ?? []) : [];
+  const state = results.op && noise && ex ? (opStatePoints(netlist, results)?.points ?? []) : [];
   const at = state.length && noise ? listWords(state.slice(0, NOTE_LIST).map((k) => sweepPoint(noise, dc, k))) : undefined;
   const shown = items.length <= NOTE_LIST + 1 ? S.offList(items, 0) : S.offList(items.slice(0, NOTE_LIST), items.length - NOTE_LIST);
   const m: MessageWords = { code: 'imprecise-answers', severity: 'warning', title: S.sweepOffTitle('DC sweep'), why: S.sweepOffWhy(shown, at) };
@@ -4129,7 +4177,7 @@ function sweepSizeNote(netlist: Netlist, results: AnalysisResults): MessageWords
   const ex = dc && sweepTooLarge(dc) ? exactOf(netlist) : undefined;
   if (!dc || !ex?.sweep || (results.op && noiseOf(netlist, results).by !== 'exact')) return undefined;
   const noise = decidedSweep(netlist, results);
-  const points = results.op && noise ? (opStatePoints(netlist, results, ex)?.points ?? []) : [];
+  const points = results.op && noise ? (opStatePoints(netlist, results)?.points ?? []) : [];
   const at = noise && points.length ? listWords(points.slice(0, NOTE_LIST).map((k) => sweepPoint(noise, dc, k))) : undefined;
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const m: MessageWords = { code: 'sweep-not-checked', severity: 'note', title: S.sweepLargeTitle('DC sweep'), why: S.sweepLargeWhy(dc.scale.values.length, dc.series.length, SWEEP_VALUES, at) };
