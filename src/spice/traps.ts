@@ -2136,7 +2136,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
     add(c, 'fatal-syntax', 'error', formula ?? form.keyword, `${name} has an empty formula`,
       `After ${kw}= comes the formula, for example ${kw}={2*v(in)}.`,
       equals || formula ? "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression'. [fatal-syntax-15]"
-        : `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance'. [fatal-syntax-15]`);
+        : `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-15]`);
     return;
   }
   if (/^[{'"]/.test(formula.text)) return;
@@ -2145,7 +2145,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
   const braced = `{${formula.text}}`;
   add(c, 'fatal-syntax', 'error', formula, `ngspice can't read ${name}'s formula without braces`,
     `ngspice takes ${name}'s formula from its { to the end of the line. It adds the braces itself only after ${kw}= and before a letter or a bracket, as in ${kw}=v(out)*2, so write ${kw}=${braced}.`,
-    `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance'. [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14]`,
+    `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14]`,
     formula.text.includes('=') ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
 }
 

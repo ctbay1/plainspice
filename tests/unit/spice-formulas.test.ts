@@ -412,6 +412,11 @@ describe('words ngspice takes out of an E, F, G or H line before it reads it (C3
     expect(said('E1 e 0 VALUE v(out)*2')).toEqual(["fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 VALUE {v(out)*2}"]);
     expect(said('E1 e 0 VALUE=')).toEqual(['fatal-syntax: E1 has an empty formula']);
     expect(said('E1 e 0 VALUE={}')).toEqual(['fatal-syntax: E1 has an empty formula']);
+    expect(said('E1 e 0 VALUE')).toEqual(['fatal-syntax: E1 has an empty formula']);
+    const words = (line: string): string => checkTraps(parseNetlist(`* t\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`))[0]!.ngspice;
+    expect(words('G1 0 e cur=2m*v(out)')).toContain("'mal formed G source instance' (ngspice 42: 'mal formed G line')");
+    expect(words('E1 e 0 VALUE')).toContain("'mal formed E source instance' (ngspice 42: 'mal formed E line')");
+    expect(words('E1 e 0 VALUE=')).toContain("ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression'");
     for (const runs of ['E1 e 0 VALUE=v(out)*2', 'E1 e 0 VALUE=(v(out)*2)', 'E1 e 0 VALUE=v(out)*(1+1)', 'G1 0 e cur=v(out)*2m', "E1 e 0 vol='v(out)*2'"]) {
       expect(said(runs), runs).toEqual([]);
     }

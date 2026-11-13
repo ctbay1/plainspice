@@ -9041,7 +9041,7 @@ after the fix "Put it in braces: {v(out)*2}" (fatal-syntax), which writes `E1 e 
 
 PlainSpice's checks: `fatal-syntax`.
 
-### fatal-syntax-15. An E with an empty formula (VALUE= or VALUE={}): ngspice stops
+### fatal-syntax-15. An E with an empty formula (VALUE=, VALUE={} or VALUE alone): ngspice stops
 
 Added after the last pass (13 November 2026, code review C3-5). As for a B line's empty formula (fatal-syntax-8). No fix: only the student knows the formula.
 
@@ -9089,6 +9089,14 @@ E1 e 0 VALUE={}, which PlainSpice's checks say the same way:
       Error on line 5 or its substitute:
       Simulation interrupted due to error!
       Error: circuit not parsed.
+    our engine (exit 1, no results): (none)
+E1 e 0 VALUE with nothing after it, which PlainSpice's checks say the same way (its words: 'mal formed E source instance'):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0  vol=
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0  vol=
+      ERROR: fatal error in ngspice, exit(1)
     our engine (exit 1, no results): (none)
 ```
 
