@@ -111,7 +111,9 @@ A), and again for Run (b060bc8: neither).
   the first alert, Run, Ctrl+Enter and Ctrl+K's "Run ngspice now" each add one for a refused netlist,
   and Run and Ctrl+Enter one each for an engine whose run stops (c520a49: none of the five);
   `tests/unit/app-live.test.ts`: a failed change's outcome has `manual: false`, a failed Run's
-  `manual: true`.
+  `manual: true`. In the built site (1280 × 800, every live region watched, the reviewer's two refused
+  links, a B source without its `)` and a 283-byte word): Run, Ctrl+Enter and Ctrl+K are each said once,
+  in the alert (c520a49: none).
 - **In forced colours the status line's dot is painted, and the folded calm status keeps no box** (the
   last pass, a11y-phone-3). The dot was painted in the page's own colour (Canvas, as forced colours paint a
   background), and the folded calm status, a dot in the margin at 400 % (a 1280 × 800 laptop: 320 × 200),
