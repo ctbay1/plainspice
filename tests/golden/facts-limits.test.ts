@@ -53,9 +53,12 @@ describe('limit-1: ngspice -b -r writes the title into a space of 513 bytes, so 
     const at505 = await engine.run(`* ${w(503)}\n${ANALYSES.op}.end\n`);
     expect(at505.ok).toBe(true); // native 47 and 42 stop here: "*** buffer overflow detected ***: terminated"
     expect((await engine.run(`* ${w(521)}\n${ANALYSES.op}.end\n`)).ok).toBe(true);
-    // 524 bytes: a results file without its Binary: part; 526: a crash.
-    expect((await engine.run(`* ${w(522)}\n${ANALYSES.op}.end\n`)).diagnostics.map((d) => d.text)).toContainEqual(expect.stringMatching(/header without a Binary: or Values: section/));
-    expect(crashed(await engine.run(`* ${w(524)}\n${ANALYSES.op}.end\n`))).toBe(true);
+    // 524 to 527 bytes: a results file without its Binary: part or a crash, as what lies past the space
+    // differs (524 gave either, depending on how the engine was started); from 528 bytes, a crash.
+    const at524 = await engine.run(`* ${w(522)}\n${ANALYSES.op}.end\n`);
+    expect(at524.ok).toBe(false);
+    expect(crashed(at524) || at524.diagnostics.some((d) => /header without a Binary: or Values: section/.test(d.text))).toBe(true);
+    expect(crashed(await engine.run(`* ${w(526)}\n${ANALYSES.op}.end\n`))).toBe(true);
     expect(crashed(await engine.run(`* ${w(598)}\n${ANALYSES.op}.end\n`))).toBe(true);
     expect(crashed(await engine.run(`* t\n${ANALYSES.op}.end\n.title ${w(800)}\n`))).toBe(true);
   });
