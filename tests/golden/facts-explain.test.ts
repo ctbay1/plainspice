@@ -949,12 +949,13 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     for (const code of ['C9r', 'C9r.2']) expect(roundingNoise(ofFact(code).netlist, ofFact(code).results).by, code).toBe('exact');
   });
 
-  it('C9o.4: with a diode, the rule keeps out at −193.5 nV beside Rl\'s 193.5 pA, and out has no level: Rl\'s card says the voltage across it', () => {
+  it('C9o.4: with a diode, whose current the exact solution leaves free, the H of 1 GΩ still makes exactly 0: out is 0 V and Rl carries 0 A, whatever current the diode carries (the critic of round 2)', () => {
     const d = ofFact('C9o.4');
-    expect(roundingNoise(d.netlist, d.results).by).toBe('rule');
-    expect(noise(d)).toEqual(['R5', 'Vm']);
-    expect([node(d, 'out'), plain(currentText(d, 'Rl'))]).toEqual(['−193.5 nV', '193.5 pA from ground to node out through Rl']);
-    expect(d.words.nodes.find((n) => n.node === 'out')!.level).toBeUndefined();
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect(noise(d)).toEqual(['R5', 'Vm', 'H1', 'Rl', 'node out']);
+    expect([node(d, 'out'), plain(currentText(d, 'Rl'))]).toEqual(['0 V', 'no current through Rl']);
+    expect(d.words.nodes.find((n) => n.node === 'out')!.level).toBe(0);
+    expect(note(d)).toContain('the circuit makes each of them exactly 0, whatever current its diodes carry, so PlainSpice shows 0 A and 0 V.');
   });
 
   it('C9p.5: a .dc point is judged at the value ngspice swept the source to: -1 1 0.1 reaches −1.39e-16 V, where v(a) is real; no noise, no note', () => {

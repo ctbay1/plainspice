@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { agrees, ANSWER_GAP, answers, answersAgree, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, unitSource, ZERO, type Answer, type Budget, type ExactModel, type Fraction, type NgspiceValues } from './exact.ts';
+import { agrees, ANSWER_GAP, answers, answersAgree, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -551,12 +551,12 @@ export const DESCRIBE_STRINGS = {
    * `exact`: PlainSpice solved the circuit exactly and the 0 is its own; otherwise the rule for other
    * circuits found it, only below ngspice's tolerances.
    */
-  noiseWhy: (gave: string, reason: string, currents: number, voltages: number, exact = false): string => {
+  noiseWhy: (gave: string, reason: string, currents: number, voltages: number, exact = false, diodes = false): string => {
     const one = currents + voltages === 1;
     const what = !voltages ? (one ? 'a current' : 'currents') : !currents ? (one ? 'a voltage' : 'voltages') : 'currents and voltages';
     const shows = !voltages ? '0 A' : !currents ? '0 V' : '0 A and 0 V';
     const head = `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${what} that ${one ? 'is' : 'are'} 0${reason ? `: ${reason}` : ''}.`;
-    if (exact) return `${head} Solved exactly, with fractions, from the netlist's values, the circuit makes ${one ? 'it' : 'each of them'} exactly 0, so PlainSpice shows ${shows}.`;
+    if (exact) return `${head} Solved exactly, with fractions, from the netlist's values, the circuit makes ${one ? 'it' : 'each of them'} exactly 0${diodes ? ', whatever current its diodes carry' : ''}, so PlainSpice shows ${shows}.`;
     const below = !voltages
       ? "below 1 pA, ngspice's current tolerance (its abstol option)"
       : !currents
@@ -583,8 +583,8 @@ export const DESCRIBE_STRINGS = {
   lostCarries: (name: string, value: string): string => `${name} carries ${value}`,
   lostIsAt: (node: string, value: string): string => `node ${node} is at ${value}`,
   /** `shows`: for one value, what it is ("R3 carries 454.1 pA") and its value; for several, the list of their exact values. */
-  lostWhy: (gave: string, reason: string, shows: string, value: string | undefined): string =>
-    `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
+  lostWhy: (gave: string, reason: string, shows: string, value: string | undefined, diodes = false): string =>
+    `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values${diodes ? ' and its diodes\' currents' : ''}, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
   // Where ngspice's answers are farther from the exact ones than the page's digits (opCheck 'imprecise'):
   // PlainSpice shows ngspice's numbers and says that they are off, and by how much.
   offTitle: 'Some of ngspice\'s answers here are off',
@@ -595,8 +595,8 @@ export const DESCRIBE_STRINGS = {
   /** The items, each with a comma of its own, joined by semicolons; a list cut short counts the rest (never "and 1 more"). */
   offList: (items: readonly string[], more: number): string =>
     more ? `${items.join('; ')}; and ${more} more` : items.length === 1 ? items[0]! : `${items.slice(0, -1).join('; ')}; and ${items[items.length - 1]}`,
-  offWhy: (list: string): string =>
-    `Solved exactly, with fractions, from the netlist's values, ${list}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.`,
+  offWhy: (list: string, diodes = false): string =>
+    `Solved exactly, with fractions, from the netlist's values${diodes ? ' and its diodes\' currents' : ''}, ${list}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.`,
   // S8, C9p: a .tf ratio and .dc points ngspice gives as rounding noise of a 0.
   noiseTfTitle: 'The transfer function is shown as 0',
   noiseTfWhy: (tf: string, value: string, output: string, input: string, ratio: string): string =>
@@ -928,6 +928,8 @@ export interface RoundingNoise {
    * those answers, worst first, with the netlist's names: the note says ngspice's numbers are off there.
    */
   off?: Answer[];
+  /** True when the circuit has diodes, whose currents the exact solution leaves free (its 0s are 0 whatever they carry). */
+  diodes?: boolean;
 }
 
 /** No rounding noise and nothing lost: what a run without an operating point has. */
@@ -993,10 +995,10 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
   const op = results.op;
   if (!op) return noNoise('rule');
   const ex = exactOf(netlist);
-  const { check, off } = ex ? opCheck(ex, op) : { check: 'other' as const };
-  if (ex && check === 'same') return exactNoise(netlist, ex, op);
+  const seen = ex ? opCheck(ex, op) : undefined;
+  if (ex && seen?.check === 'same') return exactNoise(netlist, ex, seen.view, op);
   const rule = ruleNoise(netlist, results);
-  return ex && check === 'imprecise' ? withExact(netlist, ex, rule, off!) : rule;
+  return ex && seen?.check === 'imprecise' ? withExact(netlist, ex, seen.view, rule, seen.off) : rule;
 }
 
 // ---- the exact solution (exact.ts)
@@ -1004,7 +1006,7 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
 /** The circuit solved exactly, once per netlist: its operating point, and the slopes its .dc and .tf need. */
 interface Exact {
   model: ExactModel;
-  /** The operating point: the node voltages, then the branch currents. */
+  /** The operating point: the node voltages, then the branch currents (each diode at 0 A). */
   op: Fraction[];
   /** Part and node indexes, by the names ngspice gives them in its results. */
   part: Map<string, number>;
@@ -1015,6 +1017,25 @@ interface Exact {
   tf?: { part: number; slope: Fraction[]; into?: Fraction[] };
   /** The work left for the checks of ngspice's values against the solution (exact.ts MAX_WORK): the solve's own work is spent. */
   budget: Budget;
+  /**
+   * The diodes, whose currents are left free: one diode for each branch of a forest of the diodes' graph
+   * (the currents of these span every current the diodes can carry into the rest of the circuit), each
+   * with the change a unit current through it makes in every unknown.
+   */
+  diodes?: { tree: number[]; slopes: Fraction[][] };
+}
+
+/** One operating point beside the exact solution: its values, and the solutions a value must be 0 in to be exactly 0. */
+interface View {
+  /** The unknowns: the exact operating point, each diode at the current Kirchhoff's law gives it from ngspice's values. */
+  x: Fraction[];
+  /**
+   * The solutions a value must be 0 in to be 0 for every current the diodes could carry: the operating
+   * point with each diode at 0 A, and the change a unit current through each makes. [x] without diodes.
+   */
+  all: Fraction[][];
+  /** Each current source's and diode's current in `x`. */
+  level: (p: ExactPart) => Fraction;
 }
 
 const exactCache = new WeakMap<Netlist, Exact | null>();
@@ -1031,22 +1052,31 @@ function exactOf(netlist: Netlist): Exact | undefined {
     const node = new Map(model.nodes.map((n, k) => [n, k]));
     const partOf = (name: string | undefined): number | undefined => (name === undefined ? undefined : part.get(ngspiceSpelling(name)));
     const sides = [operatingPoint(model)];
+    // Diodes: one more solution for each branch of a forest of their graph, a unit current through it.
+    const forest = new Groups();
+    const tree: number[] = [];
+    model.parts.forEach((p, k) => {
+      if (p.kind === 'D' && forest.join(String(p.a), String(p.b))) tree.push(k);
+    });
+    const diodes = model.parts.some((p) => p.kind === 'D');
+    for (const k of tree) sides.push(unitSource(model, k));
     // .dc of one source (decision 0015): every value is a + b·s, so one more solution gives every point.
+    // A circuit with a diode is not a + b·s in its sources: its sweeps and .tf are left as ngspice gives them.
     let sweep: number | undefined;
     const dc = netlist.analyses.map((i) => readAnalysis(netlist, i)).find((r) => r?.kind === 'dc');
-    if (dc?.kind === 'dc' && dc.sweeps.length === 1 && (dc.sweeps[0]!.kind === 'voltage' || dc.sweeps[0]!.kind === 'current')) {
+    if (!diodes && dc?.kind === 'dc' && dc.sweeps.length === 1 && (dc.sweeps[0]!.kind === 'voltage' || dc.sweeps[0]!.kind === 'current')) {
       const k = partOf(dc.sweeps[0]!.source.text);
       if (k !== undefined && (model.parts[k]!.kind === 'V' || model.parts[k]!.kind === 'I')) {
         sweep = k;
         sides.push(unitSource(model, k));
       }
     }
-    let tf: { part: number; into?: number } | undefined;
+    let tf: { part: number; at: number; into?: number } | undefined;
     const tfLine = netlist.analyses.map((i) => readAnalysis(netlist, i)).find((r) => r?.kind === 'tf');
-    if (tfLine?.kind === 'tf' && tfLine.input) {
+    if (!diodes && tfLine?.kind === 'tf' && tfLine.input) {
       const k = partOf(tfLine.input.text);
       if (k !== undefined && (model.parts[k]!.kind === 'V' || model.parts[k]!.kind === 'I')) {
-        tf = { part: k };
+        tf = { part: k, at: sides.length };
         sides.push(unitSource(model, k));
         const [a, b] = tfLine.outputKind === 'voltage' ? tfLine.outputNames.map((n) => nodeIndex(model, node, n)) : [];
         if (a !== undefined && a !== -2 && (b === undefined || b !== -2)) {
@@ -1063,10 +1093,10 @@ function exactOf(netlist: Netlist): Exact | undefined {
     const x = solveExact(model, sides, budget);
     if (x) {
       ex = { model, op: x[0]!, part, node, budget };
+      if (diodes) ex.diodes = { tree, slopes: x.slice(1, 1 + tree.length) };
       if (sweep !== undefined) ex.sweep = { part: sweep, slope: x[1]! };
       if (tf) {
-        const at = sweep !== undefined ? 2 : 1;
-        ex.tf = { part: tf.part, slope: x[at]! };
+        ex.tf = { part: tf.part, slope: x[tf.at]! };
         if (tf.into !== undefined) ex.tf.into = x[tf.into]!;
       }
     }
@@ -1094,9 +1124,11 @@ function ngspiceValues(nodes: Map<string, number>, branch: Map<string, number>, 
  * exact one to within 5e-5 of it, beyond what rounding leaves, `answersAgree`). 'imprecise': this
  * circuit's, but ngspice's answers are farther from the exact ones (a 1e-12 Ω wire beside kilohms:
  * 4.321 V for 4.5 V); `off` lists them. 'other': not this circuit's, as far as its values show, or more
- * work to check than the netlist's budget has left.
+ * work to check than the netlist's budget has left. With diodes, each diode's current is the one
+ * Kirchhoff's law gives it from ngspice's other values (exact.ts treeCurrents), and the rest is checked
+ * against that.
  */
-function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 'same' | 'imprecise' | 'other'; off?: Answer[] } {
+function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 'same' | 'imprecise'; view: View; off: Answer[] } | { check: 'other' } {
   const nodes = new Map<string, number>();
   const branch = new Map<string, number>();
   const device = new Map<string, number>();
@@ -1105,6 +1137,9 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
     nodes.set(n.node, n.value);
   }
   for (const c of op.currents) {
+    // A diode's own current (savecurrents' @d1[id]) is its last iteration's: not used.
+    const diode = /^@([^[\]]+)\[id\]$/i.exec(c.element);
+    if (diode && ex.model.parts[ex.part.get(diode[1]!) ?? -1]?.kind === 'D') continue;
     const k = ex.part.get(c.element);
     if (k === undefined) return { check: 'other' };
     const p = ex.model.parts[k]!;
@@ -1114,11 +1149,42 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
     } else if (p.kind !== 'V' && p.kind !== 'E' && p.kind !== 'H') device.set(c.element, c.value);
   }
   const ng = ngspiceValues(nodes, branch, device);
-  if (!agrees(ex.model, ng, (p) => p.value, ex.budget)) return { check: 'other' };
-  const list = answers(ex.model, ex.op, ng);
+  let view: View = { x: ex.op, all: [ex.op], level: (p) => p.value };
+  if (ex.diodes) {
+    const { tree, slopes } = ex.diodes;
+    const currents = treeCurrents(ex.model, tree, ng);
+    if (!currents) return { check: 'other' };
+    const byPart = new Map(tree.map((k) => [ex.model.parts[k]!, currents.get(k) ?? ZERO]));
+    view = { x: withCurrents(ex.op, slopes, tree, currents), all: [ex.op, ...slopes], level: (p) => (p.kind === 'D' ? (byPart.get(p) ?? ZERO) : p.value) };
+  }
+  if (!agrees(ex.model, ng, view.level, ex.budget)) return { check: 'other' };
+  const list = answers(ex.model, view.x, ng, view.level);
   if (!list) return { check: 'other' };
   // Imprecise when an answer whose exact value is not 0 is off; the note then also names the exact 0s ngspice gives beyond rounding.
-  return list.some((a) => a.exact !== 0 && a.gap > ANSWER_GAP) ? { check: 'imprecise', off: list.filter((a) => a.gap > ANSWER_GAP) } : { check: 'same' };
+  const off = list.filter((a) => a.gap > ANSWER_GAP);
+  return { check: list.some((a) => a.exact !== 0 && a.gap > ANSWER_GAP) ? 'imprecise' : 'same', view, off };
+}
+
+/**
+ * What the exact solution says is 0 and equal, for every current the diodes could carry: a value is 0
+ * only when it is 0 in each of the view's solutions (one, without diodes), two nodes are at the same
+ * voltage only when they are in each. A diode's own current is never 0 here: it is free.
+ */
+function exactly(ex: Exact, view: View): { zero: boolean[]; nodeZero: (k: number) => boolean; same: (a: number, b: number) => boolean; key: (k: number) => string } {
+  const { model } = ex;
+  const { all } = view;
+  const tree = ex.diodes?.tree ?? [];
+  // A current source's or diode's current in solution s: its level in the operating point, a unit diode's in its own slope.
+  const levelIn = (s: number, p: ExactPart): Fraction => (s === 0 ? (p.kind === 'D' ? ZERO : p.value) : p === model.parts[tree[s - 1]!] ? ONE : ZERO);
+  const zero = model.parts.map((p, k) => p.kind !== 'D' && all.every((x, s) => currentIsZero(model, x, k, p.kind === 'I' ? levelIn(s, p) : undefined)));
+  const at = (x: readonly Fraction[], n: number): Fraction => (n < 0 ? ZERO : x[n]!);
+  return {
+    zero,
+    nodeZero: (k) => all.every((x) => isZero(x[k]!)),
+    same: (a, b) => all.every((x) => equal(at(x, a), at(x, b))),
+    // Equal fractions over solveExact's one denominator have equal numerators (and 0 is 0/1, as ground's).
+    key: (k) => all.map((x) => (k < 0 ? '0/1' : `${x[k]!.n.toString(16)}/${x[k]!.d.toString(16)}`)).join('|'),
+  };
 }
 
 /**
@@ -1126,23 +1192,24 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
  * that is tiny beside the numbers it is worked out from to 0, where the exact solution has it. A value
  * below the smallest double (about 4.9e-324) has no number to show: it stays as ngspice gave it.
  */
-function lostValues(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults['op']>, out: RoundingNoise): void {
-  const { model, op: x } = ex;
-  const zero = model.parts.map((_, k) => currentIsZero(model, x, k));
+function lostValues(netlist: Netlist, ex: Exact, view: View, op: NonNullable<AnalysisResults['op']>, out: RoundingNoise): void {
+  const { model } = ex;
+  const { x } = view;
+  const { zero, nodeZero } = exactly(ex, view);
   const whole = overCommon(x);
   const at = (n: number): bigint => (n < 0 ? 0n : whole.num[n]!);
   for (const c of op.currents) {
     const k = c.value === 0 ? ex.part.get(c.element) : undefined;
     if (k === undefined || zero[k]) continue;
     const p = model.parts[k]!;
-    const value = currentDouble(model, whole.num, whole.den, k);
+    const value = currentDouble(model, whole.num, whole.den, k, view.level(p));
     if (value === 0) continue;
     // A resistor: the voltage across it too, which ngspice's two equal end voltages do not show.
     out.lostCurrents.set(netlistPart(netlist, c.element), p.kind === 'R' ? { value, across: toDouble({ n: at(p.a) - at(p.b), d: whole.den }) } : { value });
   }
   for (const n of op.nodes) {
     const k = n.value === 0 ? ex.node.get(n.node) : undefined;
-    if (k === undefined || isZero(x[k]!)) continue;
+    if (k === undefined || nodeZero(k) || isZero(x[k]!)) continue;
     const value = toDouble(x[k]!);
     if (value !== 0) out.lostNodes.set(netlistNode(netlist, n.node), value);
   }
@@ -1159,10 +1226,11 @@ function lostValues(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
  * the note that says so. A reason "every other current at this node is 0" stays only where the exact
  * solution makes it so.
  */
-function withExact(netlist: Netlist, ex: Exact, rule: RoundingNoise, off: readonly Answer[]): RoundingNoise {
-  const { model, op: x } = ex;
+function withExact(netlist: Netlist, ex: Exact, view: View, rule: RoundingNoise, off: readonly Answer[]): RoundingNoise {
+  const { model } = ex;
+  const { zero, nodeZero, same } = exactly(ex, view);
   const out: RoundingNoise = { ...noNoise('rule'), grounded: new Set(rule.grounded) };
-  const zero = model.parts.map((_, k) => currentIsZero(model, x, k));
+  if (ex.diodes) out.diodes = true;
   const partIndex = (key: string): number | undefined => ex.part.get(ngspiceSpelling(key));
   const nodeOf = (name: string): number => (name === '0' ? -1 : (ex.node.get(ngspiceSpelling(name)) ?? -2));
   for (const [key, why] of rule.currents) {
@@ -1176,7 +1244,7 @@ function withExact(netlist: Netlist, ex: Exact, rule: RoundingNoise, off: readon
   }
   for (const name of rule.nodes) {
     const k = nodeOf(name);
-    if (k >= 0 && isZero(x[k]!)) out.nodes.add(name);
+    if (k >= 0 && nodeZero(k)) out.nodes.add(name);
     else out.grounded.delete(name);
   }
   for (const name of out.grounded) if (!out.nodes.has(name)) out.grounded.delete(name);
@@ -1188,9 +1256,9 @@ function withExact(netlist: Netlist, ex: Exact, rule: RoundingNoise, off: readon
     else groups.set(level, [name]);
   }
   for (const [level, names] of groups) {
-    const exact = names.map((name) => nodeOf(name)).map((k) => (k === -1 ? ZERO : k >= 0 ? x[k]! : undefined));
-    const first = level === 0 ? ZERO : exact[0];
-    if (first && exact.every((v) => v !== undefined && equal(v, first))) for (const name of names) out.levels.set(name, level);
+    const ks = names.map((name) => nodeOf(name));
+    const first = level === 0 ? -1 : ks[0]!;
+    if (first !== -2 && ks.every((k) => k !== -2 && same(k, first))) for (const name of names) out.levels.set(name, level);
   }
   // The answers that are off, with the netlist's names; an exact 0 the rule shows as 0 is not off on the page.
   out.off = [];
@@ -1203,12 +1271,14 @@ function withExact(netlist: Netlist, ex: Exact, rule: RoundingNoise, off: readon
 }
 
 /** roundingNoise for a circuit solved exactly. */
-function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults['op']>): RoundingNoise {
-  const { model, op: x } = ex;
+function exactNoise(netlist: Netlist, ex: Exact, view: View, op: NonNullable<AnalysisResults['op']>): RoundingNoise {
+  const { model } = ex;
+  const { x } = view;
   const out: RoundingNoise = { ...noNoise('exact'), levels: new Map([['0', 0]]) };
+  if (ex.diodes) out.diodes = true;
   const v = (n: number): Fraction => (n < 0 ? ZERO : x[n]!);
   const named = (n: number): string => (n < 0 ? '0' : netlistNode(netlist, model.nodes[n]!));
-  const zero = model.parts.map((_, k) => currentIsZero(model, x, k));
+  const { zero, nodeZero, same, key } = exactly(ex, view);
   // The parts whose current flows at each node, for "every other current at this node is 0".
   const at: number[][] = model.nodes.map(() => []);
   model.parts.forEach((p, k) => {
@@ -1217,14 +1287,13 @@ function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
   });
   // Nodes joined to ground through parts with no voltage across them, exactly.
   const joined = new Groups();
-  for (const p of model.parts) if (equal(v(p.a), v(p.b))) joined.join(String(p.a), String(p.b));
+  for (const p of model.parts) if (same(p.a, p.b)) joined.join(String(p.a), String(p.b));
   // Levels: one for each exact voltage, 0 for ground's.
-  const levelOf = new Map<string, number>([['0/1', 0]]);
+  const levelOf = new Map<string, number>([[key(-1), 0]]);
   model.nodes.forEach((_, k) => {
-    // Equal fractions over solveExact's one denominator have equal numerators (and 0 is 0/1, as ground's).
-    const key = `${x[k]!.n.toString(16)}/${x[k]!.d.toString(16)}`;
-    let level = levelOf.get(key);
-    if (level === undefined) levelOf.set(key, (level = levelOf.size));
+    const id = key(k);
+    let level = levelOf.get(id);
+    if (level === undefined) levelOf.set(id, (level = levelOf.size));
     out.levels.set(named(k), level);
   });
   const why = (k: number): NoiseWhy => {
@@ -1234,7 +1303,7 @@ function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
       const control = model.parts[p.control]!.key;
       return { kind: 'copies', control: partsOf(netlist).byKey.get(netlistPart(netlist, control))?.element?.name.text ?? control };
     }
-    if (p.kind === 'G' && equal(v(p.c), v(p.d))) return { kind: 'reads', c: named(p.c), d: named(p.d) };
+    if (p.kind === 'G' && same(p.c, p.d)) return { kind: 'reads', c: named(p.c), d: named(p.d) };
     for (const n of [p.a, p.b]) if (n >= 0 && at[n]!.every((j) => j === k || zero[j])) return { kind: 'node', node: named(n) };
     return { kind: 'exact' };
   };
@@ -1246,13 +1315,13 @@ function exactNoise(netlist: Netlist, ex: Exact, op: NonNullable<AnalysisResults
   for (const n of op.nodes) {
     if (n.value === 0 || !Number.isFinite(n.value)) continue;
     const k = ex.node.get(n.node);
-    if (k === undefined || !isZero(x[k]!)) continue;
+    if (k === undefined || !nodeZero(k)) continue;
     const name = netlistNode(netlist, n.node);
     out.nodes.add(name);
     if (joined.find(String(k)) === joined.find('-1')) out.grounded.add(name);
   }
   // ngspice's arithmetic rounded these real values to exactly 0 (C9n's wire): PlainSpice shows the exact ones.
-  lostValues(netlist, ex, op, out);
+  lostValues(netlist, ex, view, op, out);
   return out;
 }
 
@@ -1543,33 +1612,39 @@ export function shownSweep(netlist: Netlist, results: AnalysisResults): Sweep | 
 // ---- the rule for other circuits
 
 /**
- * roundingNoise for a circuit PlainSpice does not solve exactly (a diode, a transistor, a subcircuit,
- * a part with settings, ...), from ngspice's own numbers, never by comparing sizes across the circuit:
- * a 2 aA source next to a 4 mA circuit is a real 2 aA (C9e). Linear in the size of the circuit: each
- * step looks again only at the parts a change can affect.
+ * roundingNoise for a circuit PlainSpice does not solve exactly (a transistor, a switch, a subcircuit, a
+ * B source, a part with settings, .param, past the exact solution's limits, ...), from ngspice's own
+ * numbers, never by comparing sizes across the circuit: a 2 aA source next to a 4 mA circuit is a real
+ * 2 aA (C9e). Linear in the size of the circuit: each step looks again only at the parts a change can
+ * affect. Every node keeps the voltage ngspice gives (the critic of round 2 of the re-check's fixes: no
+ * guard could tell a node's real 433.7 fV, behind a bridge 1e-13 off balance, from noise), so each 0
+ * this rule writes must agree with the numbers the page shows beside it.
  *
  * First, the currents that are real, which are never noise:
  * - a current of at least 1 pA (abstol); a current source's (I, or B with I=): its own value;
  * - a resistor with a real voltage across it (at least 1 µV and more than rounding), a G that reads one;
- * - an F that copies a real current; a part at a node with a part whose current ngspice does not give
- *   by name (a diode, a transistor, a subcircuit, a switch): it may carry that part's current;
+ * - an F that copies a real current, and the current a real F copies; the current an H reads when its
+ *   two ends are shown at voltages that are not alike (it makes them from that current);
+ * - a part at a node with a part whose current ngspice does not give by name (a diode with a third
+ *   node, a transistor, a subcircuit, a switch): it may carry that part's current;
  * - Kirchhoff's current law: where the real currents at a node do not add up to 0 (by more than
  *   rounding), the node's other parts carry the difference (C9h-C9k); and a part in series with a real
  *   current (the only two parts at a node) carries it too.
  * Then a current below 1 pA that is not real is noise when ngspice's numbers show it is 0:
- * - a resistor or capacitor whose two ends are at the same voltage (sameVoltage, or joined by parts
- *   that have no voltage across them whatever the rounding: an inductor, a 0 V source, an E or H whose
- *   control is 0);
- * - an F that copies a current that is 0, a G that reads a voltage that is 0;
+ * - a resistor or capacitor whose two ends ngspice gives voltages within SAME_VOLTAGE_ULPS (the page
+ *   shows them alike);
+ * - an F that copies a current that is 0, a G whose two control nodes are shown alike;
  * - a source (not a resistor or capacitor) that carries the only current left at one of its nodes: every
  *   other current there is 0, and the currents at a node add up to 0. A node with a part whose current
  *   ngspice does not give by name is never used.
  * A resistor's current that ngspice gives as exactly 0 (its two ends the same double) proves nothing:
  * rounding can hide a real current there (C9n, where a 1 µΩ wire in series with a 1 TΩ meter carries
- * 0.73 aA), so it never makes another part's current 0. Nor does such a resistor join its ends.
- * A node voltage below vntol is noise when the node is joined to ground through parts with no voltage
- * across them (those above, and a resistor whose current is noise), and every current at the node is
- * shown as 0 (C9d): never next to a current shown as real, which would break Ohm's law (C9o).
+ * 0.73 aA), so it never makes another part's current 0.
+ * Last, Kirchhoff's current law on the page: at a node where the currents shown do not add up to 0 (to
+ * KCL_ROUNDING of the largest), every 0 written there gets ngspice's number back, and so on from node to
+ * node (an F that copies a 0 into loads ngspice gives attoamps: S3). Such a rule can still write a real
+ * current smaller than ngspice's rounding as 0 (C9l): a resistor whose ends are 4 units in the last place
+ * apart can carry one; decision 0015 says how often that was measured.
  */
 function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const out = noNoise('rule');
@@ -1653,14 +1728,34 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
         b.open -= 1;
         toCheck.push(node);
       }
-      // An F copies its control's current: a real current copied is real.
+      // An F copies its control's current: a real current copied is real, and the current a real F copies is real.
       for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) stack.push(r);
+      const control = el.letter === 'F' ? controlOf(el) : undefined;
+      const read = control === undefined ? undefined : byKey.get(control);
+      if (read && amps.get(read.key)) stack.push(read);
     }
   };
   const realVoltage = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
     const [a, b] = [volt(x), volt(y)];
     return a !== undefined && b !== undefined && Math.abs(a - b) >= VNTOL && !sameVoltage(a, b);
   };
+  /** Two voltages ngspice gives, which the page shows as they are, that are not the same up to its rounding. */
+  const realVoltageAcross = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
+    const [a, b] = [volt(x), volt(y)];
+    return a !== undefined && b !== undefined && !sameVoltage(a, b);
+  };
+  /** Two voltages ngspice gives that are the same up to its rounding: the page shows them alike. */
+  const shownSame = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
+    const [a, b] = [volt(x), volt(y)];
+    return a !== undefined && b !== undefined && sameVoltage(a, b);
+  };
+  // An H whose two ends ngspice gives different voltages, which the page shows, makes them from its control current: real.
+  for (const el of parts) {
+    if (el.letter !== 'H') continue;
+    const control = controlOf(el);
+    const read = control === undefined ? undefined : byKey.get(control);
+    if (read && amps.get(read.key) && realVoltageAcross(el.nodes[0], el.nodes[1])) makeReal(read);
+  }
   for (const el of parts) {
     const amp = amps.get(el.key);
     if (!amp) continue;
@@ -1702,87 +1797,33 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     const amp = amps.get(el.key);
     return amp !== undefined && Math.abs(amp) >= SMALLEST_NORMAL && Math.abs(amp) < ABSTOL && !real.has(el.key);
   };
-  // Nodes joined by parts with no voltage across them: one name per group. A part whose test depends on
-  // two groups waits on both; when two groups become one, it is looked at again.
-  const group = new Groups();
-  const waiting = new Map<string, Element[]>();
-  const queue: Element[] = [];
-  const join = (a: string, b: string): void => {
-    const changed = group.join(a, b, (x, y) => (waiting.get(x)?.length ?? 0) > (waiting.get(y)?.length ?? 0));
-    if (!changed) return;
-    const [x, y] = changed;
-    const moved = waiting.get(x);
-    if (!moved) return;
-    waiting.delete(x);
-    const into = waiting.get(y);
-    if (into) for (const el of moved) into.push(el);
-    else waiting.set(y, moved);
-    // The parts that waited on either group are looked at again: their two ends may now be one group.
-    for (const el of moved) queue.push(el);
-  };
-  const equal = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
-    if (!x || !y) return false;
-    const [a, b] = [nodeName(x), nodeName(y)];
-    if (group.find(a) === group.find(b)) return true;
-    const [va, vb] = [volts.get(a), volts.get(b)];
-    return va !== undefined && vb !== undefined && sameVoltage(va, vb);
-  };
-  // Parts with no voltage across them whatever ngspice's rounding: an inductor, a 0 V source, an H that
-  // reads a current that is 0 (an E whose control is 0 joins in the queue below).
-  for (const el of parts) {
-    const [p, n] = el.nodes;
-    if (!p || !n) continue;
-    if (el.letter === 'L' || zeroVolts(el) || (el.letter === 'H' && zero(controlOf(el)))) join(nodeName(p), nodeName(n));
-  }
-  const wait = (el: Element, x: NodeRef | undefined, y: NodeRef | undefined): void => {
-    for (const ref of [x, y]) {
-      if (!ref) continue;
-      const root = group.find(nodeName(ref));
-      const list = waiting.get(root);
-      if (list) list.push(el);
-      else waiting.set(root, [el]);
-    }
-  };
   // How many currents at each node are not 0: when one is left, it is 0 too.
   const left = new Map<string, number>();
   for (const [node, list] of at) if (counted(node)) left.set(node, list.filter((el) => !zero(el.key)).length);
-  const tiedE = new Set<string>();
   // The one part at a node whose current is not yet known to be 0 (whyZero decides whether that makes it 0).
   const lastAt = (node: string): Element | undefined => at.get(node)!.find((x) => !zero(x.key));
   const whyZero = (el: Element): NoiseWhy | undefined => {
     const [p, n, c, d] = el.nodes;
-    if ((el.letter === 'R' || el.letter === 'C') && p && n && equal(p, n)) return { kind: 'same', a: nodeName(p), b: nodeName(n) };
+    // Only where the page shows the two voltages alike: no node is written as 0 V, so parts that join two
+    // nodes do not make their numbers the same on the page.
+    if ((el.letter === 'R' || el.letter === 'C') && p && n && shownSame(p, n)) return { kind: 'same', a: nodeName(p), b: nodeName(n) };
     if (el.letter === 'F' && zero(controlOf(el))) return { kind: 'copies', control: byKey.get(controlOf(el)!)?.name.text ?? el.controlSource!.text };
-    if (el.letter === 'G' && c && d && equal(c, d)) return { kind: 'reads', c: nodeName(c), d: nodeName(d) };
+    if (el.letter === 'G' && c && d && shownSame(c, d)) return { kind: 'reads', c: nodeName(c), d: nodeName(d) };
     // A resistor or a capacitor is 0 only when its own ends are the same: being the only current left at a
     // node would claim that the voltage across it is noise, and another part's 0 there can be ngspice's
     // rounding of a real current (C9n).
     if (el.letter !== 'R' && el.letter !== 'C') for (const node of ends.get(el.key) ?? []) if (counted(node) && left.get(node) === 1) return { kind: 'node', node };
     return undefined;
   };
-  for (const el of parts) {
-    const [p, n, c, d] = el.nodes;
-    if (el.letter === 'E') {
-      wait(el, c, d);
-      queue.push(el);
-    } else if (candidate(el)) {
-      if (el.letter === 'R' || el.letter === 'C') wait(el, p, n);
-      if (el.letter === 'G') wait(el, c, d);
-      queue.push(el);
-    }
-  }
+  // Each decision depends only on ngspice's numbers and on the 0s already written, which only add: one
+  // pass, and each part looked at again only when a 0 at its node or of its control can change it.
+  const queue = parts.filter(candidate);
   for (const [node, count] of left) {
     const last = count === 1 ? lastAt(node) : undefined;
     if (last) queue.push(last);
   }
   for (let k = 0; k < queue.length; k++) {
     const el = queue[k]!;
-    const [p, n, c, d] = el.nodes;
-    // An E whose control voltage is 0 makes 0 V: no voltage across it.
-    if (el.letter === 'E' && !tiedE.has(el.key) && p && n && equal(c, d)) {
-      tiedE.add(el.key);
-      join(nodeName(p), nodeName(n));
-    }
     if (!candidate(el) || out.currents.has(el.key)) continue;
     const why = whyZero(el);
     if (!why) continue;
@@ -1794,44 +1835,74 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
       const last = count - 1 === 1 ? lastAt(node) : undefined;
       if (last) queue.push(last);
     }
-    for (const r of readers.get(el.key) ?? []) {
-      // An F copies a current that is 0; an H makes 0 V from it.
-      if (r.letter === 'F') queue.push(r);
-      else if (r.nodes[0] && r.nodes[1]) join(nodeName(r.nodes[0]), nodeName(r.nodes[1]));
+    // An F copies a current that is 0.
+    for (const r of readers.get(el.key) ?? []) if (r.letter === 'F') queue.push(r);
+  }
+
+  // ---- 3. Kirchhoff's current law on the page: at each node, the currents shown add up to 0, to
+  // KCL_ROUNDING of the largest of them; where they do not, every 0 written there gets its number back
+  // (an F that copies a 0 into loads whose currents ngspice gives as attoamps: S3), and so on from node
+  // to node. No node voltage is written as 0 V (see above).
+  const shownAmp = (el: Element): number => (out.currents.has(el.key) ? 0 : (amps.get(el.key) ?? 0));
+  const balanced = (node: string): boolean => {
+    let sum = 0;
+    let largest = 0;
+    for (const el of at.get(node) ?? []) {
+      const a = shownAmp(el);
+      sum += node === ends.get(el.key)![0] ? a : -a;
+      largest = Math.max(largest, Math.abs(a));
+    }
+    return largest === 0 || Math.abs(sum) <= KCL_ROUNDING * largest;
+  };
+  const toBalance = [...at.keys()].filter((node) => counted(node) && (at.get(node) ?? []).some((el) => out.currents.has(el.key)));
+  for (let node = toBalance.pop(); node !== undefined; node = toBalance.pop()) {
+    if (balanced(node)) continue;
+    for (const el of at.get(node)!) {
+      if (!out.currents.delete(el.key)) continue;
+      for (const other of ends.get(el.key) ?? []) if (other !== node && counted(other)) toBalance.push(other);
     }
   }
 
-  // ---- 3. Node voltages that are noise of a 0: joined to ground through parts with no voltage across
-  // them, a resistor whose current is noise of 0 among them (C9d), and with every current at the node
-  // shown as 0 (C9o: never "out = 0 V" next to a current through a resistor there).
-  for (const key of out.currents.keys()) {
-    const pair = byKey.get(key)?.letter === 'R' ? ends.get(key) : undefined;
-    if (pair) join(pair[0], pair[1]);
+  // ---- 4. Levels: one for each group of nodes joined by parts with no voltage across them; ground's is
+  // 0. Joined: an inductor, a 0 V source, a resistor or capacitor whose current is written as 0, an E whose
+  // two control nodes are shown alike, an H whose control current is written as 0. A level is a claim the
+  // page makes (0 V across a part between two of its nodes, no power), so it must agree with the numbers
+  // it shows (the critic of the re-check's fixes): a node of ground's group has ground's level only when
+  // it is shown as 0 V; a group with a resistor between two of its nodes whose current is shown as real
+  // has no level (an H of 1 GΩ joins out to ground while Rl shows its 193.5 pA, and out its −193.5 nV);
+  // nor has a group whose nodes are shown at voltages that are not alike. Nodes with no level are
+  // compared by ngspice's values.
+  const group = new Groups();
+  for (const el of parts) {
+    const [p, n, c, d] = el.nodes;
+    if (!p || !n) continue;
+    const joins =
+      el.letter === 'L' ||
+      zeroVolts(el) ||
+      ((el.letter === 'R' || el.letter === 'C') && out.currents.has(el.key)) ||
+      (el.letter === 'E' && shownSame(c, d)) ||
+      (el.letter === 'H' && zero(controlOf(el)));
+    if (joins) group.join(nodeName(p), nodeName(n));
   }
   const ground = group.find('0');
-  const noCurrent = (node: string): boolean => !unknown.has(node) && (at.get(node) ?? []).every((el) => out.currents.has(el.key) || amps.get(el.key) === 0);
-  for (const [node, value] of volts) {
-    if (node !== '0' && Math.abs(value) >= SMALLEST_NORMAL && Math.abs(value) < VNTOL && group.find(node) === ground && noCurrent(node)) {
-      out.nodes.add(node);
-      out.grounded.add(node);
-    }
-  }
-  // Levels: one for each group of nodes joined by parts with no voltage across them; ground's is 0. A
-  // level is a claim the page makes (0 V across a part between two of its nodes, no power), so it must
-  // agree with the numbers it shows (the critic of the re-check's fixes): a node of ground's group has
-  // ground's level only when it is shown as 0 V, and a group with a resistor between two of its nodes
-  // whose current is shown as real has no level at all (an H of 1 GΩ joins out to ground while Rl
-  // shows its 193.5 pA, and out its −193.5 nV). Nodes with no level are compared by ngspice's values.
   const broken = new Set<string>();
   for (const el of parts) {
     const pair = el.letter === 'R' ? ends.get(el.key) : undefined;
     const amp = amps.get(el.key);
     if (pair && amp !== undefined && amp !== 0 && !out.currents.has(el.key) && group.find(pair[0]) === group.find(pair[1])) broken.add(group.find(pair[0]));
   }
+  const first = new Map<string, number>();
+  for (const [node, value] of volts) {
+    const root = group.find(node);
+    if (root === ground) continue;
+    const had = first.get(root);
+    if (had === undefined) first.set(root, value);
+    else if (!sameVoltage(had, value)) broken.add(root);
+  }
   const levelOf = new Map<string, number>([[ground, 0]]);
   for (const [node, value] of volts) {
     const root = group.find(node);
-    if (broken.has(root) || (root === ground && node !== '0' && value !== 0 && !out.nodes.has(node))) continue;
+    if (broken.has(root) || (root === ground && node !== '0' && value !== 0)) continue;
     let level = levelOf.get(root);
     if (level === undefined) levelOf.set(root, (level = levelOf.size));
     out.levels.set(node, level);
@@ -2355,7 +2426,7 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
       currents.map((c) => c.name),
       nodes.map((n) => bare(n.node)),
     ),
-    why: S.noiseWhy(gave, reasons.join('; and '), currents.length, nodes.length, noise.by === 'exact'),
+    why: S.noiseWhy(gave, reasons.join('; and '), currents.length, nodes.length, noise.by === 'exact', noise.diodes),
   };
   if (currents.length === 1 && !nodes.length && currents[0]!.line !== undefined) note.line = currents[0]!.line;
   return note;
@@ -2402,7 +2473,7 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
       currents.map((c) => c.name),
       nodes.map((x) => bare(x.node)),
     ),
-    why: S.lostWhy(gave, reason, shows, value),
+    why: S.lostWhy(gave, reason, shows, value, noiseOf(netlist, results).diodes),
   };
   if (one && currents.length && currents[0]!.line !== undefined) note.line = currents[0]!.line;
   return note;
@@ -2428,7 +2499,7 @@ function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | und
     return S.offCurrent(name, formatSI(Math.abs(a.exact), 'A'), formatSI(Math.abs(a.given), 'A'), a.given !== 0 && Math.sign(a.given) !== Math.sign(a.exact));
   });
   const shown = items.length <= NOTE_LIST + 1 ? S.offList(items, 0) : S.offList(items.slice(0, NOTE_LIST), items.length - NOTE_LIST);
-  return { code: 'imprecise-answers', severity: 'warning', title: S.offTitle, why: S.offWhy(shown) };
+  return { code: 'imprecise-answers', severity: 'warning', title: S.offTitle, why: S.offWhy(shown, noiseOf(netlist, results).diodes) };
 }
 
 /** The note for a .tf ratio shown as 0 because ngspice gave rounding noise of a 0 (S8, C9p). */

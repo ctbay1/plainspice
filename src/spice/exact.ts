@@ -281,8 +281,13 @@ export function ulp(x: number): number {
 
 // ------------------------------------------------------------------ the circuit, exactly
 
-/** The parts whose operating point PlainSpice knows exactly. */
-export type ExactKind = 'R' | 'C' | 'L' | 'V' | 'I' | 'E' | 'F' | 'G' | 'H';
+/**
+ * The parts whose operating point PlainSpice knows exactly, and the diode: a part with two ends whose
+ * current, whatever it is, flows in at one end and out at the other (its series resistance, its gmin and
+ * its junction, all inside it). Its current is left free: a value that is 0 for every current the
+ * diodes could carry is exactly 0 (describe.ts roundingNoise).
+ */
+export type ExactKind = 'R' | 'C' | 'L' | 'V' | 'I' | 'E' | 'F' | 'G' | 'H' | 'D';
 
 export interface ExactPart {
   /** The part's name as ngspice spells it in its results ("r1", "r__" for "Rş"; W18). */
@@ -298,7 +303,8 @@ export interface ExactPart {
   control: number;
   /**
    * R: its resistance; V: its volts; I: its amps; E and F: their gain; G: amps per volt; H: volts per
-   * amp. C and L: 0 (an open circuit and a wire in an operating point).
+   * amp. C and L: 0 (an open circuit and a wire in an operating point). D: 0, its current being free (a
+   * solution gives it as an I's level).
    */
   value: Fraction;
   /** V, E, H and L: the index of the unknown that is their current (a branch); else -1. */
@@ -335,6 +341,8 @@ const PLAIN_ROLES: Readonly<Record<ExactKind, readonly string[]>> = {
   F: ['gain'],
   G: ['transconductance'],
   H: ['transresistance'],
+  // A diode's model and settings change only its own current, which is left free.
+  D: [],
 };
 const NODE_ROLES = new Set(['node', 'plus', 'minus', 'from', 'to', 'control-plus', 'control-minus']);
 
@@ -351,6 +359,8 @@ const SMALLEST_RESISTANCE = fraction(1n, 10n ** 12n);
 const HARMLESS_DOTS = new Set([
   '.op', '.tf', '.dc', '.tran', '.ac', '.noise', '.disto', '.pz', '.sens', '.sp', '.four', '.fourier',
   '.end', '.title', '.save', '.print', '.plot', '.probe', '.width', '.meas', '.measure',
+  // A model card changes only the current of the parts that use it: a diode's, which is left free.
+  '.model',
 ]);
 const OPTIONS = new Set(['.options', '.option', '.opt']);
 /**
@@ -433,16 +443,21 @@ export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], a
     if (!kind || !(kind in PLAIN_ROLES)) return 'part';
     const fourNodes = kind === 'E' || kind === 'G';
     const reads = kind === 'F' || kind === 'H';
+    // A diode with a thermal node has a third end.
     if (el.nodes.length !== (fourNodes ? 4 : 2)) return 'part';
     if (reads !== !!el.controlSource) return 'part';
     if ((kind === 'V' || kind === 'I') && el.sourceFunction) return 'part';
     const allowed = PLAIN_ROLES[kind];
-    for (const f of el.fields.slice(1)) {
-      if (NODE_ROLES.has(f.role) || (reads && f.role === 'control-source')) continue;
-      if (!allowed.includes(f.role)) return 'part';
+    if (kind !== 'D') {
+      for (const f of el.fields.slice(1)) {
+        if (NODE_ROLES.has(f.role) || (reads && f.role === 'control-source')) continue;
+        if (!allowed.includes(f.role)) return 'part';
+      }
     }
     let value = ZERO;
-    if (el.value) {
+    if (kind === 'D') {
+      // Its current is free: nothing of its line is read.
+    } else if (el.value) {
       const v = exactValue(el.value.number);
       if (!v) return 'value';
       value = v;
@@ -544,7 +559,7 @@ function equations(model: ExactModel): Term[][] {
         break;
       }
       default:
-        // C: an open circuit; I: only on the right-hand side.
+        // C: an open circuit; I and D: only on the right-hand side.
         break;
     }
   }
@@ -559,8 +574,8 @@ function rightHandSide(model: ExactModel, level: (p: ExactPart) => Fraction): Fr
   const rhs: Fraction[] = Array.from({ length: model.size }, () => ZERO);
   for (const p of model.parts) {
     if (p.kind === 'V') rhs[p.branch] = level(p);
-    else if (p.kind === 'I') {
-      // A current source pushes its current from a, through itself, into b: it leaves a.
+    else if (p.kind === 'I' || p.kind === 'D') {
+      // A current source pushes its current from a, through itself, into b: it leaves a. So does a diode's current.
       const v = level(p);
       if (p.a >= 0) rhs[p.a] = sub(rhs[p.a]!, v);
       if (p.b >= 0) rhs[p.b] = add(rhs[p.b]!, v);
@@ -811,6 +826,7 @@ export function currentDouble(model: ExactModel, num: readonly bigint[], den: bi
     case 'C':
       return 0;
     case 'I':
+    case 'D':
       return toDouble(sourceLevel ?? p.value);
     case 'G':
       return times(at(p.c) - at(p.d), p.value.n, p.value.d);
@@ -841,6 +857,7 @@ export function currentIsZero(model: ExactModel, x: readonly Fraction[], k: numb
     case 'C':
       return true;
     case 'I':
+    case 'D':
       return isZero(sourceLevel ?? p.value);
     case 'G':
       return isZero(p.value) || equal(v(p.c), v(p.d));
@@ -861,6 +878,7 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
     case 'C':
       return ZERO;
     case 'I':
+    case 'D':
       return sourceLevel ?? p.value;
     case 'G':
       return mul(p.value, sub(v(p.c), v(p.d)));
@@ -974,6 +992,139 @@ function sumOf(terms: readonly Dyadic[], limit: bigint): { value: bigint; size: 
   return e >= 0 ? { value: absBig(value), size, den: q << BigInt(e) } : { value: absBig(value) << BigInt(-e), size: size << BigInt(-e), den: q };
 }
 
+/** The terms of one equation added up exactly, with their sign, as a fraction not in lowest terms; undefined when its denominator passes `limit`. */
+function signedSum(terms: readonly Dyadic[], limit: bigint): Fraction | undefined {
+  let q = 1n;
+  let e = Number.NEGATIVE_INFINITY;
+  for (const t of terms) {
+    if (t.m === 0n) continue;
+    if (q % t.q !== 0n && (q = lcm(q, t.q)) > limit) return undefined;
+    if (t.e > e) e = t.e;
+  }
+  if (e === Number.NEGATIVE_INFINITY) return ZERO;
+  let value = 0n;
+  for (const t of terms) if (t.m !== 0n) value += (t.m * (q / t.q)) << BigInt(e - t.e);
+  if (value === 0n) return ZERO;
+  return e >= 0 ? { n: value, d: q << BigInt(e) } : { n: value << BigInt(-e), d: q };
+}
+
+/**
+ * The currents of the diodes in `tree` (one per branch of a forest of the diodes' graph, describe.ts)
+ * that make Kirchhoff's current law hold exactly, with ngspice's node voltages and branch currents, at
+ * every node of each tree but one: ground where the tree has it, else the node the tree ends at, whose
+ * law `agrees` then checks. A diode's current is the rest of the currents at a node where it is the last
+ * diode of the tree, worked from the leaves in. Every other diode (on a loop of diodes) carries 0: its
+ * current adds nothing at a node that the tree's cannot, and only what the diodes add at each node
+ * reaches the rest of the circuit. ngspice's own diode currents are not used: it reports the current of
+ * its last iteration, which can be 1e-4 of it away (a diode with a 10 Ω series resistance). Undefined
+ * when a value is missing or a sum's denominator passes MAX_BITS.
+ */
+export function treeCurrents(model: ExactModel, tree: readonly number[], ng: NgspiceValues): Map<number, Fraction> | undefined {
+  const volts: Dyadic[] = [];
+  for (const n of model.nodes) {
+    const v = ng.voltage(n);
+    if (v === undefined || !Number.isFinite(v)) return undefined;
+    volts.push(dyadic(v));
+  }
+  const branch = new Map<number, Dyadic>();
+  for (const p of model.parts) {
+    if (p.branch < 0) continue;
+    const i = ng.branch(p.key);
+    if (i === undefined || !Number.isFinite(i)) return undefined;
+    branch.set(p.branch, dyadic(i));
+  }
+  const v = (n: number): Dyadic => (n < 0 ? { m: 0n, q: 1n, e: 0 } : volts[n]!);
+  // The current leaving each node through the parts other than diodes.
+  const leaving: Dyadic[][] = model.nodes.map(() => []);
+  for (const p of model.parts) {
+    let t: Dyadic[] = [];
+    if (p.kind === 'R') {
+      const g: Fraction = { n: p.value.d, d: p.value.n };
+      t = [times(v(p.a), g), negD(times(v(p.b), g))];
+    } else if (p.kind === 'I') t = [dyadicOf(p.value)];
+    else if (p.kind === 'G') t = [times(v(p.c), p.value), negD(times(v(p.d), p.value))];
+    else if (p.kind === 'F') t = [times(branch.get(model.parts[p.control]!.branch)!, p.value)];
+    else if (p.branch >= 0) t = [branch.get(p.branch)!];
+    for (const x of t) {
+      if (p.a >= 0) leaving[p.a]!.push(x);
+      if (p.b >= 0) leaving[p.b]!.push(negD(x));
+    }
+  }
+  const limit = 1n << BigInt(MAX_BITS + 2200);
+  const sums = new Map<number, Fraction>();
+  const sumAt = (n: number): Fraction | undefined => {
+    let s = sums.get(n);
+    if (s === undefined) {
+      s = signedSum(leaving[n]!, limit);
+      if (s === undefined) return undefined;
+      sums.set(n, s);
+    }
+    return s;
+  };
+  const edges = new Map<number, Set<number>>();
+  const link = (n: number, k: number): void => {
+    const set = edges.get(n);
+    if (set) set.add(k);
+    else edges.set(n, new Set([k]));
+  };
+  for (const k of tree) {
+    link(model.parts[k]!.a, k);
+    link(model.parts[k]!.b, k);
+  }
+  const out = new Map<number, Fraction>();
+  const queue = [...edges.keys()].filter((n) => n >= 0 && edges.get(n)!.size === 1);
+  for (let n = queue.pop(); n !== undefined; n = queue.pop()) {
+    const set = edges.get(n)!;
+    if (set.size !== 1) continue;
+    const [k] = set;
+    const p = model.parts[k!]!;
+    const rest = sumAt(n);
+    if (rest === undefined) return undefined;
+    // What leaves n through the diode makes the currents leaving n add up to 0.
+    const i = n === p.a ? neg(rest) : rest;
+    out.set(k!, i);
+    set.delete(k!);
+    const m = n === p.a ? p.b : p.a;
+    const other = edges.get(m)!;
+    other.delete(k!);
+    if (m >= 0) {
+      const had = sumAt(m);
+      if (had === undefined) return undefined;
+      const now = add(had, m === p.a ? i : neg(i));
+      if ((now.d < 0n ? -now.d : now.d) > limit) return undefined;
+      sums.set(m, now);
+      if (other.size === 1) queue.push(m);
+    }
+  }
+  return out;
+}
+
+/**
+ * The unknowns of the operating point with each diode in `tree` at the current `currents` gives it: x0
+ * (each diode at 0 A) plus each diode's current times the change a unit current through it makes
+ * (`slopes`), over one common denominator (solveExact's, times that of the currents), so overCommon and
+ * currentDouble take it.
+ */
+export function withCurrents(x0: readonly Fraction[], slopes: readonly Fraction[][], tree: readonly number[], currents: ReadonlyMap<number, Fraction>): Fraction[] {
+  let det = 1n;
+  for (const list of [x0, ...slopes]) for (const v of list) if (v.n !== 0n) det = v.d;
+  let d = 1n;
+  for (const k of tree) {
+    const c = currents.get(k) ?? ZERO;
+    if (c.n !== 0n && d % c.d !== 0n) d = lcm(d, c.d);
+  }
+  const num = x0.map((v) => (v.n === 0n ? 0n : v.n * d));
+  tree.forEach((k, j) => {
+    const c = currents.get(k) ?? ZERO;
+    if (c.n === 0n) return;
+    const f = c.n * (d / c.d);
+    slopes[j]!.forEach((v, i) => {
+      if (v.n !== 0n) num[i] = num[i]! + v.n * f;
+    });
+  });
+  return num.map((n) => (n === 0n ? ZERO : { n, d: det * d }));
+}
+
 /** How closely ngspice's values solve this model's equations (`shares`), as fractions not in lowest terms. */
 export interface Shares {
   /**
@@ -1055,6 +1206,11 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
       case 'I':
         product = dyadicOf(level(p));
         terms = [product];
+        break;
+      case 'D':
+        // Its current as the solution gives it (Kirchhoff's law at its node); ngspice reports the current of its
+        // last iteration, which can be 1e-4 of it away (a diode with a 10 Ω series resistance), so no product.
+        terms = [dyadicOf(level(p))];
         break;
       case 'G':
         terms = [times(v(p.c), p.value), negD(times(v(p.d), p.value))];
@@ -1179,7 +1335,7 @@ export interface Answer {
  * The largest value of each kind, which ANSWER_FLOOR is a share of, counts every part's current, so
  * that a 0 V ammeter beside milliamps is weighed against the milliamps.
  */
-export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues): Answer[] | undefined {
+export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value): Answer[] | undefined {
   const exactV = model.nodes.map((_, k) => (isZero(x[k]!) ? 0 : toDouble(x[k]!)));
   const branches = model.parts.filter((p) => p.branch >= 0);
   const exactI = branches.map((p) => (isZero(x[p.branch]!) ? 0 : toDouble(x[p.branch]!)));
@@ -1189,7 +1345,7 @@ export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceVa
   const branchOf = new Map(branches.map((p, k) => [p.branch, exactI[k]!]));
   let largestI = exactI.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
   for (const p of model.parts) {
-    const value = p.kind === 'R' ? (at(p.a) - at(p.b)) / toDouble(p.value) : p.kind === 'I' ? toDouble(p.value) : p.kind === 'G' ? toDouble(p.value) * (at(p.c) - at(p.d)) : p.kind === 'F' ? toDouble(p.value) * (branchOf.get(model.parts[p.control]!.branch) ?? 0) : 0;
+    const value = p.kind === 'R' ? (at(p.a) - at(p.b)) / toDouble(p.value) : p.kind === 'I' || p.kind === 'D' ? toDouble(level(p)) : p.kind === 'G' ? toDouble(p.value) * (at(p.c) - at(p.d)) : p.kind === 'F' ? toDouble(p.value) * (branchOf.get(model.parts[p.control]!.branch) ?? 0) : 0;
     if (Number.isFinite(value)) largestI = Math.max(largestI, Math.abs(value));
   }
   const out: Answer[] = [];

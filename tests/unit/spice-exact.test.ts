@@ -170,9 +170,15 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
     expect(typeof m).toBe('object');
   });
 
-  it('leaves to the other rule a diode, a subcircuit, a B source, POLY, a transient source, a part with settings, .param, .temp, other options, a 0 Ω resistor, an F reading a resistor', () => {
+  it('takes a diode as a part whose current is left free (its model and settings change only that current), but not one with a thermal node', () => {
+    const m = model(`${bridge}D1 a 0 dmod area=2 off\n.model dmod d(is=1e-14 rs=10)\n.op\n.end\n`) as ExactModel;
+    expect(m.parts.find((p) => p.key === 'd1')).toMatchObject({ kind: 'D', a: m.nodes.indexOf('a'), b: -1, branch: -1, value: ZERO });
+    expect(m.size).toBe(4);
+    expect(model(`${bridge}D1 a 0 t dmod\n.model dmod d\n.op\n.end\n`)).toBe('part');
+  });
+
+  it('leaves to the other rule a subcircuit, a B source, POLY, a transient source, a part with settings, .param, .temp, other options, a 0 Ω resistor, an F reading a resistor', () => {
     const cases: [string, string][] = [
-      ['D1 a 0 dmod\n.model dmod d\n', 'directive'],
       ['X1 a 0 sub\n', 'part'],
       ['B1 a 0 V=1\n', 'part'],
       ['E1 a 0 POLY(1) a 0 0 1\n', 'part'],

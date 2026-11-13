@@ -76,12 +76,16 @@ describe('the card says 0 V across a part whose ends are at the same voltage (wo
 });
 
 describe('after the critic of the re-check\'s fixes: the card keeps Ohm\'s law where ngspice\'s numbers and the exact solution meet', () => {
-  it('the rule for other circuits: the H of 1 GΩ with a diode shows Rl\'s 193.5 pA, so the card says the 193.5 nV across it, not 0 V', async () => {
-    const text = '* t\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\nD1 0 top dmod\n.model dmod d\n.op\n.end\n';
+  it('the rule for other circuits: the H of 1 GΩ shows Rl\'s 193.5 pA, so the card says the 193.5 nV across it, not 0 V; with a diode, solved exactly, Rl carries 0 A with 0 V across', async () => {
+    // .temp 27: a line PlainSpice does not model exactly (the rule decides); ngspice runs at 27 °C anyway.
+    const text = '* t\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\n.temp 27\n.op\n.end\n';
     const rl = await card(text, 'Rl');
     expect([rl.through, rl.across.value, rl.across.sub]).toEqual(['193.5 pA', '193.5 nV', ['ground is higher', 'V(out) − V(0) = −193.5 nV']]);
-    // R5, whose current the rule calls noise, keeps its 0 V: a and m are one level.
-    expect((await card(text, 'R5')).across.value).toBe('0 V');
+    // R5 keeps ngspice's 378 aA, in series with Vm's 193.5 aA (H1 makes out from it), and the 17.76 fV across it.
+    expect((await card(text, 'R5')).across.value).toBe('1.776 fV');
+    const diode = text.replace('.temp 27', 'D1 0 top dmod\n.model dmod d');
+    const exact = await card(diode, 'Rl');
+    expect([exact.through, exact.across.value]).toEqual(['0 A', '0 V']);
   });
 
   it('a 1 nΩ wire whose real 454.1 pA ngspice gives as 0 (both its ends the same number): the card says the exact 4.541e-19 V across it', async () => {

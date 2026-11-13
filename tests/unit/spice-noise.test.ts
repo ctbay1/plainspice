@@ -27,6 +27,8 @@ beforeAll(async () => {
 
 const sp = (s: string): string => s.replace(/[  ]/g, ' ');
 const lines = (...l: string[]): string => `* t\n${l.join('\n')}\n.op\n.end\n`;
+/** A line PlainSpice does not model exactly (decision 0015), so the rule for other circuits decides; ngspice runs at 27 °C anyway, so its numbers are the same. */
+const RULE = '.temp 27';
 async function solved(text: string): Promise<{ words: ResultsInWords; by: string }> {
   const r = await solveText(text, ngspice);
   return { words: r.words, by: roundingNoise(r.netlist, r.results).by };
@@ -53,8 +55,12 @@ describe('N1: a real voltage or current is never shown as 0 (C9n)', () => {
     expect(by).toBe('exact');
   });
 
-  it('with a diode, which the rule for other circuits decides, the same ladder keeps them too: a resistor\'s 0 proves nothing there', async () => {
-    const { words, by } = await solved(lines('V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'Rw n3 p 1u', 'Rvm p 0 1t', 'D1 0 n0 dmod', '.model dmod d'));
+  it('with a diode, whose current the exact solution leaves free, the same ladder keeps them too; so does the rule for other circuits, which writes no node as 0 V (the critic of round 2)', async () => {
+    const ladder = ['V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'Rw n3 p 1u', 'Rvm p 0 1t'];
+    const diode = await solved(lines(...ladder, 'D1 0 n0 dmod', '.model dmod d'));
+    expect([diode.by, node(diode.words, 'n3'), node(diode.words, 'p'), current(diode.words, 'Rvm'), noise(diode.words)]).toEqual(['exact', '732.4 nV', '732.4 nV', '7.324e-19 A from node p to ground through Rvm', []]);
+    // RULE: a line PlainSpice does not model exactly; ngspice runs it at its own temperature, so the numbers are the same.
+    const { words, by } = await solved(lines(...ladder, RULE));
     expect([node(words, 'n3'), node(words, 'p')]).toEqual(['732.4 nV', '732.4 nV']);
     expect(current(words, 'Rvm')).toBe('7.324e-19 A from node p to ground through Rvm');
     expect(noise(words)).toEqual([]);
@@ -192,16 +198,23 @@ describe('N4: the note lists at most 4 values, the rest counted, never "and 1 mo
   });
 });
 
-describe('code-6: the rule for other circuits looks again at a part when two groups of nodes join', () => {
-  it('an E reading the C9 bridge, with a diode: R6 written before or after E1 gives the same words', async () => {
+describe('code-6: the rule for other circuits gives the same words whatever the order of the lines', () => {
+  it('an E reading the C9 bridge, decided by the rule: R6 written before or after E1 gives the same words; out keeps ngspice\'s −909.5 fV, so R6 and E1 keep their 909.5 aA', async () => {
     const parts = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'E1 out 0 a b 1000'];
-    const tail = ['D1 0 top dmod', '.model dmod d'];
-    // R6 first: it is looked at before E1 joins node out to ground, and must be looked at again after.
-    const first = await solved(lines('R6 out 0 1k', ...parts, ...tail));
-    const last = await solved(lines(...parts, 'R6 out 0 1k', ...tail));
+    // A 0 the rule writes depends only on ngspice's numbers and the 0s before it, which only add: groups of
+    // joined nodes give levels only (the critic of round 2), so no part waits on a join to be looked at again.
+    const first = await solved(lines('R6 out 0 1k', ...parts, RULE));
+    const last = await solved(lines(...parts, 'R6 out 0 1k', RULE));
     expect([first.by, last.by]).toEqual(['rule', 'rule']);
-    expect(noise(first.words).sort()).toEqual(['E1', 'R5', 'R6', 'node out']);
-    expect(noise(last.words).sort()).toEqual(['E1', 'R5', 'R6', 'node out']);
+    expect(noise(first.words)).toEqual(['R5']);
+    expect(noise(last.words)).toEqual(['R5']);
+    expect([node(first.words, 'out'), current(first.words, 'R6')]).toEqual(['−909.5 fV', '909.5 aA from ground to node out through R6']);
+    expect(first.words.currents.map((c) => c.text).sort()).toEqual(last.words.currents.map((c) => c.text).sort());
+    const nodes = (w: ResultsInWords): string[] => w.nodes.map((n) => `${n.node} ${n.text} ${n.level}`).sort();
+    expect(nodes(first.words)).toEqual(nodes(last.words));
+    // The same circuit with a diode is solved exactly: out is 0 V, and R6 and E1 carry 0 A.
+    const exact = await solved(lines('R6 out 0 1k', ...parts, 'D1 0 top dmod', '.model dmod d'));
+    expect([exact.by, noise(exact.words).sort()]).toEqual(['exact', ['E1', 'R5', 'R6', 'node out']]);
   });
 });
 
@@ -506,15 +519,22 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     expect(ratio(big)).toBeUndefined();
   });
 
-  it('the rule for other circuits never writes a node as 0 V next to a real current: the H of 1 GΩ with a diode keeps out at −193.5 nV beside Rl\'s 193.5 pA, and out has no level', async () => {
-    const { words, by } = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k', 'D1 0 top dmod', '.model dmod d'));
+  it('the rule for other circuits writes no node as 0 V: the H of 1 GΩ keeps out at −193.5 nV beside Rl\'s 193.5 pA, and Vm its −193.5 aA, which H1 makes them from; with a diode it is solved exactly: all 0 (the critic of round 2)', async () => {
+    const tia = ['V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k'];
+    const { words, by } = await solved(lines(...tia, RULE));
     expect(by).toBe('rule');
     expect(node(words, 'out')).toBe('−193.5 nV');
     expect(current(words, 'Rl')).toBe('193.5 pA from ground to node out through Rl');
-    expect(words.nodes.find((n) => n.node === 'out')!.level).toBeUndefined();
-    // a, b and m are still one level: the bridge's middle branch carries 0 A.
+    // H1's two ends are shown at different voltages, so the current it makes them from is real, and so is R5's in series with it.
+    expect(current(words, 'Vm')).toBe('Vm measures 193.5 aA flowing from node b to node m');
+    expect(noise(words)).toEqual([]);
+    // m and b are one level (Vm is a 0 V source); a is not, R5 showing its 378 aA; out shares no level, ground's least.
     const level = (n: string): number | undefined => words.nodes.find((x) => x.node === n)!.level;
-    expect([level('a') === level('m'), level('m') === level('b'), level('a') !== undefined]).toEqual([true, true, true]);
+    expect([level('m') === level('b'), level('m') !== undefined, level('a') === level('m')]).toEqual([true, true, false]);
+    expect(words.nodes.filter((n) => n.level === level('out')).map((n) => n.node)).toEqual(['out']);
+    expect(level('out')).not.toBe(0);
+    const diode = await solved(lines(...tia, 'D1 0 top dmod', '.model dmod d'));
+    expect([diode.by, node(diode.words, 'out'), current(diode.words, 'Rl'), noise(diode.words).sort()]).toEqual(['exact', '0 V', 'no current through Rl', ['H1', 'R5', 'Rl', 'Vm', 'node out']]);
   });
 });
 
@@ -537,12 +557,16 @@ describe('after the critic of the re-check\'s fixes: where ngspice\'s answers ar
     expect([current(words, 'V1'), current(words, 'R1')]).toEqual(['2.168e-19 A from ground to node top1 through V1', '2.118e-19 A from node top1 to node s2 through R1']);
   });
 
-  it('a part with no current of its own between two nodes the rule puts at one level says 0 V across it: a diode across an E that reads the balanced bridge', async () => {
-    const r = await solveText(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'V2 x 0 5', 'E1 x y a b 1000', 'Ry y 0 1k', 'D1 x y dmod', '.model dmod d'), ngspice);
-    expect(roundingNoise(r.netlist, r.results).by).toBe('rule');
-    // ngspice leaves y 8.9e-13 V below x; E1 makes 0 V by the rule's numbers (its control, a and b, is noise of 0).
+  it('a part with no current of its own between two nodes at one level says 0 V across it: a diode across an E that reads the balanced bridge, solved exactly; by the rule, x and y keep ngspice\'s numbers, 909.5 fV apart', async () => {
+    const circuit = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'V2 x 0 5', 'E1 x y a b 1000', 'Ry y 0 1k', 'D1 x y dmod', '.model dmod d'];
+    const r = await solveText(lines(...circuit), ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
+    // ngspice leaves y 8.9e-13 V below x; E1 makes exactly 0 V, whatever current the diode carries (its control, a and b, is exactly 0).
     expect(r.results.op!.nodes.find((n) => n.node === 'y')!.value).not.toBe(5);
     const d1 = annotateLines(r.netlist, r.results, r.run).find((a) => a.line === 11)!;
     expect(sp(d1.text)).toBe('0 V across');
+    const rule = await solveText(lines(...circuit, RULE), ngspice);
+    expect(roundingNoise(rule.netlist, rule.results).by).toBe('rule');
+    expect(sp(annotateLines(rule.netlist, rule.results, rule.run).find((a) => a.line === 11)!.text)).toBe('−909.5 fV across');
   });
 });
