@@ -550,3 +550,26 @@ Still open: when a circuit opens, and after each pan or zoom, the drawing slides
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the
 drawing is going, not where it is (seen in the tests, which wait for the drawing to settle; a sheet
 going away no longer slides). The ladder above still opens as drawn: its turn is the schematic's to fix.
+
+## After the last pass (13 November 2026)
+
+- **Nothing a ResizeObserver watches changes size inside its delivery** (the last pass, a11y-phone-4).
+  Opening the Plot sheet on a phone (RC charging; an iPhone SE, a Pixel 7 on its side, 640 × 400) raised
+  the window's "ResizeObserver loop completed with undelivered notifications" error: about 1 run in 3 for
+  the reviewer, 5 of 5 on each of the three at a load of 10 to 20 (c520a49). Two watchers wrote layout
+  inside a delivery. The hint's watcher (`hooks.ts`, `useOverflowing`) marked the hidden words
+  (`data-more`), which gives the hint a line and a half (`.hint-scroll[data-more]`, 22 → 33 px), and the
+  open sheet's hold laid the sheet out afresh as its plot came in (all its rows new), changing its
+  height (120 → 318 px) and so the stack's, which other watchers watch. Now the hint is marked in the next
+  frame after a change its watchers see (at once when it is first watched, and as it scrolls), and the
+  sheet's hold lays it out afresh in the next frame when a watcher sees all its rows new or Checks' own
+  rows change; keeping rows in place (its scroll and the room below its rows) stays in the delivery, before
+  the frame is drawn, so a run, a new status or an undo still moves none of them. The cost is one frame:
+  the plot can show in the sheet's old height for one frame before the sheet grows to it (the sheet's top
+  402 → 201 px a frame later on an iPhone SE in one of six runs). Measured with the reviewer's way of
+  opening it (More, then Plot, by touch, `plotopen.cjs`): 0 of 6, 0 of 5 and 0 of 5 runs with the error
+  on the three views at a load of 14 to 20 (c520a49: 5 of 5 each at 10 to 20). Test
+  (`tests/e2e/phone.spec.ts`, "the Plot sheet opened on a phone, and opened again, raises no
+  "ResizeObserver loop" error"): the three views, opened twice each, the window's errors watched from
+  before the first opening (c520a49: the error at 320 × 568).
+

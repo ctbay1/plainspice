@@ -1256,6 +1256,38 @@ test('the Numbers and Plot sheets keep their rows where they are through each ru
   expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), '320 × 568, Plot open: window errors').toEqual([]);
 });
 
+test('the Plot sheet opened on a phone, and opened again, raises no "ResizeObserver loop" error (AP-2)', async ({ page }) => {
+  // The last pass's a11y-phone-4: opening it (RC charging) raised the window error on c520a49, about 1 run
+  // in 3 there and 5 of 5 at a load of 10 to 20, on an iPhone SE, a Pixel 7 on its side and 640 × 400. Two
+  // watchers changed a watched box's size inside a ResizeObserver's delivery: the hint's mark of hidden words
+  // (data-more, which gives it a line and a half), and the sheet laid out afresh as its plot came in.
+  for (const view of [
+    { width: 320, height: 568 },
+    { width: 863, height: 360 },
+    { width: 640, height: 400 },
+  ] as const) {
+    const at = `${view.width} × ${view.height}`;
+    await page.setViewportSize(view);
+    await openApp(page);
+    await expectSolved(page);
+    await chooseExample(page, 'RC charging (.tran)');
+    await expectSolved(page);
+    await settle(page);
+    // The window's errors from here on (logSheetRows starts the log after the page was opened).
+    await logSheetRows(page);
+    for (const time of ['first', 'again']) {
+      const plot = await openPanel(page, 'plot');
+      await expect(plot.locator('figure'), `${at}, opened ${time}: its plot`).toBeVisible();
+      await settle(page);
+      await closePanel(page, 'plot');
+      await settle(page);
+    }
+    await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
+    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}: window errors`).toEqual([]);
+    await page.evaluate(() => localStorage.removeItem('plainspice:netlist'));
+  }
+});
+
 test('a sheet scrolled to its end keeps no empty room below its last row after a run: Numbers through two runs (AP-2)', async ({ page }) => {
   // The critic of the second re-check's second fixes: the room kept below a sheet's rows (so that rows below
   // the ones in view may go without moving them) was measured from its rows' own boxes, which miss a margin

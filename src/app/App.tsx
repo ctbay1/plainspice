@@ -516,13 +516,24 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
   // is not about to be tapped again.
   const onPress = (e: PointerEvent): void => press(rowPressed(body, e.target));
   const onKey = (): void => press(undefined);
+  // Laid out afresh in the next frame, not inside the watcher's delivery: its height changes, and so does
+  // the stack's, which other watchers watch (the window's "ResizeObserver loop" error as a plot came into
+  // the Plot sheet, a11y-phone-4). Its rows are all new then (or Checks' own), so none is kept in place;
+  // keeping rows in place only scrolls the body and the room below its rows, before the frame is drawn.
+  let later = 0;
+  const afreshLater = (): void => {
+    cancelAnimationFrame(later);
+    later = requestAnimationFrame(() => {
+      if (!held.fresh) measureSheet(held);
+    });
+  };
   const ro =
     typeof ResizeObserver === 'undefined'
       ? undefined
       : new ResizeObserver(() => {
           if (held.fresh) return;
-          if (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5) measureSheet(held);
-          else keepRows(held);
+          if (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5) afreshLater();
+          else keepRows(held, afreshLater);
         });
   const watch = (): void => {
     ro?.observe(body);
@@ -542,6 +553,7 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
   });
   held.release = () => {
     cancelAnimationFrame(frame);
+    cancelAnimationFrame(later);
     ro?.disconnect();
     mo?.disconnect();
     body.removeEventListener('scroll', onScroll);
@@ -594,12 +606,12 @@ function measureSheet(held: SheetHold): void {
  * (the head coming down over it hid the focus after Enter on More's Undo: the critic of the second
  * re-check's second fixes): the rows go down with it as far as that needs, as no finger aims at them.
  */
-function keepRows(held: SheetHold): void {
+function keepRows(held: SheetHold, afresh: (held: SheetHold) => void = measureSheet): void {
   const { body } = held;
   const rows = held.rowsInView;
   const row = rows.find((r) => r.el.isConnected && body.contains(r.el));
   if (!row) {
-    measureSheet(held);
+    afresh(held);
     return;
   }
   // What scrolls was cut back under its scroll (the browser took the scroll in with it): from where it was.
