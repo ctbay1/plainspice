@@ -918,7 +918,8 @@ The lines after `.end` are part of the circuit too, not only its commands: with 
 them), and `B1 c 0 V=v(b` there stops native 47 and 42, `-b -r` and `-b` (exit 134, "stack smashing
 detected"; the sanitized build: `heap-buffer-overflow … READ of size 1 … in inp_modify_exp`) and crashes
 our engine. Line 1 is the title whatever it says: with `.control` there, `B1 c 0 V=v(b` on line 2 is a
-circuit line, and stops native 47 and 42 the same way. PlainSpice reads the lines after `.end` as ngspice
+circuit line, which native 47 and 42 read past the end of as limit-5 says ("stack smashing detected", exit
+134, or from run to run an error, exit 1: 42 `-b` gave each once). PlainSpice reads the lines after `.end` as ngspice
 does, with every check of a circuit line.
 
 A circuit built by `*# circbyline` lines meets limit-12 and limit-16 like any other: with a first line of
