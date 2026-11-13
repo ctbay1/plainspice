@@ -266,6 +266,64 @@ describe('S8: .tf and .dc in a circuit solved exactly give 0 where the circuit m
   });
 });
 
+describe('after the critic of round 2: .tf and .dc agree with the .op beside them', () => {
+  const run = (...l: string[]): Promise<Awaited<ReturnType<typeof solveText>>> => solveText(`* t\n${l.join('\n')}\n.end\n`, ngspice);
+  const tia = ['V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k'];
+
+  it('the .tf of the bridge an H of 1 GΩ reads is 0 V/V, as its .op makes out 0 V for every V1: ngspice\'s −2.15e-8 is its rounding lifted by the gain; without an .op to show ngspice solved this circuit, a ratio that large is kept', async () => {
+    const withOp = await run(...tia, '.op', '.tf v(out) V1');
+    expect(withOp.words.tf!.transferFunction).toMatchObject({ value: 0, noise: -2.1500237300155906e-8, text: 'v(out)/V1 = 0 (V/V)' });
+    expect(node(withOp.words, 'out')).toBe('0 V');
+    expect(sp(withOp.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => m.why).join(' | '))).toContain('ngspice gave v(out)/V1 = -2.150024e-08. That is rounding noise');
+    const current = await run(...tia, '.op', '.tf i(Vm) V1');
+    expect(current.words.tf!.transferFunction).toMatchObject({ value: 0, noise: -2.1500237300155906e-17 });
+    // The .tf alone: its three numbers are all there is to check, and −2.15e-8 is far above what rounding leaves of a ratio of about 1.
+    const alone = await run(...tia, '.tf v(out) V1');
+    expect([alone.words.tf!.transferFunction!.value, alone.words.tf!.transferFunction!.noise]).toEqual([-2.1500237300155906e-8, undefined]);
+    // The E of 1e6 reading the C9 bridge, with its .op: 0 V/V, not −5.8e-11.
+    const e = await run('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'E1 out 0 a b 1e6', 'Rl out 0 100', '.op', '.tf v(out) V1');
+    expect(e.words.tf!.transferFunction).toMatchObject({ value: 0, noise: -5.820766091346741e-11 });
+  });
+
+  it('a .dc point where ngspice gives exactly 0 for a real current is the exact one, as the .op beside it: the 1 nΩ wire of C9n.4 carries 454.1 pA at V1 = 1.5 V in both, with ngspice\'s 0 in the Plot panel\'s own column', async () => {
+    const r = await run('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.options savecurrents', '.op', '.dc V1 0 1.5 0.5');
+    expect(current(r.words, 'R3')).toBe('454.1 pA from node d2 to node p3 through R3');
+    const final = r.words.sweeps[0]!.final.find((f) => f.name === 'i(@r3[i])')!;
+    expect(final).toMatchObject({ value: 4.5413907894834974e-10, given: 0 });
+    expect(sp(r.words.sweeps[0]!.text)).toContain('i(@r3[i]) = 454.1 pA');
+    const note = r.words.warnings.find((m) => m.code === 'rounded-to-0' && m.title.includes('DC sweep'))!;
+    expect(sp(note.why)).toContain('PlainSpice shows each as the exact solution gives it, in these words and in the Plot panel: i(@r3[i]) 151.4 pA at V1 = 500 mV, i(@r3[i]) 302.8 pA at V1 = 1 V and i(@r3[i]) 454.1 pA at V1 = 1.5 V.');
+    const spec = plotSpecs(r.results, r.netlist)[0]!;
+    const r3 = spec.series.find((s) => s.label === 'i(@r3[i])')!;
+    expect(Array.from(r3.values)).toEqual([0, 1.5137969298278325e-10, 3.027593859655665e-10, 4.5413907894834974e-10]);
+    expect(Array.from(r3.given!)).toEqual([0, 0, 0, 0]);
+    // R4, in series with it, keeps ngspice's own numbers, which agree.
+    expect(spec.series.find((s) => s.label === 'i(@r4[i])')!.given).toBeUndefined();
+  });
+
+  it('past the first 2,000 such points of a long sweep the value is worked out in doubles from the exact a and b, to 8 digits or more, and the last point exactly', async () => {
+    const r = await run('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.options savecurrents', '.dc V1 0 1.5 0.00025');
+    const spec = plotSpecs(r.results, r.netlist)[0]!;
+    const r3 = spec.series.find((s) => s.label === 'i(@r3[i])')!;
+    const x = spec.x.values;
+    // R3 carries v(d2) / (1n + 10meg), v(d2) being V1 × (820 ∥ (1n + 10meg)) / (270k + 820 ∥ (1n + 10meg)): in doubles, to about 1e-15.
+    const exactAt = (k: number): number => { const vd2 = (x[k]! * (1 / (1 / 820 + 1 / (1e7 + 1e-9)))) / (270e3 + 1 / (1 / 820 + 1 / (1e7 + 1e-9))); return vd2 / (1e7 + 1e-9); };
+    const given = r3.given!;
+    let estimated = 0;
+    for (let k = 1; k < x.length; k++) {
+      if (given[k] !== 0) continue;
+      estimated += 1;
+      expect(Math.abs(r3.values[k]! - exactAt(k)) / exactAt(k), String(k)).toBeLessThan(1e-8);
+    }
+    expect(estimated).toBeGreaterThan(2000);
+    // The last point exactly, at the x ngspice swept V1 to (its steps added in doubles), as the Plot panel draws it.
+    const last = x.length - 1;
+    const final = r.words.sweeps[0]!.final.find((f) => f.name === 'i(@r3[i])')!;
+    expect([final.given, final.value]).toEqual([0, r3.values[last]]);
+    expect(Math.abs(final.value - exactAt(last)) / exactAt(last)).toBeLessThan(1e-14);
+  });
+});
+
 describe('speed: the exact solve keeps describeResults, which runs on the main thread after every run, quick (decision 0015)', () => {
   const E12 = [1, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2];
   /** Circuits from a fixed seed: a ladder, a ladder with ammeters, a random network of resistors, bridges side by side. */
