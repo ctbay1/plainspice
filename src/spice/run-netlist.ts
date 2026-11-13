@@ -43,7 +43,7 @@ export const TITLE_BYTES = 504;
  * limit-13 to limit-15).
  */
 export const WORD_BYTES = 250;
-/** The most bytes of a v(…) in a formula (one ngspice writes for a .probe line too) or of an analysis command of a .control block (limit-5, limit-6, limit-15). */
+/** The most bytes of a v(…) in a formula (one ngspice writes for a .probe line too) or of an analysis command, as ngspice writes it (limit-5, limit-6, limit-15). */
 export const RUN_BYTES = 500;
 /** The most bytes of a .model line's version: ngspice copies it into 100 bytes (limit-9). */
 export const VERSION_BYTES = 90;
