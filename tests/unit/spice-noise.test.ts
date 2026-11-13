@@ -610,13 +610,13 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
 describe('after the critic of the re-check\'s fixes: where ngspice\'s answers are farther off, the rule decides, helped by the exact solution', () => {
   const lost = (w: ResultsInWords): string[] => w.currents.filter((c) => c.given !== undefined).map((c) => c.name);
 
-  it('V1 of 100 V through 1 Ω and 1e20 Ω: ngspice gives the 1 aA in V1 and R1 as exactly 0 (its answer for V1 is 0, not 1 aA): the rule decides and keeps ngspice\'s numbers, never mixing an exact value in, and the warning gives V1\'s exact 1 aA (the critic of round 2)', async () => {
+  it('V1 of 100 V through 1 Ω and 1e20 Ω: ngspice gives the 1 aA in V1 and R1 as exactly 0, and every other value as the exact one, so the run is decided exactly and both show their exact 1 aA, as R2 does: Kirchhoff\'s law holds (the critic of round 3; the warning sat beside "no current" for both)', async () => {
     const { words, by } = await solved(lines('V1 top1 0 100', 'R1 top1 s2 1', 'R2 s2 0 1e20'));
-    expect(by).toBe('rule');
-    expect([current(words, 'V1'), current(words, 'R1'), current(words, 'R2')]).toEqual(['no current through V1', 'no current through R1', '1 aA from node s2 to ground through R2']);
-    expect(lost(words)).toEqual([]);
-    expect(words.warnings.find((m) => m.code === 'rounded-to-0')).toBeUndefined();
-    expect(sp(off(words)!.why)).toContain('values, V1 carries 1 aA, where ngspice gives 0 A; and R1 carries 1 aA, where ngspice gives 0 A. ngspice computes');
+    expect(by).toBe('exact');
+    expect([current(words, 'V1'), current(words, 'R1'), current(words, 'R2')]).toEqual(['1 aA from ground to node top1 through V1', '1 aA from node top1 to node s2 through R1', '1 aA from node s2 to ground through R2']);
+    expect(lost(words)).toEqual(['V1', 'R1']);
+    expect(words.warnings.find((m) => m.code === 'rounded-to-0')).toBeDefined();
+    expect(off(words)).toBeUndefined();
   });
 
   it('V1 of 1 µV through 1 mΩ and 10 TΩ: ngspice gives V1 217 zA where the circuit makes 100 zA; the rule alone would call V1 and R1 noise (R1\'s ends are one double), the exact solution keeps them as ngspice gives them', async () => {
@@ -844,8 +844,8 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect(await out(320)).toEqual(['−931.3 pV', 'v(out) = −931.3 pV']);
   });
 
-  it('where ngspice\'s answers are off, a level the rule gives is kept only where the exact voltages are equal: 2 attoamps through 120 Ω leave i2 1.2e-16 V above top1 exactly, which ngspice gives as one double, so e3 = 2 × V(top1, i2) is not at ground\'s level, though ngspice and the rule give it 0 V', async () => {
-    const { words, by } = await solved(lines('V1 top1 0 9', 'R1 top1 i2 120', 'I1 0 i2 1A', 'R2 top1 i2 10meg', 'E1 e3 0 top1 i2 2', 'R3 e3 0 18'));
+  it('where ngspice\'s answers are off, a level the rule gives is kept only where the exact voltages are equal: 2 attoamps through 120 Ω leave i2 1.2e-16 V above top1 exactly, which ngspice gives as one double, so e3 = 2 × V(top1, i2) is not at ground\'s level, though ngspice and the rule give it 0 V (a second loop, 3 aA through 150 Ω at 5 V, which ngspice gives 5.921 aA the other way, keeps the run off)', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 9', 'R1 top1 i2 120', 'I1 0 i2 1A', 'R2 top1 i2 10meg', 'E1 e3 0 top1 i2 2', 'R3 e3 0 18', 'V2 top2 0 5', 'R4 top2 j 150', 'I2 0 j 3A'));
     expect([by, node(words, 'e3'), off(words) !== undefined]).toEqual(['rule', '0 V', true]);
     expect(words.nodes.find((n) => n.node === 'e3')!.level).toBeUndefined();
   });
@@ -924,7 +924,8 @@ describe('after the critic of round 2: with a diode, a run\'s .op and its .dc ar
     expect(last('i(@d1[id])')).toMatchObject({ value: -9.00999999968093e-12 });
     expect(Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'v(out)')!.values)).toEqual([0, 0, 0, 0]);
     const notes = r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why ?? ''));
-    expect(notes[1]).toContain("Solved exactly, with fractions, from the netlist's values and its diodes' currents, the circuit makes each of them exactly 0 there");
+    // The diode across V1 changes none of them: 0 whatever current it carries (the critic of round 3).
+    expect(notes[1]).toContain("Solved exactly, with fractions, from the netlist's values, the circuit makes each of them exactly 0 there, whatever current its diodes carry, so PlainSpice shows 0");
   });
 
   it('a diode with 0 V across it at one point of the sweep carries 0 A there only: the G reading the balanced bridge drives R6 and R7 to ground and a diode to y, which V2 sets; at V2 = 0, the .op\'s point, R7 and the diode are exactly 0 as in the .op, and at 1 and 2 V they carry the diode\'s real reverse current', async () => {
@@ -939,7 +940,7 @@ describe('after the critic of round 2: with a diode, a run\'s .op and its .dc ar
     expect(series('i(@r6[i])')).toEqual([0, 0, 0]);
   });
 
-  it('at a point where the circuit makes every value 0, ngspice\'s Newton iterations can leave a diode circuit 1e-25 V here and there: two equal diode arms swept from 0 V show 0 there, each value within 2^-30 of the largest ngspice gives of its kind; R5, 0 only if the two diodes carry equal currents, keeps ngspice\'s numbers at the other points', async () => {
+  it('at a point where the circuit makes every value 0, ngspice\'s Newton iterations can leave a diode circuit 1e-25 V here and there: two equal diode arms swept from 0 V show 0 there, each value within 2^-30 of the largest ngspice gives of its kind; R5, 0 because the two diodes, placed alike, carry equal currents, is 0 at every point (the critic of round 3: it kept ngspice\'s numbers)', async () => {
     const r = await solveText('* t\nV1 top 0 9\nD1 top a dmod\nR2 a 0 10k\nD2 top b dmod\nR4 b 0 10k\nR5 a b 1k\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 9 3\n.end\n', ngspice);
     const given = (name: string): number[] => Array.from(r.results.dc!.series.find((s) => s.name === name)!.values);
     const shown = (name: string): number[] => Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === name)!.values);
@@ -948,7 +949,7 @@ describe('after the critic of round 2: with a diode, a run\'s .op and its .dc ar
     expect(shown('i(@d1[id])')).toEqual([0, ...given('i(@d1[id])').slice(1)]);
     expect([given('i(@r5[i])').slice(1), shown('i(@r5[i])')]).toEqual([
       [4.440892098500626e-19, 0, 0],
-      [0, 4.440892098500626e-19, 0, 0],
+      [0, 0, 0, 0],
     ]);
   });
 

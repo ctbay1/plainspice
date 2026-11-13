@@ -814,7 +814,9 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     // carries 0 A (0 V across a diode makes 0 A), and Rd and dd are exactly 0 too, whatever these numbers say.
     expect(w.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1', 'Rd']);
     expect(w.nodes.filter((n) => n.noise !== undefined).map((n) => n.node)).toEqual(['dd']);
-    expect(w.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain("from the netlist's values and its diodes' currents, the circuit makes each of them exactly 0, so PlainSpice shows 0 A and 0 V.");
+    // The words give the reason the decision used: Rd and dd are 0 because D1 carries 0 A at 0 V (the critic of round 3:
+    // "from the netlist's values and its diodes' currents" said the opposite of how the 0 was found).
+    expect(w.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain("from the netlist's values, the circuit makes each of them exactly 0 (D1 has 0 V across it, so it carries no current), so PlainSpice shows 0 A and 0 V.");
     // A line PlainSpice does not model exactly leaves it to the rule, which says so only below ngspice's tolerances.
     const rule = describeResults(parseNetlist(text.replace('.op', '.temp 27\n.op')), r, run());
     expect(rule.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1']);

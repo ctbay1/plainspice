@@ -976,7 +976,7 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     expect(noise(d)).toEqual(['R5', 'Vm', 'H1', 'Rl', 'node out']);
     expect([node(d, 'out'), plain(currentText(d, 'Rl'))]).toEqual(['0 V', 'no current through Rl']);
     expect(d.words.nodes.find((n) => n.node === 'out')!.level).toBe(0);
-    expect(note(d)).toContain("from the netlist's values and its diodes' currents, the circuit makes each of them exactly 0, so PlainSpice shows 0 A and 0 V.");
+    expect(note(d)).toContain("from the netlist's values, the circuit makes each of them exactly 0, whatever current its diodes carry, so PlainSpice shows 0 A and 0 V.");
   });
 
   it('C9o.5: with a .temp line the rule decides: out keeps ngspice\'s −931.3 pV, which E1 makes from the voltage between a and b, so R5 between them keeps ngspice\'s 8.882e-19 A, not 0 A with "its two ends at the same voltage" (the critic of round 2)', () => {
@@ -1114,10 +1114,11 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     expect(offNote(d)).toBe("Solved exactly, with fractions, from the netlist's values, Rw carries no current, where ngspice gives 55.51 µA; and R5 carries no current, where ngspice gives 2.404 µA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.");
   });
 
-  it('C9t.9: at V1 = 0 V, where the circuit makes every value 0, ngspice\'s Newton leftovers (−7.4e-25 V at a and b) are shown as 0; R5, 0 only if the two diodes carry the same current, keeps ngspice\'s 4.441e-19 A at 3 V', () => {
+  it('C9t.9: at V1 = 0 V, where the circuit makes every value 0, ngspice\'s Newton leftovers (−7.4e-25 V at a and b) are shown as 0; R5, 0 because the two diodes, placed alike, carry the same current, is 0 at every point, ngspice\'s 4.441e-19 A at 3 V too (the critic of round 3)', () => {
     const d = ofFact('C9t.9');
     const shown = (name: string): number[] => Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === name)!.values);
-    expect([shown('v(a)')[0], shown('v(b)')[0], shown('i(@r5[i])')]).toEqual([0, 0, [0, 4.440892098500626e-19, 0, 0]]);
+    expect([shown('v(a)')[0], shown('v(b)')[0], shown('i(@r5[i])')]).toEqual([0, 0, [0, 0, 0, 0]]);
+    expect(d.results.dc!.series.find((s) => s.name === 'i(@r5[i])')!.values[1]).toBe(4.440892098500626e-19);
   });
 
   it('C9t.10: ngspice settles on a current around a loop of a diode and 2.2 MΩ that nothing drives; a diode taken as carrying 0 A must carry less than 1 pA by ngspice\'s numbers, so the rule decides: R21 shows ngspice\'s 308.4 nA, not "rounding noise" beside d20 at 100.7 V', () => {
