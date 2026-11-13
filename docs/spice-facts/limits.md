@@ -6,8 +6,9 @@ detected", "stack smashing detected") or runs on with its memory overwritten, an
 engine runs on, writes a broken results file or crashes. No real netlist comes near these lengths,
 but a link can carry anything, and a title can be a pasted problem statement. So the copy PlainSpice
 gives ngspice (`src/spice/run-netlist.ts`, decision [0012](../decisions/0012-netlists-and-links-are-data.md))
-keeps inside every space below, but for one way past it that we know: what a `.control` block computes
-while it runs (limit-11). This file is the evidence; the claim IDs are named in that code.
+keeps inside every space below, but for one way past it that we know: what ngspice's commands compute
+while they run, from variables and aliases (limit-11). This file is the evidence; the claim IDs
+are named in that code.
 
 **How it was checked (13 November 2026).** Each netlist was run four ways, as for the other facts
 ([README](README.md)): native ngspice 47 and 42, as `ngspice -b -r out.raw file.cir` (the results
@@ -31,7 +32,11 @@ review of the first fix, ran what ngspice does to a line before it copies it, wh
 missed: it takes the blanks out of brackets (limit-13), joins string parameters (limit-14), makes the
 names of a `.probe` line (limit-15), builds circuits with `circbyline` inside each other (limit-16),
 names a `print` or `write` formula with its text and writes a wrong `meas` word into 100 bytes
-(limit-17); and it found that of the `.control` commands only the analyses are copied whole (limit-6).
+(limit-17); and it found that of the `.control` commands only the analyses are copied whole (limit-6). A
+fourth pass, after a review of that fix, ran which lines ngspice runs as commands, a `.control` block's and
+more (limit-18), how its control reader makes their words (limit-19), the `.title` line of a circuit built
+with `circbyline` (limit-16), and every command that names a formula, with a formula of 999 bytes after `op`
+and after `tran` (limit-17).
 
 The long words are runs of one letter (`W…W`); the netlists show their length instead. glibc prints
 "buffer overflow detected" and "stack smashing detected" on standard error (with
@@ -300,7 +305,7 @@ word of 508. No other command is copied this way: a `print` line of 525 and of 7
 1,495 and a `let` of 1,007 run in native 47 and 42 (`-b -r` and `-b`, exit 0), and the sanitized build
 reports nothing. `print` of a vector whose name is 512 bytes stops them (`vec_basename()` copies the
 name into 512 bytes with `strcpy`); 511 bytes runs (limit-10, limit-17). A netlist whose first line
-starts with `*ng_script` is all commands. **Our engine** runs on (a `.control` block writes nothing to
+starts with `*ng_script` is all commands, and a `*#` line is one anywhere (limit-18). **Our engine** runs on (a `.control` block writes nothing to
 the results file, A36), and gives what native 47 and 42 print for the long `print` line: `v(b) =
 6.000000e+00`, once for each of its 104 `v(b)`.
 
@@ -436,7 +441,7 @@ At PlainSpice's limit, every full name 250 bytes (X names of 100 bytes and a nod
 `.options savecurrents`: native 47 and 42 run them, the node at v = 3 V and the currents in the
 results file, the sanitized build reports nothing, and our engine gives the same numbers.
 
-## limit-11: a `.control` block can make a name while it runs
+## limit-11: ngspice's commands can make a name while they run
 
 **Claim.** A `.control` block is a small program: it can join variables into a word longer than any
 line, and use it as a vector's name. Nothing in the netlist's text is long, so PlainSpice cannot see
@@ -471,16 +476,28 @@ Variables are one of the block's ways to make a word while it runs; an alias is 
 `alias xx op` and then `xx` followed by words of 250, 250 and 10 bytes, no line says `op` with those
 words, but ngspice puts `op` in place of `xx` and writes `.op` and the words into 512 bytes (limit-6):
 native 47 and 42, `-b -r` and `-b` (exit 134), "*** buffer overflow detected ***: terminated"; the
-sanitized build: `stack-buffer-overflow … WRITE of size 517 … in if_run`. PlainSpice gives ngspice such
-a block as written: what a `.control` block computes while it runs is the one way past the checks below
-that we know of.
+sanitized build: `stack-buffer-overflow … WRITE of size 517 … in if_run`.
+
+ngspice's own variables count too, and some hold text from the netlist: after an analysis, `$curplottitle`
+is the circuit's title. With a title of 499 bytes (`* ` and 166 times `ab`, which PlainSpice does not cut),
+`op` and then `op $curplottitle $curplottitle` in a `.control` block make an analysis command of 1,003 bytes:
+native 47 and 42, `-b -r` and `-b` (exit 134), "*** buffer overflow detected ***: terminated"; the sanitized
+build: `stack-buffer-overflow … WRITE of size 1004 … in if_run`; our engine runs on (exit 0). (After `op`,
+`echo [$curplottitle] [$curplot]` prints `[* short title] [op1]` for a circuit titled `* short title`.)
+
+The same is true wherever ngspice runs commands: in a `.control` block, on a `*#` line or in an
+`*ng_script` file (limit-18). PlainSpice gives ngspice such commands as written, measured as their words
+are (limit-19) but for what they compute while they run: variables (`$…`, ngspice's own too) and aliases
+are the one way past the checks in this file that we know of. Backquotes are not: ngspice puts the output
+of a shell command in their place (native 47: `` echo [`echo aa bb`] `` prints `[aa bb]`), and our engine
+runs no shell command: it says "Error: can't evaluate echo aa bb." and puts nothing there.
 
 ## limit-12: ngspice reads the lines of `circbyline` commands as a netlist, with the same spaces
 
-**Claim.** A `.control` block or an `*ng_script` file can build a circuit line by line with
-`circbyline`: ngspice keeps each line (the command's words, joined with one blank each) and, at
-`circbyline .end`, reads them as a netlist, the way it reads a file; the next `circbyline` line starts
-another circuit. That netlist meets every space above: a B source without its `)` (limit-5) and a node
+**Claim.** A `.control` block or an `*ng_script` file (or any line ngspice runs as a command, limit-18)
+can build a circuit line by line with `circbyline`: ngspice keeps each line (the command's words, joined
+with one blank each) and, at `circbyline .end`, reads them as a netlist, the way it reads a file; the next
+`circbyline` line starts another circuit. That netlist meets every space above: a B source without its `)` (limit-5) and a node
 made inside subcircuits, printed (limit-10), stop native ngspice and crash our engine as they do in a
 netlist written out. Its title, and a circuit built inside it, are limit-16.
 
@@ -558,8 +575,10 @@ src/frontend/dotcards.c:681 … in ft_dotsaves` (608 for 600). The same 600 byte
 not with `-b -r`, where ngspice skips those lines (limit-8).
 
 `B1 c 0 V=i(R1)*1+( W…W W…W W…W )`: with 511 letters in the brackets, native 47 and 42 stop with their own
-message ("Error in netlist line no. 8, new internal line no. 5", exit 1) and the sanitized build
-reports nothing; with 512 the same message, and the sanitized build stops in `inp_modify_exp`
+message (exit 1, `-b -r` and `-b`; 47: "Error in netlist line no. 8, new internal line no. 5:",
+"Undefined parameter [w…]", "Cannot compute substitute"; 42: "Netlist line no. 5:", "Undefined
+parameter [w…]", "Cannot compute substitute"; both then "ERROR: fatal error in ngspice, exit(1)") and the
+sanitized build reports nothing; with 512 the same messages, and the sanitized build stops in `inp_modify_exp`
 (`stack-buffer-overflow … WRITE of size 1 … inpcom.c:7635 … in inp_bsource_compat`); with 600, native 47
 and 42, `-b -r` and `-b` (exit 134): "*** stack smashing detected ***: terminated". With `i(V1)` (a
 source's own current, which ngspice leaves as it is) or no `i(`, the blanks stay and the 600 letters
@@ -694,22 +713,59 @@ The sanitized build: `WRITE of size 514 … in fileInit`. A circuit built inside
 native 47 and 42, `-b -r` and `-b`, crash (exit 139); the sanitized build: `SEGV on unknown address …
 in create_circbyline src/frontend/inp.c:2098 … in com_circbyline`.
 
+A `.title` line of the built circuit is its title too, as in a netlist written out (limit-1; the last one
+counts): ngspice reads the circuit's lines as it reads a file, and takes the words after `.title`.
+
+```
+* t
+V9 z 0 1
+R9 z 0 1
+.op
+.control
+circbyline * short
+circbyline .title ab ab … abx     (the title's words: 504 bytes; with "abxx": 505; 200 times "ab": 599)
+circbyline V1 a 0 9
+circbyline R1 a b 1k
+circbyline R2 b 0 2k
+circbyline .op
+circbyline .end
+op
+print v(b)
+.endc
+.end
+```
+
+504 bytes: native 47 and 42 (`-b -r` and `-b`, exit 0) print `v(b) = 6.000000e+00`. 505 and 599 bytes,
+native 47 and 42, `-b -r` (exit 134; `-b` runs): "*** buffer overflow detected ***: terminated"; the
+sanitized build: `WRITE of size 514 … in fileInit src/frontend/outitf.c:917` (608 for 599).
+
 **Our engine** runs the 505-byte title on (exit 0), and reads no circuit from the nested ones ("there
-aren't any circuits loaded", or exit 0 without results). PlainSpice checks each circuit once: its title
-at most 504 bytes, as ngspice joins its words, its lines as a netlist, and no `circbyline` inside it.
-Checked once, the work no longer grows with the depth: 250 kB of `circbyline` commands nested 100 deep,
-which a link of 2 kB can hold, took a second of processor time to check at every pause; now 21 ms
-(load 0.2).
+aren't any circuits loaded", or exit 0 without results). With the `.title` line, it runs the 505-byte one on
+(exit 0) and crashes on the 599-byte one (`RuntimeError: memory access out of bounds`). PlainSpice checks
+each circuit once: its title, its first line and each `.title` line's words, at most 504 bytes, as ngspice
+joins its words, its lines as a netlist, and no `circbyline` inside it. Checked once, the work no longer
+grows with the depth: 250 kB of `circbyline` commands nested 100 deep, which a link of 2 kB can hold, took
+a second of processor time to check at every pause; now 21 ms (load 0.2).
 
-## limit-17: `print` and `write` name a formula with its text; `meas` writes a wrong word into 100 bytes
+## limit-17: a formula's name keeps one blank between its words, and six commands copy it into 512 bytes; `meas` writes a wrong word into 100 bytes
 
-**Claim.** `print` and `write` name what a formula gives with the formula's text, without its blanks,
-and copy that name into 512 bytes (`vec_basename()`, limit-6): a formula of 509 bytes prints, 514 stops
-native 47 and 42. `let`, `wrdata`, `plot`, `asciiplot`, `fourier` and `if` with the same formula of 999
-bytes run. A `meas` command writes a word it cannot use, with its message, into a space of 100 bytes
-(`char errbuf[100]` of `get_measure2()`, `src/frontend/com_measure2.c`: `sprintf(errbuf, "no such
-vector as '%s'\n", meas->m_vec)`, and "bad syntax, cannot evaluate right hand side of %s=%s"): a vector
-of 78 bytes that does not exist gives the message, 79 overflows.
+**Claim.** ngspice names what a formula gives with the formula's text as its reader takes it: the
+command's words joined with one blank each (`wl_flatten()`), from the formula's first word to its last
+(the parser's `copy_substring()`, `src/frontend/parse-bison.y`), so `v(b) + v(b)` keeps its two blanks.
+When the words hold a `v(` or an `i(`, it first takes the blanks out of brackets and puts quotes around an
+argument of `v(…)` or `i(…)` that starts with a digit or holds an operator (`ft_getpnames_quotes()`,
+`src/frontend/parse.c`): `v(a,1p)` is named `v(a,"1p")`, and a name with `v("` or `i("` in it is written
+again without its quotes, in at most 99 bytes (`set noquotesinoutput` leaves the blanks and adds no
+quotes). `print` and `write` copy that name into 512 bytes (`vec_basename()`, limit-6), and so do `fft`,
+`psd` and `spec` for the vectors they make (`src/frontend/com_fft.c`, `spec.c`), and `asciiplot` after an
+operating point, where it compares the formula's name with the scale's (`vec_eq()`,
+`src/frontend/plotting/agraf.c`; after `tran` it runs): a name of 509 bytes prints, 514 stops native 47
+and 42. `let`, `wrdata`, `plot`, `fourier`, `if`, `display`, `linearize` and the other commands that read
+formulas, with a formula of 999 bytes, run after `op` and after `tran`. A `meas` command writes a word it
+cannot use, with its message, into a space of 100 bytes (`char errbuf[100]` of `get_measure2()`,
+`src/frontend/com_measure2.c`: `sprintf(errbuf, "no such vector as '%s'\n", meas->m_vec)`, and "bad syntax,
+cannot evaluate right hand side of %s=%s"): a vector of 78 bytes that does not exist gives the message, 79
+overflows.
 
 ```
 * t
@@ -731,36 +787,213 @@ and 42, `-b -r` (exit 134):
 *** buffer overflow detected ***: terminated
 ```
 
+The blanks count: 73 terms joined by ` + ` (508 bytes) print in native 47 and 42 (`-b -r` and `-b`), 74
+(515 bytes) stop them the same way, as `v(b)+…` of 103 terms does, though without its blanks it is 369
+bytes. With `asciiplot` after `op`, 102 terms run in native 47 (42: "asciiplot can't handle scale with
+length < 2") and 103 stop both; after `tran 10u 2m`, `fft`, `psd 10` and `spec 500 10000 500` of a formula
+of 200 terms (999 bytes) stop native 47 and 42, `-b -r` and `-b` (exit 134). The quotes count: with a node
+named `1p`, 51 terms `v(a,1p)` joined by `+` are a name of 509 bytes, `v(a,"1p")+…`, and print; 52 (519
+bytes, 415 as written) stop native 47 and 42; 120 terms `v(1p)` (719 bytes as written) print, under the
+99 bytes of a name written again: `v(1p)+v(1p)+…+v(1 = 7.200000e+02`. With `set noquotesinoutput`, `print
+v( b ) + v(  b  )` prints `v( b ) + v( b ) = 1.200000e+01`; without it, `v(b) + v(b) = 1.200000e+01`.
+
 With 50 terms (249 bytes) native 47 and 42 print `v(b)+v(b)+…+v(b) = 3.000000e+02`, and so does our
-engine. After `tran 10u 2m` in a `.control` block, `meas tran x max` and a vector of 78 letters that does
-not exist gives "no such vector as …" (exit 0); 79 letters: the sanitized build stops (`WRITE of size
-101 … in measure_parse_trigtarg`); `v(` and 100 letters: native 47 gives the message and stops (exit 134).
+engine; with 36 terms joined by ` + ` (249 bytes), `v(b) + v(b) + … + v(b) = 2.160000e+02`; with 25
+`v(a,1p)` (249 bytes with the quotes), `v(a,"1p")+…+v(a,"1p") = 7.500000e+01`. After `tran 10u 2m` in a
+`.control` block, `meas tran x max` and a vector of 78 letters that does not exist gives "no such vector
+as …" (exit 0); 79 letters: the sanitized build stops (`WRITE of size 101 … in measure_parse_trigtarg`);
+`v(` and 100 letters: native 47 gives the message and stops (exit 134).
 
 **Our engine** crashes on `write` of the 999-byte formula (`RuntimeError: memory access out of
-bounds`), runs on with `print` of it, and gives the `meas` message at 79 letters. PlainSpice gives a
-`print` or `write` formula at most 250 bytes, each formula on its own (`print v(a) v(b)` is two), and a
-`meas` word at most 50 (a `name=value` as one word: the longest message leaves 50 bytes for both).
+bounds`), runs on with `print` of it, of the 74 terms with blanks, with `asciiplot` of 103 terms after
+`op` and with `fft`, `psd` and `spec` of 200 terms, and gives the `meas` message at 79 letters; it prints
+the names above as native 47 does. PlainSpice gives a formula of `print`, `write`, `fft`, `psd`, `spec` or
+`asciiplot` at most 250 bytes as ngspice names it (its words with one blank each, the quotes ngspice adds,
+both ways when the netlist sets `noquotesinoutput`), each formula on its own (`print v(a) v(b)` is two;
+`?` and `:` join one), `asciiplot` after `tran` too, and a `meas` word at most 50 (a `name=value` as one
+word: the longest message leaves 50 bytes for both).
+
+## limit-18: the lines ngspice runs as commands are more than a `.control` block's
+
+**Claim.** Besides the lines of a `.control` block, ngspice runs as commands (`inp_spsource()`,
+`src/frontend/inp.c`):
+
+- a line that starts with `*#`, anywhere in a netlist (outside a `.control` block too, in a subcircuit,
+  after `.end`), from after the mark and the blanks after it. ngspice makes the first `#` of a line a `*`
+  (`inp_stripcomments_line()`), so `##` is such a line too (ngspice 47; 42 stops on it), and it makes `*`
+  of the first character `=` `[` `]` `?` `(` `)` `&` `%` `$` `"` `!` `:` `,`, a form feed or `;`
+  (`inp_check_syntax()`), so a `#` after one of them is such a line too: `;# op` is the command `op`;
+- a `.control` block or a `*#` line after `.end`: ngspice makes `.end` a comment and reads on;
+- in an `*ng_script` file, every line but a comment (`*` without a `#` after it), a `.control`, `.endc` or
+  `option` line, and a `*#` line from its third character. A line that starts with `;` is a command there
+  too: the `;` is a word of its own, which ends no command (limit-19). A second `;` starts a comment.
+
+`pre_` in front of a command (not in an `*ng_script` file) is taken off, and ngspice runs it before it reads
+the circuit: `pre_circbyline` builds a circuit then, and `pre_op` runs it. No comment is cut from a line that
+starts with `*`, so on a `*#` line a `;` separates two commands (`*# echo first ; echo second` prints both);
+in a `.control` block a `;` starts a comment (`echo hi ; op …` runs `echo hi`), and a line that starts with
+`;` is a comment. A `+` line continues the last line before it that is no comment
+(`inp_stitch_continuation_lines()`), after `.end` too: a `;#` line takes it (its `;` becomes `*` only later),
+a `*#` line does not, nor `.end`, a comment by then, so a `+` line just after `.end` continues the line before
+`.end`. A `.title` line is no command: ngspice takes the title from it as it reads it, in a `.control` block
+too (`.title not a command` there titles the circuit "not a command").
+
+```
+* t
+V1 a 0 9
+R1 a b 1k
+R2 b 0 2k
+.op
+*# echo star-hash
+## echo hash-hash
+;# echo semi-hash
+=# echo eq-hash
+   *# echo blank-star-hash
+*# echo first ; echo second
+.end
+*# echo after-end-star
+.control
+echo after-end-control
+.endc
+```
+
+Native ngspice 47 (`-b -r` and `-b`, exit 0) prints `star-hash`, `hash-hash`, `semi-hash`, `eq-hash`,
+`blank-star-hash`, `first`, `second`, `after-end-star` and `after-end-control` (and warns: "Unusual leading
+characters like '=' … will be replaced with '*'"); ngspice 42 stops at `##` ("Error on line 7 or its
+substitute", exit 1). **Our engine** prints the same nine lines.
+
+With `*# op` and words of 250, 250 and 6 bytes (`.op` and its words written into 512 bytes, limit-6), native
+47 and 42, `-b -r` and `-b` (exit 134): "*** buffer overflow detected ***: terminated"; the sanitized build:
+`stack-buffer-overflow … WRITE of size 513 … in if_run`; with 5 bytes (511) they run. The same stop for
+the command written `## op …` (47), `;# op …` and `=# op …` (and after each other first character above),
+`   *# op …`, `*# echo first ; op …`, `pre_op …` after four `pre_circbyline` lines in a `.control` block,
+`op …` in a `.control` block after `.end`, `*# op …` after `.end`, `;op …` in an `*ng_script` file, `;# op
+…` in a `.control` block, and `;# op` followed by a `+` line with the words. **Our engine** runs on (exit
+0) with each. Not commands, and run in native 47 and 42 (exit 0): `;op …` in a `.control` block, `;; op …`
+in an `*ng_script` file, and `*# op` followed by the `+` line (which continues `.op` before it).
+
+```
+* t
+V1 a 0 9
+R1 a b 1k
+R2 b 0 2k
+.op
+R3 c 0 1k
+B1 c 0 V=1+
+.end
++ v(b
+```
+
+Native 47 and 42, `-b -r` and `-b` (exit 134): "*** stack smashing detected ***: terminated"; the
+sanitized build: `heap-buffer-overflow … READ of size 1 … in inp_modify_exp … in inp_bsource_compat`: the
+formula is `1+ v(b`, without its `)` (limit-5). **Our engine** stops with "YYparse error, syntax error, in
+expression" (exit 1). With `+ v(b)`, native 47 and 42 and our engine run it, v(c) = 7 V. With `.options
+savecurrents` added just before `.end`, the `+` line continues that line instead and `B1` ends in `1+`:
+native 47 and our engine stop with "YYparse error, syntax error, in expression" (exit 1), 42 with "Error on
+line 7 or its substitute".
+
+A circuit built by `*# circbyline` lines meets limit-12 and limit-16 like any other: with a first line of
+601 bytes (`*` and 200 times ` ab`), native 47 and 42, `-b -r`, stop ("buffer overflow detected"; the
+sanitized build: `WRITE of size 610 … in fileInit`) and our engine crashes (`RuntimeError: memory access
+out of bounds`).
+
+**Why.** ngspice takes a line as a command when it is in a `.control` block or `prefix("*#", line)` holds,
+then `s = skip_ws(s + 2)` and, after `if (ciprefix("pre_", s))`, `s += 4`; the first `#` and the odd first
+characters become `*` before that, `.end` becomes `*end`, and reading goes on to the end of the file.
+
+PlainSpice reads every such line as a command, its words as limit-19 says, and checks it as a `.control`
+block's (limit-6, limit-12, limit-13, limit-16, limit-17). When a `+` line just after `.end` continues the
+line before `.end`, it adds no `.options savecurrents` (decision 0011): the netlist runs as written, every
+voltage the same (A2).
+
+## limit-19: ngspice's control reader makes a command's words, and its braces and `~` make more
+
+**Claim.** Before it runs a command, ngspice makes its words (`cp_lexer()`, `src/frontend/parser/lexical.c`),
+puts a variable's text in place of `$…` (limit-11) and a shell command's output in place of backquotes, and
+expands braces and a `~` (`cp_doglob()`, `src/frontend/parser/glob.c`) unless the line's first word is
+`circbyline`; then it runs each command a `;` word ends (`docommand()`, `src/frontend/control.c`). A blank
+or a tab ends a word, and so does a comma outside brackets, which is dropped; `<` `>` `;` `&` are words of
+their own (but `<=` and `>=` at a word's start, `$&`, `$<`, and a `;` inside brackets); `'…'` keeps what is
+inside it, blanks and all, without the quotes; `"…"` keeps it with them; a backslash is dropped and the
+character after it read as any other, so `\"` starts a quote. `{a,b}` makes a word for each choice, braces
+side by side multiply (`x({a,b}{1,2})` makes four), nested too; a `{` with no `}` stops the whole line
+("Error: missing }."). A word that starts with `~` gets the home folder in its place: `/root` for native
+ngspice run as root, `/home/web_user` (14 bytes) in our engine. In a netlist that is not an `*ng_script`
+file, ngspice first makes each run of blanks of a line one blank, inside quotes too (`inp_remove_ws()`),
+but not on a `*` line (so a `*#` line keeps them) nor on an `echo` line of a `.control` block.
+
+```
+* t
+V1 a 0 9
+R1 a b 1k
+R2 b 0 2k
+.op
+.control
+echo a\"b   c"
+echo 'x    y'
+echo p,q
+echo (p,q)
+echo ({a,b})
+echo {a,b}
+echo ~
+echo ~/x
+echo "~"
+.endc
+*# echo 'x    y'
+.end
+```
+
+Native 47 (exit 0) prints `a"b   c"`, `x    y`, `p q`, `(p,q)`, `(a) (b)`, `/root`, `/root/x`, `~` and
+`x    y`, and "Error: missing }." for `echo {a,b}` (the comma made it two words, `{a` and `b}`). **Our
+engine** prints the same, with `/home/web_user` and `/home/web_user/x`.
+
+So a short line can make a long command, which native 47 and 42 stop on, `-b -r` and `-b` (exit 134,
+"*** buffer overflow detected ***: terminated"):
+
+- `op x({aaaaaaaaaa,bbbbbbbbbb}{1,2}{1,2}{1,2}{1,2}{1,2})` (61 bytes) is `op` and 64 words; the sanitized
+  build: `WRITE of size 1220 … in if_run`. Our engine runs on (exit 0, no results).
+- `print ({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+ v(b)` (50 bytes) is 256 words, which make one formula of about
+  1,800 bytes (limit-17). Our engine crashes (`RuntimeError: memory access out of bounds`).
+- `op` and 120 times ` ~` is an analysis command of 723 bytes with `/root` (the sanitized build: `WRITE of
+  size 724 … in if_run`). With 40, 243 bytes natively, which run; in our engine 603, which it runs on.
+- `*# op '…'` with 600 blanks between the quotes, and `op '…'` in an `*ng_script` file (the sanitized
+  build: `WRITE of size 605 … in if_run`), and `*# op \"…"` with 600 blanks (607). Our engine runs on. In a
+  `.control` block `op '…'` with 600 blanks runs: the blanks were made one.
+
+In an `*ng_script` file, `;circbyline * t({a,b})` builds a circuit titled `* t(a) t(b)`, and
+`circbyline * t({a,b})` one titled `* t({a,b})` (native 47): the braces are kept only when the line's first
+word is `circbyline`.
+
+**Why.** ngspice joins the words with one blank each where it writes them into a space (limit-6,
+limit-17), so every word a choice adds, every blank kept in quotes and every byte of a home folder counts.
+
+PlainSpice reads a command's words this way, counting the blanks kept in quotes and `/home/web_user` for a
+`~` that starts a word, and gives ngspice no command with choices in braces (a word that makes two words or
+more): "ngspice makes a word of its own for each choice in the braces of … Write out the words you want."
+One choice, `{abc}`, is the word without its braces, and a line whose first word is `circbyline` keeps them.
 
 ## PlainSpice's copy (`src/spice/run-netlist.ts`)
 
 | What | The copy ngspice runs | Relies on |
 |---|---|---|
 | Line 1, whole, and each `.title` line's title over 504 bytes | cut to its first 504 bytes, between two characters; the ngspice output panel says so | limit-1, limit-2 |
-| `.op` without `.options savecurrents` | the line is added before `.end` | limit-3 (with the rows below, every name it saves fits) |
+| `.op` without `.options savecurrents` | the line is added before `.end`, unless a `+` line just after `.end` continues the line before it | limit-3 (with the rows below, every name it saves fits), limit-18 |
 | A word over 250 bytes (between blanks, brackets, `,` `=` `{ }`, quotes and operators), a part line's first words or a `.save` line's word as ngspice takes them whole | not run: the status line says which line and why | limit-3 to limit-7 |
 | A name ngspice makes inside subcircuits (`r.x1.x2.r1`, `x1.x2.n1`) over 250 bytes | not run | limit-3, limit-7, limit-10 |
 | A `v(…)` or `i(…)` over 500 bytes in a formula, or a `v(` with no `)` in a B, E or G formula or a `.model` with `temper` | not run | limit-5 |
 | An end-of-line comment, cut where ngspice cuts it | never read | limit-5 |
-| An analysis command of a `.control` block (or an `*ng_script` file) over 500 bytes, as ngspice writes it: a dot, then its words with one blank each | not run | limit-6 |
+| Every line ngspice runs as a command: a `.control` block's (after `.end` too), a `*#` line and its kin (`##`, `;#` …), a line of an `*ng_script` file (one that starts with `;` too), with `pre_` taken off and its commands split at `;`; a `+` line after `.end` joined where ngspice joins it | checked by the rows below, its words as ngspice's control reader makes them (blanks kept in quotes, `~` as `/home/web_user`) | limit-18, limit-19 |
+| A command word with choices in braces (`{a,b}`), which ngspice makes a word each, but on a line whose first word is `circbyline` | not run | limit-19 |
+| An analysis command over 500 bytes, as ngspice writes it: a dot, then its words with one blank each | not run | limit-6 |
 | A `.model` line's version over 90 bytes | not run | limit-9 |
-| The lines of `circbyline` commands (in a `.control` block or an `*ng_script` file) | checked as the netlist ngspice reads from them, one circuit at each `.end`, by every row above; a problem is said at the command's line | limit-12 |
+| The lines of `circbyline` commands (wherever ngspice runs commands) | checked as the netlist ngspice reads from them, one circuit at each `.end`, by every row above; a problem is said at the command's line | limit-12 |
 | Words ngspice joins by taking the blanks out of brackets (a `.save`, `.print`, `.plot`, `.four` or `.meas` line, a part's line with an `i(…)` of a part, `print`, `meas` and the other commands that read vectors) over 250 bytes joined | not run | limit-13 |
 | The text a string parameter stands for, where `{…}` puts it: over 250 bytes as a word or joined in a `.save` line's brackets (numbers too), over 90 as a version | not run | limit-14 |
 | A name a `.probe` line makes over 250 bytes, or a word of its `p(…)` formula over 500 | not run | limit-15 |
-| A circuit built with `circbyline` whose title is over 504 bytes, as ngspice joins its words, or that has a `circbyline` command itself | not run | limit-16 |
-| A `print` or `write` formula over 250 bytes (its text without blanks), a `meas` word over 50 | not run | limit-17 |
+| A circuit built with `circbyline` whose title, its first line or a `.title` line's words, is over 504 bytes as ngspice joins its words, or that has a `circbyline` command itself | not run | limit-16 |
+| A formula of `print`, `write`, `fft`, `psd`, `spec` or `asciiplot` over 250 bytes as ngspice names it (its words with one blank each, with the quotes it adds), a `meas` word over 50 | not run | limit-17 |
 
-Checked with the sanitized build on 13 November 2026, twice. First: of 414 netlists (every case above at
+Checked with the sanitized build on 13 November 2026, three times. First: of 414 netlists (every case above at
 600, 5,000 and 20,000 bytes, at the limits and one byte over, and the fact netlists), PlainSpice ran 137
 and refused 277; 133 of the 137 copies gave no AddressSanitizer report and no stop. Then, after a review
 of that fix: of 1,154 netlists (those, the review's own, and every case of limit-6 and limit-13 to
@@ -773,8 +1006,19 @@ at any length (`.title x` too): no write past a space; and two include a file th
 ngspice for no length: `.include /proc/meminfo` (native 47 ends with a crash, exit 139; the sanitized
 build reports a SEGV in `ciprefix`) and a netlist that includes itself (native 47 and 42, exit 139). Our
 engine crashes on one of the 301, for no length either: a netlist that includes itself (`.include
-/circuit.cir`, "Maximum call stack size exceeded"). Every netlist in the repository (147) gets the same
-copy as on b060bc8.
+/circuit.cir`, "Maximum call stack size exceeded"). Then, after a review of the second fix: of the 1,155
+netlists and 344 more (the review's, every case of limit-16 to limit-19 at the limits and one byte over,
+every first character before `#`, every command that reads a formula at 999 bytes after `op` and after
+`tran`), PlainSpice runs 300 of the first and 167 of the others, and no copy it ran before changed. Of the 167
+copies, native 47 and the sanitized build stop on none for a length; they stop on nine for something else:
+two `compose` lines with a formula (any length: a crash in native 47 and 42, `heap-buffer-overflow … READ …
+in dimxpand` in the sanitized build), one `.param=1` (`READ … in inp_fix_macro_param_func_paren_io` at any
+length), and six on which native 47 `-b -r` crashes (exit 139) and our engine runs: two X lines whose
+subcircuit does not exist, and four netlists that give it no circuit (`*ng_script` files with none, and line
+1 ` *ng_script` after a blank or a tab, which native 47 reads as a title). Our engine crashes on none of the
+167.
+Every netlist in the repository (147) gets the same copy as on b060bc8.
 
-A `.control` block can still go past the checks while it runs (limit-11); it writes nothing to the
-results file (A36), so PlainSpice shows its words in the ngspice output panel only.
+What ngspice's commands compute while they run can still go past the checks (limit-11); a `.control`
+block writes nothing to the results file (A36), so PlainSpice shows its words in the ngspice output panel
+only.
