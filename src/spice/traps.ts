@@ -4375,13 +4375,14 @@ export function checkTraps(netlist: Netlist): Trap[] {
     checkOddValues(c, i);
     checkUnknownWord(c, i);
     checkIncomplete(c, i);
-    checkZeroOhm(c, i);
   }
   for (const i of c.top) checkControlSource(c, i);
   checkLetters(c);
   checkModels(c);
   checkSyntax(c);
   checkGreekMu(c);
+  // After greek-mu, so a tiny or 0 value that check explains (0μ47, 1e-13μ) is its card alone (round-1 critic C6).
+  for (const i of netlist.elements) checkZeroOhm(c, i);
   for (const i of netlist.analyses) {
     const d = netlist.lines[i]!.directive!;
     d.args.forEach((t, k) => {

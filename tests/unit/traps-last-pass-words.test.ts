@@ -155,6 +155,17 @@ describe('F4, F5: a resistance below 1e-12 Ω, said as each ngspice version trea
     expect(traps('* t\nV1 a 0 6\nR1 a b 1p\nR2 b 0 2\n.op\n.end\n')).toEqual([]);
   });
 
+  it('a Greek μ in a 0 or a tiny value: one card, greek-mu’s, which says what each version does with the value read; across a source the error stays (round-1 critic C6)', () => {
+    // Native 47 warns and uses 1e-12 Ω for both; native 42 uses 1 mΩ for 0μ47 and keeps 1e-13 Ω (re-run for C6).
+    const tiny = traps('* t\nV1 a 0 6\nR1 a b 1e-13μ\nR2 b 0 2\n.op\n.end\n');
+    expect(tiny.map((t) => t.id)).toEqual(['greek-mu']);
+    expect(tiny[0]!.ngspice).toBe(`ngspice reads 1e-13μ as 100 fΩ, which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${warn47('r1')} (ngspice 42 keeps it as written, without a word). [greek-mu-1, zero-ohm-7]`);
+    const zero = traps('* t\nV1 a 0 6\nR1 a b 0μ47\nR2 b 0 2\n.op\n.end\n');
+    expect(zero.map((t) => t.id)).toEqual(['greek-mu']);
+    expect(zero[0]!.ngspice).toContain(`it uses 1e-12 Ω instead and ${warn47('r1')} (ngspice 42 used 0.001 Ω without a word)`);
+    expect(traps('* t\nV1 a 0 6\nR1 a 0 1e-13μ\n.op\n.end\n').map((t) => [t.id, t.severity])).toEqual([['greek-mu', 'warning'], ['zero-ohm', 'error']]);
+  });
+
   it('every check that reads a tiny value says what ngspice 47 and 42 do with it, never "without a message" (mega-as-milli, a hidden character, a decimal comma)', () => {
     const mega = first('* t\nV1 a 0 6\nR1 a b 1e-10M\nR2 b 0 2\n.op\n.end\n', 'mega-as-milli');
     expect(mega.ngspice).toContain(`which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${warn47('r1')} (ngspice 42 keeps it as written, without a word)`);
