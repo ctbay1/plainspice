@@ -163,6 +163,10 @@ describe('F6: every check names a node as the rest of the page does: "node in", 
     expect(t.ngspice).toContain("ngspice warns 'singular matrix: check node in'");
     // Two nodes, one of them a name that says node: never "node node1", and node1 keeps its letters at the start.
     expect(first('* t\nV1 in 0 5\nC1 in node1 1u\nR1 node1 x 1k\nC2 x 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('node1 and node x have no DC path to ground');
+    // Names that are ordinary words, and a node called just "node", which keeps the word (node-words.ts).
+    expect(first('* t\nV1 x 0 6\nC1 x to 1u\nC2 to 0 1u\n.op\n.end\n', 'floating-dc').fixes.map((f) => f.label)).toEqual(['Add a 1 G\u03a9 resistor from node to to ground']);
+    expect(first('* t\nV1 x 0 6\nC1 x node 1u\nC2 node 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('Node node has no DC path to ground');
+    expect(first('* t\nV1 x 0 6\nC1 x a 1u\nC2 a 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('Node a has no DC path to ground');
     // A control input alone: the node starts the why.
     expect(first('* t\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c 0 2\nR2 out 0 1\n.op\n.end\n', 'floating-dc').why).toMatch(/^Node c is used only as the control input of E1/);
     // A current source into such a node.
