@@ -49,8 +49,11 @@
  * Nodes: lower-case (ASCII letters only, like ngspice; W6, W7). "0" is ground, and so is "gnd" in
  * any case, except as the last word of its line, where ngspice keeps it as an ordinary node called
  * "gnd" (W8-W12). "ground" and "00" are ordinary nodes (W13, W14). Ground is listed under "0" in
- * `Netlist.nodes`. Nodes named in directives (".tf v(a) V1") are listed with their references; a
- * node named only there has no connections. Nodes inside .subckt ... .ends are local to the
+ * `Netlist.nodes`. Nodes named in directives (".tf v(a) V1", and .pz's four bare nodes) and the nodes a
+ * formula reads (inside v(...) on a B line, on an E or G line given by a formula or a table, and in an
+ * R, C or L value written as a formula: `Element.reads`; C3-1) are listed with their references; a node
+ * named only there has no connections. An E, F, G or H line written as a formula, a table or a
+ * polynomial has `Element.form`, its two output nodes and, for POLY, its controls (C3-5). Nodes inside .subckt ... .ends are local to the
  * subcircuit and are not listed. The keys keep letters outside ASCII as written ("giriş"), although
  * ngspice writes each of their bytes as '_' ("giri__", W16): `ngspiceSpelling` gives ngspice's name,
  * so two names it makes one (W17) can be found, and its results matched to the netlist's names.
@@ -60,6 +63,7 @@
 import { isSpaceCode, numberWordEnd, readNumber } from './numbers.ts';
 import type {
   Connection,
+  ControlledForm,
   Directive,
   Element,
   ElementLetter,
@@ -434,6 +438,10 @@ class ElementBuilder {
   readonly nodeRoles: FieldRole[] = [];
   /** Where each field's word starts in the card's Source (for its physical line). */
   readonly starts: number[] = [];
+  /** Where each field's word ends in the card's Source. */
+  readonly ends: number[] = [];
+  /** The nodes a formula on the line reads, inside v(...) (formulaRefs): no connections (C3-1). */
+  readonly reads: NodeRef[] = [];
   private readonly src: Source;
   private readonly netlistText: string;
 
@@ -452,7 +460,13 @@ class ElementBuilder {
     const token = this.token(w);
     this.fields.push({ role, token });
     this.starts.push(w.a);
+    this.ends.push(w.b);
     return token;
+  }
+
+  /** The nodes a formula reads in [from, to) of the card (formulaRefs). */
+  formula(from: number, to: number): void {
+    this.reads.push(...formulaRefs(this.src, from, to, this.netlistText));
   }
 
   node(w: Word, role: FieldRole): void {
@@ -683,6 +697,75 @@ function nodesThenName(r: Reader, b: ElementBuilder): void {
   if (keyword && lowerAscii(keyword.clean) === 'params:') b.field(r.take(keyword), 'parameter');
 }
 
+/** Where a word of a POLY line ends for XSPICE (MIFgettok): at a blank, '=', '(', ')' or ','. */
+function polyWordEnd(s: string, a: number): number {
+  let e = a;
+  while (e < s.length && !isSeparator(s.charCodeAt(e))) e += 1;
+  return e;
+}
+
+/**
+ * An E, F, G or H line written as a formula, a table or a polynomial (C3-5), read after the part's two
+ * output nodes as ngspice reads it; undefined for a line written with control nodes (or a control source)
+ * and a gain. Native ngspice 47 and 42 run every form; PlainSpice's engine, built without XSPICE, runs the
+ * formulas only (docs/spice-facts/traps.md, missing-value-15, model-not-in-engine-7, -8).
+ * - E with VALUE (then '=' or not) or vol=, G with VALUE or cur=: the rest of the line is a formula
+ *   (ngspice's inp_compat makes it a B source, which our engine runs). Its words are 'parameter' fields,
+ *   as a B line's are, and the nodes it names inside v(...) are only read (formulaRefs).
+ * - E or G with TABLE: a formula in braces, then pairs of numbers (an XSPICE block).
+ * - POLY(n) (XSPICE's two2three_translate, whose words end at a blank, '=', '(', ')' or ','): n, then
+ *   E and G: n pairs of control nodes, F and H: n voltage sources, then the coefficients.
+ */
+function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | 'F' | 'G' | 'H'): ControlledForm | undefined {
+  const w = r.peek('net');
+  if (!w) return undefined;
+  const polyEnd = polyWordEnd(s, w.a);
+  if (lowerAscii(s.slice(w.a, polyEnd)) === 'poly') {
+    const keyword = b.field(r.take({ a: w.a, b: polyEnd, clean: s.slice(w.a, polyEnd) }), 'parameter');
+    const form: ControlledForm = { kind: 'poly', keyword };
+    const n = r.next('word');
+    if (!n) return form;
+    b.field(n, 'parameter');
+    // XSPICE reads the n with atoi: its leading digits.
+    const dimension = Number(/^[+]?(\d+)/.exec(n.clean)?.[1] ?? 0);
+    if (dimension > 0) form.dimension = dimension;
+    const controls = letter === 'E' || letter === 'G' ? 2 * dimension : dimension;
+    for (let k = 0; k < controls; k++) {
+      const c = r.next('net');
+      if (!c) break;
+      if (letter === 'E' || letter === 'G') b.node(c, k % 2 === 0 ? 'control-plus' : 'control-minus');
+      else b.field(c, 'control-source');
+    }
+    for (let c = r.next('word'); c; c = r.next('word')) b.field(c, 'parameter');
+    return form;
+  }
+  if (letter === 'F' || letter === 'H') return undefined;
+  const kw = lowerAscii(w.clean);
+  const formula = kw === 'value' || (kw === (letter === 'E' ? 'vol' : 'cur') && r.equalsAfter(w.b));
+  if (!formula && kw !== 'table') return undefined;
+  const form: ControlledForm = { kind: formula ? 'formula' : 'table', keyword: b.field(r.take(w), 'parameter') };
+  b.formula(w.b, s.length);
+  const first = r.peek('word');
+  let last: Word | undefined;
+  for (let c = r.next('word'); c; c = r.next('word')) {
+    b.field(c, 'parameter');
+    last = c;
+  }
+  // The formula: a group in braces or quotes; for VALUE=, vol= and cur= without one, the rest of the line.
+  if (first && isGroupStart(first.clean.charCodeAt(0))) form.formula = b.token(first);
+  else if (first && last && formula) form.formula = b.token({ a: first.a, b: last.b, clean: '' });
+  return form;
+}
+
+/** E or G written with control nodes and then TABLE (LTspice's form): an XSPICE block too (C3-5). */
+function tableAfterControls(r: Reader, b: ElementBuilder): ControlledForm | undefined {
+  const w = r.peek('net');
+  if (!w || lowerAscii(w.clean) !== 'table') return undefined;
+  const form: ControlledForm = { kind: 'table', keyword: b.field(r.take(w), 'parameter') };
+  for (let c = r.next('word'); c; c = r.next('word')) b.field(c, 'parameter');
+  return form;
+}
+
 interface ElementParts {
   element: Element;
   /** For each field, where its word starts in the card's Source. */
@@ -703,6 +786,7 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
   let value: Word | undefined;
   let controlSource: Token | undefined;
   let func: ParseResult['func'];
+  let form: ControlledForm | undefined;
 
   switch (letter) {
     case 'R':
@@ -734,6 +818,11 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       // ngspice ("unknown parameter"; unknown-word-1 ... -3).
       const res = parseParameters(r, b, { leadRole: 'value', params: PART_PARAMS[letter], strict: true });
       value = res.lead ?? res.keyed ?? value;
+      // A value written as a formula that reads node voltages ({1k+v(a)}) makes ngspice build a B source
+      // (inp_compat): the nodes it names inside v(...) are only read (C3-1).
+      b.fields.forEach((f, k) => {
+        if (k > 2 && isGroupStart(f.token.text.charCodeAt(0))) b.formula(b.starts[k]!, b.ends[k]!);
+      });
       break;
     }
     case 'V':
@@ -749,9 +838,13 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
     }
     case 'E':
     case 'G': {
-      // Ename n+ n- nc+ nc- gain (inp2e.c, inp2g.c)
-      const out: FieldRole[] = letter === 'E' ? ['plus', 'minus'] : ['from', 'to'];
-      fixedNodes(r, b, [...out, 'control-plus', 'control-minus']);
+      // Ename n+ n- nc+ nc- gain (inp2e.c, inp2g.c), or a formula, a table or a polynomial (C3-5).
+      fixedNodes(r, b, letter === 'E' ? ['plus', 'minus'] : ['from', 'to']);
+      form = b.nodes.length === 2 ? controlledForm(r, b, src.text, letter) : undefined;
+      if (form) break;
+      fixedNodes(r, b, ['control-plus', 'control-minus']);
+      form = b.nodes.length === 4 ? tableAfterControls(r, b) : undefined;
+      if (form) break;
       const role: FieldRole = letter === 'E' ? 'gain' : 'transconductance';
       // Our engine (no XSPICE) stops at any other word: "unknown parameter" (unknown-word-4).
       const res = parseParameters(r, b, { leadRole: role, params: PART_PARAMS[letter], strict: true });
@@ -760,8 +853,10 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
     }
     case 'F':
     case 'H': {
-      // Fname n+ n- Vcontrol gain (inp2f.c, inp2h.c)
+      // Fname n+ n- Vcontrol gain (inp2f.c, inp2h.c), or a polynomial (C3-5)
       fixedNodes(r, b, letter === 'F' ? ['from', 'to'] : ['plus', 'minus']);
+      form = b.nodes.length === 2 ? controlledForm(r, b, src.text, letter) : undefined;
+      if (form) break;
       const control = b.nodes.length === 2 ? r.next('net') : undefined;
       if (control) controlSource = b.field(control, 'control-source');
       const role: FieldRole = letter === 'F' ? 'gain' : 'transresistance';
@@ -833,8 +928,9 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       parseParameters(r, b, {});
       break;
     case 'B':
-      // Bname n+ n- V=expression / I=expression
+      // Bname n+ n- V=expression / I=expression; the nodes the expression reads (C3-1)
       fixedNodes(r, b, ['node', 'node']);
+      b.formula(r.pos, src.text.length);
       for (let w = r.next('word'); w; w = r.next('word')) b.field(w, 'parameter');
       break;
     case 'X':
@@ -855,6 +951,8 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
   if (value) element.value = b.valueField(value);
   if (controlSource) element.controlSource = controlSource;
   if (func) element.sourceFunction = { name: func.name, token: b.token(func.word), args: func.args.map((w) => b.token(w)) };
+  if (form) element.form = form;
+  if (b.reads.length) element.reads = b.reads;
   return { element, starts: b.starts, nodeRoles: b.nodeRoles };
 }
 
@@ -1140,6 +1238,9 @@ export function parseNetlist(text: string): Netlist {
           const connection: Connection = { line: i, element: element.key, role: st.nodeRoles?.[k] ?? 'node' };
           info.connections.push(connection);
         });
+        // A node a formula reads is named there too, so a rename changes it there (C3-1); the formula
+        // connects nothing to it.
+        for (const ref of element.reads ?? []) nodeInfo(ref.name, ref.ground).refs.push(ref.token);
       }
     }
     if (st.directive) {
@@ -1169,8 +1270,55 @@ function firstVisible(s: string): number {
   return Number.NaN;
 }
 
+/** A character a name in a formula can hold before a v: a letter, a digit, '_' or a character outside ASCII (ngspice's inp_casefix makes each of its bytes '_'). */
+const isFormulaNameCode = (c: number): boolean => isAsciiLetter(c) || (c >= 48 && c <= 57) || c === 95 || c >= 128;
+/** Where a node's name inside v(...) of a formula ends for ngspice (PTlex: %[^ \t,()]). */
+const isFormulaBreak = (c: number): boolean => c === SPACE || c === TAB || c === COMMA || c === LPAREN || c === RPAREN;
+
 /**
- * Nodes named in a directive: the words inside v(...), vm(...), vp(...), vr(...), vi(...), vdb(...).
+ * The nodes a formula reads (C3-1): the names inside v(...) in [from, to) of a card, as ngspice's
+ * formula reader takes them (PTlex in src/spicelib/parser/inpptree.c, after inp_modify_exp in its
+ * inpcom.c): a v (or V) that no letter, digit, '_' or other name character comes right before, then a
+ * '(' (blanks may come between), then one name, or two with a comma between them (v(a,b)), each ending
+ * at a blank, a tab, a comma or a bracket. A gnd there is ground, as ngspice makes it 0 (gndIsGround).
+ * Every character is read once, so a formula of thousands of v( without ) is read in one pass.
+ */
+function formulaRefs(src: Source, from: number, to: number, netlistText: string): NodeRef[] {
+  const s = src.text;
+  const out: NodeRef[] = [];
+  let i = from;
+  while (i < to) {
+    const c = s.charCodeAt(i);
+    if ((c !== 118 && c !== 86) || (i > 0 && isFormulaNameCode(s.charCodeAt(i - 1)))) {
+      i += 1;
+      continue;
+    }
+    let q = i + 1;
+    while (q < to && (s.charCodeAt(q) === SPACE || s.charCodeAt(q) === TAB)) q += 1;
+    if (q >= to || s.charCodeAt(q) !== LPAREN) {
+      i += 1;
+      continue;
+    }
+    q += 1;
+    for (;;) {
+      while (q < to && (s.charCodeAt(q) === SPACE || s.charCodeAt(q) === TAB || s.charCodeAt(q) === COMMA)) q += 1;
+      if (q >= to || s.charCodeAt(q) === RPAREN || s.charCodeAt(q) === LPAREN) break;
+      const a = q;
+      while (q < to && !isFormulaBreak(s.charCodeAt(q))) q += 1;
+      const name = ngspiceName(s.slice(a, q));
+      const ground = name === '0' || (name === 'gnd' && gndIsGround(s, a, q));
+      const start = src.offset(a);
+      const end = src.offset(q - 1) + 1;
+      out.push({ token: { from: start, to: end, text: netlistText.slice(start, end) }, name: ground ? '0' : name, ground });
+    }
+    i = q;
+  }
+  return out;
+}
+
+/**
+ * Nodes named in a directive: the words inside v(...), vm(...), vp(...), vr(...), vi(...), vdb(...),
+ * and the four nodes of a .pz line, which it names bare (.pz in 0 out 0 vol pz; C3-1).
  *
  * Each word is named once, by the first bracket that holds it, and each closing bracket is
  * looked for once: a line of v( with no ) (or with one ) at its end) is read in one pass. Read
@@ -1181,6 +1329,14 @@ function nodeRefsInDirective(src: Source, netlistText: string): { token: Token; 
   const s = src.text;
   const out: { token: Token; name: string; ground: boolean }[] = [];
   const words = plainWords(s, 0, s.length);
+  const ref = ([wa, wb]: [number, number]): { token: Token; name: string; ground: boolean } => {
+    const name = ngspiceName(s.slice(wa, wb));
+    const ground = name === '0' || (name === 'gnd' && gndIsGround(s, wa, wb));
+    const from = src.offset(wa);
+    const to = src.offset(wb - 1) + 1;
+    return { token: { from, to, text: netlistText.slice(from, to) }, name: ground ? '0' : name, ground };
+  };
+  if (words[0] && lowerAscii(s.slice(words[0][0], words[0][1])) === '.pz') return words.slice(1, 5).map(ref);
   let next = 0; // the first word no bracket has named yet
   let stop = -1; // the first ) at or after the last place looked from, or the line's end
   for (let k = 0; k < words.length; k++) {
@@ -1195,12 +1351,7 @@ function nodeRefsInDirective(src: Source, netlistText: string): { token: Token; 
     }
     for (let j = Math.max(k + 1, next); j < words.length && words[j]![0] < stop; j++) {
       next = j + 1;
-      const [wa, wb] = words[j]!;
-      const name = ngspiceName(s.slice(wa, wb));
-      const ground = name === '0' || (name === 'gnd' && gndIsGround(s, wa, wb));
-      const from = src.offset(wa);
-      const to = src.offset(wb - 1) + 1;
-      out.push({ token: { from, to, text: netlistText.slice(from, to) }, name: ground ? '0' : name, ground });
+      out.push(ref(words[j]!));
     }
   }
   return out;

@@ -62,7 +62,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [space-before-suffix](#space-before-suffix) | `1 k`, `5 V`, `1 m` | error | stops, or silently takes the word as a setting |
 | [midline-comment](#midline-comment) | `R1 a b 2 * load` | error | stops |
 | [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number (on C and L ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); after a sign: stops |
-| [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` | error, warning | R, C, L left out; V, I are 0; E-H: see text |
+| [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` (not an E or G given by a formula, `VALUE={...}`) | error, warning | R, C, L left out; V, I are 0; E-H: see text |
 | [missing-fields](#missing-fields) | `R1 a`, `V1 a`, `E1 a 0 2`, `F1 0 a 5` | error, warning | R, C, L left out; others stop or misread |
 | [control-source](#control-source) | `F1 0 a V9 2` with no V9, or a control with no current to read (R, L, C, I, F, G, a B line with I=) | error | stops |
 | [missing-title](#missing-title) | a part or a dot command on line 1 | warning | skips it, silently |
@@ -76,7 +76,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [unknown-letter](#unknown-letter) | a line starting with a digit, `@`, A, N, or a W, S, T, U, Y, Z, P, K that lacks what it needs | error | stops, or stops reading (`@`) |
 | [missing-model](#missing-model) | D, Q, J, M without a .model line | error | stops |
 | [missing-subcircuit](#missing-subcircuit) | X without a .subckt | error | stops |
-| [model-not-in-engine](#model-not-in-engine) | BSIM, HiSIM, SOI, HICUM, JFET2 levels, and O lines (LTRA) | error | our engine stops; native 47 runs it |
+| [model-not-in-engine](#model-not-in-engine) | BSIM, HiSIM, SOI, HICUM, JFET2 levels, O lines (LTRA), and E, F, G or H written with POLY or TABLE (XSPICE) | error | our engine stops; native 47 runs it |
 | [dc-sweep-problems](#dc-sweep-problems) | `.dc` with a zero or missing step, the wrong direction, a step past the end, a source not in the circuit, a word that is no number where a number goes, a sweep missing its numbers, a number too many, a name with a hidden character | error, warning | stops, hangs (42), or no points; in two sweeps a sweep the wrong way never moves |
 | [tran-problems](#tran-problems) | `.tran` with one number, a step or a stop time of 0 or less, a start after the stop, a step longer than the run | error, info | stops; or runs anyway (info) |
 | [tf-problems](#tf-problems) | `.tf` of a missing node, i( ) of a non-source, a missing or wrong input | error | silent wrong answers, or stops |
@@ -2149,7 +2149,7 @@ PlainSpice's checks: `nbsp`.
 
 ## missing-value
 
-A part line with its nodes but no value. R, C and L: warning (ngspice leaves the part out when nothing follows the nodes; with settings such as m=2 or ic=0 it keeps it: a resistor at 1 mΩ with a warning, a capacitor or inductor without capacitance or inductance, silently: missing-value-8 to -10). V and I: warning (ngspice uses 0); for V the fix writes the 0 explicitly, which is right for an ammeter. E, F, G and H: error, because native ngspice 47 stops while PlainSpice's engine silently uses 0. After the re-check of the fixes (12 November 2026, S6), E, F, G and H are told apart by what follows the nodes: with nothing at all, native 47 stops (missing-value-4 to -7); with settings but no number (`gain`, `m=2`), native 47 and 42, like our engine, use 0 and say nothing (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain, but the character checks' or unknown-word's (invisible-character-26, look-alike-letter-14, unknown-word-18 to -21).
+A part line with its nodes but no value. R, C and L: warning (ngspice leaves the part out when nothing follows the nodes; with settings such as m=2 or ic=0 it keeps it: a resistor at 1 mΩ with a warning, a capacitor or inductor without capacitance or inductance, silently: missing-value-8 to -10). V and I: warning (ngspice uses 0); for V the fix writes the 0 explicitly, which is right for an ammeter. E, F, G and H: error, because native ngspice 47 stops while PlainSpice's engine silently uses 0. After the re-check of the fixes (12 November 2026, S6), E, F, G and H are told apart by what follows the nodes: with nothing at all, native 47 stops (missing-value-4 to -7); with settings but no number (`gain`, `m=2`), native 47 and 42, like our engine, use 0 and say nothing (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain, but the character checks' or unknown-word's (invisible-character-26, look-alike-letter-14, unknown-word-18 to -21). After the last pass (13 November 2026, code review C3-5): an E given by a formula, `VALUE={...}` or `vol={...}`, and a G given by `VALUE={...}` or `cur={...}`, has two nodes and no gain, and needs none: ngspice turns the line into a B source, and native 47 and 42 and our engine run it (missing-value-15 to -17). Before, its words were read as control nodes and a gain: "E1 has no gain", "value has no DC path to ground", and no numbers.
 
 What PlainSpice shows for missing-value-1 (warning, line 4):
 
@@ -2605,6 +2605,134 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `missing-value`.
+
+### missing-value-15. An E given by a formula, VALUE={...}, has no gain and needs none (no trap)
+
+ngspice reads `VALUE=` on an E line as a formula for its output (inp_compat in its inpcom.c makes the line a B source, `be1`, whose node `e1_int1` the printout lists), so the line has two nodes and no control nodes or gain. Native ngspice 47 and 42 and our engine give e = 5 V. Before this check read the form, PlainSpice said "E1 has no gain", "value has no DC path to ground" and "{v(out)*2} has no DC path to ground", and showed no numbers (code review C3-5).
+
+```spice
+* an E given by a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE={v(out)*2}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### missing-value-16. The other ways to write it: value =, VALUE without =, vol=, vol='...', and the formula on a + line (no trap)
+
+`VALUE` in any case, with `=` or without, `vol=` with braces or single quotes (ngspice makes the quotes braces), and the formula on a continuation line: each E gives 5 V in native 47 and 42 and in our engine.
+
+```spice
+* E given by a formula, written five ways
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e1 0 value = {v(out)*2}
+R1e e1 0 1k
+E2 e2 0 VALUE {v(out)*2}
+R2e e2 0 1k
+E3 e3 0 vol={v(out)*2}
+R3e e3 0 1k
+E4 e4 0 vol='v(out)*2'
+R4e e4 0 1k
+E5 e5 0 VALUE=
++ {v(out)*2}
+R5e e5 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e5_int1                          5.000000e+00
+        e5                               5.000000e+00
+        e4_int1                          5.000000e+00
+        e4                               5.000000e+00
+        e3_int1                          5.000000e+00
+        e3                               5.000000e+00
+        e2_int1                          5.000000e+00
+        e2                               5.000000e+00
+        e1_int1                          5.000000e+00
+        e1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -5.00000e-03
+        e3#branch                        -5.00000e-03
+        e4#branch                        -5.00000e-03
+        e5#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+        be3#branch                       0.000000e+00
+        be4#branch                       0.000000e+00
+        be5#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 5, v(e2_int1) = 5, v(e3) = 5, v(e3_int1) = 5, v(e4) = 5, v(e4_int1) = 5, v(e5) = 5, v(e5_int1) = 5, i(be5) = 0, i(be4) = 0, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e5) = -0.005, i(e4) = -0.005, i(e3) = -0.005, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 5, v(e2_int1) = 5, v(e3) = 5, v(e3_int1) = 5, v(e4) = 5, v(e4_int1) = 5, v(e5) = 5, v(e5_int1) = 5, i(be5) = 0, i(be4) = 0, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e5) = -0.005, i(e4) = -0.005, i(e3) = -0.005, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### missing-value-17. A G given by a formula: VALUE= or cur= (no trap)
+
+On a G line ngspice reads `VALUE=` and `cur=` as a formula for the current the source pushes (again a B source, `bg1`, with a node `g1_int1`): 5 mA from ground into g1 and g2, so 5 V across each 1 kΩ, in native 47 and 42 and in our engine.
+
+```spice
+* G given by a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+G1 0 g1 VALUE={v(out)*2m}
+Rg1 g1 0 1k
+G2 0 g2 cur='v(out)*2m'
+Rg2 g2 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        g2_int1                          5.000000e-03
+        g2                               5.000000e+00
+        g1_int1                          5.000000e-03
+        g1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        bg1#branch                       0.000000e+00
+        bg2#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(g1) = 5, v(g1_int1) = 0.005, v(g2) = 5, v(g2_int1) = 0.005, i(bg2) = 0, i(bg1) = 0, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(g1) = 5, v(g1_int1) = 0.005, v(g2) = 5, v(g2_int1) = 0.005, i(bg2) = 0, i(bg1) = 0, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
 
 ## missing-fields
 
@@ -5722,6 +5850,16 @@ PlainSpice's checks: `missing-subcircuit`.
 
 A part using a .model whose type and level select a model PlainSpice's engine leaves out (engine/build.sh, `REMOVED_MODELS`; the level map is ngspice 47's inpdomod.c): MOSFET levels 4, 5, 8/49 (BSIM3), 14/54 (BSIM4), 10/58, 55-57, 60, 68, 73; BJT level 8 (HICUM2); JFET level 2 (JFET2); and every O line (LTRA). A .model nothing uses is harmless (model-not-in-engine-6). Error.
 
+After the last pass (13 November 2026, code review C3-5): an E, F, G or H line written with POLY(n), or an E
+or G line written with TABLE, which ngspice builds from an XSPICE block: native ngspice 47 runs it (42 too,
+but for a TABLE after control nodes, model-not-in-engine-14), and PlainSpice's engine stops ("XSPICE is
+required to run the 'poly' option", "unknown device type"; model-not-in-engine-7 to -14). POLY(n)'s
+controls are read as ngspice reads them, n pairs of control nodes on E and G and n voltage sources on F and
+H, and nothing else on the line is said to be wrong: before, its words were read as nodes and a gain, and
+the checks said "poly(1 has no DC path to ground" and "SPICE can't use 0 on this line". For POLY(1) with
+the coefficients 0 and k the fix writes the plain gain k, which gives what native ngspice gives
+(model-not-in-engine-7, -9 to -11).
+
 What PlainSpice shows for model-not-in-engine-1 (error, line 4):
 
 > **PlainSpice's engine has no BSIM3 model.** level=49 in .model nm selects BSIM3, a model for chip design. PlainSpice's engine leaves it out (its licence terms differ from ngspice's), and first- and second-year circuits don't need it: level=1 is the classic MOSFET model.
@@ -5927,6 +6065,305 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: no trap.
+
+### model-not-in-engine-7. E with POLY(1): native 47 and 42 run it, our engine (without XSPICE) stops
+
+POLY(n) writes a dependent source as a polynomial of n controls; ngspice builds it from an XSPICE block (`a$poly$e1`), which our engine leaves out, so it stops with "XSPICE is required to run the 'poly' option". POLY(1) out 0 0 2 is 0 + 2 × v(out): the plain gain 2, which the fix writes, and which gives what native ngspice gave (5 V).
+
+```spice
+* an E written with POLY(1)
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 POLY(1) out 0 0 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        a$poly$e1#branch_1_0             -5.00000e-03
+        v1#branch                        -2.50000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, i(v1) = -0.0025, i(a$poly$e1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance e1 e 0 poly(1) out 0 0 2
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: E1 e 0 out 0 2" (model-not-in-engine), which writes `E1 e 0 out 0 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-8. E with TABLE: native 47 and 42 run it, our engine stops
+
+TABLE makes the output follow a table of points of a formula; ngspice builds it from an XSPICE `pwl` block (`ae1`), which our engine leaves out: "unknown device type". No fix: a table has no plain gain.
+
+```spice
+* an E written with TABLE
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 TABLE {v(out)} = (0,0) (5,10)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int2                          2.500000e+00
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        ae1#branch_1_0                   0.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(e1_int2) = 2.5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025, i(ae1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 5 or its substitute:
+    ae1 %v(e1_int2) %v(e1_int1) xfer_e1
+    unknown device type - error
+    Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-9. F with POLY(1): the same, and its plain gain
+
+An F (and an H) reads the current in a voltage source; with POLY(1) Vx 0 2 its output is 2 × i(Vx), the plain gain 2, which the fix writes: 10 V, as native ngspice gave.
+
+```spice
+* an F written with POLY(1)
+V1 in 0 5
+Vx in out 0
+R2 out 0 1k
+F1 0 e POLY(1) Vx 0 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                1.000000e+01
+        out                              5.000000e+00
+        in                               5.000000e+00
+        v1#branch                        -5.00000e-03
+        vx#branch                        5.000000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 5, v(e) = 10, i(vx) = 0.005, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance f1 0 e poly(1) vx 0 2
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: F1 0 e Vx 2" (model-not-in-engine), which writes `F1 0 e Vx 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 5, v(e) = 10, i(vx) = 0.005, i(v1) = -0.005
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-10. G with POLY(1): the same
+
+```spice
+* a G written with POLY(1)
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+G1 0 e POLY(1) out 0 0 2m
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance g1 0 e poly(1) out 0 0 2m
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: G1 0 e out 0 2m" (model-not-in-engine), which writes `G1 0 e out 0 2m`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-11. H with POLY(1): the same
+
+```spice
+* an H written with POLY(1)
+V1 in 0 5
+Vx in out 0
+R2 out 0 1k
+H1 e 0 POLY(1) Vx 0 1k
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                5.000000e+00
+        out                              5.000000e+00
+        in                               5.000000e+00
+        a$poly$h1#branch_1_0             -5.00000e-03
+        v1#branch                        -5.00000e-03
+        vx#branch                        5.000000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 5, v(e) = 5, i(vx) = 0.005, i(v1) = -0.005, i(a$poly$h1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance h1 e 0 poly(1) vx 0 1k
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: H1 e 0 Vx 1k" (model-not-in-engine), which writes `H1 e 0 Vx 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 5, v(e) = 5, i(h1) = -0.005, i(vx) = 0.005, i(v1) = -0.005
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-12. E with POLY(2): two controls, no plain gain (no fix)
+
+POLY(2) out 0 in 0 0 1 1 is 0 + v(out) + v(in) = 7.5 V natively. No gain does that, so no fix is offered.
+
+```spice
+* an E written with POLY(2)
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 POLY(2) out 0 in 0 0 1 1
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                7.500000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        a$poly$e1#branch_1_0             -7.50000e-03
+        v1#branch                        -2.50000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 7.5, i(v1) = -0.0025, i(a$poly$e1) = -0.0075
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance e1 e 0 poly(2) out 0 in 0 0 1 1
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-13. G with TABLE: the same as E
+
+```spice
+* a G written with TABLE
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+G1 0 e TABLE {v(out)} = (0,0) (5,10m)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        g1_int2                          2.500000e+00
+        g1_int1                          5.000000e-03
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        ag1#branch_1_0                   0.000000e+00
+        v1#branch                        -2.50000e-03
+        bg1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(g1_int1) = 0.005, v(g1_int2) = 2.5, i(bg1) = 0, i(v1) = -0.0025, i(ag1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 5 or its substitute:
+    ag1 %v(g1_int2) %v(g1_int1) xfer_g1
+    unknown device type - error
+    Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-14. E with control nodes and then TABLE= (LTspice's way): native 47 runs it, 42 and our engine stop
+
+```spice
+* an E with control nodes and a table
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 out 0 table=(0,0,5,10)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        ae1#branch_1_0                   0.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(e1) = -0.005, i(v1) = -0.0025, i(ae1) = 0
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+    Syntax error: letter [,]
+    Netlist line no. 5:
+     Expression err: 0,5,10)}
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 5 or its substitute:
+    ae1 %vd(out 0) %v(e1_int1) xfer_e1
+    unknown device type - error
+    Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
 
 ## dc-sweep-problems
 

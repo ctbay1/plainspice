@@ -180,7 +180,8 @@ function dcRole(e: Element): DcRole {
         role.voltage = p;
         if (e.letter === 'L') role.inductor = true;
       }
-      if (e.letter === 'E') attach(2, 4, 'control');
+      // Its control nodes: two, or n pairs for POLY(n) (C3-5).
+      if (e.letter === 'E') attach(2, n.length, 'control');
       break;
     }
     case 'C':
@@ -192,7 +193,7 @@ function dcRole(e: Element): DcRole {
       break;
     case 'G':
       attach(0, 2, 'current');
-      attach(2, 4, 'control');
+      attach(2, n.length, 'control');
       break;
     case 'S': {
       const p = pair(0, 1);

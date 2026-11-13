@@ -479,6 +479,21 @@ const FACTS: Fact[] = [
   { code: 'space-character-17', netlist: "* a thin space inside .tran's stop time: it reads 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\u2009.5\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['space-character'] },
   { code: 'space-character-18', netlist: "* a thin space inside a .dc stop: it reads 1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 1\u20090 1\n.end\n", vectors: { "v(v-sweep)": [0, 1] }, traps: ['space-character'] },
   { code: 'space-character-19', netlist: "* a step of 0, and the stop time written 2<thin space>ms\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0 2\u2009ms\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true, several: true, traps: ['tran-problems', 'space-character'] },
+  // The last pass (13 November 2026). An E or G given by a formula, a table or a polynomial, read as ngspice
+  // reads it (code review C3-5): a formula runs everywhere and is no missing gain; POLY and TABLE run natively
+  // but stop our engine (no XSPICE). A rename reaches every place ngspice reads the node's name (C3-1):
+  // formulas, .pz's nodes and the lines after .end; a character that looks like a space in a formula stops ngspice.
+  { code: 'missing-value-15', netlist: "* an E given by a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(e)": 5, "i(e1)": -0.005 }, traps: [] },
+  { code: 'missing-value-16', netlist: "* E given by a formula, written five ways\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 value = {v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE {v(out)*2}\nR2e e2 0 1k\nE3 e3 0 vol={v(out)*2}\nR3e e3 0 1k\nE4 e4 0 vol='v(out)*2'\nR4e e4 0 1k\nE5 e5 0 VALUE=\n+ {v(out)*2}\nR5e e5 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 5, "v(e3)": 5, "v(e4)": 5, "v(e5)": 5 }, traps: [] },
+  { code: 'missing-value-17', netlist: "* G given by a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 g1 VALUE={v(out)*2m}\nRg1 g1 0 1k\nG2 0 g2 cur='v(out)*2m'\nRg2 g2 0 1k\n.op\n.end\n", vectors: { "v(g1)": 5, "v(g2)": 5 }, traps: [] },
+  { code: 'model-not-in-engine-7', netlist: "* an E written with POLY(1)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 POLY(1) out 0 0 2\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-8', netlist: "* an E written with TABLE\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 TABLE {v(out)} = (0,0) (5,10)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-9', netlist: "* an F written with POLY(1)\nV1 in 0 5\nVx in out 0\nR2 out 0 1k\nF1 0 e POLY(1) Vx 0 2\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-10', netlist: "* a G written with POLY(1)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 e POLY(1) out 0 0 2m\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-11', netlist: "* an H written with POLY(1)\nV1 in 0 5\nVx in out 0\nR2 out 0 1k\nH1 e 0 POLY(1) Vx 0 1k\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-12', netlist: "* an E written with POLY(2)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 POLY(2) out 0 in 0 0 1 1\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-13', netlist: "* a G written with TABLE\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 e TABLE {v(out)} = (0,0) (5,10m)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-14', netlist: "* an E with control nodes and a table\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 out 0 table=(0,0,5,10)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -619,6 +634,22 @@ it('non-ascii-node-12: the capacitor given ic=5 between aµ and au carries −50
   expect(agrees(values[0]!, -5000), String(values[0])).toBe(true);
   expect(values.slice(1).every((x) => x === 0)).toBe(true);
   expect(vector(r, 'i(@r1[i])')!.every((x) => x === 0.004)).toBe(true);
+});
+
+it('model-not-in-engine-7, -9 to -11: POLY(1) with the coefficients 0 and k is written as the plain gain k, which gives what native ngspice gave', () => {
+  const cases: [string, string, Record<string, number>][] = [
+    ['model-not-in-engine-7', 'model-not-in-engine: Write it without POLY: E1 e 0 out 0 2', { 'v(e)': 5 }],
+    ['model-not-in-engine-9', 'model-not-in-engine: Write it without POLY: F1 0 e Vx 2', { 'v(e)': 10 }],
+    ['model-not-in-engine-10', 'model-not-in-engine: Write it without POLY: G1 0 e out 0 2m', { 'v(e)': 5 }],
+    ['model-not-in-engine-11', 'model-not-in-engine: Write it without POLY: H1 e 0 Vx 1k', { 'v(e)': 5 }],
+  ];
+  for (const [code, label, want] of cases) {
+    const [f] = fixed.get(code)!;
+    expect(f!.label).toBe(label);
+    for (const [name, v] of Object.entries(want)) expect(vector(f!.run, name), `${code}: ${name}`).toEqual([v]);
+  }
+  // POLY(2) and TABLE have no plain gain: no fix (model-not-in-engine-8, -12 to -14).
+  for (const code of ['model-not-in-engine-8', 'model-not-in-engine-12', 'model-not-in-engine-13', 'model-not-in-engine-14']) expect(fixed.get(code), code).toEqual([]);
 });
 
 it('runs every offered fix (there are many)', () => {

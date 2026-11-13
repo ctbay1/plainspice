@@ -2004,6 +2004,11 @@ function checkIncomplete(c: Ctx, i: number): void {
     }
     return;
   }
+  // A formula, a table or a polynomial where the control and the gain go (C3-5): nothing is missing.
+  if (e.form) {
+    if (e.form.kind !== 'formula') checkXspiceForm(c, i);
+    return;
+  }
   const notEnough = "Native ngspice 47 stops: 'not enough parameters in line'.";
   if (L === 'E' || L === 'G') {
     if (nodes < 4) {
@@ -2027,6 +2032,42 @@ function checkIncomplete(c: Ctx, i: number): void {
   } else if (!e.value) {
     noGain(c, i, L === 'F' ? 'An F line ends with its gain: F1 0 out Vs 3 pushes 3 x the current in Vs.' : 'An H line ends with its value in volts per amp: H1 out 0 Vs 4 makes 4 volts for every amp in Vs.');
   }
+}
+
+/**
+ * An E, F, G or H line written with POLY(n), or an E or G line written with TABLE (C3-5): ngspice
+ * builds it from an XSPICE block, which PlainSpice's engine leaves out, so the engine stops ("XSPICE is
+ * required to run the 'poly' option", "unknown device type"), while native ngspice 47 runs it
+ * (model-not-in-engine-7, -8). POLY(1) with the coefficients 0 and k is the plain gain k
+ * (model-not-in-engine-9): its fix writes that, which the engine runs. An error: no results.
+ */
+function checkXspiceForm(c: Ctx, i: number): void {
+  const e = el(c, i);
+  const form = e.form!;
+  c.broken.add(i);
+  const name = nameOf(e);
+  if (form.kind === 'table') {
+    add(c, 'model-not-in-engine', 'error', form.keyword, `PlainSpice's engine can't run ${name}'s TABLE`,
+      `TABLE makes ${name}'s output follow a table of points, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out; first- and second-year circuits don't need it. A gain, or a formula written VALUE={...}, works instead.`,
+      "PlainSpice's engine stops: 'unknown device type'. Native ngspice 47 runs it. [model-not-in-engine-8]");
+    return;
+  }
+  // The plain gain for POLY(1) a b 0 k: the control (two nodes, or a source), then k.
+  const controls = e.fields.filter((f) => f.role === 'control-plus' || f.role === 'control-minus' || f.role === 'control-source');
+  const at = e.fields.findIndex((f) => f.token === form.keyword);
+  const coefficients = e.fields.slice(at + 2).filter((f) => !controls.includes(f));
+  const zero = coefficients[0] && readNumber(coefficients[0].token.text);
+  const gain = coefficients[1];
+  const plain =
+    form.dimension === 1 && controls.length === ('EG'.includes(e.letter!) ? 2 : 1) && coefficients.length === 2 && zero && !zero.rest && zero.value === 0 && gain && readNumber(gain.token.text)
+      ? `${[...controls, gain].map((f) => f.token.text).join(' ')}`
+      : undefined;
+  const lineEnd = e.fields[e.fields.length - 1]!.token.to;
+  const written = plain ? `${c.text.slice(e.name.from, form.keyword.from)}${plain}` : undefined;
+  add(c, 'model-not-in-engine', 'error', form.keyword, `PlainSpice's engine can't run ${name}'s POLY`,
+    `POLY makes ${name}'s output a polynomial of its controls, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out; first- and second-year circuits don't need it. ${'EG'.includes(e.letter!) ? 'For a gain, write the control nodes and then the gain' : 'For a gain, write the control source and then the gain'}${written ? `: ${written}` : ''}.`,
+    "PlainSpice's engine stops: 'XSPICE is required to run the 'poly' option'. Native ngspice 47 runs it. [model-not-in-engine-7, model-not-in-engine-9]",
+    written ? [fix(`Write it without POLY: ${written}`, change(form.keyword.from, lineEnd, plain!))] : []);
 }
 
 /**
@@ -3133,7 +3174,8 @@ function checkSpaceNodes(c: Ctx): void {
     if (info.ground || info.refs.length === 0 || !hasSpaceLike(info.name) || hasInvisible(info.name)) continue;
     const valueless = info.connections.some((k) => {
       const e = el(c, k.line);
-      return !!e.letter && VALUE_LETTERS.has(e.letter) && !e.value && !e.fields.some((f) => f.role === 'model');
+      // A formula, a table or a polynomial is no missing value (C3-5).
+      return !!e.letter && VALUE_LETTERS.has(e.letter) && !e.value && !e.form && !e.fields.some((f) => f.role === 'model');
     });
     if (valueless) continue;
     for (const r of info.refs) c.spaced.add(r.from);

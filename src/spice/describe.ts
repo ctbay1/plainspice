@@ -303,6 +303,11 @@ export const DESCRIBE_STRINGS = {
     `${name}: a voltage-controlled current source pushing ${gm} for every volt ${control}, from ${nodeIn(a)} into ${nodeIn(b)}.`,
   ccvs: (name: string, out: string, r: string, control: string): string =>
     `${name}: a current-controlled voltage source: ${out}, is ${r} for every amp in ${control}.`,
+  /** E and G given by a formula; E, F, G and H given by a table or a polynomial, which PlainSpice's engine cannot run (C3-5). */
+  formulaVoltage: (name: string, out: string, formula: string): string => `${name}: a voltage source given by a formula: ${out}, is ${formula}.`,
+  formulaCurrent: (name: string, formula: string, a: string, b: string): string =>
+    `${name}: a current source given by a formula, pushing ${formula} from ${nodeIn(a)} into ${nodeIn(b)}.`,
+  xspiceSource: (name: string, how: string): string => `${name}: a dependent source written as ${how}, which PlainSpice's engine cannot run.`,
   voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
   at: (n: string): string => `at ${nodeIn(n)}`,
   /** A .tf output that is no node's name (ngspice's own words for it, when they do not read as v(...)). */
@@ -811,6 +816,13 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
   const [a, b, c, d] = el.nodes;
   const v = dcValue(el);
   const fmt = (unit: string): string => (v === undefined ? '' : formatSI(v, unit));
+  if (el.form) {
+    // A formula, a table or a polynomial in place of control nodes and a gain (C3-5).
+    const formula = el.form.formula?.text.replace(/\s*\n[ \t]*\+?\s*/g, ' ') ?? '?';
+    if (el.form.kind === 'poly') return S.xspiceSource(name, 'a polynomial (POLY)');
+    if (el.form.kind === 'table') return S.xspiceSource(name, 'a table (TABLE)');
+    return el.letter === 'E' ? S.formulaVoltage(name, S.voltageAt(nodeWritten(a), nodeWritten(b)), formula) : S.formulaCurrent(name, formula, nodeWritten(a), nodeWritten(b));
+  }
   switch (el.letter) {
     case 'R':
       return S.resistor(name, fmt('Ω'), nodeWritten(a), nodeWritten(b));
@@ -3940,8 +3952,9 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
   const node = netlist.nodes.get(key);
   const shown = shownNode(netlist, key);
   // M9: an E or G line with fewer than four nodes leaves a node with no single answer in our engine.
-  // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count.
-  const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && l.element.nodes.length < 4);
+  // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count;
+  // one given by a formula, a table or a polynomial has two by right (C3-5).
+  const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && !l.element.form && l.element.nodes.length < 4);
   if (short?.element) return { title: S.shortLineTitle(short.element.name.text), why: S.shortLineWhy(short.element.name.text), line: short.number };
   if (node && node.connections.length > 0) {
     const letters = node.connections.map((c) => partsOf(netlist).byKey.get(c.element)?.element?.letter);

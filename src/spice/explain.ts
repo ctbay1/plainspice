@@ -310,6 +310,27 @@ export const EXPLAIN_STRINGS = {
   controlBCurrentNote: (name: string): string =>
     `${name} has I=, so it is a current source with no current of its own to read: ngspice accepts the name, warns "singular matrix" and stops.`,
   bCurrentSource: 'behavioural source with I= (a current source)',
+  // E, F, G and H given by a formula, a table or a polynomial (C3-5; missing-value-15, model-not-in-engine-7, -8).
+  formulaVoltage: (out: string, formula: string): string => `${capitalise(out)}, is given by the formula ${formula}.`,
+  formulaCurrent: (formula: string, from: string, to: string): string =>
+    `The current given by the formula ${formula} is pushed from ${from}, through the source, into ${to}.`,
+  formulaReads: (nodes: string): string => `ngspice works the formula out at every point of the analysis, from the voltages it names: ${nodes}.`,
+  formulaNote:
+    'VALUE=, vol= and cur= give a dependent source by a formula: ngspice turns the line into a B source (a behavioural source), so it has no control nodes and no gain.',
+  formulaKeyword: (word: string, what: string): string => `${word}: the output ${what} is the formula that follows`,
+  formulaWhole: 'the formula ngspice works out',
+  formulaPart: 'part of the formula ngspice works out',
+  polySentence: (name: string, controls: string): string => `${name}'s output is a polynomial of ${controls}, written POLY.`,
+  tableSentence: (name: string, of: string): string => `${name}'s output follows a table of points of ${of}, written TABLE.`,
+  xspiceNote:
+    "PlainSpice's engine cannot run this line: ngspice builds POLY and TABLE from an XSPICE block, which PlainSpice's engine leaves out. Native ngspice 47 runs it.",
+  polyKeyword: 'POLY: the output is a polynomial of the controls that follow, then its coefficients',
+  polyDimension: (n: string): string => `${n}: how many controls`,
+  polyCoefficient: 'a coefficient of the polynomial',
+  tableKeyword: 'TABLE: the output follows a table of points',
+  tableLooksUp: 'what the table looks up',
+  tablePoint: 'a number of one of the table\'s points',
+  currentIn: (source: string): string => `the current in ${source}`,
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
   noGainNote: (word: string): string =>
     `This line has no ${word}. PlainSpice's engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".`,
@@ -1464,7 +1485,8 @@ function partFields(p: PartContext): FieldExplanation[] {
   const valueRoles: readonly FieldRole[] = ['value', 'gain', 'transconductance', 'transresistance'];
   el.fields.forEach((f, k) => {
     const isNode = NODE_ROLES.has(f.role);
-    const label = labelFor(el.letter, f.role, isNode ? nodeIndex : 0);
+    // POLY(n)'s control nodes come in pairs, each labelled as the first pair is (C3-5).
+    const label = labelFor(el.letter, f.role, isNode ? (el.form && nodeIndex >= 2 ? 2 + ((nodeIndex - 2) % 2) : nodeIndex) : 0);
     if (isNode) {
       const ref = el.nodes[nodeIndex]!;
       rows.push(nodeRow(p, f, ref, nodeIndex, label));
@@ -1539,6 +1561,10 @@ function partFields(p: PartContext): FieldExplanation[] {
       }
       case 'parameter': {
         const key = lowerAscii(f.token.text);
+        if (el.form) {
+          rows.push(formRow(p, f, k));
+          return;
+        }
         if (el.letter === 'B') {
           rows.push(bRow(p, f, k));
           return;
@@ -1651,6 +1677,54 @@ function otherWordMeaning(letter: ElementLetter | undefined, word: string): stri
 }
 
 /** A B line's words: V= or I= and the expression after it (M19). */
+/** A word of an E, F, G or H line given by a formula, a table or a polynomial, after its nodes (C3-5). */
+function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
+  const form = p.el.form!;
+  const at = p.el.fields.findIndex((g) => g.token === form.keyword);
+  if (k === at) {
+    if (form.kind === 'poly') return fieldOf('polynomial', f.token, S.polyKeyword);
+    if (form.kind === 'table') return fieldOf('table', f.token, S.tableKeyword);
+    return fieldOf('formula', f.token, S.formulaKeyword(f.token.text, p.el.letter === 'E' ? 'voltage' : 'current'));
+  }
+  if (form.kind === 'poly') return k === at + 1 ? fieldOf('polynomial', f.token, S.polyDimension(f.token.text)) : fieldOf('coefficient', f.token, S.polyCoefficient);
+  const whole = f.token.from === form.formula?.from && f.token.to === form.formula.to;
+  if (form.kind === 'table') return fieldOf('table', f.token, whole ? S.tableLooksUp : S.tablePoint);
+  return fieldOf('formula', f.token, whole ? S.formulaWhole : S.formulaPart);
+}
+
+/** A formula as written, on one line: continuation lines and runs of blanks read as one space. */
+function formulaText(t: Token | undefined): string {
+  return t ? t.text.replace(/\s*\n[ \t]*\+?\s*/g, ' ').replace(/[ \t]+/g, ' ') : '?';
+}
+
+/**
+ * An E, F, G or H line given by a formula, a table or a polynomial (C3-5): what its output is, the nodes a
+ * formula reads, and, for a table or a polynomial, that PlainSpice's engine cannot run it.
+ */
+function explainForm(p: PartContext, sentences: string[]): void {
+  const { el } = p;
+  const form = el.form!;
+  const [a, b, ...controls] = el.nodes;
+  const name = el.name.text;
+  if (form.kind === 'formula') {
+    const formula = formulaText(form.formula);
+    sentences.push(el.letter === 'E' ? S.formulaVoltage(voltagePhrase(a, b), formula) : S.formulaCurrent(formula, nodePhrase(a), nodePhrase(b)));
+    const read = [...new Map((el.reads ?? []).map((r) => [r.name, r])).values()];
+    if (read.length) sentences.push(S.formulaReads(S.listJoin(read.map((r) => nodeProse(r)))));
+    addNote(p.notes, S.formulaNote);
+    return;
+  }
+  if (form.kind === 'poly') {
+    const pairs: string[] = [];
+    for (let k = 0; k + 1 < controls.length; k += 2) pairs.push(voltagePhrase(controls[k], controls[k + 1]));
+    const sources = el.fields.filter((f) => f.role === 'control-source').map((f) => S.currentIn(f.token.text));
+    sentences.push(S.polySentence(name, S.listJoin(el.letter === 'E' || el.letter === 'G' ? pairs : sources) || '?'));
+  } else {
+    sentences.push(S.tableSentence(name, form.formula ? formulaText(form.formula) : controls.length >= 2 ? voltagePhrase(controls[0], controls[1]) : '?'));
+  }
+  addNote(p.notes, S.xspiceNote);
+}
+
 function bRow(p: PartContext, f: Field, k: number): FieldExplanation {
   const key = lowerAscii(f.token.text);
   const next = p.el.fields[k + 1];
@@ -1839,6 +1913,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       break;
     }
     case 'E': {
+      if (el.form) {
+        explainForm(p, sentences);
+        break;
+      }
       if (a && b && c && d && value) {
         // P5: V(+) − V(−) = gain × (V(c+) − V(c−)).
         const gain = value.value !== undefined ? formatNumber(value.value) : value.text;
@@ -1849,6 +1927,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       break;
     }
     case 'G': {
+      if (el.form) {
+        explainForm(p, sentences);
+        break;
+      }
       if (a && b && c && d && value) {
         // P6: gm × (V(c+) − V(c−)) amps from the first node, through G, into the second.
         const gm = value.value !== undefined ? formatSI(value.value, 'A') : value.text;
@@ -1862,6 +1944,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
     }
     case 'F':
     case 'H': {
+      if (el.form) {
+        explainForm(p, sentences);
+        break;
+      }
       const control = el.controlSource;
       if (a && b && control && value) {
         if (el.letter === 'F') {
