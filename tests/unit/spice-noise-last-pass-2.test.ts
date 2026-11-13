@@ -8,8 +8,9 @@ import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
+import { formatSI } from '../../src/format/si.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
+import { describeResults, roundingNoise, shownSweep, SWEEP_VALUES, type ResultsInWords } from '../../src/spice/describe.ts';
 import { exactModel } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
@@ -208,5 +209,41 @@ describe('a .control block that only runs is modelled exactly, behind the same-c
       expect([by(r), node(r.words, 'out'), sp(current(r.words, 'H1')?.text), current(r.words, 'H1')?.power], extra.join(' ')).toEqual(['exact', '0 V', 'no current through H1', undefined]);
       expect(message(r.words, 'rounding-noise'), extra.join(' ')).toContain('ngspice gave R5 -3.779483e-16 A, Vm -1.935098e-16 A, H1 1.935098e-10 A, Rl -1.935098e-10 A and node out -1.935098e-07 V.');
     }
+  });
+});
+
+describe('the paths no test held (C9): a temperature sweep too large to look through, at a .temp line\'s own temperature; a sweep judged from the values a .save line keeps', () => {
+  /** The C9 bridge with 53 ammeters in its middle branch, every current saved. */
+  const ammeters = (): string[] => {
+    const amm = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m0 1k'];
+    for (let k = 0; k < 53; k++) amm.push(`Vm${k} m${k} ${k === 52 ? 'b' : `m${k + 1}`} 0`);
+    return [...amm, '.options savecurrents', '.op'];
+  };
+
+  it('.temp 50 beside a sweep of the temperature over more values than SWEEP_VALUES: its point at 50 °C, the .op\'s own temperature (not ngspice\'s 27 °C), shows the .op\'s 0s, and 27 °C keeps ngspice\'s numbers', async () => {
+    const r = await solveText(netlist(...ammeters(), '.temp 50', '.dc TEMP 0 100 0.005'), ngspice);
+    const dc = r.results.dc!;
+    expect(dc.scale.values.length * dc.series.length).toBeGreaterThan(SWEEP_VALUES);
+    const near = (t: number): number => Array.from(dc.scale.values).reduce((best, x, k) => (Math.abs(x - t) < Math.abs(dc.scale.values[best]! - t) ? k : best), 0);
+    const [at50, at27] = [near(50), near(27)];
+    expect([sp(formatSI(dc.scale.values[at50]!, '°C')), sp(formatSI(dc.scale.values[at27]!, '°C'))]).toEqual(['50 °C', '27 °C']);
+    const given = dc.series.find((x) => x.name === 'i(vm0)')!.values;
+    const shown = shownSweep(r.netlist, r.results)!.series.find((x) => x.name === 'i(vm0)')!.values;
+    expect([given[at50] !== 0, shown[at50], shown[at27]]).toEqual([true, 0, given[at27]]);
+    expect(message(r.words, 'sweep-not-checked')).toContain("except at 50 °C, the operating point's own state, where the sweep shows what the operating point shows.");
+  }, 120_000);
+
+  const c9m = ['V1 n1 0 9', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k'];
+
+  it('C9m with ".save v(n3) v(n5) @r7[i]" and a sweep: the sweep is judged from the values the .save line keeps, so R7, exactly 0 at every point, is 0 in the sweep too', async () => {
+    const r = await solveText(netlist(...c9m, '.save v(n3) v(n5) @r7[i]', '.op', '.dc V1 0 9 3'), ngspice);
+    const given = Array.from(r.results.dc!.series.find((x) => x.name === 'i(@r7[i])')!.values);
+    expect(given.some((v) => v !== 0)).toBe(true);
+    expect([by(r), Array.from(shownSweep(r.netlist, r.results)!.series.find((x) => x.name === 'i(@r7[i])')!.values)]).toEqual(['exact', [0, 0, 0, 0]]);
+  });
+
+  it('the 1 nΩ wire of C9w.7 with ".save v(d2) v(p3) @r3[i]": the saved values are off at its checked point (433.7 pA for 340.6 pA), so the sweep is not decided, and the warning names it', async () => {
+    const r = await solveText(netlist('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.save v(d2) v(p3) @r3[i]', '.op', '.dc V1 0 1.5 0.00025'), ngspice);
+    expect(message(r.words, 'imprecise-answers')).toContain('at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA.');
   });
 });

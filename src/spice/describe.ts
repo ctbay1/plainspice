@@ -2494,9 +2494,10 @@ function opStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
   let alike: boolean | undefined;
   // A point a few steps of a double from the .op's own value (ngspice adding up its step) is judged at ngspice's own x,
   // as findSweepNoise judges every point, a + b·x, where the exact solution follows the swept source and no diode's
-  // current is free; elsewhere only a point at the netlist's value bit for bit is the .op's state.
+  // current is free; in a sweep of the temperature, which no part modelled exactly follows, as the .op's own circuit;
+  // elsewhere only a point at the netlist's value bit for bit is the .op's state.
   const sw = ex.sweep && ex.sweep.part >= 0 && !ex.diodes ? ex.sweep : undefined;
-  const state = at.points.filter((k) => at.exact(k) || sw);
+  const state = at.points.filter((k) => at.exact(k) || sw || ex.sweep?.part === -1);
   for (const k of state) {
     const op = pointOp(dc, k);
     const seen = opCheck(ex, op, 0, dc, budget, at.exact(k) || !sw ? undefined : ownX(ex, sw, dc.scale.values[k]!));
