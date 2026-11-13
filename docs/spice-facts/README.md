@@ -201,4 +201,5 @@ by `tests/golden/facts-explain.test.ts`: in explanations.md, A3f gained the runs
 no line of a subcircuit no X line uses (a `.tran` and a dot command it stops at elsewhere say nothing
 there), on which the word "skips" rests; A3g (a gnd in a `.tf`'s `v( )` inside a subcircuit an X line
 uses is ground, as at the top level); and A3h (ngspice names a node inside a subcircuit by its X lines
-and a dot, `x1.m`, `x1.x2.m`, and a `.tf` can ask about it).
+and a dot, `x1.m`, `x1.x2.m`, and a part there after its first letter, `v.x1.vs`, and a `.tf` can use
+either; a `.global` node is the main circuit's).
