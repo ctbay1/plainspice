@@ -188,7 +188,7 @@ interface Ctx {
   spellings?: { connected: Map<string, string[]>; named: Map<string, string[]> };
   /** The nodes .save and .global lines name bare, and a .global node's words inside subcircuits, by node, read on the first use (savedNodes). */
   savedNodes?: Map<string, Token[]>;
-  /** The fix that renames a node called value, on every E or G line that reads it as VALUE (valueAsNode), made once; null with no such node. */
+  /** The fix that renames a node called value, on every E or G line that reads it as VALUE (valueAsNodeWord), made once; null with no such node. */
   valueRename?: { to: string; fix: Fix | null };
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
@@ -2164,6 +2164,12 @@ function checkIncomplete(c: Ctx, i: number): void {
     }
     return;
   }
+  // A node called value where ngspice reads VALUE (CR1-10, CR2-4): the line is that, whatever else it says.
+  const valueWord = valueAsNodeWord(c, e);
+  if (valueWord) {
+    valueNodeTrap(c, i, valueWord);
+    return;
+  }
   // A formula, a table or a polynomial where the control and the gain go (C3-5): nothing is missing.
   if (e.form) {
     if (e.form.kind !== 'formula') checkXspiceForm(c, i);
@@ -2276,26 +2282,8 @@ function checkFormulaForm(c: Ctx, i: number): void {
   if (equals && !NO_BRACES.test(formula.text)) return;
   c.broken.add(i);
   const braced = `{${formula.text}}`;
-  // Two words or more after VALUE without = (E1 e 0 value 0 2): ngspice reads the word value as VALUE wherever it
-  // stands on an E or G line, so a node called value makes the line a formula it can't read, in braces or not
-  // (fatal-syntax-17; critic CR1-10). Braces fit a formula only, never words a blank keeps apart.
+  // Braces fit a formula only, never words a blank keeps apart.
   const words = /[\w.)}'"][ \t]+[\w.{'"]/.test(formula.text);
-  const node = c.n.nodes.get('value');
-  if (valueAsNode(c, e)) {
-    // The fix renames the node, and the word value on every line that reads it as VALUE so: one fix for them
-    // all, made once (thousands of such lines stay fast).
-    if (!c.valueRename) {
-      const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
-      const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => valueAsNode(c, x)).map((x) => replace(x.form!.keyword, to));
-      c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
-    }
-    const { to, fix: rename } = c.valueRename;
-    add(c, 'fatal-syntax', 'error', form.keyword, `ngspice reads ${kw} on ${name}'s line as the start of a formula`,
-      `ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so it takes ${shownWord(formula.text)} for ${name}'s formula, which it can't read. A node can't be called value here: give it another name${rename ? `, such as ${to}` : ''}.`,
-      `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-17]`,
-      rename ? [rename] : []);
-    return;
-  }
   const named = /^(true|false)/i.test(formula.text) ? ', or a name that starts with true or false' : '';
   add(c, 'fatal-syntax', 'error', formula, `ngspice can't read ${name}'s formula without braces`,
     equals
@@ -2306,11 +2294,63 @@ function checkFormulaForm(c: Ctx, i: number): void {
     formula.text.includes('=') || words || /^\.(?![0-9])/.test(formula.text) ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
 }
 
-/** An E or G line where value, with no = after it, comes before two words or more: a node called value, read as VALUE (CR1-10). */
-function valueAsNode(c: Ctx, e: Element): boolean {
+/**
+ * The word value standing where a node goes on an E or G line, which ngspice reads as VALUE, the start of a formula,
+ * wherever it stands (search_plain_identifier, then inp_compat in its inpcom.c; fatal-syntax-17, -20), or undefined:
+ * - an output node, or a control node of POLY, called value (E1 value 0 mid 0 2, E1 e 0 POLY(1) value 0 0 2);
+ * - value with no '=' before two words or more (E1 e 0 value mid 2: the gain form's control + node; CR1-10);
+ * - value with no '=' after another word and before a number, in braces or not, while a part connects to a node called
+ *   value (E1 e 0 mid value 2, E1 e 0 value 0 {2}: the control - node, and the gain; CR2-4).
+ * A formula written after VALUE (VALUE v(out)*2, E1 e 0 x VALUE {v(out)*2}) is no node.
+ */
+function valueAsNodeWord(c: Ctx, e: Element): Token | undefined {
+  if (e.letter !== 'E' && e.letter !== 'G') return undefined;
   const form = e.form;
-  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || form.equals) return false;
-  return !/^[{'"]/.test(form.formula.text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(form.formula.text);
+  const node = e.nodes.find((r) => /^value$/i.test(r.token.text));
+  if (node && form?.kind !== 'formula') return node.token;
+  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || form.equals) return undefined;
+  const text = form.formula.text;
+  if (!/^[{'"]/.test(text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(text)) return form.keyword;
+  const gain = readNumber(text.replace(/^[{']\s*|\s*[}']$/g, ''));
+  return form.dropped?.length && gain && !gain.rest && c.n.nodes.get('value')?.connections.length ? form.keyword : undefined;
+}
+
+/**
+ * A node called value on an E or G line (valueAsNodeWord). Without a { after it ngspice can't read the formula it
+ * makes and stops (an error); with one it runs that formula, a constant, without the control nodes and without a
+ * message (a warning; fatal-syntax-20). The fix renames the node, and the word on every line that reads it as VALUE:
+ * one fix for them all, made once (thousands of such lines stay fast).
+ */
+function valueNodeTrap(c: Ctx, i: number, word: Token): void {
+  const e = el(c, i);
+  const name = nameOf(e);
+  const node = c.n.nodes.get('value');
+  if (!c.valueRename) {
+    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
+    // The words the parser read as a node are the node's; those it read as the keyword are renamed here.
+    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
+    c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
+  }
+  const { to, fix: rename } = c.valueRename;
+  const end = cardEnd(c, i);
+  const taken = shownWord(c.text.slice(word.to, end).replace(/\s*\n[ \t]*\+?\s*/g, ' ').trim());
+  const group = e.form?.kind === 'formula' && e.form.formula && /^[{']/.test(e.form.formula.text) ? e.form.formula.text : undefined;
+  const instead = `A node can't be called value here: give it another name${rename ? `, such as ${to}` : ''}.`;
+  if (group) {
+    add(c, 'fatal-syntax', 'warning', word, `ngspice reads ${word.text} on ${name}'s line as the start of a formula`,
+      `ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, and takes the formula from its {: so ${name} is the constant ${group}, and the nodes written before it count for nothing. ${instead}`,
+      `ngspice runs ${name} as the formula ${group} and says nothing: in one test E1 e 0 mid value {2} gave 2 V, whatever the voltage at mid. [fatal-syntax-20]`,
+      rename ? [rename] : []);
+    return;
+  }
+  c.broken.add(i);
+  const malFormed = `'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line')`;
+  add(c, 'fatal-syntax', 'error', word, `ngspice reads ${word.text} on ${name}'s line as the start of a formula`,
+    `ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so it takes ${taken} for ${name}'s formula, which it can't read. ${instead}`,
+    e.form?.kind === 'poly'
+      ? `Native ngspice stops with a fatal error: ${malFormed}. PlainSpice's engine stops at the POLY first: 'XSPICE is required to run the 'poly' option'. [fatal-syntax-20]`
+      : `ngspice stops with a fatal error: ${malFormed}. [fatal-syntax-17${word === e.form?.keyword && !e.form?.dropped?.length ? '' : ', fatal-syntax-20'}]`,
+    rename ? [rename] : []);
 }
 
 /**

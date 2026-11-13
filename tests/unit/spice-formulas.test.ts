@@ -737,4 +737,40 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     expect(explainLine(parseNetlist(formula('E1 e 0 x VALUE={v(out)*2}')), 5)!.notes).toContain(runs);
     expect(explainLine(parseNetlist(formula('E1 e 0 x VALUE={2}')), 5)!.notes.join(' ')).toContain('Native ngspice stops at it (see the checks).');
   });
+  it('CR2-4: a node called value anywhere on an E or G line is read as VALUE: the error and the rename, never braces; with braces after it, a warning (fatal-syntax-17, -20)', () => {
+    const net = (line: string): string => `* t\nV1 in 0 5\nR1 in mid 1k\nR2 mid value 1k\nR3 value 0 1k\n${line}\nRe e 0 1k\n.op\n.end\n`;
+    const valueTraps = (text: string) => traps(text).filter((t) => t.id === 'fatal-syntax' || t.id === 'model-not-in-engine');
+    for (const [line, fixed] of [
+      ['E1 e 0 mid value 2', 'E1 e 0 mid val 2'], // the control − node (the critic's v3)
+      ['E1 e 0 value mid 2', 'E1 e 0 val mid 2'], // the control + node (CR1-10)
+      ['E1 value 0 mid 0 2', 'E1 val 0 mid 0 2'], // an output node
+      ['E1 e value mid 0 2', 'E1 e val mid 0 2'],
+      ['G1 0 value mid 0 2m', 'G1 0 val mid 0 2m'],
+      ['G1 0 e mid value 2m', 'G1 0 e mid val 2m'],
+      ['E1 e 0 POLY(1) value 0 0 2', 'E1 e 0 POLY(1) val 0 0 2'],
+    ] as const) {
+      const found = valueTraps(net(line));
+      expect(found.map((t) => [t.severity, t.title]), line).toEqual([['error', `ngspice reads value on ${line.slice(0, 2)}'s line as the start of a formula`]]);
+      expect(found[0]!.fixes.map((f) => f.label), line).toEqual(['Rename the node value to val']);
+      expect(applyFix(net(line), found[0]!.fixes[0]!), line).toBe(net(fixed).replace('R2 mid value', 'R2 mid val').replace('R3 value', 'R3 val'));
+      expect(valueTraps(applyFix(net(line), found[0]!.fixes[0]!)).filter((t) => t.id === 'fatal-syntax'), line).toEqual([]);
+    }
+    const minus = valueTraps(net('E1 e 0 mid value 2'))[0]!;
+    expect(minus.why).toBe("ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so it takes 2 for E1's formula, which it can't read. A node can't be called value here: give it another name, such as val.");
+    expect(minus.ngspice).toBe("ngspice stops with a fatal error: 'mal formed E source instance' (ngspice 42: 'mal formed E line'). [fatal-syntax-17, fatal-syntax-20]");
+    expect(valueTraps(net('E1 value 0 mid 0 2'))[0]!.why).toContain('so it takes 0 mid 0 2 for E1\'s formula');
+    // On a POLY line native ngspice stops at value; PlainSpice's engine at the POLY first. No "native ngspice 47 runs it".
+    expect(valueTraps(net('E1 e 0 POLY(1) value 0 0 2'))[0]!.ngspice).toBe("Native ngspice stops with a fatal error: 'mal formed E source instance' (ngspice 42: 'mal formed E line'). PlainSpice's engine stops at the POLY first: 'XSPICE is required to run the 'poly' option'. [fatal-syntax-20]");
+    // With braces after it ngspice runs the line, as the constant 2 V: a warning, and the rename (fatal-syntax-20).
+    for (const line of ['E1 e 0 mid value {2}', 'E1 e 0 value 0 {2}']) {
+      const braced = valueTraps(net(line));
+      expect(braced.map((t) => [t.severity, t.title]), line).toEqual([['warning', "ngspice reads value on E1's line as the start of a formula"]]);
+      expect(braced[0]!.ngspice).toBe("ngspice runs E1 as the formula {2} and says nothing: in one test E1 e 0 mid value {2} gave 2 V, whatever the voltage at mid. [fatal-syntax-20]");
+      expect(braced[0]!.fixes.map((f) => f.label)).toEqual(['Rename the node value to val']);
+    }
+    // A formula after VALUE stays a formula, whatever nodes the circuit has; with no node called value, VALUE 2 is a constant to brace.
+    expect(valueTraps(net('E1 e 0 x VALUE {v(mid)*2}'))).toEqual([]);
+    expect(valueTraps(net('E1 e 0 VALUE={v(mid)*2}'))).toEqual([]);
+    expect(said('E1 e 0 x VALUE 2')).toEqual(["fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 x VALUE {2}"]);
+  });
 });

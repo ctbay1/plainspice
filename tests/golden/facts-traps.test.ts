@@ -542,6 +542,8 @@ const FACTS: Fact[] = [
   // After VALUE without =, ngspice drops what stands before the formula's {: a no-break space or words (CR2-6).
   { code: 'nbsp-7', netlist: "* a no-break space between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE \u00a0{v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE\u00a0{v(out)*3}\nR2e e2 0 1k\nE3 e3 0 VALUE\u00a0=v(out)*4\nR3e e3 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 7.5, "v(e3)": 10 }, traps: [] },
   { code: 'missing-fields-11', netlist: "* words between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE x {v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE v(out) {2}\nR2e e2 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 2 }, traps: [] },
+  // A node called value as the control - node, an output node or a POLY control node (CR2-4).
+  { code: 'fatal-syntax-20', netlist: "* a node called value as the control - node\nV1 in 0 5\nR1 in mid 1k\nR2 mid value 1k\nR3 value 0 1k\nE1 e 0 mid value 2\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -772,6 +774,13 @@ it('fatal-syntax-17: a node called value is renamed, on the E line too, and E1 t
   expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
   expect(f!.netlist).toContain('E1 e 0 val 0 2');
   expect(vector(f!.run, 'v(e)')).toEqual([5]);
+});
+
+it('fatal-syntax-20: a node called value as the control − node is renamed, and E1 then gives what native ngspice gave (3.333 V), not the constant 2 V braces gave (CR2-4)', () => {
+  const [f] = fixed.get('fatal-syntax-20')!;
+  expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
+  expect(f!.netlist).toContain('E1 e 0 mid val 2');
+  expect(vector(f!.run, 'v(e)')).toEqual([3.333333333333333]);
 });
 
 it('model-not-in-engine-7, -9 to -11: POLY(1) with the coefficients 0 and k is written as the plain gain k, which gives what native ngspice gave', () => {

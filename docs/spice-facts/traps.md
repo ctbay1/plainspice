@@ -8867,7 +8867,7 @@ PlainSpice's checks: `zero-ohm`, `invisible-character`.
 
 ## fatal-syntax
 
-An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18).
+An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18). A node called `value` anywhere on an E or G line is read as VALUE: as an output node, a POLY control node or the control − node too (fatal-syntax-20); the fix renames it, and braces are offered for none of these.
 
 What PlainSpice shows for fatal-syntax-1 (error, line 3):
 
@@ -9634,6 +9634,74 @@ E1 e 0 VALUE (1+v(out))*2, without =: no braces from ngspice (fatal-syntax-14):
 ```
 
 PlainSpice's checks: no trap.
+
+### fatal-syntax-20. A node called value as an E's control − node, an output node or a POLY control node: ngspice reads the word as VALUE there too and stops; with braces after it, it runs a constant
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-4). ngspice reads the first word value on an E or G line as VALUE wherever it stands (search_plain_identifier, then inp_compat), not only right after the output nodes (fatal-syntax-17). As the control − node (E1 e 0 mid value 2, below), an output node (E1 value 0 mid 0 2, G1 0 value mid 0 2m) or a POLY control node, the line becomes a formula ngspice can't read: "mal formed E source instance". Braces after it (E1 e 0 mid value {2}, which the checks offered before) make the line run, but as the constant 2 V: the control nodes count for nothing. Renamed (val), the node is a node again: e = 2 × (3.333 − 1.667) = 3.333 V, in native 47 and 42 and our engine.
+
+```spice
+* a node called value as the control - node
+V1 in 0 5
+R1 in mid 1k
+R2 mid value 1k
+R3 value 0 1k
+E1 e 0 mid value 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0 mid  vol= 2
+        in line no. 6 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0 mid  vol= 2
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0 mid  vol= 2
+    in line no. 6 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Rename the node value to val" (fatal-syntax), which writes `R2 mid val 1k`, `R3 val 0 1k`, `E1 e 0 mid val 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(mid) = 3.333333333333333, v(val) = 1.6666666666666665, v(e) = 3.333333333333333, i(e1) = -0.003333333333333333, i(v1) = -0.001666666666666667
+with the gain in braces, E1 e 0 mid value {2}, which PlainSpice's checks call a warning: it runs, as a constant:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(mid) = 3.333333333333333, v(value) = 1.6666666666666665, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.001666666666666667
+    our engine (exit 0): v(in) = 5, v(mid) = 3.333333333333333, v(value) = 1.6666666666666665, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.001666666666666667
+an output node called value, E1 value 0 mid 0 2, which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1  vol= 0 mid 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1  vol= 0 mid 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on a G line, G1 0 value mid 0 2m, which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G source instance: g1 0  cur= mid 0 2m
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G line: g1 0  cur= mid 0 2m
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a POLY control node called value, E1 e 0 POLY(1) value 0 0 2, which PlainSpice's checks say the same way (not that native ngspice runs the POLY):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0 poly(1)  vol= 0 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0 poly(1)  vol= 0 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none)
+      Error: XSPICE is required to run the 'poly' option in instance e1 e 0 poly(1) value 0 0 2
+      ERROR: fatal error in ngspice, exit(1)
+```
+
+PlainSpice's checks: `fatal-syntax`.
 
 ## include-not-available
 
