@@ -73,3 +73,27 @@ test('an emoji before a thin space in the title stops no check: the error for x 
   const panel = await openPanel(page, 'checks');
   await expect(panel).toContainText('x has no DC path to ground');
 });
+
+test('E and G formulas that start with a sign or a bracket run with their numbers and no check: e1 = −5 V, e2 = 7 V (round-2 critic CR2-1, fatal-syntax-19)', async ({ page }) => {
+  await openApp(page);
+  await setNetlist(page, '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE=-v(out)*2\nR1e e1 0 1k\nE2 e2 0 VALUE=(1+v(out))*2\nR2e e2 0 1k\n.op\n.end\n');
+  await expectFinished(page);
+  expect(await checksCount(page)).toBe(0);
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'e1').getByRole('cell').first()), 'V')).toBe(-5);
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'e2').getByRole('cell').first()), 'V')).toBe(7);
+});
+
+test('one node written Çıkış and çıkış on part lines: the numbers show, one warning, and its fix keeps them (round-2 critic CR2-3, non-ascii-node-27)', async ({ page }) => {
+  await openApp(page);
+  await setNetlist(page, '* t\nV1 giris 0 10\nR1 giris Çıkış 1k\nR2 çıkış 0 1k\n.op\n.end\n');
+  await expectFinished(page);
+  await expect.poll(() => checksCount(page)).toBe(1);
+  const panel = await openPanel(page, 'checks');
+  await expect(panel).toContainText('ngspice spells Çıkış and çıkış as ____k____: one node');
+  await panel.getByRole('button', { name: 'Rename Çıkış and çıkış to Cikis' }).click();
+  await expect(panel).toContainText(t('checksNone'));
+  await openNetlist(page);
+  await expect.poll(() => netlistText(page)).toBe('* t\nV1 giris 0 10\nR1 giris Cikis 1k\nR2 Cikis 0 1k\n.op\n.end\n');
+  await expectFinished(page);
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), /^cikis$/i).getByRole('cell').first()), 'V')).toBe(5);
+});
