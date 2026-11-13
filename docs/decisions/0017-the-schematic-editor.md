@@ -737,3 +737,21 @@ and golden rows in A3f and A3h):
   `.include` there: a missing file stops it); the overview names two subcircuits as two ("inside
   subcircuits that no X line uses"); Explain says ngspice names a node "by its X line, a dot and the
   node's own name"; and the code comments say "skips".
+
+- **Renaming a node renames it wherever ngspice reads it** (code review C3-1, the older half). The
+  editor's node Rename, joining two nodes by a wire, and a ground placed on a node changed the node's
+  name on the part lines, in the dot commands' `v(...)` and in a `.control` block's `v(...)`, but not in a
+  formula that reads it, so "Rename out to vout" left `B1 b 0 V=v(out)*2` on a node with nothing on it
+  (native 47: "singular matrix: check node out"), nor on a `.pz` line, a `.print dc out` or after `save`,
+  nor on the lines after a plain `.end`, which ngspice reads (S25: an `R3 out 0 1k` there was cut off).
+  They now take their words from the same list as the checks' renames (`nodeReferences` in
+  `src/spice/traps.ts`; decision 0016, after the last pass). A node's names in plain letters are renamed
+  only where that list finds them: a word in a command that names the node bare outside `save`
+  (`print out`) may as well be a vector the command made, so it stays.
+- **The rename reaches `.save`, `.global` and `.func`, and every spelling ngspice reads as the node** (round-1
+  critic of these fixes, CR1-3, CR1-1). The list the editor's rename takes its words from now also holds a
+  name bare on `.save` (left there, `.save out` saved nothing after "Rename out to vout", and the node
+  voltages were gone with no check), the names on `.global` and the words of a subcircuit's lines that name
+  a `.global` node, and the `v(...)` of a `.func`'s formula, before and after a plain `.end`
+  (non-ascii-node-23 to -25); and a name only read that ngspice spells as the node (`v(Çıkış)` for the node
+  `çıkış`, decision 0016). A bare name on `.probe` stays: ngspice reads no node there.

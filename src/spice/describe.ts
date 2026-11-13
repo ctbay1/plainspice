@@ -303,6 +303,13 @@ export const DESCRIBE_STRINGS = {
     `${name}: a voltage-controlled current source pushing ${gm} for every volt ${control}, from ${nodeIn(a)} into ${nodeIn(b)}.`,
   ccvs: (name: string, out: string, r: string, control: string): string =>
     `${name}: a current-controlled voltage source: ${out}, is ${r} for every amp in ${control}.`,
+  /** E and G given by a formula; E, F, G and H given by a table or a polynomial, which PlainSpice's engine cannot run (C3-5). */
+  formulaVoltage: (name: string, out: string, formula: string): string => `${name}: a voltage source given by a formula: ${out}, is ${formula}.`,
+  formulaCurrent: (name: string, formula: string, a: string, b: string): string =>
+    `${name}: a current source given by a formula, pushing ${formula} from ${nodeIn(a)} into ${nodeIn(b)}.`,
+  xspiceSource: (name: string, how: string): string => `${name}: a dependent source written as ${how}, which PlainSpice's engine cannot run.`,
+  /** VALUE= with nothing after it, or empty braces (CR1-12). */
+  formulaNone: (name: string, current: boolean): string => `${name}: a ${current ? 'current' : 'voltage'} source given by a formula, but its line has no formula yet.`,
   voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
   at: (n: string): string => `at ${nodeIn(n)}`,
   /** A .tf output that is no node's name (ngspice's own words for it, when they do not read as v(...)). */
@@ -493,6 +500,12 @@ export const DESCRIBE_STRINGS = {
   underscoresRule: 'writes each letter other than a to z (or A to Z) in a name as underscores',
   bothRules: 'reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a name as underscores',
   unknownDeviceTitle: (c: string): string => `A line starts with ${c}`,
+  xspiceTableTitle: (name: string): string => `PlainSpice's engine can't run ${name}'s TABLE`,
+  xspiceTableWhy: (name: string): string =>
+    `TABLE makes ${name}'s output follow a table of points, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out, so it stops: "unknown device type". Native ngspice 47 runs it.`,
+  xspicePolyTitle: (name: string): string => `PlainSpice's engine can't run ${name}'s POLY`,
+  xspicePolyWhy: (name: string): string =>
+    `POLY makes ${name}'s output a polynomial of its controls, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out, so it stops: "XSPICE is required to run the 'poly' option". Native ngspice 47 runs it.`,
   unknownDeviceWhy: (c: string): string =>
     `A part's line starts with the letter that says what it is: R, C, L, V, I, E, F, G, H … This line starts with ${c}, so ngspice stops: "unknown device type".`,
   unknownDeviceGenericTitle: 'ngspice does not know this kind of part',
@@ -837,6 +850,14 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
   const [a, b, c, d] = el.nodes;
   const v = dcValue(el);
   const fmt = (unit: string): string => (v === undefined ? '' : formatSI(v, unit));
+  if (el.form) {
+    // A formula, a table or a polynomial in place of control nodes and a gain (C3-5).
+    const formula = el.form.formula?.text.replace(/\s*\n[ \t]*\+?\s*/g, ' ');
+    if (el.form.kind === 'poly') return S.xspiceSource(name, 'a polynomial (POLY)');
+    if (el.form.kind === 'table') return S.xspiceSource(name, 'a table (TABLE)');
+    if (!formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(formula)) return S.formulaNone(name, el.letter === 'G');
+    return el.letter === 'E' ? S.formulaVoltage(name, S.voltageAt(nodeWritten(a), nodeWritten(b)), formula) : S.formulaCurrent(name, formula, nodeWritten(a), nodeWritten(b));
+  }
   switch (el.letter) {
     case 'R':
       return S.resistor(name, fmt('Ω'), nodeWritten(a), nodeWritten(b));
@@ -3998,8 +4019,9 @@ function singularWords(netlist: Netlist, subject: string): DiagnosticWords {
   const node = netlist.nodes.get(key);
   const shown = shownNode(netlist, key);
   // M9: an E or G line with fewer than four nodes leaves a node with no single answer in our engine.
-  // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count.
-  const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && l.element.nodes.length < 4);
+  // A missing gain is read as 0 without a singular matrix (missing-value-4, -5), so only too few nodes count;
+  // one given by a formula, a table or a polynomial has two by right (C3-5).
+  const short = node?.connections.map((c) => partsOf(netlist).byKey.get(c.element)).find((l) => (l?.element?.letter === 'E' || l?.element?.letter === 'G') && !l.element.form && l.element.nodes.length < 4);
   if (short?.element) return { title: S.shortLineTitle(short.element.name.text), why: S.shortLineWhy(short.element.name.text), line: short.number };
   if (node && node.connections.length > 0) {
     const letters = node.connections.map((c) => partsOf(netlist).byKey.get(c.element)?.element?.letter);
@@ -4074,6 +4096,9 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       return withLine({ title: S.duplicateTitle(name), why: S.duplicateWhy(earlier) });
     }
     case 'unknown-device': {
+      // A TABLE needs XSPICE's block, which our engine leaves out (model-not-in-engine-8): no unknown letter.
+      const table = d.line === undefined ? undefined : netlist.lines[d.line - 1]?.element;
+      if (table?.form?.kind === 'table') return withLine({ title: S.xspiceTableTitle(table.name.text), why: S.xspiceTableWhy(table.name.text) });
       const c = lineText(netlist, d.line).trimStart()[0];
       return withLine(c ? { title: S.unknownDeviceTitle(c), why: S.unknownDeviceWhy(c) } : { title: S.unknownDeviceGenericTitle, why: S.unknownDeviceGenericWhy }); // M5, M5b
     }
@@ -4208,6 +4233,10 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       return { title: S.rawfileTitle, why: S.rawfileWhy };
     }
     case 'error': {
+      // POLY needs XSPICE's block, which our engine leaves out (model-not-in-engine-7, -9).
+      const poly = /XSPICE is required to run the 'poly' option in instance (\S+)/i.exec(d.text);
+      const polyLine = poly ? partsOf(netlist).byKey.get(poly[1]!.toLowerCase()) : undefined;
+      if (polyLine?.element) return withLine({ title: S.xspicePolyTitle(polyLine.element.name.text), why: S.xspicePolyWhy(polyLine.element.name.text) }, polyLine.number);
       const file = /Could not find (?:include|library) file\s+(\S+)/i.exec(d.text);
       if (file) return withLine({ title: S.includeTitle(file[1]!), why: S.includeWhy }, d.line ?? dotLine(netlist, '.include') ?? dotLine(netlist, '.lib')); // A26, A33
       return withLine({ title: S.errorTitle, why: S.saysWhy(d.text) });

@@ -61,9 +61,9 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [sign-in-value](#sign-in-value) | `1k-2`, `1d-3` on R, C or L | warning | keeps the second number: −2 Ω, silently (C, L: a model warning) |
 | [space-before-suffix](#space-before-suffix) | `1 k`, `5 V`, `1 m` | error | stops, or silently takes the word as a setting |
 | [midline-comment](#midline-comment) | `R1 a b 2 * load` | error | stops |
-| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number (on C and L ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); after a sign: stops |
-| [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` | error, warning | R, C, L left out; V, I are 0; E-H: see text |
-| [missing-fields](#missing-fields) | `R1 a`, `V1 a`, `E1 a 0 2`, `F1 0 a 5` | error, warning | R, C, L left out; others stop or misread |
+| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`), or in a formula | warning, error | glues two words, silently; ends the number (on C and L ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); after a sign or in a formula: stops |
+| [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` (not an E or G given by a formula, `VALUE={...}`) | error, warning | R, C, L left out; V, I are 0; E-H: see text |
+| [missing-fields](#missing-fields) | `R1 a`, `V1 a`, `E1 a 0 2`, `F1 0 a 5`; one word before an E's formula: `E1 e 0 x VALUE={2}` | error, warning | R, C, L left out; others stop or misread |
 | [control-source](#control-source) | `F1 0 a V9 2` with no V9, or a control with no current to read (R, L, C, I, F, G, a B line with I=) | error | stops |
 | [missing-title](#missing-title) | a part or a dot command on line 1 | warning | skips it, silently |
 | [no-ground](#no-ground) | no node `0` or `gnd` | error | singular matrix, numbers that are not the answer |
@@ -76,7 +76,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [unknown-letter](#unknown-letter) | a line starting with a digit, `@`, A, N, or a W, S, T, U, Y, Z, P, K that lacks what it needs | error | stops, or stops reading (`@`) |
 | [missing-model](#missing-model) | D, Q, J, M without a .model line | error | stops |
 | [missing-subcircuit](#missing-subcircuit) | X without a .subckt | error | stops |
-| [model-not-in-engine](#model-not-in-engine) | BSIM, HiSIM, SOI, HICUM, JFET2 levels, and O lines (LTRA) | error | our engine stops; native 47 runs it |
+| [model-not-in-engine](#model-not-in-engine) | BSIM, HiSIM, SOI, HICUM, JFET2 levels, O lines (LTRA), and E, F, G or H written with POLY or TABLE (XSPICE) | error | our engine stops; native 47 runs it |
 | [dc-sweep-problems](#dc-sweep-problems) | `.dc` with a zero or missing step, the wrong direction, a step past the end, a source not in the circuit, a word that is no number where a number goes, a sweep missing its numbers, a number too many, a name with a hidden character | error, warning | stops, hangs (42), or no points; in two sweeps a sweep the wrong way never moves |
 | [tran-problems](#tran-problems) | `.tran` with one number, a step or a stop time of 0 or less, a start after the stop, a step longer than the run | error, info | stops; or runs anyway (info) |
 | [tf-problems](#tf-problems) | `.tf` of a missing node, i( ) of a non-source, a missing or wrong input | error | silent wrong answers, or stops |
@@ -84,7 +84,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [missing-end](#missing-end) | no `.end` | info | fine from a file |
 | [after-end](#after-end) | lines after `.end` | warning | still read from a file (unless `.end;...`) |
 | [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω, `r=0` too (a 0 another check explains is that check's, with the same words) | warning, error | 47: 1e-12 Ω with a warning (inside a subcircuit for r.x1.r1; −1e-12 Ω for a negative value); 42: 1 mΩ for 0, any other value as written, silently; across a source: absurd currents |
-| [fatal-syntax](#fatal-syntax) | an unclosed `{` or `'`, an undefined parameter, a malformed B line | error | stops with a fatal error |
+| [fatal-syntax](#fatal-syntax) | an unclosed `{` or `'`, an undefined parameter, a malformed B line, an E or G formula ngspice can't read (`VALUE=3`, `VALUE=2*v(out)`, `VALUE=`) | error | stops with a fatal error |
 | [include-not-available](#include-not-available) | `.include`, `.lib file section`, `.lib` with one word | error | stops: the file is not there, or `.lib` is not recognised |
 | [lost-continuation](#lost-continuation) | a `+` line that ngspice loses | warning | loses it, silently |
 | [unknown-word](#unknown-word) | a word after a part's value that is no setting of the part: `R1 a 0 1k load`, `V1 a 0 5 battery`, `1d-3` on a source; a word where the value goes that is no number and no `.param` name it can see: `E1 b 0 a 0 Av`; a setting the part does not have where its value goes: `G1 0 b a 0 gm=1m`; a sign with a space after it: `- 5`; `m=` after an E's or H's gain | error | stops ("unknown parameter"; E-H natively: a polynomial error, but not for a setting where the value goes, or `m=`) |
@@ -92,8 +92,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
 | [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`), a number of `.tran`, `.dc`, `.ac` or `.noise`, of a source's function, AC value or setting | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; at the start of a value: stops; elsewhere: as the place does with the number read, or nothing claimed where the line has a problem of its own |
 | [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash from a document (`1e−3`, `−5`), a document's decimal point (`4·7k`), the letter O for the digit 0 (`1Ok`, `1OkΩ`, `1OOk`, `1OA`, `O.47k`), another character outside ASCII inside a number (`4。7k`) | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); at the start of a value: stops; elsewhere: as the place does with the number read |
-| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), right after a sign (`-<THIN>5`), in a node name (`o<THIN>ut`) or between two words | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; glues two words, silently (on an analysis line the glued word is one number: as its place does with it); at the start of a value or right after a sign: stops |
-
+| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), right after a sign (`-<THIN>5`), in a node name (`o<THIN>ut`), in a formula (`V=v(out)<THIN>*2`) or between two words | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; glues two words, silently (on an analysis line the glued word is one number: as its place does with it); at the start of a value, right after a sign or in a formula: stops |
 ## mega-as-milli
 
 A part value whose scale letter is a capital `M` alone (not `MEG`, not `MIL`) on R, C, L, V, I, E, F, G or H. A lower-case `m` is not flagged: the channel teaches `m` for milli, and a 10 mΩ shunt is real. Warning. Two fixes: mega (`1meg`) and milli (`1m`); mega comes first on resistors and gains, milli first on sources, capacitors and inductors. A value like `1M5` is resistor code and goes to rkm-notation instead.
@@ -2321,7 +2320,7 @@ PlainSpice's checks: no trap.
 
 ## nbsp
 
-A no-break space (U+00A0) inside a word of a part, dot-command or continuation line, usually from text copied out of a web page or a PDF. Warning. Fix: a normal space. Between a value and its unit, as documents write `4.7 kΩ` (added after the critic of the fixes for the final reviews, 12 November 2026), the value is read the way the document meant it and the fix writes it for SPICE, `4.7k`, as for the other characters that look like a space (space-character).
+A no-break space (U+00A0) inside a word of a part, dot-command or continuation line, usually from text copied out of a web page or a PDF. Warning. Fix: a normal space. In a formula ngspice stops, and the fix takes it out (nbsp-4; added after the last pass, 13 November 2026, as for the other characters that look like a space, space-character-22). Between a value and its unit, as documents write `4.7 kΩ` (added after the critic of the fixes for the final reviews, 12 November 2026), the value is read the way the document meant it and the fix writes it for SPICE, `4.7k`, as for the other characters that look like a space (space-character).
 
 What PlainSpice shows for nbsp-1 (warning, line 3):
 
@@ -2439,9 +2438,300 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `nbsp`.
 
+### nbsp-4. A no-break space in a formula stops ngspice too: taken out, the formula runs
+
+```spice
+* a no-break space in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)<NBSP>*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `nbsp`.
+
+### nbsp-5. A no-break space between v and its bracket: "Undefined parameter [v]", as for a thin space
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). As with a thin space (space-character-23), ngspice takes the v for a name of its own and stops with a fatal error: "Undefined parameter [v]", then "Cannot compute substitute". In braces too, and with a capital V. The fix takes the character out, and the formula runs.
+
+```spice
+* a no-break space between v and its bracket
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v<NBSP>(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error in netlist line no. 7, new internal line no. 5:
+    Undefined parameter [v]
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+    Undefined parameter [v]
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+in braces (V={v<NBSP>(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line (VALUE={v<NBSP>(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 9, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a capital V (V=V<NBSP>(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+v alone, no bracket after it (V=v<NBSP>*2+v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `nbsp`.
+
+### nbsp-6. Two no-break spaces in a formula, the first after a number: one error, and its fix takes both out
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). Text copied from a web page often has a no-break space on each side of an operator. ngspice stops at the first: after a number, "unknown parameter (_)" (space-character-27). Before, the checks read 2<NBSP> as a value and left that character in the fix's text, which then stopped ngspice with no check left; the fix now takes every such character out of the formula, and it runs.
+
+```spice
+* two no-break spaces in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=2<NBSP>*<NBSP>v(out)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   2.0000000000e+00 _ _ * _ _ v(out)
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   2.0000000000e+00 _ _ * _ _ v(out)
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take them out" (nbsp), which writes `B1 e 0 V=2*v(out)`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `nbsp`.
+
+### nbsp-7. A no-break space between VALUE and its { (without =): ngspice drops it, and the line runs (no trap)
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-6). After VALUE without `=`, ngspice takes an E's or G's formula from its first `{` and drops what stands before it (inp_compat), a no-break space too, with a normal space before it or not, and even right after VALUE, which it still reads as the word value (no letter, digit or `_` follows). Before `=` the same: VALUE<NBSP>=v(out)*2 runs. Native 47 and 42 and our engine run each line below (e1 = 5 V, e2 = 7.5 V, e3 = 10 V). Only right after `=` does the character stop ngspice, as at the start of any formula (space-character-25).
+
+```spice
+* a no-break space between VALUE and its brace
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e1 0 VALUE <NBSP>{v(out)*2}
+R1e e1 0 1k
+E2 e2 0 VALUE<NBSP>{v(out)*3}
+R2e e2 0 1k
+E3 e3 0 VALUE<NBSP>=v(out)*4
+R3e e3 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e3_int1                          1.000000e+01
+        e3                               1.000000e+01
+        e2_int1                          7.500000e+00
+        e2                               7.500000e+00
+        e1_int1                          5.000000e+00
+        e1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -7.50000e-03
+        e3#branch                        -1.00000e-02
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+        be3#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 7.5, v(e2_int1) = 7.5, v(e3) = 10, v(e3_int1) = 10, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e3) = -0.01, i(e2) = -0.0075, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 7.5, v(e2_int1) = 7.5, v(e3) = 10, v(e3_int1) = 10, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e3) = -0.01, i(e2) = -0.0075, i(e1) = -0.005, i(v1) = -0.0025
+G1 0 g VALUE<THIN>{v(out)*2m}, a thin space:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(g) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(g) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(v1) = -0.0025
+E1 e 0 VALUE=<NBSP>{v(out)*2}, the character right after =, which PlainSpice's checks call an error (nbsp):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: no trap.
+
+### nbsp-8. A name with a no-break space that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). As space-character-32: ngspice reads v(out<NBSP>) as the node out__, which no part connects to, warns "singular matrix: check node out__" and stops. Taken out, the formula reads out: e = 5 V.
+
+```spice
+* a no-break space in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out<NBSP>)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    out__                                             0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node out__
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: singular matrix:  check node out__
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out: connect to node out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `nbsp`.
+
 ## missing-value
 
-A part line with its nodes but no value. R, C and L: warning (ngspice leaves the part out when nothing follows the nodes; with settings such as m=2 or ic=0 it keeps it: a resistor at 1 mΩ with a warning, a capacitor or inductor without capacitance or inductance, silently: missing-value-8 to -10). V and I: warning (ngspice uses 0); for V the fix writes the 0 explicitly, which is right for an ammeter. E, F, G and H: error, because native ngspice 47 stops while PlainSpice's engine silently uses 0. After the re-check of the fixes (12 November 2026, S6), E, F, G and H are told apart by what follows the nodes: with nothing at all, native 47 stops (missing-value-4 to -7); with settings but no number (`gain`, `m=2`), native 47 and 42, like our engine, use 0 and say nothing (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain, but the character checks' or unknown-word's (invisible-character-26, look-alike-letter-14, unknown-word-18 to -21).
+A part line with its nodes but no value. R, C and L: warning (ngspice leaves the part out when nothing follows the nodes; with settings such as m=2 or ic=0 it keeps it: a resistor at 1 mΩ with a warning, a capacitor or inductor without capacitance or inductance, silently: missing-value-8 to -10). V and I: warning (ngspice uses 0); for V the fix writes the 0 explicitly, which is right for an ammeter. E, F, G and H: error, because native ngspice 47 stops while PlainSpice's engine silently uses 0. After the re-check of the fixes (12 November 2026, S6), E, F, G and H are told apart by what follows the nodes: with nothing at all, native 47 stops (missing-value-4 to -7); with settings but no number (`gain`, `m=2`), native 47 and 42, like our engine, use 0 and say nothing (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain, but the character checks' or unknown-word's (invisible-character-26, look-alike-letter-14, unknown-word-18 to -21). After the last pass (13 November 2026, code review C3-5): an E given by a formula, `VALUE={...}` or `vol={...}`, and a G given by `VALUE={...}` or `cur={...}`, has two nodes and no gain, and needs none: ngspice turns the line into a B source, and native 47 and 42 and our engine run it (missing-value-15 to -17). Before, its words were read as control nodes and a gain: "E1 has no gain", "value has no DC path to ground", and no numbers.
 
 What PlainSpice shows for missing-value-1 (warning, line 4):
 
@@ -2898,9 +3188,137 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 PlainSpice's checks: `missing-value`.
 
+### missing-value-15. An E given by a formula, VALUE={...}, has no gain and needs none (no trap)
+
+ngspice reads `VALUE=` on an E line as a formula for its output (inp_compat in its inpcom.c makes the line a B source, `be1`, whose node `e1_int1` the printout lists), so the line has two nodes and no control nodes or gain. Native ngspice 47 and 42 and our engine give e = 5 V. Before this check read the form, PlainSpice said "E1 has no gain", "value has no DC path to ground" and "{v(out)*2} has no DC path to ground", and showed no numbers (code review C3-5).
+
+```spice
+* an E given by a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE={v(out)*2}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### missing-value-16. The other ways to write it: value =, VALUE without =, vol=, vol='...', and the formula on a + line (no trap)
+
+`VALUE` in any case, with `=` or without, `vol=` with braces or single quotes (ngspice makes the quotes braces), and the formula on a continuation line: each E gives 5 V in native 47 and 42 and in our engine.
+
+```spice
+* E given by a formula, written five ways
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e1 0 value = {v(out)*2}
+R1e e1 0 1k
+E2 e2 0 VALUE {v(out)*2}
+R2e e2 0 1k
+E3 e3 0 vol={v(out)*2}
+R3e e3 0 1k
+E4 e4 0 vol='v(out)*2'
+R4e e4 0 1k
+E5 e5 0 VALUE=
++ {v(out)*2}
+R5e e5 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e5_int1                          5.000000e+00
+        e5                               5.000000e+00
+        e4_int1                          5.000000e+00
+        e4                               5.000000e+00
+        e3_int1                          5.000000e+00
+        e3                               5.000000e+00
+        e2_int1                          5.000000e+00
+        e2                               5.000000e+00
+        e1_int1                          5.000000e+00
+        e1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -5.00000e-03
+        e3#branch                        -5.00000e-03
+        e4#branch                        -5.00000e-03
+        e5#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+        be3#branch                       0.000000e+00
+        be4#branch                       0.000000e+00
+        be5#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 5, v(e2_int1) = 5, v(e3) = 5, v(e3_int1) = 5, v(e4) = 5, v(e4_int1) = 5, v(e5) = 5, v(e5_int1) = 5, i(be5) = 0, i(be4) = 0, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e5) = -0.005, i(e4) = -0.005, i(e3) = -0.005, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 5, v(e2_int1) = 5, v(e3) = 5, v(e3_int1) = 5, v(e4) = 5, v(e4_int1) = 5, v(e5) = 5, v(e5_int1) = 5, i(be5) = 0, i(be4) = 0, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e5) = -0.005, i(e4) = -0.005, i(e3) = -0.005, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### missing-value-17. A G given by a formula: VALUE= or cur= (no trap)
+
+On a G line ngspice reads `VALUE=` and `cur=` as a formula for the current the source pushes (again a B source, `bg1`, with a node `g1_int1`): 5 mA from ground into g1 and g2, so 5 V across each 1 kΩ, in native 47 and 42 and in our engine.
+
+```spice
+* G given by a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+G1 0 g1 VALUE={v(out)*2m}
+Rg1 g1 0 1k
+G2 0 g2 cur='v(out)*2m'
+Rg2 g2 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        g2_int1                          5.000000e-03
+        g2                               5.000000e+00
+        g1_int1                          5.000000e-03
+        g1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        bg1#branch                       0.000000e+00
+        bg2#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(g1) = 5, v(g1_int1) = 0.005, v(g2) = 5, v(g2_int1) = 0.005, i(bg2) = 0, i(bg1) = 0, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(g1) = 5, v(g1_int1) = 0.005, v(g2) = 5, v(g2_int1) = 0.005, i(bg2) = 0, i(bg1) = 0, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
 ## missing-fields
 
-A part line with fewer nodes than the part needs, or an F or H line without its control source (a number where the source's name goes counts as missing). R, C and L: warning (left out); V, I, E, F, G and H: error. These parts are also left out of the circuit checks below, because their words are misread.
+A part line with fewer nodes than the part needs, or an F or H line without its control source (a number where the source's name goes counts as missing). R, C and L: warning (left out); V, I, E, F, G and H: error. These parts are also left out of the circuit checks below, because their words are misread. After the last pass (13 November 2026, code review C3-5): exactly one word between an E's or G's output nodes and its formula (`E1 e 0 x VALUE={2}`) stops native ngspice ("not enough parameters in line"), whose XSPICE first reads the line as a polynomial, while our engine drops the word as ngspice drops two or more: a warning whose fix takes the word out (missing-fields-9).
 
 What PlainSpice shows for missing-fields-1 (warning, line 4):
 
@@ -3225,6 +3643,151 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `missing-fields`.
+
+### missing-fields-9. One word between an E's output nodes and its formula: native ngspice stops, our engine drops it (warning)
+
+Added after the last pass (13 November 2026, code review C3-5). With exactly one word there, native ngspice first reads the line as a polynomial (inp_poly_2g6_compat, an XSPICE step) and stops: "not enough parameters in line" (47 with -b -r then never finished: stopped after 30 s here, and it crashed in an earlier run). Our engine, built without XSPICE, drops the word as ngspice drops two or more (unknown-word-54, -55) and gives e = 2 V. The fix takes the word out; then all three give e = 2 V.
+
+```spice
+* one word between the output nodes and the formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 x VALUE={2}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: not enough parameters in line
+       e1 e 0 x value={2}
+        line no 5, file c.cir
+    No circuit loaded!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit null)
+    rawfile: (did not finish in 30 s: stopped)
+ngspice 42, ngspice -b (exit 1):
+    Error: not enough parameters in line
+       e1 e 0 x value={2}
+    No circuit loaded!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: there aren't any circuits loaded.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.0025
+after the fix "Take out x" (missing-fields), which writes `E1 e 0 VALUE={2}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `missing-fields`.
+
+### missing-fields-10. One word before a formula with a bracket in it, or VALUE {…} without =: native ngspice runs it too (no trap)
+
+Added after the last pass (13 November 2026, formulas lane, round 2). Native ngspice's XSPICE step that stops at one word before a formula (missing-fields-9; inp_poly_2g6_compat in its inpcom.c) reads the words after it up to a blank or a bracket: when a bracket comes, as in v(out), or the formula follows VALUE in braces without =, it finds what it looks for and lets the line through, and ngspice drops the word as our engine does. So E1 e 0 x VALUE={v(out)*2} gives e = 5 V in all three, and the checks say nothing; with no bracket after the word (VALUE={2}, VALUE = {2}, cur={2m}) native ngspice stops, and the check warns (the last runs below).
+
+```spice
+* one word before a formula with a bracket
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 x VALUE={v(out)*2}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+VALUE {2}, without =:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.0025
+VALUE=v(out)*2, without braces:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+vol='v(out)*2':
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+a G line, cur={v(out)*2m}:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(v1) = -0.0025
+no bracket: VALUE = {2}, which the check warns about:
+    ngspice 47, -b -r (exit null): (did not finish in 30 s: stopped)
+      Error: not enough parameters in line
+      Error: incomplete or empty netlist
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: not enough parameters in line
+      Error: there aren't any circuits loaded.
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.0025
+no bracket: cur={2m}, which the check warns about:
+    ngspice 47, -b -r (exit null): (did not finish in 30 s: stopped)
+      Error: not enough parameters in line
+      Error: incomplete or empty netlist
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: not enough parameters in line
+      Error: there aren't any circuits loaded.
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 2, v(g1_int1) = 0.002, i(bg1) = 0, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### missing-fields-11. Words between VALUE (without =) and the formula's { are dropped too: the line runs (no trap)
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-6). ngspice takes the formula from its first `{` (a quote is one too: ngspice makes it a brace) and drops the words before it, as it drops those before VALUE (unknown-word-54, missing-fields-10): VALUE x {v(out)*2} gives e = 5 V, and VALUE v(out) {2} gives 2 V, as the v(out) before the brace is dropped. Native 47 and 42 and our engine agree. Without a `{`, VALUE v(out)*2 stops ngspice (fatal-syntax-14).
+
+```spice
+* words between VALUE and its brace
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e1 0 VALUE x {v(out)*2}
+R1e e1 0 1k
+E2 e2 0 VALUE v(out) {2}
+R2e e2 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e2_int1                          2.000000e+00
+        e2                               2.000000e+00
+        e1_int1                          5.000000e+00
+        e1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -2.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+E1 e 0 VALUE x 'v(out)*2', a formula in quotes:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
 
 ## control-source
 
@@ -6014,6 +6577,16 @@ PlainSpice's checks: `missing-subcircuit`.
 
 A part using a .model whose type and level select a model PlainSpice's engine leaves out (engine/build.sh, `REMOVED_MODELS`; the level map is ngspice 47's inpdomod.c): MOSFET levels 4, 5, 8/49 (BSIM3), 14/54 (BSIM4), 10/58, 55-57, 60, 68, 73; BJT level 8 (HICUM2); JFET level 2 (JFET2); and every O line (LTRA). A .model nothing uses is harmless (model-not-in-engine-6). Error.
 
+After the last pass (13 November 2026, code review C3-5): an E, F, G or H line written with POLY(n), or an E
+or G line written with TABLE, which ngspice builds from an XSPICE block: native ngspice 47 runs it (42 too,
+but for a TABLE after control nodes, model-not-in-engine-14), and PlainSpice's engine stops ("XSPICE is
+required to run the 'poly' option", "unknown device type"; model-not-in-engine-7 to -14). POLY(n)'s
+controls are read as ngspice reads them, n pairs of control nodes on E and G and n voltage sources on F and
+H, and nothing else on the line is said to be wrong: before, its words were read as nodes and a gain, and
+the checks said "poly(1 has no DC path to ground" and "SPICE can't use 0 on this line". For POLY(1) with
+the coefficients 0 and k the fix writes the plain gain k, which gives what native ngspice gives
+(model-not-in-engine-7, -9 to -11).
+
 What PlainSpice shows for model-not-in-engine-1 (error, line 4):
 
 > **PlainSpice's engine has no BSIM3 model.** level=49 in .model nm selects BSIM3, a model for chip design. PlainSpice's engine leaves it out (its licence terms differ from ngspice's), and first- and second-year circuits don't need it: level=1 is the classic MOSFET model.
@@ -6219,6 +6792,305 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: no trap.
+
+### model-not-in-engine-7. E with POLY(1): native 47 and 42 run it, our engine (without XSPICE) stops
+
+POLY(n) writes a dependent source as a polynomial of n controls; ngspice builds it from an XSPICE block (`a$poly$e1`), which our engine leaves out, so it stops with "XSPICE is required to run the 'poly' option". POLY(1) out 0 0 2 is 0 + 2 × v(out): the plain gain 2, which the fix writes, and which gives what native ngspice gave (5 V).
+
+```spice
+* an E written with POLY(1)
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 POLY(1) out 0 0 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        a$poly$e1#branch_1_0             -5.00000e-03
+        v1#branch                        -2.50000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, i(v1) = -0.0025, i(a$poly$e1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance e1 e 0 poly(1) out 0 0 2
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: E1 e 0 out 0 2" (model-not-in-engine), which writes `E1 e 0 out 0 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-8. E with TABLE: native 47 and 42 run it, our engine stops
+
+TABLE makes the output follow a table of points of a formula; ngspice builds it from an XSPICE `pwl` block (`ae1`), which our engine leaves out: "unknown device type". No fix: a table has no plain gain.
+
+```spice
+* an E written with TABLE
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 TABLE {v(out)} = (0,0) (5,10)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int2                          2.500000e+00
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        ae1#branch_1_0                   0.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(e1_int2) = 2.5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025, i(ae1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 5 or its substitute:
+    ae1 %v(e1_int2) %v(e1_int1) xfer_e1
+    unknown device type - error
+    Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-9. F with POLY(1): the same, and its plain gain
+
+An F (and an H) reads the current in a voltage source; with POLY(1) Vx 0 2 its output is 2 × i(Vx), the plain gain 2, which the fix writes: 10 V, as native ngspice gave.
+
+```spice
+* an F written with POLY(1)
+V1 in 0 5
+Vx in out 0
+R2 out 0 1k
+F1 0 e POLY(1) Vx 0 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                1.000000e+01
+        out                              5.000000e+00
+        in                               5.000000e+00
+        v1#branch                        -5.00000e-03
+        vx#branch                        5.000000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 5, v(e) = 10, i(vx) = 0.005, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance f1 0 e poly(1) vx 0 2
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: F1 0 e Vx 2" (model-not-in-engine), which writes `F1 0 e Vx 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 5, v(e) = 10, i(vx) = 0.005, i(v1) = -0.005
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-10. G with POLY(1): the same
+
+```spice
+* a G written with POLY(1)
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+G1 0 e POLY(1) out 0 0 2m
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance g1 0 e poly(1) out 0 0 2m
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: G1 0 e out 0 2m" (model-not-in-engine), which writes `G1 0 e out 0 2m`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-11. H with POLY(1): the same
+
+```spice
+* an H written with POLY(1)
+V1 in 0 5
+Vx in out 0
+R2 out 0 1k
+H1 e 0 POLY(1) Vx 0 1k
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                5.000000e+00
+        out                              5.000000e+00
+        in                               5.000000e+00
+        a$poly$h1#branch_1_0             -5.00000e-03
+        v1#branch                        -5.00000e-03
+        vx#branch                        5.000000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 5, v(e) = 5, i(vx) = 0.005, i(v1) = -0.005, i(a$poly$h1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance h1 e 0 poly(1) vx 0 1k
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Write it without POLY: H1 e 0 Vx 1k" (model-not-in-engine), which writes `H1 e 0 Vx 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 5, v(e) = 5, i(h1) = -0.005, i(vx) = 0.005, i(v1) = -0.005
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-12. E with POLY(2): two controls, no plain gain (no fix)
+
+POLY(2) out 0 in 0 0 1 1 is 0 + v(out) + v(in) = 7.5 V natively. No gain does that, so no fix is offered.
+
+```spice
+* an E written with POLY(2)
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 POLY(2) out 0 in 0 0 1 1
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e                                7.500000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        a$poly$e1#branch_1_0             -7.50000e-03
+        v1#branch                        -2.50000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 7.5, i(v1) = -0.0025, i(a$poly$e1) = -0.0075
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error: XSPICE is required to run the 'poly' option in instance e1 e 0 poly(2) out 0 in 0 0 1 1
+    line no 5 of file /circuit.cir
+    See manual chapt. 28 for installation instructions
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-13. G with TABLE: the same as E
+
+```spice
+* a G written with TABLE
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+G1 0 e TABLE {v(out)} = (0,0) (5,10m)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        g1_int2                          2.500000e+00
+        g1_int1                          5.000000e-03
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        ag1#branch_1_0                   0.000000e+00
+        v1#branch                        -2.50000e-03
+        bg1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(g1_int1) = 0.005, v(g1_int2) = 2.5, i(bg1) = 0, i(v1) = -0.0025, i(ag1) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 5 or its substitute:
+    ag1 %v(g1_int2) %v(g1_int1) xfer_g1
+    unknown device type - error
+    Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
+
+### model-not-in-engine-14. E with control nodes and then TABLE= (LTspice's way): native 47 runs it, 42 and our engine stop
+
+```spice
+* an E with control nodes and a table
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 out 0 table=(0,0,5,10)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        ae1#branch_1_0                   0.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(e1) = -0.005, i(v1) = -0.0025, i(ae1) = 0
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+    Syntax error: letter [,]
+    Netlist line no. 5:
+     Expression err: 0,5,10)}
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    Error on line 5 or its substitute:
+    ae1 %vd(out 0) %v(e1_int1) xfer_e1
+    unknown device type - error
+    Simulation interrupted due to error!
+    Error: circuit not parsed.
+    vectors: (none)
+```
+
+PlainSpice's checks: `model-not-in-engine`.
 
 ## dc-sweep-problems
 
@@ -8555,7 +9427,7 @@ PlainSpice's checks: `zero-ohm`; `zero-ohm`; `unit-letter`.
 
 ## fatal-syntax
 
-An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9).
+An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18). A node called `value` anywhere on an E or G line is read as VALUE: as an output node, a POLY control node or the control − node too (fatal-syntax-20); the fix renames it, and braces are offered for none of these.
 
 What PlainSpice shows for fatal-syntax-1 (error, line 3):
 
@@ -8901,6 +9773,496 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 PlainSpice's checks: none.
 
+### fatal-syntax-12. An E's formula that is a plain number, without braces (VALUE=3): ngspice stops
+
+Added after the last pass (13 November 2026, code review C3-5). ngspice takes an E's or G's formula from its `{` to the end of the line (inp_compat), and adds the braces itself unless the formula starts with a number, with a sign or not (fatal-syntax-16, -18, -19). VALUE=3 has none, so native 47 and 42 and our engine stop: "mal formed E source instance". The fix puts the formula in braces; then all three give e = 3 V.
+
+```spice
+* VALUE=3 without braces
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE=3
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0   vol=3
+        in line no. 5 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0   vol=3
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0   vol=3
+    in line no. 5 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Put it in braces: {3}" (fatal-syntax), which writes `E1 e 0 VALUE={3}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 3, v(e1_int1) = 3, i(be1) = 0, i(e1) = -0.003, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
+### fatal-syntax-13. A formula that starts with a number (VALUE=2*v(out), cur=2m*v(out)), without braces: ngspice stops
+
+Added after the last pass (13 November 2026, code review C3-5). Written the other way round, v(out)*2, the same formula runs (fatal-syntax-16). The fix puts it in braces; then all three give e = 5 V. The G line below stops the same way: "mal formed G source instance".
+
+```spice
+* VALUE=2*v(out) without braces
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE=2*v(out)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0   vol=2*v(out)
+        in line no. 5 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0   vol=2*v(out)
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0   vol=2*v(out)
+    in line no. 5 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Put it in braces: {2*v(out)}" (fatal-syntax), which writes `E1 e 0 VALUE={2*v(out)}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+G1 0 e cur=2m*v(out), which PlainSpice's checks say the same way (`fatal-syntax`, fix: Put it in braces):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G source instance: g1 0 e cur=2m*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G line: g1 0 e cur=2m*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
+### fatal-syntax-14. VALUE without = and without braces (VALUE v(out)*2): ngspice stops
+
+Added after the last pass (13 November 2026, code review C3-5). Without `=` ngspice adds no braces, whatever the formula starts with. The fix puts it in braces, VALUE {v(out)*2}, which runs as VALUE={v(out)*2} does (missing-value-16): e = 5 V.
+
+```spice
+* VALUE without = and without braces
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE v(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0  vol= v(out)*2
+        in line no. 5 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0  vol= v(out)*2
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0  vol= v(out)*2
+    in line no. 5 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Put it in braces: {v(out)*2}" (fatal-syntax), which writes `E1 e 0 VALUE {v(out)*2}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
+### fatal-syntax-15. An E with an empty formula (VALUE=, VALUE={} or VALUE alone): ngspice stops
+
+Added after the last pass (13 November 2026, code review C3-5). As for a B line's empty formula (fatal-syntax-8). No fix: only the student knows the formula.
+
+```spice
+* an empty formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE=
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    YYparse error, syntax error, in expression: parsing stopped at line 5
+         in
+    from file    c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    PTerror: syntax error, parsing stopped at
+    Error on line 5 or its substitute:
+      be1 e1_int1 0 v=
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    YYparse error, syntax error, in expression: parsing stopped at line 5
+    in
+    from file    /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+E1 e 0 VALUE={}, which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none)
+E1 e 0 VALUE with nothing after it, which PlainSpice's checks say the same way (its words: 'mal formed E source instance'):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0  vol=
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0  vol=
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
+### fatal-syntax-16. A formula without braces that starts with a letter or a bracket gets its braces from ngspice (no trap)
+
+Added after the last pass (13 November 2026, code review C3-5). v(out)*2, (v(out)*2), a `.param` name and G's cur=v(out)*2m: native 47 and 42 and our engine run each one (e1 = 5 V, e2 = 5 V, e3 = 8 V, g = 5 V).
+
+```spice
+* formulas without braces that ngspice reads
+.param k=4
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e1 0 VALUE=v(out)*2
+R1e e1 0 1k
+E2 e2 0 VALUE=(v(out)*2)
+R2e e2 0 1k
+E3 e3 0 VALUE=k*2
+R3e e3 0 1k
+G1 0 g cur=v(out)*2m
+Rg g 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        g1_int1                          5.000000e-03
+        g                                5.000000e+00
+        e3_int1                          8.000000e+00
+        e3                               8.000000e+00
+        e2_int1                          5.000000e+00
+        e2                               5.000000e+00
+        e1_int1                          5.000000e+00
+        e1                               5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -5.00000e-03
+        e3#branch                        -8.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+        be3#branch                       0.000000e+00
+        bg1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 5, v(e2_int1) = 5, v(e3) = 8, v(e3_int1) = 8, v(g) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e3) = -0.008, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e1) = 5, v(e1_int1) = 5, v(e2) = 5, v(e2_int1) = 5, v(e3) = 8, v(e3_int1) = 8, v(g) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(be3) = 0, i(be2) = 0, i(be1) = 0, i(e3) = -0.008, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### fatal-syntax-17. A node called value on an E or G line: ngspice reads the word as VALUE, and braces do not help
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-10). ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so E1 e 0 value 0 2 is a formula 0 2, which it can't read: "mal formed E source instance" (ngspice 42: "mal formed E line"). In braces it can't either ("unknown parameter (2.0000000000e+00)", the second run below), so the checks offer no braces there. Renamed (val), the node is a node again, and e = 5 V.
+
+```spice
+* a node called value
+V1 in 0 5
+R1 in value 1k
+R2 value 0 1k
+E1 e 0 value 0 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0  vol= 0 2
+        in line no. 5 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0  vol= 0 2
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0  vol= 0 2
+    in line no. 5 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Rename the node value to val" (fatal-syntax), which writes `R1 in val 1k`, `R2 val 0 1k`, `E1 e 0 val 0 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(val) = 2.5, v(e) = 5, i(e1) = -0.005, i(v1) = -0.0025
+the braces the check offered before (E1 e 0 value {0 2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2.0000000000e+00)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2.0000000000e+00)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on a G line (G1 0 e value 0 2m):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G source instance: g1 0 e  cur= 0 2m
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G line: g1 0 e  cur= 0 2m
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
+### fatal-syntax-18. A formula without braces that starts with a sign and a number (VALUE=-2*v(out)), or with a name that starts with true or false: ngspice stops
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-1). After `=` ngspice puts braces round a formula itself, unless it starts with a digit or a `.`, with a sign and a digit (or a `.` and a digit), or with the letters true or false (inp_fix_param_values in its inpcom.c). So VALUE=-2*v(out) and VALUE=-.5*v(out) stop as VALUE=2*v(out) does (fatal-syntax-13): "mal formed E source instance". The fix puts the formula in braces; then all three give e = -5 V. A `.param` name that starts with true or false (truek) stops the same way, and runs in braces.
+
+```spice
+* VALUE=-2*v(out) without braces
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 VALUE=-2*v(out)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0   vol=-2*v(out)
+        in line no. 5 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0   vol=-2*v(out)
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0   vol=-2*v(out)
+    in line no. 5 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Put it in braces: {-2*v(out)}" (fatal-syntax), which writes `E1 e 0 VALUE={-2*v(out)}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = -5, v(e1_int1) = -5, i(be1) = 0, i(e1) = 0.005, i(v1) = -0.0025
+E1 e 0 VALUE=-.5*v(out), which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0   vol=-.5*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0   vol=-.5*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+G1 0 e cur=-2m*v(out), which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G source instance: g1 0 e cur=-2m*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G line: g1 0 e cur=-2m*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+E1 e 0 VALUE=truek*v(out) with .param truek=2, which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0   vol=truek*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0   vol=truek*v(out)
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after its fix, E1 e 0 VALUE={truek*v(out)}:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
+### fatal-syntax-19. A formula without braces that starts with a sign before a letter or a bracket, or with a bracket, gets its braces from ngspice (no trap)
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-1). -v(out)*2, (1+v(out))*2, G's cur=-v(out)/1k and (2)*v(out): native 47 and 42 and our engine run each one (e1 = -5 V, e2 = 7 V, g = -2.5 V, e3 = 5 V). The braces ngspice adds end at the first blank outside brackets, and the line still runs with blanks after a bracket: (1+v(out)) * 2 gives 7 V too.
+
+```spice
+* formulas without braces that start with a sign or a bracket
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e1 0 VALUE=-v(out)*2
+R1e e1 0 1k
+E2 e2 0 VALUE=(1+v(out))*2
+R2e e2 0 1k
+G1 0 g cur=-v(out)/1k
+Rg g 0 1k
+E3 e3 0 VALUE=(2)*v(out)
+R3e e3 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e3_int1                          5.000000e+00
+        e3                               5.000000e+00
+        g1_int1                          -2.50000e-03
+        g                                -2.50000e+00
+        e2_int1                          7.000000e+00
+        e2                               7.000000e+00
+        e1_int1                          -5.00000e+00
+        e1                               -5.00000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        5.000000e-03
+        e2#branch                        -7.00000e-03
+        e3#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+        bg1#branch                       0.000000e+00
+        be3#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e1) = -5, v(e1_int1) = -5, v(e2) = 7, v(e2_int1) = 7, v(g) = -2.5, v(g1_int1) = -0.0025, v(e3) = 5, v(e3_int1) = 5, i(be3) = 0, i(bg1) = 0, i(be2) = 0, i(be1) = 0, i(e3) = -0.005, i(e2) = -0.007, i(e1) = 0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e1) = -5, v(e1_int1) = -5, v(e2) = 7, v(e2_int1) = 7, v(g) = -2.5, v(g1_int1) = -0.0025, v(e3) = 5, v(e3_int1) = 5, i(be3) = 0, i(bg1) = 0, i(be2) = 0, i(be1) = 0, i(e3) = -0.005, i(e2) = -0.007, i(e1) = 0.005, i(v1) = -0.0025
+E1 e 0 VALUE=(1+v(out)) * 2, with blanks after the bracket:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 7, v(e1_int1) = 7, i(be1) = 0, i(e1) = -0.007, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 7, v(e1_int1) = 7, i(be1) = 0, i(e1) = -0.007, i(v1) = -0.0025
+E1 e 0 VALUE=-truek*v(out) with .param truek=2: a sign before the name, so the braces come:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = -5, v(e1_int1) = -5, i(be1) = 0, i(e1) = 0.005, i(v1) = -0.0025
+    our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = -5, v(e1_int1) = -5, i(be1) = 0, i(e1) = 0.005, i(v1) = -0.0025
+E1 e 0 VALUE (1+v(out))*2, without =: no braces from ngspice (fatal-syntax-14):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0  vol= (1+v(out))*2
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0  vol= (1+v(out))*2
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: no trap.
+
+### fatal-syntax-20. A node called value as an E's control − node, an output node or a POLY control node: ngspice reads the word as VALUE there too and stops; with braces after it, it runs a constant
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-4). ngspice reads the first word value on an E or G line as VALUE wherever it stands (search_plain_identifier, then inp_compat), not only right after the output nodes (fatal-syntax-17). As the control − node (E1 e 0 mid value 2, below), an output node (E1 value 0 mid 0 2, G1 0 value mid 0 2m) or a POLY control node, the line becomes a formula ngspice can't read: "mal formed E source instance". Braces after it (E1 e 0 mid value {2}, which the checks offered before) make the line run, but as the constant 2 V: the control nodes count for nothing. Renamed (val), the node is a node again: e = 2 × (3.333 − 1.667) = 3.333 V, in native 47 and 42 and our engine.
+
+```spice
+* a node called value as the control - node
+V1 in 0 5
+R1 in mid 1k
+R2 mid value 1k
+R3 value 0 1k
+E1 e 0 mid value 2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    ERROR: mal formed E source instance: e1 e 0 mid  vol= 2
+        in line no. 6 of file c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    ERROR: mal formed E line: e1 e 0 mid  vol= 2
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 e 0 mid  vol= 2
+    in line no. 6 of file /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Rename the node value to val" (fatal-syntax), which writes `R2 mid val 1k`, `R3 val 0 1k`, `E1 e 0 mid val 2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(mid) = 3.333333333333333, v(val) = 1.6666666666666665, v(e) = 3.333333333333333, i(e1) = -0.003333333333333333, i(v1) = -0.001666666666666667
+with the gain in braces, E1 e 0 mid value {2}, which PlainSpice's checks call a warning: it runs, as a constant:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(mid) = 3.333333333333333, v(value) = 1.6666666666666665, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.001666666666666667
+    our engine (exit 0): v(in) = 5, v(mid) = 3.333333333333333, v(value) = 1.6666666666666665, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.001666666666666667
+an output node called value, E1 value 0 mid 0 2, which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1  vol= 0 mid 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1  vol= 0 mid 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on a G line, G1 0 value mid 0 2m, which PlainSpice's checks say the same way:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G source instance: g1 0  cur= mid 0 2m
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed G line: g1 0  cur= mid 0 2m
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a POLY control node called value, E1 e 0 POLY(1) value 0 0 2, which PlainSpice's checks say the same way (not that native ngspice runs the POLY):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E source instance: e1 e 0 poly(1)  vol= 0 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      ERROR: mal formed E line: e1 e 0 poly(1)  vol= 0 0 2
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none)
+      Error: XSPICE is required to run the 'poly' option in instance e1 e 0 poly(1) value 0 0 2
+      ERROR: fatal error in ngspice, exit(1)
+```
+
+PlainSpice's checks: `fatal-syntax`.
+
 ## include-not-available
 
 An `.include` (or `.inc`) line, or `.lib` with a file and a section. Error. A `.lib` with one word is no command ngspice knows, and gets its own text (include-not-available-3).
@@ -9142,7 +10504,7 @@ PlainSpice's checks: no trap.
 
 ## unknown-word
 
-A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24). After the critic of those fixes (12 November 2026): a sign with a space after it is said part by part (CR1-3): on E, F, G and H lines native 47 and 42 read a polynomial and stop with a MIF-ERROR while our engine says "unknown parameter (-)" (unknown-word-25 to -28), on C and L ngspice first warns that it can't find a model called `-` (-29, -30), and R, V and I stop at the sign (-31, -32, space-character-13). Only a top-level `.param` line's names are values outside a subcircuit, after `.end` too, as ngspice reads them (-36, -37); a subcircuit's own parameter, a `.param` inside a subcircuit and a `.func`'s name are not, and ngspice stops (-33 to -35), so the words say where the name has its value (CR1-7).
+A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24). After the critic of those fixes (12 November 2026): a sign with a space after it is said part by part (CR1-3): on E, F, G and H lines native 47 and 42 read a polynomial and stop with a MIF-ERROR while our engine says "unknown parameter (-)" (unknown-word-25 to -28), on C and L ngspice first warns that it can't find a model called `-` (-29, -30), and R, V and I stop at the sign (-31, -32, space-character-13). Only a top-level `.param` line's names are values outside a subcircuit, after `.end` too, as ngspice reads them (-36, -37); a subcircuit's own parameter, a `.param` inside a subcircuit and a `.func`'s name are not, and ngspice stops (-33 to -35), so the words say where the name has its value (CR1-7). After the last pass (13 November 2026, code review C3-5): two words ngspice takes out before it reads an E, F, G or H line are no trap. HSPICE's word for the kind of part after the output nodes (`vcvs`, `vccs`, `cccs`, `ccvs`) goes when the line has exactly seven words (E, G) or six (F, H), and stays as a node with one word more (unknown-word-53); two or more words between an E's or G's output nodes and its formula (`E1 e 0 in 0 VALUE={...}`, a gain left on the line) are dropped, so the output is the formula alone (unknown-word-54, -55; one word: missing-fields-9).
 
 What PlainSpice shows for unknown-word-1 (error, line 3):
 
@@ -11385,6 +12747,159 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `unknown-word`.
 
+### unknown-word-53. HSPICE's word for the kind of part (E1 e 0 vcvs out 0 2): ngspice takes it out of a line of seven words (E, G) or six (F, H) (no trap)
+
+Added after the last pass (13 November 2026, code review C3-5). HSPICE writes the kind of a controlled source after its two output nodes: `vcvs` on E lines, `vccs` on G, `cccs` on F and `ccvs` on H. ngspice takes the word out before it reads the line (inp_compat in its inpcom.c, replace_token), but only when the line has exactly seven words (E, G) or six (F, H), so each source here works as usual: native 47 and 42 and our engine give e = 5 V, g = 5 V, f = 5 V and h = 2.5 V. Before, PlainSpice read the word as a node or a voltage source and said "vcvs has no DC path to ground", "SPICE can't use 2 on this line", "There is no voltage source called cccs" and "F1's gain is not a number". With one more word on the line, ngspice keeps the word as a node and stops at the word after the gain, native ngspice 47 and 42 too, before they simulate anything (the second and third runs below). After the round-1 critic of the formulas lane (13 November 2026, CR1-8) the checks say so: unknown-word quotes that stop and no longer says that native ngspice 47 reads a polynomial and runs, and the no-DC-path error for the word kept as a node ("vcvs has no DC path to ground", with ngspice's singular-matrix warning, which never comes) is left out.
+
+```spice
+* the word for the kind of controlled source, as HSPICE writes it
+V1 in 0 5
+Vs in mid 0
+R1 mid out 1k
+R2 out 0 1k
+E1 e 0 vcvs out 0 2
+Re e 0 1k
+G1 0 g vccs out 0 2m
+Rg g 0 1k
+F1 0 f cccs Vs 2
+Rf f 0 1k
+H1 h 0 ccvs Vs 1k
+Rh h 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        h                                2.500000e+00
+        f                                5.000000e+00
+        g                                5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        mid                              5.000000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        h1#branch                        -2.50000e-03
+        vs#branch                        2.500000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(mid) = 5, v(out) = 2.5, v(e) = 5, v(g) = 5, v(f) = 5, v(h) = 2.5, i(vs) = 0.0025, i(h1) = -0.0025, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(mid) = 5, v(out) = 2.5, v(e) = 5, v(g) = 5, v(f) = 5, v(h) = 2.5, i(vs) = 0.0025, i(h1) = -0.0025, i(e1) = -0.005, i(v1) = -0.0025
+with one more word (E1 e 0 vcvs out 0 2 m=1, eight words), which PlainSpice's checks say as `unknown-word` (SPICE can't use 2 on this line):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+the same on a G line (G1 0 e vccs out 0 2m m=1), which the checks say as `unknown-word` (SPICE can't use 2m on this line):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2m)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2m)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: no trap.
+
+### unknown-word-54. Two words between the output nodes and VALUE= or cur= (E1 e 0 in 0 VALUE={...}): ngspice drops them, the output is the formula alone (no trap)
+
+Added after the last pass (13 November 2026, code review C3-5). When an E or G line has two more words after its output nodes and then the formula, ngspice drops the two words (inp_compat in its inpcom.c keeps the output nodes and the formula), so they change nothing: `E2 e2 0 out 0 VALUE={2}` gives e2 = 2 V whatever v(out) is. Native 47 and 42 and our engine give e = 5 V, g = 5 V and e2 = 2 V. Before, PlainSpice said "E1 has no setting called VALUE", "G1 has no setting called cur" and "E2 has no setting called VALUE". Explain shows the two words as words ngspice drops.
+
+```spice
+* two words between the output nodes and the formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 in 0 VALUE={v(out)*2}
+Re e 0 1k
+G1 0 g in 0 cur={v(out)*2m}
+Rg g 0 1k
+E2 e2 0 out 0 VALUE={2}
+Re2 e2 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e2_int1                          2.000000e+00
+        e2                               2.000000e+00
+        g1_int1                          5.000000e-03
+        g                                5.000000e+00
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -2.00000e-03
+        be1#branch                       0.000000e+00
+        bg1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(g) = 5, v(g1_int1) = 0.005, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(bg1) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(g) = 5, v(g1_int1) = 0.005, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(bg1) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
+### unknown-word-55. Three or more words between the output nodes and the formula: ngspice drops them too (no trap)
+
+Added after the last pass (13 November 2026, code review C3-5). ngspice keeps an E's or G's output nodes and its formula and drops every word between, however many (inp_compat in its inpcom.c takes the formula from its `{` to the end of the line), so a gain left on the line when VALUE= was added changes nothing: native 47 and 42 and our engine give e = 5 V and e2 = 2 V. Before, PlainSpice said "SPICE can't use VALUE on this line" for E1, and "a has no DC path to ground" and "E2's gain is not a number" for E2.
+
+```spice
+* words between the output nodes and the formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 out 0 2 VALUE={v(out)*2}
+Re e 0 1k
+E2 e2 0 a b c d VALUE={2}
+Re2 e2 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e2_int1                          2.000000e+00
+        e2                               2.000000e+00
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -2.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
+
 ### unknown-word-56. A capacitor's i, an inductor's flux and a resistor's sens_dc after the value: values the part can only report, so ngspice 47 stops with "no such parameter on this device or parameter is missing" (ngspice 42: "no such parameter on this device")
 
 Added after the round-1 critic of the last pass's fixes (13 November 2026, C7), as the record of the runs unknown-word-6 noted in a paragraph. A capacitor reports its current (`i`), an inductor its flux, a resistor its sensitivities (`sens_dc` and the like, which ngspice first looks up as a model on a resistor's line, as unknown-word-6's `i`), and a line cannot set them. Each version stops with its own words, which the check says, citing this record; until the last pass it put ngspice 47's words to plain "ngspice" (F10).
@@ -11810,12 +13325,35 @@ numbers-and-syntax.md), so its printout and results call `giriş` `giri__`. Warn
 nearest plain letters (`giris`; the letters that have no plain form are left out, and a name another
 node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
 ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
-letters. The fixes rename the node everywhere it is named, and on the drawing's `*@ label` line, and
+letters; but two that differ only in capital letters (`Çıkış` and `çıkış`) are the one node the netlist
+means: a warning, whose fix gives them one plain name (non-ascii-node-27). The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
 never give a name another node has (that would join two nodes), nor one of ground's (0 and gnd, which
 would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
 ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6); they also rename
 the node on the commands for ngspice (a .control block, `*#` and `##` lines), inside `v(...)` and after
-`save`, and on .print and .plot lines inside `v(...)` and bare. What ngspice does is said only as far
+`save`, and on .print and .plot lines inside `v(...)` and bare. After the last pass (13 November 2026, code
+review C3-1) they also rename it in the formulas that read it (`v(...)` on a B line, on an E or G line
+given by `VALUE=`, `vol=`, `cur=` or `TABLE`, and in an R, C or L value written as a formula:
+non-ascii-node-15, -16), on the four nodes of a `.pz` line (-19), and on the lines after a plain `.end`,
+which ngspice reads as part of the circuit (S25; non-ascii-node-17, -18); any other word on a line
+ngspice reads that is the name is renamed too, so the old name is left nowhere ngspice reads it. Before,
+they renamed only the part lines and the dot commands' `v(...)`: a formula then read a node with nothing on
+it, and ngspice stopped with no check left, or a part after `.end` was cut off and the numbers changed
+silently. The same holds for the invisible-character, space-character, nbsp and look-alike-letter fixes
+(invisible-character-67, space-character-24, look-alike-letter-18). After the round-1 critic of those fixes
+(13 November 2026, CR1-1, CR1-3): a name that a formula, a dot command, a .print line or a command for
+ngspice only reads, or that a part after `.end` names, is the node parts connect to that ngspice spells the
+same, so `v(Çıkış)` reads the node `çıkış` (both are `____k____`): no second node for the check that finds
+names ngspice makes one, and the rename changes it with the node (non-ascii-node-20 to -22); the words of a
+title and of `echo` are text, never renamed. The rename also reaches a name bare on `.save` (-23), the names
+on `.global` and the lines inside a subcircuit that name such a node (-24), and the `v(...)` of a `.func`'s
+formula (-25). After the round-2 critic of those fixes (13 November 2026, CR2-2, CR2-3): names that differ only in
+capital letters on part lines are one node for the dangling-node and floating-dc checks too, and the rename
+of either, the checks' and the drawing editor's, changes all of them, so "Rename" and "Move .end to the
+bottom" give the same circuit in either order (non-ascii-node-27); a name only a formula reads, when no part
+is on a node ngspice spells that way, is a node nothing connects to: an error, as ngspice warns "singular
+matrix" and gives no results, and no rename is offered unless a node the parts are on has its plain letters
+(non-ascii-node-26). What ngspice does is said only as far
 as it holds in every run, with a sentence more when a .print or .plot line (non-ascii-node-3) or a
 command for ngspice (non-ascii-node-4) names the node; that a save there leaves PlainSpice's run no
 results is said only when it leaves ngspice nothing else to save (non-ascii-node-7 to -9), that ngspice
@@ -11841,7 +13379,6 @@ What PlainSpice shows for non-ascii-node-2 (error, line 3):
 > *ngspice:* ngspice spells node ş and node ç as __ and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]
 >
 > *Fixes:* "Write s for ş and c for ç"
-
 ### non-ascii-node-1. giriş is the node giri__: the circuit runs, with ngspice's own names
 
 ```spice
@@ -12656,6 +14193,556 @@ In other forms, native 47 and 42 alike, `ngspice -b`:
   and the sweep runs, saving ____k____
 if 0 / save v(çıkış) / end in a .control block, then .print dc v(çıkış) (exit 1): the save never runs, so
   Warning: can't parse 'çıkış': ignored (the check, which does not follow an if, does not quote it)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-15. A node a formula reads is that node: the rename changes it in the formula too
+
+B1's formula reads v(çıkış), the node R1 and R2 make, which ngspice spells ____k____ there too: b = 10 V. The rename writes cikis in the formula as well, and the circuit is the same (b = 10 V, cikis = 5 V). Before this, the fix wrote cikis only on R1 and R2: the formula then read a node with nothing on it, and native 47 and 42 stopped ("singular matrix: check node ____k____", "The operating point could not be simulated successfully"), with no check left (code review C3-1).
+
+```spice
+* a node a formula reads, with Turkish letters
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+B1 b 0 V=v(çıkış)*2
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `B1 b 0 V=v(cikis)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+the netlist the fix wrote before (only R1 and R2 renamed):
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      Warning: singular matrix:  check node ____k____
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-16. The same in the other formulas: I=, v(a,b), E with VALUE=, and a resistor written as a formula
+
+```spice
+* formulas that read a node with Turkish letters
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+B2 0 b2 I=v(çıkış)/1k
+Rb2 b2 0 1k
+B3 b3 0 V=v(giris,çıkış)
+Rb3 b3 0 1k
+E1 e 0 VALUE={v(çıkış)*2}
+Re e 0 1k
+R4 x 0 R={1k+v(çıkış)}
+Rx giris x 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        x                                5.012469e+00
+        e1_int1                          1.000000e+01
+        e                                1.000000e+01
+        b3                               5.000000e+00
+        b2                               5.000000e+00
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -9.98753e-03
+        e1#branch                        -1.00000e-02
+        b3#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, v(b2) = 5, v(b3) = 5, v(e) = 10, v(e1_int1) = 10, v(x) = 5.012468827930174, i(be1) = 0, i(b3) = -0.005, i(e1) = -0.01, i(v1) = -0.009987531172069825
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, v(b2) = 5, v(b3) = 5, v(e) = 10, v(e1_int1) = 10, v(x) = 5.012468827930174, i(be1) = 0, i(b3) = -0.005, i(e1) = -0.01, i(v1) = -0.009987531172069825
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `B2 0 b2 I=v(cikis)/1k`, `B3 b3 0 V=v(giris,cikis)`, `E1 e 0 VALUE={v(cikis)*2}`, `R4 x 0 R={1k+v(cikis)}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b2) = 5, v(b3) = 5, v(e) = 10, v(e1_int1) = 10, v(x) = 5.012468827930174, i(be1) = 0, i(b3) = -0.005, i(e1) = -0.01, i(v1) = -0.009987531172069825
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-17. A part after .end is read: the rename changes it there too
+
+ngspice reads the lines after a plain .end (S25), so R3 is in the circuit: 3.333 V. The rename writes cikis on R3 too, and the circuit is the same; "Rename" and "Move .end to the bottom" now give the same circuit in either order. Before, R3 kept çıkış after the rename and was cut off: cikis = 5 V, i(v1) = −5 mA, with only the after-end warning left.
+
+```spice
+* a part after .end on a node with Turkish letters
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.op
+.end
+R3 çıkış 0 1k
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        3.333333e+00
+        giris                            1.000000e+01
+        v1#branch                        -6.66667e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `R3 cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
+after the fix "Move .end to the bottom" (after-end), which writes `R3 çıkış 0 1k`, `.end`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+the netlist the fix wrote before (R3 left on çıkış):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(____k____) = 0, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(____k____) = 0, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node`, `after-end`.
+
+### non-ascii-node-18. A .tf after .end: the rename changes its node too
+
+A `.tf` after a plain .end runs (A3c): transfer_function = 0.5. The rename writes the plain name in it too, and it keeps 0.5. Renamed only before .end, the .tf asked about a node with nothing on it: transfer function 0 (`-b -r`, native 47 and 42).
+
+```spice
+* a .tf after .end on a node with Turkish letters
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.end
+.tf v(çıkış) V1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(____k____) = 5.000000e+02
+    v1#input_impedance = 2.000000e+03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(____k____)) = 500
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(____k____)) = 500
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `.tf v(cikis) V1`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(cikis)) = 500
+after the fix "Move .end to the bottom" (after-end), which writes `.tf v(çıkış) V1`, `.end`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(____k____)) = 500
+the netlist the fix wrote before (the .tf left on çıkış):
+    ngspice 47 and 42, -b -r (exit 0): v(Transfer_function) = 0, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(____k____)) = 1
+    our engine (exit 0): v(Transfer_function) = 0, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(____k____)) = 1
+```
+
+PlainSpice's checks: `non-ascii-node`, `after-end`.
+
+### non-ascii-node-19. .pz names its four nodes bare: the rename changes them too
+
+`.pz in 0 out 0 vol pz` names the input and output nodes without v( ). The rename writes the plain name there too: one pole at −2000 rad/s, before and after. Left as it was, the .pz asked about a node with nothing on it, and native 47 and 42 stopped: "The input signal is shorted on the way to the output" (`-b -r`).
+
+```spice
+* .pz on a node with Turkish letters
+V1 giris 0 dc 10 ac 1
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+C1 çıkış 0 1u
+.pz giris 0 çıkış 0 vol pz
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(pole(1)) = -2000
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(pole(1)) = -2000
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(pole(1)) = -2000
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `C1 cikis 0 1u`, `.pz giris 0 cikis 0 vol pz`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(pole(1)) = -2000
+the netlist the fix wrote before (the .pz left on çıkış):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: incomplete or empty netlist
+      doAnalyses: The input signal is shorted on the way to the output
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      doAnalyses: The input signal is shorted on the way to the output
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-20. A formula that writes the node with a capital letter (v(Çıkış)) reads the node çıkış: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-1). ngspice writes each byte of a letter outside a to z as `_` wherever it reads a node's name, so Çıkış and çıkış are one node for it, ____k____: the formulas read the node that R1 and R2 connect to, and b = e = 10 V. A name a formula only reads, written so, is that node: the check gives the warning for çıkış alone, and its fix renames the formulas too, so the numbers stay the same. Before, the checks counted Çıkış as another node: "çıkış and Çıkış are one node for ngspice", an error that hid the numbers, whose fix wrote Cikis2 into the formulas, a node with nothing on it (native 47: "singular matrix: check node cikis2").
+
+```spice
+* formulas that write the node with a capital letter
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+B1 b 0 V=v(Çıkış)*2
+Rb b 0 1k
+E1 e 0 VALUE={v(Çıkış)*2}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          1.000000e+01
+        e                                1.000000e+01
+        b                                1.000000e+01
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        e1#branch                        -1.00000e-02
+        b1#branch                        -1.00000e-02
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `B1 b 0 V=v(cikis)*2`, `E1 e 0 VALUE={v(cikis)*2}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
+the netlist the error's fix wrote before (Cikis2 in the formulas):
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check node cikis2
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-21. .pz that writes the node with a capital letter: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-1). The same on a .pz line: .pz giris 0 Çıkış 0 reads the node çıkış, and gives the pole at −2000 before the rename and after it. Before, the checks said "çıkış and Çıkış are one node for ngspice", an error, and its fix wrote Cikis2 on the .pz line, a node with nothing on it, so the run aborted (the second run below).
+
+```spice
+* .pz that writes the node with a capital letter
+V1 giris 0 dc 10 ac 1
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+C1 çıkış 0 1u
+.pz giris 0 Çıkış 0 vol pz
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(pole(1)) = -2000
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(pole(1)) = -2000
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(pole(1)) = -2000
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `C1 cikis 0 1u`, `.pz giris 0 cikis 0 vol pz`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(pole(1)) = -2000
+the netlist the error's fix wrote before (Cikis2 on the .pz line):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: incomplete or empty netlist
+      doAnalyses: The input signal is shorted on the way to the output
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      doAnalyses: The input signal is shorted on the way to the output
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-22. A part after .end that writes the node with a capital letter is on that node: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-1). ngspice reads the lines after a plain .end (S25), and R3 Çıkış is on ____k____ with R2: 3.333 V. The rename writes cikis on R3 too, and the circuit is the same. Before, R3 kept Çıkış and was cut off: cikis = 5 V, i(v1) = −5 mA (the second run below), with only the after-end warning left.
+
+```spice
+* a part after .end that writes the node with a capital letter
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.op
+.end
+R3 Çıkış 0 1k
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        3.333333e+00
+        giris                            1.000000e+01
+        v1#branch                        -6.66667e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `R3 cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
+after the fix "Move .end to the bottom" (after-end), which writes `R3 Çıkış 0 1k`, `.end`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+the netlist the fix wrote before (R3 left on Çıkış):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(____k____) = 0, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(____k____) = 0, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node`, `after-end`.
+
+### non-ascii-node-23. .save names the node bare: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-3). ngspice saves a node named bare on .save as v(name); it writes the letters of the name as `_` there, as on part lines, so .save çıkış saves ____k____ (and so does .save Çıkış). The rename writes cikis on the .save line too. Left there, the old name saves nothing: run as PlainSpice runs it (-b -r), ngspice says "no data saved for D.C. Operating point analysis; analysis not run" (the second run below), and PlainSpice's run, which also saves every part's current for .op, gives the currents but no node voltage. A bare name on .probe is no node: ngspice warns "Strange parameter" and ignores it (the third run).
+
+```spice
+* .save names the node bare
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.save çıkış
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(____k____) = 5
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(____k____) = 5
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `.save cikis`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(cikis) = 5
+the old name left on .save after the rename:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile)
+      Error: no data saved for D.C. Operating point analysis; analysis not run
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a bare name on .probe:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(out) = 5, i(r2) = 0.005, i(r1) = 0.005, i(v1) = -0.005
+      Warning: Strange parameter in line *probe out, ingnored
+    our engine (exit 0): v(in) = 10, v(out) = 5, i(r2) = 0.005, i(r1) = 0.005, i(v1) = -0.005, with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-24. .global makes the node one node in every subcircuit: the rename changes it there and inside the subcircuit
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-3). .global çıkış makes çıkış one node in the subcircuit sub too, so R2, inside it, is on the same node as R1 and R3: 1 kΩ in parallel with 2 kΩ, 4 V. The rename writes cikis on the .global line, on R1 and R3, and on R2 inside the subcircuit, and the circuit is the same. A rename that left the subcircuit's line would cut R2 off: cikis = 6.667 V (the second run below).
+
+```spice
+* .global with a node with Turkish letters
+.global çıkış
+V1 giris 0 10
+R1 giris çıkış 1k
+R3 çıkış 0 2k
+X1 sub
+.subckt sub
+R2 çıkış 0 1k
+.ends
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        4.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -6.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 4, i(v1) = -0.006
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 4, i(v1) = -0.006
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `.global cikis`, `R1 giris cikis 1k`, `R3 cikis 0 2k`, `R2 cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 4, i(v1) = -0.006
+R2's line in the subcircuit left with the old name:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 6.666666666666666, v(x1.____k____) = 0, i(v1) = -0.003333333333333334
+    our engine (exit 0): v(giris) = 10, v(cikis) = 6.666666666666666, v(x1.____k____) = 0, i(v1) = -0.003333333333333334
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-25. A .func's formula reads the node: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-3). .func vo() {v(çıkış)} reads the node wherever vo() is used: b = 10 V. The rename writes cikis inside the .func too, and the numbers stay the same. ngspice reads every name inside v(...) of a .func as a node, even one of the function's own names: .func vd(a,b) {v(a)-v(b)} reads the nodes a and b, not the words vd is given (the second run below: "singular matrix: check nodes b1#branch and a").
+
+```spice
+* a .func that reads a node with Turkish letters
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.func vo() {v(çıkış)}
+B1 b 0 V=vo()*2
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `.func vo() {v(cikis)}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+a .func with words of its own inside v(...):
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check nodes b1#branch and a
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-26. A name with Turkish letters that only a formula reads, and no part is on: a node nothing connects to, 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice spells çıkış as ____k____, and when no part is on a node it spells that way (here the parts are on out), the formula reads a node nothing connects to: "singular matrix: check node ____k____", and no results. Renaming it to cikis would leave it so; the checks offer no fix then. When the parts are on cikis (the second run), the formula was written for that node, and the fix connects it there: e = 10 V.
+
+```spice
+* Turkish letters in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(çıkış)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    ____k____                                         0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node ____k____
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: singular matrix:  check node ____k____
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+with the parts on cikis, V1 giris 0 10 / R1 giris cikis 1k / R2 cikis 0 1k and B1 e 0 V=v(çıkış)*2, which PlainSpice's checks say the same way, with the fix "Connect to cikis":
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check node ____k____
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after that fix, B1 e 0 V=v(cikis)*2:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(b1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-27. Two spellings that differ only in capital letters (Çıkış and çıkış) on part lines are one node for ngspice, as written: the rename of both gives the same numbers
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-3). ngspice writes each letter outside a to z as underscores, so Çıkış and çıkış are both ____k____: one node, which is what a netlist that writes one name with and without a capital means (as N1 and n1 are one node, W6). The divider gives 5 V there, in native 47 and 42 and our engine; renamed to one plain name (Cikis, as the fix writes), the same 5 V. The same for an E whose control node is written Çıkış (e = 10 V before and after), and for a part after .end that writes Çıkış: 3.333 V and i(v1) = -6.667 mA, whether .end is moved first or the node is renamed first. Different letters ngspice spells alike (ş and ç) stay two nodes for the student: non-ascii-node-2.
+
+```spice
+* two spellings of one node
+V1 giris 0 10
+R1 giris Çıkış 1k
+R2 çıkış 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, i(v1) = -0.005
+after the fix "Rename node Çıkış and node çıkış to Cikis" (non-ascii-node), which writes `R1 giris Cikis 1k`, `R2 Cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, i(v1) = -0.005
+an E whose control node is written with the capital, E1 e 0 Çıkış 0 2 (R1 and R2 on çıkış), which PlainSpice's checks say the same way:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(____k____) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(____k____) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+after its fix, E1 e 0 cikis 0 2 (R1 and R2 on cikis):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+R3 Çıkış after .end, with R1 and R2 on çıkış (non-ascii-node-22):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+    our engine (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+the same with .end moved to the bottom first (R3 Çıkış a part line), which PlainSpice's checks say the same way:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+    our engine (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+after both fixes, in either order (R1, R2 and R3 on cikis):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
+    our engine (exit 0): v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
 ```
 
 PlainSpice's checks: `non-ascii-node`.
@@ -15464,6 +17551,94 @@ after the fix ("Take it out: name the node out", which now writes out in the sav
 
 PlainSpice's checks: `invisible-character`.
 
+### invisible-character-67. A hidden character in a node a formula reads: the fix takes it out there too
+
+```spice
+* a zero-width space in a node a formula reads
+V1 giris 0 10
+R1 giris ou<ZWSP>t 1k
+R2 ou<ZWSP>t 0 1k
+B1 b 0 V=v(ou<ZWSP>t)*2
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        ou___t                           5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(ou___t) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(ou___t) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Take it out: name the node out" (invisible-character), which writes `R1 giris out 1k`, `R2 out 0 1k`, `B1 b 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(out) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's checks: `invisible-character`.
+
+### invisible-character-68. A name with a zero-width space that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice keeps the character in the name (out___), as on a part line (invisible-character-3), but no part is on that node, so it warns "singular matrix: check node out___" and stops. Taken out, the formula reads out: e = 5 V.
+
+```spice
+* a zero-width space in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out<ZWSP>)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    out___                                            0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node out___
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: singular matrix:  check node out___
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out: connect to node out" (invisible-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `invisible-character`.
+
 ## look-alike-letter
 
 Added after the final reviews of 12 November 2026 (security review F2). A letter from another alphabet,
@@ -16319,6 +18494,94 @@ after the fix ("Rename оut to out", which now writes out in the save too), nati
 
 PlainSpice's checks: `look-alike-letter`.
 
+### look-alike-letter-18. A look-alike letter in a node a formula reads: the fix writes the plain letter there too
+
+```spice
+* a Cyrillic o in a node a formula reads
+V1 giris 0 10
+R1 giris оut 1k
+R2 оut 0 1k
+B1 b 0 V=v(оut)*2
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        __ut                             5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(__ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(__ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Rename оut to out" (look-alike-letter), which writes `R1 giris out 1k`, `R2 out 0 1k`, `B1 b 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(out) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's checks: `look-alike-letter`.
+
+### look-alike-letter-19. A name with a Cyrillic о that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice writes the letter's bytes as underscores (__ut), as on a part line (look-alike-letter-5), but no part is on that node, so it warns "singular matrix: check node __ut" and stops. With the plain letter, the formula reads out: e = 5 V.
+
+```spice
+* a Cyrillic o in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(оut)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    __ut                                              0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node __ut
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: singular matrix:  check node __ut
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Connect to out" (look-alike-letter), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `look-alike-letter`.
+
 ## space-character
 
 Added after the critic of the fixes for the final reviews (12 November 2026). A character that looks like a
@@ -16347,6 +18610,29 @@ node name the character makes another node (`o<THIN>ut` is `o___ut`, space-chara
 names it and its fix takes it out, which connects the parts to `out` when the netlist has that node; the
 dangling-node check then says nothing about the pair. Where a part on the node has no value, the character
 stands where a space was meant, and the glue check's fix stays (space-character-4).
+
+After the last pass (13 November 2026, code review C3-1): in a B source's formula (a B line's, and an E
+or G line's given by `VALUE=`, `vol=` or `cur=`, which ngspice makes a B line) ngspice reads the character
+as part of a name, and stops: "unknown parameter (_)", or right after a `v`, "Undefined parameter [v]",
+with braces around the formula or not (space-character-22, -23; nbsp-4 for a no-break space). An error, whose fix takes the character out: a
+normal space between a `v` and its bracket stops ngspice too (space-character-23). Inside a node's name in
+a formula, `v(o<THIN>ut)`, it is that node, and the node's check takes it out there as on the part lines
+(space-character-24); the glue check's "Replace it with a normal space" wrote `v(o ut)` there, which
+ngspice cannot read.
+
+After the round-1 critic of those fixes (13 November 2026, CR1-2, CR1-4, CR1-5): the check reads the whole
+formula, from its start to the end of its last line, and so also finds the character after a number
+(`2<THIN>*v(out)`) and at the end (`v(out)*2<THIN>`), which the value checks used to take for part of a
+value; one error for the part, whose fix takes every such character out of the formula, so none is left
+for ngspice to stop at (nbsp-6). One that keeps a B line's own setting apart from its formula (`tc1=`) becomes
+a normal space instead (space-character-30). What ngspice says depends on what stands before the first one:
+at the start of the formula "parameter value out of range or the wrong type" (space-character-25), after
+an operator or a minus sign "The internal check of parse tree … failed" and then the same (-26), after a
+number or the formula's closing brace "unknown parameter (_)" (-27), after an opening bracket, a comma or a
+? ngspice 47's fatal "YYparse error" and ngspice 42's "PTerror: syntax error" (-28), after a `v` of its own
+"Undefined parameter [v]" (-23; nbsp-5 for a no-break space); anywhere else the check says only that
+ngspice stops (-29). Indexes of characters are counted as JavaScript counts them, so an emoji or a math
+letter before such a character (𝑥 from an equation editor) no longer stopped every check.
 
 After the re-check of those fixes (12 November 2026): a sign followed by such a character (`-<THIN>5`,
 or a minus sign from a document and then one) is no number either, and ngspice stops; the check says
@@ -16491,7 +18777,6 @@ What PlainSpice shows for space-character-11 (warning, line 6):
 > *ngspice:* ngspice stops reading the number at the thin space and ignores the rest of the word, without a message: it reads 1 Ω. [space-character-11]
 >
 > *Fixes:* "Take it out: write 12 (12 Ω)"
-
 ### space-character-1. A thin space between a value and its unit ends the number: 4.7<THIN>kΩ is 4.7 Ω, and 1<THIN>MΩ is 1 Ω
 
 The divider the critic of the fixes copied from a PDF: R1 is 4.7 Ω, not 4.7 kΩ, so out sits at 9.99 V instead of 5 V; R3 is 1 Ω, not 1 MΩ.
@@ -17323,5 +19608,1131 @@ The same with a no-break space, `o<NBSP>ut` (the check's id is `nbsp`), native 4
 `-b -r`: "no data saved for D.C. Transfer curve analysis", exit 1, no results; with the fix, v(out) = 0,
 4, 8. With something else saved the run goes on (`save v(o<THIN>ut) i(v1)`, `save v(o<NBSP>ut) i(v1)`:
 exit 0, i(v1) saved).
+
+PlainSpice's checks: `space-character`.
+
+### space-character-22. A character that looks like a space in a formula stops ngspice: taken out, the formula runs
+
+In a formula, ngspice reads the character as part of a name (each of its bytes becomes `_`), and the formula has no such name: "unknown parameter (_)". A normal space would do there, but taking it out always does, so the fix takes it out. (ngspice also prints "Preparing expression for numparam" and "What is this?" with the bytes it could not read; those lines are left out below.)
+
+```spice
+* a thin space in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)<THIN>*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-23. Between v and its bracket: ngspice takes the v for a .param name, and a normal space would stop it too
+
+Right after `v`, ngspice reads the v as a name of its own: "Undefined parameter [v]". With a normal space there, outside braces, it stops too (`V=v (out)*2`, native 47 and 42 and our engine: "Undefined parameter [v]", "Cannot compute substitute"), so here the fix must take the character out.
+
+```spice
+* a thin space between v and its bracket
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v<THIN>(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error in netlist line no. 7, new internal line no. 5:
+    Undefined parameter [v]
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+    Undefined parameter [v]
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+with a normal space there, V=v (out)*2:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-24. A character that looks like a space in a node a formula reads: the fix takes it out of the formula too
+
+The node o<THIN>ut, on R1, R2 and in the formula, is one node (ngspice spells it o___ut): b = 10 V. "Take it out: name the node out" writes out in all three, and the circuit is the same. The fix the check offered before for the formula, "Replace it with a normal space", wrote v(o ut), which ngspice cannot read: native 47 "YYparse error, syntax error, in expression", 42 "PTerror: syntax error"; that fix is no longer offered there.
+
+```spice
+* a thin space in a node a formula reads
+V1 giris 0 10
+R1 giris o<THIN>ut 1k
+R2 o<THIN>ut 0 1k
+B1 b 0 V={v(o<THIN>ut)*2}
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        o___ut                           5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(o___ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(o___ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Take it out: name the node out" (space-character), which writes `R1 giris out 1k`, `R2 out 0 1k`, `B1 b 0 V={v(out)*2}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(out) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+the netlist the old fix "Replace it with a normal space" wrote, V={v(o ut)*2}:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-25. At the start of a formula: "parameter value out of range or the wrong type"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). ngspice reads each byte of the character as a name (`_`), and what it says depends on what stands before it in the formula. Right after V=, I=, VALUE=, vol= or cur=, after the formula's { or quote, or after a + there, it is the first thing of the formula: "parameter value out of range or the wrong type". The fix takes the character out, and the formula runs. (ngspice also prints "Preparing expression for numparam" and "What is this?" with the bytes it could not read; those lines are left out below.)
+
+```spice
+* a thin space at the start of a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=<THIN>v(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    oops
+    Error on line 5 or its substitute:
+      b1 e 0 v= _ _ _ v(out) *   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    oops
+    Error on line 5 or its substitute:
+      b1 e 0 v= _ _ _ v(out) *   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+a no-break space there (V=<NBSP>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a blank (V= <THIN>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in braces (V={<THIN>v(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line (VALUE={<THIN>v(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line without braces (VALUE=<THIN>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in quotes (vol='<THIN>v(out)*2'):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on a G line (cur={<THIN>v(out)*2m}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a + at the start (V=+<THIN>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+an ideographic space (V=<IDEO>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-26. After an operator or a minus sign: "The internal check of parse tree … failed", then "parameter value out of range or the wrong type"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After an operator (* / ^ + - < > == && || :), or after a minus sign at the start of the formula, ngspice first says that the internal check of its parse tree failed, with the formula between the two halves of that sentence, and then the same as at the start. The fix takes the character out, and the formula runs.
+
+```spice
+* a thin space after an operator in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)*<THIN>2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    oops
+    Error: The internal check of parse tree
+    v(out) * _ _ _   2.0000000000e+00
+    failed
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) * _ _ _   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    oops
+    Error: The internal check of parse tree
+    v(out) * _ _ _   2.0000000000e+00
+    failed
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) * _ _ _   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+after + (V=v(out)+<THIN>1):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after - (V=v(out)-<THIN>1):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after / (V=v(out)/<THIN>0.5):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after ^ (V=v(out)^<THIN>1):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after > (V=v(out)><THIN>1?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after < (V=v(out)<<THIN>1?0:10):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after == (V=v(out)==<THIN>2.5?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after && (V=v(out)>1&&<THIN>v(in)>1?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after || (V=v(out)>1||<THIN>v(in)>1?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after : (V=v(out)>1?10:<THIN>0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a minus sign at the start (I=-<THIN>v(out)/1k):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a no-break space (V=v(out)*<NBSP>2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in braces (V={v(out)*<THIN>2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line (VALUE={v(out)*<THIN>2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-27. After a number or the formula's closing brace: "unknown parameter (_)"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After a number, as after a closing bracket (space-character-22), ngspice has read a whole formula and takes the bytes after it for another of the line's settings: "unknown parameter (_)". Here the character groups the digits of 1000, as documents do: the fix takes it out and writes 1000, and the formula gives e = 2.5 V. The same holds after a number at the end of the formula and after its closing brace.
+
+```spice
+* a thin space between the digits of a number in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V={1<THIN>000*v(out)/1k}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   1.0000000000e+00 _ _ _   0.0000000000e+00 * v(out) /   1.0000000000e+03
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   1.0000000000e+00 _ _ _   0.0000000000e+00 * v(out) /   1.0000000000e+03
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V={1000*v(out)/1k}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 2.5, i(b1) = -0.0025, i(v1) = -0.0025
+after a number before an operator (V=2<THIN>*v(out)):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a number at the end (V=v(out)*2<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a no-break space there (V=v(out)*2<NBSP>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a number with a scale letter (V=v(out)*2m<THIN>*1k):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after the formula's closing brace (V={v(out)*2}<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after an E's formula in braces (VALUE={v(out)*2}<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after an E's formula without braces (VALUE=v(out)*2<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-28. After a bracket, a comma or a ?: ngspice 47 "YYparse error", a fatal error, and ngspice 42 "PTerror: syntax error"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After an opening bracket (not v's), a comma between a function's words or the ? of a choice, ngspice 47 stops with a fatal error, "YYparse error, syntax error, in expression"; ngspice 42 says "PTerror: syntax error" and then "parameter value out of range or the wrong type". Our engine says what ngspice 47 says. A sign there changes nothing. The fix takes the character out, and the formula runs.
+
+```spice
+* a thin space after a bracket in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=(<THIN>v(out))*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    YYparse error, syntax error, in expression: parsing stopped at line 5
+        _ _ v(out) ) *   2.0000000000e+00 in  _ v(out) ) *   2.0000000000e+00
+    from file    c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    PTerror: syntax error, parsing stopped at
+        _ _ v(out) ) *   2.0000000000e+00
+    Error on line 5 or its substitute:
+      b1 e 0 v= ( _ _ _ v(out) ) *   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    YYparse error, syntax error, in expression: parsing stopped at line 5
+    _ _ v(out) ) *   2.0000000000e+00 in  _ v(out) ) *   2.0000000000e+00
+    from file    /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=(v(out))*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+after a comma (V=max(v(out),<THIN>1)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a no-break space there (V=max(v(out),<NBSP>1)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a ? (V=v(out)>1?<THIN>10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a sign after a bracket (V=(-<THIN>v(out))*-2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in braces (V={(<THIN>v(out))*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-29. Anywhere else in a formula ngspice stops too, with other words
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After a function's name, before its bracket, ngspice says only "Cannot compute substitute" (a fatal error); after a name it does not know, "Undefined parameter" with that name; after one it knows, "unknown parameter (_)"; inside the V= of a B line, "unknown parameter (v___)". Wherever it stands, ngspice stops: the checks say only that, where no run above shows the words. The fix takes the character out.
+
+```spice
+* a thin space after a function's name in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=abs<THIN>(v(out))*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error in netlist line no. 7, new internal line no. 5:
+     Expression err: abs}) _ _ _ ( v(out) ) *   2.0000000000e+00
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+     Expression err: abs}) _ _ _ ( v(out) ) *   2.0000000000e+00
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=abs(v(out))*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+after a name it does not know (V=xv<THIN>(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [xv]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [xv]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after i, before its bracket (V=i<THIN>(V1)*-2k):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [i]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [i]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a name it knows (V=v(out)*2+temper<THIN>*0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+between V and = (V<THIN>=v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (v___)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (v___)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-30. Between a formula and B's own setting tc1=: the fix writes a normal space there
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). A B line may give settings after its formula (tc1=, tc2=, temp=, dtemp=, reciproctc=), and a blank must keep them apart from it. With a thin space there ngspice stops ("unknown parameter (_)", as after any number: space-character-27); taken out, the formula and tc1 become one word, and ngspice stops again (the second run below). So the fix writes a normal space there, and the line runs.
+
+```spice
+* a thin space between a formula and tc1=
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)*2<THIN>tc1=0
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) *   2.0000000000e+00 _ _ _ tc1=0
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) *   2.0000000000e+00 _ _ _ tc1=0
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2 tc1=0`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+the character taken out (V=v(out)*2tc1=0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (1.0000000000e+00)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (1.0000000000e+00)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+### space-character-31. A thin space in the name of the source i(...) reads: 'unknown controlling source v___s', after any other such character's message
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-5). Inside the bracket of i(...), a character that looks like a space is part of the source's name: ngspice writes its bytes as _ and finds no source v___s, once the circuit is built ("Fatal error: b1: unknown controlling source v___s", then 47: "doAnalyses: no such parameter on this device or parameter is missing", 42: "... on this device"). The same for a no-break space (v__s) and in an E's formula (be1). As ngspice looks for the source last, any other such character in the formula is what it reports (an operator's below: the parse tree check). Taken out, the formula runs: e = 2.5 V.
+
+```spice
+* a thin space in the name of the source i() reads
+V1 in 0 5
+Vs in mid 0
+R1 mid out 1k
+R2 out 0 1k
+B1 e 0 V=i(V<THIN>s)*1k
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Fatal error: b1: unknown controlling source v___s
+    doAnalyses: no such parameter on this device or parameter is missing
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Fatal error: b1: unknown controlling source v___s
+    doAnalyses: no such parameter on this device
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=i(Vs)*1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(mid) = 5, v(out) = 2.5, v(e) = 2.5, i(b1) = -0.0025, i(vs) = 0.0025, i(v1) = -0.0025
+a no-break space, B1 e 0 V=i(V<NBSP>s)*1k:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile)
+      Fatal error: b1: unknown controlling source v__s
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in an E's formula, E1 e 0 VALUE={i(V<THIN>s)*1k}:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile)
+      Fatal error: be1: unknown controlling source v___s
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+with another one after an operator, B1 e 0 V=i(V<THIN>s)*<THIN>1k: the operator's message:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 6 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 6 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-32. A name with a thin space that only a formula reads is a node nothing connects to: 'singular matrix', and no results
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-2). ngspice keeps the character in the name (o___ut), as on a part line (space-character-10), but here no part is on that node: only B1's formula reads it, so the circuit's matrix has a row of nothing. ngspice warns "singular matrix: check node o___ut" six times and stops ("The operating point could not be simulated successfully"), with any analysis (the rawfile of a .tran or .dc run has no points). The same for an E's formula. Taken out, the formula reads out: e = 5 V.
+
+```spice
+* a thin space in a name only a formula reads
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(o<THIN>ut)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    DC solution failed -
+    Last Node Voltages
+    Node                                   Last Voltage        Previous Iter
+    ----                                   ------------        -------------
+    in                                                0                    0
+    out                                               0                    0
+    e                                                 0                    0
+    o___ut                                            0                    0
+    b1#branch                                         0                    0
+    v1#branch                                         0                    5 *
+    Warning: singular matrix:  check node o___ut
+    Note: Starting dynamic gmin stepping
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: singular matrix:  check node o___ut
+    Warning: Dynamic gmin stepping failed
+    Note: Starting true gmin stepping
+    Warning: True gmin stepping failed
+    Note: Starting source stepping
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile data)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out: connect to node out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+in an E's formula, E1 e 0 VALUE={v(out<THIN>)*2}:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check node out___
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+with .tran 1u 10u instead of .op:
+    ngspice 47, -b -r (exit 1): (no rawfile data)
+      Error: incomplete or empty netlist
+      Warning: singular matrix:  check node o___ut
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+      Error: Finding the operating point for transient simulation failed
+    ngspice 42, -b -r (exit 1): (no rawfile data)
+      Warning: singular matrix:  check node o___ut
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
 
 PlainSpice's checks: `space-character`.

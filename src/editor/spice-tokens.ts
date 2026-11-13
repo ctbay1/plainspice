@@ -50,6 +50,7 @@
  * The tokenizer only colours and marks text. Deciding whether something is a mistake is the
  * trap checks' job (src/spice/traps.ts).
  */
+import { INVISIBLE, SPACE_LIKE } from '../spice/characters.ts';
 import { numberWordEnd, readNumber } from '../spice/numbers.ts';
 import { ngspiceName } from '../spice/parse.ts';
 
@@ -94,6 +95,8 @@ type PieceKind = 'word' | 'open' | 'close' | 'comma' | 'equals' | 'expression' |
 interface PieceText {
   readonly kind: PieceKind;
   readonly text: string;
+  /** No space before it on its line: it belongs to the same blank-separated word as the piece before ("m=1"). */
+  readonly glued?: true;
 }
 
 interface Piece extends PieceText {
@@ -486,8 +489,8 @@ function wordEnd(text: string, from: number, end: number): number {
   return i;
 }
 
-function plain(p: Piece): PieceText {
-  return { kind: p.kind, text: p.text };
+function plain(p: Piece, k: number, all: readonly Piece[]): PieceText {
+  return k > 0 && all[k - 1]!.to === p.from ? { kind: p.kind, text: p.text, glued: true } : { kind: p.kind, text: p.text };
 }
 
 /** Split [from, to) of a line into words, punctuation, {expressions}, 'expressions' and "strings". */
@@ -557,12 +560,15 @@ function lexPart(text: string, from: number, to: number, head: string, before: r
   let i = from;
   // B1 n+ n- V=expression: after the nodes comes an expression (B's own evaluator), not number words.
   const plainAfterNodes = head === 'B';
+  // Right after an E's or G's VALUE: characters that look like a space, which ngspice drops there (CR2-6, nbsp-7).
+  let afterValue = false;
   while (i < to) {
     const ch = text[i]!;
-    if (SPACE.test(ch)) {
+    if (SPACE.test(ch) || (afterValue && (SPACE_LIKE.test(ch) || INVISIBLE.test(ch)))) {
       i++;
       continue;
     }
+    afterValue = false;
     if (ch === '(' || ch === ')' || ch === ',' || ch === '=') {
       push(ch === '(' ? 'open' : ch === ')' ? 'close' : ch === ',' ? 'comma' : 'equals', i, i + 1);
       // After '=' the words are values of parameters: no more nodes on X lines.
@@ -582,7 +588,10 @@ function lexPart(text: string, from: number, to: number, head: string, before: r
       while (j < to && !/[ \t\f\v\r,=)]/.test(text[j]!)) j++;
       const word = text.slice(i, j);
       const index = words;
-      const startsForm = (head === 'E' || head === 'G') && (index === 3 || index === 4) && CONTROLLED_FORM_START.test(word);
+      // F and H too take POLY(n) where the control source goes: XSPICE splits its words at ( and ) (C3-5).
+      const startsForm =
+        ((head === 'E' || head === 'G') && (index === 3 || index === 4) && CONTROLLED_FORM_START.test(word)) ||
+        ((head === 'F' || head === 'H') && index === 3 && /^poly(?![a-z0-9_])/i.test(word));
       let endsNet = false;
       if (variable) {
         let k = j;
@@ -597,6 +606,14 @@ function lexPart(text: string, from: number, to: number, head: string, before: r
         continue;
       }
       netDone = true; // this word and the rest are read by the number reader
+      // VALUE, even written right before such a character (VALUE<no-break space>{...}), as the parser reads it.
+      if (startsForm && (head === 'E' || head === 'G') && /^value/i.test(word) && (word.length === 5 || SPACE_LIKE.test(word[5]!) || INVISIBLE.test(word[5]!))) {
+        push('word', i, i + 5);
+        i += 5;
+        words++;
+        afterValue = true;
+        continue;
+      }
     }
     if (plainAfterNodes) {
       for (const p of lex(text, i, to)) out.push(p);
@@ -750,8 +767,39 @@ function classifyElementFields(
     return;
   }
 
+  if (letter === 'E' || letter === 'G') {
+    // Given by a formula, as the parser reads it (C3-5): VALUE (with '=' or not), vol= (E) or cur= (G) after the
+    // two output nodes, or after more words, which ngspice drops. The formula is shown as on a B line.
+    const at = ps.findIndex((p, i) => {
+      const w = p.text.toLowerCase();
+      if (i === 0 || p.kind !== 'word' || (w !== 'value' && !(w === (letter === 'E' ? 'vol' : 'cur') && ps[i + 1]?.kind === 'equals'))) return false;
+      const before = fields.filter((f) => f < i);
+      return before.length >= 2 && before[before.length - 1] === i - 1;
+    });
+    if (at > 0) {
+      const before = fields.filter((f) => f < at);
+      before.forEach((i, k) => set(i, k < 2 ? nodeType(ps[i]!.text) : { type: 'word' }));
+      const equals = ps[at + 1]?.kind === 'equals';
+      set(at, { type: equals ? 'parameter' : 'keyword' });
+      for (let i = at + (equals ? 2 : 1); i < ps.length; i++) out[i] = { type: 'expression' };
+      return;
+    }
+  }
   let nodes = NODE_COUNT[letter] ?? 0;
   if ((letter === 'E' || letter === 'G') && fields.slice(2, 4).some((i) => CONTROLLED_FORMS.has(lower(i)))) nodes = 2;
+  // POLY(n) right after the output nodes (the call reader above took POLY and its n), as the parser reads it.
+  const poly = 'EFGH'.includes(letter)
+    ? ps.findIndex((p, i) => i > 0 && p.kind === 'word' && /^poly$/i.test(p.text) && ps[i + 1]?.kind === 'open' && fields.filter((f) => f < i).join() === `${fields[0]},${i - 1}`)
+    : -1;
+  if (poly > 0) nodes = 2;
+  // HSPICE's word for the part's kind on a line of exactly seven blank-separated words (E, G) or six (F, H),
+  // which ngspice takes out, as the parser reads it (C3-5).
+  const kind = ({ E: 'vcvs', G: 'vccs', F: 'cccs', H: 'ccvs' } as Record<string, string>)[letter];
+  const blankSeparated = ps.filter((p) => !p.glued).length;
+  if (kind && fields[2] !== undefined && lower(fields[2]) === kind && blankSeparated === (letter === 'E' || letter === 'G' ? 7 : 6)) {
+    set(fields[2], { type: 'keyword' });
+    fields.splice(2, 1);
+  }
   if (letter === 'Q' && fields.length >= 5) {
     // Q1 c b e [substrate] model: a 5th word that is a name (not a number or keyword) means the 4th is the substrate.
     const fifth = fields[4]!;
@@ -797,6 +845,21 @@ function classifyElementFields(
     case 'G':
     case 'F':
     case 'H': {
+      if (poly > 0 || (rest[0] !== undefined && lower(rest[0]) === 'poly')) {
+        // POLY(n): n, then n pairs of control nodes (E, G) or n voltage sources (F, H), then the coefficients.
+        const after = poly > 0 ? rest : rest.slice(2);
+        const n = poly > 0 ? ps[poly + 2] : rest[1] === undefined ? undefined : ps[rest[1]];
+        if (poly > 0) set(poly, { type: 'keyword' });
+        else {
+          set(rest[0], { type: 'keyword' });
+          value(rest[1]);
+        }
+        const count = Number(/^\+?(\d+)/.exec(n?.kind === 'word' ? n.text : '')?.[1] ?? 0);
+        const controls = letter === 'E' || letter === 'G' ? 2 * count : count;
+        after.slice(0, controls).forEach((i) => set(i, letter === 'E' || letter === 'G' ? nodeType(ps[i]!.text) : { type: 'elementRef' }));
+        after.slice(controls).forEach(value);
+        return;
+      }
       let k = 0;
       if ((letter === 'F' || letter === 'H') && rest[0] !== undefined && !isNumberWord(ps[rest[0]]!.text)) {
         // F1 n+ n- Vx gain: the voltage source whose current controls the part.

@@ -243,3 +243,43 @@ reads, so A3f now says ngspice runs none of such a subcircuit's analysis lines, 
 commands, where it said it reads none of its lines. A3h gained names with a dot of the netlist's
 own (`x1.m.1`, `x1.a.m`, `v.x1.vs.1`, `x1.x2.m.1`) and the names that are no node or part there
 (`x1.m.1` beside m, `x1.0`, `x1.gnd`, `i.x1.vs`).
+
+## The last pass of 13 November 2026 (the formulas lane)
+
+Run the same way on 13 November 2026 (native ngspice 47 and 42, `-b` and `-b -r`, and our engine), with
+the netlists each fix gives: in traps.md, missing-value-15 to -17 (an E or G given by a formula, `VALUE=`,
+`vol=`, `cur=`, written any of the ways ngspice reads, has two nodes and no gain, and runs everywhere),
+model-not-in-engine-7 to -14 (POLY and TABLE on E, F, G and H: native 47 runs them, our engine, without
+XSPICE, stops; POLY(1) with the coefficients 0 and k is the plain gain k), non-ascii-node-15 to -19 (a
+formula that reads a node, a part or a `.tf` after `.end`, and `.pz`'s bare nodes name the node too: a
+rename that changes them all gives the same numbers), invisible-character-67, look-alike-letter-18 and
+space-character-24 (the same for those fixes), space-character-22, -23 and nbsp-4 (a character that
+looks like a space in a formula stops ngspice; taken out, the formula runs), unknown-word-53 to -55
+(ngspice takes HSPICE's `vcvs`, `vccs`, `cccs` and `ccvs` out of a line of exactly seven or six words,
+and drops the words between an E's or G's output nodes and its formula), missing-fields-9 (one such word
+stops native ngspice, not our engine) and fatal-syntax-12 to -16 (a formula without braces that starts
+with a number, or after VALUE without `=`, or an empty one, stops ngspice; one that starts with a letter
+or a bracket runs).
+
+After the round-1 critic of those fixes (13 November 2026), run the same way: non-ascii-node-20 to -22 (a
+formula, a `.pz` line or a part after `.end` that writes the node with a capital letter, `Çıkış` for
+`çıkış`, is that node for ngspice; the rename gives the same numbers), non-ascii-node-23 to -25 (a bare name
+on `.save`, `.global` with a subcircuit and a `.func`'s formula name the node too; a bare name on `.probe`
+does not), space-character-25 to -30 and nbsp-5, -6 (what ngspice says of a character that looks like a
+space in a formula, by what stands before it: at the start, after an operator, after a number or the
+formula's brace, after a bracket or a comma, elsewhere; before B's own `tc1=` a normal space must stay),
+fatal-syntax-17 (a node called `value` on an E or G line), missing-fields-10 (one word before a formula with
+a bracket in it: native ngspice runs it too), and unknown-word-53 gained the G line of eight words.
+
+After the round-2 critic of those fixes (13 November 2026), run the same way: fatal-syntax-18 and -19 (after
+`=`, ngspice puts braces round a formula unless it starts with a number, a sign and a number, or true or
+false: `VALUE=-v(out)*2` and `VALUE=(1+v(out))*2` run, `VALUE=-2*v(out)` stops), fatal-syntax-20 (a node
+called `value` as an E's control − node, an output node or a POLY control node is read as VALUE too, and
+braces after it make a constant), nbsp-7 and missing-fields-11 (after VALUE without `=`, ngspice takes the
+formula from its `{` and drops what stands before it, a no-break space or a word), space-character-31 (a
+character that looks like a space inside `i(...)` is part of the source's name: "unknown controlling
+source v___s", after any other such character's message), space-character-32, nbsp-8,
+invisible-character-68, look-alike-letter-19 and non-ascii-node-26 (a name with such a character that
+only a formula reads, with no part on it, is a node nothing connects to: "singular matrix", no results),
+and non-ascii-node-27 (`Çıkış` and `çıkış` on part lines are one node, as written: the same numbers before
+and after the rename, in either order with "Move .end to the bottom").

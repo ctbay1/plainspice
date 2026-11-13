@@ -109,6 +109,40 @@ export interface Element {
   controlSource?: Token;
   /** V, I: PULSE/SIN/PWL/EXP/SFFM/AM/TRNOISE... with its arguments, when present. */
   sourceFunction?: { name: string; token: Token; args: Token[] };
+  /** E, F, G, H written as a formula, a table or a polynomial rather than with a gain (C3-5). */
+  form?: ControlledForm;
+  /**
+   * The nodes a formula on the line reads, inside v(...) (B lines, E and G given by a formula or a table,
+   * R, C and L values written as formulas): read only, not connected (C3-1). Absent when there are none.
+   */
+  reads?: NodeRef[];
+}
+
+/**
+ * An E, F, G or H line written in another form than its nodes and a gain, read as ngspice reads it
+ * (C3-5; inp_compat in its inpcom.c, the POLY translation in its xspice/enh/enhtrans.c):
+ * - 'formula': E with VALUE= or vol=, G with VALUE= or cur=, then a formula: ngspice makes it a B source,
+ *   so the output follows the formula, and the nodes it names inside v(...) are only read;
+ * - 'table': E or G with TABLE: a table of points of a formula (or of a control voltage), which ngspice
+ *   builds from an XSPICE block;
+ * - 'poly': E, F, G or H with POLY(n): n controls (E and G: n pairs of nodes; F and H: n voltage
+ *   sources), then the coefficients of a polynomial, also an XSPICE block.
+ */
+export interface ControlledForm {
+  kind: 'formula' | 'table' | 'poly';
+  /** The word that names the form, as written: VALUE, vol, cur, TABLE or POLY. */
+  keyword: Token;
+  /** 'formula' and 'table': the formula as written (v(out)*2, {v(out)*2}), when the line has one. */
+  formula?: Token;
+  /** 'poly': the n of POLY(n), when it is a whole number above 0. */
+  dimension?: number;
+  /**
+   * 'formula': the words ngspice drops, between the output nodes and VALUE= (E1 e 0 in 0 VALUE={...}), and after
+   * VALUE without '=' before the formula's '{' (E1 e 0 VALUE x {...}).
+   */
+  dropped?: Token[];
+  /** 'formula': an '=' comes between the keyword and the formula (VALUE=, vol=, cur=): ngspice adds braces there. */
+  equals?: true;
 }
 
 /** A dot command. */

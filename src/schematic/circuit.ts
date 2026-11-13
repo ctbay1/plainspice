@@ -9,7 +9,8 @@
  *   voltage source). Node names are ngspice's (lower-case ASCII); ground is "0", which includes
  *   "gnd" except where the parser says ngspice keeps it as an ordinary node (W8–W12).
  * - Not drawn: every other part line, each with its line and the reason, so the UI can list it:
- *   other kinds of part (X, B, K, D, Q, M, switches, lines ...), lines inside .subckt ... .ends,
+ *   other kinds of part (X, B, K, D, Q, M, switches, lines ...), an E, F, G or H given by a formula, a
+ *   table or a polynomial (VALUE=, TABLE, POLY: C3-5), lines inside .subckt ... .ends,
  *   parts after .end that ngspice still reads (S25), a second line with the same name (ngspice
  *   stops there, "device already exists"), and lines with fewer than two nodes.
  * - Hidden connections: a node that a line not drawn also names (a diode, a subcircuit, a part after
@@ -248,7 +249,9 @@ export function circuitFromNetlist(netlist: Netlist): Circuit {
     }
     seen.add(el.key);
     const letter = el.letter;
-    if (!isPartLetter(letter)) {
+    // A dependent source given by a formula, a table or a polynomial (E1 e 0 VALUE={...}, C3-5) has no
+    // control nodes and gain to draw: listed with the lines not drawn, as a B line is.
+    if (!isPartLetter(letter) || el.form) {
       skip(line, el, 'part-kind');
       continue;
     }

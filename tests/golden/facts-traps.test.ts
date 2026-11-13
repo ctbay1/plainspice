@@ -22,6 +22,7 @@ import createNgspice from '../../engine/dist/ngspice.mjs';
 import { agrees } from '../../src/engine/compare.ts';
 import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import type { RunResult } from '../../src/engine/types.ts';
+import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 
@@ -120,6 +121,7 @@ const FACTS: Fact[] = [
   { code: 'missing-fields-6', netlist: "* F without a control source\nV1 c 0 3\nR1 c 0 1\nF1 0 a\nR2 a 0 1\n.op\n.end\n", prints: ["unknown controlling source"], fails: true, traps: ['missing-fields'] },
   { code: 'missing-fields-7', netlist: "* F with its gain but no control source\nV1 c 0 3\nR1 c 0 1\nF1 0 a 5\nR2 a 0 1\n.op\n.end\n", prints: ["unknown controlling source 5"], fails: true, traps: ['missing-fields'] },
   { code: 'missing-fields-8', netlist: "* H without a control source\nV1 c 0 3\nR1 c 0 1\nH1 a 0 2\nR2 a 0 1\n.op\n.end\n", prints: ["unknown controlling source 2"], fails: true, traps: ['missing-fields'] },
+  { code: 'missing-fields-9', netlist: "* one word between the output nodes and the formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 x VALUE={2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(e)": 2 }, traps: ['missing-fields'] },
   { code: 'control-source-1', netlist: "* F naming a missing source\nV1 c 0 3\nR1 c 0 1\nF1 0 a V9 2\nR2 a 0 1\n.op\n.end\n", prints: ["f1: unknown controlling source v9"], fails: true, traps: ['control-source'] },
   { code: 'control-source-2', netlist: "* F naming a resistor\nV1 c 0 3\nR1 c 0 1\nF1 0 a R1 2\nR2 a 0 1\n.op\n.end\n", prints: ["f1: unknown controlling source r1"], fails: true, traps: ['control-source'] },
   { code: 'control-source-3', netlist: "* H naming a missing source\nV1 c 0 3\nR1 c 0 1\nH1 a 0 V9 2\nR2 a 0 1\n.op\n.end\n", prints: ["h1: unknown controlling source v9"], fails: true, traps: ['control-source'] },
@@ -272,6 +274,11 @@ const FACTS: Fact[] = [
   { code: 'missing-model-7', netlist: "first-letter test [D]\nRref a 0 1\nD1 a 0 5\n.op\n.end\n", prints: ["could not find a valid modelname"], fails: true, traps: ['missing-model'] },
   { code: 'fatal-syntax-10', netlist: "* a function with an argument\nV1 a 0 1\nR1 a 0 1k\n.func dbl(x) {2*x}\nR2 a 0 {dbl(1k)}\n.op\n.end\n", vectors: {"i(v1)":-0.0015}, traps: [] },
   { code: 'fatal-syntax-11', netlist: "* v() and i() inside braces\nV1 in 0 1\nR1 in 0 1k\nB1 out 0 V={2*v(in)}\nR2 out 0 1k\nB2 o2 0 V={2*i(V1)}\nR3 o2 0 1k\nR4 in 0 {2*v(in)}\n.op\n.end\n", vectors: {"v(out)":2,"v(o2)":-1.002}, traps: [] },
+  { code: 'fatal-syntax-12', netlist: "* VALUE=3 without braces\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE=3\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'fatal-syntax-13', netlist: "* VALUE=2*v(out) without braces\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE=2*v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'fatal-syntax-14', netlist: "* VALUE without = and without braces\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE v(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'fatal-syntax-15', netlist: "* an empty formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE=\nRe e 0 1k\n.op\n.end\n", prints: ["YYparse error, syntax error, in expression"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'fatal-syntax-16', netlist: "* formulas without braces that ngspice reads\n.param k=4\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE=v(out)*2\nR1e e1 0 1k\nE2 e2 0 VALUE=(v(out)*2)\nR2e e2 0 1k\nE3 e3 0 VALUE=k*2\nR3e e3 0 1k\nG1 0 g cur=v(out)*2m\nRg g 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 5, "v(e3)": 8, "v(g)": 5 }, traps: [] },
   { code: 'include-not-available-3', netlist: "* .lib with one word\nV1 a 0 1\nR1 a 0 1k\n.lib models.lib\n.op\n.end\n", prints: ["unimplemented dot command '.lib'"], fails: true, traps: ['include-not-available'] },
   { code: 'unknown-dot-command-3', netlist: "* .endl in the netlist\nV1 a 0 1\nR1 a 0 1k\n.endl\n.op\n.end\n", prints: ["unimplemented dot command '.endl'"], fails: true, traps: ['unknown-dot-command'] },
   { code: 'missing-value-8', netlist: "* a resistor with a setting but no value\nI1 0 a 1\nR0 a 0 1k\nR1 a 0 m=2\n.op\n.end\n", vectors: {"v(a)":0.000499999750000125}, prints: ["r1: resistance too low or not given, set to 1 mOhm"], traps: ['missing-value'] },
@@ -458,6 +465,9 @@ const FACTS: Fact[] = [
   { code: 'unknown-word-50', netlist: "* x=... where H1's value goes\nV1 a 0 1\nR0 a 0 1k\nH1 b 0 V1 x=5\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
   { code: 'unknown-word-51', netlist: "* x=3 after E1's gain\nV1 a 0 1\nR0 a 0 1k\nE1 b 0 a 0 2 x=3\nR1 b 0 1k\n.op\n.end\n", prints: ["unknown parameter (x)"], fails: true, traps: ['unknown-word'] },
   { code: 'unknown-word-52', netlist: "* a resistor written - 1\u200b0\nV1 a 0 1\nR3 a 0 - 1\u200b0\n.op\n.end\n", prints: ["unknown parameter (-)"], fails: true, traps: ['unknown-word'] },
+  { code: 'unknown-word-53', netlist: "* the word for the kind of controlled source, as HSPICE writes it\nV1 in 0 5\nVs in mid 0\nR1 mid out 1k\nR2 out 0 1k\nE1 e 0 vcvs out 0 2\nRe e 0 1k\nG1 0 g vccs out 0 2m\nRg g 0 1k\nF1 0 f cccs Vs 2\nRf f 0 1k\nH1 h 0 ccvs Vs 1k\nRh h 0 1k\n.op\n.end\n", vectors: { "v(e)": 5, "v(g)": 5, "v(f)": 5, "v(h)": 2.5 }, traps: [] },
+  { code: 'unknown-word-54', netlist: "* two words between the output nodes and the formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 in 0 VALUE={v(out)*2}\nRe e 0 1k\nG1 0 g in 0 cur={v(out)*2m}\nRg g 0 1k\nE2 e2 0 out 0 VALUE={2}\nRe2 e2 0 1k\n.op\n.end\n", vectors: { "v(e)": 5, "v(g)": 5, "v(e2)": 2 }, traps: [] },
+  { code: 'unknown-word-55', netlist: "* words between the output nodes and the formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 out 0 2 VALUE={v(out)*2}\nRe e 0 1k\nE2 e2 0 a b c d VALUE={2}\nRe2 e2 0 1k\n.op\n.end\n", vectors: { "v(e)": 5, "v(e2)": 2 }, traps: [] },
   { code: 'dc-sweep-problems-11', netlist: "* a .dc sweep with only its start\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
   { code: 'dc-sweep-problems-12', netlist: "* a second .dc sweep with its name only\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 0 5 1 V2\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
   { code: 'dc-sweep-problems-13', netlist: "* one number too many on a .dc line\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 5 1 2\n.end\n", prints: ["Bad syntax!"], fails: true, traps: ['dc-sweep-problems'] },
@@ -483,6 +493,71 @@ const FACTS: Fact[] = [
   { code: 'space-character-17', netlist: "* a thin space inside .tran's stop time: it reads 0\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0.1m 0\u2009.5\n.end\n", prints: ["TSTOP is invalid, must be greater than zero."], fails: true, traps: ['space-character'] },
   { code: 'space-character-18', netlist: "* a thin space inside a .dc stop: it reads 1\nV1 in 0 1\nR1 in 0 1k\n.dc V1 0 1\u20090 1\n.end\n", vectors: { "v(v-sweep)": [0, 1] }, traps: ['space-character'] },
   { code: 'space-character-19', netlist: "* a step of 0, and the stop time written 2<thin space>ms\nV1 in 0 PULSE(0 1 0 1n 1n 1 2)\nR1 in out 1k\nC1 out 0 1u\n.tran 0 2\u2009ms\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true, several: true, traps: ['tran-problems', 'space-character'] },
+  // The last pass (13 November 2026). An E or G given by a formula, a table or a polynomial, read as ngspice
+  // reads it (code review C3-5): a formula runs everywhere and is no missing gain; POLY and TABLE run natively
+  // but stop our engine (no XSPICE). A rename reaches every place ngspice reads the node's name (C3-1):
+  // formulas, .pz's nodes and the lines after .end; a character that looks like a space in a formula stops ngspice.
+  { code: 'missing-value-15', netlist: "* an E given by a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(e)": 5, "i(e1)": -0.005 }, traps: [] },
+  { code: 'missing-value-16', netlist: "* E given by a formula, written five ways\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 value = {v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE {v(out)*2}\nR2e e2 0 1k\nE3 e3 0 vol={v(out)*2}\nR3e e3 0 1k\nE4 e4 0 vol='v(out)*2'\nR4e e4 0 1k\nE5 e5 0 VALUE=\n+ {v(out)*2}\nR5e e5 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 5, "v(e3)": 5, "v(e4)": 5, "v(e5)": 5 }, traps: [] },
+  { code: 'missing-value-17', netlist: "* G given by a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 g1 VALUE={v(out)*2m}\nRg1 g1 0 1k\nG2 0 g2 cur='v(out)*2m'\nRg2 g2 0 1k\n.op\n.end\n", vectors: { "v(g1)": 5, "v(g2)": 5 }, traps: [] },
+  { code: 'model-not-in-engine-7', netlist: "* an E written with POLY(1)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 POLY(1) out 0 0 2\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-8', netlist: "* an E written with TABLE\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 TABLE {v(out)} = (0,0) (5,10)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-9', netlist: "* an F written with POLY(1)\nV1 in 0 5\nVx in out 0\nR2 out 0 1k\nF1 0 e POLY(1) Vx 0 2\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-10', netlist: "* a G written with POLY(1)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 e POLY(1) out 0 0 2m\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-11', netlist: "* an H written with POLY(1)\nV1 in 0 5\nVx in out 0\nR2 out 0 1k\nH1 e 0 POLY(1) Vx 0 1k\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-12', netlist: "* an E written with POLY(2)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 POLY(2) out 0 in 0 0 1 1\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-13', netlist: "* a G written with TABLE\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 e TABLE {v(out)} = (0,0) (5,10m)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'model-not-in-engine-14', netlist: "* an E with control nodes and a table\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 out 0 table=(0,0,5,10)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'non-ascii-node-15', netlist: "* a node a formula reads, with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 b 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-16', netlist: "* formulas that read a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB2 0 b2 I=v(\u00e7\u0131k\u0131\u015f)/1k\nRb2 b2 0 1k\nB3 b3 0 V=v(giris,\u00e7\u0131k\u0131\u015f)\nRb3 b3 0 1k\nE1 e 0 VALUE={v(\u00e7\u0131k\u0131\u015f)*2}\nRe e 0 1k\nR4 x 0 R={1k+v(\u00e7\u0131k\u0131\u015f)}\nRx giris x 1k\n.op\n.end\n", vectors: { "v(b2)": 5, "v(b3)": 5, "v(e)": 10, "v(x)": 5.012468827930174 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-17', netlist: "* a part after .end on a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n", vectors: { "v(____k____)": 3.333333333333333, "i(v1)": -0.006666666666666667 }, traps: ['non-ascii-node', 'after-end'] },
+  { code: 'non-ascii-node-18', netlist: "* a .tf after .end on a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.end\n.tf v(\u00e7\u0131k\u0131\u015f) V1\n", vectors: { "v(Transfer_function)": 0.5 }, traps: ['non-ascii-node', 'after-end'] },
+  { code: 'non-ascii-node-19', netlist: "* .pz on a node with Turkish letters\nV1 giris 0 dc 10 ac 1\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nC1 \u00e7\u0131k\u0131\u015f 0 1u\n.pz giris 0 \u00e7\u0131k\u0131\u015f 0 vol pz\n.end\n", traps: ['non-ascii-node'] },
+  { code: 'invisible-character-67', netlist: "* a zero-width space in a node a formula reads\nV1 giris 0 10\nR1 giris ou\u200bt 1k\nR2 ou\u200bt 0 1k\nB1 b 0 V=v(ou\u200bt)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['invisible-character'] },
+  { code: 'look-alike-letter-18', netlist: "* a Cyrillic o in a node a formula reads\nV1 giris 0 10\nR1 giris \u043eut 1k\nR2 \u043eut 0 1k\nB1 b 0 V=v(\u043eut)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['look-alike-letter'] },
+  { code: 'space-character-22', netlist: "* a thin space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u2009*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-23', netlist: "* a thin space between v and its bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v\u2009(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["Undefined parameter [v]"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-24', netlist: "* a thin space in a node a formula reads\nV1 giris 0 10\nR1 giris o\u2009ut 1k\nR2 o\u2009ut 0 1k\nB1 b 0 V={v(o\u2009ut)*2}\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['space-character'] },
+  { code: 'nbsp-4', netlist: "* a no-break space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u00a0*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },  // The round-1 critic of the formulas lane (13 November 2026). A name a formula, a dot command or a part after .end
+  // writes with a capital letter (Çıkış) is the node ngspice spells the same (çıkış): renamed with it (CR1-1). The
+  // renames reach .save, .global and a .func's formula too (CR1-3). A character that looks like a space anywhere in a
+  // formula is taken out, and the words ngspice says depend on where it stands (CR1-2, CR1-4); a node called value
+  // on an E line (CR1-10); one word before a formula that native ngspice lets through (missing-fields-10).
+  { code: 'non-ascii-node-20', netlist: "* formulas that write the node with a capital letter\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 b 0 V=v(\u00c7\u0131k\u0131\u015f)*2\nRb b 0 1k\nE1 e 0 VALUE={v(\u00c7\u0131k\u0131\u015f)*2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(e)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-21', netlist: "* .pz that writes the node with a capital letter\nV1 giris 0 dc 10 ac 1\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nC1 \u00e7\u0131k\u0131\u015f 0 1u\n.pz giris 0 \u00c7\u0131k\u0131\u015f 0 vol pz\n.end\n", traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-22', netlist: "* a part after .end that writes the node with a capital letter\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\nR3 \u00c7\u0131k\u0131\u015f 0 1k\n", vectors: { "v(____k____)": 3.333333333333333, "i(v1)": -0.006666666666666667 }, traps: ['non-ascii-node', 'after-end'] },
+  { code: 'non-ascii-node-23', netlist: "* .save names the node bare\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.save \u00e7\u0131k\u0131\u015f\n.op\n.end\n", vectors: { "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-24', netlist: "* .global with a node with Turkish letters\n.global \u00e7\u0131k\u0131\u015f\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 2k\nX1 sub\n.subckt sub\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.ends\n.op\n.end\n", vectors: { "v(____k____)": 4 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-25', netlist: "* a .func that reads a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.func vo() {v(\u00e7\u0131k\u0131\u015f)}\nB1 b 0 V=vo()*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'fatal-syntax-17', netlist: "* a node called value\nV1 in 0 5\nR1 in value 1k\nR2 value 0 1k\nE1 e 0 value 0 2\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'missing-fields-10', netlist: "* one word before a formula with a bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 x VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(e)": 5 }, traps: [] },
+  { code: 'space-character-25', netlist: "* a thin space at the start of a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=\u2009v(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-26', netlist: "* a thin space after an operator in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*\u20092\nRe e 0 1k\n.op\n.end\n", prints: ["The internal check of parse tree", "parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-27', netlist: "* a thin space between the digits of a number in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V={1\u2009000*v(out)/1k}\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-28', netlist: "* a thin space after a bracket in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=(\u2009v(out))*2\nRe e 0 1k\n.op\n.end\n", prints: ["YYparse error, syntax error, in expression"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-29', netlist: "* a thin space after a function's name in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=abs\u2009(v(out))*2\nRe e 0 1k\n.op\n.end\n", prints: ["Cannot compute substitute"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-30', netlist: "* a thin space between a formula and tc1=\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*2\u2009tc1=0\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
+  { code: 'nbsp-5', netlist: "* a no-break space between v and its bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v\u00a0(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["Undefined parameter [v]"], fails: true, traps: ['nbsp'] },
+  { code: 'nbsp-6', netlist: "* two no-break spaces in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=2\u00a0*\u00a0v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },
+  // After the round-2 critic of the formulas lane (13 November 2026): a formula without braces that starts with a sign
+  // and a number stops ngspice, one that starts with a sign before a letter or with a bracket runs (CR2-1).
+  { code: 'fatal-syntax-18', netlist: "* VALUE=-2*v(out) without braces\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE=-2*v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'fatal-syntax-19', netlist: "* formulas without braces that start with a sign or a bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE=-v(out)*2\nR1e e1 0 1k\nE2 e2 0 VALUE=(1+v(out))*2\nR2e e2 0 1k\nG1 0 g cur=-v(out)/1k\nRg g 0 1k\nE3 e3 0 VALUE=(2)*v(out)\nR3e e3 0 1k\n.op\n.end\n", vectors: { "v(e1)": -5, "v(e2)": 7, "v(g)": -2.5, "v(e3)": 5 }, traps: [] },
+  // After VALUE without =, ngspice drops what stands before the formula's {: a no-break space or words (CR2-6).
+  { code: 'nbsp-7', netlist: "* a no-break space between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE \u00a0{v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE\u00a0{v(out)*3}\nR2e e2 0 1k\nE3 e3 0 VALUE\u00a0=v(out)*4\nR3e e3 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 7.5, "v(e3)": 10 }, traps: [] },
+  { code: 'missing-fields-11', netlist: "* words between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE x {v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE v(out) {2}\nR2e e2 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 2 }, traps: [] },
+  // A node called value as the control - node, an output node or a POLY control node (CR2-4).
+  { code: 'fatal-syntax-20', netlist: "* a node called value as the control - node\nV1 in 0 5\nR1 in mid 1k\nR2 mid value 1k\nR3 value 0 1k\nE1 e 0 mid value 2\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  // A character that looks like a space in the name of the source i(...) reads (CR2-5).
+  { code: 'space-character-31', netlist: "* a thin space in the name of the source i() reads\nV1 in 0 5\nVs in mid 0\nR1 mid out 1k\nR2 out 0 1k\nB1 e 0 V=i(V\u2009s)*1k\nRe e 0 1k\n.op\n.end\n", prints: ["unknown controlling source v___s"], fails: true, traps: ['space-character'] },
+  // A name only a formula reads, with a character ngspice keeps in names, and no part on it: 'singular matrix' (CR2-2).
+  { code: 'space-character-32', netlist: "* a thin space in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(o\u2009ut)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node o___ut", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['space-character'] },
+  { code: 'nbsp-8', netlist: "* a no-break space in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out\u00a0)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node out__", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['nbsp'] },
+  { code: 'invisible-character-68', netlist: "* a zero-width space in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out\u200b)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node out___", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['invisible-character'] },
+  { code: 'look-alike-letter-19', netlist: "* a Cyrillic o in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u043eut)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node __ut", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['look-alike-letter'] },
+  { code: 'non-ascii-node-26', netlist: "* Turkish letters in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node ____k____", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['non-ascii-node'] },
+  // Two spellings that differ only in capital letters on part lines are one node, as written: a warning, and one name for both (CR2-3).
+  { code: 'non-ascii-node-27', netlist: "* two spellings of one node\nV1 giris 0 10\nR1 giris \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -623,6 +698,151 @@ it('non-ascii-node-12: the capacitor given ic=5 between aµ and au carries −50
   expect(agrees(values[0]!, -5000), String(values[0])).toBe(true);
   expect(values.slice(1).every((x) => x === 0)).toBe(true);
   expect(vector(r, 'i(@r1[i])')!.every((x) => x === 0.004)).toBe(true);
+});
+
+it('C3-1: a rename reaches the formulas, .pz and the lines after .end, so the renamed netlist gives the same numbers', () => {
+  const rename = (code: string): { label: string; netlist: string; run: RunResult } => fixed.get(code)!.find((f) => !f.label.startsWith('after-end'))!;
+  // [fact, the old name, the numbers before, the same numbers after the rename, by the new name]
+  const cases: [string, string, Record<string, number>, Record<string, number>][] = [
+    ['non-ascii-node-15', '\u00e7\u0131k\u0131\u015f', { 'v(b)': 10, 'v(____k____)': 5 }, { 'v(b)': 10, 'v(cikis)': 5 }],
+    ['non-ascii-node-16', '\u00e7\u0131k\u0131\u015f', { 'v(b2)': 5, 'v(b3)': 5, 'v(e)': 10, 'v(x)': 5.012468827930174 }, { 'v(b2)': 5, 'v(b3)': 5, 'v(e)': 10, 'v(x)': 5.012468827930174 }],
+    ['non-ascii-node-17', '\u00e7\u0131k\u0131\u015f', { 'v(____k____)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }, { 'v(cikis)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }],
+    ['non-ascii-node-18', '\u00e7\u0131k\u0131\u015f', { 'v(Transfer_function)': 0.5 }, { 'v(Transfer_function)': 0.5, 'v(output_impedance_at_V(cikis))': 500 }],
+    ['non-ascii-node-19', '\u00e7\u0131k\u0131\u015f', { 'v(pole(1))': -2000 }, { 'v(pole(1))': -2000 }],
+    ['invisible-character-67', 'ou\u200bt', { 'v(b)': 10, 'v(ou___t)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
+    ['look-alike-letter-18', '\u043eut', { 'v(b)': 10, 'v(__ut)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
+    ['space-character-24', 'o\u2009ut', { 'v(b)': 10, 'v(o___ut)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
+  ];
+  for (const [code, old, before, after] of cases) {
+    const f = rename(code);
+    expect(f.netlist, `${code}: ${f.label}`).not.toContain(old);
+    for (const [name, want] of Object.entries(before)) expect(vector(runs.get(code)!, name), `${code} before: ${name}`).toEqual([want]);
+    for (const [name, want] of Object.entries(after)) expect(vector(f.run, name), `${code} after: ${name}`).toEqual([want]);
+  }
+});
+
+it('C3-1: "Rename" and "Move .end to the bottom" give the same circuit in either order (non-ascii-node-17)', () => {
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-17')!.netlist;
+  const step = (netlist: string, id: string): string => applyFix(netlist, checkTraps(parseNetlist(netlist)).find((t) => t.id === id)!.fixes[0]!);
+  const one = step(step(text, 'non-ascii-node'), 'after-end');
+  const other = step(step(text, 'after-end'), 'non-ascii-node');
+  expect(one).toBe(other);
+  expect(one).toContain('R3 cikis 0 1k');
+});
+
+it('CR1-1, CR1-3: a name written with a capital letter, .save, .global and a .func are renamed with the node, so the renamed netlist gives the same numbers', () => {
+  // [fact, the numbers before, the same numbers after the rename, by the new name]
+  const cases: [string, Record<string, number>, Record<string, number>][] = [
+    ['non-ascii-node-20', { 'v(b)': 10, 'v(e)': 10, 'v(____k____)': 5 }, { 'v(b)': 10, 'v(e)': 10, 'v(cikis)': 5 }],
+    ['non-ascii-node-21', { 'v(pole(1))': -2000 }, { 'v(pole(1))': -2000 }],
+    ['non-ascii-node-22', { 'v(____k____)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }, { 'v(cikis)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }],
+    ['non-ascii-node-23', { 'v(____k____)': 5 }, { 'v(cikis)': 5 }],
+    ['non-ascii-node-24', { 'v(____k____)': 4 }, { 'v(cikis)': 4 }],
+    ['non-ascii-node-25', { 'v(b)': 10, 'v(____k____)': 5 }, { 'v(b)': 10, 'v(cikis)': 5 }],
+  ];
+  for (const [code, before, after] of cases) {
+    const f = fixed.get(code)!.find((x) => x.label.startsWith('non-ascii-node'))!;
+    expect(f.label, code).toBe('non-ascii-node: Rename node çıkış to cikis');
+    // Neither spelling is left on a line ngspice reads (the title is a comment line here).
+    expect(f.netlist.split('\n').slice(1).join('\n'), code).not.toMatch(/çıkış|Çıkış/);
+    for (const [name, want] of Object.entries(before)) expect(vector(runs.get(code)!, name), `${code} before: ${name}`).toEqual([want]);
+    for (const [name, want] of Object.entries(after)) expect(vector(f.run, name), `${code} after: ${name}`).toEqual([want]);
+  }
+  // The check for names ngspice makes one says nothing: Çıkış in a formula is no second node (CR1-1).
+  for (const code of ['non-ascii-node-20', 'non-ascii-node-21']) expect(checkTraps(parseNetlist(FACTS.find((x) => x.code === code)!.netlist)).map((t) => t.severity), code).toEqual(['warning']);
+});
+
+it('CR1-3: the drawing editor\'s rename reaches .save, .global and a .func\'s formula, before and after .end: the same numbers', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const cases: [string, string, Record<string, number>][] = [
+    ['.save', '* t\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\n.save out\n.op\n.end\n', { 'v(out)': 5 }],
+    ['.save after .end', '* t\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\n.op\n.end\n.save out\n', { 'v(out)': 5 }],
+    ['.global', '* t\n.global out\nV1 in 0 10\nR1 in out 1k\nR3 out 0 2k\nX1 sub\n.subckt sub\nR2 out 0 1k\n.ends\n.op\n.end\n', { 'v(out)': 4 }],
+    ['.func', '* t\n.func vo() {v(out)}\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\nB1 b 0 V=vo()*2\nRb b 0 1k\n.op\n.end\n', { 'v(out)': 5, 'v(b)': 10 }],
+  ];
+  for (const [form, text, want] of cases) {
+    const r = applyEdit(buildSchematic(text), { kind: 'rename-node', node: 'out', name: 'vout' }, { drawingInText: true });
+    expect(r.ok, `${form}: ${r.reason}`).toBe(true);
+    const before = await engine.run(text);
+    const after = await engine.run(r.text);
+    for (const [name, v] of Object.entries(want)) {
+      expect(vector(before, name), `${form} before: ${name}`).toEqual([v]);
+      expect(vector(after, name.replace('(out)', '(vout)')), `${form} after: ${name}\n${r.text}`).toEqual([v]);
+    }
+  }
+});
+
+it('CR2-3: two spellings that differ only in capital letters are renamed together, by the fix and by the drawing editor, in either order with .end: the numbers native ngspice gave (non-ascii-node-27)', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const T = '\u00e7\u0131k\u0131\u015f';
+  const TC = '\u00c7\u0131k\u0131\u015f';
+  const step = (netlist: string, id: string): string => applyFix(netlist, checkTraps(parseNetlist(netlist)).find((t) => t.id === id)!.fixes[0]!);
+  // [netlist, its fixed form, the numbers native 47 and 42 gave for both (non-ascii-node-27)]
+  const after = `* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\n.op\n.end\nR3 ${TC} 0 1k\n`;
+  const cases: [string, string, Record<string, number>][] = [
+    [FACTS.find((f) => f.code === 'non-ascii-node-27')!.netlist, '', { 'i(v1)': -0.005, node: 5 }],
+    [`* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\nE1 e 0 ${TC} 0 2\nRe e 0 1k\n.op\n.end\n`, '', { 'v(e)': 10, node: 5 }],
+    [after, step(step(after, 'non-ascii-node'), 'after-end'), { 'i(v1)': -0.006666666666666667, node: 3.333333333333333 }],
+    [after, step(step(after, 'after-end'), 'non-ascii-node'), { 'i(v1)': -0.006666666666666667, node: 3.333333333333333 }],
+  ];
+  for (const [text, given, want] of cases) {
+    const fixed = given || step(text, 'non-ascii-node');
+    const before = await engine.run(text);
+    const run = await engine.run(fixed);
+    const plain = /(Cikis|cikis)/.exec(fixed)![1]!.toLowerCase();
+    for (const [name, v] of Object.entries(want)) {
+      expect(vector(before, name === 'node' ? 'v(____k____)' : name), `${name} before:\n${text}`).toEqual([v]);
+      expect(vector(run, name === 'node' ? `v(${plain})` : name), `${name} after:\n${fixed}`).toEqual([v]);
+    }
+  }
+  // The drawing editor's rename of either spelling: the same 5 V.
+  const divider = FACTS.find((f) => f.code === 'non-ascii-node-27')!.netlist;
+  for (const node of [T, TC]) {
+    const r = applyEdit(buildSchematic(divider), { kind: 'rename-node', node, name: 'vout' }, { drawingInText: true });
+    expect(r.ok, node).toBe(true);
+    expect(vector(await engine.run(r.text), 'v(vout)'), node).toEqual([5]);
+  }
+});
+
+it('CR1-2, CR1-4: the fix takes every character that looks like a space out of the formula, wherever it stands, and the formula runs', () => {
+  for (const code of ['space-character-25', 'space-character-26', 'space-character-27', 'space-character-28', 'space-character-29', 'space-character-30', 'nbsp-5', 'nbsp-6']) {
+    const [f] = fixed.get(code)!;
+    expect(f!.netlist, code).not.toMatch(/[   -   　]/);
+    expect(vector(f!.run, 'v(e)'), code).toEqual([code === 'space-character-27' ? 2.5 : 5]);
+  }
+  // Before B's own setting the character becomes a normal space: without one, ngspice stops again (space-character-30).
+  expect(fixed.get('space-character-30')![0]!.netlist).toContain('B1 e 0 V=v(out)*2 tc1=0\n');
+  expect(fixed.get('nbsp-6')![0]!.label).toBe('nbsp: Take them out');
+});
+
+it('fatal-syntax-17: a node called value is renamed, on the E line too, and E1 then gives what native ngspice gave', () => {
+  const [f] = fixed.get('fatal-syntax-17')!;
+  expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
+  expect(f!.netlist).toContain('E1 e 0 val 0 2');
+  expect(vector(f!.run, 'v(e)')).toEqual([5]);
+});
+
+it('fatal-syntax-20: a node called value as the control − node is renamed, and E1 then gives what native ngspice gave (3.333 V), not the constant 2 V braces gave (CR2-4)', () => {
+  const [f] = fixed.get('fatal-syntax-20')!;
+  expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
+  expect(f!.netlist).toContain('E1 e 0 mid val 2');
+  expect(vector(f!.run, 'v(e)')).toEqual([3.333333333333333]);
+});
+
+it('model-not-in-engine-7, -9 to -11: POLY(1) with the coefficients 0 and k is written as the plain gain k, which gives what native ngspice gave', () => {
+  const cases: [string, string, Record<string, number>][] = [
+    ['model-not-in-engine-7', 'model-not-in-engine: Write it without POLY: E1 e 0 out 0 2', { 'v(e)': 5 }],
+    ['model-not-in-engine-9', 'model-not-in-engine: Write it without POLY: F1 0 e Vx 2', { 'v(e)': 10 }],
+    ['model-not-in-engine-10', 'model-not-in-engine: Write it without POLY: G1 0 e out 0 2m', { 'v(e)': 5 }],
+    ['model-not-in-engine-11', 'model-not-in-engine: Write it without POLY: H1 e 0 Vx 1k', { 'v(e)': 5 }],
+  ];
+  for (const [code, label, want] of cases) {
+    const [f] = fixed.get(code)!;
+    expect(f!.label).toBe(label);
+    for (const [name, v] of Object.entries(want)) expect(vector(f!.run, name), `${code}: ${name}`).toEqual([v]);
+  }
+  // POLY(2) and TABLE have no plain gain: no fix (model-not-in-engine-8, -12 to -14).
+  for (const code of ['model-not-in-engine-8', 'model-not-in-engine-12', 'model-not-in-engine-13', 'model-not-in-engine-14']) expect(fixed.get(code), code).toEqual([]);
 });
 
 it('runs every offered fix (there are many)', () => {

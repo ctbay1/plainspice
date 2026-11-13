@@ -20,7 +20,7 @@ import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, wordNativeStopsAt } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -310,6 +310,42 @@ export const EXPLAIN_STRINGS = {
   controlBCurrentNote: (name: string): string =>
     `${name} has I=, so it is a current source with no current of its own to read: ngspice accepts the name, warns "singular matrix" and stops.`,
   bCurrentSource: 'behavioural source with I= (a current source)',
+  // E, F, G and H given by a formula, a table or a polynomial (C3-5; missing-value-15, model-not-in-engine-7, -8).
+  formulaVoltage: (out: string, formula: string): string => `${capitalise(out)}, is given by the formula ${formula}.`,
+  formulaCurrent: (formula: string, from: string, to: string): string =>
+    `The current given by the formula ${formula} is pushed from ${from}, through the source, into ${to}.`,
+  formulaReads: (nodes: string): string => `ngspice works the formula out at every point of the analysis, from the voltages it names: ${nodes}.`,
+  formulaNote:
+    'VALUE=, vol= and cur= give a dependent source by a formula: ngspice turns the line into a B source (a behavioural source), so it has no control nodes and no gain.',
+  formulaKeyword: (word: string, what: string): string => `${word}: the output ${what} is the formula that follows`,
+  formulaWhole: 'the formula ngspice works out',
+  formulaPart: 'part of the formula ngspice works out',
+  polySentence: (name: string, controls: string): string => `${name}'s output is a polynomial of ${controls}, written POLY.`,
+  tableSentence: (name: string, of: string): string => `${name}'s output follows a table of points of ${of}, written TABLE.`,
+  /** The same lines with nothing yet where the formula, the controls or what the table looks up go (CR1-12). */
+  formulaNone: (name: string, keyword: string): string => `${name}'s line has no formula yet: after ${keyword}= comes the formula, for example ${keyword}={2*v(in)}.`,
+  polyNone: (name: string): string => `${name}'s output is a polynomial, written POLY, but the line names no controls yet.`,
+  tableNone: (name: string): string => `${name}'s output follows a table of points, written TABLE, but the line does not say yet what the table looks up.`,
+  xspiceNote:
+    "PlainSpice's engine cannot run this line: ngspice builds POLY and TABLE from an XSPICE block, which PlainSpice's engine leaves out. Native ngspice 47 runs it.",
+  polyKeyword: 'POLY: the output is a polynomial of the controls that follow, then its coefficients',
+  polyDimension: (n: string): string => `${n}: how many controls`,
+  polyCoefficient: 'a coefficient of the polynomial',
+  tableKeyword: 'TABLE: the output follows a table of points',
+  tableLooksUp: 'what the table looks up',
+  tablePoint: 'a number of one of the table\'s points',
+  currentIn: (source: string): string => `the current in ${source}`,
+  droppedWord: 'a word ngspice drops: with a formula, the output is the formula alone',
+  /** The heading's words for E, F, G and H written as a formula, a polynomial or a table, as the overview says them (C3-5). */
+  formWhat: (current: boolean, kind: 'formula' | 'poly' | 'table'): string =>
+    kind === 'formula' ? `${current ? 'current' : 'voltage'} source given by a formula` : `dependent source written as ${kind === 'poly' ? 'a polynomial (POLY)' : 'a table (TABLE)'}`,
+  droppedNote: (words: string[], nativeStops: boolean): string =>
+    nativeStops
+      ? `PlainSpice's engine drops the word before the formula (${words[0]}), so it changes nothing here: the output is the formula alone. Native ngspice stops at it (see the checks).`
+      : words.length === 1
+        ? `ngspice drops the word before the formula (${words[0]}), so it changes nothing: the output is the formula alone.`
+        : `ngspice drops the ${words.length === 2 ? 'two' : words.length === 3 ? 'three' : words.length} words before the formula (${words.join(' ')}), so they change nothing: the output is the formula alone.`,
+  kindWord: (word: string): string => `${word}: HSPICE's word for this kind of part, which ngspice takes out`,
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
   noGainNote: (word: string): string =>
     `This line has no ${word}. PlainSpice's engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".`,
@@ -1777,6 +1813,8 @@ interface PartContext {
   el: Element;
   info: ElementInfo | undefined;
   notes: string[];
+  /** For a line given by a formula, a table or a polynomial: where its keyword is among the fields, found once (CR1-9). */
+  formAt?: number;
 }
 
 function addNote(notes: string[], note: string | undefined): void {
@@ -1794,9 +1832,12 @@ function partFields(p: PartContext): FieldExplanation[] {
   const valueTokenFrom = el.value?.token.from;
   let acNext = false;
   const valueRoles: readonly FieldRole[] = ['value', 'gain', 'transconductance', 'transresistance'];
+  // Found once for the line: looked up for each word, it made Explain take time by the square of the words (CR1-9).
+  if (el.form) p.formAt = el.fields.findIndex((g) => g.token === el.form!.keyword);
   el.fields.forEach((f, k) => {
     const isNode = NODE_ROLES.has(f.role);
-    const label = labelFor(el.letter, f.role, isNode ? nodeIndex : 0);
+    // POLY(n)'s control nodes come in pairs, each labelled as the first pair is (C3-5).
+    const label = labelFor(el.letter, f.role, isNode ? (el.form && nodeIndex >= 2 ? 2 + ((nodeIndex - 2) % 2) : nodeIndex) : 0);
     if (isNode) {
       const ref = el.nodes[nodeIndex]!;
       rows.push(nodeRow(p, f, ref, nodeIndex, label));
@@ -1804,9 +1845,12 @@ function partFields(p: PartContext): FieldExplanation[] {
       return;
     }
     switch (f.role) {
-      case 'name':
-        rows.push(fieldOf(label, f.token, S.nameMeaning(f.token.text[0] ?? '', partWhat(p.info))));
+      case 'name': {
+        // Given by a formula, a polynomial or a table, the first letter says only what the output is (C3-5).
+        const what = el.form ? `dependent ${el.letter === 'G' || el.letter === 'F' ? 'current' : 'voltage'} source` : partWhat(p.info);
+        rows.push(fieldOf(label, f.token, S.nameMeaning(f.token.text[0] ?? '', what)));
         return;
+      }
       case 'control-source': {
         const c = controlSourceInfo(netlist, f.token);
         addNote(p.notes, c.note);
@@ -1871,8 +1915,17 @@ function partFields(p: PartContext): FieldExplanation[] {
       }
       case 'parameter': {
         const key = lowerAscii(f.token.text);
+        if (el.form) {
+          rows.push(formRow(p, f, k));
+          return;
+        }
         if (el.letter === 'B') {
           rows.push(bRow(p, f, k));
+          return;
+        }
+        // HSPICE's word for the part's kind after the output nodes (unknown-word-53).
+        if (k === 3 && el.letter && 'EFGH'.includes(el.letter) && key === { E: 'vcvs', F: 'cccs', G: 'vccs', H: 'ccvs' }[el.letter as 'E']) {
+          rows.push(fieldOf('kind', f.token, S.kindWord(f.token.text)));
           return;
         }
         const prev = el.fields[k - 1];
@@ -1983,6 +2036,65 @@ function otherWordMeaning(letter: ElementLetter | undefined, word: string): stri
 }
 
 /** A B line's words: V= or I= and the expression after it (M19). */
+/** A word of an E, F, G or H line given by a formula, a table or a polynomial, after its nodes (C3-5). */
+function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
+  const form = p.el.form!;
+  const at = p.formAt ?? p.el.fields.findIndex((g) => g.token === form.keyword);
+  // Before the keyword, or after VALUE without '=' and before its '{' (CR2-6): words ngspice drops.
+  if (k < at || (form.formula && k > at && f.token.to <= form.formula.from)) return fieldOf('dropped word', f.token, S.droppedWord);
+  if (k === at) {
+    if (form.kind === 'poly') return fieldOf('polynomial', f.token, S.polyKeyword);
+    if (form.kind === 'table') return fieldOf('table', f.token, S.tableKeyword);
+    return fieldOf('formula', f.token, S.formulaKeyword(f.token.text, p.el.letter === 'E' ? 'voltage' : 'current'));
+  }
+  if (form.kind === 'poly') return k === at + 1 ? fieldOf('polynomial', f.token, S.polyDimension(f.token.text)) : fieldOf('coefficient', f.token, S.polyCoefficient);
+  const whole = f.token.from === form.formula?.from && f.token.to === form.formula.to;
+  if (form.kind === 'table') return fieldOf('table', f.token, whole ? S.tableLooksUp : S.tablePoint);
+  return fieldOf('formula', f.token, whole ? S.formulaWhole : S.formulaPart);
+}
+
+/** A formula as written, on one line: continuation lines and runs of blanks read as one space. */
+function formulaText(t: Token | undefined): string {
+  return t ? t.text.replace(/\s*\n[ \t]*\+?\s*/g, ' ').replace(/[ \t]+/g, ' ') : '?';
+}
+
+/**
+ * An E, F, G or H line given by a formula, a table or a polynomial (C3-5): what its output is, the nodes a
+ * formula reads, and, for a table or a polynomial, that PlainSpice's engine cannot run it.
+ */
+function explainForm(p: PartContext, sentences: string[]): void {
+  const { el } = p;
+  const form = el.form!;
+  const [a, b, ...controls] = el.nodes;
+  const name = el.name.text;
+  if (form.kind === 'formula') {
+    // VALUE= with nothing after it, or empty braces: no formula yet (CR1-12), never "the formula ?".
+    if (!form.formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(form.formula.text)) {
+      sentences.push(S.formulaNone(name, form.keyword.text));
+      addNote(p.notes, S.formulaNote);
+      return;
+    }
+    const formula = formulaText(form.formula);
+    sentences.push(el.letter === 'E' ? S.formulaVoltage(voltagePhrase(a, b), formula) : S.formulaCurrent(formula, nodePhrase(a), nodePhrase(b)));
+    const read = [...new Map((el.reads ?? []).map((r) => [r.name, r])).values()];
+    if (read.length) sentences.push(S.formulaReads(S.listJoin(read.map((r) => nodeProse(r)))));
+    addNote(p.notes, S.formulaNote);
+    if (form.dropped) addNote(p.notes, S.droppedNote(form.dropped.map((t) => t.text), wordNativeStopsAt(form) !== undefined));
+    return;
+  }
+  if (form.kind === 'poly') {
+    const pairs: string[] = [];
+    for (let k = 0; k + 1 < controls.length; k += 2) pairs.push(voltagePhrase(controls[k], controls[k + 1]));
+    const sources = el.fields.filter((f) => f.role === 'control-source').map((f) => S.currentIn(f.token.text));
+    const of = S.listJoin(el.letter === 'E' || el.letter === 'G' ? pairs : sources);
+    sentences.push(of ? S.polySentence(name, of) : S.polyNone(name));
+  } else {
+    const of = form.formula ? formulaText(form.formula) : controls.length >= 2 ? voltagePhrase(controls[0], controls[1]) : undefined;
+    sentences.push(of ? S.tableSentence(name, of) : S.tableNone(name));
+  }
+  addNote(p.notes, S.xspiceNote);
+}
+
 function bRow(p: PartContext, f: Field, k: number): FieldExplanation {
   const key = lowerAscii(f.token.text);
   const next = p.el.fields[k + 1];
@@ -2086,7 +2198,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
   const info = el.letter ? elementInfo(el.letter) : undefined;
   const p: PartContext = { netlist, line, el, info, notes: [] };
   const fields = partFields(p);
-  const heading = S.partHeading(el.name.text, partWhat(info), info?.code);
+  const heading = el.form ? S.partHeading(el.name.text, S.formWhat(el.letter === 'G' || el.letter === 'F', el.form.kind)) : S.partHeading(el.name.text, partWhat(info), info?.code);
   const [a, b, c, d] = el.nodes;
   const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : paramValue(netlist, el);
   const sentences: string[] = [];
@@ -2171,6 +2283,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       break;
     }
     case 'E': {
+      if (el.form) {
+        explainForm(p, sentences);
+        break;
+      }
       if (a && b && c && d && value) {
         // P5: V(+) − V(−) = gain × (V(c+) − V(c−)).
         const gain = value.value !== undefined ? formatNumber(value.value) : value.text;
@@ -2181,6 +2297,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       break;
     }
     case 'G': {
+      if (el.form) {
+        explainForm(p, sentences);
+        break;
+      }
       if (a && b && c && d && value) {
         // P6: gm × (V(c+) − V(c−)) amps from the first node, through G, into the second.
         const gm = value.value !== undefined ? formatSI(value.value, 'A') : value.text;
@@ -2194,6 +2314,10 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
     }
     case 'F':
     case 'H': {
+      if (el.form) {
+        explainForm(p, sentences);
+        break;
+      }
       const control = el.controlSource;
       if (a && b && control && value) {
         if (el.letter === 'F') {

@@ -127,9 +127,12 @@ function compare(text: string): string[] {
     }
   }
 
-  // Nodes named in dot commands: v(a), v(gnd) ...
+  // Nodes named in dot commands: v(a), v(gnd) ..., and the nodes a formula reads (Element.reads: a B line's
+  // v(out), an E's VALUE={v(out)*2}), which the editor may show inside the formula's expression instead.
+  const reads = new Set(n.lines.flatMap((l) => (l.element?.reads ?? []).map((r) => r.token.from)));
   for (const info of n.nodes.values()) {
     for (const ref of info.refs) {
+      if (reads.has(ref.from) && hl.some((t) => t.type === 'expression' && t.from <= ref.from && ref.to <= t.to)) continue;
       const t = at(ref);
       if (!t || t.node !== info.name) problems.push(`the node ${info.name} at ${JSON.stringify(ref.text)} is shown as ${t ? `${t.type} ${t.node ?? ''}` : 'no word'}`);
     }
@@ -164,6 +167,24 @@ describe('the editor highlighter reads netlists as the verified parser does', ()
       '* t\nV1 a 0 6\nR1 a b 2\nVx b gnd\n+ 0\n.op\n.end\n',
     ]) {
       expect(compare(text)).toEqual([]);
+    }
+  });
+
+  it('E, F, G and H lines given by a formula, a table or POLY, or with HSPICE\'s word for their kind, agree (C3-5)', () => {
+    const divider = '* t\nV1 in 0 5\nVx in out 0\nR2 out 0 1k\n';
+    for (const line of [
+      'E1 e 0 VALUE={v(out)*2}', 'E1 e 0 value = {v(out)*2}', 'E1 e 0 VALUE {v(out)*2}', 'E1 e 0 VALUE=v(out)*2', "E1 e 0 vol='v(out)*2'",
+      'G1 0 e cur={v(out)*2m}', 'E1 e 0 in 0 VALUE={v(out)*2}', 'G1 0 e in 0 cur={v(out)*2m}',
+      'E1 e 0 POLY(1) out 0 0 2', 'E1 e 0 POLY(2) out 0 in 0 0 1 1', 'G1 0 e poly(1) out 0 0 2m', 'F1 0 e POLY(1) Vx 0 2', 'H1 e 0 POLY(2) Vx V1 0 1k 1k',
+      'E1 e 0 TABLE {v(out)} = (0,0) (5,10)', 'E1 e 0 out 0 table=(0,0,5,10)',
+      'E1 e 0 vcvs out 0 2', 'G1 0 e vccs out 0 2m', 'F1 0 e cccs Vx 2', 'H1 e 0 ccvs Vx 1k', 'E1 e 0 vcvs out 2', 'E1 e 0 POLY(1) value 0 0 2',
+      'E1 e 0 x VALUE={2}', 'E1 e 0 out 0 2 VALUE={v(out)*2}', 'E1 e 0 a b c d VALUE={2}', 'E1 e 0 VALUE=3', 'E1 e 0 VALUE v(out)*2',
+      // The round-2 critic (CR2-1, CR2-6): a sign or a bracket first; what ngspice drops between VALUE (no =) and its {.
+      'E1 e 0 VALUE=-v(out)*2', 'E1 e 0 VALUE=(1+v(out))*2', 'G1 0 e cur=(2m)', 'E1 e 0 x VALUE=(2)', 'E1 e 0 VALUE x {v(out)*2}', 'E1 e 0 VALUE v(out) {2}',
+      'E1 e 0 VALUE \u00a0{v(out)*2}', 'E1 e 0 VALUE\u00a0{v(out)*2}', 'E1 e 0 VALUE\u2009{v(out)*2}', 'E1 e 0 VALUE\u00a0=v(out)*2', 'E1 e 0 VALUE\u00a0=\u00a0{v(out)*2}',
+      'E1 e 0 VALUE\u00a0v(out)*2', 'G1 0 e VALUE\u200b{v(out)*2m}',
+    ]) {
+      expect(compare(`${divider}${line}\nRe e 0 1k\n.op\n.end\n`), line).toEqual([]);
     }
   });
 });

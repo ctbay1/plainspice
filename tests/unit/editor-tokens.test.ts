@@ -144,6 +144,40 @@ describe('tokenizer: what ngspice 47 does with odd lines', () => {
   });
 });
 
+describe('tokenizer: E, F, G and H given by a formula, POLY or the word for their kind (C3-5)', () => {
+  it('an E or G formula is shown as on a B line; the two words before VALUE= that ngspice drops are not nodes', () => {
+    expect(tok('E1 e 0 VALUE=v(out)*2')).toEqual([
+      'E1:element', 'e:node=e', '0:ground=0', 'VALUE:parameter', '=:operator',
+      'v:expression', '(:expression', 'out:expression', '):expression', '*:expression', '2:expression',
+    ]);
+    expect(tok('G1 0 e in 0 cur=v(out)*2m')).toEqual([
+      'G1:element', '0:ground=0', 'e:node=e', 'in:word', '0:word', 'cur:parameter', '=:operator',
+      'v:expression', '(:expression', 'out:expression', '):expression', '*:expression', '2m:expression',
+    ]);
+    expect(tok('E1 e 0 VALUE {v(out)*2}')).toEqual(['E1:element', 'e:node=e', '0:ground=0', 'VALUE:keyword', '{v(out)*2}:expression']);
+    expect(tok('E1 e 0 out 0 2 VALUE={v(out)*2}')).toEqual([
+      'E1:element', 'e:node=e', '0:ground=0', 'out:word', '0:word', '2:word', 'VALUE:parameter', '=:operator', '{v(out)*2}:expression',
+    ]);
+  });
+
+  it('POLY(n): n pairs of control nodes (E, G) or n voltage sources (F, H), then the coefficients', () => {
+    expect(tok('E1 e 0 POLY(2) out 0 in 0 0 1 1')).toEqual([
+      'E1:element', 'e:node=e', '0:ground=0', 'POLY:keyword', '(:punctuation', '2:number', '):punctuation',
+      'out:node=out', '0:ground=0', 'in:node=in', '0:ground=0', '0:number', '1:number', '1:number',
+    ]);
+    expect(tok('H1 e 0 POLY(2) Vx V1 0 1k 1k')).toEqual([
+      'H1:element', 'e:node=e', '0:ground=0', 'POLY:keyword', '(:punctuation', '2:number', '):punctuation',
+      'Vx:elementRef', 'V1:elementRef', '0:number', '1:number', 'k:scale', '1:number', 'k:scale',
+    ]);
+  });
+
+  it("HSPICE's word for the kind is a keyword on a line of exactly seven words (E, G) or six (F, H), else a node", () => {
+    expect(tok('E1 e 0 vcvs out 0 2')).toEqual(['E1:element', 'e:node=e', '0:ground=0', 'vcvs:keyword', 'out:node=out', '0:ground=0', '2:number']);
+    expect(tok('F1 0 e cccs Vx 2')).toEqual(['F1:element', '0:ground=0', 'e:node=e', 'cccs:keyword', 'Vx:elementRef', '2:number']);
+    expect(tok('E1 e 0 vcvs out 2')).toEqual(['E1:element', 'e:node=e', '0:ground=0', 'vcvs:node=vcvs', 'out:node=out', '2:number']);
+  });
+});
+
 describe('tokenizer: continuation lines', () => {
   it('a + line continues the part before it, across comment and blank lines', () => {
     expect(tok('+ 2', ['R1 n1 0'])).toEqual(['+:continuation', '2:number']);
