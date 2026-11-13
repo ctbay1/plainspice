@@ -276,6 +276,40 @@ describe('the drawing editor\'s rename leaves the old name nowhere ngspice reads
   });
 });
 
+describe('a character that looks like a space in a formula (space-character-22 to -24, nbsp-4)', () => {
+  it('stops ngspice: an error whose fix takes it out', () => {
+    for (const [line, ch, id, says] of [
+      [`B1 e 0 V=v(out)${THIN}*2`, THIN, 'space-character', "'unknown parameter (_)'"],
+      [`B1 e 0 V={v(out)${THIN}*2}`, THIN, 'space-character', "'unknown parameter (_)'"],
+      [`E1 e 0 VALUE={v(out)${THIN}*2}`, THIN, 'space-character', "'unknown parameter (_)'"],
+      [`B1 e 0 V=v${THIN}(out)*2`, THIN, 'space-character', "'Undefined parameter [v]'"],
+      [`B1 e 0 V=v(out)${NBSP}*2`, NBSP, 'nbsp', "'unknown parameter (_)'"],
+      [`G1 0 e cur={v(out)${THIN}*2m}`, THIN, 'space-character', "'unknown parameter (_)'"],
+      [`E1 e 0 VALUE={v${THIN}(out)*2}`, THIN, 'space-character', "'Undefined parameter [v]'"],
+      [`B1 e 0 V={v${NBSP}(out)*2}`, NBSP, 'nbsp', "'Undefined parameter [v]'"],
+    ] as const) {
+      const text = `* t\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`;
+      const traps = checkTraps(parseNetlist(text));
+      expect(traps.map((t) => `${t.id} ${t.severity}`), line).toEqual([`${id} error`]);
+      expect(traps[0]!.ngspice, line).toContain(says);
+      expect(traps[0]!.fixes.map((f) => f.label), line).toEqual(['Take it out']);
+      const fixed = applyFix(text, traps[0]!.fixes[0]!);
+      expect(fixed, line).not.toContain(ch);
+      expect(ids(fixed), line).toEqual([]);
+    }
+  });
+
+  it('inside a node\'s name in a formula it is the node\'s check, never "Replace it with a normal space" (v(o ut) stops ngspice)', () => {
+    for (const formula of [`V=v(o${THIN}ut)*2`, `V={v(o${THIN}ut)*2}`]) {
+      const text = `* t\nV1 giris 0 10\nR1 giris o${THIN}ut 1k\nR2 o${THIN}ut 0 1k\nB1 b 0 ${formula}\nRb b 0 1k\n.op\n.end\n`;
+      const traps = checkTraps(parseNetlist(text));
+      expect(traps.map((t) => t.id), formula).toEqual(['space-character']);
+      expect(traps.flatMap((t) => t.fixes.map((f) => f.label)), formula).toEqual(['Take it out: name the node out']);
+      expect(applyFix(text, traps[0]!.fixes[0]!), formula).toContain('v(out)*2');
+    }
+  });
+});
+
 describe('Explain, the overview and the drawing for E, F, G and H written as a formula, a table or a polynomial', () => {
   it('Explain says what the output is and which nodes the formula reads', () => {
     const n = parseNetlist(`* t\n${DIVIDER}E1 e 0 VALUE={v(out)*2}\nG1 0 g cur={v(in,out)*2m}\nRe e 0 1k\nRg g 0 1k\n.op\n.end\n`);

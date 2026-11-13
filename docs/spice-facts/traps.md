@@ -61,7 +61,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [sign-in-value](#sign-in-value) | `1k-2`, `1d-3` on R, C or L | warning | keeps the second number: −2 Ω, silently (C, L: a model warning) |
 | [space-before-suffix](#space-before-suffix) | `1 k`, `5 V`, `1 m` | error | stops, or silently takes the word as a setting |
 | [midline-comment](#midline-comment) | `R1 a b 2 * load` | error | stops |
-| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`) | warning, error | glues two words, silently; ends the number (on C and L ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); after a sign: stops |
+| [nbsp](#nbsp) | a no-break space between two words, or between a value and its unit (`4.7<NBSP>kΩ`), or right after a sign (`-<NBSP>1m`), or in a formula | warning, error | glues two words, silently; ends the number (on C and L ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); after a sign or in a formula: stops |
 | [missing-value](#missing-value) | `R1 a 0`, `V1 a 0`, `E1 a 0 c 0`, `E1 a 0 c 0 gain` (not an E or G given by a formula, `VALUE={...}`) | error, warning | R, C, L left out; V, I are 0; E-H: see text |
 | [missing-fields](#missing-fields) | `R1 a`, `V1 a`, `E1 a 0 2`, `F1 0 a 5` | error, warning | R, C, L left out; others stop or misread |
 | [control-source](#control-source) | `F1 0 a V9 2` with no V9, or a control with no current to read (R, L, C, I, F, G, a B line with I=) | error | stops |
@@ -92,7 +92,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [non-ascii-node](#non-ascii-node) | a node name with a letter outside a to z (`giriş`); two names ngspice spells the same (`ş` and `ç`) | warning, error | writes each byte as `_`; joins the two nodes, silently |
 | [invisible-character](#invisible-character) | an invisible character inside a value (`1<ZWSP>k`) or a node name (`ou<ZWSP>t`), a number of `.tran`, `.dc`, `.ac` or `.noise`, of a source's function, AC value or setting | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; at the start of a value: stops; elsewhere: as the place does with the number read, or nothing claimed where the line has a problem of its own |
 | [look-alike-letter](#look-alike-letter) | a letter from another alphabet in a value (`1к`, `1κ`, `1ｋ`, `2м`), the Kelvin sign, a fullwidth digit or full stop, a minus sign or a dash from a document (`1e−3`, `−5`), a document's decimal point (`4·7k`), the letter O for the digit 0 (`1Ok`, `1OkΩ`, `1OOk`, `1OA`, `O.47k`), another character outside ASCII inside a number (`4。7k`) | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); at the start of a value: stops; elsewhere: as the place does with the number read |
-| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), right after a sign (`-<THIN>5`), in a node name (`o<THIN>ut`) or between two words | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; glues two words, silently (on an analysis line the glued word is one number: as its place does with it); at the start of a value or right after a sign: stops |
+| [space-character](#space-character) | another character that looks like a space: a thin, narrow no-break or ideographic space between a value and its unit (`4.7<THIN>kΩ`), between groups of digits (`10<THIN>000`, `10<THIN>000<THIN>Ω`), right after a sign (`-<THIN>5`), in a node name (`o<THIN>ut`), in a formula (`V=v(out)<THIN>*2`) or between two words | warning, error | ends the number silently (on C and L, ngspice warns it can't find a model; a resistor read as 0: see zero-ohm); another node; glues two words, silently (on an analysis line the glued word is one number: as its place does with it); at the start of a value, right after a sign or in a formula: stops |
 
 ## mega-as-milli
 
@@ -2029,7 +2029,7 @@ PlainSpice's checks: no trap.
 
 ## nbsp
 
-A no-break space (U+00A0) inside a word of a part, dot-command or continuation line, usually from text copied out of a web page or a PDF. Warning. Fix: a normal space. Between a value and its unit, as documents write `4.7 kΩ` (added after the critic of the fixes for the final reviews, 12 November 2026), the value is read the way the document meant it and the fix writes it for SPICE, `4.7k`, as for the other characters that look like a space (space-character).
+A no-break space (U+00A0) inside a word of a part, dot-command or continuation line, usually from text copied out of a web page or a PDF. Warning. Fix: a normal space. In a formula ngspice stops, and the fix takes it out (nbsp-4; added after the last pass, 13 November 2026, as for the other characters that look like a space, space-character-22). Between a value and its unit, as documents write `4.7 kΩ` (added after the critic of the fixes for the final reviews, 12 November 2026), the value is read the way the document meant it and the fix writes it for SPICE, `4.7k`, as for the other characters that look like a space (space-character).
 
 What PlainSpice shows for nbsp-1 (warning, line 3):
 
@@ -2143,6 +2143,49 @@ ngspice 42, ngspice -b (exit 1):
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
+```
+
+PlainSpice's checks: `nbsp`.
+
+### nbsp-4. A no-break space in a formula stops ngspice too: taken out, the formula runs
+
+```spice
+* a no-break space in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)<NBSP>*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
 ```
 
 PlainSpice's checks: `nbsp`.
@@ -16319,6 +16362,15 @@ names it and its fix takes it out, which connects the parts to `out` when the ne
 dangling-node check then says nothing about the pair. Where a part on the node has no value, the character
 stands where a space was meant, and the glue check's fix stays (space-character-4).
 
+After the last pass (13 November 2026, code review C3-1): in a B source's formula (a B line's, and an E
+or G line's given by `VALUE=`, `vol=` or `cur=`, which ngspice makes a B line) ngspice reads the character
+as part of a name, and stops: "unknown parameter (_)", or right after a `v`, "Undefined parameter [v]",
+with braces around the formula or not (space-character-22, -23; nbsp-4 for a no-break space). An error, whose fix takes the character out: a
+normal space between a `v` and its bracket stops ngspice too (space-character-23). Inside a node's name in
+a formula, `v(o<THIN>ut)`, it is that node, and the node's check takes it out there as on the part lines
+(space-character-24); the glue check's "Replace it with a normal space" wrote `v(o ut)` there, which
+ngspice cannot read.
+
 After the re-check of those fixes (12 November 2026): a sign followed by such a character (`-<THIN>5`,
 or a minus sign from a document and then one) is no number either, and ngspice stops; the check says
 where the character is, as for an invisible one, and its fix writes the sign and the number together,
@@ -17294,5 +17346,145 @@ The same with a no-break space, `o<NBSP>ut` (the check's id is `nbsp`), native 4
 `-b -r`: "no data saved for D.C. Transfer curve analysis", exit 1, no results; with the fix, v(out) = 0,
 4, 8. With something else saved the run goes on (`save v(o<THIN>ut) i(v1)`, `save v(o<NBSP>ut) i(v1)`:
 exit 0, i(v1) saved).
+
+PlainSpice's checks: `space-character`.
+
+### space-character-22. A character that looks like a space in a formula stops ngspice: taken out, the formula runs
+
+In a formula, ngspice reads the character as part of a name (each of its bytes becomes `_`), and the formula has no such name: "unknown parameter (_)". A normal space would do there, but taking it out always does, so the fix takes it out. (ngspice also prints "Preparing expression for numparam" and "What is this?" with the bytes it could not read; those lines are left out below.)
+
+```spice
+* a thin space in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)<THIN>*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) _ _ _ *   2.0000000000e+00
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-23. Between v and its bracket: ngspice takes the v for a .param name, and a normal space would stop it too
+
+Right after `v`, ngspice reads the v as a name of its own: "Undefined parameter [v]". With a normal space there, outside braces, it stops too (`V=v (out)*2`, native 47 and 42 and our engine: "Undefined parameter [v]", "Cannot compute substitute"), so here the fix must take the character out.
+
+```spice
+* a thin space between v and its bracket
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v<THIN>(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error in netlist line no. 7, new internal line no. 5:
+    Undefined parameter [v]
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+    Undefined parameter [v]
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+with a normal space there, V=v (out)*2:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-24. A character that looks like a space in a node a formula reads: the fix takes it out of the formula too
+
+The node o<THIN>ut, on R1, R2 and in the formula, is one node (ngspice spells it o___ut): b = 10 V. "Take it out: name the node out" writes out in all three, and the circuit is the same. The fix the check offered before for the formula, "Replace it with a normal space", wrote v(o ut), which ngspice cannot read: native 47 "YYparse error, syntax error, in expression", 42 "PTerror: syntax error"; that fix is no longer offered there.
+
+```spice
+* a thin space in a node a formula reads
+V1 giris 0 10
+R1 giris o<THIN>ut 1k
+R2 o<THIN>ut 0 1k
+B1 b 0 V={v(o<THIN>ut)*2}
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        o___ut                           5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(o___ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(o___ut) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Take it out: name the node out" (space-character), which writes `R1 giris out 1k`, `R2 out 0 1k`, `B1 b 0 V={v(out)*2}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(out) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+the netlist the old fix "Replace it with a normal space" wrote, V={v(o ut)*2}:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none)
+```
 
 PlainSpice's checks: `space-character`.

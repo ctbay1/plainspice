@@ -176,6 +176,8 @@ interface Ctx {
   nextNumber: Map<string, number>;
   /** Value words with a character that looks like a space, by offset, that checkSpaceInValue read: checkSpaces leaves them alone. */
   spaced: Set<number>;
+  /** The characters that look like a space inside node names checkSpaceNodes explains, by offset (a name inside {v(…)} too): checkSpaces leaves them alone. */
+  spacedChars: Set<number>;
   /** The drawing's `*@ label` lines, by the node they name as ngspice reads it, with the name as written (lower-case), read on the first rename (labelChanges). */
   labels?: Map<string, { span: Span; form: string }[]>;
   /** The node names on the commands for ngspice (.control, *#, ##), by node, read on the first use (controlNodes). */
@@ -411,6 +413,7 @@ function context(n: Netlist): Ctx {
     byLine: new Map(),
     nextNumber: new Map(),
     spaced: new Set(),
+    spacedChars: new Set(),
     meant: new Map(),
     places: new Map(),
     subOf: new Map(),
@@ -1903,6 +1906,21 @@ function gluedOnAnalysis(c: Ctx, l: NetlistLine, t: Token, bare: string): { says
   };
 }
 
+/** The part a line belongs to: its own, or for a continuation line the part it continues. */
+function cardOf(c: Ctx, l: NetlistLine): Element | undefined {
+  return l.element ?? (l.continues === undefined ? undefined : c.n.lines[l.continues]?.element);
+}
+
+/**
+ * A word of a B source's formula (C3-1): on a B line after its nodes, and on an E or G line written with
+ * VALUE=, vol= or cur= after that word, which ngspice makes a B line (space-character-22, -23).
+ */
+function inFormula(c: Ctx, l: NetlistLine, t: Token): boolean {
+  const e = cardOf(c, l);
+  if (e?.letter === 'B') return e.nodes.length === 2 && t.from >= e.nodes[1]!.token.to;
+  return e?.form?.kind === 'formula' && t.from > e.form.keyword.from;
+}
+
 /**
  * A character that looks like a space but is none for SPICE, between two words of a line (nbsp-1,
  * space-character-4): ngspice reads it as part of the word, so the words on either side become one.
@@ -1913,16 +1931,32 @@ function gluedOnAnalysis(c: Ctx, l: NetlistLine, t: Token, bare: string): { says
 function checkSpaces(c: Ctx): void {
   for (const l of c.n.lines) {
     if (l.kind !== 'element' && l.kind !== 'directive' && l.kind !== 'continuation') continue;
-    const tokens = l.tokens.filter((x) => hasSpaceLike(x.text) && !c.spaced.has(x.from));
+    // The characters inside a node's name are checkSpaceNodes', also inside a formula ({v(o<thin>ut)}).
+    const odd = (x: Token): number[] => [...x.text].flatMap((ch, k) => (SPACE_LIKE.test(ch) && !c.spacedChars.has(x.from + k) ? [x.from + k] : []));
+    const tokens = l.tokens.filter((x) => hasSpaceLike(x.text) && !c.spaced.has(x.from) && odd(x).length > 0);
     const t = tokens[0];
     if (!t) continue;
+    // In a formula ngspice reads the character as part of a name and stops (space-character-22, nbsp-4):
+    // taken out, the formula reads as meant; a normal space between v and its ( would stop it too.
+    const formula = tokens.every((x) => inFormula(c, l, x));
     const changes: TextChange[] = [];
-    for (const x of tokens) for (let k = 0; k < x.text.length; k++) if (SPACE_LIKE.test(x.text[k]!)) changes.push(change(x.from + k, x.from + k + 1, ' '));
-    const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
+    for (const x of tokens) for (const at of odd(x)) changes.push(change(at, at + 1, formula ? '' : ' '));
+    const ch = c.text[odd(t)[0]!]!;
     const shown = shownWord(t.text);
     const bare = nameOfCharacter(ch, false)!.replace(/^an? /, '');
     const glued = gluedOnAnalysis(c, l, t, bare);
     for (const x of tokens.slice(1)) c.meant.set(x.from, 'split');
+    if (formula) {
+      const what = describeCharacter(ch);
+      // Right after a v and before its (, ngspice takes the v for a .param name.
+      const at = odd(t)[0]!;
+      const afterV = /(^|[^A-Za-z0-9_\u0080-\uffff])[vV]$/.test(c.text.slice(Math.max(0, at - 2), at)) && /^[\s\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]*\(/.test(c.text.slice(at, at + 16));
+      add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'error', t, `${capital(what)} stops the formula of ${nameOf(cardOf(c, l)!)}`,
+        `This formula has ${what}, which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one: it reads it as part of a name, and the formula has no such name. A formula needs no spaces.`,
+        `ngspice stops: '${afterV ? 'Undefined parameter [v]' : 'unknown parameter (_)'}'. [${ch === '\u00a0' ? 'nbsp-4' : 'space-character-22'}]`,
+        [fix('Take it out', ...changes)]);
+      continue;
+    }
     const replaceAll = fix('Replace it with a normal space', ...changes);
     const fixes = !glued ? [replaceAll] : [...(glued.whole ? [glued.whole] : []), ...(glued.space ? [replaceAll] : [])];
     const severity: TrapSeverity = glued?.stops ? 'error' : 'warning';
@@ -3262,7 +3296,10 @@ function checkSpaceNodes(c: Ctx): void {
       return !!e.letter && VALUE_LETTERS.has(e.letter) && !e.value && !e.form && !e.fields.some((f) => f.role === 'model');
     });
     if (valueless) continue;
-    for (const r of info.refs) c.spaced.add(r.from);
+    for (const r of info.refs) {
+      c.spaced.add(r.from);
+      for (let k = 0; k < r.text.length; k++) if (SPACE_LIKE.test(r.text[k]!)) c.spacedChars.add(r.from + k);
+    }
     const t = info.refs[0]!;
     const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
     const clean = withoutSpaces(t.text);
@@ -4328,7 +4365,8 @@ export function expressionNames(expr: string): string[] {
       const from = k;
       while (k < s.length && /[A-Za-z0-9_]/.test(s[k]!)) k += 1;
       let p = k;
-      while (p < s.length && s[p] === ' ') p += 1;
+      // A character that looks like a space before the ( is the space-character check's (space-character-23).
+      while (p < s.length && (s[p] === ' ' || SPACE_LIKE.test(s[p]!))) p += 1;
       const word = lowerAscii(s.slice(from, k));
       if (s[p] !== '(') out.push(word);
       else if (word === 'v' || word === 'i') {

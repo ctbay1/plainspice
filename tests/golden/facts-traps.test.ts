@@ -501,6 +501,10 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-19', netlist: "* .pz on a node with Turkish letters\nV1 giris 0 dc 10 ac 1\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nC1 \u00e7\u0131k\u0131\u015f 0 1u\n.pz giris 0 \u00e7\u0131k\u0131\u015f 0 vol pz\n.end\n", traps: ['non-ascii-node'] },
   { code: 'invisible-character-67', netlist: "* a zero-width space in a node a formula reads\nV1 giris 0 10\nR1 giris ou\u200bt 1k\nR2 ou\u200bt 0 1k\nB1 b 0 V=v(ou\u200bt)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['invisible-character'] },
   { code: 'look-alike-letter-18', netlist: "* a Cyrillic o in a node a formula reads\nV1 giris 0 10\nR1 giris \u043eut 1k\nR2 \u043eut 0 1k\nB1 b 0 V=v(\u043eut)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['look-alike-letter'] },
+  { code: 'space-character-22', netlist: "* a thin space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u2009*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-23', netlist: "* a thin space between v and its bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v\u2009(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["Undefined parameter [v]"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-24', netlist: "* a thin space in a node a formula reads\nV1 giris 0 10\nR1 giris o\u2009ut 1k\nR2 o\u2009ut 0 1k\nB1 b 0 V={v(o\u2009ut)*2}\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['space-character'] },
+  { code: 'nbsp-4', netlist: "* a no-break space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u00a0*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -654,6 +658,7 @@ it('C3-1: a rename reaches the formulas, .pz and the lines after .end, so the re
     ['non-ascii-node-19', '\u00e7\u0131k\u0131\u015f', { 'v(pole(1))': -2000 }, { 'v(pole(1))': -2000 }],
     ['invisible-character-67', 'ou\u200bt', { 'v(b)': 10, 'v(ou___t)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
     ['look-alike-letter-18', '\u043eut', { 'v(b)': 10, 'v(__ut)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
+    ['space-character-24', 'o\u2009ut', { 'v(b)': 10, 'v(o___ut)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
   ];
   for (const [code, old, before, after] of cases) {
     const f = rename(code);
