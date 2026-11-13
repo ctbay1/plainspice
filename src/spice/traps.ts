@@ -1660,7 +1660,7 @@ function suffixVerdict(letter: ElementLetter, word: string, name: string): strin
     if (letter === 'G' || letter === 'F') return `PlainSpice's engine takes m as ${name}'s multiplier, given no value, and says nothing: ${name} then gives no current. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops: 'MIF-ERROR ... Bad real value'. [space-before-suffix-11]`;
   }
   if ((w === 'p' && 'RCL'.includes(letter)) || (w === 'v' && letter === 'L')) {
-    return `ngspice stops: 'no such parameter on this device or parameter is missing' (${w} is a value ngspice can report for the part, not one you can set). [space-before-suffix-12]`;
+    return `ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'), as ${w} is a value ngspice can report for the part, not one you can set. [space-before-suffix-12]`;
   }
   if ('EFGH'.includes(letter)) {
     // p, v (and i) name values E, F, G and H can only report: a different message (space-before-suffix-15).
@@ -1848,7 +1848,9 @@ function checkUnknownWord(c: Ctx, i: number): void {
     ? number
       ? `PlainSpice's engine stops: '${message}'. Native ngspice 47, which has the XSPICE extension, reads the extra number as part of a polynomial and runs. [unknown-word-4]`
       : `PlainSpice's engine stops: '${message}'. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [${report ? 'unknown-word-11' : 'unknown-word-5'}]`
-    : `ngspice stops: '${message}'. [${claims}]`;
+    : report
+      ? `ngspice 47 stops: '${message}' (ngspice 42: 'no such parameter on this device'). [${claims}]`
+      : `ngspice stops: '${message}'. [${claims}]`;
   const fixes: Fix[] = [];
   if (glued && /[dDeE]$/.test(prev.token.text) && /^[+-]\d/.test(word) && readNumber(`${prev.token.text.slice(0, -1)}e${word}`)) {
     const meant = `${prev.token.text.slice(0, -1)}e${word}`;
@@ -2143,7 +2145,7 @@ function checkGround(c: Ctx): void {
       anchor,
       'No ground: no node is called 0',
       "Without ground, SPICE can't pin the voltages down. It warns about a singular matrix, which means its equations have no single answer, and any numbers it still prints can't be trusted. Every circuit needs one node called 0 (gnd works too).",
-      "ngspice warns 'singular matrix', falls back to a 'transient op' and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]",
+      "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]",
       cand ? [fix(`Make ${cand.name} the ground (rename it to 0)`, ...renameNode(cand, GROUND))] : [],
     );
     return;
@@ -2316,7 +2318,7 @@ function checkFloating(c: Ctx): void {
       ? `${warns} and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4${named ? '' : ', floating-dc-10'}]`
       : mixed
         ? `ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4${g.conductors.length > 0 ? ', floating-dc-9' : ''}]`
-        : `${warns}, falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5${named ? '' : ', floating-dc-7, floating-dc-8'}]`;
+        : `${warns}, falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5${named ? '' : ', floating-dc-7, floating-dc-8'}]`;
     const fixes: Fix[] = [];
     if (!failing && !mixed && kinds.size > 0) {
       const target = g.nodes[0]!;
@@ -2348,7 +2350,7 @@ function currentSourceNoPath(c: Ctx, g: DcGroup, kinds: Set<string>): void {
   if (other.length === 0 && g.conductors.length === 0 && onlyI) {
     ngspice = 'ngspice says nothing and acts as if there were 1 Ω from the node to ground: in one test, 1 A into such a node gave 1 V. [current-source-no-path-2, current-source-no-path-3]';
   } else if (other.every((k) => k === 'capacitor') && onlyI) {
-    ngspice = "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [current-source-no-path-1]";
+    ngspice = "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [current-source-no-path-1]";
   } else if (other.length === 0 && g.conductors.length === 0) {
     ngspice = "ngspice warns 'singular matrix' and then stops: 'The operating point could not be simulated successfully'. No results. [current-source-no-path-4, current-source-no-path-5]";
   } else {
@@ -2385,7 +2387,7 @@ function loopTrap(c: Ctx, loop: VoltageLoop): void {
         ? `${name} connects node ${node} to itself, so it does nothing, and its current is not defined: SPICE's equations have no single answer.`
         : `A source with both ends on the same node is shorted by itself: it can't make any voltage, and SPICE's equations have no single answer.`,
       e.letter === 'L'
-        ? "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers it can't trust. [voltage-loop-11]"
+        ? "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers it can't trust. [voltage-loop-11]"
         : `ngspice stops: 'instance ${lowerAscii(name)} is a shorted ${what}'. [voltage-loop-8, voltage-loop-9, voltage-loop-10]`,
     );
     return;
@@ -2412,7 +2414,7 @@ function loopTrap(c: Ctx, loop: VoltageLoop): void {
     title,
     why,
     loop.inductor
-      ? "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [voltage-loop-5]"
+      ? "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [voltage-loop-5]"
       : c.opNeeded
         ? "ngspice warns 'singular matrix' and then stops: 'The operating point could not be simulated successfully'. No results. [voltage-loop-1, voltage-loop-2, voltage-loop-3, voltage-loop-4]"
         : "With uic there is no operating point, but the loop still fails: ngspice warns 'singular matrix' and then stops: 'Timestep too small'. No results. [voltage-loop-7]",
@@ -4002,7 +4004,7 @@ function checkEnd(c: Ctx): void {
       : change(c.text.length, c.text.length, `${c.text.endsWith('\n') ? '' : '\n'}.op\n`);
     add(c, 'no-analysis', 'error', anchor, 'No analysis: nothing will run',
       'A netlist describes a circuit; an analysis line tells SPICE what to work out. .op finds the DC voltages and currents, .dc sweeps a source, .tran shows how the circuit changes in time.',
-      "ngspice reads the circuit and runs nothing. In batch mode it ends with 'no simulations run!'; PlainSpice's engine gives no results and no message. [no-analysis-1]",
+      "ngspice reads the circuit and runs nothing. In batch mode ngspice 47 ends with 'no simulations run!' and ngspice 42 with 'Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run'; PlainSpice's engine gives no results and no message. [no-analysis-1]",
       [fix(endLine ? 'Add .op before .end' : 'Add .op at the end', insert)]);
   }
   if (c.n.end === undefined) {
@@ -4159,7 +4161,7 @@ function checkSyntax(c: Ctx): void {
       if (!kind) {
         add(c, 'fatal-syntax', 'error', e.name, `${nameOf(e)} needs V= or I=`,
           'A line starting with B is a behavioural source: its voltage or current is a formula, written V=... or I=..., for example B1 out 0 V=2*v(in).',
-          "ngspice stops with a fatal error: 'mal formed B source instance'. [fatal-syntax-7]");
+          "ngspice 47 stops with a fatal error: 'mal formed B source instance' (ngspice 42: 'mal formed B line'). [fatal-syntax-7]");
       } else if (params.length < 2) {
         add(c, 'fatal-syntax', 'error', params[0]?.token ?? e.name, `${nameOf(e)} has an empty formula`,
           `After ${kind.toUpperCase()}= comes the formula, for example B1 out 0 V=2*v(in).`,
@@ -4269,9 +4271,14 @@ function checkUnknownDots(c: Ctx): Set<number> {
     const near = COMMON_DOTS.filter((x) => fits(x) && nearDot(d.name, x)).slice(0, 2);
     if (near.some((x) => ANALYSIS_DOTS.has(x))) analysisTypos.add(l.index);
     const word = d.token.text;
-    add(c, 'unknown-dot-command', 'error', d.token, `ngspice does not know ${word}`,
-      `A line starting with a dot is a dot command for SPICE, and ${word} is not one ngspice knows${near.length ? `. Did you mean ${near.join(' or ')}?` : '.'} To keep the line as a note, start it with * instead.`,
-      `ngspice stops before running anything, with 'unimplemented dot command' for ${lowerAscii(word)}. [unknown-dot-command-1, unknown-dot-command-2]`,
+    // ngspice 42 knows .pss; ngspice 47 as built for PlainSpice does not (unknown-dot-command-2, A29b; last pass F10).
+    const pss = d.name === '.pss';
+    const who = pss ? 'ngspice 47' : 'ngspice';
+    add(c, 'unknown-dot-command', 'error', d.token, `${who} does not know ${word}`,
+      `A line starting with a dot is a dot command for SPICE, and ${word} is not one ${who} knows${pss ? ' as built for PlainSpice (ngspice 42 knows it)' : ''}${near.length ? `. Did you mean ${near.join(' or ')}?` : '.'} To keep the line as a note, start it with * instead.`,
+      pss
+        ? "ngspice 47 stops before running anything, with 'unimplemented dot command' for .pss; ngspice 42 knows .pss. [unknown-dot-command-2]"
+        : `ngspice stops before running anything, with 'unimplemented dot command' for ${lowerAscii(word)}. [unknown-dot-command-1]`,
       [...near.map((x) => fix(`Use ${x}`, replace(d.token, x))), commentFix(c, l)]);
   }
   return analysisTypos;

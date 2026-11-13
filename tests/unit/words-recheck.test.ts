@@ -681,7 +681,7 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     const S3 = '* t\nV1 in 0 5\nC1 in node1 1u\nR1 node1 x 1k\nC2 x 0 1u\n.op\n.end\n';
     const [s3] = traps(S3, 'floating-dc');
     expect(s3!.title).toBe('node1 and x have no DC path to ground');
-    expect(s3!.ngspice).toBe("ngspice warns 'singular matrix: check node …' (it names one of the nodes with no DC path), falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5, floating-dc-7, floating-dc-8]");
+    expect(s3!.ngspice).toBe("ngspice warns 'singular matrix: check node …' (it names one of the nodes with no DC path), falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5, floating-dc-7, floating-dc-8]");
     const tr = traps('* t\nV1 in 0 5\nC1 in ÇIKIŞ 1u\nR2 ÇIKIŞ GİRİŞ 1k\nC2 GİRİŞ 0 1u\n.op\n.end\n', 'floating-dc');
     const two = traps('* t\nV1 in 0 6\nC1 in a 1u\nC2 a 0 1u\nC3 in b 1u\nC4 b 0 1u\n.op\n.end\n', 'floating-dc');
     const apart = traps('* t\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\n.op\n.end\n', 'floating-dc');

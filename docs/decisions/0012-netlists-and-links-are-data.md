@@ -732,3 +732,20 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     bullet said not running `.control` blocks would close it: it would not, as `*#` lines run outside
     them.
 
+
+## After the last pass (13 November 2026)
+
+- **A message one version prints is said as that version's** (last pass F10). Five trap texts quoted
+  ngspice 47's words as plain "ngspice", where native ngspice 42 prints other words or runs: "no such
+  parameter on this device or parameter is missing" (42: "no such parameter on this device"), on a
+  value R, C or L can only report written after the value (space-before-suffix-12, unknown-word-6,
+  and the C and L runs recorded beside them), "mal formed B source instance" (42: "mal formed B
+  line", fatal-syntax-7), "no simulations run!" (42: 'Note: No ".plot", ".print", or ".fourier"
+  lines; no simulations run', no-analysis-1), and "unimplemented dot command" for `.pss`, which
+  ngspice 47 as built for PlainSpice does not know and ngspice 42 does (unknown-dot-command-2, A29b).
+  Each now says "ngspice 47 …" with ngspice 42's words beside it, as the newer texts do; for `.pss`
+  the title and the why say "ngspice 47" too, and a misspelt dot command, which stops both, keeps
+  "ngspice" and cites only unknown-dot-command-1. The fallback ngspice takes when its DC solution
+  fails is quoted as it prints it, "Note: Transient op started", where five texts quoted a
+  lower-case 'transient op'. A unit test (`tests/unit/traps-last-pass-words.test.ts`) checks, on the
+  parts that reach these texts, that none of these 47-only messages is put to plain "ngspice".

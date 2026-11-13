@@ -1266,6 +1266,8 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `space-before-suffix`.
 
+After the last pass (13 November 2026), with V1 in 0 1 and R9 in out 1k: `C1 out 0 1 p` and `L1 out 0 1 v` (v is another value an inductor can only report) give the same two messages, native 47's "no such parameter on this device or parameter is missing" and native 42's "no such parameter on this device" (exit 1 in both), so the check says each version's words.
+
 ### space-before-suffix-13. G1 0 b a 0 2 k
 
 ```spice
@@ -3367,7 +3369,7 @@ What PlainSpice shows for no-ground-1 (error, line 2):
 
 > **No ground: no node is called 0.** Without ground, SPICE can't pin the voltages down. It warns about a singular matrix, which means its equations have no single answer, and any numbers it still prints can't be trusted. Every circuit needs one node called 0 (gnd works too).
 >
-> *ngspice:* ngspice warns 'singular matrix', falls back to a 'transient op' and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]
+> *ngspice:* ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]
 >
 > *Fixes:* "Make b the ground (rename it to 0)"
 
@@ -3603,7 +3605,7 @@ What PlainSpice shows for floating-dc-1 (error, line 3):
 
 > **b has no DC path to ground.** At DC a capacitor is an open circuit, so nothing connects b to ground. SPICE can't pin its voltage down: its equations have no single answer. Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.
 >
-> *ngspice:* ngspice warns 'singular matrix: check node b', falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]
+> *ngspice:* ngspice warns 'singular matrix: check node b', falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]
 >
 > *Fixes:* "Add a 1 GΩ resistor from b to ground"
 
@@ -4003,7 +4005,7 @@ What PlainSpice shows for current-source-no-path-1 (error, line 4):
 
 > **I1's current has nowhere to go.** A current source pushes its current through whatever it is connected to. Here b has no DC path back to ground (a capacitor is an open circuit at DC), so the current has nowhere to go and the voltage there is not defined.
 >
-> *ngspice:* ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [current-source-no-path-1]
+> *ngspice:* ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [current-source-no-path-1]
 >
 > *Fixes:* none
 
@@ -7632,7 +7634,7 @@ What PlainSpice shows for no-analysis-1 (error, line 4):
 
 > **No analysis: nothing will run.** A netlist describes a circuit; an analysis line tells SPICE what to work out. .op finds the DC voltages and currents, .dc sweeps a source, .tran shows how the circuit changes in time.
 >
-> *ngspice:* ngspice reads the circuit and runs nothing. In batch mode it ends with 'no simulations run!'; PlainSpice's engine gives no results and no message. [no-analysis-1]
+> *ngspice:* ngspice reads the circuit and runs nothing. In batch mode ngspice 47 ends with 'no simulations run!' and ngspice 42 with 'Note: No ".plot", ".print", or ".fourier" lines; no simulations run'; PlainSpice's engine gives no results and no message. [no-analysis-1]
 >
 > *Fixes:* "Add .op before .end"
 
@@ -8916,6 +8918,8 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `unknown-word`.
+
+After the last pass (13 November 2026), with V1 in 0 1 and R9 in out 1k: `C1 out 0 1u i`, `L1 out 0 1m flux` and `R1 out 0 1k sens_dc` give the same two messages, native 47's "no such parameter on this device or parameter is missing" and native 42's "no such parameter on this device" (exit 1 in both; on the resistor after "can't find model 'sens_dc'"), so the check says each version's words.
 
 ### unknown-word-7. The same after an inductor value
 
@@ -10887,7 +10891,7 @@ What PlainSpice shows for unknown-dot-command-1 (error, line 4):
 
 > **ngspice does not know .tarn.** A line starting with a dot is a dot command for SPICE, and .tarn is not one ngspice knows. Did you mean .tran? To keep the line as a note, start it with * instead.
 >
-> *ngspice:* ngspice stops before running anything, with 'unimplemented dot command' for .tarn. [unknown-dot-command-1, unknown-dot-command-2]
+> *ngspice:* ngspice stops before running anything, with 'unimplemented dot command' for .tarn. [unknown-dot-command-1]
 >
 > *Fixes:* "Use .tran", "Make the line a comment"
 
