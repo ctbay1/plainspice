@@ -1823,11 +1823,40 @@ interface SweepNoise {
   diodeWhy?: DiodeWhy;
 }
 
-/** The points of a sweep's series that are noise: every point where ngspice gave a number, for 'all'. */
-function noisePoints(points: readonly number[] | 'all', values: ArrayLike<number>): number[] {
-  if (points !== 'all') return [...points];
+/**
+ * The points of a sweep's series that are noise (every point where ngspice gave a number, for 'all'): how many,
+ * and the first `limit` of them, which is all a note names (a sweep can have 99,999 points and 53 such series:
+ * listing every one took 150 ms, the critic of round 3).
+ */
+function noisePoints(points: readonly number[] | 'all', values: ArrayLike<number>, limit: number): { count: number; first: number[] } {
+  if (points !== 'all') return { count: points.length, first: points.slice(0, limit) };
+  const first: number[] = [];
+  for (let k = 0; k < values.length && first.length < limit; k++) if (values[k] !== 0 && Number.isFinite(values[k]!)) first.push(k);
+  // The count in one pass over the typed array, with no array built: v - v is 0 for a finite number, NaN for an
+  // infinity or NaN.
+  const a = values instanceof Float64Array ? values : Float64Array.from(values);
+  let skipped = 0;
+  for (let k = 0; k < a.length; k++) {
+    const v = a[k]!;
+    if (v === 0 || v - v !== 0) skipped += 1;
+  }
+  return { count: a.length - skipped, first };
+}
+
+/** The points where a series is `v` (0, an infinity or NaN), by the array's own search: a sweep can have 99,999 points and dozens of series. */
+function pointsOf(values: ArrayLike<number>, v: number): number[] {
   const out: number[] = [];
-  for (let k = 0; k < values.length; k++) if (values[k] !== 0 && Number.isFinite(values[k]!)) out.push(k);
+  const a = values as Float64Array;
+  if (Number.isNaN(v)) {
+    if (typeof a.includes === 'function' && !a.includes(Number.NaN)) return out;
+    for (let k = 0; k < values.length; k++) if (Number.isNaN(values[k]!)) out.push(k);
+    return out;
+  }
+  if (typeof a.indexOf !== 'function') {
+    for (let k = 0; k < values.length; k++) if (values[k] === v) out.push(k);
+    return out;
+  }
+  for (let k = a.indexOf(v); k !== -1; k = a.indexOf(v, k + 1)) out.push(k);
   return out;
 }
 
@@ -2107,6 +2136,13 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   // What the noise points need of the diodes, for the note's words (DiodeWhy): by structure, the series' diode
   // coefficients at the noise points.
   const needs: { shape: DiodeStructure; cs: bigint[] }[] = [];
+  /** The points at one x, found once for every series whose root it is (most series of a sweep share theirs). */
+  const pointsAtX = new Map<number, number[]>();
+  const atX = (x: number): number[] => {
+    let list = pointsAtX.get(x);
+    if (!list) pointsAtX.set(x, (list = pointsOf(xs, x)));
+    return list;
+  };
   dc.series.forEach((s, j) => {
     const form = forms[j]!;
     const pair: [bigint, bigint] | null = typeof form === 'function' ? [form(a), form(b)] : form;
@@ -2132,8 +2168,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
         const x = Number.isFinite(r) ? fromDouble(r) : undefined;
         if (x && p * x.d + q * x.n === 0n) {
           root = r;
-          const points: number[] = [];
-          for (let k = 0; k < n; k++) if (xs[k] === root && values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
+          const points = atX(r).filter((k) => values[k] !== 0 && Number.isFinite(values[k]!));
           if (points.length) {
             zero.set(j, points);
             for (const k of points) needs.push({ shape: shapeOf(k), cs });
@@ -2169,8 +2204,8 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     let alpha: number | undefined;
     let beta2 = 0;
     const list = { points: [] as number[], values: [] as number[] };
-    for (let k = 0; k < n; k++) {
-      if (values[k] !== 0 || xs[k] === root) continue;
+    for (const k of pointsOf(values, 0)) {
+      if (xs[k] === root) continue;
       let v: number | undefined;
       if (exactLeft <= 0 && k !== n - 1) {
         if (alpha === undefined) {
@@ -2227,7 +2262,9 @@ export function shownSweep(netlist: Netlist, results: AnalysisResults): Sweep | 
       const at = noise.zero.get(j);
       const lost = noise.lost.get(j);
       if (!at && !lost) return s;
-      if (at === 'all' && !lost && s.values.every(Number.isFinite)) return { ...s, values: (zeros ??= new Float64Array(s.values.length)) };
+      let finite = true;
+      for (let k = 0; k < s.values.length && finite; k++) finite = s.values[k]! - s.values[k]! === 0;
+      if (at === 'all' && !lost && finite) return { ...s, values: (zeros ??= new Float64Array(s.values.length)) };
       const values = Float64Array.from(s.values);
       if (at === 'all') values.forEach((v, k) => Number.isFinite(v) && (values[k] = 0));
       else for (const k of at ?? []) values[k] = 0;
@@ -3257,15 +3294,12 @@ function sweepNoiseNote(netlist: Netlist, results: AnalysisResults): MessageWord
   let count = 0;
   for (const [j, marked] of noise.zero) {
     const s = dc.series[j]!;
-    const points = noisePoints(marked, s.values);
-    if (!points.length) continue;
+    const points = noisePoints(marked, s.values, NOTE_LIST + 1 - gave.length);
+    if (!points.count) continue;
     const name = netlistVector(netlist, s.name);
     names.push(name);
-    count += points.length;
-    for (const k of points) {
-      if (gave.length > NOTE_LIST) break;
-      gave.push(S.noiseSweepGave(name, formatLikeNgspice(s.values[k]!), s.unit, sweepPoint(noise, formatSI(dc.scale.values[k]!, unit))));
-    }
+    count += points.count;
+    for (const k of points.first) gave.push(S.noiseSweepGave(name, formatLikeNgspice(s.values[k]!), s.unit, sweepPoint(noise, formatSI(dc.scale.values[k]!, unit))));
   }
   if (!count) return undefined;
   const list = count <= NOTE_LIST + 1 ? listWords(gave) : S.noiseSweepMore(gave.slice(0, NOTE_LIST).join(', '), count - NOTE_LIST);
