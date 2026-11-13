@@ -1187,6 +1187,30 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     expect(series(r, 'i(h1)')).toEqual([0, 0, 0, 0, 0, 0]);
   });
 
+  it('a diode circuit at rest beside a source that drives no current (a 5 V source charging only a capacitor) is at rest too: no current flows anywhere, so ngspice\'s Newton leftovers are 0, in the .op and at the sweep\'s 0 V, and the held 5 V is checked against the exact 5 V (they were drawn with arrows: the node equations hold only leftovers, which the same-circuit check weighed against themselves)', async () => {
+    const text = '* t\nV1 in 0 0\nR1 in a 1k\nD1 a 0 dmod\nV2 x 0 5\nC1 x 0 1u\n.model dmod d\n.op\n.end\n';
+    const r = await solveText(text, ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
+    expect([node(r.words, 'a'), node(r.words, 'x'), current(r.words, 'V1'), current(r.words, 'R1')]).toEqual(['0 V', '5 V', 'V1 measures no current', 'no current through R1']);
+    expect(notes(r.words)[0]).toContain('the circuit makes each of them exactly 0 (D1 has 0 V across it, so it carries no current), so PlainSpice shows 0 A and 0 V.');
+    const swept = await solveText(text.replace('.op', '.op\n.dc V1 0 1 0.25'), ngspice);
+    expect(roundingNoise(swept.netlist, swept.results).by).toBe('exact');
+    expect(series(swept, 'v(a)')[0]).toBe(0);
+    expect(series(swept, 'v(x)')).toEqual([5, 5, 5, 5, 5]);
+    // The held voltage is checked: V2 given as 5 V plus 1 ppm is not the netlist's 5 V.
+    const doctored = structuredClone(r.results);
+    doctored.op!.nodes.find((n) => n.node === 'x')!.value = 5.000005;
+    expect(roundingNoise(parseNetlist(text), doctored).by).toBe('rule');
+  });
+
+  it('at rest, a current is held to what rounding leaves of it beside the voltages the sources hold: C9b\'s F1 loop, which no current can flow around, with a diode loop beside it, swept from 0 to 12 V, carries ngspice\'s 1.8e-18 A beside 12 V over 1 kΩ, which is 0 at every point, in the .op and in the sweep', async () => {
+    const r = await solveText('* t\nV1 in 0 12\nR1 in a 1k\nR3 a b 3k\nF1 0 b V1 2\nD1 0 dd dmod\nRd dd 0 1k\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 12 6\n.end\n', ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
+    expect([current(r.words, 'R1'), current(r.words, 'F1'), node(r.words, 'dd')]).toEqual(['no current through R1', 'no current through F1', '0 V']);
+    expect(series(r, 'i(@r1[i])')).toEqual([0, 0, 0]);
+    expect(series(r, 'v(b)')).toEqual(Array.from(r.results.dc!.series.find((s) => s.name === 'v(b)')!.values));
+  });
+
   const fh3 = ['V1 top 0 12', 'Rd1 top s 999k', 'Rd2 s 0 1k', 'R1 s a 10k', 'R2 a 0 10k', 'R3 s b 4.7k', 'R4 b 0 4.7k', 'Rw a m 10p', 'R5 m b 1k', 'V2 x 0 12', 'E1 out 0 x 0 100k', 'Rp top out 10k'];
 
   it('a controlled source carries its floor only to the answers its output moves, by how much it moves them: an open-loop comparator pulled up to the bridge\'s 12 V rail moves the rail\'s current, not the bridge, which V1 holds, so ngspice\'s 4.961 mV for 5.189 mV is shown with the warning, not R5 as 0 A "at the same voltage, 5.189 mV" between tags of 4.961 and 5.023 mV (fh3, the critic of round 4)', async () => {
