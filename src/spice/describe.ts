@@ -1646,10 +1646,17 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   const kindOf = (j: number): 'voltage' | 'current' => (kinds[j]!.kind === 'voltage' ? 'voltage' : 'current');
   let largest: { voltage: number; current: number } | undefined;
   const tiny = (k: number): boolean => {
+    // A linear circuit's are exactly 0 there: no need to look through the sweep (a sweep can have 99,999 points).
+    if (dc.series.every((s) => s.values[k] === 0)) return true;
     if (!largest) {
       const l = { voltage: 0, current: 0 };
       dc.series.forEach((s, j) => {
-        for (const v of s.values) if (Number.isFinite(v)) l[kindOf(j)] = Math.max(l[kindOf(j)], Math.abs(v));
+        let most = l[kindOf(j)];
+        for (const v of s.values) {
+          const size = Math.abs(v);
+          if (size > most && size < Number.POSITIVE_INFINITY) most = size;
+        }
+        l[kindOf(j)] = most;
       });
       largest = l;
     }
