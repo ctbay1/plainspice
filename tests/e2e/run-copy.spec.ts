@@ -44,6 +44,23 @@ test.describe('what PlainSpice hands ngspice', () => {
   });
 });
 
+test.describe('the spike page', () => {
+  test('its own netlist box gets the same checks and title cut: a title of 600 bytes runs, a B source without its ) does not', async ({ page }) => {
+    await page.goto('./spike/');
+    const run = page.locator('#run');
+    await expect(run).toBeEnabled({ timeout: 30_000 });
+    const box = page.locator('#netlist');
+    const results = page.locator('#own-results');
+    await box.fill(`* ${'W'.repeat(598)}\n${DIVIDER}`);
+    await run.click();
+    await expect(results).toContainText(/ngspice finished in \d+ ms/);
+    await expect(results).toContainText(RUN_COPY_WORDS.titleCut(1, 600));
+    await box.fill('* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n');
+    await run.click();
+    await expect(results).toContainText(RUN_COPY_WORDS.noClose(4, 'v('));
+  });
+});
+
 test.describe('the design index', () => {
   test('shows both phone views on the page, and "both views side by side" goes to them', async ({ page }) => {
     await page.goto('./design/');

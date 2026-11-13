@@ -8,6 +8,8 @@ import { agrees, maxRelativeDifference, parsePrinted, rawfileName, type PrintedV
 import { interpretPlots, type ElementCurrent } from '../engine/results.ts';
 import type { RawPlot, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI } from '../format/si.ts';
+import { parseNetlist } from '../spice/parse.ts';
+import { cutTitles, whyNotRun } from '../spice/run-netlist.ts';
 
 interface NativeRecord {
   ngspice: { version: string };
@@ -245,7 +247,15 @@ function table(caption: string, headers: string[], rows: (string | HTMLElement)[
 }
 
 async function runOwn(): Promise<void> {
-  let netlist = netlistBox.value;
+  // As in the app (src/spice/run-netlist.ts, decision 0012): nothing that would make ngspice write past
+  // one of its fixed spaces, and each title cut to the 504 bytes ngspice can write.
+  const refused = whyNotRun(parseNetlist(netlistBox.value));
+  if (refused) {
+    ownResults.replaceChildren(el('p', refused.reason, 'error'));
+    return;
+  }
+  const { text: cut, notes } = cutTitles(netlistBox.value);
+  let netlist = cut;
   if (saveCurrents.checked && !/^\s*\.options?\s+.*savecurrents/im.test(netlist)) {
     // Before .end, so the line numbers ngspice reports for the user's lines stay the same.
     netlist = /^\s*\.end\b/im.test(netlist)
@@ -270,6 +280,7 @@ async function runOwn(): Promise<void> {
       : `ngspice finished in ${Math.round(result.timings.runMs)} ms.`
     : 'ngspice could not simulate this netlist (see the messages below).';
   out.push(el('p', headline, result.ok && !result.unreliable ? 'status' : result.ok ? 'warning' : 'error'));
+  for (const note of notes) out.push(el('p', note, 'status'));
 
   if (result.diagnostics.length) {
     const list = el('ul');
