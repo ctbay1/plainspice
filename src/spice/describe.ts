@@ -572,13 +572,14 @@ export const DESCRIBE_STRINGS = {
   measWhy: 'PlainSpice\'s engine writes a results file, and then ngspice skips .meas.',
   // C9–C9e: currents and node voltages ngspice gives as rounding noise of a 0 are said as 0, with what
   // ngspice gave and why the true value is 0 (roundingNoise).
+  /** `nodes` as `said` gives them; a node in a sentence is "node out", a name that says node goes alone (node-words.ts). */
   noiseTitle: (currents: readonly string[], nodes: readonly string[]): string => {
-    if (!currents.length) return nodes.length === 1 ? `Node ${nodes[0]} is shown as 0 V` : `${nodes.length} node voltages are shown as 0 V`;
+    if (!currents.length) return nodes.length === 1 ? `${atSentenceStart(nodeIn(nodes[0]!))} is shown as 0 V` : `${nodes.length} node voltages are shown as 0 V`;
     const shown = currents.length === 1 ? `${currents[0]}'s current is shown as 0 A` : `${currents.length} currents are shown as 0 A`;
-    return !nodes.length ? shown : `${shown}, and ${nodes.length === 1 ? `node ${nodes[0]}` : `${nodes.length} node voltages`} as 0 V`;
+    return !nodes.length ? shown : `${shown}, and ${nodes.length === 1 ? nodeIn(nodes[0]!) : `${nodes.length} node voltages`} as 0 V`;
   },
   noiseGaveCurrent: (name: string, value: string): string => `${name} ${value} A`,
-  noiseGaveVoltage: (node: string, value: string): string => `node ${node} ${value} V`,
+  noiseGaveVoltage: (node: string, value: string): string => `${nodeIn(node)} ${value} V`,
   noiseSame: (name: string, a: string, b: string, v: string): string => `the two ends of ${name}, ${nodeIn(a)} and ${nodeIn(b)}, are at the same voltage, ${v}`,
   noiseCopies: (name: string, gain: string, control: string): string => `${name} pushes ${gain} × the current in ${control}, which is 0`,
   noiseReads: (name: string, c: string, d: string): string => `${name} reads the voltage between ${nodeIn(c)} and ${nodeIn(d)}, which is 0`,
@@ -620,12 +621,12 @@ export const DESCRIBE_STRINGS = {
   lostTitle: (currents: readonly string[], nodes: readonly string[]): string => {
     const what = [
       currents.length === 1 ? `${currents[0]}'s current` : currents.length ? `${currents.length} currents` : '',
-      nodes.length === 1 ? `node ${nodes[0]}'s voltage` : nodes.length ? `${nodes.length} node voltages` : '',
+      nodes.length === 1 ? `${nodeIn(nodes[0]!)}'s voltage` : nodes.length ? `${nodes.length} node voltages` : '',
     ].filter(Boolean).join(' and ');
-    return `${what[0]!.toUpperCase()}${what.slice(1)} ${currents.length + nodes.length === 1 ? 'is' : 'are'} not 0, though ngspice gave 0`;
+    return `${atSentenceStart(what)} ${currents.length + nodes.length === 1 ? 'is' : 'are'} not 0, though ngspice gave 0`;
   },
   lostGaveCurrent: (name: string): string => `${name} exactly 0 A`,
-  lostGaveVoltage: (node: string): string => `node ${node} exactly 0 V`,
+  lostGaveVoltage: (node: string): string => `${nodeIn(node)} exactly 0 V`,
   lostShows: (name: string, value: string): string => `${name} ${value}`,
   /** A resistor whose two ends ngspice gave as the same number: `across` is the exact voltage across it, `at` its ends' voltage. */
   lostEnds: (name: string, across: string, at: string, a: string, b: string): string =>
@@ -633,14 +634,14 @@ export const DESCRIBE_STRINGS = {
   lostAny: (one: boolean): string =>
     `${one ? 'It is' : 'Each is'} too small beside the larger numbers ngspice works ${one ? 'it' : 'them'} out from for its arithmetic (about 16 significant digits), so ${one ? 'it comes' : 'they come'} out as 0.`,
   lostCarries: (name: string, value: string): string => `${name} carries ${value}`,
-  lostIsAt: (node: string, value: string): string => `node ${node} is at ${value}`,
+  lostIsAt: (node: string, value: string): string => `${nodeIn(node)} is at ${value}`,
   /** `shows`: for one value, what it is ("R3 carries 454.1 pA") and its value; for several, the list of their exact values. */
   lostWhy: (gave: string, reason: string, shows: string, value: string | undefined): string =>
     `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
   // Where ngspice's answers are farther from the exact ones than the page's digits (opCheck 'imprecise'):
   // PlainSpice shows ngspice's numbers and says that they are off, and by how much.
   offTitle: 'Some of ngspice\'s answers here are off',
-  offVoltage: (node: string, exact: string, given: string): string => `node ${node} is at ${exact}, where ngspice gives ${given}`,
+  offVoltage: (node: string, exact: string, given: string): string => `${nodeIn(node)} is at ${exact}, where ngspice gives ${given}`,
   /** A current's size; `reversed` when ngspice gives it flowing the other way. */
   offCurrent: (name: string, exact: string, given: string, reversed: boolean): string => `${name} carries ${exact}, where ngspice gives ${given}${reversed ? ' the other way' : ''}`,
   offNoCurrent: (name: string, given: string): string => `${name} carries no current, where ngspice gives ${given}`,
@@ -3548,7 +3549,7 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
   if (!currents.length && !nodes.length) return undefined;
   const gave = cappedList([
     ...currents.map((c) => ({ text: S.noiseGaveCurrent(c.name, formatLikeNgspice(c.noise!)), kind: 'current' as const })),
-    ...nodes.map((n) => ({ text: S.noiseGaveVoltage(bare(n.node), formatLikeNgspice(n.noise!)), kind: 'voltage' as const })),
+    ...nodes.map((n) => ({ text: S.noiseGaveVoltage(said(n.name), formatLikeNgspice(n.noise!)), kind: 'voltage' as const })),
   ]);
   const volts = shownVoltages(netlist, results);
   const reasonFor = (c: CurrentWords): string => {
@@ -3575,13 +3576,13 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
     if (reason) reasons.push(reason);
   } else if (kinds.length) reasons.push(S.noiseEach(kinds, found.has('exact')));
   const grounded = nodes.filter((n) => noise.grounded.has(n.node));
-  if (grounded.length) reasons.push(S.noiseGround(cappedList(grounded.map((n) => ({ text: nodeIn(said(n.node)), kind: 'node' as const }))), grounded.length));
+  if (grounded.length) reasons.push(S.noiseGround(cappedList(grounded.map((n) => ({ text: nodeIn(said(n.name)), kind: 'node' as const }))), grounded.length));
   const note: MessageWords = {
     code: 'rounding-noise',
     severity: 'note',
     title: S.noiseTitle(
       currents.map((c) => c.name),
-      nodes.map((n) => bare(n.node)),
+      nodes.map((n) => said(n.name)),
     ),
     why: S.noiseWhy(gave, reasons.join('; and '), currents.length, nodes.length, noise.by === 'exact', noise.by === 'exact' && noise.diodes ? (noise.diodeWhy ?? { quiet: [], alike: [] }) : undefined),
   };
@@ -3602,10 +3603,10 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
   const one = currents.length + nodes.length === 1;
   const items = (text: (name: string, value: number, unit: 'A' | 'V') => string): { text: string; kind: 'current' | 'voltage' }[] => [
     ...currents.map((c) => ({ text: text(c.name, c.value, 'A'), kind: 'current' as const })),
-    ...nodes.map((n) => ({ text: text(`node ${bare(n.node)}`, n.value, 'V'), kind: 'voltage' as const })),
+    ...nodes.map((n) => ({ text: text(nodeIn(said(n.name)), n.value, 'V'), kind: 'voltage' as const })),
   ];
   const gave = one
-    ? currents.length ? S.lostGaveCurrent(currents[0]!.name) : S.lostGaveVoltage(bare(nodes[0]!.node))
+    ? currents.length ? S.lostGaveCurrent(currents[0]!.name) : S.lostGaveVoltage(said(nodes[0]!.name))
     : `exactly 0 for ${cappedList(items((name) => name))}`;
   let reason = S.lostAny(one);
   const el = one && currents.length ? partsOf(netlist).byKey.get(currents[0]!.element)?.element : undefined;
@@ -3622,13 +3623,13 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
   const shows =
     value === undefined
       ? cappedList(items((name, v, unit) => S.lostShows(name, size(v, unit))))
-      : currents.length ? S.lostCarries(currents[0]!.name, value) : S.lostIsAt(bare(nodes[0]!.node), value);
+      : currents.length ? S.lostCarries(currents[0]!.name, value) : S.lostIsAt(said(nodes[0]!.name), value);
   const note: MessageWords = {
     code: 'rounded-to-0',
     severity: 'note',
     title: S.lostTitle(
       currents.map((c) => c.name),
-      nodes.map((x) => bare(x.node)),
+      nodes.map((x) => said(x.name)),
     ),
     why: S.lostWhy(gave, reason, shows, value),
   };
@@ -3657,7 +3658,7 @@ function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | und
   // The exact 0s first, node voltages before currents (volts and amps are not compared), then by how far off.
   const list = [...off].sort((x, y) => share(y) - share(x) || (x.exact === 0 && x.kind !== y.kind ? (x.kind === 'voltage' ? -1 : 1) : 0) || Math.abs(y.given) - Math.abs(x.given));
   const items = list.map((a) => {
-    if (a.kind === 'voltage') return S.offVoltage(bare(a.name), formatSI(a.exact, 'V'), formatSI(a.given, 'V'));
+    if (a.kind === 'voltage') return S.offVoltage(said(shownNode(netlist, a.name)), formatSI(a.exact, 'V'), formatSI(a.given, 'V'));
     const name = partsOf(netlist).byKey.get(a.name)?.element?.name.text ?? a.name;
     if (a.exact === 0) return S.offNoCurrent(name, formatSI(Math.abs(a.given), 'A'));
     return S.offCurrent(name, formatSI(Math.abs(a.exact), 'A'), formatSI(Math.abs(a.given), 'A'), a.given !== 0 && Math.sign(a.given) !== Math.sign(a.exact));
