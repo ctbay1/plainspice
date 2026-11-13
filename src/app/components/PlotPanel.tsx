@@ -61,41 +61,97 @@ export function plotSpecs(results: AnalysisResults, netlist: Netlist): PlotSpec[
   return specs;
 }
 
+/** Plots drawn in the panel: their boxes, their handles, and their kinds in order ("dc tran"). */
+interface Drawn {
+  kinds: string;
+  boxes: HTMLElement[];
+  handles: PlotHandle[];
+}
+
+const forget = (drawn: Drawn | undefined): void => {
+  for (const h of drawn?.handles ?? []) h.destroy();
+  for (const b of drawn?.boxes ?? []) b.remove();
+};
+
+/** The plot module once it has come (a dynamic import: decision 0004): every plot after the first is drawn at once. */
+let plotModule: typeof import('../../plot/plot.ts') | undefined;
+
 export function PlotPanel({ results, netlist }: { results: AnalysisResults; netlist: Netlist }): ReactNode {
   const host = useRef<HTMLDivElement>(null);
   const specs = useMemo(() => plotSpecs(results, netlist), [results, netlist]);
-  const [status, setStatus] = useState<{ kind: 'loading' } | { kind: 'ready' } | { kind: 'failed'; reason: string }>({ kind: 'loading' });
+  const [failed, setFailed] = useState<string | undefined>(undefined);
+  const drawn = useRef<Drawn | undefined>(undefined);
 
   useEffect(() => {
     const container = host.current;
-    if (!container || !specs.length) return;
+    if (!container) return undefined;
+    const kinds = specs.map((s) => s.kind).join(' ');
+    const was = drawn.current;
+    // A new result for the plots drawn (each run after a change): shown in the same figures, which keep
+    // their cursor and their zoom where these still fit (the plot module's update). Drawn anew each time,
+    // the figures went for a moment with "Loading the plot…" in their place, and on a phone the Plot
+    // sheet and its rows (its zoom buttons, the cursor) went up and down with every run (AP-2).
+    if (was && was.kinds === kinds) {
+      specs.forEach((spec, i) => was.handles[i]?.update(spec));
+      return undefined;
+    }
+    if (!specs.length) {
+      forget(was);
+      drawn.current = undefined;
+      return undefined;
+    }
+    // Other plots (a sweep added or taken out): drawn, then the plots of before go, so the panel never
+    // shows none between them.
+    const draw = ({ createPlot }: NonNullable<typeof plotModule>): void => {
+      const boxes = specs.map(() => {
+        const box = document.createElement('div');
+        box.className = 'plot-box';
+        container.append(box);
+        return box;
+      });
+      const handles = specs.map((spec, i) => createPlot(boxes[i]!, spec, { headingLevel: 3 }));
+      forget(drawn.current);
+      drawn.current = { kinds, boxes, handles };
+    };
+    if (plotModule) {
+      draw(plotModule);
+      return undefined;
+    }
+    // The first plot: "Loading the plot…" where the plots go until the module has come, and the plots in
+    // its place at once (a phone's sheet then sees rows that are all new, and is laid out for them).
     let alive = true;
-    const handles: PlotHandle[] = [];
-    setStatus({ kind: 'loading' });
+    const waiting = document.createElement('p');
+    waiting.className = 'muted';
+    waiting.textContent = t('plotLoading');
+    container.append(waiting);
     import('../../plot/plot.ts')
-      .then(({ createPlot }) => {
-        if (!alive) return;
-        for (const spec of specs) {
-          const box = document.createElement('div');
-          box.className = 'plot-box';
-          container.append(box);
-          handles.push(createPlot(box, spec, { headingLevel: 3 }));
-        }
-        setStatus({ kind: 'ready' });
+      .then((module) => {
+        plotModule = module;
+        waiting.remove();
+        if (alive) draw(module);
       })
-      .catch((error: unknown) => alive && setStatus({ kind: 'failed', reason: error instanceof Error ? error.message : String(error) }));
+      .catch((error: unknown) => {
+        waiting.remove();
+        if (alive) setFailed(error instanceof Error ? error.message : String(error));
+      });
     return () => {
       alive = false;
-      for (const h of handles) h.destroy();
-      container.replaceChildren();
+      waiting.remove();
     };
   }, [specs]);
+  // The panel closed: its plots go with it.
+  useEffect(
+    () => () => {
+      forget(drawn.current);
+      drawn.current = undefined;
+    },
+    [],
+  );
 
   return (
     <div className="plot-panel">
       {!specs.length && <p className="muted">{t('plotNone')}</p>}
-      {specs.length > 0 && status.kind === 'loading' && <p className="muted">{t('plotLoading')}</p>}
-      {status.kind === 'failed' && <p className="message message--problem">{t('plotFailed', { reason: status.reason })}</p>}
+      {failed !== undefined && <p className="message message--problem">{t('plotFailed', { reason: failed })}</p>}
       <div ref={host} className="plots" />
     </div>
   );

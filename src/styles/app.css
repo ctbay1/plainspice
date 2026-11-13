@@ -3298,6 +3298,17 @@ html[data-contrast='more'] .lines .hint {
   flex: 0 1 auto;
   min-height: 0;
 }
+/* An open sheet keeps the rows in view where they are as rows come and go (App.tsx, keepRows): its scroll
+   follows them, so the browser's own anchoring, which does nothing at the top, is off, and room is kept
+   below its rows while rows below them have gone (--sheet-kept). */
+.phone-bottom > .sheet > .card-body {
+  overflow-anchor: none;
+}
+.phone-bottom > .sheet > .card-body::after {
+  content: '';
+  display: block;
+  height: var(--sheet-kept, 0);
+}
 /* The stack and its lines take a new size at once, also where motion is reduced (the motion rules above
    give every property a transition of 0.01 ms, which shows the old size for a frame): the lines measure
    themselves (App.tsx), and a frame at the old size would read as no room for them. */
@@ -3344,6 +3355,11 @@ html[data-contrast='more'] .lines .hint {
    the sheet gives way below it (App.tsx: linesMax leaves the sheet its head and about two rows). */
 .phone-lines.is-hint-aside {
   flex: none;
+}
+/* Through a run's "Running…" above a sheet the lines keep the settled status's height (App.tsx: linesHeld),
+   the shorter "Running…" on the sheet's edge where the status was (safe: never pushed out at the top). */
+.phone-lines.is-held {
+  justify-content: safe flex-end;
 }
 /* Squeezed (large text on a small phone), what scrolls takes a finger (the paper under it does not pan)
    and the keys (App.tsx, StatusLines: a named region); the lines as a whole are then a strip of paper of
@@ -3997,8 +4013,10 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
 /* Shorter still (a laptop at 300 % or 400 %: 200 to 270 px of window; a small phone on its side with
    large text): a status pill in the middle would sit over the drawing's numbers. A calm one ("Finished
    in 32 ms") folds to its dot, its words still there for screen readers: with nothing to press, just the
-   dot, in the paper's margin left of its red line, where the drawing never goes; with buttons (Undo,
-   Show the whole drawing), the dot and the buttons. One that needs reading (running, paused, an error)
+   dot, in the paper's margin left of its red line, where the fit of the whole drawing puts none of it (a
+   view that follows a part reached with the keys, or one the reader moved, may); with Undo after
+   a change made on the drawing, the dot and Undo (Show the whole drawing is under More here: App.tsx,
+   wholeOnLine). One that needs reading (running, paused, an error)
    keeps its words, its reason and its buttons. The line keeps its height, so the drawing does not move
    as runs come and go. (is-shorter: below 300 px at the usual text size, scaled with it.) */
 .is-phone.is-shorter .status[data-tone='ok'] .status__main {

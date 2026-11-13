@@ -38,7 +38,8 @@ export type LivePause =
 /** What the last run gave, for the text it ran. */
 export type LiveOutcome<R> =
   | { kind: 'none' }
-  | { kind: 'done'; text: string; result: R }
+  /** `manual`: Run asked for it (the Run button, Ctrl+Enter, Ctrl+K, a link that runs, a Run that waited), not a change. */
+  | { kind: 'done'; text: string; result: R; manual?: boolean }
   /** No analysis line: ngspice would have nothing to do, so it was not asked. */
   | { kind: 'nothing'; text: string }
   | { kind: 'stopped'; text: string }
@@ -173,7 +174,7 @@ export function createLiveRunner<R>(options: LiveOptions<R>): LiveRunner<R> {
       }, stopAfter);
       const result = await options.solve(text);
       if (gen !== generation) return;
-      outcome = { kind: 'done', text, result };
+      outcome = { kind: 'done', text, result, manual };
       const ms = options.msOf(result);
       if (ms > slowMs) paused = { reason: 'slow', ms };
       // A Run that came back quickly turns live runs on again.

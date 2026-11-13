@@ -195,10 +195,13 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   proposed: with `interactive-widget=resizes-content` Chrome for Android may report none, and a tapped
   field must still get the strip there.
 - **A very short window.** Below 300 px of height (a laptop at 300 % or 400 %), a calm status
-  ("Finished in 32 ms") folds to its dot, in the paper's margin left of the red line where the drawing
-  never goes, its words still read by screen readers; with buttons on it (Undo, Show the whole
-  drawing) it keeps them. Running, paused or an error keep their words, their reason and their buttons.
-  The status line keeps its height, so the drawing does not move as runs come and go.
+  ("Finished in 32 ms") folds to its dot, in the paper's margin left of the red line, where the fit of
+  the whole drawing puts none of it (a view that follows a part reached with the keys, or one the
+  reader moved, may: a word cut off at the screen's edge can then lie under the 9 px dot, as "1.8 A" of
+  Example 2 does at 427 × 267 with n1 reached), its words still read by screen readers; with buttons on
+  it (Undo; Show the whole drawing until the second re-check, below) it keeps them. Running, paused or
+  an error keep their words, their reason and their buttons. The status line keeps its height, so the
+  drawing does not move as runs come and go.
 - **Two buttons on one row.** On a phone, when "Show the whole drawing" shares the status line with
   another button (the turn, Undo), a calm status keeps its words for screen readers only and leaves
   out its dot, so the line is just the buttons, on one row: at 360 px the two buttons take 175 and
@@ -287,17 +290,19 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   until the sheet closed, in the same room as before. A step is now also kept for the status line's
   tone, its words (not the run's time, which changes with every run), its reason and its buttons (Undo,
   the turn): a new status is measured again from the first step, before the page is drawn, so nothing
-  flickers, and the same status never comes back and goes again. And a sheet kept its head and 6 rem
-  below it whatever it had: on an iPhone SE on its side at the usual text size, Plot before a sweep (one
-  line of words, 36 px below its head) put the status line out of sight with 126 px of paper free. A
-  sheet now keeps the less of 6 rem and all it has below its head: there the status line stays above
-  Plot, with 84 px of paper left (in the audit, above Checks too, in 16 of the 24 phone views where it
-  was 14). Tests (`tests/e2e/phone.spec.ts`): the 863 × 360 test deletes the ground with Parts open and
-  undoes it, and expects the status line back (on the previous fix it stays out of sight); "an upright
-  phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it
-  on its side" checks an iPhone SE upright at the usual text size, the first step, which no test
-  checked on an upright phone (with a sheet that puts the lines straight out of sight it fails above
-  More), and on its side with Plot (out of sight on the previous fix).
+  flickers. (Not so, the second re-check found: each run's "Running…" counted as a new status, so while an
+  error stood the status line came back above the sheet for each edit's run and went again, the sheet
+  moving with it; a run now keeps the step of the status before it, below.) And a sheet kept its head and
+  6 rem below it whatever it had: on an iPhone SE on its side at the usual text size, Plot before a sweep
+  (one line of words, 36 px below its head) put the status line out of sight with 126 px of paper free. A
+  sheet now keeps the less of 6 rem and all it has below its head: there the status line stays above Plot,
+  with 84 px of paper left (in the audit, above Checks too, in 16 of the 24 phone views where it was 14).
+  Tests (`tests/e2e/phone.spec.ts`): the 863 × 360 test deletes the ground with Parts open and undoes it,
+  and expects the status line back (on the previous fix it stays out of sight); "an upright phone keeps
+  the status line and its Undo above More and Parts, and a short sheet keeps them above it on its side"
+  checks an iPhone SE upright at the usual text size, the first step, which no test checked on an upright
+  phone (with a sheet that puts the lines straight out of sight it fails above More), and on its side with
+  Plot (out of sight on the previous fix).
 - **A squeezed hint box keeps a line and a half.** Cut to its first line (an iPhone SE at 150 % with a
   part in hand: "Tap the paper where a"), the box's fade fell on the bottoms of its letters, and nothing
   showed that more words followed. A box that hides words now keeps its first line whole and the top of
@@ -318,6 +323,228 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   Tab walk in `tests/e2e/phone.spec.ts` (on its side, upright, and at 150 %) now also checks that no Tab
   stop is under something else: some of what shows of it, inside the window and whatever scrolls around
   it, is the stop itself. On the previous fix each walk finds R2 under the sheet.
+
+- **In a very short window "Show the whole drawing" is under More, and a part the keys reach moves no
+  view of the reader's.** The second re-check (AP-1) found the pill back over the strip of drawing at
+  400 % (320 × 200: at the first key a 210 × 36 px pill over V1, 6 V and 2 mA, there to stay; at 320 ×
+  256 at End). A part reached with the keys and brought into view (the point before) took the view over
+  as the reader's, so the status line offered "Show the whole drawing", and a calm status with a button
+  keeps it (the point "A very short window" above). Two changes. A part the keys reach is brought into
+  view by the fit itself where the fit, which follows the selection, shows it: the view stays the fit's,
+  nobody's move; only where that fit cannot show it (a sheet leaving less paper than the part needs, a
+  view held while a card is open or something is moved, or the reader's own view) is the view moved for
+  it and becomes the reader's, as before. And in a very short window (`is-shorter`) the status line
+  never offers "Show the whole drawing", whatever moved the drawing (a key, a drag, a scroll, a zoom: on
+  30f3eec a drag already unfolded the pill): More keeps it, as do Ctrl+K and Shift+1. Undo after a change
+  made on the drawing still unfolds the dot there, as before. "Show the whole drawing" pressed on the
+  status line with the keys now gives the focus to the drawing's Tab stop: the button goes with the move
+  it undoes, and the focus fell to the page (the next Tab went to Select). Considered: the status line's
+  buttons as icons beside the dot in the margin (the reviewer's second way); the margin is 16 px wide, so
+  24 px targets would spill over the drawing. Tests: "a very short window (a laptop at 400 %): walking
+  the drawing with the keys or dragging it keeps a calm status a dot over none of the drawing, and a
+  scroll or a zoom unfolds nothing…" (`tests/e2e/a11y.spec.ts`, on a computer, which is what a laptop at
+  400 % is, and on a phone) walks Start here at 320 × 200 and 320 × 256 (Tab, Enter, End, Home,
+  ArrowRight twice, ArrowDown) and wants at each stop no button on the status and no word of the drawing
+  under its painted dot or pill; then, from the first screen, a 34 px drag of the paper (the mouse from
+  the margin, where the fit draws nothing, since a press near a part or a node's name is the editor's; a
+  finger on a phone), a scroll and a zoom, each of which must move the drawing, and wants no button and
+  only the dot painted (and, after the drag, no word under it; after a scroll or a zoom of the reader's
+  own, the drawing may lie anywhere, under the 9 px dot too). On b060bc8 it fails at the skip link (the
+  pill at 61..271, 105..141, "Show the whole drawing"); without the very short window's rule, at the drag
+  (the same pill). In a very short window that rule alone keeps the dot, so the fit's change is guarded by
+  `tests/unit/notebook-canvas.test.tsx`: a part the keys reach that the fit shows leaves the view not moved
+  (moved on b060bc8 and without the change). "'Show the whole drawing' pressed on the status line with the
+  keys gives the focus to the drawing" (`tests/e2e/phone.spec.ts`; on b060bc8 the focus is on nothing).
+  Pressed under More it gives the focus back to More's button, from Ctrl+K and with Shift+1 it leaves it
+  where it was, as before (measured at 320 × 200, 320 × 256, 427 × 267 and 320 × 178).
+
+- **An open sheet keeps its rows where they are: a run, a new status or an undo moves none of them.**
+  The second re-check (AP-2) found a sheet and its rows moving under the student's finger, on 8 of 12
+  phone views and at 640 × 400 and 1280 × 800 with 150 % text (never on fix-base). While an error stood,
+  each edit's "Running…" was a new status (its key held the run's tone), measured again from the first
+  step: it fitted, so the lines came back above the sheet for about 220 ms and went again with the
+  error, the sheet's top dropping 34 to 118 px and coming back; where the lines stayed in sight, a
+  "Running…" of another height moved the sheet too (the stack has a ceiling, and a sheet that scrolls
+  takes whatever the lines leave); and a new settled status of another height moved it once (More's
+  Undo on an iPhone SE from 463–509 to 404–450 when the error was undone). Double taps 150 ms apart
+  pressed Undo then Redo, Redo then Share; six quick taps left the ground deleted. Now:
+  - A run's own "Running…" (a change's or Run's; not ngspice loading) is no new status above a sheet: the
+    step and the key of the status before it are kept through it, and the lines keep that status's height
+    (a "Running…" shorter than an error's reason sits on the sheet's edge; one taller, with a button the
+    change brought, takes the room it needs). The run's result is measured again only if it differs.
+  - While a sheet is open its rows stay where they are on the screen, whatever the lines above it do (a
+    new status, the hint's words, an undo). When the lines need more room the sheet gives it from its
+    top, and its scroll moves on by as much: the rows stay, the head comes down over the top ones (never
+    over the row a finger last pressed, nor over the row the keys are on: the points "The head never
+    comes down over the row a finger last pressed" and "The row the keys are on stays whole" below). When
+    the lines need less room, or step out of sight, the sheet takes back what it gave them while held,
+    and no more than its scroll gives back; the paper takes the rest. Its own scroll never changes its
+    height: held to grow as far as its scroll gave back at every change above it, a run after the student
+    had scrolled More lifted its head and its × by the distance scrolled (40 px at 640 × 400 and on an
+    iPhone SE, after the error was undone; found while this lane's first fix was measured), its rows
+    staying. So the step
+    logic is unchanged and a new settled status still comes back above the sheet when there is room (R2-2:
+    the sheet gives it the room, its rows staying put).
+    Only opening, closing or scrolling the sheet, rows that are all new, Checks' own rows changing (a
+    check found or fixed), or a new window, text size or stack (the keyboard, a part in hand) lay it out
+    afresh; its other rows coming or going keep the rows in view where they are (the point "A sheet's
+    own rows" below; first fixed, every sheet whose own rows changed was laid out afresh, and the
+    Numbers and Plot sheets moved their rows with every run). An opened sheet is held from the frame it
+    is first drawn in, so the step the lines take as it opens is still its own to follow (held at once,
+    the Parts sheet of an iPhone SE on its side at 150 % kept the room the lines had before they stepped
+    aside, 55 px of paper where 48 is the least, and its tall last rows could not be scrolled clear of
+    the bar: the phone audit and the 320 × 568 test check it); Checks, whose own rows change, is laid
+    out afresh in that frame and held at once, so the error's row stays put while the lines step aside
+    for the error (followed for two frames more, it moved up to 110 px with the largest text).
+    Considered: the lines only (the skeptic's first fix, the busy tone out of the key and their height
+    kept), which leaves the move a new settled status makes; a sheet that never gives room, its lines
+    stepping aside instead, which hides the status line above a sheet opened while an error stood even
+    once the error is undone; and letting the stack grow past its ceiling, which leaves under 48 px of
+    paper on the small phones.
+  - A part's card, a sheet on a phone, keeps the note it had settled on while a run is under way, and a
+    run that takes a moment still says "Running…" (after 0.4 s, as before) in at least the room that note
+    took. While an error stood, its note ("No numbers yet: a check found an error on line 2 …") went for
+    each run of a value typed and came back with its answer, so the card's actions below it (Explain,
+    Turn, Mirror, Reverse, Move, Connections, Delete) went up and down with each key: 47.2 px on an iPhone
+    SE, 27.6 px on a Pixel 7 on its side and at 640 × 400, 102.2 px on a Galaxy S5 with the largest text
+    (b060bc8 and the first fix of this round alike); now 0 px on those views. On a phone a value is typed
+    on a card or in the Netlist sheet, which take the place of Checks and More: that is where "a value
+    typed" was measured.
+  - **A sheet's own rows.** The critic of these fixes found the Numbers and Plot sheets still moving
+    their rows with every run, as on b060bc8: each run puts Numbers' "ngspice is running the netlist…"
+    above its tables, and the Plot panel took its figures away ("Loading the plot…" in their place) and
+    drew new ones; a sheet whose own rows changed was laid out afresh, and at the top of what scrolls
+    the browser's own scroll anchoring does nothing. Rows went 20 px down and back with every Ctrl+Enter
+    at 863 × 360, up to 175 px with the error's rows on a Pixel 7 at 150 %, and the plot's Zoom in 452 →
+    670 → 475 on an iPhone SE. Now the rows in view at the top of an open sheet are noted (the boxes in
+    view, then those inside the first of them, and so on), and when rows come or go above them its
+    scroll follows, so they stay where they are: the run's note sits above them, out of sight, and goes
+    with the run. When rows below them go (a part's row in Numbers' tables), room is kept below its
+    rows (`--sheet-kept`), so neither the scroll nor the sheet's height moves them; it goes as rows come
+    back, or as the student scrolls up (the point "Room kept below a sheet's rows" below). The browser's own anchoring is off in a phone's sheet
+    (`overflow-anchor: none`): two would move the rows twice. Rows that are all new (the first numbers
+    where "No numbers yet" stood, a plot where there was none or "Loading the plot…") lay the sheet out
+    afresh, as nothing is left to keep, and Checks still lays itself out afresh in the frame its rows
+    change, so a check found shows at once where it belongs, at the top (the critic's other way, once no
+    run is under way, shows it 0.2 s later with the same move; kept by its scroll, the error's row would
+    come in above the rows in view, out of sight). The Plot panel shows each new result in the figures
+    it has drawn, with the plot module's `update`, which keeps the cursor and the zoom where they still
+    fit; other plots are drawn before the old ones go, and "Loading the plot…" stands only where the
+    first plot goes, which takes its place at once. The rows a sheet keeps below its head
+    (`SHEET_ROWS_KEPT_REM`, or all it has) are held through a run, as its status is. Measured on every
+    frame on the 14 views, each row of the panel (not the box around them all, which the note moves up
+    with the scroll): Numbers through two Ctrl+Enter, and through the ground deleted, T, T, two undos
+    and the error undone, and Plot (RC charging) through T, T, two undos and a redo, 0 px on all 14
+    (b060bc8 and the previous fix: 20 to 197.8 px); More, 0 px, and Checks as on the previous fix (its
+    rows move only at the error and at its undo). Explain and the "ngspice output" sheet, whose rows
+    below the view moved with each T: their rows in view 0 px on an iPhone SE and at most 12.6 px on a
+    Pixel 7 on its side (b060bc8: 23.1 and 58.2 px); the Netlist sheet's editor still scrolls to the
+    line chosen, as on b060bc8 (T chooses R2's line).
+  - **The head never comes down over the row a finger last pressed.** When the lines above a held sheet
+    need more room the sheet gives it from its top: its rows stay, its head and × come down over the top
+    rows. The critic of these fixes scrolled More's Undo to just under the head and tapped it twice, 300
+    ms apart, the first clearing the error (863 × 360): the second pressed the head; Redo at the top of an
+    iPhone SE's More, the first bringing the error back: the second pressed Close More (b060bc8 alike).
+    Fixed first with a wait (the lines waited until 600 ms after the last press on the sheet), which its
+    critic found only moved the wrong press later: a tap 0.65 to 0.95 s after the one before, as a student
+    taps, looks at the drawing and taps again, met the head (a Pixel 7 on its side) or Close More (an
+    iPhone SE, More closed). Now the head never comes down over the row a finger or the mouse last pressed
+    while some of it is in view: lines that need more room wait at the height they had, squeezed and
+    scrolling (out of sight if they were), and the sheet keeps its room and its head, however long, until
+    the student presses anything else (another row, the paper, the bar, the lines), uses the keys or
+    scrolls the sheet; then the lines take their room, the head comes down and the rows stay. A press the
+    head would not reach (a row lower down) does not wait. The cost: until the student does something
+    else, a status line that needs more room keeps the height it had (its first line and a fade, a region
+    the keys and a finger can scroll) or stays out of sight, where otherwise a new settled status comes
+    back above the sheet at once (R2-2); the drawing shows the change meanwhile, and the polite region
+    says it. Not taken: a longer wait (1.5 s, the critic's other way), which moves the wrong press later
+    again; and the paper's room first, down to its 48 px least, which the first critic proposed: above
+    that least a phone keeps 28.6 px on an iPhone SE upright, 4 px at 640 × 400 and none on a phone on its
+    side, where the head came down 34 to 41 px, and a taller stack would refit the drawing. Real taps (a
+    40 ms touch, the critic's probe): Undo on a Pixel 7 on its side and Redo at the right end of an iPhone
+    SE's row, the second tap 300, 650, 900, 1500 or 3000 ms after the first, pressed the row twice each
+    time, More open (the 600 ms wait: Undo then the head, Redo then Close More, from 650 ms); the head
+    stayed where it was until the paper was tapped, another row was pressed or the sheet scrolled, and the
+    tapped row stayed where it was as the head came down (0.4 px); a key pressed brings it down too, the
+    row the focus is then on kept whole (the next point). Taps 150 ms apart give two presses on eight
+    views, as before.
+  - **The row the keys are on stays whole.** With the keys there is no finger to wait for, and the head
+    came down at once over the top rows: Shift+Tab back up More's rows puts the row at the top edge (the
+    browser scrolls it to the nearest edge), and Enter on Undo cleared the error and brought the status
+    line back above the sheet, the head over Undo and its focus ring: 0 of 69 px in sight on an iPhone SE
+    (3rd generation) and a Galaxy S5 at 150 %, 7 of 46 on an iPhone SE with Redo, 21 of 58 at 640 × 400
+    with 125 % (b060bc8 kept the row whole, moving the whole sheet down: WCAG 2.4.11 and 2.4.7). Now the
+    row the keys are on (its focus ring showing) is never hidden more than it was when the head comes
+    down: the rows go down with it as far as that needs (no finger aims at them, so a change made with
+    the keys may move them), and the status line takes its room at once. Not taken: treating the focus
+    as a finger and keeping the lines waiting, which keeps the new status squeezed for as long as the
+    focus stays on the row. The critic's six cases now show all of the row (69 of 69, 46 of 46, 58 of 58
+    px).
+  - **A run keeps the step, whatever the sheet's head says meanwhile.** Checks' head says "before every
+    run" until a check finds something, then "1 found", and the check is found while the run of the
+    change is under way. The head is part of the room a step is kept for, and the step is not measured
+    during a run, so the step was lost for the run: the lines came back above Checks for about 0.2 s (61
+    px on an iPhone SE at 150 %, the sheet's top 161.9 → 223 → 161.9), and on a Galaxy S5 at 150 % the
+    hint came back inside the held lines, squeezed, its fade making it a line and a half tall as it was
+    measured, which the window reported as a "ResizeObserver loop completed with undelivered
+    notifications" error (5 of 5 runs under load; b060bc8 none). The head's height is now kept through a
+    run, as the status and the rows it keeps are; the error and the lost step are gone (Galaxy S5 at
+    150 % with 4× and 6× slower CPU, and at full speed). The error was missed because the probes and the
+    tests listened to the console and the page's own errors only, and Chrome reports this one as a window
+    error: the AP-2 tests now listen to the window's errors.
+  - **Room kept below a sheet's rows, measured as the browser measures it.** What a sheet's body holds
+    was measured from its rows' own boxes and margins, which miss a margin that ends a row inside its box
+    (Numbers' last table, 12 px, inside its panel's box): after each run with Numbers scrolled to its end
+    12 px of empty paper was kept below its last row (an iPhone SE: what it scrolls 415 → 427), and it
+    stayed until the student scrolled up. It is now what the body scrolls less the room kept (the room is
+    the body's last box), and a run at Numbers' end keeps none (415 → 415). The kept room itself is
+    needed: Example 1 (V1, R1, R2, I1) on an iPhone SE, Numbers scrolled to its end, I1 deleted with the
+    keys: the Currents table loses I1's row below the rows in view, and without the room the scroll the
+    browser cuts back took V1's, R1's and R2's rows 71.1 px down; with it they stay, and the room goes as
+    I1's row comes back with the undo.
+  Measured on every frame on the 12 phone views, 640 × 400 and 1280 × 800 at 150 % (56 runs, no console
+  error, load 2 to 10; the window's own errors were not listened to: the point "A run keeps the step"
+  above): each of More's rows and each box and list item of Checks through
+  the ground deleted, T, T, Ctrl+Z, Ctrl+Z and the error undone, at most 0.6 px (More) and 0.8 px
+  (Checks), where b060bc8 moved them up to 175.6 px (a Pixel 7 upright at 150 %), 59.5 px (an iPhone SE)
+  and 55 px (640 × 400); the Netlist sheet's lines through a value typed while the error stood, 0 px (as
+  on b060bc8: the lines are out of sight while the netlist is typed); the card's field and every button on
+  it through "3", "k", "0" typed and "2k" put back, with and without the error, at most 0.4 px but for the
+  card's own words answering the value: its two numbers wrap to a second line on a Pixel 7 upright at 150
+  % once R2 is 3 Ω ("2 mA" crossed out beside "5.982 mA"; 114 → 138 px, so the actions below go 24.3 px
+  down with the answer and back with the next one, as on b060bc8), and the line under the field changes
+  for "3k0" (2.2 px with the largest text). Real taps on More's rows 150 ms apart (a 40 ms touch, 110 ms
+  between) while an error stood: Undo twice, Redo twice, Redo twice on a Pixel 7 on its side, and six taps
+  undoing all three changes with the ground back (b060bc8: Undo then Redo, Redo then Share, Redo then
+  Undo, and the ground left deleted). Tests (`tests/e2e/phone.spec.ts`): "an open sheet keeps its rows
+  where they are through each run, a new status and an undo" (863 × 360 and 640 × 400 with Checks, 320 ×
+  568 with More and the error undone, and with Checks at 150 %; Checks' new rows from their first frame;
+  and a run that keeps its status moves not even the sheet's head): on b060bc8 the sheet's top goes 105.4
+  → 143 at 863 × 360 with T again; without the sheet held, rows move 25 px at an undo at 640 × 400;
+  without the hold through a run, the sheet's top goes 148 → 199 there. "Two quick taps on More's Undo,
+  150 ms apart, undo twice while an error stands": b060bc8 pressed Undo, then Redo. "An open sheet the
+  student scrolled keeps its head where it is" (640 × 400 and 320 × 568, More scrolled 40 px after the
+  error is undone, then T twice): with the hold as first fixed, the head goes 159 → 199. "A value typed on
+  a part's card while an error stands moves none of the card's rows" (320 × 568 and 863 × 360): on b060bc8
+  the actions move 47 px (Explain at 464..511); and `tests/unit/index-card-note.test.tsx`, the note kept
+  through a quick run and "Running…" after 0.4 s (on b060bc8 the note is gone at once). "The Numbers and Plot sheets keep their rows
+  where they are through each run" (Numbers at 863 × 360 through two Ctrl+Enter, and on an iPhone SE
+  while an error stands; Plot of RC charging through T on R1, T again and an undo): on b060bc8 and the
+  previous fix rows go 20 px down and back with each Ctrl+Enter; with the Plot panel drawn anew, the plot
+  goes 275 → 493 → 473; without the rows in view kept, 20 px again. "Taps meant for the row just under
+  More's head press it, quick or slow" (Undo at 863 × 360, Redo at the right end of an iPhone SE's row, the
+  second tap once the first one's status has come, the third 800 ms after the second; the head where it
+  was 1.2 s later, then coming down once the paper is tapped): on b060bc8 and without the lines' wait,
+  Undo then the head; with the 600 ms wait, the third tap pressed the head. "The row the keys are on in
+  More stays whole when the status line takes more room" (375 × 667 at 150 %, keys only: Shift+Tab back to
+  Undo, Enter): with the 600 ms wait, 0 of 69 px of Undo in sight on every frame once the head came down.
+  "An open sheet keeps its rows where they are…" also checks that a run keeps the lines' step and that the
+  window reports no ResizeObserver loop: with the 600 ms wait, "the ground deleted: is-hint-aside is-aside
+  → all in sight" at 320 × 568 with the largest text. "A sheet scrolled to its end keeps no empty room
+  below its last row after a run" (Numbers through two Ctrl+Enter at 320 × 568 and 863 × 360): with the
+  600 ms wait, what it scrolls goes 415 → 427. "A part deleted with Numbers scrolled to its end moves none
+  of its rows" (Example 1, I1 deleted and the deletion undone, 320 × 568): without the room kept, V1's,
+  R1's and R2's rows go 71.1 px down.
 
 Still open: when a circuit opens, and after each pan or zoom, the drawing slides to its new place over
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the

@@ -31,6 +31,7 @@ import {
   settingsButton,
   settle,
   sidewaysScroll,
+  statusLine,
   t,
 } from './helpers.ts';
 
@@ -252,6 +253,97 @@ test('reflow: the Plot panel with its data table open fits 320 px; the table scr
   await chooseSetting(page, t('textSize'), t('textSizeXLarge'));
   await settle(page);
   expect(await sidewaysScroll(page), 'the plot and its table, 150 % text').toBeLessThanOrEqual(0);
+});
+
+/**
+ * What the status line paints over the drawing: its pill, or (a calm status folded in a very short
+ * window, its box transparent) just its dot; the buttons on it; and the words of the drawing under
+ * what is painted.
+ */
+async function statusOverDrawing(page: Page): Promise<{ painted: string; buttons: string[]; under: string[] }> {
+  return page.evaluate(() => {
+    const status = document.querySelector<HTMLElement>('.status')!;
+    const bg = getComputedStyle(status).backgroundColor;
+    const clear = bg === 'transparent' || bg === 'rgba(0, 0, 0, 0)';
+    const r = (clear ? (status.querySelector('.status__dot') ?? status) : status).getBoundingClientRect();
+    const under = [...document.querySelectorAll('.nb-canvas svg text')]
+      .filter((e) => {
+        const b = e.getBoundingClientRect();
+        return b.width > 0 && b.right > r.left && b.left < r.right && b.bottom > r.top && b.top < r.bottom;
+      })
+      .map((e) => (e.textContent ?? '').trim());
+    return { painted: `${clear ? 'dot' : 'pill'} ${[r.left, r.top, r.right, r.bottom].map(Math.round).join(',')}`, buttons: [...status.querySelectorAll('button')].map((b) => b.textContent ?? ''), under };
+  });
+}
+
+/** Where the drawing is drawn now (its world's place and size on the screen). */
+const drawnAt = (page: Page): Promise<string> => page.evaluate(() => getComputedStyle(document.querySelector('.nb-world')!).transform);
+
+test('a very short window (a laptop at 400 %): walking the drawing with the keys or dragging it keeps a calm status a dot over none of the drawing, and a scroll or a zoom unfolds nothing; More keeps “Show the whole drawing” (AP-1)', async ({ page }) => {
+  // A touch screen drags the paper with a finger; a laptop with the mouse, from the margin left of the red
+  // line, where the fit draws nothing (a press near a part, a wire or a node's name is the editor's).
+  const finger = !!test.info().project.use.hasTouch;
+  for (const [width, height] of [
+    [320, 200],
+    [320, 256],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await openApp(page);
+    await expectSolved(page);
+    // Tab reaches the skip link, Enter puts the focus on the drawing's first item; then the keys walk it.
+    await page.keyboard.press('Tab');
+    await expect(page.locator(':focus')).toHaveText(t('skipToDrawing'));
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.nb-hit:focus')).toHaveCount(1);
+    for (const key of ['', 'End', 'Home', 'ArrowRight', 'ArrowRight', 'ArrowDown']) {
+      if (key) await page.keyboard.press(key);
+      await settle(page);
+      const at = `${width} × ${height}, after ${key || 'the skip link'} (${await page.locator('.nb-hit:focus').getAttribute('aria-label')})`;
+      const over = await statusOverDrawing(page);
+      expect(over.buttons, `${at}: no button unfolds the calm status (${over.painted})`).toEqual([]);
+      expect(over.under, `${at}: none of the drawing's words under the status (${over.painted})`).toEqual([]);
+    }
+    // Moved by the pointer, from the first screen: a drag of the paper (34 px, away from the margin), then
+    // a scroll and a zoom (Ctrl + wheel). The same: the calm status stays a dot, with no button to unfold it
+    // (on b060bc8 and 30f3eec, a 210 px pill with "Show the whole drawing" over V1, 6 V and R2). After a
+    // scroll or a zoom of the reader's own the drawing may lie anywhere, under the 9 px dot too.
+    await openApp(page);
+    await expectSolved(page);
+    await settle(page);
+    const top = (await page.locator('.top').boundingBox())!;
+    const status = (await statusLine(page).boundingBox())!;
+    const from = { x: finger ? width * 0.45 : 8, y: (top.y + top.height + status.y) / 2 };
+    for (const how of ['dragged', 'scrolled', 'zoomed'] as const) {
+      const before = await drawnAt(page);
+      if (how === 'dragged' && finger) {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [from] });
+        for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from.x + (34 * i) / 8, y: from.y }] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await cdp.detach();
+      } else if (how === 'dragged') {
+        await page.mouse.move(from.x, from.y);
+        await page.mouse.down();
+        for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + (34 * i) / 8, from.y);
+        await page.mouse.up();
+      } else {
+        await page.mouse.move(width / 2, from.y);
+        if (how === 'zoomed') await page.keyboard.down('Control');
+        await page.mouse.wheel(how === 'scrolled' ? 50 : 0, how === 'scrolled' ? 60 : -120);
+        if (how === 'zoomed') await page.keyboard.up('Control');
+      }
+      await settle(page);
+      const at = `${width} × ${height}, ${how}`;
+      expect(await drawnAt(page), `${at}: the drawing moved`).not.toBe(before);
+      const over = await statusOverDrawing(page);
+      expect(over.buttons, `${at}: no button unfolds the calm status (${over.painted})`).toEqual([]);
+      expect(over.painted, `${at}: the calm status is painted as its dot alone`).toMatch(/^dot /);
+      if (how === 'dragged') expect(over.under, `${at}: none of the drawing's words under the status (${over.painted})`).toEqual([]);
+    }
+    // The way back to all of it is still there, under More.
+    await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barMore'), exact: true }).click();
+    await expect(page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('zoomFit'), exact: true })).toBeEnabled();
+  }
 });
 
 test('"Link copied." reaches screen readers while the Share dialog is open (a11y review F1)', async ({ page }) => {

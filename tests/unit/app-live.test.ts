@@ -255,6 +255,28 @@ describe('live runs', () => {
     expect(f.started).toEqual(['a']);
   });
 
+  it('a run’s outcome says whether Run asked for it: Run, a Run that waited for the run before it, a link that runs; not a change (AP-3)', async () => {
+    const f = fake();
+    f.live.edited('a');
+    vi.advanceTimersByTime(LIVE_DELAY_MS);
+    await f.finish();
+    expect(f.live.getState().outcome).toMatchObject({ kind: 'done', text: 'a', manual: false });
+    f.live.run('a');
+    await f.finish();
+    expect(f.live.getState().outcome).toMatchObject({ kind: 'done', text: 'a', manual: true });
+    // Run pressed while a change runs: the change's outcome is not Run's, the one after it is.
+    f.live.edited('ab');
+    vi.advanceTimersByTime(LIVE_DELAY_MS);
+    f.live.run('ab');
+    await f.finish();
+    expect(f.live.getState().outcome).toMatchObject({ kind: 'done', text: 'ab', manual: false });
+    await f.finish();
+    expect(f.live.getState().outcome).toMatchObject({ kind: 'done', text: 'ab', manual: true });
+    f.live.load('link', { manual: true });
+    await f.finish();
+    expect(f.live.getState().outcome).toMatchObject({ kind: 'done', text: 'link', manual: true });
+  });
+
   it('idle() resolves when nothing runs or waits', async () => {
     const f = fake();
     f.live.edited('a');

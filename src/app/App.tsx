@@ -342,6 +342,308 @@ interface CardEdit {
   written: string;
 }
 
+/** Lines that wait at less than this had no room of their own above the sheet (out of sight): they stay out of sight. */
+const LINE_WAIT_MIN_PX = 12;
+
+/**
+ * An open phone sheet held where it is (AP-2): its height, its scroll and the rows in view at its top, which
+ * together put its rows on the screen.
+ */
+interface SheetHold {
+  room: string;
+  sheet: HTMLElement;
+  body: HTMLElement;
+  /** Its own rows coming or going lay it out afresh (Checks: a check found or fixed shows at once where it belongs). */
+  afresh: boolean;
+  /** How tall its rows are as they are laid out, without the room kept below them (Checks' rows changing). */
+  rows: number;
+  /** The sheet's own greatest height (app.css), in pixels. */
+  cap: number;
+  height: number;
+  /** How tall the lines above it were when last drawn, and the room it gave them while held: it takes back only that. */
+  above: number;
+  given: number;
+  /** The greatest height it is held to, in pixels. */
+  max: number;
+  /** Where its body's box began, from the sheet's bottom on the bar (the sheet sliding in moves both), and how far the body was scrolled, when last held. */
+  top: number;
+  scroll: number;
+  /** The rows in view at the top of its body (rowsInView: the innermost first), with where each begins in what scrolls. */
+  rowsInView: { el: Element; at: number }[];
+  /** Room kept below its rows (app.css: --sheet-kept), so the rows in view stay where they are when rows below them go. */
+  kept: number;
+  /** Laid out afresh and not yet drawn: the steps above it may still settle, so it follows them. */
+  fresh: boolean;
+  /**
+   * The row of its body a finger or the mouse last pressed (the button, or what was pressed), until the
+   * student presses anything else, uses the keys or scrolls the sheet: a second tap may be on its way to it.
+   */
+  pressed: Element | undefined;
+  /** Told when that row is pressed no more (the lines waiting for it may take their room). */
+  onFree: (() => void) | undefined;
+  release: () => void;
+}
+
+/** How tall the sheet is, to the fraction of a pixel (offsetHeight rounds, and a rounded size moved it). */
+const heightOf = (sheet: HTMLElement): number => sheet.getBoundingClientRect().height;
+/** How tall what stands above the sheet in the stack is (the hint and status lines). */
+const aboveOf = (sheet: HTMLElement): number => sheet.previousElementSibling?.getBoundingClientRect().height ?? 0;
+const besideFlow = (el: Element): boolean => /^(absolute|fixed)$/.test(getComputedStyle(el).position);
+/** How tall a sheet's rows are as they are laid out (what its body holds, each box by itself). */
+const rowsOf = (body: HTMLElement): number => {
+  let sum = 0;
+  for (const el of body.children) sum += el.getBoundingClientRect().height;
+  return sum;
+};
+
+/**
+ * How tall what a held sheet's body holds is, its padding included and the room kept below its rows not:
+ * what it scrolls, less that room (the body's last box, app.css), so a margin that ends a row inside its
+ * box (Numbers' last table, 12 px) counts as the browser counts it (the boxes' own margins missed it, and
+ * 12 px of empty room was kept below Numbers' rows after each run at its end: the critic of the second
+ * re-check's second fixes).
+ */
+const naturalOf = (held: SheetHold): number => held.body.scrollHeight - held.kept;
+
+/** The element in a sheet's body the keys put the focus on (its focus ring shows), if any. */
+function keyFocusIn(body: HTMLElement): Element | undefined {
+  const el = document.activeElement;
+  if (!el || el === body || !body.contains(el)) return undefined;
+  try {
+    return el.matches(':focus-visible') ? el : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** What a press at this target is on in a sheet's body: its button or field, else what was pressed (none: outside the body). */
+function rowPressed(body: HTMLElement, target: EventTarget | null): Element | undefined {
+  if (!(target instanceof Element) || !body.contains(target) || target === body) return undefined;
+  const control = target.closest('button, a[href], input, select, textarea, summary, label, [role="button"], [tabindex]');
+  return control && body.contains(control) && control !== body ? control : target;
+}
+
+/**
+ * The rows in view at the top of a sheet's body, with where each begins in what scrolls: the boxes in view
+ * in it, then those inside the first of them, and so on, the innermost first (the first of them that is
+ * still there is kept where it is: keepRows; Numbers' note for a run goes with the run, the result's
+ * banner below it stays). A box that is the only one where it is (a panel's box around all its rows) is
+ * gone through, not kept, unless nothing is found inside it: it stays when all its rows are new, and the
+ * sheet is then laid out for the new ones.
+ */
+function rowsInView(body: HTMLElement): { el: Element; at: number }[] {
+  const box = body.getBoundingClientRect();
+  const view = box.top + body.clientTop;
+  const end = view + body.clientHeight;
+  const levels: { el: Element; at: number }[][] = [];
+  let parent: Element = body;
+  for (let depth = 0; depth < 8; depth++) {
+    const level: { el: Element; at: number }[] = [];
+    for (const el of parent.children) {
+      const r = el.getBoundingClientRect();
+      if (r.top >= end || level.length >= 8) break;
+      if (r.height > 0 && r.bottom > view + 0.5 && !besideFlow(el)) level.push({ el, at: r.top - box.top + body.scrollTop });
+    }
+    if (!level.length) break;
+    if (parent.childElementCount > 1) levels.push(level);
+    parent = level[0]!.el;
+  }
+  if (!levels.length && parent !== body) levels.push([{ el: parent, at: parent.getBoundingClientRect().top - box.top + body.scrollTop }]);
+  return levels.reverse().flat();
+}
+
+/** Where a sheet's body begins, from the sheet's bottom, which stands on the bar: the same while the sheet slides in. */
+const bodyTopOf = (held: SheetHold): number => held.body.getBoundingClientRect().top - held.sheet.getBoundingClientRect().bottom;
+
+/** Notes where a held sheet's rows are now. */
+function noteRows(held: SheetHold): void {
+  held.top = bodyTopOf(held);
+  held.scroll = held.body.scrollTop;
+  held.rowsInView = rowsInView(held.body);
+}
+
+/** Room kept below a sheet's rows, in pixels (app.css: --sheet-kept). */
+function keepRoom(held: SheetHold, px: number): void {
+  held.kept = px > 0.5 ? px : 0;
+  if (held.kept) held.body.style.setProperty('--sheet-kept', `${held.kept}px`);
+  else held.body.style.removeProperty('--sheet-kept');
+}
+
+/**
+ * Holds a sheet as it is laid out, from the frame it is first drawn in (until then the lines above it may
+ * still take a step: it follows them); its scroll is followed as the student scrolls it, and its rows are
+ * kept where they are as they change size, before they are drawn (a plot drawn, a run's note, the editor's
+ * lines: keepRows), whatever draws them.
+ */
+function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: boolean): SheetHold {
+  sheet.style.removeProperty('max-height');
+  const cap = Number.parseFloat(getComputedStyle(sheet).maxHeight);
+  const held: SheetHold = {
+    room,
+    sheet,
+    body,
+    afresh,
+    rows: 0,
+    cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY,
+    height: 0,
+    above: 0,
+    given: 0,
+    max: Number.POSITIVE_INFINITY,
+    top: 0,
+    scroll: 0,
+    rowsInView: [],
+    kept: 0,
+    fresh: true,
+    pressed: undefined,
+    onFree: undefined,
+    release: () => undefined,
+  };
+  measureSheet(held);
+  const press = (row: Element | undefined): void => {
+    if (row === held.pressed) return;
+    held.pressed = row;
+    held.onFree?.();
+  };
+  // The student's own scroll moves its rows: the rows in view are noted again, and room kept below them that
+  // the scroll no longer needs goes (never more is kept for a scroll). (Its scroll set here is noted as it is
+  // set: a scroll elsewhere is the student's, and the row last pressed is not aimed at again.)
+  const onScroll = (): void => {
+    if (Math.abs(body.scrollTop - held.scroll) > 0.5) press(undefined);
+    if (held.kept) keepRoom(held, Math.min(held.kept, body.scrollTop + body.clientHeight - naturalOf(held)));
+    noteRows(held);
+  };
+  // Anywhere on the page: a press on another row (or anything else) and the keys mean the row last pressed
+  // is not about to be tapped again.
+  const onPress = (e: PointerEvent): void => press(rowPressed(body, e.target));
+  const onKey = (): void => press(undefined);
+  const ro =
+    typeof ResizeObserver === 'undefined'
+      ? undefined
+      : new ResizeObserver(() => {
+          if (held.fresh) return;
+          if (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5) measureSheet(held);
+          else keepRows(held);
+        });
+  const watch = (): void => {
+    ro?.observe(body);
+    for (const el of body.children) ro?.observe(el);
+  };
+  const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(watch);
+  mo?.observe(body, { childList: true });
+  watch();
+  body.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('pointerdown', onPress, { capture: true, passive: true });
+  document.addEventListener('keydown', onKey, { capture: true, passive: true });
+  let frame = requestAnimationFrame(() => {
+    frame = requestAnimationFrame(() => {
+      held.fresh = false;
+      measureSheet(held);
+    });
+  });
+  held.release = () => {
+    cancelAnimationFrame(frame);
+    ro?.disconnect();
+    mo?.disconnect();
+    body.removeEventListener('scroll', onScroll);
+    document.removeEventListener('pointerdown', onPress, { capture: true });
+    document.removeEventListener('keydown', onKey, { capture: true });
+    held.onFree = undefined;
+    sheet.style.removeProperty('max-height');
+    keepRoom(held, 0);
+  };
+  return held;
+}
+
+/**
+ * Whether the head of a held sheet, coming down as the lines above it take more room (its body's box has
+ * moved down since its rows were noted, and they with it until they are kept), would cover any of the row
+ * a finger last pressed while some of it is in view: a second tap on it would meet the head, or its ×.
+ */
+function coversPressed(held: SheetHold): boolean {
+  const { body, pressed } = held;
+  if (!pressed?.isConnected || !body.contains(pressed)) return false;
+  const down = bodyTopOf(held) - held.top;
+  if (down <= 0.5) return false;
+  const r = pressed.getBoundingClientRect();
+  const view = body.getBoundingClientRect().top + body.clientTop;
+  return r.bottom > view + 0.5 && r.top < view + body.clientHeight - 0.5 && r.top - view < down - 0.5;
+}
+
+/** The sheet laid out afresh, as it is now by itself, and held there. */
+function measureSheet(held: SheetHold): void {
+  const { sheet, body } = held;
+  sheet.style.removeProperty('max-height');
+  keepRoom(held, 0);
+  held.height = heightOf(sheet);
+  held.max = Math.min(held.cap, held.height);
+  sheet.style.maxHeight = `${held.max}px`;
+  held.above = aboveOf(sheet);
+  held.given = 0;
+  held.rows = rowsOf(body);
+  noteRows(held);
+}
+
+/**
+ * Keeps the rows in view of a held sheet where they are on the screen: its scroll moves on by as far as its
+ * body's box moved (as the lines above it take or give back room) and as far as the row in view moved in
+ * what scrolls (rows that came or went above it: Numbers' "ngspice is running the netlist…" for each run),
+ * and room is kept below its rows as far as that scroll, and so the sheet's height, need it (rows below
+ * them gone). When none of the rows that were in view is left, or there were none (all of them new: the
+ * first numbers, a plot where there was none or "Loading the plot…"), there is nothing to keep, and the
+ * sheet is laid out afresh for the new ones. The row the keys are on is never hidden more than it was
+ * (the head coming down over it hid the focus after Enter on More's Undo: the critic of the second
+ * re-check's second fixes): the rows go down with it as far as that needs, as no finger aims at them.
+ */
+function keepRows(held: SheetHold): void {
+  const { body } = held;
+  const rows = held.rowsInView;
+  const row = rows.find((r) => r.el.isConnected && body.contains(r.el));
+  if (!row) {
+    measureSheet(held);
+    return;
+  }
+  // What scrolls was cut back under its scroll (the browser took the scroll in with it): from where it was.
+  const scroll = body.scrollTop;
+  const from = scroll < held.scroll - 0.5 && scroll >= body.scrollHeight - body.clientHeight - 0.5 ? held.scroll : scroll;
+  // Where the row the keys are on begins in what scrolls (when all of it fits in the view).
+  const focus = keyFocusIn(body)?.getBoundingClientRect();
+  const focusAt = focus && focus.height <= body.clientHeight ? focus.top - body.getBoundingClientRect().top - body.clientTop + scroll : undefined;
+  let want = from;
+  for (let tries = 0; tries < 3; tries++) {
+    const top = bodyTopOf(held);
+    const moved = row.el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - row.at;
+    want = Math.max(0, from + top - held.top + moved);
+    // The row the keys are on, if some of it was in view (it moved with the rows, and the view began at
+    // `from`, as tall as it is now and as far as the body's box moved), is hidden no more than it was.
+    if (focus && focusAt !== undefined && focusAt - moved + focus.height > from + 0.5 && focusAt - moved < from + body.clientHeight + top - held.top - 0.5) want = Math.min(want, Math.max(focusAt, from + moved));
+    const kept = Math.max(0, want + body.clientHeight - naturalOf(held));
+    if (Math.abs(kept - held.kept) <= 0.5) break;
+    keepRoom(held, kept);
+  }
+  if (Math.abs(body.scrollTop - want) > 0.01) body.scrollTop = want;
+  noteRows(held);
+}
+
+/** What the polite region says after a run (decision 0010): the summary, and each sweep's last point. */
+function resultsSaid(record: RunRecord): string {
+  const error = record.checks.find((c) => c.severity === 'error');
+  if (record.status === 'check' && error) return t('announceCheckError', { title: error.title.replace(/[.!?:]$/, '') });
+  if (record.words.summarySpeech) {
+    const ends = record.status === 'ok' ? record.words.sweeps.map((s) => s.end ?? '').filter(Boolean) : [];
+    return [withoutResultsPointer(record.words.summarySpeech), ...ends].join(' ');
+  }
+  if (record.status === 'unreliable') return t('announceUnreliable');
+  if (record.status === 'ok') return t('announceFinished', { summary: '' });
+  return t('announceError', { detail: record.run.diagnostics.find((d) => d.severity === 'error')?.text ?? '' });
+}
+
+/** Every number a run's words give, as they are said: two runs with the same ones need not be said twice. */
+function resultsHeard(record: RunRecord): string {
+  const w = record.words;
+  const tf = w.tf ? [w.tf.transferFunction, w.tf.inputResistance, w.tf.outputResistance].map((q) => q?.speech ?? '') : [];
+  return [...w.nodes.map((n) => `${n.node} ${n.speech}`), ...w.currents.map((c) => c.speech), ...tf, ...w.sweeps.map((s) => s.speech)].join('\n');
+}
+
 function Shell({ startup, engine, createEditor, initialSettings, serviceWorker = true, fontStore: givenFontStore }: AppProps): ReactNode {
   const announce = useAnnounce();
   // The netlist saved on this device is the student's; a link or the first screen's example is not, until changed.
@@ -991,35 +1293,31 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   }, [announce, load]);
 
   // ------------------------------------------------------------------ what a screen reader hears
-  // After a run, once typing pauses: the model's summary (without its pointer to a results view).
-  // The same words are not said twice in a row, and while the netlist is typed they wait for a pause
-  // (a line half typed is not worth reading out).
+  // After a run, once typing pauses: the model's summary (without its pointer to a results view), and a
+  // sweep's last point as its results card says it (a sweep's summary gives only its points: decision
+  // 0010). A run Run asked for (the Run button, Ctrl+Enter, Ctrl+K, a link that runs) is always said
+  // (WCAG 4.1.3: the status line's "Finished" is not read); a run after a change only when its results
+  // differ from the last ones said, numbers and all (a current the summary only counts), so a comment
+  // typed says nothing; the first run of a circuit opened is always said. While the netlist is typed
+  // they wait for a pause (a line half typed is not worth reading out).
   const announcedRecord = useRef<RunRecord | undefined>(undefined);
-  const lastResultWords = useRef('');
+  const lastResults = useRef('');
+  const asked = liveState.outcome.kind === 'done' && !!liveState.outcome.manual;
   useEffect(() => {
     if (!record || !current || announcedRecord.current === record) return undefined;
     const timer = window.setTimeout(
       () => {
         announcedRecord.current = record;
-        const error = record.checks.find((c) => c.severity === 'error');
-        const words =
-          record.status === 'check' && error
-            ? t('announceCheckError', { title: error.title.replace(/[.!?:]$/, '') })
-            : record.words.summarySpeech
-              ? withoutResultsPointer(record.words.summarySpeech)
-              : record.status === 'unreliable'
-                ? t('announceUnreliable')
-                : record.status === 'ok'
-                  ? t('announceFinished', { summary: '' })
-                  : t('announceError', { detail: record.run.diagnostics.find((d) => d.severity === 'error')?.text ?? '' });
-        if (words === lastResultWords.current) return;
-        lastResultWords.current = words;
+        const words = resultsSaid(record);
+        const key = `${circuitKey}|${words}|${resultsHeard(record)}`;
+        if (key === lastResults.current && !asked) return;
+        lastResults.current = key;
         announce(words);
       },
       typingNetlist ? ANNOUNCE_WHILE_TYPING_MS : card ? ANNOUNCE_RESULTS_DELAY_MS : ANNOUNCE_RESULTS_DELAY_MS / 3,
     );
     return () => window.clearTimeout(timer);
-  }, [record, current, card, typingNetlist, announce]);
+  }, [record, current, card, typingNetlist, announce, asked, circuitKey]);
   // Runs that end without results, and pauses, are said once.
   const outcome = liveState.outcome;
   const paused = liveState.paused;
@@ -1901,14 +2199,41 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // comes back with the short one its undo brings.
   const rowsKept = Math.min(SHEET_ROWS_KEPT_REM * 16 * textScale, sheetRows || Number.POSITIVE_INFINITY);
   const undoAtHand = phone && snap.canUndo && snap.last.source === 'drawing';
-  const statusKey = `${status.tone}|${status.main.replace(/\d+/g, '#')}|${status.detail ?? ''}|${undoAtHand ? 'undo' : ''}|${phone && turned ? 'turn' : ''}`;
-  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}|${Math.round(rowsKept)}|${statusKey}` : undefined;
+  const statusKeyNow = `${status.tone}|${status.main.replace(/\d+/g, '#')}|${status.detail ?? ''}|${undoAtHand ? 'undo' : ''}|${phone && turned ? 'turn' : ''}`;
+  // A run's own "Running…" (a change's or Run's, not ngspice loading) is no new status above a sheet: the
+  // step and the key of the last settled status are kept through it, and the lines keep its height
+  // (linesHeld), so each run neither brings the lines back above the sheet for a fifth of a second nor
+  // moves the sheet's rows (the second re-check, AP-2). Its result is measured again only if it differs.
+  const running = status.tone === 'busy' && status.main === t('statusSolving');
+  // So are the rows the sheet keeps below its head (rowsKept): a run's own rows (Numbers' "ngspice is running
+  // the netlist…" above a short sheet's) are no new room for the lines either. And so is its head: Checks'
+  // head, "before every run", says "1 found" while the run of the change that found it is under way; taken
+  // as a new room then, it lost the step the lines had (the hint came back, the lines out of sight came
+  // back too, 61 px, on an iPhone SE at 150 %, until the run ended: the critic of the second re-check's
+  // second fixes, whose window error "ResizeObserver loop" it was).
+  const [settled, setSettled] = useState({ key: statusKeyNow, rows: rowsKept, head: sheetHead });
+  useLayoutEffect(() => {
+    if (!running && (settled.key !== statusKeyNow || Math.round(settled.rows) !== Math.round(rowsKept) || settled.head !== sheetHead)) setSettled({ key: statusKeyNow, rows: rowsKept, head: sheetHead });
+  }, [running, statusKeyNow, rowsKept, sheetHead, settled]);
+  const statusKey = running ? settled.key : statusKeyNow;
+  const rowsKeptNow = running ? settled.rows : rowsKept;
+  const sheetHeadNow = running ? settled.head : sheetHead;
+  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHeadNow}|${Math.round(rowsKeptNow)}|${statusKey}` : undefined;
+  const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
+  // Lines that need more room while the open sheet's head would come down over the row a finger last
+  // pressed wait at the height they had (SheetHold below), until that row is pressed no more; out of sight
+  // before, they stay so.
+  const [linesWait, setLinesWait] = useState<{ room: string; height: number; row: Element } | undefined>(undefined);
+  /** The wait just ended: whether the lines are still squeezed is measured before they are drawn (linesCut). */
+  const [waitEnded, setWaitEnded] = useState(false);
+  const waiting = linesWait && linesWait.room === sheetRoom ? linesWait : undefined;
   const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
   const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
   const hintAside = linesStep >= 1;
-  const linesAside = linesStep === 2;
+  const linesAside = linesStep === 2 || (!!waiting && waiting.height < LINE_WAIT_MIN_PX);
   /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows (all its rows, when it has less). */
-  const linesMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - rowsKept)) : undefined;
+  const linesStepMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHeadNow - rowsKeptNow)) : undefined;
+  const linesMax = waiting ? Math.min(linesStepMax ?? Number.POSITIVE_INFINITY, waiting.height) : linesStepMax;
   const linesBox = useRef<HTMLElement | null>(null);
   const linesBoxRef = useCallback(
     (el: HTMLElement | null) => {
@@ -1922,6 +2247,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setGaveWay(undefined);
       return;
     }
+    // Not for a run's "Running…": a step taken for it would be kept for the settled status after it. Nor
+    // while the lines wait at the height they had (they are squeezed then, not too tall for this step).
+    if (running || waiting) return;
     // Measured here, at this step and with the room it has now (linesMax): what the lines' watchers said
     // last may be from the step before, when the lines still gave way first.
     const over = (box: Element | null | undefined): boolean => !!box && box.scrollHeight > box.clientHeight + 1;
@@ -1929,7 +2257,94 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (linesStep === 0 && (over(box) || over(box?.querySelector('.hint-scroll')))) setGaveWay({ key: sheetKey, step: 1 });
     else if (linesStep === 1 && over(box)) setGaveWay({ key: sheetKey, step: 2 });
     // Measured again when the watchers see a change (words, sizes) or the room changes.
-  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax]);
+  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax, running, waiting]);
+
+  // An open sheet keeps its rows where they are on the screen, whatever changes above it or in it (a run, a
+  // new status, an undo, the hint, a run's own rows): a finger about to tap a row again (More's Undo, twice)
+  // finds it there. When the lines need more room the sheet gives it from its top and its scroll moves on
+  // by as much, its head coming down over its top rows: never over the row a finger last pressed, while
+  // some of it is in view (the lines wait, squeezed, until the student presses anything else, uses the keys
+  // or scrolls the sheet), and never over the row the keys are on (keepRows: the rows go down with it).
+  // When they need less it takes back what it gave them, no more than its scroll can give back, and the
+  // paper takes the rest. Its own rows coming or going keep the rows in view where they are (keepRows):
+  // its scroll follows them, and room is kept below them while rows below have gone. Opening it, scrolling
+  // it, rows that are all new, Checks' rows (a check found or fixed shows where it belongs, at once) or a
+  // new window, text size or stack (a part in hand, the keyboard) lay it out afresh (AP-2).
+  const sheetHold = useRef<SheetHold | undefined>(undefined);
+  // After every render (whatever changed may have moved the sheet); it sets the lines waiting only once, and
+  // not again while they wait.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const sheet = sheetRoom ? document.querySelector<HTMLElement>('.phone-bottom > .sheet') : null;
+    const body = sheet?.querySelector<HTMLElement>(':scope > .card-body') ?? null;
+    let held = sheetHold.current;
+    if (held && (held.room !== sheetRoom || held.sheet !== sheet || held.body !== body)) {
+      held.release();
+      held = sheetHold.current = undefined;
+    }
+    // Lines that waited for another sheet (or this one, closed since) wait no more.
+    if (linesWait && (linesWait.room !== sheetRoom || !held)) setLinesWait(undefined);
+    if (!sheetRoom || !sheet || !body) return;
+    if (!held) {
+      sheetHold.current = holdSheet(sheetRoom, sheet, body, sheetOpen === 'checks');
+      return;
+    }
+    // Not drawn yet (the steps above it may still settle), or Checks' own rows changed: laid out afresh, in
+    // the same frame, and held from there.
+    if (held.fresh || (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5)) {
+      measureSheet(held);
+      return;
+    }
+    const above = aboveOf(sheet);
+    // The head would come down over the row a finger last pressed (an undo or a redo tapped in More, a second
+    // tap perhaps on its way): the lines that need more room wait at the height they had, before this is
+    // drawn, and the sheet keeps its room and its head where they are. (The critic of the second re-check's
+    // fixes: a second tap 300 ms after the first met the head, or its ×, which had come down over the row
+    // tapped; waiting 600 ms after the last press, a second tap 0.65 to 0.95 s after the first still did.)
+    if (!waiting && above > held.above + 0.5 && held.pressed && coversPressed(held)) {
+      setLinesWait({ room: sheetRoom, height: held.above, row: held.pressed });
+      return;
+    }
+    // It takes back only the room it gave the lines above it while held, as they give it back, and no
+    // further than its scroll gives back (its rows staying where they are): the paper takes the rest.
+    // Never because its scroll changed: the student's own scroll moves its rows, not its head (grown by
+    // its scroll at the next change above it, a run lifted the head and its × by the 40 px scrolled).
+    const gave = held.above - above;
+    if (gave > 0.01) held.max = Math.min(held.cap, held.height + Math.min(gave, held.given, body.scrollTop));
+    held.above = above;
+    const max = `${held.max}px`;
+    if (sheet.style.maxHeight !== max) sheet.style.maxHeight = max;
+    const height = heightOf(sheet);
+    held.given = Math.max(0, held.given + held.height - height);
+    held.height = height;
+    keepRows(held);
+  });
+  useEffect(
+    () => () => {
+      sheetHold.current?.release();
+      sheetHold.current = undefined;
+    },
+    [],
+  );
+  // The lines wait until the row they wait for is pressed no more (another press, the keys, the sheet
+  // scrolled), however long that is: a student who taps Undo, looks at the drawing and taps it again finds it
+  // there (decision 0018).
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const held = sheetHold.current;
+    const end = (): void => {
+      setLinesWait(undefined);
+      setWaitEnded(true);
+    };
+    if (!held || held.pressed !== waiting.row) {
+      end();
+      return undefined;
+    }
+    held.onFree = end;
+    return () => {
+      if (held.onFree === end) held.onFree = undefined;
+    };
+  }, [waiting]);
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
@@ -1979,6 +2394,25 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // (A note that must be read shows with a part still in hand too: Shift+click keeps the tool.)
   const noteInHint = hintShowsNote(noteLine, { refused: refusalShown, inHand: !!hand, moving: !!move });
   const hint = refusal && refusalShown ? refusal : noteLine && noteInHint ? noteLine.words : hintNow;
+  // The lines' height for the settled status, kept through a run's "Running…" (shorter or not, it takes
+  // no less room: a taller one, a button that came with the change, takes more).
+  const [linesSettled, setLinesSettled] = useState(0);
+  useLayoutEffect(() => {
+    if (!sheetKey || running || waiting || linesAside) return;
+    const h = linesBox.current?.getBoundingClientRect().height ?? 0;
+    setLinesSettled((old) => (Math.abs(old - h) < 0.01 ? old : h));
+  }, [sheetKey, running, waiting, linesAside, statusKeyNow, hint, linesSqueezed, hintSqueezed, linesMax]);
+  const linesHeld = running && !!sheetKey && !linesAside && linesSettled > 0 ? Math.min(linesSettled, linesMax ?? Number.POSITIVE_INFINITY) : undefined;
+  // Squeezed, the lines scroll (a named region the keys reach): too tall for their room, or waiting at the height they had.
+  // Just after a wait the lines' watcher still says squeezed (it saw them capped) for a frame: how they are
+  // is measured before they are drawn, or the strip's edge took 5 px for that frame and the head came down
+  // 5 px too far and went back.
+  const linesCut = ((linesSqueezed && !waitEnded) || !!waiting) && !linesAside;
+  useLayoutEffect(() => {
+    if (!waitEnded) return;
+    const box = linesBox.current;
+    if (!linesSqueezed || (!!box && box.scrollHeight > box.clientHeight + 1)) setWaitEnded(false);
+  }, [waitEnded, linesSqueezed]);
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
   // netlist being typed puts it aside, as does a sheet that needs its room (hintAside).
   const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !hintAside));
@@ -3303,6 +3737,27 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   );
 
   const zoomPercent = viewInfo ? Math.round((viewInfo.unit / 20) * 100) : undefined;
+  // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
+  // the way back to all of it (Fit, under More) at hand on the status line. Not in a very short window (a
+  // laptop at 400 %), where a calm status is a dot in the margin and a pill with this button sat over the
+  // strip of drawing there is, whatever moved it (a key, a drag, a zoom): More keeps it there (AP-1).
+  const wholeOnLine = phone && !shorter && !phoneSheet && !!viewInfo?.moved && !viewInfo.whole;
+  // Pressed with the keys, the button goes with the move it undoes: the focus goes on to the drawing's
+  // Tab stop, not to the page (WCAG 2.4.3), once the button has gone.
+  const focusAfterWhole = useRef(false);
+  const wholeFromLine = useCallback(
+    (byKeys: boolean) => {
+      focusAfterWhole.current = byKeys;
+      fit();
+    },
+    [fit],
+  );
+  useLayoutEffect(() => {
+    if (wholeOnLine || !focusAfterWhole.current) return;
+    focusAfterWhole.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) document.querySelector<HTMLElement>('.nb-hit[tabindex="0"]')?.focus({ preventScroll: true });
+  }, [wholeOnLine]);
   const lines = (
     <StatusLines
       hint={hint}
@@ -3315,9 +3770,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       {...(phone && turned && !linesAside ? { turn: { turned: turnWanted, video, onToggle: toggleTurn } } : {})}
       // A finger edit on a phone: Undo at hand (a part is one long press from moving), not two taps away under More.
       {...(phone && !linesAside && snap.canUndo && snap.last.source === 'drawing' ? { undo } : {})}
-      // A phone whose drawing was moved partly off the screen (not by a sheet, which covers it for a while):
-      // the way back to all of it (Fit, under More) at hand.
-      {...(phone && !phoneSheet && viewInfo?.moved && !viewInfo.whole ? { whole: fit } : {})}
+      // A phone whose drawing was moved partly off the screen: the way back to all of it at hand (wholeOnLine).
+      {...(wholeOnLine ? { whole: wholeFromLine } : {})}
       // The first screen on a phone: the sticky note's button, on the hint line (not while the hint is out of sight).
       {...(phone && !hintAside && noteWanted && firstScreenInvite && !card ? { invite: { label: t('noteButton', { name: firstScreenInvite.name }), onClick: () => openCard(firstScreenInvite.key) } } : {})}
       // On a phone the hint gives way first when the stack is short of room, and scrolls: the status stays whole.
@@ -3543,10 +3997,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             // all of them out of sight (linesAside).
             // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             <footer
-              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}`}
+              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesCut ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}${linesHeld !== undefined ? ' is-held' : ''}`}
               ref={linesBoxRef}
-              style={linesMax !== undefined ? { maxHeight: linesMax } : undefined}
-              {...(linesSqueezed && !linesAside ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
+              style={linesMax !== undefined || linesHeld !== undefined ? { ...(linesMax !== undefined ? { maxHeight: linesMax } : {}), ...(linesHeld !== undefined ? { minHeight: linesHeld } : {}) } : undefined}
+              {...(linesCut ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
             >
               {lines}
             </footer>
