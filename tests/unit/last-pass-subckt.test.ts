@@ -401,6 +401,22 @@ describe('critic1-6: ngspice\'s names are read back from one reading of the netl
   });
 });
 
+describe('critic1-6: many X lines that use one subcircuit cost in proportion to their number', () => {
+  it('40,000 of them take less than ten times the CPU time of 10,000 (each copied the list before: about ×30)', () => {
+    // A ratio of CPU times (user and system, this worker only), never of wall-clock times, so the load cancels out.
+    const cpu = (n: number): number => {
+      const text = `* t\nV1 in 0 5\nX1 in 0 top\n.subckt top a b\n${Array.from({ length: n }, (_, i) => `X${i + 10} a b cell`).join('\n')}\n.ends\n.subckt cell p q\nR1 p q 1k\n.tf v(p) V1\n.ends\n.end\n`;
+      const c0 = process.cpuUsage();
+      explainNetlist(parseNetlist(text));
+      checkTraps(parseNetlist(text));
+      const c = process.cpuUsage(c0);
+      return c.user + c.system;
+    };
+    cpu(2000); // warm the code up first
+    expect(cpu(40000) / cpu(10000)).toBeLessThan(10);
+  }, 120000);
+});
+
 describe('critic1-7: a .tf inside a used subcircuit with 200,000 continuation lines is explained', () => {
   it('explains it without overflowing the stack (Math.max over every continuation line did, at 150,000)', () => {
     const k = 200000;

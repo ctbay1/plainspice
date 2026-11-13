@@ -692,9 +692,12 @@ and golden rows in A3f and A3h):
   at another line first, which gets that line's reason only.
 - **One reading of the netlist** (critic1-6). The walk read every line of each circuit, and parsed every
   line after `.end`, for each name it read back: work that grew with (.tf lines) × (lines), about 3 s of
-  CPU in the checks for 1000 `.tf` lines and 1000 parts after `.end`. The circuits are now read once for each netlist, and each name's answer
-  kept; the test counts the lines read, not the time, so the load cannot change it. Seen and left, older
-  (rc3 has it): Explain's words for each line after `.end` look through every line for an @ line.
+  CPU in the checks for 1000 `.tf` lines and 1000 parts after `.end`. The circuits are now read once for
+  each netlist, and each name's answer kept; the test counts the lines read, not the time, so the load
+  cannot change it. The lists of X lines that use each subcircuit grow one entry at a time: copied whole
+  at each one, 40,000 X lines that use one subcircuit took 9 s (a test compares CPU times, 4× the lines
+  for less than 10× the time). Seen and left, older (rc3 has it): Explain's words for each line after
+  `.end` look through every line for an @ line.
 - **No stack overflow** (critic1-7): the last continuation line is taken from the list, never by
   spreading 150,000 of them into `Math.max`.
 - **Words** (critic1-8): A3f and the "skips" bullet above say ngspice runs none of such a subcircuit's

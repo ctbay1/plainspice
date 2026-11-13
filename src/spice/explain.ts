@@ -1389,7 +1389,9 @@ function subcircuitsOf(netlist: Netlist): Subcircuits {
     if (d?.name === '.global') for (const t of d.args) globals.push(ngspiceName(t.text));
     if ((d?.name === '.subckt' || d?.name === '.macro') && d.args[0]) {
       const key = lowerAscii(d.args[0].text);
-      defs.set(key, [...(defs.get(key) ?? []), l.index]);
+      const list = defs.get(key);
+      if (list) list.push(l.index);
+      else defs.set(key, [l.index]);
     }
   }
   // Each line after .end parsed alone, once (it was once for every name read back: critic1-6).
@@ -1432,7 +1434,10 @@ function subcircuitsOf(netlist: Netlist): Subcircuits {
     if (at === undefined) continue;
     for (const x of level.xs) {
       const key = modelKey(x);
-      if (key !== undefined) users.set(key, [...(users.get(key) ?? []), { x, at }]);
+      const list = key === undefined ? undefined : users.get(key);
+      // Pushed, never copied: 40,000 X lines using one subcircuit cost 9 s when each copied the list.
+      if (list) list.push({ x, at });
+      else if (key !== undefined) users.set(key, [{ x, at }]);
     }
   }
   const s: Subcircuits = { levels, reached, users, shared, unused: new Map(), innerNodes: new Map(), innerParts: new Map() };
