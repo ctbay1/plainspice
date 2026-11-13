@@ -1329,25 +1329,29 @@ test('a part deleted with Numbers scrolled to its end moves none of its rows: ro
   await page.evaluate(() => localStorage.removeItem('plainspice:netlist'));
 });
 
-test('a second tap meant for the row just under More’s head presses it: a status that needs more room waits until the sheet is still (AP-2)', async ({ page }) => {
+test('taps meant for the row just under More’s head press it, quick or slow: a status that needs more room waits until the student presses anything else (AP-2)', async ({ page }) => {
   // The critic of the second re-check's fixes: when the first tap made the status line taller (an undo that
   // clears the error brings the status line back above the sheet; a redo brings the error back), the sheet
   // gave it room from its top at once, and its head came down over the row just under it: a second tap
   // 300 ms later pressed the head (863 × 360, ['Undo', 'DIV']) or Close More (320 × 568, ['Redo',
-  // 'Close More'], More closed).
+  // 'Close More'], More closed). Its critic: waiting until the sheet had been still for 600 ms, a tap 0.65
+  // to 0.95 s after the one before still did (['Undo', 'DIV'], ['Redo', 'Close More']).
   const bar = page.getByRole('navigation', { name: t('barLabel') });
   for (const view of [
-    { width: 863, height: 360, row: t('undo'), x: 0.85, history: 'T on R2, then the ground deleted: the first Undo clears the error' },
-    { width: 320, height: 568, row: t('redo'), x: 0.95, history: 'the ground deleted, T on R2, both undone: the first Redo brings the error back' },
+    { width: 863, height: 360, row: t('undo'), x: 0.85, history: 'T on R2 twice, then the ground deleted: the first Undo clears the error' },
+    { width: 320, height: 568, row: t('redo'), x: 0.95, history: 'the ground deleted, T on R2 twice, all undone: the first Redo brings the error back' },
   ] as const) {
     const at = `${view.width} × ${view.height}`;
     await page.setViewportSize({ width: view.width, height: view.height });
     await openApp(page);
     await expectSolved(page);
     if (view.row === t('undo')) {
-      await partOnDrawing(page, 'R2').focus();
-      await page.keyboard.press('t');
-      await expectSolved(page);
+      for (let i = 0; i < 2; i++) {
+        await partOnDrawing(page, 'R2').focus();
+        await page.keyboard.press('t');
+        await expectSolved(page);
+        await settle(page);
+      }
       await partOnDrawing(page, 'Ground').focus();
       await page.keyboard.press('Delete');
       await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
@@ -1355,13 +1359,17 @@ test('a second tap meant for the row just under More’s head presses it: a stat
       await partOnDrawing(page, 'Ground').focus();
       await page.keyboard.press('Delete');
       await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
-      await partOnDrawing(page, 'R2').focus();
-      await page.keyboard.press('t');
-      await expect(statusLine(page).getByRole('button', { name: t('undo'), exact: true })).toBeAttached();
-      await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
-      await settle(page);
-      await page.keyboard.press('Control+z');
-      await settle(page);
+      for (let i = 0; i < 2; i++) {
+        await partOnDrawing(page, 'R2').focus();
+        await page.keyboard.press('t');
+        await expect(statusLine(page).getByRole('button', { name: t('undo'), exact: true })).toBeAttached();
+        await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+        await settle(page);
+      }
+      for (let i = 0; i < 2; i++) {
+        await page.keyboard.press('Control+z');
+        await settle(page);
+      }
       await page.keyboard.press('Control+z');
       await expectSolved(page);
     }
@@ -1396,28 +1404,44 @@ test('a second tap meant for the row just under More’s head presses it: a stat
         true,
       );
     });
-    // Two real taps: the second once the first one's run has given its new status (where the head came down
-    // at once), 300 to 400 ms after the first, as a quick double tap is (and well inside the sheet's 600 ms
-    // of quiet, however slow the machine).
+    // Three real taps: the second once the first one's run has given its new status (where the head came down
+    // at once), 300 to 400 ms after the first, as a quick double tap is; the third 800 ms after the second, as
+    // a student taps, looks at the drawing and taps again.
     const cdp = await page.context().newCDPSession(page);
-    const tap = async (): Promise<void> => {
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    const tapAt = async (px: number, py: number): Promise<void> => {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: px, y: py }] });
       await page.waitForTimeout(40);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     };
     const first = Date.now();
-    await tap();
+    await tapAt(x, y);
     await page
       .waitForFunction((before) => !/^(busy|\s*)$/.test(document.querySelector('.status')?.getAttribute('data-tone') ?? '') && document.querySelector('.status')?.getAttribute('data-tone') !== before, tone, { timeout: 360, polling: 'raf' })
       .catch(() => undefined);
     await page.waitForTimeout(Math.max(0, 300 - (Date.now() - first)));
-    await tap();
-    await cdp.detach();
-    await expect.poll(() => page.evaluate(() => (window as unknown as { pressed: string[] }).pressed), `${at}, ${view.history}: the two taps pressed`).toEqual([view.row, view.row]);
+    await tapAt(x, y);
+    await page.waitForTimeout(800);
+    await tapAt(x, y);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { pressed: string[] }).pressed), `${at}, ${view.history}: the three taps pressed`).toEqual([view.row, view.row, view.row]);
     await expect(more, `${at}: More is still open`).toBeVisible();
-    // Once the sheet has been still for a moment the status line takes the room it needs, and the head comes
-    // down: the status line back above the sheet (the error cleared), or the error's reason whole.
-    await expect.poll(headBottom, `${at}: the head comes down once the sheet is still`).toBeGreaterThan(head + 10);
+    // However long the student then looks, the head stays where it is: the row is where the finger left it.
+    await page.waitForTimeout(1200);
+    expect(Math.abs((await headBottom()) - head), `${at}: the head moved while nothing else was pressed`).toBeLessThanOrEqual(1);
+    // A tap on the paper (its left margin, between the top bar and the stack): the status line takes the room
+    // it needs, and the head comes down (the status line back above the sheet, or the error's reason whole).
+    const paper = await page.evaluate(() => {
+      const top = document.querySelector('header')!.getBoundingClientRect().bottom;
+      const bottom = document.querySelector('.phone-bottom > :not(.phone-lines)')!.getBoundingClientRect().top;
+      for (let py = Math.round(top) + 4; py < bottom - 4; py += 4) {
+        const hit = document.elementFromPoint(6, py);
+        if (hit?.closest('.nb-canvas') && !hit.closest('button, .nb-hit')) return { x: 6, y: py };
+      }
+      return undefined;
+    });
+    expect(paper, `${at}: some paper to tap`).toBeDefined();
+    await tapAt(paper!.x, paper!.y);
+    await cdp.detach();
+    await expect.poll(headBottom, `${at}: the head comes down once the paper is tapped`).toBeGreaterThan(head + 10);
     await page.evaluate(() => localStorage.removeItem('plainspice:netlist'));
   }
 });
