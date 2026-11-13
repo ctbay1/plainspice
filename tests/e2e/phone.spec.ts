@@ -1276,7 +1276,8 @@ test('a second tap meant for the row just under More’s head presses it: a stat
       );
     });
     // Two real taps: the second once the first one's run has given its new status (where the head came down
-    // at once), 300 to 500 ms after the first, as a quick double tap is.
+    // at once), 300 to 400 ms after the first, as a quick double tap is (and well inside the sheet's 600 ms
+    // of quiet, however slow the machine).
     const cdp = await page.context().newCDPSession(page);
     const tap = async (): Promise<void> => {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
@@ -1286,7 +1287,7 @@ test('a second tap meant for the row just under More’s head presses it: a stat
     const first = Date.now();
     await tap();
     await page
-      .waitForFunction((before) => !/^(busy|\s*)$/.test(document.querySelector('.status')?.getAttribute('data-tone') ?? '') && document.querySelector('.status')?.getAttribute('data-tone') !== before, tone, { timeout: 460, polling: 'raf' })
+      .waitForFunction((before) => !/^(busy|\s*)$/.test(document.querySelector('.status')?.getAttribute('data-tone') ?? '') && document.querySelector('.status')?.getAttribute('data-tone') !== before, tone, { timeout: 360, polling: 'raf' })
       .catch(() => undefined);
     await page.waitForTimeout(Math.max(0, 300 - (Date.now() - first)));
     await tap();
