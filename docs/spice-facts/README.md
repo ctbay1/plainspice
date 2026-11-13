@@ -193,3 +193,12 @@ to it, and how its control reader makes their words (blanks kept in quotes, a ba
 braces made into words, `~` made the home folder); limit-12, limit-16 and limit-17 gained `ngbehavior` set
 before a built circuit, a built circuit's `.title` line, a formula's name with its blanks and quotes, and
 `fft`, `psd`, `spec` and `asciiplot`.
+
+## The last pass of 13 November 2026
+
+Run on 13 November 2026 with native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, and asserted
+by `tests/golden/facts-explain.test.ts`: in explanations.md, A3f gained the runs that show ngspice reads
+no line of a subcircuit no X line uses (a `.tran` and a dot command it stops at elsewhere say nothing
+there), on which the word "skips" rests; A3g (a gnd in a `.tf`'s `v( )` inside a subcircuit an X line
+uses is ground, as at the top level); and A3h (ngspice names a node inside a subcircuit by its X lines
+and a dot, `x1.m`, `x1.x2.m`, and a `.tf` can ask about it).

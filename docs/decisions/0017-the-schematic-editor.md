@@ -576,3 +576,68 @@ page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
   machine's move for nobody's, and the second click was then taken where the drawing had slid to.
   Considered: a card that never comes to rest under the pointer; its place is decided by the drawing
   and the window (decision 0015), and a keyboard opens it with no pointer at all.
+
+## After the last pass (13 November 2026)
+
+The last pass before the release found four problems with `.tf` and the other analysis lines inside
+subcircuits, and with the word for lines ngspice skips (`src/spice/explain.ts`, `src/spice/describe.ts`,
+`src/spice/traps.ts`; `tests/unit/last-pass-subckt.test.ts` and `tests/golden/facts-explain.test.ts`
+check each, A3f to A3h in `docs/spice-facts/explanations.md`):
+
+- **`x1.m` is a node** (code review C3-6). ngspice names a node inside a subcircuit by the X lines that
+  lead to it and a dot, in lower case (`x1.m`; `x1.x2.m` for X2 inside X1's subcircuit, and `x1.n` for
+  that subcircuit's own n), and `.tf v(x1.m) V1` measures it: 0.5 and 500 Ω in native 47 and 42 (A3h).
+  PlainSpice looked such a name up among the main circuit's nodes only, so it gave an error ('.tf asks
+  about node x1.m, which is not in the circuit'), the status "check" and a warning that the right
+  numbers meant nothing. `innerNode` now reads the name back the way ngspice builds it (the X lines of
+  the main circuit, those after a plain `.end` too, then each subcircuit's own X lines, then a node of
+  that subcircuit's own lines that is not on its `.subckt` line and not ground), and the .tf check, the
+  .tf warning and Explain's note take it as a node. Explain says which node it is: "x1.m is ngspice's
+  name for node m of the subcircuit div (from line 4), inside X1: ngspice names a node inside a
+  subcircuit by its X line, then a dot." The .tf words keep the name as written, "at node x1.m", as the
+  `.op` words name the same node (`node x1.n = 6.25 V`): one name for one node. A dotted name that is no
+  such node keeps its error, as ngspice makes it a new node with nothing on it (0 and 1 Ω): `x1.a` for
+  a node of the `.subckt` line (that node is the X line's own, `in`), and `x2.m` where X2 is only a
+  line of a subcircuit no X line uses. Not done: telling the student that `x1.a` is node in, with a
+  "Use in" fix; the error says what holds.
+- **gnd in a used subcircuit's `.tf` is ground** (regress-2). ngspice turns gnd into 0 on every line,
+  the subcircuit's lines included, before it runs such a `.tf` as the main circuit's (A3g: `.tf
+  v(out,gnd) V1` there is `v(out,0)`, 1/3). The parser files no node for the words of a line inside
+  `.subckt` … `.ends` (a subcircuit's nodes are its own), so the .tf reading took that gnd for an
+  ordinary node: 'between node out and node "gnd"' and the warning '"gnd" is not a node of the
+  circuit … these .tf numbers mean nothing' under the right 0.3333. Explain now reads those words as the
+  parser reads the same line in the main circuit (`subcircuitWords`: the line and its continuation lines
+  parsed alone), so gnd is ground there by the parser's own rule (`gndIsGround`), and the text, the
+  speech, Explain and the warning say "between node out and ground", as for the line above `.subckt`.
+- **The summary names the warnings it counts** (regress-2). It said "2 warnings:" and named the first
+  ("2 warnings: a is not a node of the circuit."), in the Numbers panel and in what the polite region
+  says after a run. It now names them as it names the nodes (decision 0010): the first four, joined by
+  semicolons since a title may hold a comma, then how many more ("6 warnings: R1 is too small for
+  ngspice; …; R4 is too small for ngspice; and 2 more warnings."). The skeptic of the problem found this
+  older than the regression and asked to leave it; it was kept because the count and the names
+  disagreed for every run with two warnings or more, and the list stops at four.
+- **Why nothing ran, where students look first** (facts F3). With every analysis line in a subcircuit
+  no X line uses, ngspice runs nothing and, with a results file, says nothing (A3f), and the page said
+  "ngspice finished but gave no results: no results." and "it printed no message that says why"; only
+  Explain had the reason. The run's first message now gives it, and the status line with it:
+  "ngspice finished but gave no results: .tf is inside the subcircuit s, which no X line uses.", and in
+  the Numbers panel "ngspice skips an analysis line between .subckt and .ends when no X line uses that
+  subcircuit, so it ran nothing, and with a results file it says nothing about it. Put analysis lines
+  in the main circuit, outside .subckt … .ends.", with "Go to line 7". It comes first even when ngspice
+  printed a note (`.ac` and `.noise`: "V1 has no value"), which is no reason. Not through the
+  no-analysis check: the app stops running on that check and says "This netlist has no analysis line
+  … The Checks panel offers to add one." (`noAnalysis`, `statusNothingDetail`), which is false here, and
+  its fix, a `.op` before `.end`, would leave the student's line skipped (the skeptic of F3). Considered
+  and left for after the release: a check of its own in the Checks panel, whose fix moves the line out
+  of the subcircuit. And no title said twice: with no message from ngspice the summary is "ngspice
+  finished without writing any results, and it printed no message that says why." (`summaryEmptyNoWhy`),
+  never "gave no results: no results".
+- **"skips" for those lines** (facts F2, W11). Explain's note ("ngspice skips this line: it is inside the
+  subcircuit s …") and the overview ("… where ngspice skips them, so ngspice will run nothing.") said
+  "ignores", the word for characters inside a line. ngspice reads none of such a subcircuit's lines: a
+  `.tran 0 -1` and a `.foo` it stops at elsewhere say nothing there, and stop it in a subcircuit an X line
+  uses (A3f). Not changed: Explain's `.print` and `.plot` sentence ("then ngspice leaves the .print line
+  out") and the node-name checks' "PlainSpice's run leaves .print and .plot lines out", which the
+  reviewer also listed. ngspice reads such a line and answers ".print line ignored since rawfile was
+  produced" (A25, A25b), so it is no line it skips: decision 0016 chose "leaves … out" for it (names lane,
+  second critic, 6), and the skeptic of F2 showed it holds.
