@@ -90,6 +90,9 @@ describe('the verb follows the unit word: "1 amp flows", "1 times 10 to the powe
     expect(r.annotations.find((a) => a.line === 3)!.speech).toContain('1 times 10 to the power minus 29 amps flow from node top to node s');
     const one = await solveText(netlist('I1 0 a 1', 'R1 a 0 2', '.options savecurrents', '.op'), ngspice);
     expect(one.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 amp flows from node a to ground through R1');
+    // 1 kV across 1 pΩ: 1e15 A, said with an exponent, "amps flow" (the skeptic of regress-4).
+    const huge = await solveText(netlist('V1 a 0 1k', 'R1 a 0 1p', '.options savecurrents', '.op'), ngspice);
+    expect(huge.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 times 10 to the power 15 amps flow from node a to ground through R1');
     const milli = await solveText(netlist('I1 0 a 1m', 'R1 a 0 2', '.options savecurrents', '.op'), ngspice);
     expect(milli.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 milliamp flows from node a to ground through R1');
   });
