@@ -990,6 +990,10 @@ async function logSheetRows(page: Page): Promise<void> {
     };
     requestAnimationFrame(tick);
   });
+  // The rows as they are before the first step: logged before it starts, or a row the sheet already had
+  // counts as new in it (rowsThatMoved's onlyNew), and Checks' first box, whose words change as the error is
+  // found and the sheet laid out afresh, failed the test at 640 × 400 when the first frame came late.
+  await page.waitForFunction(() => (window as unknown as { sheetRows: unknown[] }).sheetRows.length > 0);
 }
 
 /** A step, then once its run has come and gone, the page settled. */
