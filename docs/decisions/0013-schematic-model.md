@@ -315,10 +315,10 @@ time (`tests/unit/schematic-piles.test.ts`, `schematic-shapes-work.test.ts`,
 `notebook-drawing-work.test.tsx`, `app-card-builds.test.tsx`), and those of each fix fail on the
 build re-checked. After the critic's corrections, the same holds for the repository's netlists and
 their edits, and the drawings with a part on another node's pin draw as before except the three
-whose name sat on a crossing; 41 crafted shapes, 40 fuzzed piles and 700 random drawings with
-9,000 edits give the same drawing lines, scene and problems with the routes kept up to date as with
-the islands found again for each route (two crafted lattices through a pin now join more pieces by
-name, the routing budget counting their ends). `schematic-piles.test.ts` also sweeps the piles and
+whose name sat on a crossing; 43 crafted shapes, 40 fuzzed piles and 700 random drawings with
+9,049 edits give the same drawing lines, scene and problems with the routes kept up to date as with
+the islands found again for each route (the three crafted shapes whose slanted lattice holds a pin
+now join more pieces by name, the routing budget counting their ends). `schematic-piles.test.ts` also sweeps the piles and
 groups for names on crossings and counts the pieces of wire indexed, handed to routes and routed
 from; `schematic-shapes-work.test.ts` counts the work of every shape decision 0012 measures, the
 pieces of wire its lines draw counted in its size.
