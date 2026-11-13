@@ -1150,7 +1150,7 @@ ngspice 42, ngspice -b (exit 1):
   ngspice -b -r out.raw (exit 1), which also prints:
     doAnalyses: TRAN:  Timestep too small; initial timepoint: cause unrecorded.
     run simulation(s) aborted
-    rawfile: (no rawfile)
+    rawfile: a Transient Analysis plot whose header says 0 points (no results); 40 bytes of zeros, one point's worth, follow its Binary: line
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     in                                           0
     out                                          0
@@ -3746,7 +3746,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4124,7 +4124,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4163,7 +4163,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4213,7 +4213,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4251,7 +4251,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4289,7 +4289,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4327,7 +4327,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4421,14 +4421,14 @@ ngspice 47, ngspice -b (exit 1):
     Warning: singular matrix:  check node v1#branch
     doAnalyses: TRAN:  Timestep too small; initial timepoint: cause unrecorded.
     run simulation(s) aborted
-    rawfile: (no rawfile)
+    rawfile: a Transient Analysis plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 1), which also prints:
     Warning: singular matrix:  check node v1#branch
     doAnalyses: TRAN:  Timestep too small; initial timepoint: cause unrecorded.
     run simulation(s) aborted
-    rawfile: (no rawfile)
+    rawfile: a Transient Analysis plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     Operating point simulation skipped by 'uic',
       now using transient initial conditions.
@@ -6021,11 +6021,11 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
 ```
@@ -6051,11 +6051,11 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
 ```
@@ -6301,7 +6301,7 @@ ngspice 47, ngspice -b (exit 1):
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
@@ -6686,11 +6686,11 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
 ```
@@ -13325,11 +13325,11 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
 ```
