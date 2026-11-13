@@ -58,6 +58,9 @@ describe('code review C3-6: ngspice\'s name for a node inside a subcircuit (A3h)
   it('reads the name as ngspice does: capitals do not matter, an X line after .end counts, and a nested one is named by both X lines', async () => {
     expect(tfErrors(tf('X1.M'))).toEqual([]);
     expect(innerNode(parseNetlist(tf('X1.M')), 'x1.m')?.path).toEqual(['X1']);
+    // Beside a node of the main circuit (native: v(x1.m,in), −0.5 and 500 Ω).
+    const two = await solve(tf('x1.m,in'), await engine);
+    expect([tfErrors(tf('x1.m,in')), two.status, sp(two.words.tf?.transferFunction?.text), two.words.tf?.at]).toEqual([[], 'ok', 'v(x1.m,in)/V1 = −0.5 (V/V)', 'between node x1.m and node in']);
     // ngspice reads the lines after a plain .end (S25): an X line there places the subcircuit too.
     const late = '* t\nV1 in 0 10\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n.tf v(x1.m) V1\n.end\nX1 in out div\n';
     expect(tfErrors(late)).toEqual([]);
