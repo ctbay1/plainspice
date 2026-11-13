@@ -10,6 +10,11 @@ import { roundingNoise } from '../../src/spice/describe.ts';
 import {
   agrees,
   ANSWER_FLOOR,
+  checkWork,
+  MAX_WORK,
+  newBudget,
+  TERM_WORK,
+  treeCurrents,
   ANSWER_GAP,
   answersAgree,
   answersGap,
@@ -33,6 +38,7 @@ import {
   ZERO,
   type ExactModel,
   type Fraction,
+  type NgspiceValues,
 } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { readNumber } from '../../src/spice/numbers.ts';
@@ -341,5 +347,58 @@ describe('whole numbers over one denominator, so that no common factor is search
     }
     const network = model(`* mesh\n${mesh.join('\n')}\n.op\n.end\n`) as ExactModel;
     expect(solveExact(network, [operatingPoint(network)])).toBeUndefined();
+  });
+});
+
+describe('after the critic of round 2: what each step counts, and where a whole number too large stops it', () => {
+  /** n resistors of the first n primes from 1009 side by side across a 9 V source. */
+  const side = (n: number): ExactModel => {
+    const primes: number[] = [];
+    for (let k = 1009; primes.length < n; k += 2) if (primes.every((p) => k % p !== 0) && [3, 5, 7, 11, 13, 17, 19, 23, 29, 31].every((p) => k % p !== 0)) primes.push(k);
+    return model(`* t\nV1 a 0 9\n${primes.map((p, k) => `R${k} a 0 ${p}`).join('\n')}\n.op\n.end\n`) as ExactModel;
+  };
+  /** ngspice-like values for those: 9 V at a, V1's current the sum of the resistors'. */
+  const ngOf = (m: ExactModel): NgspiceValues => {
+    const i = m.parts.filter((p) => p.kind === 'R').reduce((sum, p) => sum + 9 / toDouble(p.value), 0);
+    return { voltage: (n) => (n === 'a' ? 9 : undefined), branch: (k) => (k === 'v1' ? -i : undefined), device: () => undefined };
+  };
+
+  it('building the equations counts TERM_WORK a term before it starts, and a row whose one denominator passes MAX_BITS stops it there, before any elimination: 500 resistors of prime values (5,000 bits)', () => {
+    const m = side(500);
+    const terms = 500 + 2;
+    const budget = newBudget();
+    expect(solveExact(m, [operatingPoint(m)], budget)).toBeUndefined();
+    expect(MAX_WORK - budget.left).toBe((terms + m.size) * TERM_WORK);
+    // With too little left for that count, it does not start.
+    const short = { left: (terms + m.size) * TERM_WORK - 1 };
+    expect(solveExact(side(20), [operatingPoint(side(20))], { left: (22 + 2) * TERM_WORK - 1 })).toBeUndefined();
+    expect(solveExact(m, [operatingPoint(m)], short)).toBeUndefined();
+    expect(short.left).toBe(0);
+    expect(solveExact(side(20), [operatingPoint(side(20))], { left: MAX_WORK })).toBeDefined();
+  });
+
+  it('a check of ngspice\'s values counts checkWork before it starts, and stops where its sum\'s one denominator passes MAX_BITS', () => {
+    const small = side(20);
+    const enough = { left: checkWork(small) };
+    expect(shares(small, ngOf(small), (p) => p.value, enough)).toBeDefined();
+    expect(enough.left).toBe(0);
+    const short = { left: checkWork(small) - 1 };
+    expect(shares(small, ngOf(small), (p) => p.value, short)).toBeUndefined();
+    expect(short.left).toBe(0);
+    // 500 primes: the sum at node a has a denominator of about 5,000 bits.
+    const big = side(500);
+    expect(shares(big, ngOf(big), (p) => p.value, newBudget())).toBeUndefined();
+  });
+
+  it('with diodes, the currents Kirchhoff\'s law gives them count as a check too', () => {
+    const m = model('* t\nV1 top 0 9\nR1 top a 1k\nD1 a 0 dmod\n.model dmod d\n.op\n.end\n') as ExactModel;
+    const d1 = m.parts.findIndex((p) => p.kind === 'D');
+    const ng: NgspiceValues = { voltage: (n) => (n === 'top' ? 9 : n === 'a' ? 0.7 : undefined), branch: (k) => (k === 'v1' ? -0.0083 : undefined), device: () => undefined };
+    const enough = { left: checkWork(m) };
+    expect(treeCurrents(m, [d1], ng, enough)?.size).toBe(1);
+    expect(enough.left).toBe(0);
+    const short = { left: checkWork(m) - 1 };
+    expect(treeCurrents(m, [d1], ng, short)).toBeUndefined();
+    expect(short.left).toBe(0);
   });
 });

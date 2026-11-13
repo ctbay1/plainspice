@@ -917,3 +917,28 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     expect(largeChain.noiseMs).toBeLessThan(10 * Math.max(smallChain.noiseMs, 1));
   });
 });
+
+describe('after the critic of round 2 of the re-check\'s fixes: where ngspice\'s answers are off, the exact solution keeps the rule\'s words true', () => {
+  // The bridge of C9s (a 1e-12 Ω wire: ngspice's answers 4 % off, so the rule decides, with ngspice's own values below), and
+  // beside it V2 at 9.0000000000000036 V, two steps of a double above V1's 9 V, with resistors of 1 G and 2 G between them.
+  const text =
+    '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nRw a m 1e-12\nR5 m b 1k\nV2 t 0 9.0000000000000036\nRh top w 1g\nRx w t 1g\nVm w y 0\nRy y q 1g\nRq1 top q 2g\nRq2 q t 2g\n.op\n.end\n';
+  const [t, w] = [9.000000000000004, 9.000000000000002];
+  const results = op({ top: 9, a: 4.32056594239515, b: 4.374128347650329, m: 4.32056594239515, t, w, y: w, q: w }, [
+    ['v1', -0.001452171416898713, 'branch'], ['r1', 0.00046794340576048507, 'device'], ['r2', 0.000432056594239515, 'device'], ['r3', 0.000984228011138228, 'device'],
+    ['r4', 0.0009306656058830487, 'device'], ['rw', 0, 'device'], ['r5', -0.00005356240525517908, 'device'],
+    ['v2', -((t - w) / 1e9 + (t - w) / 2e9), 'branch'], ['rh', (9 - w) / 1e9, 'device'], ['rx', (w - t) / 1e9, 'device'], ['vm', 1e-30, 'branch'],
+    ['ry', 0, 'device'], ['rq1', (9 - w) / 2e9, 'device'], ['rq2', (w - t) / 2e9, 'device'],
+  ]);
+
+  it('the rule takes Rh and Rx, whose ends ngspice gives a step apart, as noise, and Vm as the only current left at w; the exact solution keeps Rh and Rx real, so Vm\'s 0 (exactly 0) is not said to be "the only current left at w"', () => {
+    const words = describeResults(parseNetlist(text), results, run());
+    expect(words.warnings.some((m) => m.code === 'imprecise-answers')).toBe(true);
+    expect(words.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['Vm']);
+    // Rh, Rx, Rq1, Rq2 and V2 carry real attoamps, a millionth of a millionth of what flows elsewhere: shown as ngspice gives them.
+    for (const name of ['Rh', 'Rx', 'Rq1', 'Rq2', 'V2']) expect(words.currents.find((c) => c.name === name)!.value, name).not.toBe(0);
+    const why = words.warnings.find((m) => m.code === 'rounding-noise')!.why;
+    expect(why).not.toContain('every other current');
+    expect(why).toBe("ngspice gave Vm 1.000000e-30 A. That is rounding noise, what its arithmetic leaves of a current that is 0. It is below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.");
+  });
+});

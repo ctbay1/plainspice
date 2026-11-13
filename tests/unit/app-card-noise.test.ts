@@ -92,6 +92,10 @@ describe('after the critic of the re-check\'s fixes: the card keeps Ohm\'s law w
     const text = '* t\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.op\n.end\n';
     const r3 = await card(text, 'R3');
     expect([r3.through, r3.across.value, r3.across.sub]).toEqual(['454.1 pA', '4.541e-19 V', ['node d2 is higher', 'V(d2) − V(p3) = 4.541e-19 V']]);
+    // Opened on that run, then R4 changed: the crossed-out number is that exact 4.541e-19 V, not the 0 V of ngspice's two equal ends.
+    const before = await solve(text, ngspice);
+    const after = await card(text.replace('R4 p3 0 10meg', 'R4 p3 0 12meg'), 'R3', before);
+    expect([after.through, after.across.value, after.across.was]).toEqual(['378.5 pA', '3.785e-19 V', '4.541e-19 V']);
   });
 
   it('an E reading the balanced bridge carries a real 5 mA between two nodes at exactly 5 V: 0 V across it, and no power', async () => {
