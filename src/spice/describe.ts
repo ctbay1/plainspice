@@ -4255,7 +4255,7 @@ function tfMaybeNote(netlist: Netlist, words: SummaryInput): MessageWords | unde
   const meter = r?.kind === 'tf' && r.outputKind === 'current' ? partsOf(netlist).byKey.get(netlistPart(netlist, r.outputNames[0] ?? ''))?.element : undefined;
   const op =
     q.maybe === 'unproven'
-      ? meter ? `${meter.name.text}'s current may itself be rounding noise` : `the ${nodes.length === 1 ? 'voltage' : 'voltages'} at ${listWords(nodes.length ? nodes : [tf.output])} may themselves be rounding noise`
+      ? meter ? `${meter.name.text}'s current may itself be rounding noise` : nodes.length > 1 ? `the voltages at ${listWords(nodes)} may themselves be rounding noise` : `the voltage at ${nodes[0] ?? tf.output} may itself be rounding noise`
       : meter ? (isAmmeter(meter) ? S.measuresNothing(meter.name.text) : `${meter.name.text} carries no current`) : nodes.length === 2 ? `${nodes[0]} and ${nodes[1]} are at the same voltage` : `${nodes[0] ?? tf.output} is at 0 V, ground's voltage`;
   const m: MessageWords = { code: 'maybe-noise', severity: 'note', title: S.maybeTfTitle, why: S.maybeTfWhy(`${tf.output}/${tf.input}`, formatLikeNgspice(q.value), op, self) };
   if (line !== undefined) m.line = line + 1;

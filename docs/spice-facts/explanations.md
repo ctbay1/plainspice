@@ -6622,7 +6622,9 @@ says that node a and node b are at the same voltage. A ratio is a slope, which t
 ngspice's; but where the .op beside it shows its output as 0 (or as maybe noise itself) and the ratio is less than
 RESIDUAL_SHARE, about a billionth, of what its input makes of itself in the output's unit (a volt for each volt; the
 input resistance's current or voltage otherwise), a note says it may be rounding noise or a real ratio that small. A
-ratio of 0.5 V/V, of 3.6 V/A from a source of 1 aA, or a ladder's far node, real however small, gets none.
+ratio of 0.5 V/V, of 3.6 V/A from a source of 1 aA, or of a ladder's far node that the .op shows real, gets none; where
+the .op's own note says the output node's voltage may be rounding noise (a ladder's node the rule cannot prove real),
+the .tf's note says so of the ratio too ("In the operating point the voltage at node n6 may itself be rounding noise").
 
 ```spice
 * the balanced bridge of C9 beside a transistor, with .op and .tf v(a,b) V1

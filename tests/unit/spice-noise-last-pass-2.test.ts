@@ -177,6 +177,11 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
     const ratio = far.words.tf!.transferFunction!;
     expect(Math.abs(ratio.value)).toBeLessThan(2 ** -30);
     expect([ratio.maybe, far.words.warnings.some((m) => m.code === 'maybe-noise' && m.title.startsWith('The transfer function'))]).toEqual([undefined, false]);
+    // Two sections on, where the rule cannot prove the node real either, its own note says the node may be noise, and
+    // the .tf's says the ratio may be too.
+    const further = await solveText(netlist(...ladder.slice(0, -3), 'R11 n5 n6 1.5k', 'R12 n6 0 12', 'R13 n6 n7 1.5k', 'R14 n7 0 12', ...ladder.slice(-3), '.op', '.tf v(n6) V1'), ngspice);
+    expect(further.words.tf!.transferFunction!.maybe).toBe('unproven');
+    expect(sp(further.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')?.why)).toMatch(/^ngspice gave v\(n6\)\/V1 = \S+\. In the operating point the voltage at node n6 may itself be rounding noise, and this ratio is less than a billionth of a volt for each volt of V1/);
   });
 });
 

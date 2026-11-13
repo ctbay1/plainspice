@@ -936,8 +936,9 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
  * repository and the re-check's corpora that PlainSpice models exactly, run in our engine (wires of 1 µΩ, meters of 1e20 Ω, gains of
  * 1e9): at most 3.8e-15 for the nodes and 4.4e-11 for the branches, most below 2^-52. 2^-30 (about
  * 9.3e-10) leaves room above that. That is no bound: a 1 nΩ to 10 µΩ wire into 0 V ammeters in series leaves
- * 1.07e-7 to 1.9e-3 (the last pass), so `agrees` allows this share times the spread of the conductances
- * (conductanceSpread). It says nothing of how far ngspice's answers are from the exact
+ * 1.07e-7 to 1.9e-3 (the last pass), and an E of 1e15 9.2e-3 (its critic), so `agrees` allows this share times the
+ * spread of the conductances and what the controlled sources amplify (conductanceSpread, amplification). It says
+ * nothing of how far ngspice's answers are from the exact
  * ones where a tiny wire makes the equations ill-conditioned: `answersAgree` does.
  * A circuit other than ngspice's leaves more, measured on one with every kind of part: a node or part
  * it does not have fails at the names; a 9 V source, a gain of an E or of an H 1 ppm off leave 5e-7,
@@ -1376,8 +1377,9 @@ export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
 /**
  * The same-circuit check's verdict (`agrees`). 'agrees'. 'residual': every R, F, G and I current ngspice reports is its
  * own numbers' product, but its values leave more of the equations than RESIDUAL_SHARE times `spread` (what its
- * arithmetic was let leave; describe.ts judges such a run by the page's digits and says what is off, decision 0015 after
- * the last pass). 'other': a product is off, so ngspice simulated another value than the model's; or the check cannot be
+ * arithmetic was let leave): either ngspice lost its digits past that, or it reads the netlist otherwise (S28), and
+ * describe.ts leaves such a run to the rule with a note that its numbers could not be checked (decision 0015, after the
+ * last pass). 'other': a product is off, so ngspice simulated another value than the model's; or the check cannot be
  * made (a value missing, a denominator past MAX_BITS, past `budget`). A share is never more than 1 (no equation's sum is
  * larger than the sum of its terms' sizes), so an allowance of 1 or more, or past the largest double, holds whatever is
  * left.
