@@ -702,6 +702,14 @@ describe('the lines ngspice runs as commands (limit-18)', () => {
     expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.control\n;${op(501)}\n.endc\n.end\n`)).toBeUndefined();
   });
 
+  it('gives a *# command every check of a .control line: names joined in brackets, a formula’s name, a meas word', () => {
+    expect(reasonAt(at(`*# print v( ${w(200)} ${w(200)} ${w(111)} .x )`))?.reason).toBe(RUN_COPY_WORDS.joinedWord(6, `${w(200)} ${w(200)} ${w(111)} .x`, 513));
+    const sum = `v(b)${'+v(b)'.repeat(50)}`;
+    expect(reasonAt(at(`*# echo first ; print ${sum}`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longExpression(6, 'print', sum, 254) });
+    expect(reasonAt(at(`## meas tran x max ${w(51)}`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longMeasWord(6, w(51), 51) });
+    expect(reasonAt(at(`;# fft ${sum}`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longExpression(6, 'fft', sum, 254) });
+  });
+
   it('runs the commands a ; separates on a *# line (no comment is cut from a line that starts with *)', () => {
     expect(reasonAt(at(`*# echo first ; ${op(501)}`))).toEqual(long(6));
     expect(reasonAt(at(`*# echo first ; ${op(500)}`))).toBeUndefined();
