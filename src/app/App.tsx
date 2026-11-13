@@ -360,11 +360,13 @@ interface SheetHold {
 }
 
 const sheetRowsOf = (h: { body: HTMLElement }): number => h.body.scrollHeight;
-/** How far down the sheet its head ends (its grab and head). */
+/** How far down the sheet its head ends (its grab and head), to the fraction of a pixel. */
 const headOf = (sheet: HTMLElement): number => {
   const head = sheet.querySelector<HTMLElement>(':scope > .card-head');
-  return head ? head.offsetTop + head.offsetHeight : 0;
+  return head ? head.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top : 0;
 };
+/** How tall the sheet is, to the fraction of a pixel (offsetHeight rounds, and a rounded size moved it). */
+const heightOf = (sheet: HTMLElement): number => sheet.getBoundingClientRect().height;
 
 /**
  * Holds a sheet as it is laid out, from the frame it is first drawn in (until then the lines above it may
@@ -396,7 +398,7 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement): SheetHo
 function measureSheet(held: SheetHold): void {
   held.sheet.style.removeProperty('max-height');
   held.rows = sheetRowsOf(held);
-  held.height = held.sheet.offsetHeight;
+  held.height = heightOf(held.sheet);
   held.head = headOf(held.sheet);
   held.scroll = held.body.scrollTop;
 }
@@ -2047,10 +2049,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     // its scroll. (Its head may change on its own: the Checks count as a check is typed in.)
     const keep = held.height - held.head + held.scroll;
     const head = headOf(sheet);
-    const max = `${Math.floor(Math.min(held.cap, keep + head))}px`;
+    const max = `${Math.min(held.cap, keep + head)}px`;
     if (sheet.style.maxHeight !== max) sheet.style.maxHeight = max;
-    const height = sheet.offsetHeight;
-    if (height !== held.height || head !== held.head) {
+    const height = heightOf(sheet);
+    if (Math.abs(height - held.height) > 0.01 || Math.abs(head - held.head) > 0.01) {
       body.scrollTop = keep - (height - head);
       held.height = height;
       held.head = head;
@@ -2112,8 +2114,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const [linesSettled, setLinesSettled] = useState(0);
   useLayoutEffect(() => {
     if (!sheetKey || running || linesStep === 2) return;
-    const h = linesBox.current?.offsetHeight ?? 0;
-    setLinesSettled((old) => (old === h ? old : h));
+    const h = linesBox.current?.getBoundingClientRect().height ?? 0;
+    setLinesSettled((old) => (Math.abs(old - h) < 0.01 ? old : h));
   }, [sheetKey, running, linesStep, statusKeyNow, hint, linesSqueezed, hintSqueezed, linesMax]);
   const linesHeld = running && !!sheetKey && linesStep < 2 && linesSettled > 0 ? Math.min(linesSettled, linesMax ?? Number.POSITIVE_INFINITY) : undefined;
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
