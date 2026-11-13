@@ -614,7 +614,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   ngspice gives 4.321 V", "node ÇIKIŞ", "node out (written with a zero-width space in it)". The title of
   the second note says "The voltage at node9 is not 0, though ngspice gave 0": "node9's voltage" read
   "Node9's" at a sentence's start, and put a possessive after "(written with a zero-width space in it)".
-  Decisions 0016 and 0017 no longer list the rounding-noise note as a gap.
+  The notes' reasons name their nodes the same way ("the two ends of R5, node ÇIKIŞ and node b", where they
+  said "node ÇikiŞ"). Decisions 0016 and 0017 no longer list the rounding-noise note as a gap.
 - **"1 times 10 to the power minus 29 amps flow"** (regress-4): the verb was chosen from the first word of
   the spoken value, so the exact 1e-29 A of C9n.3 "flows". It is singular only for a singular unit word,
   "1 amp flows", "1 milliamp flows".

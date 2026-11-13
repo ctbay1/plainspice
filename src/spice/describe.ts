@@ -3889,13 +3889,13 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
     const el = partsOf(netlist).byKey.get(c.element)?.element;
     switch (why.kind) {
       case 'same':
-        return S.noiseSame(c.name, said(why.a), said(why.b), formatSI(why.v ?? volts.get(why.a) ?? 0, 'V'));
+        return S.noiseSame(c.name, said(shownNode(netlist, why.a)), said(shownNode(netlist, why.b)), formatSI(why.v ?? volts.get(why.a) ?? 0, 'V'));
       case 'copies':
         return S.noiseCopies(c.name, el?.value?.number ? formatNumber(el.value.number.value) : '?', why.control);
       case 'reads':
-        return S.noiseReads(c.name, said(why.c), said(why.d));
+        return S.noiseReads(c.name, said(shownNode(netlist, why.c)), said(shownNode(netlist, why.d)));
       case 'node':
-        return S.noiseNode(said(why.node));
+        return S.noiseNode(said(shownNode(netlist, why.node)));
       case 'exact':
         return '';
     }
@@ -3975,7 +3975,7 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
   if (p && n && ohms !== undefined) {
     const volts = voltages(netlist, results);
     const [va, vb] = [volts.get(nodeName(p)), volts.get(nodeName(n))];
-    if (va !== undefined && va === vb) reason = S.lostEnds(currents[0]!.name, formatSI(Math.abs(currents[0]!.value * ohms), 'V'), formatSI(va, 'V'), said(nodeName(p)), said(nodeName(n)));
+    if (va !== undefined && va === vb) reason = S.lostEnds(currents[0]!.name, formatSI(Math.abs(currents[0]!.value * ohms), 'V'), formatSI(va, 'V'), said(shownNode(netlist, nodeName(p))), said(shownNode(netlist, nodeName(n))));
   }
   // A current's size (its direction is on the drawing and in the tables), a node voltage with its sign.
   const size = (v: number, unit: 'A' | 'V'): string => formatSI(unit === 'A' ? Math.abs(v) : v, unit);

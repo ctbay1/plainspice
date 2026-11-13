@@ -75,6 +75,11 @@ describe('the notes name a node by the node-words rule: "node1", never "node nod
     const words = notes(turkish.words).join(' ');
     expect(words).toContain('node ÇIKIŞ');
     expect(words).not.toMatch(/ÇikiŞ|çıkış/);
+    // The reasons too: "the two ends of R5, node ÇIKIŞ and node b, are at the same voltage" (the skeptic of C3-3).
+    const reason = await solveText(netlist('V1 top 0 9', 'R1 top ÇIKIŞ 10k', 'R2 ÇIKIŞ 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 ÇIKIŞ b 1k', '.options savecurrents', '.op'), ngspice);
+    const said = notes(reason.words).join(' ');
+    expect(said).toContain('the two ends of R5, node ÇIKIŞ and node b, are at the same voltage');
+    expect(said).not.toMatch(/ÇikiŞ/);
   });
 });
 
