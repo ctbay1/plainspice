@@ -196,8 +196,8 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   field must still get the strip there.
 - **A very short window.** Below 300 px of height (a laptop at 300 % or 400 %), a calm status
   ("Finished in 32 ms") folds to its dot, in the paper's margin left of the red line where the drawing
-  never goes, its words still read by screen readers; with buttons on it (Undo, Show the whole
-  drawing) it keeps them. Running, paused or an error keep their words, their reason and their buttons.
+  never goes, its words still read by screen readers; with buttons on it (Undo; Show the whole
+  drawing until the second re-check, below) it keeps them. Running, paused or an error keep their words, their reason and their buttons.
   The status line keeps its height, so the drawing does not move as runs come and go.
 - **Two buttons on one row.** On a phone, when "Show the whole drawing" shares the status line with
   another button (the turn, Undo), a calm status keeps its words for screen readers only and leaves
