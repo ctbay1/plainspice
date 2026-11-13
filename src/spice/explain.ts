@@ -322,6 +322,10 @@ export const EXPLAIN_STRINGS = {
   formulaPart: 'part of the formula ngspice works out',
   polySentence: (name: string, controls: string): string => `${name}'s output is a polynomial of ${controls}, written POLY.`,
   tableSentence: (name: string, of: string): string => `${name}'s output follows a table of points of ${of}, written TABLE.`,
+  /** The same lines with nothing yet where the formula, the controls or what the table looks up go (CR1-12). */
+  formulaNone: (name: string, keyword: string): string => `${name}'s line has no formula yet: after ${keyword}= comes the formula, for example ${keyword}={2*v(in)}.`,
+  polyNone: (name: string): string => `${name}'s output is a polynomial, written POLY, but the line names no controls yet.`,
+  tableNone: (name: string): string => `${name}'s output follows a table of points, written TABLE, but the line does not say yet what the table looks up.`,
   xspiceNote:
     "PlainSpice's engine cannot run this line: ngspice builds POLY and TABLE from an XSPICE block, which PlainSpice's engine leaves out. Native ngspice 47 runs it.",
   polyKeyword: 'POLY: the output is a polynomial of the controls that follow, then its coefficients',
@@ -1475,6 +1479,8 @@ interface PartContext {
   el: Element;
   info: ElementInfo | undefined;
   notes: string[];
+  /** For a line given by a formula, a table or a polynomial: where its keyword is among the fields, found once (CR1-9). */
+  formAt?: number;
 }
 
 function addNote(notes: string[], note: string | undefined): void {
@@ -1492,6 +1498,8 @@ function partFields(p: PartContext): FieldExplanation[] {
   const valueTokenFrom = el.value?.token.from;
   let acNext = false;
   const valueRoles: readonly FieldRole[] = ['value', 'gain', 'transconductance', 'transresistance'];
+  // Found once for the line: looked up for each word, it made Explain take time by the square of the words (CR1-9).
+  if (el.form) p.formAt = el.fields.findIndex((g) => g.token === el.form!.keyword);
   el.fields.forEach((f, k) => {
     const isNode = NODE_ROLES.has(f.role);
     // POLY(n)'s control nodes come in pairs, each labelled as the first pair is (C3-5).
@@ -1697,7 +1705,7 @@ function otherWordMeaning(letter: ElementLetter | undefined, word: string): stri
 /** A word of an E, F, G or H line given by a formula, a table or a polynomial, after its nodes (C3-5). */
 function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
   const form = p.el.form!;
-  const at = p.el.fields.findIndex((g) => g.token === form.keyword);
+  const at = p.formAt ?? p.el.fields.findIndex((g) => g.token === form.keyword);
   if (k < at) return fieldOf('dropped word', f.token, S.droppedWord);
   if (k === at) {
     if (form.kind === 'poly') return fieldOf('polynomial', f.token, S.polyKeyword);
@@ -1725,6 +1733,12 @@ function explainForm(p: PartContext, sentences: string[]): void {
   const [a, b, ...controls] = el.nodes;
   const name = el.name.text;
   if (form.kind === 'formula') {
+    // VALUE= with nothing after it, or empty braces: no formula yet (CR1-12), never "the formula ?".
+    if (!form.formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(form.formula.text)) {
+      sentences.push(S.formulaNone(name, form.keyword.text));
+      addNote(p.notes, S.formulaNote);
+      return;
+    }
     const formula = formulaText(form.formula);
     sentences.push(el.letter === 'E' ? S.formulaVoltage(voltagePhrase(a, b), formula) : S.formulaCurrent(formula, nodePhrase(a), nodePhrase(b)));
     const read = [...new Map((el.reads ?? []).map((r) => [r.name, r])).values()];
@@ -1737,9 +1751,11 @@ function explainForm(p: PartContext, sentences: string[]): void {
     const pairs: string[] = [];
     for (let k = 0; k + 1 < controls.length; k += 2) pairs.push(voltagePhrase(controls[k], controls[k + 1]));
     const sources = el.fields.filter((f) => f.role === 'control-source').map((f) => S.currentIn(f.token.text));
-    sentences.push(S.polySentence(name, S.listJoin(el.letter === 'E' || el.letter === 'G' ? pairs : sources) || '?'));
+    const of = S.listJoin(el.letter === 'E' || el.letter === 'G' ? pairs : sources);
+    sentences.push(of ? S.polySentence(name, of) : S.polyNone(name));
   } else {
-    sentences.push(S.tableSentence(name, form.formula ? formulaText(form.formula) : controls.length >= 2 ? voltagePhrase(controls[0], controls[1]) : '?'));
+    const of = form.formula ? formulaText(form.formula) : controls.length >= 2 ? voltagePhrase(controls[0], controls[1]) : undefined;
+    sentences.push(of ? S.tableSentence(name, of) : S.tableNone(name));
   }
   addNote(p.notes, S.xspiceNote);
 }

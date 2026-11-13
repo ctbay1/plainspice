@@ -308,6 +308,8 @@ export const DESCRIBE_STRINGS = {
   formulaCurrent: (name: string, formula: string, a: string, b: string): string =>
     `${name}: a current source given by a formula, pushing ${formula} from ${nodeIn(a)} into ${nodeIn(b)}.`,
   xspiceSource: (name: string, how: string): string => `${name}: a dependent source written as ${how}, which PlainSpice's engine cannot run.`,
+  /** VALUE= with nothing after it, or empty braces (CR1-12). */
+  formulaNone: (name: string, current: boolean): string => `${name}: a ${current ? 'current' : 'voltage'} source given by a formula, but its line has no formula yet.`,
   voltageAt: (n: string, ref: string): string => `the voltage at ${nodeIn(n)}, measured from ${nodeIn(ref)}`,
   at: (n: string): string => `at ${nodeIn(n)}`,
   /** A .tf output that is no node's name (ngspice's own words for it, when they do not read as v(...)). */
@@ -824,9 +826,10 @@ function partSentence(netlist: Netlist, line: NetlistLine): string {
   const fmt = (unit: string): string => (v === undefined ? '' : formatSI(v, unit));
   if (el.form) {
     // A formula, a table or a polynomial in place of control nodes and a gain (C3-5).
-    const formula = el.form.formula?.text.replace(/\s*\n[ \t]*\+?\s*/g, ' ') ?? '?';
+    const formula = el.form.formula?.text.replace(/\s*\n[ \t]*\+?\s*/g, ' ');
     if (el.form.kind === 'poly') return S.xspiceSource(name, 'a polynomial (POLY)');
     if (el.form.kind === 'table') return S.xspiceSource(name, 'a table (TABLE)');
+    if (!formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(formula)) return S.formulaNone(name, el.letter === 'G');
     return el.letter === 'E' ? S.formulaVoltage(name, S.voltageAt(nodeWritten(a), nodeWritten(b)), formula) : S.formulaCurrent(name, formula, nodeWritten(a), nodeWritten(b));
   }
   switch (el.letter) {

@@ -603,6 +603,22 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
     }
   });
 
+  it('CR1-9: Explain finds the keyword of a formula line once, whatever the number of words before it', () => {
+    const calls = (n: number): number => {
+      const net = parseNetlist(`* t\n${DIVIDER}E1 e 0 ${Array.from({ length: n }, (_, k) => `w${k}`).join(' ')} VALUE={2}\nRe e 0 1k\n.op\n.end\n`);
+      const fields = net.lines[4]!.element!.fields;
+      let count = 0;
+      const own = fields.findIndex.bind(fields);
+      fields.findIndex = ((...args: Parameters<typeof own>) => {
+        count += 1;
+        return own(...args);
+      }) as typeof fields.findIndex;
+      expect(explainLine(net, 4)!.fields.length).toBe(n + 5);
+      return count;
+    };
+    expect(calls(4000)).toBe(calls(4));
+  });
+
   it('CR1-10: a node called value is no formula in braces: the fix renames the node, on every E or G line that reads it as VALUE', () => {
     const text = '* t\nV1 in 0 5\nR1 in value 1k\nR2 value 0 1k\nE1 e 0 value 0 2\nG1 0 g value 0 2m\nRe e 0 1k\nRg g 0 1k\n.op\n.end\n';
     const found = traps(text);
@@ -618,6 +634,20 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
     // With no node of that name there is nothing to rename, and still no braces; a formula with blanks around an operator keeps them.
     expect(traps(formula('E1 e 0 value 0 2'))[0]!.fixes).toEqual([]);
     expect(traps(formula('E1 e 0 VALUE v(out) * 2'))[0]!.fixes.map((f) => f.label)).toEqual(['Put it in braces: {v(out) * 2}']);
+  });
+
+  it('CR1-12: Explain and the overview say a formula line has no formula yet, never "?"', () => {
+    for (const line of ['E1 e 0 VALUE', 'E1 e 0 VALUE=', 'E1 e 0 VALUE={}', 'G1 0 e cur=']) {
+      const n = parseNetlist(formula(line));
+      const e = explainLine(n, 4)!;
+      expect(e.summary, line).toContain('has no formula yet');
+      expect(e.summary, line).not.toContain('?');
+      const words = describeCircuit(n);
+      expect(words, line).toContain('given by a formula, but its line has no formula yet.');
+      expect(words, line).not.toContain('?');
+    }
+    expect(explainLine(parseNetlist(formula('E1 e 0 POLY(1)')), 4)!.summary).toBe("E1's output is a polynomial, written POLY, but the line names no controls yet.");
+    expect(explainLine(parseNetlist(formula('E1 e 0 TABLE')), 4)!.summary).toBe("E1's output follows a table of points, written TABLE, but the line does not say yet what the table looks up.");
   });
 
   it('missing-fields-10: one word before a formula is warned about only where native ngspice stops at it', () => {
