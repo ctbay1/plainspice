@@ -259,8 +259,11 @@ runs on.
 runs them: a node name, a model name, a parameter name, a subcircuit name, a part name, the names of
 a `.tf` line, a comment line. So do long lines of short words: a PWL source of 2,000 points (about
 20,000 bytes), a B source of 400 terms, a `.save` of 500 names, a subcircuit of 300 pins. With `-b`
-(no results file) the `.tf` of 20,000-byte names stops ngspice 47 and 42 when it prints the
-transfer function ("buffer overflow detected"); with `-b -r` it does not.
+(no results file) two more places stop ngspice 47 and 42 ("buffer overflow detected"): printing the
+transfer function of a `.tf` with 20,000-byte names, and a `.print dc v(n1,n2)` with two node names of
+300 bytes, which `fixem()` (`src/frontend/dotcards.c`) rewrites into 512 bytes (with names of 200
+bytes it runs). With `-b -r` neither does: ngspice writes the results file instead and skips `.print`
+lines.
 
 PlainSpice still gives ngspice words of at most 250 bytes everywhere: one rule for every word, so
 that two names, as ngspice joins them in a formula, still fit in 512 bytes.
