@@ -4002,8 +4002,9 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
 /* Shorter still (a laptop at 300 % or 400 %: 200 to 270 px of window; a small phone on its side with
    large text): a status pill in the middle would sit over the drawing's numbers. A calm one ("Finished
    in 32 ms") folds to its dot, its words still there for screen readers: with nothing to press, just the
-   dot, in the paper's margin left of its red line, where the drawing never goes; with buttons (Undo,
-   Show the whole drawing), the dot and the buttons. One that needs reading (running, paused, an error)
+   dot, in the paper's margin left of its red line, where the fit never puts the drawing; with Undo after
+   a change made on the drawing, the dot and Undo (Show the whole drawing is under More here: App.tsx,
+   wholeOnLine). One that needs reading (running, paused, an error)
    keeps its words, its reason and its buttons. The line keeps its height, so the drawing does not move
    as runs come and go. (is-shorter: below 300 px at the usual text size, scaled with it.) */
 .is-phone.is-shorter .status[data-tone='ok'] .status__main {
