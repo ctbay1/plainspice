@@ -18,7 +18,7 @@ import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { withoutInvisible } from './characters.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, dcStopsNgspice, ignoredAnalysis, innerNode, isExpression, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, dcStopsNgspice, ignoredAnalysis, innerNode, isExpression, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, skippedBecause, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { add, agrees, ANSWER_FLOOR, ANSWER_GAP, answers, carried, carrierSides, checkWork, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, RESIDUAL_SHARE, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type Carried, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
@@ -332,8 +332,13 @@ export const DESCRIBE_STRINGS = {
   noAnalysis: 'No analysis line (.op, .dc, .tran, .tf or .ac), so ngspice will run nothing.',
   noAnalysisControl: 'No analysis line (.op, .dc, .tran, .tf or .ac): ngspice runs the commands in the .control block instead.',
   analysisAfterEnd: 'The analysis is written after .end, where ngspice still reads it.',
-  /** A3f: the only analysis lines are in a subcircuit no X line uses; ngspice "skips" them, the word for a whole line (W11, last pass F2). */
-  analysisIgnored: 'Its analysis lines are inside a subcircuit that no X line uses, where ngspice skips them, so ngspice will run nothing.',
+  /**
+   * A3f: the only analysis lines are in a subcircuit the main circuit does not use; ngspice "skips" them, the
+   * word for a whole line (W11, last pass F2): in one subcircuit or several, and one that only X lines of
+   * such subcircuits use (last pass critic1-4, critic1-8).
+   */
+  analysisIgnored: (several: boolean, direct: boolean): string =>
+    `Its analysis lines are inside ${several ? 'subcircuits' : 'a subcircuit'} that ${direct ? 'no X line uses' : 'the main circuit does not use, directly or through other subcircuits'}, where ngspice skips them, so ngspice will run nothing.`,
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
@@ -426,13 +431,17 @@ export const DESCRIBE_STRINGS = {
     `Line ${line} starts with @, so ngspice stopped reading there and never saw the analysis lines after it. It ran nothing.`,
   noAnalysisTitleWhy: (word: string): string => `Line 1 is always the title, so ngspice never runs the ${word} written there. It ran nothing.`,
   /**
-   * A3f: every analysis line is in a subcircuit no X line uses, where ngspice skips it (last pass F3): the title
-   * names the line and the subcircuit (`name`: undefined for several), so the status line gives the reason.
+   * A3f: every analysis line is in a subcircuit the main circuit does not use, where ngspice skips it (last
+   * pass F3): the title names the line and the subcircuit with why (`because`: skippedBecause's words), or
+   * for several subcircuits (`name` undefined) whether no X line uses any of them (`direct`), so the status
+   * line gives the reason (critic1-4: "which only X2 uses, and X2 is inside the subcircuit outer, …").
    */
-  skippedTitle: (word: string | undefined, name: string | undefined): string =>
-    `${word ? `${word} is` : 'The analysis lines are'} inside ${name === undefined ? 'subcircuits that no X line uses' : `the subcircuit ${name}, which no X line uses`}`,
+  skippedTitle: (word: string | undefined, name: string | undefined, because: string, direct: boolean): string =>
+    `${word ? `${word} is` : 'The analysis lines are'} inside ${name === undefined ? `subcircuits that ${direct ? 'no X line uses' : 'the main circuit does not use, directly or through other subcircuits'}` : `the subcircuit ${name}, ${because}`}`,
   skippedWhy:
     'ngspice skips an analysis line between .subckt and .ends when no X line uses that subcircuit, so it ran nothing, and with a results file it says nothing about it. Put analysis lines in the main circuit, outside .subckt … .ends.',
+  skippedThroughWhy:
+    'ngspice skips an analysis line between .subckt and .ends unless the main circuit uses that subcircuit, through its own X lines or those of the subcircuits they use, so it ran nothing, and with a results file it says nothing about it. Put analysis lines in the main circuit, outside .subckt … .ends.',
   controlOnlyTitle: 'ngspice ran the .control block',
   controlOnlyWhy:
     'ngspice ran the commands in the .control block; what they printed is in the ngspice output tab. PlainSpice shows the results of analysis lines such as .op, .dc and .tran, and this netlist has none.',
@@ -937,14 +946,17 @@ export function describeCircuit(netlist: Netlist): string {
   for (const line of parts.lines.slice(0, DESCRIBED_PARTS)) out.push(partSentence(netlist, line));
   if (parts.lines.length > DESCRIBED_PARTS) out.push(S.moreParts(parts.lines.length - DESCRIBED_PARTS));
   if (parts.subckts.length) out.push(S.subcircuits(parts.subckts.length, parts.subckts.join(', ')));
-  // A3f: an analysis line in a subcircuit no X line uses is ignored, so it is not among the analyses.
+  // A3f: an analysis line in a subcircuit the main circuit does not use is skipped, so it is not among the analyses.
   const run = netlist.analyses.filter((i) => !ignoredAnalysis(netlist, i));
   const analyses = run.map((i) => readAnalysis(netlist, i)).filter((r): r is AnalysisReading => r !== undefined);
   if (analyses.length === 0) {
     // M20; A36: a .control block runs; S25: so does an analysis written after a plain .end.
     const control = netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text));
     if (readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) out.push(S.analysisAfterEnd);
-    else if (run.length < netlist.analyses.length && !control) out.push(S.analysisIgnored);
+    else if (run.length < netlist.analyses.length && !control) {
+      const skipped = netlist.analyses.filter((i) => ignoredAnalysis(netlist, i)).map((i) => unusedSubcircuit(netlist, i)!);
+      out.push(S.analysisIgnored(new Set(skipped.map((u) => u.line)).size > 1, skipped.every((u) => u.direct)));
+    }
     else out.push(control ? S.noAnalysisControl : S.noAnalysis);
   } else {
     const list = analyses.map((r) => analysisPhrase(netlist, r)).join('; ');
@@ -3448,18 +3460,23 @@ function nothingRanWords(netlist: Netlist): MessageWords {
 }
 
 /**
- * Why a run gave nothing when every analysis line is in a subcircuit no X line uses: ngspice skips each
- * of them there and runs nothing, and with a results file says nothing about it (A3f). undefined in any
- * other case: no analysis line, one ngspice runs, a .control block (ngspice runs its commands, A36), an
- * analysis after .end (S25) or on the title line (M20). Last pass F3: the page said ngspice gave no reason.
+ * Why a run gave nothing when every analysis line is in a subcircuit the main circuit does not use: ngspice
+ * skips each of them there and runs nothing, and with a results file says nothing about it (A3f). undefined
+ * in any other case: no analysis line, one ngspice runs, a .control block (ngspice runs its commands, A36),
+ * an analysis after .end (S25) or on the title line (M20), or .subckt and .ends lines that do not pair up
+ * (ngspice stops first: ignoredAnalysis). Last pass F3: the page said ngspice gave no reason.
  */
 function skippedWords(netlist: Netlist): MessageWords | undefined {
   const lines = netlist.analyses;
   if (!lines.length || !lines.every((i) => ignoredAnalysis(netlist, i)) || ANALYSIS_WORD.test(netlist.lines[0]?.text ?? '')) return undefined;
   if (netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text)) || readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) return undefined;
-  const subs = new Set(lines.map((i) => unusedSubcircuit(netlist, i)!.name));
+  // Each subcircuit once, by its .subckt line, with why the main circuit does not use it (critic1-4).
+  const subs = [...new Map(lines.map((i) => unusedSubcircuit(netlist, i)!).map((u) => [u.line, u] as const)).values()];
+  const direct = subs.every((u) => u.direct);
+  const one = subs.length === 1 ? subs[0] : undefined;
   const word = lines.length === 1 ? netlist.lines[lines[0]!]!.directive!.token.text : undefined;
-  return { code: 'no-analysis', severity: 'error', title: S.skippedTitle(word, subs.size === 1 ? [...subs][0] : undefined), why: S.skippedWhy, line: lines[0]! + 1 };
+  const title = S.skippedTitle(word, one?.name, one ? skippedBecause(one, false) : '', direct);
+  return { code: 'no-analysis', severity: 'error', title, why: direct ? S.skippedWhy : S.skippedThroughWhy, line: lines[0]! + 1 };
 }
 
 function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults): MessageWords[] {

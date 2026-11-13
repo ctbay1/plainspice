@@ -51,7 +51,7 @@ describe('code review C3-6: ngspice\'s name for a node inside a subcircuit (A3h)
     expect(sp(s.words.tf?.outputResistance?.text)).toBe('output resistance at node x1.m: 500 Ω, the Thévenin resistance seen at node x1.m (ngspice calls it the output impedance)');
     expect(sp(s.words.summary)).toBe('Simulation finished: transfer function v(x1.m)/V1 = 0.5 (V/V); input resistance seen by V1: 2 kΩ; output resistance at node x1.m: 500 Ω. Open the results for details.');
     expect(explainNetlist(parseNetlist(tf('x1.m')))[8]!.notes).toEqual([
-      "x1.m is ngspice's name for node m of the subcircuit div (from line 4), inside X1: ngspice names a node inside a subcircuit by its X line, then a dot.",
+      "x1.m is ngspice's name for node m of the subcircuit div (from line 4), inside X1: ngspice names a node inside a subcircuit by its X line, a dot and the node's own name.",
     ]);
   }, 30000);
 
@@ -74,7 +74,7 @@ describe('code review C3-6: ngspice\'s name for a node inside a subcircuit (A3h)
       expect([s.status, sp(s.words.tf?.transferFunction?.text)], node).toEqual(['ok', `v(${node})/V1 = ${ratio} (V/V)`]);
     }
     expect(explainNetlist(parseNetlist(`${NEST}.tf v(x1.x2.m) V1\n.end\n`))[13]!.notes).toEqual([
-      "x1.x2.m is ngspice's name for node m of the subcircuit inner (from line 9), inside X2, inside X1: ngspice names a node inside a subcircuit by its X lines, each followed by a dot.",
+      "x1.x2.m is ngspice's name for node m of the subcircuit inner (from line 9), inside X2, inside X1: ngspice names a node inside a subcircuit by its X lines, each followed by a dot, and the node's own name.",
     ]);
   }, 30000);
 
@@ -271,6 +271,135 @@ describe('critic1-1: .subckt and .ends lines that do not pair up stop ngspice, s
   }, 30000);
 });
 
+describe('critic1-3: a dot inside a name ngspice builds: in the node\'s own name, the X line\'s or the part\'s (A3h)', () => {
+  // Native 47 and 42, -b and -b -r: x1.m.1 gives 0.5 and 500 Ω; x1.a.m the same; v.x1.vs.1 as the input 0.3333 and 1.5 kΩ;
+  // x1.x2.m.1 0.25 and 500 Ω. And x1.m.1 where the subcircuit has m but no m.1: 0 and 1 Ω, a new node.
+  const DIV = (node: string): string => `* t\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a ${node} 1k\nR2 ${node} 0 1k\nR3 ${node} b 1\n.ends\n`;
+
+  it('x1.m.1 is the node m.1 inside X1: no error, no warning, the numbers are answers, and Explain says which node it is', async () => {
+    const text = `${DIV('m.1')}.tf v(x1.m.1) V1\n.end\n`;
+    expect(tfErrors(text)).toEqual([]);
+    const s = await solve(text, await engine);
+    expect([s.status, s.words.warnings, sp(s.words.tf?.transferFunction?.text)]).toEqual(['ok', [], 'v(x1.m.1)/V1 = 0.5 (V/V)']);
+    expect(explainNetlist(parseNetlist(text))[8]!.notes).toEqual([
+      "x1.m.1 is ngspice's name for node m.1 of the subcircuit div (from line 4), inside X1: ngspice names a node inside a subcircuit by its X line, a dot and the node's own name.",
+    ]);
+  }, 30000);
+
+  it('x1.a.m (m inside X1.a), v.x1.vs.1 (Vs.1 inside X1) and x1.x2.m.1 (m.1 inside X2, inside X1) too', async () => {
+    const xname = '* t\nV1 in 0 10\nX1.a in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n.tf v(x1.a.m) V1\n.end\n';
+    const part = '* t\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\nVs.1 m q 0\nR4 q 0 1k\n.ends\n.tf v(out) v.x1.vs.1\n.end\n';
+    const nested = '* t\nV1 in 0 10\nX1 in out outer\nR9 out 0 1k\n.subckt outer p q\nR1 p n 1k\nX2 n q inner\n.ends\n.subckt inner a b\nR2 a m.1 1k\nR3 m.1 0 1k\nR4 m.1 b 1k\n.ends\n.tf v(x1.x2.m.1) V1\n.end\n';
+    for (const [text, ratio] of [[xname, 'v(x1.a.m)/V1 = 0.5 (V/V)'], [part, 'v(out)/v.x1.vs.1 = 0.3333 (V/V)'], [nested, 'v(x1.x2.m.1)/V1 = 0.25 (V/V)']] as const) {
+      expect(tfErrors(text), text).toEqual([]);
+      const s = await solve(text, await engine);
+      expect([s.status, s.words.warnings, sp(s.words.tf?.transferFunction?.text)], text).toEqual(['ok', [], ratio]);
+    }
+    expect(explainNetlist(parseNetlist(xname))[8]!.notes).toEqual([
+      "x1.a.m is ngspice's name for node m of the subcircuit div (from line 4), inside X1.a: ngspice names a node inside a subcircuit by its X line, a dot and the node's own name.",
+    ]);
+    expect(explainNetlist(parseNetlist(part))[10]!.notes).toEqual([
+      "v.x1.vs.1 is ngspice's name for Vs.1 of the subcircuit div (from line 4), inside X1: ngspice names a part inside a subcircuit by its first letter, its X line and its own name, joined by dots.",
+    ]);
+    expect(explainNetlist(parseNetlist(nested))[13]!.notes[0]).toMatch(/^x1\.x2\.m\.1 is ngspice's name for node m\.1 of the subcircuit inner \(from line 9\), inside X2, inside X1:/);
+  }, 30000);
+
+  it('x1.m.1 where the subcircuit has m but no m.1 is a new node with nothing on it: the error stays', async () => {
+    const text = `${DIV('m')}.tf v(x1.m.1) V1\n.end\n`;
+    expect(tfErrors(text)).toEqual(['.tf asks about node x1.m.1, which is not in the circuit']);
+    expect((await solve(text, await engine)).words.warnings.map((w) => w.title)).toEqual(['x1.m.1 is not a node of the circuit']);
+  }, 30000);
+});
+
+describe('critic1-4: a subcircuit that only an unused subcircuit\'s X line uses is not used either (A3f)', () => {
+  // Native 47 -b: exit 1, "no simulations run!"; 42 -b: 'Note: No ".plot", ".print", or ".fourier" lines; no simulations run';
+  // -b -r in both: exit 0, no results and no message (with .ac, only "v1: has no value, DC 0 assumed").
+  const BASE = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n';
+  const ONE = (line: string, v1 = '5'): string => `${BASE.replace('0 5', `0 ${v1}`)}.subckt outer p q\nX2 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\n${line}\n.ends\n.end\n`;
+  const THROUGH = 'ngspice skips an analysis line between .subckt and .ends unless the main circuit uses that subcircuit, through its own X lines or those of the subcircuits they use, so it ran nothing, and with a results file it says nothing about it. Put analysis lines in the main circuit, outside .subckt … .ends.';
+  const TITLE = '.op is inside the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit outer, which no X line uses';
+
+  it('the status line, the run\'s message, Explain and the overview give the reason, with the X line that uses it', async () => {
+    const s = await solve(ONE('.op'), await engine);
+    expect(s.status).toBe('failed');
+    expect(s.words.warnings.map((m) => [m.code, m.severity, m.title, m.why, m.line])).toEqual([['no-analysis', 'error', TITLE, THROUGH, 10]]);
+    expect(s.words.summary).toBe(`ngspice finished but gave no results: ${TITLE}. Open the results for details.`);
+    const n = parseNetlist(ONE('.op'));
+    expect(explainNetlist(n)[9]!.notes).toEqual([
+      'ngspice skips this line: it is inside the subcircuit inner (from line 8), which only X2 uses, and X2 is inside the subcircuit outer (from line 5), which no X line uses. Put analysis lines in the main circuit, outside .subckt … .ends.',
+    ]);
+    expect(describeCircuit(n)).toContain('Its analysis lines are inside a subcircuit that the main circuit does not use, directly or through other subcircuits, where ngspice skips them, so ngspice will run nothing.');
+  }, 30000);
+
+  it('.ac there: the reason comes first, and ngspice\'s note that V1 has no DC value second', async () => {
+    const s = await solve(ONE('.ac dec 1 1k 10k', 'AC 1'), await engine);
+    expect(s.words.warnings.map((m) => [m.severity, m.title])).toEqual([
+      ['error', '.ac is inside the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit outer, which no X line uses'],
+      ['note', 'V1 has no value: 0 V'],
+    ]);
+    expect(s.words.summary).not.toContain('V1 has no value');
+  }, 30000);
+
+  it('two steps out, two subcircuits\' X lines, or a loop: each says what holds', async () => {
+    const two = `${BASE}.subckt top p q\nX3 p q mid\n.ends\n.subckt mid p q\nX2 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\n.op\n.ends\n.end\n`;
+    const several = `${BASE}.subckt outer p q\nX2 p q inner\n.ends\n.subckt other p q\nX3 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\n.op\n.ends\n.end\n`;
+    const loop = `${BASE}.subckt outer p q\nX2 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\nX1 a b outer\n.op\n.ends\n.end\n`;
+    const title = async (text: string): Promise<string | undefined> => (await solve(text, await engine)).words.warnings[0]?.title;
+    expect(await title(two)).toBe('.op is inside the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit mid, which only X3 uses, and X3 is inside the subcircuit top, which no X line uses');
+    expect(await title(several)).toBe('.op is inside the subcircuit inner, which the main circuit does not use, directly or through other subcircuits');
+    expect(await title(loop)).toBe('.op is inside the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit outer, which the main circuit does not use, directly or through other subcircuits');
+    expect(explainNetlist(parseNetlist(several))[12]!.notes).toEqual([
+      'ngspice skips this line: it is inside the subcircuit inner (from line 11), which the main circuit does not use, directly or through other subcircuits. Put analysis lines in the main circuit, outside .subckt … .ends.',
+    ]);
+  }, 30000);
+
+  it('one reading of "used": a .tf in the same chain runs once the main circuit uses outer (native: 1/3), and x2.m stays no node', async () => {
+    const used = `${BASE}X1 out 0 outer\n.subckt outer p q\nX2 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.end\n`;
+    const s = await solve(used, await engine);
+    expect([s.status, s.words.warnings, sp(s.words.tf?.transferFunction?.text)]).toEqual(['ok', [], 'v(out)/V1 = 0.3333 (V/V)']);
+    expect(explainNetlist(parseNetlist(used))[10]!.notes.join(' ')).not.toContain('skips');
+    expect(innerNode(parseNetlist(`${ONE('.op')}`), 'x2.m')).toBeUndefined();
+  }, 30000);
+});
+
+describe('critic1-5: a run ngspice stops gets its own reason, never the skipped lines\' beside it', () => {
+  it('a .foo ngspice stops at (native 47 and 42: "unimplemented dot command \'.foo\'", exit 1), with the .op in an unused subcircuit', async () => {
+    const text = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.foo bar\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.end\n';
+    const s = await solve(text, await engine);
+    expect(s.words.warnings.map((m) => [m.code, m.title])).toEqual([['unknown-dot-command', 'ngspice does not know .foo']]);
+    expect(s.words.summary).toBe('ngspice stopped with an error: ngspice does not know .foo. Open the results for details.');
+  }, 30000);
+});
+
+describe('critic1-6: ngspice\'s names are read back from one reading of the netlist, so the work grows with the netlist, not its square', () => {
+  /** How many of the netlist's lines `f` reads, counted through a Proxy: a count, never a time, so load cannot change it. */
+  const reads = (text: string, f: (n: ReturnType<typeof parseNetlist>) => unknown): number => {
+    const parsed = parseNetlist(text);
+    let count = 0;
+    const lines = new Proxy(parsed.lines, { get: (t, k, r) => ((typeof k === 'string' && /^\d+$/.test(k) && count++), Reflect.get(t, k, r)) });
+    f({ ...parsed, lines });
+    return count;
+  };
+  // n .tf lines naming dotted names that are no node (each read back), and n parts after .end (each parsed alone).
+  const big = (n: number): string =>
+    `* t\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n${Array.from({ length: n }, (_, i) => `.tf v(x1.zz${i % 7}) V1`).join('\n')}\n.end\n${Array.from({ length: n }, (_, i) => `R${100 + i} q${i} 0 1k`).join('\n')}\n`;
+
+  it('the checks read four times the lines for four times the netlist (the walk read them all for every .tf line: ×15.7)', () => {
+    const ratio = reads(big(2000), checkTraps) / reads(big(500), checkTraps);
+    expect(ratio).toBeLessThan(5);
+  });
+
+  it('after the first name, reading back 1999 more reads fewer lines than names', () => {
+    const text = big(2000);
+    const one = reads(text, (n) => innerNode(n, 'x1.zz0'));
+    const all = reads(text, (n) => {
+      for (let i = 0; i < 2000; i++) innerNode(n, `x1.zz${i}`);
+    });
+    // The old walk filtered every line of each circuit for each name: 28 million reads for these 2000 names.
+    expect(all - one).toBeLessThan(2000);
+  });
+});
+
 describe('critic1-7: a .tf inside a used subcircuit with 200,000 continuation lines is explained', () => {
   it('explains it without overflowing the stack (Math.max over every continuation line did, at 150,000)', () => {
     const k = 200000;
@@ -278,4 +407,11 @@ describe('critic1-7: a .tf inside a used subcircuit with 200,000 continuation li
     const ex = explainNetlist(parseNetlist(text));
     expect(ex[7]?.heading).toBe('.tf: transfer function');
   }, 60000);
+});
+
+describe('critic1-8: the overview names two subcircuits as two (A3f)', () => {
+  it('"inside subcircuits that no X line uses", as the status line says', () => {
+    const text = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.subckt t c d\nR8 c d 1k\n.tf v(out) V1\n.ends\n.end\n';
+    expect(describeCircuit(parseNetlist(text))).toContain('Its analysis lines are inside subcircuits that no X line uses, where ngspice skips them, so ngspice will run nothing.');
+  });
 });

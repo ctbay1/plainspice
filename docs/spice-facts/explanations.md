@@ -2697,7 +2697,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
 ```
 
-### A3f. An analysis line in a subcircuit no X line uses is skipped; in one an X line uses, it runs as the main circuit's
+### A3f. An analysis line in a subcircuit the main circuit does not use is skipped; in one it uses, it runs as the main circuit's
 
 Added after the second critic of the words re-check's fix (12 November 2026). A `.tf` between `.subckt`
 and `.ends` is not the circuit's `.tf` when no X line uses that subcircuit: ngspice skips it, and runs
@@ -2802,6 +2802,58 @@ uses that subcircuit, so it ran nothing …" and the line to go to; for `.ac` an
 ngspice's note that V1 has no DC value, which is no reason. These are golden rows
 an-tf-subckt-alone, an-op-subckt, an-dc-subckt, an-tran-subckt, an-ac-subckt and an-noise-subckt.
 
+The main circuit uses a subcircuit through its own X lines, and then through the X lines of each
+subcircuit it uses; ngspice skips the analysis lines of every other subcircuit, so also of one that only
+an X line inside a skipped subcircuit uses (13 November 2026, the round-1 critic of the last pass's
+fixes, critic1-4: PlainSpice counted any X line as a use, so its status said ngspice gave no reason,
+Explain called the `.op` one that runs, and an `.ac` there got "V1 has no value" as the reason). Here
+inner is used only by X2, and X2 is a line of outer, which no X line uses: ngspice runs nothing and,
+with a results file, says nothing, as above. The words say why and name the X lines: ".op is inside
+the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit outer, which no X line uses",
+with "ngspice skips an analysis line between .subckt and .ends unless the main circuit uses that
+subcircuit, through its own X lines or those of the subcircuits they use, …"; Explain's note on the line
+says the same with each subcircuit's line. Where X lines in two such subcircuits use inner, or two
+subcircuits use only each other, they say inner (or the last one named) is one "which the main circuit
+does not use, directly or through other subcircuits".
+
+```spice
+* .op in inner, which only X2 uses, inside outer, which no X line uses
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt outer p q
+X2 p q inner
+.ends
+.subckt inner a b
+R9 a b 1k
+.op
+.ends
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0): no rawfile, and no message
+  the same, exit codes and all, with .ac dec 1 1k 10k there in place of the .op (V1 in 0 AC 1), where
+    -b -r prints only "Note: v1: has no value, DC 0 assumed"; two steps out (.subckt top holding
+    X3 p q mid, .subckt mid holding X2 p q inner); with inner used by X2 in outer and by X3 in a
+    second subcircuit other, neither used; with X1 a b outer inside inner (a loop, the main circuit
+    using neither); and with .subckt inner … .ends written inside outer
+  with X1 out 0 outer in the main circuit and .tf v(out) V1 in place of the .op, ngspice -b (exit 0):
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out) = 3.333333e+02
+    v1#input_impedance = 1.500000e+03
+  rawfile: v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 1499.9999999999998, v(output_impedance_at_V(out)) = 333.3333333333333
+ngspice 42: the same exit codes, notes and rawfile values, with 'Note: No ".plot", ".print", or
+  ".fourier" lines; no simulations run' for the -b ending
+our engine (wasm), as ngspice -b -r: no results for each skipped one, with only the note about V1 for
+  the .ac; with X1: the same vectors, bit for bit (golden rows an-skip-through, -through-ac,
+  -through-two, -through-several, -through-loop, -through-nested and an-tf-subckt-through-used)
+```
+
 ngspice counts the lines it reads that start with `.subckt` and with `.ends` (all but the title line,
 the lines after `.end` too, up to a line starting with @), and when the counts differ it stops before it
 builds anything: "Mismatch of .subckt ... .ends statements!" (inp_check_syntax in inpcom.c). So with a
@@ -2845,6 +2897,11 @@ our engine (wasm), as ngspice -b -r: exit 1 and "Mismatch of .subckt ... .ends s
   first three, no results and no message for the last two (golden rows an-skip-no-ends,
   -open-other, -extra-ends, -ends-after-end and -macro-open)
 ```
+
+When ngspice stops at another line first, that line's message is the run's reason, never this one
+beside it: with `.foo bar` in the main circuit and the `.op` in a subcircuit no X line uses, ngspice
+47 and 42 stop at the `.foo` (" unimplemented dot command '.foo'", exit 1, with -b and -b -r), and the
+words say only that (golden row an-skip-stopped).
 
 ### A3g. In a subcircuit an X line uses, a gnd in a .tf's v( ) is ground too
 
@@ -2900,7 +2957,7 @@ our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in 
   (golden rows an-tf-subckt-gnd, -gnd-a, -gnd-zz, -gnd-alone and -gnd-beside)
 ```
 
-### A3h. ngspice names a node inside a subcircuit by its X lines and a dot, and a .tf can ask about it
+### A3h. ngspice names a node inside a subcircuit by its X lines, a dot and its own name, and a .tf can ask about it
 
 ngspice builds a subcircuit once for each X line that uses it, and names each node of the
 subcircuit's own (not a node of its `.subckt` line, which takes the X line's node, and not ground) by
@@ -3011,6 +3068,65 @@ ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in each (golden rows
   an-tf-inner-input, -inner-current, -inner-current-plain, -inner-isource, -inner-global and
   -inner-global-m)
+```
+
+A name ngspice builds this way may hold a dot of the netlist's own, in the node's name, the X line's or
+the part's: m.1 inside X1 is `x1.m.1`, m inside X1.a is `x1.a.m`, Vs.1 inside X1 is `v.x1.vs.1`, and m.1
+inside X2, inside X1, is `x1.x2.m.1` (13 November 2026, the round-1 critic of the last pass's fixes,
+critic1-3: PlainSpice split such a name at every dot and gave `x1.m.1` the error of a node no part
+connects to, beside the right 0.5). PlainSpice reads it back as ngspice builds it: each X line whose name
+starts what is left, then a node or part of the subcircuit that X line uses. A name with no such node
+keeps its error, as ngspice makes it a new node with nothing on it: `x1.m.1` where the subcircuit has m
+and no m.1; and ground is the main circuit's, so `x1.0`, and `x1.gnd` where the subcircuit's gnd is
+ground, are new nodes too (0 and 1 Ω). A part's name starts with its own letter: `i.x1.vs` names no part
+when Vs is a voltage source, and ngspice stops (the round-1 critic, critic1-5).
+
+```spice
+* a .tf of the node m.1 inside X1
+V1 in 0 10
+X1 in out div
+.subckt div a b
+R1 a m.1 1k
+R2 m.1 0 1k
+R3 m.1 b 1
+.ends
+.tf v(x1.m.1) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(x1.m.1) = 5.000000e+02
+    v1#input_impedance = 2.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5000000000000551, v(v1#Input_impedance) = 2000.0000000002203, v(output_impedance_at_V(x1.m.1)) = 500.0000000000551
+  with .op in place of the .tf: x1.m.1 5.000000e+00 among the node voltages; rawfile v(in) = 10,
+    v(x1.m.1) = 5.000000000000551, v(out) = 5.000000000000551, i(v1) = -0.004999999999999449
+  with X1.a in out div, m in place of m.1, and .tf v(x1.a.m) V1: the same numbers, named
+    output_impedance_at_v(x1.a.m); rawfile 0.5000000000000551, 2000.0000000002203 and 500.0000000000551
+  with Vs.1 m q 0 and R4 q 0 1k in the subcircuit, m in place of m.1, and .tf v(out) v.x1.vs.1:
+    transfer_function = 3.333333e-01, output_impedance_at_v(out) = 3.343333e+02,
+    v.x1.vs.1#input_impedance = 1.500000e+03; rawfile 0.33333333333335785, 1500.000000000055 and
+    334.3333333333578
+  nested as above, with m.1 in place of m in inner, and .tf v(x1.x2.m.1) V1: transfer_function =
+    2.500000e-01, output_impedance_at_v(x1.x2.m.1) = 5.000000e+02, v1#input_impedance =
+    2.666667e+03; rawfile 0.25, 2666.6666666666665 and 500
+  with m in place of m.1 in the subcircuit, the same .tf v(x1.m.1) V1: transfer_function =
+    0.000000e+00, output_impedance_at_v(x1.m.1) = 1.000000e+00, v1#input_impedance = 2.000000e+03;
+    rawfile 0, 2000.0000000002203 and 1
+  with m, and .tf v(x1.0) V1: output_impedance_at_v(x1.0) = 1.000000e+00, transfer_function =
+    0.000000e+00; rawfile 0, 2000.0000000002203 and 1; the same with R2 m gnd 1k and .tf v(x1.gnd) V1,
+    named output_impedance_at_v(x1.gnd)
+  with Vs m q 0 and R4 q 0 1k in the subcircuit, m, and .tf v(out) i.x1.vs (exit 1, with -b and -b -r,
+    no rawfile):
+    Warning: Transfer function source i.x1.vs not in circuit
+    doAnalyses: not found
+    run simulation(s) aborted
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r: the same vectors, bit for bit, and the same messages and exit
+  code (golden rows an-tf-inner-dotted, an-op-inner-dotted, an-tf-inner-xdot, -inner-partdot,
+  -inner-nested-dot, -inner-dot-none, -inner-zero, -inner-gnd and -inner-letter)
 ```
 
 ## 3. Currents and power in the results
