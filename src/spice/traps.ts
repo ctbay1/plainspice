@@ -2042,10 +2042,42 @@ function checkFormulaSpaces(c: Ctx, i: number, region: { from: number; body: num
   const t = tokens.find((x) => x.from <= at && at < x.to)!;
   const ch = c.text[at]!;
   const what = describeCharacter(ch);
+  // One inside i(...)'s bracket is part of the source's name, which ngspice looks for only once the circuit is built,
+  // so any other one's message comes first (CR2-5, space-character-31).
+  const sources = sourceBrackets(c.text, region.from, tokens[tokens.length - 1]!.to);
+  const inSource = (p: number): [number, number] | undefined => sources.find(([a, b]) => a < p && p < b);
+  const first = odd.find((p) => !inSource(p));
   add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'error', t, `${capital(what)} stops the formula of ${nameOf(e)}`,
     `This formula has ${what}, which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one: it reads it as part of a name, and the formula has no such name. A formula needs no spaces.`,
-    formulaStops(c, at, region.body, ch === '\u00a0'),
+    first === undefined ? sourceStops(c.text, inSource(at)!) : formulaStops(c, first, region.body, c.text[first] === '\u00a0'),
     [fix(odd.length > 1 ? 'Take them out' : 'Take it out', ...changes)]);
+}
+
+/** The brackets of i(...) in [from, to) of the text: an i (or I) no name character comes right before, then '(' (C3-1). */
+function sourceBrackets(s: string, from: number, to: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let k = from; k < to; k++) {
+    if ((s[k] !== 'i' && s[k] !== 'I') || /[A-Za-z0-9_]/.test(s[k - 1] ?? ' ') || s.charCodeAt(k - 1) >= 0x80) continue;
+    let p = k + 1;
+    while (s[p] === ' ' || s[p] === '\t') p += 1;
+    if (s[p] !== '(') continue;
+    const close = s.indexOf(')', p);
+    if (close < 0 || close > to) break;
+    out.push([p, close]);
+    k = close;
+  }
+  return out;
+}
+
+/**
+ * What ngspice says when every character that looks like a space in a formula is inside i(...)'s bracket: it takes
+ * the source's name with the character's bytes as _, and finds no such source (space-character-31, native 47 and 42).
+ */
+function sourceStops(s: string, [open, close]: [number, number]): string {
+  const name = s.slice(open + 1, close).replace(/^[ \t]+|[ \t]+$/g, '');
+  // Before the name, the bytes come out spelled otherwise (v____vs for i(<thin space>Vs)): only that ngspice stops.
+  if (!name || SPACE_LIKE.test(name[0]!)) return 'ngspice stops with an error on this line. [space-character-29]';
+  return `ngspice stops: 'unknown controlling source ${ngspiceSpelling(name)}'. [space-character-31]`;
 }
 
 /**

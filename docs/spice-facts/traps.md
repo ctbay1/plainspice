@@ -19570,3 +19570,66 @@ the character taken out (V=v(out)*2tc1=0):
 ```
 
 PlainSpice's checks: `space-character`.
+### space-character-31. A thin space in the name of the source i(...) reads: 'unknown controlling source v___s', after any other such character's message
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-5). Inside the bracket of i(...), a character that looks like a space is part of the source's name: ngspice writes its bytes as _ and finds no source v___s, once the circuit is built ("Fatal error: b1: unknown controlling source v___s", then 47: "doAnalyses: no such parameter on this device or parameter is missing", 42: "... on this device"). The same for a no-break space (v__s) and in an E's formula (be1). As ngspice looks for the source last, any other such character in the formula is what it reports (an operator's below: the parse tree check). Taken out, the formula runs: e = 2.5 V.
+
+```spice
+* a thin space in the name of the source i() reads
+V1 in 0 5
+Vs in mid 0
+R1 mid out 1k
+R2 out 0 1k
+B1 e 0 V=i(V<THIN>s)*1k
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Fatal error: b1: unknown controlling source v___s
+    doAnalyses: no such parameter on this device or parameter is missing
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Fatal error: b1: unknown controlling source v___s
+    doAnalyses: no such parameter on this device
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=i(Vs)*1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(mid) = 5, v(out) = 2.5, v(e) = 2.5, i(b1) = -0.0025, i(vs) = 0.0025, i(v1) = -0.0025
+a no-break space, B1 e 0 V=i(V<NBSP>s)*1k:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile)
+      Fatal error: b1: unknown controlling source v__s
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in an E's formula, E1 e 0 VALUE={i(V<THIN>s)*1k}:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile)
+      Fatal error: be1: unknown controlling source v___s
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+with another one after an operator, B1 e 0 V=i(V<THIN>s)*<THIN>1k: the operator's message:
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 6 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 6 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+

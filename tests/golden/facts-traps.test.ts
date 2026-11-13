@@ -544,6 +544,8 @@ const FACTS: Fact[] = [
   { code: 'missing-fields-11', netlist: "* words between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE x {v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE v(out) {2}\nR2e e2 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 2 }, traps: [] },
   // A node called value as the control - node, an output node or a POLY control node (CR2-4).
   { code: 'fatal-syntax-20', netlist: "* a node called value as the control - node\nV1 in 0 5\nR1 in mid 1k\nR2 mid value 1k\nR3 value 0 1k\nE1 e 0 mid value 2\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  // A character that looks like a space in the name of the source i(...) reads (CR2-5).
+  { code: 'space-character-31', netlist: "* a thin space in the name of the source i() reads\nV1 in 0 5\nVs in mid 0\nR1 mid out 1k\nR2 out 0 1k\nB1 e 0 V=i(V\u2009s)*1k\nRe e 0 1k\n.op\n.end\n", prints: ["unknown controlling source v___s"], fails: true, traps: ['space-character'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');

@@ -773,4 +773,22 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     expect(valueTraps(net('E1 e 0 VALUE={v(mid)*2}'))).toEqual([]);
     expect(said('E1 e 0 x VALUE 2')).toEqual(["fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 x VALUE {2}"]);
   });
+  it("CR2-5: one inside i(...)'s bracket is the source's name: 'unknown controlling source', after any other one's message (space-character-31)", () => {
+    const net = (line: string): string => `* t\nV1 in 0 5\nVs in mid 0\nR1 mid out 1k\nR2 out 0 1k\n${line}\nRe e 0 1k\n.op\n.end\n`;
+    const quote = (line: string): string => traps(net(line))[0]!.ngspice;
+    // Native ngspice 47 and 42 print these (space-character-31; the critic's matrix).
+    expect(quote(`B1 e 0 V=i(V${THIN}s)*1k`)).toBe("ngspice stops: 'unknown controlling source v___s'. [space-character-31]");
+    expect(quote(`B1 e 0 V=i(Vs${THIN})*1k`)).toBe("ngspice stops: 'unknown controlling source vs___'. [space-character-31]");
+    expect(quote(`B1 e 0 V=i(V${NBSP}s)*1k`)).toBe("ngspice stops: 'unknown controlling source v__s'. [space-character-31]");
+    expect(quote(`E1 e 0 VALUE={i(V${THIN}s)*1k}`)).toBe("ngspice stops: 'unknown controlling source v___s'. [space-character-31]");
+    // Before the name its bytes are spelled otherwise: only that ngspice stops.
+    expect(quote(`B1 e 0 V=i(${THIN}Vs)*1k`)).toBe('ngspice stops with an error on this line. [space-character-29]');
+    // Any other one comes first; a v of its own before one is still 'Undefined parameter [v]' (space-character-23).
+    expect(quote(`B1 e 0 V=i(V${THIN}s)*${THIN}1k`)).toContain("'The internal check of parse tree … failed'");
+    expect(quote(`B1 e 0 V=i(V${THIN}s)*1k+v${THIN}(out)`)).toBe("ngspice stops: 'Undefined parameter [v]'. [space-character-23]");
+    expect(quote(`B1 e 0 V=v${THIN}*2`)).toBe("ngspice stops: 'Undefined parameter [v]'. [space-character-23]");
+    // Taken out, the formula runs (space-character-31: e = 2.5 V).
+    const t = traps(net(`B1 e 0 V=i(V${THIN}s)*1k`))[0]!;
+    expect(applyFix(net(`B1 e 0 V=i(V${THIN}s)*1k`), t.fixes[0]!)).toBe(net('B1 e 0 V=i(Vs)*1k'));
+  });
 });
