@@ -9,6 +9,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
+import { describeResults, shownSweep } from '../../src/spice/describe.ts';
+import { parseNetlist } from '../../src/spice/parse.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 let ngspice: NgspiceEngine;
@@ -31,4 +34,24 @@ describe('the sweep\'s words name a transistor inside a subcircuit by its termin
     // A source inside a subcircuit has one current: it keeps "the current in".
     expect(speech).toContain('the current in v.x2.x3.vg is 0 amps');
   });
+});
+
+describe('the work of a sweep\'s real values that ngspice gives as 0 is bounded with the sweep (C4)', () => {
+  it('40 wires of 1 µΩ side by side into a 1 TΩ meter, swept over 45,000 points of 44 results, every wire\'s real current given as 0 at every point: each is shown exactly, and describeResults stays quick (it took 142 to 160 ms)', async () => {
+    const wires = Array.from({ length: 40 }, (_, k) => `RW${k + 1} top m 1u`);
+    const text = netlist('V1 top 0 10', ...wires, 'RM m 0 1T', '.op', '.dc V1 0 4.5 0.0001');
+    const r = await solveText(text, ngspice);
+    const dc = r.results.dc!;
+    expect([dc.scale.values.length, dc.series.length]).toEqual([45_000, 44]);
+    const given = dc.series.find((s) => s.name === 'i(@rw1[i])')!.values;
+    const shown = shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@rw1[i])')!.values;
+    const last = dc.scale.values.length - 1;
+    expect([given[1], given[last]]).toEqual([0, 0]);
+    // 4.5 V over 1 TΩ, a fortieth through each wire (the exact value at ngspice's own last x).
+    expect(shown[last]! / (dc.scale.values[last]! / 1e12 / 40)).toBeCloseTo(1, 12);
+    expect(r.words.warnings.some((m) => m.code === 'rounded-to-0' && m.title === '41 results are not 0 at some points of the DC sweep, though ngspice gave 0')).toBe(true);
+    const copies = [0, 1, 2].map(() => structuredClone(r.results));
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), copies.pop()!, r.run)], 3);
+    expect(ms).toBeLessThan(80);
+  }, 120_000);
 });

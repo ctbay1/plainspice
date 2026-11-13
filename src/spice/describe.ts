@@ -2138,6 +2138,12 @@ function transferCheck(netlist: Netlist, results: AnalysisResults, reading: Extr
   return formatNumber(given) !== formatNumber(exact) && Math.abs(given - exact) > ANSWER_GAP * Math.abs(exact) ? { off: exact } : undefined;
 }
 
+/** The points of a sweep's series where ngspice gave exactly 0 for a real value, in order, and the exact values there. */
+interface LostPoints {
+  points: ArrayLike<number>;
+  values: ArrayLike<number>;
+}
+
 /** A .dc sweep in a circuit solved exactly: by series, the points where ngspice gave rounding noise of an exact 0, and those where it gave 0 for a real value. */
 interface SweepNoise {
   /**
@@ -2150,7 +2156,7 @@ interface SweepNoise {
    * By series index, the points in order where ngspice gave exactly 0 though the circuit makes the value
    * real (C9n at a sweep's points; the critic of round 2 of the re-check's fixes), and the exact values.
    */
-  lost: Map<number, { points: number[]; values: number[] }>;
+  lost: Map<number, LostPoints>;
   /** The swept source as written; for a sweep of the temperature, "TEMP". */
   source: string;
   /** True for a sweep of the temperature: its points are said as temperatures ("at 50 °C"). */
@@ -2723,7 +2729,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   // a + b·s is 0 at every point when a and b are, else only at s = −a/b, where ngspice's x must be that number
   // exactly; and with diodes, only where no class of diodes free there changes it.
   const zero = new Map<number, number[] | 'all'>();
-  const lost = new Map<number, { points: number[]; values: number[] }>();
+  const lost = new Map<number, LostPoints>();
   let exactLeft = SWEEP_EXACT_POINTS;
   // What the noise points need of the diodes, for the note's words (DiodeWhy): by structure, the series' diode
   // coefficients at the noise points.
@@ -2795,9 +2801,17 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     };
     let alpha: number | undefined;
     let beta2 = 0;
-    const list = { points: [] as number[], values: [] as number[] };
-    for (const k of pointsOf(values, 0)) {
-      if (xs[k] === root) continue;
+    // The points ngspice gives as 0 are counted first, so that their exact values fill arrays of that size, read in one
+    // pass (45,000 points of 44 such series, one search and one push a point, took 150 ms: the critic of the last
+    // pass's fixes).
+    let zeros = 0;
+    for (let k = 0; k < n; k++) if (values[k] === 0) zeros += 1;
+    if (!zeros) return;
+    const points = new Int32Array(zeros);
+    const exact = new Float64Array(zeros);
+    let found = 0;
+    for (let k = 0; k < n; k++) {
+      if (values[k] !== 0 || xs[k] === root) continue;
       let v: number | undefined;
       if (exactLeft <= 0 && k !== n - 1) {
         if (alpha === undefined) {
@@ -2815,11 +2829,12 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
         exactLeft -= 1;
       }
       if (v !== 0) {
-        list.points.push(k);
-        list.values.push(v);
+        points[found] = k;
+        exact[found] = v;
+        found += 1;
       }
     }
-    if (list.points.length) lost.set(j, list);
+    if (found) lost.set(j, { points: points.subarray(0, found), values: exact.subarray(0, found) });
   });
   const out: SweepNoise = { zero, lost, source: sweep.source.text, temperature: !swept, diodes: !!ex.diodes };
   if (ex.diodes) {
@@ -2861,7 +2876,7 @@ export function shownSweep(netlist: Netlist, results: AnalysisResults): Sweep | 
       if (at === 'all') values.forEach((v, k) => Number.isFinite(v) && (values[k] = 0));
       else for (const k of at ?? []) values[k] = 0;
       // C9n at a sweep's points: a real value ngspice's arithmetic rounded to 0 is the exact one.
-      lost?.points.forEach((k, i) => (values[k] = lost.values[i]!));
+      if (lost) for (let i = 0; i < lost.points.length; i++) values[lost.points[i]!] = lost.values[i]!;
       return { ...s, values };
     }),
   };
