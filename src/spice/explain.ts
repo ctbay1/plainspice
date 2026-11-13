@@ -1220,10 +1220,36 @@ function nodeOfWord(netlist: Netlist, token: Token): NodeRef {
     for (const info of netlist.nodes.values()) for (const t of info.refs) byStart.set(t.from, info);
     wordNodes.set(netlist, byStart);
   }
-  const info = byStart.get(token.from);
+  const info = byStart.get(token.from) ?? subcircuitWords(netlist).get(token.from);
   if (info) return { token, name: info.name, ground: info.ground };
   const name = ngspiceName(token.text);
   return { token, name, ground: name === '0' };
+}
+
+const subcircuitWordCache = new WeakMap<Netlist, Map<number, NodeInfo>>();
+
+/**
+ * The words in v( ) on the dot commands between .subckt and .ends, which the parser files under no node
+ * (a subcircuit's nodes are its own), read as the parser reads the same line in the main circuit, by
+ * where each word starts. ngspice turns gnd into 0 on every line, inside a subcircuit too, before it runs
+ * an analysis line there as the main circuit's (an X line uses the subcircuit: A3f), so `.tf v(a,gnd) V1`
+ * there is v(a,0): its gnd is ground, as at the top level (A3b, A3g; last pass regress-2).
+ */
+function subcircuitWords(netlist: Netlist): Map<number, NodeInfo> {
+  let byStart = subcircuitWordCache.get(netlist);
+  if (byStart) return byStart;
+  byStart = new Map();
+  const ctx = contextOf(netlist);
+  for (const i of ctx.insideSubckt.keys()) {
+    const line = netlist.lines[i]!;
+    if (!line.directive) continue;
+    // The line and its continuation lines, which the parser reads as one (comment lines between them too).
+    const last = netlist.lines[Math.max(i, ...(ctx.continuedBy.get(i) ?? []))]!;
+    const alone = parseNetlist(`*\n${netlist.text.slice(line.span.from, last.span.to)}`);
+    for (const node of alone.nodes.values()) for (const t of node.refs) byStart.set(line.span.from + t.from - 2, node);
+  }
+  subcircuitWordCache.set(netlist, byStart);
+  return byStart;
 }
 
 /** The first .dc line (0-based) that sweeps the part with lower-case name `key`, if any. */

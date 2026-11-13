@@ -71,7 +71,7 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
   0 without a message (A6). An analysis line in a subcircuit no X line uses is skipped, as is every
   line of such a subcircuit; in one an X line uses, it runs as the main circuit's, once for each X
-  line (A3f).
+  line (A3f), with gnd as ground there too (A3g).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -2790,6 +2790,60 @@ ngspice 42: the same values and exit codes, with "Error on line:" for "Error on 
 our engine (wasm), as ngspice -b -r: exit 0, vectors: v(in) = 5, v(out) = 2.5, i(v1) = -0.0025;
   with X1: exit 1, "TSTEP is invalid, must be greater than zero." and "unimplemented dot command
   '.foo'", no results
+```
+
+### A3g. In a subcircuit an X line uses, a gnd in a .tf's v( ) is ground too
+
+ngspice turns gnd into 0 on every line before it runs a `.tf` between `.subckt` and `.ends` as the main
+circuit's (A3f), the subcircuit's lines included (inp_fix_gnd_name, as A3b), so `.tf v(out,gnd) V1`
+there is v(out,0): ngspice names its output `v(out,0)`, and out's transfer function is 1/3 (R1 against
+R2 ∥ R9, 1k against 500 Ω). The words say "between node out and ground", as for the same line above
+`.subckt`, never 'node "gnd"', and give no warning that gnd is not a node (last pass regress-2: they
+said '"gnd" is not a node of the circuit … these .tf numbers mean nothing' under the right 0.3333). A
+node of the subcircuit's own, `v(a,gnd)`, is a new node with nothing on it (A3f): 0 and 1 Ω, one
+warning, for a; written `v(a,zz)`, with a second new node, 2 Ω. Beside an ordinary node called gnd
+(`Vx x gnd`, W9), the `.tf`'s gnd is still ground.
+
+```spice
+* a .tf inside a subcircuit an X line uses, measured from gnd
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt s a b
+R9 a b 1k
+.tf v(out,gnd) V1
+.ends
+X1 out 0 s
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out,0) = 3.333333e+02
+    v1#input_impedance = 1.500000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 1499.9999999999998, v(output_impedance_at_V(out,0)) = 333.3333333333333
+  the same with .tf v(a,gnd) V1 in the subcircuit, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 0.000000e+00
+    output_impedance_at_v(a,0) = 1.000000e+00
+    v1#input_impedance = 1.500000e+03
+  rawfile: v(Transfer_function) = 0, v(v1#Input_impedance) = 1499.9999999999998, v(output_impedance_at_V(a,0)) = 1
+  with .tf v(a,zz) V1: output_impedance_at_v(a,zz) = 2.000000e+00, transfer_function = 0.000000e+00;
+    rawfile v(output_impedance_at_V(a,zz)) = 2
+  with .tf v(gnd) V1: output_impedance_at_v(0) = 0.000000e+00, transfer_function = 0.000000e+00;
+    rawfile v(output_impedance_at_V(0)) = 0
+  with R3 in x 1k, Vx x gnd and R4 x 0 1k added (an ordinary node gnd, at 2.5 V), ngspice -b (exit 0):
+    Note: vx: has no value, DC 0 assumed
+    Transfer function information:
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out,0) = 3.333333e+02
+    v1#input_impedance = 8.571429e+02
+  rawfile: v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 857.1428571428571, v(output_impedance_at_V(out,0)) = 333.3333333333333
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in each of the five
+  (golden rows an-tf-subckt-gnd, -gnd-a, -gnd-zz, -gnd-alone and -gnd-beside)
 ```
 
 ## 3. Currents and power in the results
@@ -6982,9 +7036,9 @@ ngspice stops at the second one ("device already exists"). Rename one of them wi
 | `explain.ts`: R, C, L lines (either way round, open/short in `.op` and `.dc`, 0 Ω, negative values, missing values) | P1, P2, P11–P15b, P24, A31 |
 | `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values, a source .dc sweeps) | P3, P3b, P4, P4b, P4c, P9, P16–P20b |
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
-| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`) | A1–A22b, A3f, A31, M10–M15b |
+| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`) | A1–A22b, A3f, A3g, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
-| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V, real values ngspice rounds to 0 shown exactly (`exact.ts`) | C1–C9v, A3–A6 (with A3b–A3f) |
+| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V, real values ngspice rounds to 0 shown exactly (`exact.ts`) | C1–C9v, A3–A6 (with A3b–A3g) |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
 Re-running the evidence: the netlists, the scripts that run them through native ngspice 47, 42 and

@@ -111,6 +111,11 @@ const FACTS: Fact[] = [
   { code: 'A3f', id: 'an-skip-unused', netlist: "* lines ngspice would stop at, in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 0 -1\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A3f', id: 'an-skip-used-tran', netlist: "* the same .tran, in a subcircuit an X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 0 -1\n.ends\nX1 out 0 s\n.op\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true },
   { code: 'A3f', id: 'an-skip-used-dot', netlist: "* the same dot command, in a subcircuit an X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.foo bar\n.ends\nX1 out 0 s\n.op\n.end\n", prints: ["unimplemented dot command '.foo'"], fails: true },
+  { code: 'A3g', id: 'an-tf-subckt-gnd', netlist: "* a .tf inside a subcircuit an X line uses, measured from gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(out,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out,0))": 333.3333333333333 } },
+  { code: 'A3g', id: 'an-tf-subckt-gnd-a', netlist: "* the same .tf from the subcircuit's own node a\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a,0))": 1 } },
+  { code: 'A3g', id: 'an-tf-subckt-gnd-zz', netlist: "* the same .tf with a node no part connects to in place of gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,zz) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a,zz))": 2 } },
+  { code: 'A3g', id: 'an-tf-subckt-gnd-alone', netlist: "* the same .tf of gnd alone\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(0))": 0 } },
+  { code: 'A3g', id: 'an-tf-subckt-gnd-beside', netlist: "* the same .tf beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(out,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 857.1428571428571, "v(output_impedance_at_V(out,0))": 333.3333333333333 }, prints: ["vx: has no value, DC 0 assumed"] },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -643,6 +648,23 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(explainLine(used.netlist, 7)!.notes.join(' ')).not.toContain('ngspice skips this line');
     // Once for each X line that uses it.
     expect(runs.get('an-tf-subckt-twice')!.plots.filter((p) => /transfer function/i.test(p.plotname)).length).toBe(2);
+  });
+
+  it('a gnd in the v( ) of a .tf inside a subcircuit an X line uses is ground, as at the top level (A3g, last pass regress-2)', () => {
+    const said = (id: string): Described => describeRun(FACTS.find((x) => x.id === id)!.netlist, runs.get(id)!);
+    const main = said('an-tf-subckt-gnd');
+    expect([main.words.tf?.at, plain(main.words.tf?.transferFunction?.text), main.words.warnings]).toEqual(['between node out and ground', 'v(out,gnd)/V1 = 0.3333 (V/V)', []]);
+    expect(explainLine(main.netlist, 6)!.fields.find((f) => f.label === 'output')?.meaning).toBe('the output: the voltage at node out, measured from ground');
+    // The subcircuit's own a is a new node with nothing on it (A3f): its warning only, never one for gnd.
+    const a = said('an-tf-subckt-gnd-a');
+    expect([a.words.tf?.at, a.words.warnings.map((m) => m.title)]).toEqual(['between node a and ground', ['a is not a node of the circuit']]);
+    expect(said('an-tf-subckt-gnd-alone').words.tf?.at).toBe('at ground');
+    expect(said('an-tf-subckt-gnd-beside').words.tf?.at).toBe('between node out and ground');
+    for (const id of ['an-tf-subckt-gnd', 'an-tf-subckt-gnd-a', 'an-tf-subckt-gnd-alone', 'an-tf-subckt-gnd-beside']) {
+      const d = said(id);
+      const words = [d.words.summary, d.words.summarySpeech, ...d.words.warnings.map((m) => m.title), ...explainLine(d.netlist, d.netlist.analyses[0]!)!.fields.map((f) => f.meaning)].join(' ');
+      expect(words, id).not.toMatch(/"gnd"|node gnd/);
+    }
   });
 
   it('F5: 3 A from n1 to 0 through R1; Vx measures 1 A; Itest and F1 deliver 14 W and 24 W (C5)', () => {
