@@ -423,7 +423,7 @@ export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], a
   if (parts.length > MAX_PARTS) return 'size';
   for (const line of netlist.lines) {
     // A .control block that only runs the netlist's analyses again leaves its results file as it is: one set of plots,
-    // the same doubles (C9x.7, native 47 and 42); any other control line can change what ngspice reports.
+    // the same doubles (C9x.6, native 47 and 42); any other control line can change what ngspice reports.
     if (line.kind === 'control' && /^\s*(\.control|run|\.endc)\s*$/i.test(line.text)) continue;
     if (line.kind === 'control' || line.kind === 'invalid') return 'directive';
     const d = line.directive;
