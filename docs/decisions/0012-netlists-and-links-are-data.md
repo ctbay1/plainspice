@@ -183,7 +183,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     subcircuits (`r.x1.r1`) of more than 500 bytes. The run fails with the reason, the line and what
     to do: the status line says "ngspice could not run" and why, the Numbers panel and the live region
     too (the path a failed run already had), and nothing reaches ngspice, from the app, the checkpoint
-    or the prototypes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
+    or the prototypes. The alert says a reason once: while the student types on in a refused line,
+    each pause fails again with the same reason, which is not said again until it changes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
     formula into a B source (`v(n1, n2)`), and one number for every word is simpler to say than one per
     place. No netlist we have comes near: all 147 in the repository give the same copy as before.
   - Checked with ngspice 47 built with AddressSanitizer, configured like the engine: every kind of
