@@ -88,7 +88,7 @@ so a source whose + side is the higher one reads negative while it delivers powe
 negative value reads positive (C1, C1b, C2); a part's current is positive from its first
 node to its second, and a current source reports its value as written (C3); F, G, E, H and B follow
 the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8), and a transistor's
-currents at its terminals, which the words name by terminal (C8b); a current that is 0 can
+currents named by its terminals, which the words name the same way (C8b); a current that is 0 can
 come out as rounding noise of about 10⁻¹⁸ A, far below ngspice's current tolerance abstol, 1 pA (C9–C9c), and
 the noise passes on through the parts it drives (C9d), while a tiny current the circuit makes is real
 (C9e–C9g).
@@ -3029,20 +3029,27 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(c) = 4.5, v(e) = 5, i(vs) = 1, i(@s1[i]) = 1.5000000000000002e-9, i(@rc[i]) = 1.5, i(@w1[i]) = 1e-9, i(@re[i]) = 1
 ```
 
-### C8b. A transistor's savecurrents vectors are the currents at its terminals: @q1[ic] at the collector, [ib] at the base, [ie] the emitter's, [is] the substrate's
+### C8b. A transistor's savecurrents vectors are named by its terminals: @q1[ic] the collector's, [ib] the base's, [ie] the emitter's, [is] the substrate's
 
 With savecurrents ngspice saves one current for each terminal of a BJT, a MOSFET and a JFET (A2b), each
 named by the letters in brackets, which ngspice's own `devhelp` describes: for a BJT, ic "Current at
 collector node", ib "Current at base node", ie "Emitter current" and is "Substrate current"; for a MOSFET
 (level 1), id "Drain current", is "Source current", ig "Gate current" and ib "Bulk current"; for a JFET,
 ig "Current at gate node", id "Current at drain node", is "Source current" and igd "Current G-D". So
-[is] is a BJT's substrate current, but a MOSFET's or a JFET's source current. Each is positive flowing
-into the part at that terminal: Q1's collector current is the 8.171 mA that Rc brings to it, its base
-current the 81.71 µA through Rb, and its emitter current −(ic + ib), −8.253 mA; M1's drain current is
-Rd's 500 µA and its source current −500 µA. ngspice 42 and 47 agree, and so does our engine. So a
-sweep's words name each current by its terminal, "the collector current of Q1 is 8.171 milliamps",
-"the gate-to-drain current of J1" (`describe.ts`, the sweep's last point); they said "the current in Q1"
-for all four (the last pass before milestone 2's release).
+[is] is a BJT's substrate current, but a MOSFET's or a JFET's source current. These are the model's own
+quantities, from ngspice's last iteration, not always the current through the pin, and they keep no one
+direction: with a 0 V ammeter on each of the BJT's four terminals (the two netlists after devhelp's,
+native 47 and 42 alike), Q1's [ic] is 8.174876 mA where the collector's ammeter measures 8.171426 mA flowing
+in; [is] is +8.285742e−13 A where the substrate's ammeter measures that current flowing out of the part;
+and [ie] is −(ic + ib + is): with its collector at 9 V and its base fed through 1 MΩ, Q1's [ie] is
+−9.000109e−12 A where the emitter's ammeter measures 1.09e−16 A, and the collector's measures 1.800019e−11 A,
+[ic] and [is] together. In C8b's own run [ie] is −(ic + ib + is),
+−8.253152 mA. ngspice 42 and 47 agree, and so does our engine. So a sweep's words name each current by its
+terminal, as devhelp does, and claim no direction: "the collector current of Q1 is 8.171 milliamps", "the
+gate-to-drain current of J1" (`describe.ts`, the sweep's last point), and "the collector current of q.x1.q1"
+for a Q1 inside a subcircuit, which ngspice names q.x1.q1 (its letter first); they said "the current in Q1"
+for all four (the last pass before milestone 2's release), and "the current in q.x1.q1" for all four of a
+subcircuit's (the critic of the last pass's fixes).
 
 ```spice
 * the currents savecurrents gives a transistor, a MOSFET and a JFET
@@ -3117,6 +3124,71 @@ ngspice 47, ngspice -b (exit 1):
   ngspice -b -r out.raw (exit 0): the same lines, and no results file (there is no analysis, A36)
 ngspice 42: the same printout, exit codes and no results file, as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same lines, and no results
+```
+
+```spice
+* C8b's transistor with 0 V ammeters on its four terminals
+V1 vcc 0 9
+Rc vcc c 1k
+Vc c ci 0
+Rb vcc b 100k
+Vb b bi 0
+Q1 ci bi ei si qmod
+Ve ei 0 0
+Vs si 0 0
+.model qmod npn bf=100
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), its currents:
+          @q1[is]                          8.285742e-13
+          @q1[ib]                          8.174876e-05
+          @q1[ie]                          -8.25662e-03
+          @q1[ic]                          8.174876e-03
+          @rb[i]                           8.171426e-05
+          @rc[i]                           8.171426e-03
+          vc#branch                        8.171426e-03
+          vb#branch                        8.171426e-05
+          ve#branch                        8.253140e-03
+          vs#branch                        8.285742e-13
+  rawfile from ngspice -b -r (exit 0): v(vcc) = 9, v(c) = 0.8285742076290443, v(ci) = 0.8285742076290443, v(b) = 0.8285741256053445, v(bi) = 0.8285741256053445, v(ei) = 0, v(si) = 0, i(vs) = 8.285742076290444e-13, i(ve) = 0.008253140050286323, i(vb) = 8.171425874394657e-05, i(vc) = 0.008171425792370957, i(v1) = -0.008253140051114903, i(@rc[i]) = 0.008171425792370957, i(@rb[i]) = 8.171425874394657e-05, i(@q1[ic]) = 0.008174875762571438, i(@q1[ie]) = -0.008256624521854302, i(@q1[ib]) = 8.174875845428842e-05, i(@q1[is]) = 8.285742076290444e-13
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: the same doubles as ngspice 47
+```
+
+```spice
+* the C9 transistor with ammeters on each of its four terminals
+V1 top 0 9
+Vc top c 0
+Q1 c xb e s qmod
+Vb x xb 0
+Ve e 0 0
+Vs s 0 0
+Rx x 0 1meg
+.model qmod npn
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), its currents:
+          @q1[is]                          9.000000e-12
+          @q1[ib]                          -9.00008e-12
+          @q1[ie]                          -9.00011e-12
+          @q1[ic]                          9.000191e-12
+          vc#branch                        1.800019e-11
+          vb#branch                        -9.00008e-12
+          ve#branch                        1.090352e-16
+          vs#branch                        9.000000e-12
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(c) = 9, v(xb) = 9.000081999484785e-06, v(e) = 0, v(s) = 0, v(x) = 9.000081999484785e-06, i(vs) = 9e-12, i(ve) = 1.0903522937356526e-16, i(vb) = -9.000081999484783e-12, i(vc) = 1.8000191034714156e-11, i(v1) = -1.8000191034714156e-11, i(@q1[ic]) = 9.00019103471416e-12, i(@q1[ie]) = -9.000109035229373e-12, i(@q1[ib]) = -9.000081999484786e-12, i(@q1[is]) = 9e-12, i(@rx[i]) = 9.000081999484785e-12
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: the same doubles as ngspice 47
 ```
 
 ```spice
