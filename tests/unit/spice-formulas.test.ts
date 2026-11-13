@@ -652,6 +652,6 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
 
   it('missing-fields-10: one word before a formula is warned about only where native ngspice stops at it', () => {
     for (const line of ['E1 e 0 x VALUE={v(out)*2}', 'E1 e 0 x VALUE {2}', 'E1 e 0 x VALUE=v(out)*2', "E1 e 0 x vol='v(out)*2'", 'G1 0 e x cur={v(out)*2m}']) expect(ids(formula(line)), line).toEqual([]);
-    for (const line of ['E1 e 0 x VALUE={2}', 'E1 e 0 x VALUE = {2}', 'G1 0 e x cur={2m}', "E1 e 0 x vol='2'"]) expect(ids(formula(line)), line).toEqual(['missing-fields']);
+    for (const line of ['E1 e 0 x VALUE={2}', 'E1 e 0 x VALUE = {2}', 'G1 0 e x cur={2m}', "E1 e 0 x vol='2'", 'E1 e 0 x VALUE={2} ; see (1)']) expect(ids(formula(line)), line).toEqual(['missing-fields']);
   });
 });

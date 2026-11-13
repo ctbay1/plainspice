@@ -1957,7 +1957,7 @@ const B_SETTINGS = /^(tc1|tc2|temp|dtemp|reciproctc)=/i;
  * (space-character-22, -23, -25 to -28, nbsp-4, -5, run in native ngspice 47 and 42 and our engine):
  * - at the start of the formula (after V=, I=, VALUE=, a {, a quote, or a + there): 'parameter value out of
  *   range or the wrong type';
- * - after an operator (* / ^ + - < > == && || :), or a - at the start: 'The internal check of parse tree \u2026
+ * - after an operator (* / ^ + - < > == && || :), or a - at the start: 'The internal check of parse tree …
  *   failed', then the same;
  * - after an opening bracket, a comma or a ? (a sign there too): ngspice 47 'YYparse error', a fatal one, and
  *   ngspice 42 'PTerror: syntax error';
@@ -1983,7 +1983,7 @@ function formulaStops(c: Ctx, at: number, body: number | undefined, nbsp: boolea
   };
   const atStart = (q: number): boolean => q < body || ('{\'"'.includes(s[q]!) && back(q - 1) < body);
   const START = "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]";
-  const OPERATOR = "ngspice stops: 'The internal check of parse tree \u2026 failed', then 'parameter value out of range or the wrong type'. [space-character-26]";
+  const OPERATOR = "ngspice stops: 'The internal check of parse tree … failed', then 'parameter value out of range or the wrong type'. [space-character-26]";
   const OPEN = "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression' (ngspice 42: 'PTerror: syntax error'). [space-character-28]";
   const p = back(at - 1);
   if (atStart(p)) return START;
@@ -2244,7 +2244,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
   // One word before the formula stops native ngspice only where its XSPICE step (inp_poly_2g6_compat) finds no
   // bracket after it to stop at: VALUE={2}, VALUE=3, vol='2', cur={2m}; with a v(...) in the formula, or VALUE {2},
   // it runs the line as our engine does (missing-fields-9, -10).
-  const word = form.dropped?.length === 1 && equals && !c.text.slice(form.keyword.from, cardEnd(c, i)).includes('(') ? form.dropped[0]! : undefined;
+  const word = form.dropped?.length === 1 && equals && !(form.formula?.text ?? '').includes('(') ? form.dropped[0]! : undefined;
   if (word) {
     add(c, 'missing-fields', 'warning', word, `Native ngspice stops at ${name}'s word ${word.text}`,
       `ngspice drops the words between ${name}'s output nodes and ${kw}, so ${word.text} changes nothing in PlainSpice. With exactly one word there, native ngspice first reads the line as a polynomial (an XSPICE step that PlainSpice's engine leaves out) and stops.`,
