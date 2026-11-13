@@ -18,7 +18,7 @@
  *
  * Escape (the page's keyboard handler) closes it.
  */
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { t } from '../../i18n/index.ts';
 import type { Side, ToolKind } from '../../notebook/index.ts';
 import { Connections, PartActions, cardBodyId, type PartEditing } from './CardEdit.tsx';
@@ -202,7 +202,10 @@ export function IndexCard(p: CardProps): ReactNode {
   }, [p.value]);
   const refused = p.refused && settled === p.value ? p.refused : undefined;
   // "Running…" only when ngspice takes a moment (for the value as typed): a quick answer replaces
-  // the numbers without a flash.
+  // the numbers without a flash. Until then the card keeps the note it had (an error's "No numbers
+  // yet"), and "Running…" keeps that note's room: gone for each run and back with its answer, the note
+  // moved the card's actions under the finger with each value typed while an error stood (the second
+  // re-check, AP-2).
   const busy = p.note?.tone === 'busy';
   const [lateFor, setLateFor] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -210,7 +213,22 @@ export function IndexCard(p: CardProps): ReactNode {
     const timer = window.setTimeout(() => setLateFor(p.value), BUSY_AFTER_MS);
     return () => window.clearTimeout(timer);
   }, [busy, p.value]);
-  const note = p.note && (!busy || lateFor === p.value) ? p.note : undefined;
+  const [kept, setKept] = useState<{ session: number | undefined; note: CardNote | undefined } | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (busy) return;
+    setKept((k) => (k && k.session === p.session && k.note?.text === p.note?.text && k.note?.tone === p.note?.tone && k.note?.numbers === p.note?.numbers ? k : { session: p.session, note: p.note }));
+  }, [busy, p.session, p.note]);
+  const late = busy && lateFor === p.value;
+  const note = busy ? (late ? p.note : kept && kept.session === p.session ? kept.note : undefined) : p.note;
+  // The room the note took as it was last drawn settled, given to a slow run's "Running…" (as it is drawn).
+  const noteRef = useRef<HTMLParagraphElement>(null);
+  const noteRoom = useRef(0);
+  useLayoutEffect(() => {
+    const el = noteRef.current;
+    el?.style.removeProperty('min-height');
+    if (!busy) noteRoom.current = el?.getBoundingClientRect().height ?? 0;
+    else if (el && late && noteRoom.current) el.style.minHeight = `${noteRoom.current}px`;
+  });
   const field =
     p.label !== undefined ? (
       <div className={`value-field${p.readsTrap || refused ? ' is-trap' : ''}`}>
@@ -392,7 +410,7 @@ export function IndexCard(p: CardProps): ReactNode {
           </ul>
         ) : null}
         {strip || !note ? null : (
-          <p className={`index-card__note index-card__note--${note.tone}`}>
+          <p className={`index-card__note index-card__note--${note.tone}`} ref={noteRef}>
             {note.tone === 'bad' ? <WarningIcon /> : null}
             {note.text}
             {note.numbers && p.onNumbers ? (

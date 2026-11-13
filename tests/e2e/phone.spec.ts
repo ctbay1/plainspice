@@ -1253,6 +1253,70 @@ test('an open sheet the student scrolled keeps its head where it is: a later run
   }
 });
 
+test('a value typed on a part’s card while an error stands moves none of the card’s rows (AP-2)', async ({ page }) => {
+  // While an error stood, the card's note ("No numbers yet: a check found an error on line 2 …") went for
+  // each run of a value typed and came back with its answer: the card's actions below it (Explain, Turn,
+  // Mirror, Reverse, Move, Connections, Delete) went up and down by 47 px on an iPhone SE with each key.
+  for (const view of [
+    { width: 320, height: 568 },
+    { width: 863, height: 360 },
+  ] as const) {
+    const at = `${view.width} × ${view.height}`;
+    await page.setViewportSize(view);
+    await openApp(page);
+    await expectSolved(page);
+    await partOnDrawing(page, 'Ground').focus();
+    await page.keyboard.press('Delete');
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+    await partOnDrawing(page, 'R2').focus();
+    await page.keyboard.press('Enter');
+    const card = page.getByRole('dialog', { name: /^R2 / });
+    await expect(card).toBeVisible();
+    // The field reached with the keys: the card stays a sheet (a tap makes it the strip above the keyboard).
+    const field = card.getByRole('textbox');
+    await field.focus();
+    await page.keyboard.press('ControlOrMeta+a');
+    await settle(page);
+    await expect(card.locator('.index-card__note')).toContainText(/error on line 2/);
+    // Every control of the card and its field, where each is on every frame.
+    await page.evaluate(() => {
+      const w = window as unknown as { cardRows: Map<Element, { name: string; min: number; max: number }>; cardStop?: boolean };
+      w.cardRows = new Map();
+      w.cardStop = false;
+      const tick = (): void => {
+        for (const e of document.querySelectorAll('.phone-bottom > .sheet :is(button, input)')) {
+          const r = e.getBoundingClientRect();
+          if (!r.height) continue;
+          const seen = w.cardRows.get(e) ?? { name: (e.getAttribute('aria-label') ?? e.textContent ?? '').trim().slice(0, 30), min: r.top, max: r.top };
+          seen.min = Math.min(seen.min, r.top);
+          seen.max = Math.max(seen.max, r.top);
+          w.cardRows.set(e, seen);
+        }
+        if (!w.cardStop) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    for (const key of ['3', 'k']) {
+      await page.keyboard.type(key);
+      // The value is written at once (the status line, out of sight under the card, says "Running…"); its
+      // run comes and goes within a moment.
+      await expect.poll(() => page.evaluate(() => localStorage.getItem('plainspice:netlist') ?? '')).toMatch(key === '3' ? /\nR2 \S+ \S+ 3\n/ : /\nR2 \S+ \S+ 3k\n/);
+      await page.waitForTimeout(1500);
+      await settle(page);
+    }
+    const moved = await page.evaluate(() => {
+      const w = window as unknown as { cardRows: Map<Element, { name: string; min: number; max: number }>; cardStop: boolean };
+      w.cardStop = true;
+      return [...w.cardRows.values()].filter((r) => r.max - r.min > 1).map((r) => `${r.name}: ${Math.round(r.min)}..${Math.round(r.max)}`);
+    });
+    expect(moved, `${at}: the card's controls that moved`).toEqual([]);
+    // Still no numbers, and the card still says why.
+    await expect(card.locator('.index-card__note')).toContainText(/error on line 2/);
+    // Start here again for the next view (the netlist is saved on this device).
+    await page.evaluate(() => localStorage.removeItem('plainspice:netlist'));
+  }
+});
+
 test('an upright phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it on its side (320 × 568, the usual text)', async ({ page }) => {
   // Upright, an iPhone SE at the usual text size: above More and Parts the hint steps aside and the status
   // line stays (the first step). On its side, Plot before a sweep has one line of words below its head:
