@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { leastWorkMs } from './work-time.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import {
   hasSaveCurrents,
@@ -261,5 +262,53 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
     expect(() => textToRun(parseNetlist(text))).toThrow(RUN_COPY_WORDS.noClose(5, 'v('));
     expect(toRun(text).notRun).toEqual({ line: 5, reason: RUN_COPY_WORDS.noClose(5, 'v(') });
     expect(textToRun(parseNetlist(`* t\n${BODY}`))).toBe(`* t\n${BODY.replace('.end', `${SAVE_CURRENTS_LINE}\n.end`)}`);
+  });
+});
+
+describe('the checks of the run copy, on netlists made to be slow or deep', () => {
+  // A link can hold one formula of 250 kB. Measuring each v( … ) by looking back for its { and on
+  // for its ) made the work grow with the square of the line: 8,000 terms took 8 times the work of
+  // 2,000 (105 ms of processor time), so 50,000 would take seconds. Ten lines of 5,000 terms against
+  // one of 50,000: equal work, so at most 2.5 times as long (as the parser's own test). Timed as the
+  // work it is (work-time.ts), the least of five tries of each, taken in turns.
+  it('reads a formula in time proportional to its length', () => {
+    const formula = (terms: number) => parseNetlist(`* t\nV1 a 0 1\nB1 b 0 V=${'v(a)+'.repeat(terms)}0\nR1 b 0 1\n.op\n.end\n`);
+    const small = formula(5000);
+    const large = formula(50_000);
+    netlistToRun(formula(10));
+    const [tenSmall, oneLarge] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) netlistToRun(small);
+        },
+        () => netlistToRun(large),
+      ],
+      5,
+    );
+    expect(oneLarge).toBeLessThan(2.5 * tenSmall + 8);
+    expect(netlistToRun(large).notRun).toBeUndefined();
+  }, 30_000);
+
+  it('checks a + line after a title on its own: the title is cut, the + line is not part of it', () => {
+    expect(whyNotRun(parseNetlist(`* t\n+ ${w(251)}\n${BODY}`))?.line).toBe(2);
+    expect(whyNotRun(parseNetlist(`* t\n.title x\n+ ${w(251)}\n${BODY}`))?.line).toBe(3);
+    expect(whyNotRun(parseNetlist(`* t\n+ ${w(250)}\n${BODY}`))).toBeUndefined();
+  });
+
+  it('finds the subcircuit of an X line written with blanks around its parameters’ =', () => {
+    const text = `* t\nV1 a 0 9\nR1 a b 1k\n.subckt s2 p q\nR${w(199, 'r')} p q 1k\n.ends\n.subckt s1 p q w=1\nX${w(199, 'y')} p q s2\n.ends\nX${w(199, 'z')} b 0 s1 w = 2\n.op\n.end\n`;
+    expect(longestPartName(parseNetlist(text))?.bytes).toBe(2 + 200 + 1 + 200 + 1 + 200);
+    expect(toRun(text).added).toEqual([]);
+  });
+
+  it('works out the names of 5,000 nested subcircuits without running out of stack: past 250 levels every name is too long', () => {
+    const lines = ['* t', 'V1 a 0 1', 'R1 a 0 1'];
+    for (let i = 0; i < 5000; i++) lines.push(`.subckt s${i} p q`, `X${i} p q s${i + 1}`, '.ends');
+    lines.push('.subckt s5000 p q', 'R9 p q 1', '.ends', 'X0 a 0 s0', '.op', '.end', '');
+    const netlist = parseNetlist(lines.join('\n'));
+    expect(longestPartName(netlist)!.bytes).toBeGreaterThan(500);
+    const run = netlistToRun(netlist);
+    expect(run.added).toEqual([]);
+    expect(run.notes).toHaveLength(1);
   });
 });

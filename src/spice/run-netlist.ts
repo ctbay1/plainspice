@@ -176,8 +176,9 @@ function cardsOf(netlist: Netlist): Card[] {
   const cards = new Map<number, Card>();
   const out: Card[] = [];
   for (const line of netlist.lines) {
+    // A + line is checked on its own after a title line, whose words are cut, not checked.
     const head = line.kind === 'continuation' && line.continues !== undefined ? cards.get(line.continues) : undefined;
-    if (head) {
+    if (head && !isTitleLine(head.line.text, head.line.index)) {
       const rest = line.text.replace(/^\s*\+/, '');
       head.text += ` ${rest}`;
       head.code += ` ${beforeComment(rest)}`;
@@ -210,7 +211,9 @@ export function longestPartName(netlist: Netlist): { name: string; bytes: number
     if (d && (d.name === '.subckt' || d.name === '.macro')) {
       const def: Inside = { parts: [], xs: [] };
       const name = d.args[0]?.text.toLowerCase() ?? '';
-      defs.set(name, [...(defs.get(name) ?? []), def]);
+      const same = defs.get(name);
+      if (same) same.push(def);
+      else defs.set(name, [def]);
       open.push(def);
       continue;
     }
@@ -220,7 +223,7 @@ export function longestPartName(netlist: Netlist): { name: string; bytes: number
     }
     if (line.kind !== 'element' || !line.element) continue;
     const here = open.at(-1) ?? top;
-    const words = gettokWords(code, Number.MAX_SAFE_INTEGER);
+    const words = gettokWords(code.replace(/[ \t]*=[ \t]*/g, '='), Number.MAX_SAFE_INTEGER);
     const name = (words[0] ?? '').toLowerCase();
     const bytes = utf8Bytes(name);
     if (line.element.letter === 'X') {
@@ -234,16 +237,20 @@ export function longestPartName(netlist: Netlist): { name: string; bytes: number
   type Path = { name: string; bytes: number; letter: string };
   const memo = new Map<string, Path | undefined>();
   const visiting = new Set<string>();
-  const inside = (target: string): Path | undefined => {
+  const inside = (target: string, depth: number): Path | undefined => {
     if (memo.has(target)) return memo.get(target);
     if (visiting.has(target)) return undefined; // ngspice refuses a subcircuit inside itself
+    // Each level adds at least "x." to a name, so past 250 levels every name inside is over 500 bytes.
+    if (depth > 250) return { name: target, bytes: Number.MAX_SAFE_INTEGER, letter: 'x' };
     visiting.add(target);
     let best: Path | undefined;
     for (const def of defs.get(target) ?? []) {
       for (const p of def.parts) if (!best || p.bytes > best.bytes) best = { name: p.name, bytes: p.bytes, letter: p.name[0] ?? '' };
       for (const x of def.xs) {
-        const deeper = inside(x.target);
-        if (deeper && (!best || x.bytes + 1 + deeper.bytes > best.bytes)) best = { name: `${x.name}.${deeper.name}`, bytes: x.bytes + 1 + deeper.bytes, letter: deeper.letter };
+        const deeper = inside(x.target, depth + 1);
+        if (!deeper) continue;
+        const bytes = Math.min(Number.MAX_SAFE_INTEGER, x.bytes + 1 + deeper.bytes);
+        if (!best || bytes > best.bytes) best = { name: `${x.name}.${deeper.name}`, bytes, letter: deeper.letter };
       }
     }
     visiting.delete(target);
@@ -253,11 +260,11 @@ export function longestPartName(netlist: Netlist): { name: string; bytes: number
   let longest: { name: string; bytes: number; line: number } | undefined;
   for (const p of top.parts) if (!longest || p.bytes > longest.bytes) longest = p;
   for (const x of top.xs) {
-    const deeper = inside(x.target);
+    const deeper = inside(x.target, 1);
     if (!deeper) continue;
     // ngspice puts the part's letter in front: r.x1.r1.
     const name = `${deeper.letter}.${x.name}.${deeper.name}`;
-    const bytes = 2 + x.bytes + 1 + deeper.bytes;
+    const bytes = Math.min(Number.MAX_SAFE_INTEGER, 2 + x.bytes + 1 + deeper.bytes);
     if (!longest || bytes > longest.bytes) longest = { name, bytes, line: x.line };
   }
   return longest;
@@ -271,6 +278,45 @@ const SAVING = new Set(['.save', '.print', '.plot', '.four', '.fourier', '.probe
 const FORMULA_LETTERS = new Set(['E', 'G', 'F', 'H', 'R', 'C', 'L']);
 /** Where a v( or i( starts in a formula: not inside a longer name (inp_modify_exp, limit-5). */
 const OPENING = /(?<![A-Za-z0-9_!#$%[\]])[vi]\(/gi;
+
+/**
+ * Each v( or i( of a formula's code, with the ) that ends it for ngspice (-1: none) and its length in
+ * bytes, in passes over the code that do not grow with the number of v( (limit-5). Inside { }, ngspice
+ * reads the expression alone, so its ) must come before the }.
+ */
+function formulaRuns(code: string): { at: number; close: number; bytes: number }[] {
+  const n = code.length;
+  const nextClose = new Int32Array(n + 1).fill(-1);
+  const nextShut = new Int32Array(n + 1).fill(-1);
+  for (let i = n - 1; i >= 0; i--) {
+    nextClose[i] = code[i] === ')' ? i : nextClose[i + 1]!;
+    nextShut[i] = code[i] === '}' ? i : nextShut[i + 1]!;
+  }
+  // The bytes of UTF-8 before each place (a surrogate pair counts 4, at its first half).
+  const before = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const c = code.charCodeAt(i);
+    const pair = c >= 0xd800 && c <= 0xdbff && i + 1 < n && (code.charCodeAt(i + 1) & 0xfc00) === 0xdc00;
+    const low = c >= 0xdc00 && c <= 0xdfff && i > 0 && (code.charCodeAt(i - 1) & 0xfc00) === 0xd800;
+    before[i + 1] = before[i]! + (pair ? 4 : low ? 0 : utf8(c));
+  }
+  const out: { at: number; close: number; bytes: number }[] = [];
+  let lastOpen = -1;
+  let lastShut = -1;
+  let k = 0;
+  for (const m of code.matchAll(OPENING)) {
+    const at = m.index;
+    for (; k < at; k++) {
+      if (code[k] === '{') lastOpen = k;
+      else if (code[k] === '}') lastShut = k;
+    }
+    const shut = lastOpen > lastShut ? nextShut[at]! : -1;
+    const found = nextClose[at]!;
+    const close = found >= 0 && (shut < 0 || found < shut) ? found : -1;
+    out.push({ at, close, bytes: close < 0 ? 0 : before[close + 1]! - before[at]! });
+  }
+  return out;
+}
 
 /** The first thing in the netlist that ngspice cannot take, by line. */
 export function whyNotRun(netlist: Netlist): NotRun | undefined {
@@ -317,20 +363,13 @@ export function whyNotRun(netlist: Netlist): NotRun | undefined {
       letter === 'B' || ((letter === 'E' || letter === 'G') && /[{=]|table/i.test(code)) || (line.directive?.name === '.model' && /temper/i.test(code));
     if (formula) {
       let problem: string | undefined;
-      for (const m of code.matchAll(OPENING)) {
-        // Inside { }, ngspice reads the expression alone: its ) must come before the }.
-        const inBraces = code.lastIndexOf('{', m.index) > code.lastIndexOf('}', m.index);
-        const shut = inBraces ? code.indexOf('}', m.index) : -1;
-        const found = code.indexOf(')', m.index);
-        const close = found >= 0 && (shut < 0 || found < shut) ? found : -1;
+      for (const { at, close, bytes } of formulaRuns(code)) {
         if (close < 0) {
-          if (readsToClose) problem = S.noClose(number, m[0]);
+          if (readsToClose) problem = S.noClose(number, code.slice(at, at + 2));
           break;
         }
-        const run = code.slice(m.index, close);
-        const bytes = utf8Bytes(run) + 1;
         if (bytes > RUN_BYTES) {
-          problem = S.longRun(number, run, bytes);
+          problem = S.longRun(number, code.slice(at, close), bytes);
           break;
         }
       }
@@ -387,7 +426,7 @@ export function netlistToRun(netlist: Netlist): NetlistToRun {
   }
   const end = netlist.end === undefined ? undefined : netlist.lines[netlist.end];
   if (end) {
-    // The title cuts change no line's length before .end's place in the copy… except their own: count again.
+    // Where .end starts in the copy, after any title cut before it.
     const at = lines.slice(0, end.index).reduce((n, l) => n + l.length + 1, 0);
     return done([SAVE_CURRENTS_LINE], `${text.slice(0, at)}${SAVE_CURRENTS_LINE}\n${text.slice(at)}`);
   }
