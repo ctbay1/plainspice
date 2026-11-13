@@ -3373,7 +3373,7 @@ What PlainSpice shows for no-ground-1 (error, line 2):
 >
 > *ngspice:* ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]
 >
-> *Fixes:* "Make b the ground (rename it to 0)"
+> *Fixes:* "Make node b the ground (rename it to 0)"
 
 ### no-ground-1. No node 0: singular matrix, and numbers that are not the answer
 
@@ -3452,11 +3452,11 @@ The netlist has a ground, and another node has a ground-like name: `ground`, `00
 
 What PlainSpice shows for ground-misnamed-1 (warning, line 2):
 
-> **ground is not ground: ground is node 0.** In SPICE, ground is the node called 0 (gnd works too). ground is just another node name, so the parts on it are not connected to ground.
+> **Node "ground" is not ground: ground is node 0.** In SPICE, ground is the node called 0 (gnd works too). Node "ground" is just an ordinary node, so the parts on it are not connected to ground.
 >
-> *ngspice:* ngspice says nothing and treats ground as an ordinary node. In one test, V1 n1 ground 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]
+> *ngspice:* ngspice says nothing and treats node "ground" as an ordinary node. In one test, V1 n1 ground 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]
 >
-> *Fixes:* "Rename ground to 0"
+> *Fixes:* "Rename node \"ground\" to 0"
 
 ### ground-misnamed-1. ground next to 0: two different nodes, silently
 
@@ -3541,7 +3541,7 @@ A node (not ground, not named in any directive) with exactly one connection, the
 
 What PlainSpice shows for dangling-node-1 (info, line 4):
 
-> **Only R2 touches n2.** No current flows in R2, so n2 sits at the same voltage as n1. That is right for an open terminal where you measure a voltage; if R2 should connect to something, check this node name.
+> **Only R2 touches node n2.** No current flows in R2, so node n2 sits at the same voltage as node n1. That is right for an open terminal where you measure a voltage; if R2 should connect to something, check this node name.
 >
 > *ngspice:* ngspice says nothing: R2 carries no current, so it changes nothing else in the circuit. [dangling-node-1]
 >
@@ -3605,11 +3605,11 @@ A group of nodes with no DC path to ground: what touches it are capacitors, the 
 
 What PlainSpice shows for floating-dc-1 (error, line 3):
 
-> **b has no DC path to ground.** At DC a capacitor is an open circuit, so nothing connects b to ground. SPICE can't pin its voltage down: its equations have no single answer. Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.
+> **Node b has no DC path to ground.** At DC a capacitor is an open circuit, so nothing connects node b to ground. SPICE can't pin its voltage down: its equations have no single answer. Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.
 >
 > *ngspice:* ngspice warns 'singular matrix: check node b', falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]
 >
-> *Fixes:* "Add a 1 GΩ resistor from b to ground"
+> *Fixes:* "Add a 1 GΩ resistor from node b to ground"
 
 ### floating-dc-1. A node between two capacitors has no DC path: singular matrix
 
@@ -4005,7 +4005,7 @@ A floating group (as in floating-dc) that a current source touches: I, the outpu
 
 What PlainSpice shows for current-source-no-path-1 (error, line 4):
 
-> **I1's current has nowhere to go.** A current source pushes its current through whatever it is connected to. Here b has no DC path back to ground (a capacitor is an open circuit at DC), so the current has nowhere to go and the voltage there is not defined.
+> **I1's current has nowhere to go.** A current source pushes its current through whatever it is connected to. Here node b has no DC path back to ground (a capacitor is an open circuit at DC), so the current has nowhere to go and the voltage there is not defined.
 >
 > *ngspice:* ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [current-source-no-path-1]
 >
@@ -11215,13 +11215,13 @@ What PlainSpice shows for non-ascii-node-1 (warning, line 2):
 >
 > *ngspice:* ngspice spells the node giri__ in its printout and results, without a message. [non-ascii-node-1]
 >
-> *Fixes:* "Rename giriş to giris"
+> *Fixes:* "Rename node giriş to giris"
 
 What PlainSpice shows for non-ascii-node-2 (error, line 3):
 
-> **ş and ç are one node for ngspice.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so ş and ç both become __: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.
+> **Node ş and node ç are one node for ngspice.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so node ş and node ç both become __: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.
 >
-> *ngspice:* ngspice spells ş and ç as __ and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]
+> *ngspice:* ngspice spells node ş and node ç as __ and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]
 >
 > *Fixes:* "Write s for ş and c for ç"
 
@@ -11310,7 +11310,7 @@ What PlainSpice shows for non-ascii-node-3 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a .print line naming a node with Turkish letters
@@ -11436,7 +11436,7 @@ What PlainSpice shows for non-ascii-node-4 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node çıkış there: save v(çıkış) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-4]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * commands in a .control block naming a node with Turkish letters
@@ -11522,11 +11522,11 @@ of its ends are joined (non-ascii-node-11).
 
 What PlainSpice shows for non-ascii-node-5 (warning, line 3):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node: R1 has both ends on it and carries no current. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node: R1 has both ends on it and carries no current. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * aµ and au are one node
@@ -11616,7 +11616,7 @@ What PlainSpice shows for non-ascii-node-7 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node çıkış there. [non-ascii-node-1, non-ascii-node-4]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a save that names a current too: the analysis runs
@@ -11747,11 +11747,11 @@ spelling, and for no other part (non-ascii-node-11), nor for a capacitor given a
 
 What PlainSpice shows for non-ascii-node-10 (warning, line 4):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node: C1 and D1 have both ends on it and carry no current. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node: C1 and D1 have both ends on it and carry no current. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * a capacitor and a diode with an end on aµ and one on au
@@ -11797,11 +11797,11 @@ So for any part other than a resistor, a capacitor or a diode, the check says on
 
 What PlainSpice shows for non-ascii-node-11 (warning, line 4):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins both ends of I1. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node, which joins both ends of I1. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au. [non-ascii-node-5, non-ascii-node-11]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * a current source with an end on aµ and one on au
@@ -11868,11 +11868,11 @@ for the parts of non-ascii-node-11, and cites this fact.
 
 What PlainSpice shows for non-ascii-node-12 (warning, line 4):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins both ends of C1. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node, which joins both ends of C1. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-12]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au. [non-ascii-node-5, non-ascii-node-12]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * a capacitor given a starting voltage, with an end on aµ and one on au
@@ -11933,7 +11933,7 @@ What PlainSpice shows for non-ascii-node-13 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a .print line naming a node with Turkish letters beside one ngspice finds
@@ -11995,7 +11995,7 @@ What PlainSpice shows for non-ascii-node-14 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it prints nothing for that line. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). In a .control block it reads the name as written too, so it finds no node çıkış there: save v(çıkış) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a save of the name in a .control block, read before the .print line
@@ -12085,7 +12085,7 @@ What PlainSpice shows for invisible-character-3 (warning, line 4):
 >
 > *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]
 >
-> *Fixes:* "Take it out: connect to out"
+> *Fixes:* "Take it out: connect to node out"
 
 What PlainSpice shows for invisible-character-5 (error, line 4):
 
@@ -14925,11 +14925,11 @@ What PlainSpice shows for look-alike-letter-4 (warning, line 7):
 
 What PlainSpice shows for look-alike-letter-5 (warning, line 4):
 
-> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to out.
+> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to node out.
 >
 > *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node, without a message: in one test the resistor on it carried no current. [look-alike-letter-5]
 >
-> *Fixes:* "Connect to out"
+> *Fixes:* "Connect to node out"
 
 What PlainSpice shows for look-alike-letter-6 (error, line 2):
 
@@ -15610,7 +15610,7 @@ What PlainSpice shows for look-alike-letter-16 (warning, line 3):
 >
 > *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-16]
 >
-> *Fixes:* "Rename оut to out"
+> *Fixes:* "Rename node оut to out"
 
 ```spice
 * a Cyrillic о in a node name, on a .print line
@@ -15655,7 +15655,7 @@ What PlainSpice shows for look-alike-letter-17 (warning, line 3):
 >
 > *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [look-alike-letter-5, look-alike-letter-17]
 >
-> *Fixes:* "Rename оut to out"
+> *Fixes:* "Rename node оut to out"
 
 ```spice
 * a Cyrillic о in a node name, saved in a .control block
@@ -15844,19 +15844,19 @@ What PlainSpice shows for space-character-8 (warning, line 6):
 
 What PlainSpice shows for space-character-10 (warning, line 3):
 
-> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.
+> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to node out.
 >
 > *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]
 >
-> *Fixes:* "Take it out: connect to out"
+> *Fixes:* "Take it out: connect to node out"
 
 What PlainSpice shows for space-character-10 (warning, line 5):
 
-> **The node o ut has a no-break space (U+00A0) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.
+> **The node o ut has a no-break space (U+00A0) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to node out.
 >
 > *ngspice:* ngspice keeps the character in the name, as underscores (o__ut), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]
 >
-> *Fixes:* "Take it out: connect to out"
+> *Fixes:* "Take it out: connect to node out"
 
 What PlainSpice shows for space-character-11 (warning, line 3):
 

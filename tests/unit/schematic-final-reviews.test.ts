@@ -414,8 +414,8 @@ describe('the editor says what happens and why (words:W6, W7, W10)', () => {
     const reason = applyEdit(buildSchematic(text), { kind: 'reverse-part', part: 'Vx' }).reason!;
     const fixes = checkTraps(parseNetlist(text)).flatMap((t) => t.fixes.map((f) => f.label));
     const rename = fixes.find((f) => f.startsWith('Rename') && f.endsWith('to 0'))!;
-    expect(rename).toBe(`Rename ${word} to 0`);
-    expect(reason).toContain(`Rename ${word} first: the Checks panel says why and offers “${rename}”.`);
+    expect(rename).toBe(`Rename node "${word}" to 0`);
+    expect(reason).toContain(`Rename node "${word}" first: the Checks panel says why and offers “${rename}”.`);
     expect(reason).not.toContain('write 0');
   });
 });

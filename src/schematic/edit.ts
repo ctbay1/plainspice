@@ -260,9 +260,9 @@ export const EDIT_STRINGS = {
   /** The drawing written would be more than reading takes (format.ts), and what comes after would be lost. */
   tooBig: `PlainSpice could not make that change: its drawing would need more lines or more wire than PlainSpice reads (${MAX_DRAWING_LINES} drawing lines, ${MAX_WIRE_LENGTH.toLocaleString('en-US')} grid units of wire), so part of the drawing would be lost. You can make it in the Netlist panel.`,
   // W9: gnd as the last word of a line is an ordinary node; W8: anywhere else it is ground (0).
-  // `word`: the node as the Checks panel's fix names it ("Rename gnd to 0", traps.ts).
+  // `word`: the node as the Checks panel's fix names it ('Rename node "gnd" to 0', traps.ts: the node-words rule, last pass F6).
   gndNode: (name: string, word = 'gnd'): string =>
-    `${name}'s line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename ${word} first: the Checks panel says why and offers “Rename ${word} to 0”.`,
+    `${name}'s line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename node "${word}" first: the Checks panel says why and offers “Rename node "${word}" to 0”.`,
 } as const;
 
 const S = EDIT_STRINGS;

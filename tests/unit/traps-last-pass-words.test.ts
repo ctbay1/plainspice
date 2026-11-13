@@ -150,3 +150,94 @@ describe('F4, F5: a resistance below 1e-12 Ω, said as each ngspice version trea
     }
   });
 });
+
+describe('F6: every check names a node as the rest of the page does: "node in", "node1", \'node "ground"\', "ground" (node-words.ts)', () => {
+  const all = (t: Trap): string[] => [t.title, t.why, ...t.fixes.map((f) => f.label)];
+
+  it('floating-dc: the reviewer’s capacitors, in the title the status line shows, the why and the fix', () => {
+    const t = first('* capacitors only\nV1 x 0 6\nC1 x in 1u\nC2 in 0 1u\n.op\n.end\n', 'floating-dc');
+    expect(t.title).toBe('Node in has no DC path to ground');
+    expect(t.why).toMatch(/^At DC a capacitor is an open circuit, so nothing connects node in to ground\./);
+    expect(t.fixes.map((f) => f.label)).toEqual(['Add a 1 GΩ resistor from node in to ground']);
+    // ngspice's own words stay as it prints them.
+    expect(t.ngspice).toContain("ngspice warns 'singular matrix: check node in'");
+    // Two nodes, one of them a name that says node: never "node node1", and node1 keeps its letters at the start.
+    expect(first('* t\nV1 in 0 5\nC1 in node1 1u\nR1 node1 x 1k\nC2 x 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('node1 and node x have no DC path to ground');
+    // A control input alone: the node starts the why.
+    expect(first('* t\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c 0 2\nR2 out 0 1\n.op\n.end\n', 'floating-dc').why).toMatch(/^Node c is used only as the control input of E1/);
+    // A current source into such a node.
+    expect(first('* t\nI1 0 b 1m\nC1 b 0 1u\nR1 a 0 1k\nV1 a 0 1\n.op\n.end\n', 'current-source-no-path').why).toContain('Here node b has no DC path back to ground');
+  });
+
+  it('no-ground and ground-misnamed: "Make node b the ground", \'Node "ground" is not ground\', \'Rename node "00" to 0\'', () => {
+    expect(first('* t\nV1 a b 6\nR1 a b 2\n.op\n.end\n', 'no-ground').fixes.map((f) => f.label)).toEqual(['Make node b the ground (rename it to 0)']);
+    const g = first('* t\nV1 n1 ground 6\nR1 n1 0 2\n.op\n.end\n', 'ground-misnamed');
+    expect(all(g)).toEqual([
+      'Node "ground" is not ground: ground is node 0',
+      'In SPICE, ground is the node called 0 (gnd works too). Node "ground" is just an ordinary node, so the parts on it are not connected to ground.',
+      'Rename node "ground" to 0',
+    ]);
+    expect(g.ngspice).toMatch(/^ngspice says nothing and treats node "ground" as an ordinary node\./);
+    expect(first('* t\nV1 n1 00 6\nR1 n1 0 2\n.op\n.end\n', 'ground-misnamed').title).toBe('Node "00" is not ground: ground is node 0');
+    expect(first('* t\nV1 n1 earth 6\nR1 n1 0 2\n.op\n.end\n', 'ground-misnamed').fixes.map((f) => f.label)).toEqual(['Rename node earth to 0']);
+    const last = first('* t\nV1 a 0 6\nR1 a b 2\nVx b gnd\n.op\n.end\n', 'ground-misnamed');
+    expect([last.title, last.fixes.map((f) => f.label)]).toEqual(['Node "gnd" at the end of a line is not ground', ['Rename node "gnd" to 0']]);
+  });
+
+  it('dangling-node: "Only R2 touches node n12", "Did you mean node n2 or node n1?", "Rename node n12 to n2"', () => {
+    const t = first('* t\nV1 n1 0 6\nR1 n1 n2 2\nR2 n12 0 4\nI1 0 n2 3\n.op\n.end\n', 'dangling-node');
+    expect(all(t)).toEqual([
+      'Only R2 touches node n12',
+      'A node needs at least two connections for current to flow through it. Node n12 appears only here, so no current flows in R2. Did you mean node n2 or node n1?',
+      'Rename node n12 to n2',
+      'Rename node n12 to n1',
+    ]);
+    const open = first('* t\nV1 in 0 6\nR1 in 0 1k\nR2 in out 1k\n.op\n.end\n', 'dangling-node');
+    expect([open.title, open.why]).toEqual(['Only R2 touches node out', 'No current flows in R2, so node out sits at the same voltage as node in. That is right for an open terminal where you measure a voltage; if R2 should connect to something, check this node name.']);
+    expect(first('* t\nV1 in 0 6\nR1 in 0 1k\nR2 0 node1 1k\n.op\n.end\n', 'dangling-node').why).toBe('No current flows in R2, so node1 sits at the same voltage as ground (node 0). That is right for an open terminal where you measure a voltage; if R2 should connect to something, check this node name.');
+  });
+
+  it('voltage-loop: "V2 has both ends on node in", "L1 has both ends on node1", "connects node1 to itself"', () => {
+    const found = traps('* t\nV1 in 0 6\nR1 in 0 1k\nV2 in in 1\nL1 node1 node1 1m\nR2 node1 0 1\n.op\n.end\n').filter((t) => t.id === 'voltage-loop');
+    expect(found.map((t) => t.title)).toEqual(['V2 has both ends on node in', 'L1 has both ends on node1']);
+    expect(found[1]!.why).toMatch(/^L1 connects node1 to itself, so it does nothing/);
+    expect(first('* t\nV1 0 0 6\nR1 a 0 1k\nV2 a 0 1\n.op\n.end\n', 'voltage-loop').title).toBe('V1 has both ends on ground');
+  });
+
+  it('names outside a to z, the micro sign and the characters that are not what they look like', () => {
+    expect(first('* t\nV1 ş 0 5\nR1 ş ç 1k\nR2 ç 0 1k\n.op\n.end\n', 'non-ascii-node').title).toBe('Node ş and node ç are one node for ngspice');
+    expect(first('* t\nV1 giriş 0 5\nR1 giriş 0 1k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename node giriş to giris']);
+    // A name that says node keeps it alone: never "the node nodeş" or "node nodeş".
+    const own = first('* t\nV1 nodeş 0 5\nR1 nodeş 0 1k\n.op\n.end\n', 'non-ascii-node');
+    expect([own.title, own.ngspice.slice(0, 40), own.fixes[0]!.label]).toEqual(['ngspice spells nodeş as node__', 'ngspice spells node__ in its printout an', 'Rename nodeş to nodes']);
+    const micro = first('* t\nV1 in 0 5\nR1 in aµ 1k\nR2 au 0 1k\nR3 aµ au 1k\n.op\n.end\n', 'non-ascii-node');
+    expect([micro.title, micro.fixes.map((f) => f.label)]).toEqual(['Node aµ and node au are one node for ngspice', ['Rename node aµ to au2']]);
+    expect(micro.why).toContain('Give node aµ a name of its own in plain letters.');
+    expect(first('* t\nV1 in 0 6\nR1 in out 1k\nR2 ou\u200bt 0 2k\n.op\n.end\n', 'invisible-character').fixes.map((f) => f.label)).toEqual(['Take it out: connect to node out']);
+    const thin = first('* t\nV1 in 0 10\nR1 in o\u2009ut 2k\nR2 out 0 2k\n.op\n.end\n', 'space-character');
+    expect(thin.why).toMatch(/the parts on it are not connected to node out\.$/);
+    const cy = first('* t\nV1 in 0 6\nR1 in out 1k\nR2 оut 0 2k\n.op\n.end\n', 'look-alike-letter');
+    expect([cy.why.replace(/^.*(the parts)/, '$1'), cy.fixes.map((f) => f.label)]).toEqual(['the parts on it are not connected to node out.', ['Connect to node out']]);
+    // An ordinary node named like ground, hidden behind a character, is quoted as the other checks quote it.
+    expect(first('* t\nV1 in 0 6\nR1 in ground 1k\nR2 gro\u200bund 0 2k\nR3 ground 0 1k\n.op\n.end\n', 'invisible-character').fixes.map((f) => f.label)).toEqual(['Take it out: connect to node "ground"']);
+  });
+
+  it('no check’s words say "node node1", or a bare node name where a sentence starts', () => {
+    const nets = [
+      '* t\nV1 node1 0 5\nC1 node1 node2 1u\nC2 node2 0 1u\nR9 node3 0 1k\nR8 node3 node4 1k\nR7 node4 0 1k\n.op\n.end\n',
+      '* t\nV1 a b 6\nR1 a b 2\nR2 node7 b 1\n.op\n.end\n',
+      '* t\nV1 node1 0 6\nR1 node1 node2 2\nR2 node12 0 4\nI1 0 node2 3\n.op\n.end\n',
+      '* t\nI1 0 node9 1m\nC1 node9 0 1u\nR1 a 0 1k\nV1 a 0 1\n.op\n.end\n',
+      '* t\nV1 node1 0 6\nR1 node1 0 2\nE1 out 0 node5 0 2\nR2 out 0 1\n.op\n.end\n',
+      '* t\nV1 in 0 6\nR1 in 0 1k\nL1 node1 node1 1m\nR2 node1 0 1\n.op\n.end\n',
+      '* t\nV1 x 0 6\nC1 x in 1u\nC2 in 0 1u\nR3 x out 1k\n.op\n.end\n',
+      '* t\nV1 n1 0 6\nR1 n1 a 2\nR2 b 0 4\nR3 a 0 1\n.op\n.end\n',
+    ];
+    for (const text of nets) {
+      for (const t of traps(text)) {
+        for (const w of all(t)) expect(w, text).not.toMatch(/\bnode node\d|\bthe node node\d/i);
+        if (['floating-dc', 'dangling-node', 'ground-misnamed'].includes(t.id)) expect(t.title, text).not.toMatch(/^(in|a|b|c|out|x)\b/);
+      }
+    }
+  });
+});

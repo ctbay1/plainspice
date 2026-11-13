@@ -37,7 +37,7 @@ import {
 } from './characters.ts';
 import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
-import { nameSaysNode } from './node-words.ts';
+import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
@@ -2150,7 +2150,7 @@ function checkGround(c: Ctx): void {
       'No ground: no node is called 0',
       "Without ground, SPICE can't pin the voltages down. It warns about a singular matrix, which means its equations have no single answer, and any numbers it still prints can't be trusted. Every circuit needs one node called 0 (gnd works too).",
       "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]",
-      cand ? [fix(`Make ${cand.name} the ground (rename it to 0)`, ...renameNode(cand, GROUND))] : [],
+      cand ? [fix(`Make ${nodeSaid(c, cand.name)} the ground (rename it to 0)`, ...renameNode(cand, GROUND))] : [],
     );
     return;
   }
@@ -2159,19 +2159,21 @@ function checkGround(c: Ctx): void {
     const t = firstRef(x);
     if (!t) continue;
     const gnd = x.name === 'gnd';
+    // The node as written, quoted when it reads like ground (node in, 'node "ground"': node-words.ts; last pass F6).
+    const shown = /^(gnd|ground|00)$/i.test(t.text) ? `"${t.text}"` : t.text;
     add(
       c,
       'ground-misnamed',
       'warning',
       t,
-      gnd ? 'gnd at the end of a line is not ground' : `${t.text} is not ground: ground is node 0`,
+      gnd ? `${atSentenceStart(nodeIn(shown))} at the end of a line is not ground` : `${atSentenceStart(nodeIn(shown))} is not ground: ground is node 0`,
       gnd
-        ? 'ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, gnd is an ordinary node, so this part is not connected to ground.'
-        : `In SPICE, ground is the node called 0 (gnd works too). ${t.text} is just another node name, so the parts on it are not connected to ground.`,
+        ? `ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, it is an ordinary node, ${nodeIn(shown)}, so this part is not connected to ground.`
+        : `In SPICE, ground is the node called 0 (gnd works too). ${atSentenceStart(nodeIn(shown))} is just an ordinary node, so the parts on it are not connected to ground.`,
       gnd
         ? 'ngspice says nothing. In one test a 0 V ammeter written Vx b gnd read 0 A, because its gnd was a separate node. [ground-misnamed-2]'
-        : `ngspice says nothing and treats ${x.name} as an ordinary node. In one test, V1 n1 ${x.name === '00' ? '00' : 'ground'} 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]`,
-      [fix(`Rename ${t.text} to 0`, ...renameNode(x, GROUND))],
+        : `ngspice says nothing and treats ${nodeIn(shown)} as an ordinary node. In one test, V1 n1 ${x.name === '00' ? '00' : 'ground'} 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]`,
+      [fix(`Rename ${nodeIn(shown)} to 0`, ...renameNode(x, GROUND))],
     );
   }
 }
@@ -2228,10 +2230,10 @@ function checkDangling(c: Ctx): void {
         'dangling-node',
         'warning',
         t,
-        `Only ${name} touches ${here}`,
-        `A node needs at least two connections for current to flow through it. ${here} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => nodeWords(c, y.name))).replace(' and ', ' or ')}?`,
+        `Only ${name} touches ${nodeIn(here)}`,
+        `A node needs at least two connections for current to flow through it. ${atSentenceStart(nodeIn(here))} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => nodeSaid(c, y.name)), 'or')}?`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1, dangling-node-2]`,
-        candidates.slice(0, 2).map((y) => fix(`Rename ${here} to ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name)))),
+        candidates.slice(0, 2).map((y) => fix(`Rename ${nodeIn(here)} to ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name)))),
       );
     } else {
       add(
@@ -2239,8 +2241,8 @@ function checkDangling(c: Ctx): void {
         'dangling-node',
         'info',
         t,
-        `Only ${name} touches ${here}`,
-        `No current flows in ${name}, so ${here} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : nodeWords(c, other)}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
+        `Only ${name} touches ${nodeIn(here)}`,
+        `No current flows in ${name}, so ${nodeIn(here)} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : nodeSaid(c, other)}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1]`,
       );
     }
@@ -2263,6 +2265,26 @@ function nodeWords(c: Ctx, key: string): string {
   return /^(gnd|ground|00)$/i.test(name) ? `"${name}"` : nodeNameInWords(name);
 }
 
+/**
+ * A node in a check's sentence, by the node-words rule every other sentence on the page follows
+ * (src/spice/node-words.ts; describe.ts says it so; last pass F6): "node in", since a name may be an
+ * ordinary word, but a name that says node alone ("node1", never "node node1"), and ground (0) is
+ * "ground". `shown` is the name as the check shows it (nodeWords: a name like ground quoted, a character
+ * that is not what it looks like named). At the start of a sentence, atSentenceStart makes it "Node in".
+ */
+function nodeIn(shown: string): string {
+  return shown === GROUND ? 'ground' : nameSaysNode(shown) ? shown : `node ${shown}`;
+}
+
+/** A node's key in a check's sentence: "node in", "node1", 'node "ground"', "ground". */
+const nodeSaid = (c: Ctx, key: string): string => nodeIn(nodeWords(c, key));
+
+/** "the node çıkış", but a name that says node alone (never "the node node1"), for the sentences that say "the node …". */
+const theNodeIn = (shown: string): string => (nameSaysNode(shown) ? shown : `the node ${shown}`);
+
+/** A plain node name as the checks show it: quoted when it reads like ground (an ordinary node, W13), as nodeWords quotes it. */
+const quotedName = (name: string): string => (/^(gnd|ground|00)$/i.test(name) ? `"${name}"` : name);
+
 /** A floating group's first node reference, in netlist order. */
 function groupAnchor(c: Ctx, g: DcGroup): Token | undefined {
   let best: Token | undefined;
@@ -2283,7 +2305,7 @@ function checkFloating(c: Ctx): void {
     if (g.attachments.length === 0 && g.conductors.length === 0) continue;
     const kinds = new Set(g.attachments.map((a) => a.kind));
     const current = g.attachments.filter((a) => a.kind === 'current');
-    const nodes = list(g.nodes.map((n) => nodeWords(c, n)));
+    const nodes = list(g.nodes.map((n) => nodeSaid(c, n)));
     const plural = g.nodes.length > 1;
     if (current.length > 0) {
       currentSourceNoPath(c, g, kinds);
@@ -2300,7 +2322,7 @@ function checkFloating(c: Ctx): void {
     if (kinds.size === 0) {
       why = `${names(g.conductors.map((line) => ({ line })))} connect${g.conductors.length === 1 ? 's' : ''} ${nodes}, but nothing connects ${plural ? 'them' : 'it'} to the rest of the circuit, so SPICE can't pin ${plural ? 'their voltages' : 'its voltage'} down.`;
     } else if (controls.length > 0 && caps.length === 0 && gates.length === 0) {
-      why = `${nodes} ${plural ? 'are' : 'is'} used only as the control input of ${names(controls)}, which senses a voltage but draws no current. Nothing sets ${plural ? 'their voltages' : 'its voltage'}, so SPICE's equations have no single answer.`;
+      why = `${atSentenceStart(nodes)} ${plural ? 'are' : 'is'} used only as the control input of ${names(controls)}, which senses a voltage but draws no current. Nothing sets ${plural ? 'their voltages' : 'its voltage'}, so SPICE's equations have no single answer.`;
     } else if (gates.length > 0 && caps.length === 0 && controls.length === 0) {
       why = `A MOSFET's gate draws no current, so nothing sets the voltage at ${nodes}. SPICE's equations then have no single answer.`;
     } else if (caps.length > 0 && controls.length === 0 && gates.length === 0) {
@@ -2328,14 +2350,14 @@ function checkFloating(c: Ctx): void {
       const target = g.nodes[0]!;
       const name = freshName(c, 'Rdc1');
       const lastTop = c.graph.elements[c.graph.elements.length - 1]!;
-      fixes.push(fix(`Add a 1 GΩ resistor from ${nodeWords(c, target)} to ground`, insertLineAfter(c, lastTop, `${name} ${writtenNode(c, target)} 0 1g`)));
+      fixes.push(fix(`Add a 1 GΩ resistor from ${nodeSaid(c, target)} to ground`, insertLineAfter(c, lastTop, `${name} ${writtenNode(c, target)} 0 1g`)));
     }
     add(
       c,
       'floating-dc',
       'error',
       anchor,
-      `${nodes} ${plural ? 'have' : 'has'} no DC path to ground`,
+      `${atSentenceStart(nodes)} ${plural ? 'have' : 'has'} no DC path to ground`,
       fixes.length > 0 ? `${why} Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.` : why,
       ngspice,
       fixes,
@@ -2349,7 +2371,7 @@ function currentSourceNoPath(c: Ctx, g: DcGroup, kinds: Set<string>): void {
   const sources = [...new Set(current.map((a) => a.line))].map((k) => el(c, k));
   const onlyI = sources.every((s) => s.letter === 'I');
   const other = [...kinds].filter((k) => k !== 'current');
-  const nodes = list(g.nodes.map((n) => nodeWords(c, n)));
+  const nodes = list(g.nodes.map((n) => nodeSaid(c, n)));
   let ngspice: string;
   if (other.length === 0 && g.conductors.length === 0 && onlyI) {
     ngspice = 'ngspice says nothing and acts as if there were 1 Ω from the node to ground: in one test, 1 A into such a node gave 1 V. [current-source-no-path-2, current-source-no-path-3]';
@@ -2386,9 +2408,9 @@ function loopTrap(c: Ctx, loop: VoltageLoop): void {
       'voltage-loop',
       'error',
       e.name,
-      `${name} has both ends on node ${node}`,
+      `${name} has both ends on ${nodeSaid(c, node)}`,
       e.letter === 'L'
-        ? `${name} connects node ${node} to itself, so it does nothing, and its current is not defined: SPICE's equations have no single answer.`
+        ? `${name} connects ${nodeSaid(c, node)} to itself, so it does nothing, and its current is not defined: SPICE's equations have no single answer.`
         : `A source with both ends on the same node is shorted by itself: it can't make any voltage, and SPICE's equations have no single answer.`,
       e.letter === 'L'
         ? "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers it can't trust. [voltage-loop-11]"
@@ -2870,7 +2892,7 @@ function asWritten(c: Ctx, infos: readonly NodeInfo[], show: boolean): { said: s
     said.push(
       !show
         ? `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it ${warns}prints nothing for that line${none}. ${ignored}`
-        : `On a .print or .plot line it reads ${printed.length === 1 ? 'the name' : 'each name'} as written, so it finds no node ${list(printed.map((r) => r.name), 'or')} there: run as ngspice -b, it ${warns}prints nothing for ${that}${none}. ${ignored}`,
+        : `On a .print or .plot line it reads ${printed.length === 1 ? 'the name' : 'each name'} as written, so it finds no ${list(printed.map((r) => nodeIn(r.name)), 'or')} there: run as ngspice -b, it ${warns}prints nothing for ${that}${none}. ${ignored}`,
     );
   }
   const commands = infos.map((info) => controlNodes(c).get(info.name) ?? []).filter((x) => x.length > 0);
@@ -2887,7 +2909,7 @@ function asWritten(c: Ctx, infos: readonly NodeInfo[], show: boolean): { said: s
     const none = saves.size && savesNothing(c) ? `${show ? `${saved} ${saves.size === 1 ? 'saves' : 'save'}` : 'the save of that name saves'} nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved")` : '';
     said.push(
       show
-        ? `${where} it reads ${commands.length === 1 ? 'the name' : 'each name'} as written too, so it finds no node ${list(commands.map((x) => x[0]!.token.text), 'or')} there${none ? `: ${none}` : ''}.`
+        ? `${where} it reads ${commands.length === 1 ? 'the name' : 'each name'} as written too, so it finds no ${list(commands.map((x) => nodeIn(x[0]!.token.text)), 'or')} there${none ? `: ${none}` : ''}.`
         : `${where} it reads the name as written too, with the character in it, so it finds no such node there${none ? `: ${none}` : ''}.`,
     );
   }
@@ -2903,7 +2925,7 @@ function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
   const { said, print, command } = asWritten(c, [info], true);
   // Cites [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
   const facts = ['non-ascii-node-1', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
-  return [`ngspice spells the node ${spelled} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
+  return [`ngspice spells ${theNodeIn(spelled)} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
 }
 
 /** A node renamed on the commands for ngspice too (controlNodes): there ngspice reads the name as written. */
@@ -2996,9 +3018,9 @@ function checkNodeNames(c: Ctx): void {
       // non-ascii-node-4], the last two for their sentences.
       const { said, print, command } = asWritten(c, odd, true);
       const facts = ['non-ascii-node-2', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
-      add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
-        `ngspice ${lettersRule(names, 'a node name')}, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
-        [`ngspice spells ${list(names)} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
+      add(c, 'non-ascii-node', 'error', at, `${atSentenceStart(list(names.map(nodeIn)))} are one node for ngspice`,
+        `ngspice ${lettersRule(names, 'a node name')}, so ${list(names.map(nodeIn))} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
+        [`ngspice spells ${list(names.map(nodeIn))} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
         to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${i.refs[0]!.text}`))}`, ...to.flatMap(([i, n]) => renaming(i, n)))] : []);
       continue;
     }
@@ -3009,10 +3031,10 @@ function checkNodeNames(c: Ctx): void {
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
     const to = plainFor(info);
-    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells the node ${written} as ${spelled}`,
+    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells ${theNodeIn(written)} as ${spelled}`,
       `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
       spelledNodeSentence(c, info, spelled),
-      [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
+      [fix(`Rename ${nodeIn(written)} to ${to}`, ...renaming(info, to))]);
   }
   for (const info of c.n.nodes.values()) checkMicroNode(c, info, freeName);
 }
@@ -3063,7 +3085,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
     ...(controlNodes(c).get(info.name) ?? []).filter((x) => lowerAscii(x.token.text) === form).map((x) => replace(x.token, to)),
     ...printChanges(c, info, to, form),
   ];
-  const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}, without a message`;
+  const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown.map(nodeIn))} one node, ${spelled}, without a message`;
   if (across.length) {
     const names = across.map(nameOf);
     const at = across[0]!.nodes.find((r) => r.name === info.name && lowerAscii(r.token.text) !== kept[0])!.token;
@@ -3081,21 +3103,21 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
       const many = COUNT_WORDS[k] ?? String(k);
       return k < e.nodes.length ? `${many} ends of ${nameOf(e)}` : k === 2 ? `both ends of ${nameOf(e)}` : `all ${many} ends of ${nameOf(e)}`;
     });
-    add(c, 'non-ascii-node', 'warning', at, `${list(shown)} are one node for ngspice`,
+    add(c, 'non-ascii-node', 'warning', at, `${atSentenceStart(list(shown.map(nodeIn)))} are one node for ngspice`,
       still
-        ? `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro)} a name of its own in plain letters.`
-        : `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node, which joins ${list(joined)}. Give ${list(micro)} a name of its own in plain letters.`,
+        ? `ngspice reads the micro sign ${MICRO} as u, so ${list(shown.map(nodeIn))} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro.map(nodeIn))} a name of its own in plain letters.`
+        : `ngspice reads the micro sign ${MICRO} as u, so ${list(shown.map(nodeIn))} are the same node, which joins ${list(joined)}. Give ${list(micro.map(nodeIn))} a name of its own in plain letters.`,
       still
         ? across.every((e) => e.letter === 'R')
           ? `${ngspice}: in one test a resistor with an end on each carried no current. [non-ascii-node-5]`
           : `${ngspice}: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]`
-        : `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}. [${cited.join(', ')}]`,
-      [fix(to.length === 1 ? `Rename ${to[0]![1]} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
+        : `ngspice reads ${MICRO} as u and makes ${list(shown.map(nodeIn))} one node, ${spelled}. [${cited.join(', ')}]`,
+      [fix(to.length === 1 ? `Rename ${nodeIn(to[0]![1])} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
     return;
   }
   const one = kept[1][0]!.text;
-  add(c, 'non-ascii-node', 'info', others[0]![1][0]!, `${list(shown)} are one node for ngspice`,
-    `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node, written two ways. If they should be two nodes, give ${list(micro)} a name of its own in plain letters.`,
+  add(c, 'non-ascii-node', 'info', others[0]![1][0]!, `${atSentenceStart(list(shown.map(nodeIn)))} are one node for ngspice`,
+    `ngspice reads the micro sign ${MICRO} as u, so ${list(shown.map(nodeIn))} are the same node, written two ways. If they should be two nodes, give ${list(micro.map(nodeIn))} a name of its own in plain letters.`,
     `${ngspice}. [non-ascii-node-5]`,
     [fix(`Write ${one} for ${list(micro)}`, ...others.flatMap(([form]) => writing(form, one)))]);
 }
@@ -3119,9 +3141,9 @@ function checkInvisibleNodes(c: Ctx): void {
     // Cites [invisible-character-3, invisible-character-65, invisible-character-66], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-65'] : []), ...(command ? ['invisible-character-66'] : [])];
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
-      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
+      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
 
@@ -3151,10 +3173,10 @@ function checkSpaceNodes(c: Ctx): void {
     const { said, print, command } = asWritten(c, [info], false);
     // Cites [space-character-10, space-character-20, space-character-21], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-20'] : []), ...(command ? ['space-character-21'] : [])];
-    add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `The node ${withSpaces(t.text)} has ${nameOfCharacter(ch)!} in it`,
-      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node, and the parts on it are not connected to ${clean}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+    add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `${capital(theNodeIn(withSpaces(t.text)))} has ${nameOfCharacter(ch)!} in it`,
+      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
+      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
 
@@ -3179,12 +3201,12 @@ function checkLookAlikeNodes(c: Ctx): void {
     const { said, print, command } = asWritten(c, [info], true);
     // Cites [look-alike-letter-5, look-alike-letter-16, look-alike-letter-17], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-16'] : []), ...(command ? ['look-alike-letter-17'] : [])];
-    add(c, 'look-alike-letter', 'warning', t, `The node ${t.text} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
+    add(c, 'look-alike-letter', 'warning', t, `${capital(theNodeIn(t.text))} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
       other
-        ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not the node ${clean} the other lines name: it is another node, and the parts on it are not connected to ${clean}.`
+        ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not ${theNodeIn(quotedName(clean))} the other lines name: it is another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}.`
         : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`,
       [`ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Connect to ${clean}` : `Rename ${t.text} to ${clean}`, ...changes)]);
+      [fix(other ? `Connect to ${nodeIn(quotedName(clean))}` : `Rename ${nodeIn(t.text)} to ${clean}`, ...changes)]);
   }
 }
 

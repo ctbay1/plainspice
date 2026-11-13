@@ -576,3 +576,28 @@ page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
   machine's move for nobody's, and the second click was then taken where the drawing had slid to.
   Considered: a card that never comes to rest under the pointer; its place is decided by the drawing
   and the window (decision 0015), and a keyboard opens it with no pointer at all.
+
+## After the last pass (13 November 2026)
+
+- **The checks name a node by the node-words rule too** (last pass F6). The trap checks' titles, whys
+  and fixes named nodes bare, unlike every other sentence on the page: the status line said "A check
+  found an error: in has no DC path to ground." and the Checks panel "nothing connects in to ground"
+  and "Add a 1 GΩ resistor from in to ground", while the Numbers panel just below said "Node in has no
+  DC path to ground". `src/spice/traps.ts` now says each node the way `describe.ts` does (`nodeIn`,
+  `nodeSaid`: `nameSaysNode` and `atSentenceStart` from `src/spice/node-words.ts`, the name as
+  `nodeWords` shows it): "Node in has no DC path to ground", "nothing connects node in to ground",
+  "Add a 1 GΩ resistor from node in to ground", "node1 and node x have no DC path to ground" (never
+  "node node1"), 'Node "ground" is not ground: ground is node 0', "V1 has both ends on ground", "Only
+  R2 touches node n12 … Did you mean node n2 or node n1?", "Make node b the ground (rename it to 0)",
+  "Rename node n12 to n2", "Node ş and node ç are one node for ngspice", "Take it out: connect to node
+  out", "Connect to node out", in floating-dc, current-source-no-path, no-ground, ground-misnamed,
+  dangling-node, voltage-loop (a part with both ends on one node, which said "node node1" for such a
+  name) and the checks of names outside a to z, the micro sign, hidden characters, characters that look
+  like a space and look-alike letters. Kept as they were: the sentences that already say "the node …"
+  ("ngspice spells the node çıkış as ____k____"; a name that says node goes alone there too), the words
+  a fix writes ("Rename node n12 to n2" names the new name bare, as the editor's "Node out renamed to
+  IN" does), the names inside ngspice's quoted messages ("check node in") and a name as written in plain
+  ASCII where a check showed it so ("Only R3 touches node OUTT"). The .tf check, already so, is the
+  subcircuit lane's. The editor's refusal to reverse a part whose line ends with gnd quotes the Checks
+  panel's button, so it follows it: 'Rename node "gnd" first: the Checks panel says why and offers
+  “Rename node "gnd" to 0”.' (`src/schematic/edit.ts`, decision 0013's W10).

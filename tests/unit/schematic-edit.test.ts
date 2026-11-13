@@ -583,7 +583,7 @@ describe('the words of the re-check of step B (each says what the netlist now ha
   it('Reverse on a part whose line ends with gnd says it in one sense of "end" (new-38, facts W8, W9)', () => {
     const s = buildSchematic('* t\nV1 in 0 6\nR1 in mid 1k\nVam mid gnd\n.op\n.end\n');
     expect(applyEdit(s, { kind: 'reverse-part', part: 'Vam' }).reason).toBe(
-      "Vam's line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename gnd first: the Checks panel says why and offers “Rename gnd to 0”.",
+      "Vam's line ends with the word gnd, and as the last word of a line gnd is an ordinary node to ngspice, not ground. Reversed, gnd would no longer be last and would become ground, which changes the circuit. Rename node \"gnd\" first: the Checks panel says why and offers “Rename node \"gnd\" to 0”.",
     );
   });
 });

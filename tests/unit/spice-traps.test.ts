@@ -83,17 +83,17 @@ const CASES: Case[] = [
   { name: "H with a typo in its control source", id: 'control-source', severity: 'error', line: 5, at: "Vsens", all: ["control-source"], fixes: ["Use Vsense"], netlist: "* t\nV1 c 0 3\nVsense c d 0\nR1 d 0 1\nH1 a 0 Vsens 2\nR2 a 0 1\n.op\n.end\n" },
   { name: "a part on line 1", id: 'missing-title', severity: 'warning', line: 1, at: "V1", all: ["missing-title","dangling-node"], fixes: ["Add a title line above it"], netlist: "V1 n1 0 6\nR1 n1 0 2\n.op\n.end\n" },
   { name: ".op on line 1", id: 'missing-title', severity: 'warning', line: 1, at: ".op", all: ["missing-title"], fixes: ["Add a title line above it"], netlist: ".op\nV1 n1 0 6\nR1 n1 0 2\n.end\n" },
-  { name: "no ground", id: 'no-ground', severity: 'error', line: 2, at: "b", all: ["no-ground"], fixes: ["Make b the ground (rename it to 0)"], netlist: "* t\nV1 a b 6\nR1 a b 2\n.op\n.end\n" },
-  { name: "ground written ground", id: 'no-ground', severity: 'error', line: 2, at: "ground", all: ["no-ground"], fixes: ["Make ground the ground (rename it to 0)"], netlist: "* t\nV1 n1 ground 6\nR1 n1 ground 2\n.tf v(n1) V1\n.end\n" },
-  { name: "ground next to 0", id: 'ground-misnamed', severity: 'warning', line: 2, at: "ground", all: ["ground-misnamed"], fixes: ["Rename ground to 0"], netlist: "* t\nV1 n1 ground 6\nR1 n1 0 2\n.op\n.end\n" },
-  { name: "gnd as the last word", id: 'ground-misnamed', severity: 'warning', line: 4, at: "gnd", all: ["missing-value","ground-misnamed"], fixes: ["Rename gnd to 0"], netlist: "* t\nV1 a 0 6\nR1 a b 2\nVx b gnd\n.op\n.end\n" },
-  { name: "00 next to 0", id: 'ground-misnamed', severity: 'warning', line: 2, at: "00", all: ["ground-misnamed"], fixes: ["Rename 00 to 0"], netlist: "* t\nV1 n1 00 6\nR1 n1 0 2\n.op\n.end\n" },
-  { name: "a typo in a node name", id: 'dangling-node', severity: 'warning', line: 4, at: "n12", all: ["dangling-node"], fixes: ["Rename n12 to n2","Rename n12 to n1"], netlist: "* t\nV1 n1 0 6\nR1 n1 n2 2\nR2 n12 0 4\nI1 0 n2 3\n.op\n.end\n" },
+  { name: "no ground", id: 'no-ground', severity: 'error', line: 2, at: "b", all: ["no-ground"], fixes: ["Make node b the ground (rename it to 0)"], netlist: "* t\nV1 a b 6\nR1 a b 2\n.op\n.end\n" },
+  { name: "ground written ground", id: 'no-ground', severity: 'error', line: 2, at: "ground", all: ["no-ground"], fixes: ["Make node \"ground\" the ground (rename it to 0)"], netlist: "* t\nV1 n1 ground 6\nR1 n1 ground 2\n.tf v(n1) V1\n.end\n" },
+  { name: "ground next to 0", id: 'ground-misnamed', severity: 'warning', line: 2, at: "ground", all: ["ground-misnamed"], fixes: ["Rename node \"ground\" to 0"], netlist: "* t\nV1 n1 ground 6\nR1 n1 0 2\n.op\n.end\n" },
+  { name: "gnd as the last word", id: 'ground-misnamed', severity: 'warning', line: 4, at: "gnd", all: ["missing-value","ground-misnamed"], fixes: ["Rename node \"gnd\" to 0"], netlist: "* t\nV1 a 0 6\nR1 a b 2\nVx b gnd\n.op\n.end\n" },
+  { name: "00 next to 0", id: 'ground-misnamed', severity: 'warning', line: 2, at: "00", all: ["ground-misnamed"], fixes: ["Rename node \"00\" to 0"], netlist: "* t\nV1 n1 00 6\nR1 n1 0 2\n.op\n.end\n" },
+  { name: "a typo in a node name", id: 'dangling-node', severity: 'warning', line: 4, at: "n12", all: ["dangling-node"], fixes: ["Rename node n12 to n2","Rename node n12 to n1"], netlist: "* t\nV1 n1 0 6\nR1 n1 n2 2\nR2 n12 0 4\nI1 0 n2 3\n.op\n.end\n" },
   { name: "an open terminal (info)", id: 'dangling-node', severity: 'info', line: 5, at: "a", all: ["dangling-node"], fixes: [], netlist: "* t\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.op\n.end\n" },
-  { name: "a node between two capacitors", id: 'floating-dc', severity: 'error', line: 3, at: "b", all: ["floating-dc"], fixes: ["Add a 1 G\u03a9 resistor from b to ground"], netlist: "* t\nV1 a 0 6\nC1 a b 1u\nC2 b 0 1u\n.op\n.end\n" },
+  { name: "a node between two capacitors", id: 'floating-dc', severity: 'error', line: 3, at: "b", all: ["floating-dc"], fixes: ["Add a 1 G\u03a9 resistor from node b to ground"], netlist: "* t\nV1 a 0 6\nC1 a b 1u\nC2 b 0 1u\n.op\n.end\n" },
   { name: "a resistor with both ends floating", id: 'floating-dc', severity: 'error', line: 4, at: "n3", all: ["floating-dc"], fixes: [], netlist: "* t\nV1 n1 0 6\nR1 n1 0 2\nR2 n3 n4 3\n.op\n.end\n" },
   { name: "a floating control node", id: 'floating-dc', severity: 'error', line: 4, at: "c", all: ["floating-dc"], fixes: [], netlist: "* t\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c 0 2\nR2 out 0 1\n.op\n.end\n" },
-  { name: "a floating MOSFET gate", id: 'floating-dc', severity: 'error', line: 4, at: "g", all: ["floating-dc"], fixes: ["Add a 1 G\u03a9 resistor from g to ground"], netlist: "* t\nV1 d 0 5\nR1 d dd 1k\nM1 dd g 0 0 nm\n.model nm nmos level=1\n.op\n.end\n" },
+  { name: "a floating MOSFET gate", id: 'floating-dc', severity: 'error', line: 4, at: "g", all: ["floating-dc"], fixes: ["Add a 1 G\u03a9 resistor from node g to ground"], netlist: "* t\nV1 d 0 5\nR1 d dd 1k\nM1 dd g 0 0 nm\n.model nm nmos level=1\n.op\n.end\n" },
   { name: "a current source and a capacitor", id: 'current-source-no-path', severity: 'error', line: 4, at: "I1", all: ["current-source-no-path"], fixes: [], netlist: "* t\nV1 a 0 5\nR1 a c 1k\nI1 c b 1m\nC1 b 0 1u\n.op\n.end\n" },
   { name: "two current sources in series", id: 'current-source-no-path', severity: 'error', line: 2, at: "I1", all: ["current-source-no-path"], fixes: [], netlist: "* t\nI1 0 n1 1m\nI2 n1 0 2m\nR1 n2 0 1k\nV1 n2 0 1\n.op\n.end\n" },
   { name: "a G output alone", id: 'current-source-no-path', severity: 'error', line: 4, at: "G1", all: ["current-source-no-path"], fixes: [], netlist: "* t\nV1 c 0 3\nR1 c 0 1\nG1 0 g c 0 0.5\n.op\n.end\n" },
@@ -161,20 +161,20 @@ const CASES: Case[] = [
   { name: "a misspelt .tran", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".tarn", all: ["unknown-dot-command"], fixes: ["Use .tran", "Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.tarn 1u 1m\n.op\n.end\n" },
   { name: ".pss, unknown to ngspice 47 as built", id: 'unknown-dot-command', severity: 'error', line: 4, at: ".pss", all: ["unknown-dot-command"], fixes: ["Make the line a comment"], netlist: "* t\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n" },
   // After the final reviews (12 November 2026): names ngspice spells with underscores (kept review F3).
-  { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
-  { name: "a node name that is gnd but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "g\u00f1d", all: ["non-ascii-node"], fixes: ["Rename g\u00f1d to gnd2"], netlist: "* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\n.op\n.end\n" },
-  { name: "a node name that is ground but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "gr\u00f6und", all: ["non-ascii-node"], fixes: ["Rename gr\u00f6und to ground2"], netlist: "* t\nV1 a 0 5\nR1 a gr\u00f6und 1k\nR2 gr\u00f6und 0 1k\n.op\n.end\n" },
-  { name: "a node written a\u00b5 and au, with a part between the two (words-recheck-8)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Rename a\u00b5 to au2"], netlist: "* t\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.op\n.end\n" },
+  { name: "a node name with a Turkish letter", id: 'non-ascii-node', severity: 'warning', line: 2, at: "giri\u015f", all: ["non-ascii-node", "non-ascii-node"], fixes: ["Rename node giri\u015f to giris"], netlist: "* t\nV1 giri\u015f 0 12\nR1 giri\u015f \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 2k\n.op\n.end\n" },
+  { name: "a node name that is gnd but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "g\u00f1d", all: ["non-ascii-node"], fixes: ["Rename node g\u00f1d to gnd2"], netlist: "* t\nV1 a 0 5\nR1 a g\u00f1d 1k\nR2 g\u00f1d 0 1k\n.op\n.end\n" },
+  { name: "a node name that is ground but for one letter (code-3)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "gr\u00f6und", all: ["non-ascii-node"], fixes: ["Rename node gr\u00f6und to ground2"], netlist: "* t\nV1 a 0 5\nR1 a gr\u00f6und 1k\nR2 gr\u00f6und 0 1k\n.op\n.end\n" },
+  { name: "a node written a\u00b5 and au, with a part between the two (words-recheck-8)", id: 'non-ascii-node', severity: 'warning', line: 3, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Rename node a\u00b5 to au2"], netlist: "* t\nV1 a\u00b5 0 12\nR1 a\u00b5 au 1k\nR2 au 0 2k\n.op\n.end\n" },
   { name: "a node written a\u00b5 and au, one node meant (words-recheck-8)", id: 'non-ascii-node', severity: 'info', line: 2, at: "a\u00b5", all: ["non-ascii-node"], fixes: ["Write au for a\u00b5"], netlist: "* t\nV1 a\u00b5 0 12\nR1 au 0 2k\n.op\n.end\n" },
   { name: "two node names ngspice spells the same", id: 'non-ascii-node', severity: 'error', line: 3, at: "\u00e7", all: ["non-ascii-node"], fixes: ["Write s for \u015f and c for \u00e7"], netlist: "* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.end\n" },
   // Characters that are not what they look like (security review F2).
   { name: "a zero-width space inside a value", id: 'invisible-character', severity: 'warning', line: 3, at: "1​k", all: ["invisible-character"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nV1 in 0 6\nR1 in out 1​k\nR2 out 0 2k\n.op\n.end\n" },
-  { name: "a zero-width space inside a node name", id: 'invisible-character', severity: 'warning', line: 4, at: "ou​t", all: ["invisible-character"], fixes: ["Take it out: connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n" },
+  { name: "a zero-width space inside a node name", id: 'invisible-character', severity: 'warning', line: 4, at: "ou​t", all: ["invisible-character"], fixes: ["Take it out: connect to node out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n" },
   { name: "a zero-width space before a value", id: 'invisible-character', severity: 'error', line: 3, at: "​2k", all: ["invisible-character"], fixes: ["Write 2k (2 kΩ)"], netlist: "* t\nI1 0 a 1\nR1 a 0 ​2k\n.op\n.end\n" },
   { name: "a Cyrillic k in a value", id: 'look-alike-letter', severity: 'warning', line: 3, at: "1к", all: ["look-alike-letter"], fixes: ["Write 1k (1 kΩ)"], netlist: "* t\nI1 0 n1 1\nR1 n1 0 1к\n.op\n.end\n" },
   { name: "a minus sign from a document", id: 'look-alike-letter', severity: 'error', line: 2, at: "−5", all: ["look-alike-letter"], fixes: ["Write -5 (−5 V)"], netlist: "* t\nV1 a 0 −5\nR1 a 0 1k\n.op\n.end\n" },
   { name: "a Greek capital Mu typed for mega", id: 'look-alike-letter', severity: 'warning', line: 3, at: "10\u039c", all: ["look-alike-letter"], fixes: ["Make it 10meg (10\u00a0M\u03a9)", "Make it 10m (10\u00a0m\u03a9)"], netlist: "* t\nI1 0 a 1u\nR1 a 0 10\u039c\n.op\n.end\n" },
-  { name: "a Cyrillic o in a node name", id: 'look-alike-letter', severity: 'warning', line: 4, at: "\u043eut", all: ["look-alike-letter"], fixes: ["Connect to out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n" },
+  { name: "a Cyrillic o in a node name", id: 'look-alike-letter', severity: 'warning', line: 4, at: "\u043eut", all: ["look-alike-letter"], fixes: ["Connect to node out"], netlist: "* t\nV1 in 0 6\nR1 in out 1k\nR2 \u043eut 0 2k\n.op\n.end\n" },
   { name: "a zero-width space right after a minus sign", id: 'invisible-character', severity: 'error', line: 2, at: "-\u200b5", all: ["invisible-character"], fixes: ["Write -5 (\u22125\u00a0V)"], netlist: "* t\nV1 a 0 -\u200b5\nR1 a 0 1k\n.op\n.end\n" },
   { name: "a thin space between a value and its unit", id: 'space-character', severity: 'warning', line: 3, at: "4.7\u2009k\u03a9", all: ["space-character"], fixes: ["Write 4.7k (4.7\u00a0k\u03a9)"], netlist: "* t\nV1 in 0 10\nR1 in out 4.7\u2009k\u03a9\nR2 out 0 4.7k\n.op\n.end\n" },
   { name: "a thin space between two words", id: 'space-character', severity: 'warning', line: 3, at: "0\u20092", all: ["missing-value", "space-character"], fixes: ["Replace it with a normal space"], netlist: "* t\nI1 0 n1 1\nR1 n1 0\u20092\nR2 n1 0 1\n.op\n.end\n" },
@@ -750,7 +750,7 @@ describe.skipIf(!existsSync(designDir))('the channel’s episode netlists (solve
 
   it('the typo netlist offers the channel’s fix, n12 to n2, first', () => {
     const text = readFileSync(join(designDir, 'sp01/typo.cir'), 'utf8');
-    expect(traps(text)[0]!.fixes[0]!.label).toBe('Rename n12 to n2');
+    expect(traps(text)[0]!.fixes[0]!.label).toBe('Rename node n12 to n2');
   });
 });
 
@@ -1036,19 +1036,19 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(first('* t\nV1 in 0 PULSE(0\u20091 0 1n 1n 1 2)\nR1 in 0 1\n.tran 1m 2m\n.end\n', 'space-character').fixes.map((f) => f.label)).toEqual(['Replace it with a normal space']);
   });
 
-  it('a character that looks like a space in a node name: "Take it out: connect to out", and no dangling-node notes for the pair (critic of round 2; space-character-10)', () => {
+  it('a character that looks like a space in a node name: "Take it out: connect to node out", and no dangling-node notes for the pair (critic of round 2; space-character-10)', () => {
     // The critic's netlist: R1 in o<thin space>ut 2k next to R2 out 0 2k. It got "Replace it with a normal space" and "Rename out to o ut".
     const text = '* t\nV1 in 0 10\nR1 in o\u2009ut 2k\nR2 out 0 2k\n.op\n.end\n';
     const found = traps(text);
     expect(found.map((t) => t.id)).toEqual(['space-character']);
     expect([found[0]!.title, found[0]!.why, found[0]!.fixes.map((f) => f.label)]).toEqual([
       'The node o ut has a thin space (U+2009) in it',
-      'It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.',
-      ['Take it out: connect to out'],
+      'It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to node out.',
+      ['Take it out: connect to node out'],
     ]);
     expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in out 2k\nR2 out 0 2k\n.op\n.end\n');
     // The no-break space under its own check's name; a name no other line writes is renamed everywhere.
-    expect(first('* t\nV1 in 0 10\nR1 in o\u00a0ut 2k\nR2 out 0 2k\n.op\n.end\n', 'nbsp').fixes.map((f) => f.label)).toEqual(['Take it out: connect to out']);
+    expect(first('* t\nV1 in 0 10\nR1 in o\u00a0ut 2k\nR2 out 0 2k\n.op\n.end\n', 'nbsp').fixes.map((f) => f.label)).toEqual(['Take it out: connect to node out']);
     const alone = '* t\nV1 o\u2009ut 0 10\nR1 o\u2009ut 0 2k\n.op\n.end\n';
     const renamed = first(alone, 'space-character');
     expect(renamed.fixes.map((f) => f.label)).toEqual(['Take it out: name the node out']);
@@ -1101,13 +1101,13 @@ describe('after the final reviews (12 November 2026)', () => {
     expect(found.map((t) => t.id)).toEqual(['look-alike-letter']);
     expect([found[0]!.title, found[0]!.why]).toEqual([
       'The node \u043eut has the Cyrillic letter \u043e',
-      'It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to out.',
+      'It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to node out.',
     ]);
     expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
     // Alone, it renames the node to its plain letters, and the drawing's label with it.
-    expect(first('* t\nV1 a 0 6\nR1 a \u043eut 1k\nR2 \u043eut 0 2k\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Rename \u043eut to out']);
+    expect(first('* t\nV1 a 0 6\nR1 a \u043eut 1k\nR2 \u043eut 0 2k\n.op\n.end\n', 'look-alike-letter').fixes.map((f) => f.label)).toEqual(['Rename node \u043eut to out']);
     // A name with a Turkish letter too stays the non-ascii-node check's, and its fix writes the look-alike plain (çоk is cok, not ck).
-    expect(first('* t\nV1 in 0 6\nR1 in \u00e7\u043ek 1k\nR2 \u00e7\u043ek 0 2k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename \u00e7\u043ek to cok']);
+    expect(first('* t\nV1 in 0 6\nR1 in \u00e7\u043ek 1k\nR2 \u00e7\u043ek 0 2k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename node \u00e7\u043ek to cok']);
   });
 
   it('a capital M from another alphabet is meant as mega: the fixes are mega-as-milli\'s, never "Write 10M" (critic of round 1; look-alike-letter-4)', () => {
@@ -1144,7 +1144,7 @@ describe('after the final reviews (12 November 2026)', () => {
     const text = '* t\nV1 in 0 6\nR1 in out 1k\nR2 ou​t 0 2k\n.op\n.end\n';
     const found = traps(text);
     expect(found.map((t) => t.id)).toEqual(['invisible-character']);
-    expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Take it out: connect to out']);
+    expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Take it out: connect to node out']);
     expect(applyFix(text, found[0]!.fixes[0]!)).toBe('* t\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n');
     // On its own, the fix just takes the character out of the name.
     const alone = first('* t\nV1 a 0 6\nR1 a ou​t 1k\nR2 ou​t 0 2k\n.op\n.end\n', 'invisible-character');
@@ -1161,7 +1161,7 @@ describe('after the final reviews (12 November 2026)', () => {
     const text = '* t\nV1 giri\u015f 0 12\nR1 giri\u015f giris 1k\nR2 giris 0 2k\n.tf v(giri\u015f) V1\n.end\n* plainspice-drawing v1\n*@ label giri\u015f 0 0\n*@ label giris 4 0\n';
     const t = first(text, 'non-ascii-node');
     // "giris" is another node: the fix must not join the two.
-    expect(t.fixes.map((f) => f.label)).toEqual(['Rename giri\u015f to giris2']);
+    expect(t.fixes.map((f) => f.label)).toEqual(['Rename node giri\u015f to giris2']);
     const fixed = applyFix(text, t.fixes[0]!);
     expect(fixed).toBe('* t\nV1 giris2 0 12\nR1 giris2 giris 1k\nR2 giris 0 2k\n.tf v(giris2) V1\n.end\n* plainspice-drawing v1\n*@ label giris2 0 0\n*@ label giris 4 0\n');
     expect(ids(fixed)).toEqual([]);
@@ -1189,14 +1189,14 @@ describe('after the final reviews (12 November 2026)', () => {
       return n.elements.map((i) => n.lines[i]!.element!.nodes.map((r) => r.ground));
     };
     const cases: [name: string, label: string][] = [
-      ['g\u00f1d', 'Rename g\u00f1d to gnd2'],
-      ['G\u00d1D', 'Rename G\u00d1D to GND2'],
-      ['0\u00b0', 'Rename 0\u00b0 to 02'],
-      ['\u03c00', 'Rename \u03c00 to 02'],
-      ['gr\u00f6und', 'Rename gr\u00f6und to ground2'],
-      ['e\u00e5rth', 'Rename e\u00e5rth to earth2'],
-      ['dg\u00f1d', 'Rename dg\u00f1d to dgnd2'],
-      ['0\u03080', 'Rename 0\u03080 to 002'],
+      ['g\u00f1d', 'Rename node g\u00f1d to gnd2'],
+      ['G\u00d1D', 'Rename node G\u00d1D to GND2'],
+      ['0\u00b0', 'Rename node 0\u00b0 to 02'],
+      ['\u03c00', 'Rename node \u03c00 to 02'],
+      ['gr\u00f6und', 'Rename node gr\u00f6und to ground2'],
+      ['e\u00e5rth', 'Rename node e\u00e5rth to earth2'],
+      ['dg\u00f1d', 'Rename node dg\u00f1d to dgnd2'],
+      ['0\u03080', 'Rename node 0\u03080 to 002'],
     ];
     for (const [name, label] of cases) {
       const text = `* t\nV1 a 0 5\nR1 a ${name} 1k\nR2 ${name} 0 1k\n.op\n.end\n`;
@@ -1310,7 +1310,7 @@ describe('after the final reviews (12 November 2026)', () => {
   it('says without a message for ş and ç made one node only when no line ngspice reads as written names them (S10; non-ascii-node-2, -3)', () => {
     const text = '* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.op\n.print op v(\u015f)\n.end\n';
     expect(first(text, 'non-ascii-node').ngspice).toBe(
-      'ngspice spells \u015f and \u00e7 as __ and makes them one node: in one test this put both ends of a resistor on that node, so it carried no current. On a .print or .plot line it reads the name as written, so it finds no node \u015f there: run as ngspice -b, it warns "can\'t parse \'\u015f\'" and prints nothing for that line. PlainSpice\'s run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-2, non-ascii-node-3]',
+      'ngspice spells node \u015f and node \u00e7 as __ and makes them one node: in one test this put both ends of a resistor on that node, so it carried no current. On a .print or .plot line it reads the name as written, so it finds no node \u015f there: run as ngspice -b, it warns "can\'t parse \'\u015f\'" and prints nothing for that line. PlainSpice\'s run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-2, non-ascii-node-3]',
     );
     expect(first(text.replace('.print op v(\u015f)\n', ''), 'non-ascii-node').ngspice).toContain('makes them one node, without a message:');
   });
@@ -1433,15 +1433,15 @@ describe('after the final reviews (12 November 2026)', () => {
   // characters (names lane critic 2, 7). One sentence of each kind now lists the names.
   it('says the .print and .control sentences once for names ngspice makes one node, listing the names (names lane critic 2, 7; non-ascii-node-2, -3, -4)', () => {
     const net = (lines: string): string => `* t\nV1 \u015f 0 12\nR1 \u015f \u00e7 1k\nR2 \u00e7 0 2k\n.dc V1 0 12 6\n${lines}.end\n`;
-    const head = 'ngspice spells \u015f and \u00e7 as __ and makes them one node: in one test this put both ends of a resistor on that node, so it carried no current.';
+    const head = 'ngspice spells node \u015f and node \u00e7 as __ and makes them one node: in one test this put both ends of a resistor on that node, so it carried no current.';
     expect(first(net('.print dc v(\u015f)\n.print dc v(\u00e7)\n.control\nsave v(\u015f) v(\u00e7)\nrun\n.endc\n'), 'non-ascii-node').ngspice).toBe(
-      `${head} On a .print or .plot line it reads each name as written, so it finds no node \u015f or \u00e7 there: run as ngspice -b, it prints nothing for those lines. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). In a .control block it reads each name as written too, so it finds no node \u015f or \u00e7 there: save v(\u015f) v(\u00e7) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-2, non-ascii-node-3, non-ascii-node-4]`,
+      `${head} On a .print or .plot line it reads each name as written, so it finds no node \u015f or node \u00e7 there: run as ngspice -b, it prints nothing for those lines. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). In a .control block it reads each name as written too, so it finds no node \u015f or node \u00e7 there: save v(\u015f) v(\u00e7) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-2, non-ascii-node-3, non-ascii-node-4]`,
     );
     expect(first(net('.print dc v(\u015f) v(\u00e7)\n'), 'non-ascii-node').ngspice).toBe(
-      `${head} On a .print or .plot line it reads each name as written, so it finds no node \u015f or \u00e7 there: run as ngspice -b, it warns "can't parse '\u015f'" and "can't parse '\u00e7'", and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-2, non-ascii-node-3]`,
+      `${head} On a .print or .plot line it reads each name as written, so it finds no node \u015f or node \u00e7 there: run as ngspice -b, it warns "can't parse '\u015f'" and "can't parse '\u00e7'", and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-2, non-ascii-node-3]`,
     );
     expect(first(net('.control\nsave v(\u015f)\nsave \u00e7\nrun\n.endc\n'), 'non-ascii-node').ngspice).toBe(
-      `${head} In a .control block it reads each name as written too, so it finds no node \u015f or \u00e7 there: save v(\u015f) and save \u00e7 save nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-2, non-ascii-node-4]`,
+      `${head} In a .control block it reads each name as written too, so it finds no node \u015f or node \u00e7 there: save v(\u015f) and save \u00e7 save nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-2, non-ascii-node-4]`,
     );
   });
 
@@ -1450,9 +1450,9 @@ describe('after the final reviews (12 November 2026)', () => {
     const t = first(text, 'non-ascii-node');
     expect([t.severity, t.title, t.why, t.ngspice]).toEqual([
       'warning',
-      'a\u00b5 and au are one node for ngspice',
-      'ngspice reads the micro sign \u00b5 as u, so a\u00b5 and au are the same node: R1 has both ends on it and carries no current. Give a\u00b5 a name of its own in plain letters.',
-      'ngspice reads \u00b5 as u and makes a\u00b5 and au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]',
+      'Node a\u00b5 and node au are one node for ngspice',
+      'ngspice reads the micro sign \u00b5 as u, so node a\u00b5 and node au are the same node: R1 has both ends on it and carries no current. Give node a\u00b5 a name of its own in plain letters.',
+      'ngspice reads \u00b5 as u and makes node a\u00b5 and node au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]',
     ]);
     // The \u00b5 spelling gets a name no other node has, everywhere it is written: parts, the .tf line, the drawing's label.
     expect(applyFix(text, t.fixes[0]!)).toBe('* t\nV1 au2 0 12\nR1 au2 au 1k\nR2 au 0 2k\n.tf v(au2) V1\n.end\n* plainspice-drawing v1\n*@ label au2 0 0\n*@ label au 4 0\n');
@@ -1465,13 +1465,13 @@ describe('after the final reviews (12 November 2026)', () => {
       'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores (\u015f as __), so its printout and results call this node u__, and two names can become one node. A name in plain letters avoids both.',
     );
     expect(first('* t\nV1 \u00b5\u015f 0 12\nR1 \u00b5\u015f u\u00e7 1k\nR2 u\u00e7 0 2k\n.op\n.end\n', 'non-ascii-node').why).toContain(
-      'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores, so \u00b5\u015f and u\u00e7 both become u__',
+      'ngspice reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a node name as underscores, so node \u00b5\u015f and node u\u00e7 both become u__',
     );
   });
 
   it('says a part across aµ and au carries no current only for a resistor, a capacitor or a diode, and for any other part only which ends are joined (names lane critic, 2; non-ascii-node-5, -10, -11)', () => {
-    const why = (joined: string): string => `ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins ${joined}. Give aµ a name of its own in plain letters.`;
-    const merged = 'ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]';
+    const why = (joined: string): string => `ngspice reads the micro sign µ as u, so node aµ and node au are the same node, which joins ${joined}. Give node aµ a name of its own in plain letters.`;
+    const merged = 'ngspice reads µ as u and makes node aµ and node au one node, au. [non-ascii-node-5, non-ascii-node-11]';
     // Native ngspice 47 and 42 (non-ascii-node-11): E1 still delivers 666.7 µA, I1 its 1 mA, G1 its 1 mA, Q1 4.15 mA
     // into its collector; V2 stops ngspice ("shorted VSRC") and L1 makes its matrix singular. None "carries no current".
     const cases: [netlist: string, joined: string, facts?: string][] = [
@@ -1494,24 +1494,24 @@ describe('after the final reviews (12 November 2026)', () => {
       const t = first(`* t\n${lines}\n.end\n`, 'non-ascii-node');
       expect([t.severity, t.why, t.ngspice], lines).toEqual(['warning', why(joined), facts ? merged.replace('non-ascii-node-5, non-ascii-node-11', facts) : merged]);
       // The fix still gives the µ spelling a name of its own: the two nodes the netlist reads as.
-      expect(t.fixes.map((f) => f.label), lines).toEqual(['Rename aµ to au2']);
+      expect(t.fixes.map((f) => f.label), lines).toEqual(['Rename node aµ to au2']);
     }
     // A resistor, a capacitor or a diode with an end on each has no voltage across it: it carries no current (non-ascii-node-5, -10).
     const still = (names: string, many: boolean): string =>
-      `ngspice reads the micro sign µ as u, so aµ and au are the same node: ${names} ${many ? 'have both ends on it and carry' : 'has both ends on it and carries'} no current. Give aµ a name of its own in plain letters.`;
+      `ngspice reads the micro sign µ as u, so node aµ and node au are the same node: ${names} ${many ? 'have both ends on it and carry' : 'has both ends on it and carries'} no current. Give node aµ a name of its own in plain letters.`;
     const cd = first('* t\nV1 in 0 PULSE(0 12 0 10u 10u 1 2)\nR1 in aµ 1k\nC1 aµ au 1u\nD1 aµ au dd\nR2 au 0 2k\n.model dd D\n.tran 10u 50u\n.end\n', 'non-ascii-node');
     expect([cd.why, cd.ngspice]).toEqual([
       still('C1 and D1', true),
-      'ngspice reads µ as u and makes aµ and au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]',
+      'ngspice reads µ as u and makes node aµ and node au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]',
     ]);
     expect(first('* t\nV1 in 0 12\nR1 in aµ 1k\nD1 aµ au dd\nR2 au 0 2k\n.model dd D\n.op\n.end\n', 'non-ascii-node').why).toBe(still('D1', false));
   });
 
   it('gives every name ngspice makes one its own plain letters, and a lone name with no plain letters a plain one', () => {
     const merged = first('* t\nV1 \u0130 0 6\nR1 \u0130 \u015f 1k\nR2 \u015f 0 1k\n.op\n.end\n', 'non-ascii-node');
-    expect(merged).toMatchObject({ severity: 'error', title: '\u0130 and \u015f are one node for ngspice' });
+    expect(merged).toMatchObject({ severity: 'error', title: 'Node \u0130 and node \u015f are one node for ngspice' });
     expect(merged.fixes.map((f) => f.label)).toEqual(['Write I for \u0130 and s for \u015f']);
-    expect(first('* t\nV1 \u03b1 0 6\nR1 \u03b1 0 1k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename \u03b1 to n1']);
+    expect(first('* t\nV1 \u03b1 0 6\nR1 \u03b1 0 1k\n.op\n.end\n', 'non-ascii-node').fixes.map((f) => f.label)).toEqual(['Rename node \u03b1 to n1']);
     // The micro sign is fine: ngspice reads it as u (W16).
     expect(ids('* t\nV1 \u00b5in 0 6\nR1 \u00b5in 0 2\n.op\n.end\n')).toEqual([]);
   });
@@ -1792,7 +1792,7 @@ describe('after the re-check of the fixes (12 November 2026)', () => {
       // Inside the value: read as 4 Ω, fixed to 4.7k; at the start: an error; in a node name: joined to out.
       const inside = first(`* t\nV1 in 0 10\nR1 in out 4${ch}.7k\nR2 out 0 10k\n.op\n.end\n`, 'invisible-character');
       expect([inside.title, inside.fixes.map((f) => f.label)], `U+${code.toString(16)}`).toEqual(["R1's value is read as 4\u00a0Ω, not 4.7\u00a0kΩ", ['Write 4.7k (4.7\u00a0kΩ)']]);
-      expect(first(`* t\nV1 in 0 10\nR1 in out 2k\nR2 o${ch}ut 0 2k\n.op\n.end\n`, 'invisible-character').fixes.map((f) => f.label), `U+${code.toString(16)}`).toEqual(['Take it out: connect to out']);
+      expect(first(`* t\nV1 in 0 10\nR1 in out 2k\nR2 o${ch}ut 0 2k\n.op\n.end\n`, 'invisible-character').fixes.map((f) => f.label), `U+${code.toString(16)}`).toEqual(['Take it out: connect to node out']);
     }
     expect(first('* t\nI1 0 n1 1\nR1 n1 0 4\u2028.7k\n.op\n.end\n', 'invisible-character').why).toMatch(/^A line separator \(U\+2028\) sits between 4 and \.7k/);
     expect(first('* t\nI1 0 n1 1\nR1 n1 0 4\u{e0001}.7k\n.op\n.end\n', 'invisible-character').why).toMatch(/^A language tag \(U\+E0001\) sits/);
