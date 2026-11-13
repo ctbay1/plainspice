@@ -762,8 +762,14 @@ const nodeWritten = (ref: NodeRef | undefined): string => (!ref ? '?' : ref.grou
 /** A node in a short note at the end of a line: its bare name, "0" for ground, quoted when it is named like ground. */
 const bare = (n: string): string => (n !== '0' && GROUND_LIKE.test(n) ? `"${n}"` : n);
 
+/**
+ * The verb for a current said in words (speakSI): "1 amp flows", "1 milliamp flows", but "1.5 amps flow" and
+ * "1 times 10 to the power minus 29 amps flow", whose unit word is plural though it starts with 1 (the last
+ * pass: a 1 nV source's exact 1e-29 A "flows").
+ */
 function flows(speech: string): string {
-  return speech.split(' ')[0] === '1' ? 'flows' : 'flow';
+  const words = speech.split(' ');
+  return words.length === 2 && words[0] === '1' ? 'flows' : 'flow';
 }
 
 /** Ohms in plain units; ngspice's 1e20 stand-in is written with its exponent ("1e+20 Ω", formatSI). */

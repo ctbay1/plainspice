@@ -62,3 +62,15 @@ describe('the notes name a node by the node-words rule: "node1", never "node nod
     expect(DESCRIBE_STRINGS.offVoltage('out', '4.5 V', '4.321 V')).toBe('node out is at 4.5 V, where ngspice gives 4.321 V');
   });
 });
+
+describe('the verb follows the unit word: "1 amp flows", "1 times 10 to the power minus 29 amps flow" (last pass: regress-4)', () => {
+  it('a 1 nV source\'s exact 1e-29 A through R1 flow; a 1 A source\'s 1 amp flows', async () => {
+    const r = await solveText(netlist('V1 top 0 1n', 'R1 top s 1', 'R2 s 0 1e20', 'Vm top v 0', 'R3 v 0 27k', '.options savecurrents', '.op'), ngspice);
+    expect(r.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 times 10 to the power minus 29 amps flow from node top to node s through R1');
+    expect(r.annotations.find((a) => a.line === 3)!.speech).toContain('1 times 10 to the power minus 29 amps flow from node top to node s');
+    const one = await solveText(netlist('I1 0 a 1', 'R1 a 0 2', '.options savecurrents', '.op'), ngspice);
+    expect(one.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 amp flows from node a to ground through R1');
+    const milli = await solveText(netlist('I1 0 a 1m', 'R1 a 0 2', '.options savecurrents', '.op'), ngspice);
+    expect(milli.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 milliamp flows from node a to ground through R1');
+  });
+});
