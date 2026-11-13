@@ -409,7 +409,7 @@ function caseAliases(n: Netlist): Map<string, string> {
   const first = new Map<string, string>();
   const alias = new Map<string, string>();
   for (const [key, info] of n.nodes) {
-    if (info.ground || info.connections.length === 0 || !/[^\x00-\x7f]/.test(key)) continue;
+    if (info.ground || info.connections.length === 0 || /^[\x20-\x7e]*$/.test(key)) continue;
     const group = `${key.toLowerCase()}\n${ngspiceSpelling(key)}`;
     const head = first.get(group);
     if (head === undefined) first.set(group, key);
