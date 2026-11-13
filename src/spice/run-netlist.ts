@@ -91,11 +91,15 @@ const S = {
   probeFormula: (line: number, part: string, word: string, bytes: number): string =>
     `Line ${line}: to measure the power of ${shown(part)}, ngspice writes a formula with ${shown(word)}, ${bytes} bytes long (the names of the part, a terminal and a node together). ngspice copies it into a space of 512 bytes when it reads the formula, so PlainSpice gives it at most ${RUN_BYTES}. Shorten the names.`,
   longExpression: (line: number, command: string, expression: string, bytes: number): string =>
-    `Line ${line}: ${command} names what a formula gives with the formula's text, without its blanks: ${shown(expression)}, ${bytes} bytes. ngspice copies that name into a space of 512 bytes when it prints it, so PlainSpice gives it at most ${WORD_BYTES} bytes, like every name. Shorten the formula, or give it a name first with let.`,
+    `Line ${line}: ${command} names what a formula gives with the formula's text as ngspice reads it, its words with one blank between each: ${shown(expression)}, ${bytes} bytes. ngspice copies such a name into a space of 512 bytes, so PlainSpice gives it at most ${WORD_BYTES} bytes, like every name. Shorten the formula, or give it a name first with let.`,
+  braceChoices: (line: number, word: string): string =>
+    `Line ${line}: before it runs this command, ngspice makes a word of its own for each choice in the braces of ${shown(word)} (a comma separates two), so the command is longer than it looks. PlainSpice gives ngspice no choices in braces in a command. Write out the words you want.`,
   longMeasWord: (line: number, word: string, bytes: number): string =>
     `Line ${line}: this meas command has a word of ${bytes} bytes (${shown(word)}). When a word of a meas command is wrong, ngspice writes it with its message ("no such vector as …") into a space of 100 bytes, so PlainSpice gives them at most ${MEAS_BYTES} bytes each. Shorten the word.`,
   circuitTitle: (line: number, bytes: number): string =>
     `Line ${line}: this circbyline line is the title of the circuit it builds, ${bytes} bytes. ngspice copies a title into a space of 513 bytes when it writes its results file, so PlainSpice gives it at most ${TITLE_BYTES} bytes. Shorten it.`,
+  circuitDotTitle: (line: number, bytes: number): string =>
+    `Line ${line}: this circbyline line gives the circuit it builds a title of ${bytes} bytes, its words after .title. ngspice copies a title into a space of 513 bytes when it writes its results file, so PlainSpice gives it at most ${TITLE_BYTES} bytes. Shorten it.`,
   nestedCircuit: (line: number): string =>
     `Line ${line}: the circuit built with circbyline has a circbyline command of its own. ngspice cannot build a circuit while it is reading one it built (it crashes), so PlainSpice did not run it. Build the circuits one after the other.`,
   failed: 'PlainSpice could not prepare this netlist for ngspice (a bug in PlainSpice), so it did not run it.',
@@ -237,30 +241,41 @@ interface Card {
   line: NetlistLine;
   text: string;
   code: string;
+  /** In a .control block (from .control to the line before .endc, after .end too), where every line ngspice reads is a command. */
+  control: boolean;
 }
+
+/** The .end line, which ngspice turns into a comment as it reads it, and reads on (limit-18). */
+const isEndLine = (read: string): boolean => /^\.end(?:[ \t\n\v\f\r]|$)/i.test(read);
 
 function cardsOf(netlist: Netlist): Card[] {
   const cards = new Map<number, Card>();
   const out: Card[] = [];
   // Every line of an *ng_script file is a command, as in a .control block (from .control to the line before .endc).
   const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));
+  const end = netlist.end;
   let control = false;
+  /** The last line a + line joins as ngspice joins them (inp_stitch_continuation_lines): not blank, no comment, no + line, not .title or .end. */
+  let last: Card | undefined;
   for (const line of netlist.lines) {
     const read = asRead(line.text);
     if (/^\.control/i.test(read)) control = true;
     if (/^\.endc/i.test(read)) control = false;
     // ngspice cuts no comment from line 1, the title.
     const code = line.index === 0 ? line.text : withoutComment(read, control || script);
+    // After .end the parser joins no + line, but ngspice reads on and joins them as before it (limit-18).
+    const after = end !== undefined && line.index > end && read.startsWith('+');
     // A + line is checked on its own after a title line, whose words are cut, not checked.
-    const head = line.kind === 'continuation' && line.continues !== undefined ? cards.get(line.continues) : undefined;
+    const head = after ? last : line.kind === 'continuation' && line.continues !== undefined ? cards.get(line.continues) : undefined;
     if (head && !isTitleLine(head.line.text, head.line.index)) {
       head.text += ` ${line.text.replace(/^\s*\+/, '')}`;
       head.code += ` ${code.replace(/^\+/, '')}`;
       continue;
     }
-    const card = { line, text: line.text, code };
+    const card = { line, text: line.text, code, control };
     cards.set(line.index, card);
     out.push(card);
+    if (line.index > 0 && !/^[#$*+]/.test(read) && code.trim() !== '' && !DOT_TITLE.test(read) && !isEndLine(read)) last = card;
   }
   return out;
 }
@@ -411,32 +426,84 @@ function stringParameters(cards: Card[]): (name: string) => number {
       i = Math.max(value.end, k + 1);
     }
   }
-  // A parameter is a string when one of its texts is quoted, or names another string parameter.
-  const strings = new Set(quotedNames);
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const [name, list] of defs)
-      if (!strings.has(name) && list.some((pieces) => pieces.some((p) => 'name' in p && strings.has(p.name)))) {
-        strings.add(name);
-        grew = true;
+  // A parameter is a string when one of its texts is quoted, or names another string parameter: from the quoted
+  // ones, through the names that use each, so every name is handled once (a chain p0=p1, p1=p2 … too).
+  const usedBy = new Map<string, string[]>();
+  for (const [name, list] of defs)
+    for (const pieces of list)
+      for (const p of pieces) {
+        if (!('name' in p)) continue;
+        const users = usedBy.get(p.name);
+        if (users) users.push(name);
+        else usedBy.set(p.name, [name]);
       }
-  }
+  const strings = new Set(quotedNames);
+  for (const todo = [...quotedNames]; todo.length; )
+    for (const user of usedBy.get(todo.pop()!) ?? [])
+      if (!strings.has(user)) {
+        strings.add(user);
+        todo.push(user);
+      }
+  // The longest text of each, worked out once, depth first without recursion (a chain of 12,000 names is no
+  // deeper for the stack than one): a name being worked out counts nothing where it is used inside itself.
   const memo = new Map<string, number>();
   const visiting = new Set<string>();
-  const size = (name: string): number => {
-    const known = memo.get(name);
+  const add = (a: number, b: number): number => Math.min(a + b, Number.MAX_SAFE_INTEGER);
+  const size = (root: string): number => {
+    const known = memo.get(root);
     if (known !== undefined) return known;
-    if (!strings.has(name) || visiting.has(name)) return 0;
-    visiting.add(name);
-    let most = 0;
-    for (const pieces of defs.get(name) ?? []) {
-      let n = 0;
-      for (const p of pieces) n += 'text' in p ? utf8Bytes(p.text) : size(p.name);
-      most = Math.max(most, Math.min(n, Number.MAX_SAFE_INTEGER));
+    interface Frame {
+      name: string;
+      list: Piece[][];
+      /** The definition and the piece of it being added up, its bytes so far, and the most of the definitions done. */
+      def: number;
+      piece: number;
+      bytes: number;
+      most: number;
     }
-    visiting.delete(name);
-    memo.set(name, most);
-    return most;
+    const frame = (name: string): Frame => {
+      visiting.add(name);
+      return { name, list: defs.get(name) ?? [], def: 0, piece: 0, bytes: 0, most: 0 };
+    };
+    const stack = [frame(root)];
+    let done = 0;
+    while (stack.length) {
+      const f = stack.at(-1)!;
+      const pieces = f.list[f.def];
+      if (!pieces) {
+        visiting.delete(f.name);
+        memo.set(f.name, f.most);
+        stack.pop();
+        done = f.most;
+        const up = stack.at(-1);
+        if (up) {
+          up.bytes = add(up.bytes, done);
+          up.piece += 1;
+        }
+        continue;
+      }
+      const p = pieces[f.piece];
+      if (!p) {
+        f.most = Math.max(f.most, f.bytes);
+        f.def += 1;
+        f.piece = 0;
+        f.bytes = 0;
+        continue;
+      }
+      if ('text' in p) {
+        f.bytes = add(f.bytes, utf8Bytes(p.text));
+        f.piece += 1;
+        continue;
+      }
+      const known = memo.get(p.name);
+      if (known !== undefined || !strings.has(p.name) || visiting.has(p.name)) {
+        f.bytes = add(f.bytes, known ?? 0);
+        f.piece += 1;
+        continue;
+      }
+      stack.push(frame(p.name));
+    }
+    return done;
   };
   return (name: string) => (strings.has(name) ? size(name) : -1);
 }
@@ -629,19 +696,70 @@ function terminalName(e: Element, k: number, pins: Map<string, string[]>): strin
   }
 }
 
+/** A name ngspice makes, and its bytes. */
+type Named = { text: string; bytes: number };
+
+/** The requests of a .probe line, `what(args)`: the letters just before each ( and the text up to the next ) (in one pass, however long the line). */
+function probeRequests(body: string): { what: string; args: string }[] {
+  const out: { what: string; args: string }[] = [];
+  let from = 0;
+  for (let open = body.indexOf('(', from); open >= 0; open = body.indexOf('(', from)) {
+    let start = open;
+    while (start > from && /[A-Za-z]/.test(body[start - 1]!)) start -= 1;
+    if (start === open) {
+      from = open + 1;
+      continue;
+    }
+    const close = body.indexOf(')', open + 1);
+    if (close < 0) break;
+    out.push({ what: body.slice(start, open), args: body.slice(open + 1, close) });
+    from = close + 1;
+  }
+  return out;
+}
+
+/** The terminals ngspice puts a 0 V source on for a .probe line: the first two of F, G, S and W, every one of the others. */
+const probedTerminals = (e: Element): number => (/^[fgsw]/.test(e.key) ? Math.min(2, e.nodes.length) : e.nodes.length);
+
+/**
+ * The longest name alli keeps (or a .probe line with nothing ngspice can read as a request): part#branch for a
+ * part with two terminals, part:terminal#branch for each terminal of one with more, for every part but E, H,
+ * V, K and A parts and B sources of a voltage (inp_probe). The same for every such line, so worked out once.
+ */
+function probeAllName(parts: Map<string, { e: Element; code: string }>, pins: Map<string, string[]>): Named | undefined {
+  let name: Named | undefined;
+  const keep = (text: string): void => {
+    const bytes = utf8Bytes(text);
+    if (!name || bytes > name.bytes) name = { text, bytes };
+  };
+  for (const { e, code: line } of parts.values()) {
+    if (/^[ehvka]/.test(e.key) || (e.key[0] === 'b' && /v=/i.test(line.replace(/^\S+/, '')))) continue;
+    const n = probedTerminals(e);
+    if (n === 2) keep(`${e.key}#branch`);
+    else for (let k = 1; k <= n; k++) keep(`${e.key}:${terminalName(e, k, pins)}#branch`);
+  }
+  return name;
+}
+
 /**
  * The names ngspice makes for a .probe line (inp_probe and setallvsources, src/frontend/inpc_probe.c),
  * the longest kept as a result's name and the longest a formula holds: i(R1) and alli keep R1#branch
  * or R1:n1#branch, vd(a,b) keeps vd_a:b, vd(R1:1,R2:2) vd_r1:n1_r2:n2, and p(R1) keeps R1:power and
  * writes a formula with i(vcurr_r1:probe_int_n1:1_a) and v(probe_int_a_r1_1) for each terminal.
+ * `allName` gives what alli keeps (probeAllName), worked out once for all the .probe lines.
  */
-function probeNames(code: string, parts: Map<string, { e: Element; code: string }>, pins: Map<string, string[]>): { name?: { text: string; bytes: number }; formula?: { part: string; text: string; bytes: number } } {
-  let name: { text: string; bytes: number } | undefined;
+function probeNames(
+  code: string,
+  parts: Map<string, { e: Element; code: string }>,
+  pins: Map<string, string[]>,
+  allName: () => Named | undefined,
+): { name?: Named; formula?: { part: string; text: string; bytes: number } } {
+  let name: Named | undefined;
   let formula: { part: string; text: string; bytes: number } | undefined;
-  const keep = (text: string): void => {
-    const bytes = utf8Bytes(text);
-    if (!name || bytes > name.bytes) name = { text, bytes };
+  const keepNamed = (named: Named): void => {
+    if (!name || named.bytes > name.bytes) name = named;
   };
+  const keep = (text: string): void => keepNamed({ text, bytes: utf8Bytes(text) });
   const write = (part: string, text: string): void => {
     const bytes = utf8Bytes(text);
     if (!formula || bytes > formula.bytes) formula = { part, text, bytes };
@@ -657,39 +775,33 @@ function probeNames(code: string, parts: Map<string, { e: Element; code: string 
     }
     return longest;
   };
-  /** The terminals ngspice puts a 0 V source on: the first two of F, G, S and W, every one of the others. */
-  const count = (e: Element): number => (/^[fgsw]/.test(e.key) ? Math.min(2, e.nodes.length) : e.nodes.length);
-  /** The currents i(…) and alli keep: part#branch for two terminals, part:terminal#branch for each of more, or for the one asked for. */
-  const currents = (e: Element, asked?: string): void => {
-    const n = count(e);
-    if (asked === undefined && n === 2) return keep(`${e.key}#branch`);
-    if (asked !== undefined) return keep(`${e.key}:${terminal(e, asked)}#branch`);
-    for (let k = 1; k <= n; k++) keep(`${e.key}:${terminalName(e, k, pins)}#branch`);
-  };
   const body = code.replace(/^\s*\S+/, '');
-  const asked = [...body.matchAll(/([A-Za-z]+)\(([^)]*)\)/g)];
+  const asked = probeRequests(body);
   // alli, or nothing ngspice can read as a request (an empty .probe line too): every part.
   const all = asked.length === 0 || /(^|[^A-Za-z0-9_])alli([^A-Za-z0-9_]|$)/i.test(body);
-  if (all)
-    for (const { e, code: line } of parts.values()) {
-      // Not E, H, V, K or A parts, nor a B source of a voltage (inp_probe).
-      if (/^[ehvka]/.test(e.key) || (e.key[0] === 'b' && /v=/i.test(line.replace(/^\S+/, '')))) continue;
-      currents(e);
-    }
+  if (all) {
+    const every = allName();
+    if (every) keepNamed(every);
+  }
   for (const m of asked) {
-    const what = m[1]!.toLowerCase();
-    const args = m[2]!.split(/[ \t]*,[ \t]*/).map((a) => a.trim());
+    const what = m.what.toLowerCase();
+    const args = m.args.split(',').map((a) => a.trim());
     if (what === 'p' || what === 'i') {
       // ngspice reads i(m1:s) as i(m1,s).
       const [first = '', second] = what === 'i' ? args[0]!.split(':').concat(args.slice(1)).map((a) => a.trim()) : [args[0]!];
       const e = parts.get(first.toLowerCase())?.e;
       if (!e) continue;
       if (what === 'i') {
-        if (!all) currents(e, second ? second : undefined);
+        // The current i(…) keeps: part#branch for two terminals, part:terminal#branch for the one asked for or each of more.
+        if (all) continue;
+        const n = probedTerminals(e);
+        if (second) keep(`${e.key}:${terminal(e, second)}#branch`);
+        else if (n === 2) keep(`${e.key}#branch`);
+        else for (let k = 1; k <= n; k++) keep(`${e.key}:${terminalName(e, k, pins)}#branch`);
         continue;
       }
       keep(`${e.key}:power`);
-      const n = e.key[0] === 'd' ? Math.min(2, e.nodes.length) : count(e);
+      const n = e.key[0] === 'd' ? Math.min(2, e.nodes.length) : probedTerminals(e);
       for (let k = 1; k <= n; k++) {
         const node = e.nodes[k - 1]?.name ?? '';
         write(e.key, `i(vcurr_${e.key}:probe_int_${terminalName(e, k, pins)}:${k}_${node})`);
@@ -712,12 +824,12 @@ function probeNames(code: string, parts: Map<string, { e: Element; code: string 
   return { ...(name ? { name } : {}), ...(formula ? { formula } : {}) };
 }
 
-// ------------------------------------------------------------------ the commands of a .control block
+// ------------------------------------------------------------------ the commands ngspice runs
 
 /**
- * The analysis commands of a .control block, which ngspice writes with a dot in front into a space of
- * 512 bytes before it runs them (if_run, src/frontend/spiceif.c; limit-6). Other commands are not
- * copied that way: their words keep to the word rules.
+ * The analysis commands, which ngspice writes with a dot in front into a space of 512 bytes before it runs
+ * them (if_run, src/frontend/spiceif.c; limit-6). Other commands are not copied that way: their words keep
+ * to the word rules.
  */
 const ANALYSES = new Set(['tran', 'ac', 'dc', 'op', 'pz', 'disto', 'adjsen', 'sens', 'tf', 'noise', 'pss', 'sp', 'hb']);
 /**
@@ -727,116 +839,326 @@ const ANALYSES = new Set(['tran', 'ac', 'dc', 'op', 'pz', 'disto', 'adjsen', 'se
  */
 const READS_NAMES = new Set(['print', 'write', 'wrdata', 'plot', 'asciiplot', 'gnuplot', 'hardcopy', 'xgraph', 'pyplot', 'fourier', 'spec', 'fft', 'psd', 'alter', 'altermod', 'if', 'while', 'dowhile', 'eprint', 'eprvcd']);
 const MEASURES = new Set(['meas', 'measure']);
-/** The commands that name what an expression gives with the expression's text, and copy that name into 512 bytes (print's vec_basename, write; limit-17). */
-const NAMES_EXPRESSIONS = new Set(['print', 'write']);
+/**
+ * The commands that name what a formula gives with the formula's text and copy that name into 512 bytes
+ * (vec_basename: print and write, asciiplot through vec_eq, fft, psd and spec for their results; limit-17).
+ */
+const NAMES_EXPRESSIONS = new Set(['print', 'write', 'asciiplot', 'fft', 'psd', 'spec']);
 /** The most bytes of a word of a meas command: ngspice writes it into a space of 100 bytes with its error message (limit-17). */
 export const MEAS_BYTES = 50;
-/** The operators of ngspice's expressions: characters, and words (gt, lt, …). */
-const OPERATOR = /[+\-*/^%,<>=&|~!]/;
+/** The operators of ngspice's formulas (PPlex, src/frontend/parse.c, and a few more): characters, and words (gt, lt, …). */
+const OPERATOR = /[+\-*/^%,<>=&|~!?:]/;
 const WORD_OPERATORS = new Set(['gt', 'lt', 'ge', 'le', 'eq', 'ne', 'and', 'or', 'not']);
 
 /**
- * The expressions of a print or write command, each as ngspice names its result: its text without
- * blanks (limit-17). An operand after an operand, outside brackets, starts the next expression, as
- * ngspice's expression reader takes `print v(a) v(b)+v(c)` as two.
+ * The formulas of a command's words joined with one blank each (wl_flatten), each with the text ngspice
+ * names its result with: from its first word to its last, the blanks between them too (the parser's
+ * copy_substring; limit-17). An operand after an operand, outside brackets, starts the next formula, as
+ * ngspice's parser takes `print v(a) v(b)+v(c)` as two; where it could join two, they count as one.
  */
-function expressionsOf(args: string): string[] {
-  const out: string[] = [];
-  let current = '';
+function formulasOf(flat: string): Named[] {
+  const out: Named[] = [];
+  let start = -1;
+  let end = -1;
   let depth = 0;
   let afterOperand = false;
-  for (let i = 0; i < args.length; ) {
-    const c = args[i]!;
-    if (SPACE.test(c)) {
-      i += 1;
-      continue;
+  const close = (): void => {
+    if (start >= 0) {
+      const text = flat.slice(start, end);
+      out.push({ text, bytes: utf8Bytes(text) });
     }
-    // A comma outside brackets separates words, as a blank does (ngspice's control reader drops it).
-    if (c === ',' && depth === 0) {
-      if (current) out.push(current);
-      current = '';
-      afterOperand = false;
+    start = -1;
+  };
+  for (let i = 0; i < flat.length; ) {
+    const c = flat[i]!;
+    if (SPACE.test(c)) {
       i += 1;
       continue;
     }
     if (c === '(' || c === '[' || c === ')' || c === ']' || OPERATOR.test(c)) {
       if (c === '(' || c === '[') depth += 1;
       else if (c === ')' || c === ']') depth = Math.max(0, depth - 1);
-      current += c;
+      if (start < 0) start = i;
+      end = i + 1;
       afterOperand = c === ')' || c === ']';
       i += 1;
       continue;
     }
     let j = i + 1;
     if (c === '"') {
-      const close = args.indexOf('"', i + 1);
-      j = close < 0 ? args.length : close + 1;
-    } else while (j < args.length && !SPACE.test(args[j]!) && !/[()[\]"]/.test(args[j]!) && !OPERATOR.test(args[j]!)) j += 1;
-    const word = args.slice(i, j);
+      const close = flat.indexOf('"', i + 1);
+      j = close < 0 ? flat.length : close + 1;
+    } else while (j < flat.length && !SPACE.test(flat[j]!) && !/[()[\]"]/.test(flat[j]!) && !OPERATOR.test(flat[j]!)) j += 1;
+    const operator = WORD_OPERATORS.has(flat.slice(i, j).toLowerCase());
+    if (!operator && depth === 0 && afterOperand) close();
+    if (start < 0) start = i;
+    end = j;
+    afterOperand = !operator;
     i = j;
-    if (WORD_OPERATORS.has(word.toLowerCase())) {
-      current += word;
-      afterOperand = false;
-      continue;
-    }
-    if (depth === 0 && afterOperand && current) {
-      out.push(current);
-      current = '';
-    }
-    current += word;
-    afterOperand = true;
   }
-  if (current) out.push(current);
+  close();
   return out;
 }
 
 /**
- * The bytes of a command's words as ngspice's control reader makes them (src/frontend/parser/lexical.c),
- * joined by one blank each (wl_flatten): a blank or a comma outside brackets ends a word, < > and & are
- * words of their own, quotes keep what is inside them (' ' are dropped), and a backslash keeps the next
- * character. A little more than ngspice writes, never less.
+ * The formulas of a command that reads them, each as ngspice names its result (ft_getpnames_quotes,
+ * src/frontend/parse.c; limit-17): the words joined with one blank each; when they hold a v( or an i(,
+ * without the blanks inside brackets, and with quotes around an argument of v(…) or i(…) that starts with a
+ * digit or holds an operator (v(1p) is v("1p")); a name with v(" or i(" in it ngspice then writes again
+ * without its quotes, in at most 99 bytes. Undefined when a v( has no ) after it: ngspice names nothing then.
  */
-function joinedBytes(code: string): number {
-  let bytes = 0;
-  let words = 0;
-  let inWord = false;
-  let paren = 0;
-  const s = code;
+function namedFormulas(flat: string): Named[] | undefined {
+  if (!/[vViI]\(/.test(flat)) return formulasOf(flat);
+  const s = stripInsideParens(traced(flat)).s;
+  const quoted = (arg: string): string => (!/^\d*$/.test(arg) && (/^\d/.test(arg) || ARITH.test(arg)) ? `"${arg}"` : arg);
+  const out: string[] = [];
+  // The first ) at or after a place, which only moves on: looked for again only past the one found, so that
+  // i(i(i(… without a ) stays linear.
+  let searched = -1;
+  let found = -1;
+  const closeAfter = (from: number): number => {
+    if (searched < 0 || (found >= 0 && from > found)) {
+      searched = from;
+      found = s.indexOf(')', from);
+    }
+    return found;
+  };
+  for (let t = 0; t < s.length; ) {
+    const c = s[t]!.toLowerCase();
+    const before = s[t - 1];
+    if ((c === 'v' || c === 'i') && s[t + 1] === '(' && s[t + 2] !== '"' && (before === undefined || SPACE.test(before) || ARITH.test(before) || before === '.')) {
+      const close = closeAfter(t + 2);
+      if (close < 0) {
+        if (c === 'v') return undefined;
+        // "closing ) is missing …, ignored": ngspice reads on from the (, without the i.
+        t += 1;
+        continue;
+      }
+      const arg = s.slice(t + 2, close);
+      const comma = c === 'v' ? arg.indexOf(',') : -1;
+      out.push(`${c}(`, comma < 0 ? quoted(arg) : `${quoted(arg.slice(0, comma))},${quoted(arg.slice(comma + 1))}`);
+      t = close;
+    }
+    out.push(s[t]!);
+    t += 1;
+  }
+  return formulasOf(out.join('')).map((f) => {
+    if (!f.text.includes('v("') && !f.text.includes('i("')) return f;
+    const text = cutToBytes(f.text.replaceAll('"', ''), 99);
+    return { text, bytes: utf8Bytes(text) };
+  });
+}
+
+/** A command's text with the blanks around each = taken out, as meas reads its words (name=value is one). */
+function glueEquals(s: string): string {
+  const out: string[] = [];
   for (let i = 0; i < s.length; i++) {
+    if (s[i] !== ' ' && s[i] !== '\t') {
+      out.push(s[i]!);
+      continue;
+    }
+    let j = i;
+    while (j < s.length && (s[j] === ' ' || s[j] === '\t')) j += 1;
+    if (s[j] !== '=' && out.at(-1) !== '=') out.push(s.slice(i, j));
+    i = j - 1;
+  }
+  return out.join('');
+}
+
+/**
+ * First characters ngspice makes '*' in a netlist that is not an *ng_script file (inp_check_syntax: the odd
+ * ones with a warning, ';' silently): such a line is a comment, but with a '#' second it is a *# line, a
+ * command (limit-18).
+ */
+const STARRED = new Set(['=', '[', ']', '?', '(', ')', '&', '%', '$', '"', '!', ':', ',', '\f', ';']);
+
+/**
+ * The text ngspice runs as a command for a card (its comment cut, its + lines joined), or undefined when it
+ * runs none (inp_spsource, src/frontend/inp.c; limit-18). In a netlist: every line of a .control block that is
+ * no comment, after .end too, and anywhere a line that starts with *# (or ## or # after one of the characters
+ * above, which ngspice makes *), from after the mark and its blanks; a pre_ in front of the command is taken
+ * off (ngspice runs it before it reads the circuit). In an *ng_script file: every line but comments, .control,
+ * .endc and option lines, a *# line from its third character. A .title or .end line is none: ngspice makes it
+ * a comment as it reads it.
+ */
+function commandText(read: string, code: string, control: boolean, script: boolean): string | undefined {
+  const starred = read[0] === '*' || read[0] === '#' || (!script && STARRED.has(read[0] ?? ''));
+  if (starred) {
+    if (read[1] !== '#') return undefined;
+    if (script) return code.slice(2);
+  } else if (DOT_TITLE.test(read) || isEndLine(read) || (script ? /^(?:\.control|\.endc|option)/i.test(read) : !control || /^\.(?:control|endc)/i.test(read))) return undefined;
+  if (script) return code;
+  // A line of a .control block has its blanks made one, quoted or not (but an echo line's); a *# line keeps them.
+  const text = starred ? code.slice(2).replace(/^[ \t\n\v\f\r]+/, '') : /^echo/i.test(code) ? code : fewerBlanks(code);
+  return /^pre_/i.test(text) ? text.slice(4) : text;
+}
+
+/**
+ * ngspice's inp_remove_ws (src/frontend/inpcom.c), which it runs on every line of a netlist that is no
+ * comment, a .control block's too (limit-19): each run of white space becomes one blank, quoted or not; none
+ * is left before or after an =, nor inside { } before or after an operator or a comma.
+ */
+function fewerBlanks(s: string): string {
+  const out: string[] = [];
+  let braces = 0;
+  let i = 0;
+  if (SPACE.test(s[0] ?? '')) out.push(s[i++]!);
+  const glued = (c: string | undefined): boolean => c === '=' || (braces > 0 && c !== undefined && (ARITH.test(c) || c === ','));
+  while (i < s.length) {
     const c = s[i]!;
+    if (c === '{') braces += 1;
+    if (c === '}') braces -= 1;
+    if (SPACE.test(c)) {
+      while (i < s.length && SPACE.test(s[i]!)) i += 1;
+      if (i < s.length && !glued(s[i])) out.push(' ');
+      continue;
+    }
+    out.push(c);
+    i += 1;
+    if (glued(c)) while (i < s.length && SPACE.test(s[i]!)) i += 1;
+  }
+  return out.join('');
+}
+
+/**
+ * A command line as ngspice's control reader makes it into words (cp_lexer, src/frontend/parser/lexical.c;
+ * limit-19). A blank or a tab ends a word, and a comma outside brackets (which is dropped); < > ; & are words
+ * of their own (but <= and >= at a word's start, $& and $<, and a ; inside brackets); '…' keeps what is
+ * inside it, blanks too, without the quotes; "…" and `…` keep it with them; a backslash is dropped and the
+ * character after it read as any other (so \" starts a quote). A line whose first character is * or # has
+ * no words.
+ */
+function controlWords(text: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let paren = 0;
+  let read = 0;
+  let i = 0;
+  const next = (): string => (i < text.length ? text[i++]! : '\n');
+  const newWord = (): void => {
+    if (word !== '') words.push(word);
+    word = '';
+  };
+  /** A character that may be a word of its own: < > ; & (but $<). */
+  const add = (c: string): void => {
+    const alone = c === '<' || c === '>' || c === ';' || c === '&';
+    const glued = alone && c === '<' && word.endsWith('$');
+    if (alone && !glued) newWord();
+    word += c;
+    if (alone && !glued) newWord();
+  };
+  for (let c = next(); ; ) {
+    // An escape character is skipped.
+    if (c === '\x1b') {
+      c = next();
+      continue;
+    }
+    read += 1;
+    if (c === '\\' || c === '\x16') {
+      c = next();
+      read += 1;
+    }
+    if ((c === '#' || c === '*') && read === 1) return [];
     if (c === '(' || c === '[') paren += 1;
     else if (c === ')' || c === ']') paren -= 1;
-    if (SPACE.test(c) || (c === ',' && paren < 1)) {
-      inWord = false;
-      continue;
+    if (c === '\n') {
+      newWord();
+      break;
     }
-    if (c === '<' || c === '>' || c === '&') {
-      words += 1;
-      bytes += 1;
-      inWord = false;
-      continue;
-    }
-    if (!inWord) {
-      words += 1;
-      inWord = true;
-    }
-    if (c === '\\' && i + 1 < s.length) {
-      i += 1;
-      bytes += unitBytes(s, i);
-      continue;
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      const close = s.indexOf(c, i + 1);
-      const end = close < 0 ? s.length : close;
-      for (let k = i + 1; k < end; k++) bytes += unitBytes(s, k);
-      if (c !== "'") bytes += close < 0 ? 1 : 2;
-      i = end;
-      continue;
-    }
-    bytes += unitBytes(s, i);
+    /** The character that ended a quote early (the end of the line, an escape), handled again as ngspice does. */
+    let again: string | undefined;
+    if (c === ' ' || c === '\t') newWord();
+    else if (c === "'") {
+      for (let q = next(); q !== "'"; q = next()) {
+        if (q === '\n' || q === '\x1b') {
+          again = q;
+          break;
+        }
+        word += q;
+      }
+    } else if (c === '"' || c === '`') {
+      word += c;
+      for (let q = next(); ; q = next()) {
+        if (q === c) {
+          word += c;
+          break;
+        }
+        if (q === '\n' || q === '\x1b') {
+          again = q;
+          break;
+        }
+        word += q === '\\' ? next() : q;
+      }
+    } else if (c === ',' && paren < 1 && word !== '') newWord();
+    else if (c === ';' && paren > 0) word += c;
+    else if (c === '&' && word.endsWith('$')) word += c;
+    else if ((c === '<' || c === '>') && word === '' && text[i] === '=') word += c;
+    else add(c);
+    c = again ?? next();
   }
-  return bytes + Math.max(0, words - 1);
+  return words;
 }
+
+/** The commands of a line's words, as docommand runs them: a ';' word ends one. */
+function commandsOf(words: string[]): string[][] {
+  const commands: string[][] = [];
+  let command: string[] = [];
+  for (const w of words) {
+    if (w !== ';') command.push(w);
+    else if (command.length) {
+      commands.push(command);
+      command = [];
+    }
+  }
+  if (command.length) commands.push(command);
+  return commands;
+}
+
+/**
+ * How many words ngspice makes of a command's word as it expands its braces (cp_doglob, brac1 and brac2,
+ * src/frontend/parser/glob.c): {a,b} one for each choice, {…}{…} one for each pair, nested braces too; -1
+ * when a { has no } (ngspice then runs nothing of the line: "Error: missing }."). Counted up to 2 ** 30.
+ */
+function braceWords(word: string): number {
+  const most = 2 ** 30;
+  /** For each open brace, the choices before the last comma; and the words of each sequence so far, outermost first. */
+  const choices: number[] = [];
+  const sequence: number[] = [1];
+  for (let i = word.indexOf('{'); i >= 0 && i < word.length; i++) {
+    const c = word[i];
+    if (c === '{') {
+      choices.push(0);
+      sequence.push(1);
+    } else if (c === ',' && choices.length) {
+      choices[choices.length - 1] = Math.min(most, choices.at(-1)! + sequence.pop()!);
+      sequence.push(1);
+    } else if (c === '}' && choices.length) {
+      const all = Math.min(most, choices.pop()! + sequence.pop()!);
+      sequence[sequence.length - 1] = Math.min(most, sequence.at(-1)! * all);
+    }
+  }
+  return choices.length ? -1 : sequence[0]!;
+}
+
+/** A word with each pair of braces taken out, as ngspice expands it when every pair holds one choice. */
+function withoutBraces(word: string): string {
+  if (!word.includes('{')) return word;
+  const drop = new Set<number>();
+  const open: number[] = [];
+  for (let i = 0; i < word.length; i++) {
+    if (word[i] === '{') open.push(i);
+    else if (word[i] === '}' && open.length) {
+      drop.add(open.pop()!);
+      drop.add(i);
+    }
+  }
+  const out: string[] = [];
+  for (let i = 0; i < word.length; i++) if (!drop.has(i)) out.push(word[i]!);
+  return out.join('');
+}
+
+/** Our engine's home folder, which ngspice puts in place of a ~ that starts a command's word (cp_doglob; `echo ~` gives it): 14 bytes (limit-19). */
+const HOME = '/home/web_user';
 
 // ------------------------------------------------------------------ what ngspice cannot take
 
@@ -902,8 +1224,6 @@ function measuresCurrent(stripped: string): boolean {
   return false;
 }
 
-/** A command that hands ngspice one line of a circuit (limit-12): its text after the command's name. */
-const CIRCBYLINE = /^circbyline(?:[ \t]+|$)/i;
 /** The line that ends a circuit built with circbyline: ngspice then reads it (create_circbyline). */
 const CIRCUIT_END = /^\.end(?:[ \t]|$)/i;
 
@@ -911,7 +1231,9 @@ const CIRCUIT_END = /^\.end(?:[ \t]|$)/i;
  * The first thing in the netlist that ngspice cannot take, by line. `lineOf` gives the line of the
  * student's text for a line of this netlist: a circuit made of circbyline commands is checked as the
  * netlist ngspice reads from them (limit-12), and its problems are said at the commands' lines. Such a
- * circuit is checked once (`built`): a circbyline command inside it is refused (limit-16).
+ * circuit is checked once (`built`): a circbyline command inside it is refused, and each of its .title
+ * lines is measured as its title (limit-16). Every line ngspice runs as a command (limit-18) is checked
+ * as its words are when ngspice runs it (limit-19).
  */
 export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (line) => line, built = false): NotRun | undefined {
   const found: NotRun[] = [];
@@ -919,7 +1241,7 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
   const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));
   const cards = cardsOf(netlist);
   const textBytes = stringParameters(cards);
-  /** The circuit lines of circbyline commands, in a .control block or an *ng_script file, and the lines they are on. */
+  /** The circuit lines of circbyline commands, as ngspice joins their words, and the lines they are on. */
   const circuit: { text: string; line: number }[] = [];
   /** The parts outside every subcircuit, and each subcircuit's pins, for the names a .probe line makes. */
   const parts = new Map<string, { e: Element; code: string }>();
@@ -938,23 +1260,75 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
     } else if (d === '.ends') depth = Math.max(0, depth - 1);
     else if (depth === 0 && line.element) parts.set(line.element.key, { e: line.element, code });
   }
-  for (const { line, code } of cards) {
-    if (line.kind === 'blank' || line.kind === 'comment' || isTitleLine(line.text, line.index)) continue;
+  /** A netlist that sets noquotesinoutput: ngspice then names a formula with the blanks inside its brackets (limit-17). */
+  const noQuotes = /noquotesinoutput/i.test(netlist.text);
+  // What alli keeps is the same for every .probe line: worked out once, at the first that needs it.
+  let every: { name: Named | undefined } | undefined;
+  const allName = (): Named | undefined => (every ??= { name: probeAllName(parts, pins) }).name;
+
+  /**
+   * What is wrong with one command, as ngspice runs it: its words as the control reader makes them, with the
+   * braces and a leading ~ expanded unless the line starts with circbyline (`glob`; limit-19). circbyline
+   * commands keep their line for the circuit they build.
+   */
+  const commandProblem = (words: string[], number: number, glob: boolean): string | undefined => {
+    if (glob) {
+      // limit-19: a word for each choice in braces, which the line does not show.
+      const many = words.find((w) => braceWords(w) > 1);
+      if (many !== undefined) return S.braceChoices(number, many);
+    }
+    const said = glob ? words.map((w) => withoutBraces(w)).map((w) => (w.startsWith('~') ? `${HOME}${w.slice(1)}` : w)) : words;
+    const first = said[0]!.toLowerCase();
+    if (first === 'circbyline') {
+      // limit-16: ngspice cannot build a circuit while it reads one it built.
+      if (built) return S.nestedCircuit(number);
+      circuit.push({ text: said.slice(1).join(' '), line: number });
+      return undefined;
+    }
+    const flat = said.join(' ');
+    // limit-6: an analysis command, written with a dot in front into 512 bytes.
+    if (ANALYSES.has(first)) {
+      const bytes = 1 + utf8Bytes(flat);
+      if (bytes > RUN_BYTES) return S.longCommand(number, first, bytes);
+    }
+    // limit-13: a command that reads names without the blanks inside brackets.
+    if ((READS_NAMES.has(first) && /[vi]\(/i.test(flat)) || (MEASURES.has(first) && flat.includes('('))) {
+      const joined = wordOver(stripInsideParens(traced(flat)), NAME_END_CHAR, WORD_BYTES, flat);
+      if (joined) return S.joinedWord(number, joined.word, joined.bytes);
+    }
+    // limit-17: print, write, asciiplot, fft, psd and spec name what a formula gives with its words, a name like any other.
+    if (NAMES_EXPRESSIONS.has(first)) {
+      const args = said.slice(1).join(' ');
+      // With `set noquotesinoutput` somewhere, the blanks inside brackets may stay: either way counts.
+      const named = [...(namedFormulas(args) ?? []), ...(noQuotes ? formulasOf(args) : [])];
+      const long = named.find((f) => f.bytes > WORD_BYTES);
+      if (long) return S.longExpression(number, first, long.text, long.bytes);
+    }
+    // limit-17: a meas command's words (a name=value as one), written with an error message into 100 bytes.
+    if (MEASURES.has(first)) {
+      const word = stripInsideParens(traced(glueEquals(flat)))
+        .s.split(SPACES)
+        .slice(1)
+        .find((w) => utf8Bytes(w) > MEAS_BYTES);
+      if (word !== undefined) return S.longMeasWord(number, word, utf8Bytes(word));
+    }
+    return undefined;
+  };
+
+  for (const card of cards) {
+    const { line, code } = card;
+    // limit-18: the text ngspice runs as a command, if it runs this line as one.
+    const commandLine = line.index > 0 ? commandText(asRead(line.text), code, card.control, script) : undefined;
+    if (commandLine === undefined && (line.kind === 'blank' || line.kind === 'comment' || isTitleLine(line.text, line.index))) {
+      // limit-16: a .title line of a circuit built with circbyline gives that circuit its title.
+      if (built && line.index > 0 && DOT_TITLE.test(line.text)) {
+        const bytes = utf8Bytes(line.text.slice(titleStart(line.text, line.index)));
+        if (bytes > TITLE_BYTES) note(lineOf(line.number), S.circuitDotTitle(lineOf(line.number), bytes));
+      }
+      continue;
+    }
     const number = lineOf(line.number);
     const d = line.directive?.name;
-    const command = line.kind === 'control' || (script && line.index > 0);
-    if (command) {
-      const read = code.replace(/^[ \t]+/, '');
-      const cbl = CIRCBYLINE.exec(read);
-      if (cbl) {
-        // limit-16: ngspice cannot build a circuit while it reads one it built.
-        if (built) {
-          note(number, S.nestedCircuit(number));
-          continue;
-        }
-        circuit.push({ text: read.slice(cbl[0].length), line: number });
-      }
-    }
     // limit-3 to limit-7: every name, as ngspice ends it in a formula or a list (the comment cut first, which
     // ngspice never reads).
     const long = code.split(NAME_END).find((w) => utf8Bytes(w) > WORD_BYTES);
@@ -962,9 +1336,23 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
       note(number, S.longWord(number, long, utf8Bytes(long)));
       continue;
     }
-    // limit-14: the text numparam puts in place of each {…}, a word of its own (not in a .control block, and not
-    // in the lines that define parameters, .param and .subckt, whose texts are checked where they are used).
-    const braces = command || d === '.param' || d === '.subckt' ? [] : bracesOf(code, textBytes);
+    if (commandLine !== undefined) {
+      // limit-18, limit-19: each command of the line, as ngspice's control reader makes its words; it expands
+      // braces and a ~ unless the line's first word is circbyline, for all of the line's commands.
+      const words = controlWords(commandLine);
+      const glob = words[0] !== 'circbyline';
+      for (const command of commandsOf(words)) {
+        const problem = commandProblem(command, number, glob);
+        if (problem) {
+          note(number, problem);
+          break;
+        }
+      }
+      continue;
+    }
+    // limit-14: the text numparam puts in place of each {…}, a word of its own (not in the lines that define
+    // parameters, .param and .subckt, whose texts are checked where they are used).
+    const braces = d === '.param' || d === '.subckt' ? [] : bracesOf(code, textBytes);
     const longText = braces.find((b) => b.string && b.bytes > WORD_BYTES);
     if (longText) {
       note(number, S.longText(number, code.slice(longText.from, longText.to), longText.bytes));
@@ -1013,10 +1401,10 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
     // limit-9: a .model line's version, whole up to a blank; limit-14: a {…} there is the text numparam puts in
     // its place, with a blank on each side.
     if (d === '.model') {
+      const at = new Map(braces.map((b) => [b.from, b]));
       let problem: string | undefined;
       for (const m of code.matchAll(VERSION)) {
-        const at = m.index + m[0].length - m[1]!.length;
-        const b = braces.find((x) => x.from === at);
+        const b = at.get(m.index + m[0].length - m[1]!.length);
         if (b) {
           if (b.bytes > VERSION_BYTES) problem = S.longTextVersion(number, code.slice(b.from, b.to), b.bytes);
         } else {
@@ -1033,7 +1421,7 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
     }
     // limit-15: the names a .probe line makes, and the formula it writes for p(…).
     if (d === '.probe') {
-      const made = probeNames(code, parts, pins);
+      const made = probeNames(code, parts, pins, allName);
       if (made.formula && made.formula.bytes > RUN_BYTES) {
         note(number, S.probeFormula(number, made.formula.part, made.formula.text, made.formula.bytes));
         continue;
@@ -1065,43 +1453,7 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
           break;
         }
       }
-      if (problem) {
-        note(number, problem);
-        continue;
-      }
-    }
-    if (command) {
-      const first = /^[ \t]*([^ \t]*)/.exec(code)![1]!.toLowerCase();
-      // limit-6: an analysis command, written with a dot in front into 512 bytes.
-      if (ANALYSES.has(first)) {
-        const bytes = 1 + joinedBytes(code);
-        if (bytes > RUN_BYTES) {
-          note(number, S.longCommand(number, first, bytes));
-          continue;
-        }
-      }
-      // limit-13: a command that reads names without the blanks inside brackets.
-      if ((READS_NAMES.has(first) && /[vi]\(/i.test(code)) || (MEASURES.has(first) && code.includes('('))) {
-        const joined = wordOver(stripInsideParens(traced(code)), NAME_END_CHAR, WORD_BYTES, code);
-        if (joined) {
-          note(number, S.joinedWord(number, joined.word, joined.bytes));
-          continue;
-        }
-      }
-      // limit-17: print and write name what an expression gives with its text, a name like any other.
-      if (NAMES_EXPRESSIONS.has(first)) {
-        const name = expressionsOf(code.replace(/^[ \t]*\S+/, '')).find((e) => utf8Bytes(e) > WORD_BYTES);
-        if (name !== undefined) {
-          note(number, S.longExpression(number, first, name, utf8Bytes(name)));
-          continue;
-        }
-      }
-      // limit-17: a meas command's words (a name=value as one), written with an error message into 100 bytes.
-      if (MEASURES.has(first)) {
-        const words = stripInsideParens(traced(code.replace(/[ \t]*=[ \t]*/g, '='))).s.split(SPACES).slice(1);
-        const word = words.find((w) => utf8Bytes(w) > MEAS_BYTES);
-        if (word !== undefined) note(number, S.longMeasWord(number, word, utf8Bytes(word)));
-      }
+      if (problem) note(number, problem);
     }
   }
   // limit-3, limit-7, limit-10: the names ngspice makes inside subcircuits, saved as currents (with
@@ -1126,7 +1478,7 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
   }
   if (current.length) circuits.push(current);
   for (const lines of circuits) {
-    const title = joinedBytes(lines[0]!.text);
+    const title = utf8Bytes(lines[0]!.text.trim());
     if (title > TITLE_BYTES) {
       found.push({ line: lines[0]!.line, reason: S.circuitTitle(lines[0]!.line, title) });
       continue;
@@ -1159,12 +1511,27 @@ export function cutTitles(text: string): { text: string; notes: string[] } {
   return { text: notes.length ? lines.join('\n') : text, notes };
 }
 
+/**
+ * A + line after .end that ngspice joins to a line before .end (limit-18): .end is a comment to it, so the + line
+ * continues the last line before it, which a line added just before .end would take its place as.
+ */
+function joinsAcrossEnd(netlist: Netlist, end: number): boolean {
+  for (let i = end + 1; i < netlist.lines.length; i++) {
+    const read = asRead(netlist.lines[i]!.text);
+    if (read.startsWith('+')) return true;
+    if (!/^[#$*]/.test(read) && withoutComment(read, false).trim() !== '' && !DOT_TITLE.test(read) && !isEndLine(read)) return false;
+  }
+  return false;
+}
+
 export function netlistToRun(netlist: Netlist): NetlistToRun {
   const notRun = whyNotRun(netlist);
   const { text, notes } = cutTitles(netlist.text);
   const done = (added: string[], copy: string): NetlistToRun => (notRun ? { text: copy, added, notes, notRun } : { text: copy, added, notes });
   const hasOp = netlist.analyses.some((i) => netlist.lines[i]?.directive?.name === '.op');
-  if (!hasOp || hasSaveCurrents(netlist)) return done([], text);
+  // With a + line right after .end, the line would change what ngspice reads: it runs without it (every
+  // voltage is the same, A2), as the student wrote it.
+  if (!hasOp || hasSaveCurrents(netlist) || (netlist.end !== undefined && joinsAcrossEnd(netlist, netlist.end))) return done([], text);
   const end = netlist.end === undefined ? undefined : netlist.lines[netlist.end];
   if (end) {
     // Where .end starts in the copy, after any title cut before it (every line keeps its place).

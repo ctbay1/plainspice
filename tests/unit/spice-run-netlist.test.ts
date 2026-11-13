@@ -62,6 +62,16 @@ describe('netlistToRun', () => {
   it('does not treat the title line as a command', () => {
     expect(toRun('.op\nV1 a 0 1\nR1 a 0 1\n.end\n').added).toEqual([]);
   });
+
+  it('adds no line when a + line after .end continues the line before .end: the added line would take that line’s place (limit-18)', () => {
+    // ngspice reads past .end, a comment to it: the + line continues B1 (native 47: v(c) = 7). With the line
+    // added before .end it would continue .options instead, and B1 end in "1+" (native 47: "YYparse error").
+    const text = '* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\nR3 c 0 1k\nB1 c 0 V=1+\n.end\n+ v(b)\n';
+    expect(toRun(text)).toEqual({ text, added: [], notes: [] });
+    expect(toRun('* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.end\n* note\n\n+ 2\n').added).toEqual([]);
+    // A line between .end and the + line is the one it continues: the line is added as before.
+    expect(toRun('* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.end\nR2 a 0 1k\n+ 2\n').added).toEqual([SAVE_CURRENTS_LINE]);
+  });
 });
 
 const w = (n: number, c = 'w'): string => c.repeat(n);
@@ -408,19 +418,40 @@ describe('the names print and write give a formula, and the words of meas (limit
   const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
   const control = (line: string): string => `* t\n${BODY.replace('.op', `.control\nop\n${line}\n.endc\n.op`)}`;
 
-  it('print and write name a formula’s result with its text without blanks: at most 250 bytes; each formula on its own', () => {
+  it('print, write, asciiplot, fft, psd and spec name a formula’s result with its words, one blank between each: at most 250 bytes; each formula on its own', () => {
     expect(reasonAt(control(`print v(b)${'+v(b)'.repeat(49)}`))).toBeUndefined();
     const sum = `v(b)${'+v(b)'.repeat(50)}`;
     expect(reasonAt(control(`print ${sum}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'print', sum, 254) });
     expect(reasonAt(control(`write out.raw ${sum}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'write', sum, 254) });
-    // Blanks do not count; formulas side by side are names of their own.
-    expect(reasonAt(control(`print ${Array.from({ length: 50 }, () => 'v(b)').join(' + ')}`))).toBeUndefined();
-    expect(reasonAt(control(`print ${Array.from({ length: 51 }, () => 'v(b)').join(' + ')}`))?.line).toBe(7);
+    // asciiplot (through vec_eq), fft, psd and spec copy that name too; their numbers are formulas of their own.
+    for (const [command, line] of [['asciiplot', `asciiplot ${sum}`], ['fft', `fft ${sum}`], ['psd', `psd 10 ${sum}`], ['spec', `spec 500 10000 500 ${sum}`]])
+      expect(reasonAt(control(line!)), command).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, command!, sum, 254) });
+    // The blanks between words count, one each (native 47 and 42: 73 terms joined by " + ", 508 bytes, print; 74 stop).
+    const spaced = (n: number): string => Array.from({ length: n }, () => 'v(b)').join(' + ');
+    expect(reasonAt(control(`print ${spaced(36)}`))).toBeUndefined();
+    expect(reasonAt(control(`print ${spaced(37)}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'print', spaced(37), 256) });
+    // Formulas side by side are names of their own, and so are words a comma separates.
     expect(reasonAt(control(`print${' v(b)'.repeat(150)}`))).toBeUndefined();
     expect(reasonAt(control(`print ${w(200)}, ${w(200)}, ${w(200)}`))).toBeUndefined();
     expect(reasonAt(control(`print v(b) gt 1${' v(a)'.repeat(100)}`))).toBeUndefined();
+    // ? and : join a formula, as ngspice's parser reads them.
+    const ternary = `v(b) ? ${spaced(18)} : ${spaced(18)}`;
+    expect(reasonAt(control(`print ${ternary}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'print', ternary, 256) });
     // let names the result itself; wrdata and plot copy no such name.
     for (const line of [`let q = ${sum}`, `wrdata out.txt ${sum}`, `plot ${sum}`]) expect(reasonAt(control(line)), line.slice(0, 6)).toBeUndefined();
+  });
+
+  it('measures a formula as ngspice names it: without the blanks inside brackets, with the quotes it adds, and cut to 99 bytes where it writes the name again', () => {
+    // A line with a v( or an i(: the blanks inside brackets are taken out, so v( w… w… ) is 249 bytes.
+    expect(reasonAt(control(`print v( ${w(123)} ${w(123)} )`))).toBeUndefined();
+    // …unless the netlist sets noquotesinoutput: then the blanks stay.
+    expect(reasonAt(control(`set noquotesinoutput\nprint v( ${w(123)} ${w(123)} )`))?.line).toBe(8);
+    // v(a,1p): ngspice writes v(a,"1p") (native 47 and 42: 51 such terms, 509 bytes, print; 52 stop), so 26 make 259.
+    const pairs = (n: number): string => Array.from({ length: n }, () => 'v(a,1p)').join('+');
+    expect(reasonAt(control(`print ${pairs(25)}`))).toBeUndefined();
+    expect(reasonAt(control(`print ${pairs(26)}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'print', pairs(26).replaceAll('1p', '"1p"'), 259) });
+    // v(1p): ngspice writes v("1p"), and a name with v(" in it again without its quotes, in 99 bytes: 120 terms print.
+    expect(reasonAt(control(`print ${Array.from({ length: 120 }, () => 'v(1p)').join('+')}`))).toBeUndefined();
   });
 
   it('meas: a word (a name=value as one) of at most 50 bytes, as ngspice writes it with its message into 100', () => {
@@ -548,6 +579,61 @@ describe('the checks of the run copy, on netlists made to be slow or deep', () =
     expect(netlistToRun(large).notRun).toEqual({ line: 7, reason: RUN_COPY_WORDS.nestedCircuit(7) });
   }, 30_000);
 
+  // Every check of the run copy runs on the main thread at every pause: none may grow with the square of the
+  // text. Each case: ten netlists of one size against one ten times as large, at most 2.5 times as long (as
+  // above). The round-2 critic's links froze the page: 1,500 parts and 30,000 empty .probe lines for 4 s on a
+  // computer and 16 s on a phone (each .probe line walked every part); a .model line of 20,000 version={x}
+  // (each version looked through every {…}); a chain p0=p1, p1=p2 … (one name a pass). Three more grew the
+  // same way: a .probe line's a( a( a( … without a ) and a long run of blanks in a .probe request or a meas line
+  // (regular expressions that tried every start), and a print line's i(i(i(… without a ).
+  const linear = (make: (n: number) => string, n: number): void => {
+    const small = parseNetlist(make(n));
+    const large = parseNetlist(make(10 * n));
+    netlistToRun(parseNetlist(make(Math.max(1, n / 10))));
+    const [tenSmall, oneLarge] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) netlistToRun(small);
+        },
+        () => netlistToRun(large),
+      ],
+      5,
+    );
+    expect(oneLarge).toBeLessThan(2.5 * tenSmall + 8);
+  };
+
+  it('checks many .probe lines against many parts in time proportional to the text: what alli keeps is worked out once', () => {
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\n${Array.from({ length: n }, (_, i) => `R${i + 2} b 0 1`).join('\n')}\n${'.probe\n'.repeat(20 * n)}.op\n.end\n`, 150);
+  }, 60_000);
+
+  it('reads the versions of a .model line in time proportional to the line', () => {
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.model mm nmos${' version={x}'.repeat(n)}\n.op\n.end\n`, 2000);
+  }, 60_000);
+
+  it('works out a chain of string parameters in time proportional to its length, and a chain of 12,000 runs', () => {
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n${Array.from({ length: n }, (_, i) => `.param p${i}=p${i + 1}`).join('\n')}\n.param p${n}="x"\n.op\n.end\n`, 400);
+    // 12,000 deep, defined from the end: no "a bug in PlainSpice" (the stack ran out on b060bc8's successor).
+    const lines = ['* t', 'V1 a 0 9', 'R1 a b 1k', 'R2 b 0 2k', '.param p12000="x"'];
+    for (let i = 11999; i >= 0; i--) lines.push(`.param p${i}=p${i + 1}`);
+    lines.push('R3 b {p0} 1k', '.op', '.end', '');
+    expect(() => netlistToRun(parseNetlist(lines.join('\n')))).not.toThrow();
+    expect(netlistToRun(parseNetlist(lines.join('\n'))).notRun).toBeUndefined();
+  }, 60_000);
+
+  it('reads a .probe line of a( a( a( … without a ) in time proportional to the line', () => {
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.probe${' a('.repeat(n)}\n.op\n.end\n`, 4000);
+  }, 60_000);
+
+  it('reads a run of blanks in a .probe request and in a meas line in time proportional to the line', () => {
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.probe i(${' '.repeat(n)})\n.op\n.end\n`, 20_000);
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.control\nmeas tran x max${' '.repeat(n)}x\n.endc\n.end\n`, 20_000);
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n*# meas tran x max '${' '.repeat(n)}x'\n.end\n`, 20_000);
+  }, 60_000);
+
+  it('reads a print line of i(i(i(… without a ) in time proportional to the line', () => {
+    linear((n) => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n*# print${' i('.repeat(n)}\n.end\n`, 4000);
+  }, 60_000);
+
   it('checks a + line after a title on its own: the title is cut, the + line is not part of it', () => {
     expect(whyNotRun(parseNetlist(`* t\n+ ${w(251)}\n${BODY}`))?.line).toBe(2);
     expect(whyNotRun(parseNetlist(`* t\n.title x\n+ ${w(251)}\n${BODY}`))?.line).toBe(3);
@@ -574,5 +660,143 @@ describe('the checks of the run copy, on netlists made to be slow or deep', () =
     for (let i = 0; i < 60; i++) sixty.push(`.subckt s${i} p q`, `X p q s${i + 1}`, '.ends');
     sixty.push('.subckt s60 p q', 'R9 p q 1', '.ends', 'X a 0 s0', '.op', '.end', '');
     expect(longestFullName(parseNetlist(sixty.join('\n')))).toMatchObject({ name: `r.${'x.'.repeat(61)}r9`, bytes: 126 });
+  });
+});
+
+describe('the lines ngspice runs as commands (limit-18)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  /** "op 1 1 …", `n` bytes once written as ".op 1 1 …". */
+  const op = (n: number): string => (n % 2 ? `op${' 1'.repeat((n - 3) / 2)}` : `op ${'1 '.repeat((n - 6) / 2)}11`);
+  const at = (line: string, after = ''): string => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n${line}\n.end\n${after}`;
+  const long = (line: number): { line: number; reason: string } => ({ line, reason: RUN_COPY_WORDS.longCommand(line, 'op', 501) });
+
+  it('runs a line that starts with *# as a command, outside a .control block too, from after the mark and its blanks', () => {
+    expect(reasonAt(at(`*# ${op(500)}`))).toBeUndefined();
+    expect(reasonAt(at(`*# ${op(501)}`))).toEqual(long(6));
+    expect(reasonAt(at(`*#${op(501)}`))).toEqual(long(6));
+    expect(reasonAt(at(`   *#   ${op(501)}`))).toEqual(long(6));
+    // In a .control block, and in an *ng_script file (from the line's third character), the same.
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.control\n*# ${op(501)}\n.endc\n.end\n`)).toEqual(long(6));
+    expect(reasonAt(`*ng_script\n*# ${op(501)}\n`)).toEqual(long(2));
+  });
+
+  it('runs ## and a # after any first character ngspice makes a *, as *# lines; without the # they are comments', () => {
+    for (const first of ['#', ';', '=', '[', ']', '?', '(', ')', '&', '%', '$', '"', '!', ':', ',', '\f']) {
+      expect(reasonAt(at(`${first}# ${op(501)}`)), JSON.stringify(first)).toEqual(long(6));
+      expect(reasonAt(at(`${first}${op(501)}`)), JSON.stringify(first)).toBeUndefined();
+    }
+    // In a .control block too: ;# is a command there, a line starting with ; a comment.
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.control\n;# ${op(501)}\n;${op(501)}\n.endc\n.end\n`)).toEqual(long(6));
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.control\n;${op(501)}\n.endc\n.end\n`)).toBeUndefined();
+  });
+
+  it('runs the commands a ; separates on a *# line (no comment is cut from a line that starts with *)', () => {
+    expect(reasonAt(at(`*# echo first ; ${op(501)}`))).toEqual(long(6));
+    expect(reasonAt(at(`*# echo first ; ${op(500)}`))).toBeUndefined();
+    // A ; inside brackets is part of a word.
+    expect(reasonAt(at(`*# echo (a;b) ${'1 '.repeat(250)}`))).toBeUndefined();
+  });
+
+  it('takes pre_ off a command, which ngspice runs before it reads the circuit', () => {
+    expect(reasonAt(at(`*# pre_${op(501)}`))).toEqual(long(6));
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.control\npre_circbyline * u\npre_circbyline V1 a 0 9\npre_circbyline .end\npre_${op(501)}\n.endc\n.end\n`)).toEqual(long(9));
+    // In an *ng_script file ngspice takes no pre_ off.
+    expect(reasonAt(`*ng_script\npre_${op(501)}\n`)).toBeUndefined();
+  });
+
+  it('runs a .control block and a *# line after .end, as ngspice reads on past it', () => {
+    expect(reasonAt(at('', `.control\n${op(501)}\n.endc\n`))).toEqual(long(9));
+    expect(reasonAt(at('', `*# ${op(501)}\n`))).toEqual(long(8));
+    expect(reasonAt(at('', `.control\n${op(500)}\n.endc\n`))).toBeUndefined();
+  });
+
+  it('joins a + line after .end, after a ;# line and in a .control block after .end to the line ngspice joins it to', () => {
+    // .end is a comment to ngspice: the + line after it continues the B source before it.
+    const formula = (plus: string): string => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\nR3 c 0 1k\nB1 c 0 V=1+\n.end\n+ ${plus}\n`;
+    expect(reasonAt(formula('v(b'))).toEqual({ line: 7, reason: RUN_COPY_WORDS.noClose(7, 'v(') });
+    expect(reasonAt(formula('v(b)'))).toBeUndefined();
+    expect(reasonAt(at(';# op', `+${op(501).slice(2)}\n`).replace('.end\n+', '+'))).toEqual(long(6));
+    expect(reasonAt(at('', `.control\nop\n+${op(501).slice(2)}\n.endc\n`))).toEqual(long(9));
+    // ngspice joins no + line to a *# line (it is a comment while it joins them).
+    expect(reasonAt(at('*# op', `+${op(501).slice(2)}\n`).replace('.end\n+', '+'))).toBeUndefined();
+  });
+
+  it('runs a line that starts with ; in an *ng_script file, as the ; is a word that ends no command', () => {
+    expect(reasonAt(`*ng_script\n;${op(501)}\n`)).toEqual(long(2));
+    expect(reasonAt(`*ng_script\n; ${op(501)}\n`)).toEqual(long(2));
+    // A second ; starts a comment.
+    expect(reasonAt(`*ng_script\n;;${op(501)}\n`)).toBeUndefined();
+    // .control, .endc and option lines are no commands there.
+    expect(reasonAt(`*ng_script\noption${op(501).slice(2)}\n`)).toBeUndefined();
+  });
+
+  it('checks a circuit built by circbyline commands on *# lines, and refuses one built inside a built circuit that way', () => {
+    const title = `* ${'ab '.repeat(200).trimEnd()}`;
+    const star = (lines: string[]): string => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n${lines.map((l) => `*# circbyline ${l}`).join('\n')}\n*# op\n.end\n`;
+    expect(reasonAt(star([title, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end']))).toEqual({ line: 6, reason: RUN_COPY_WORDS.circuitTitle(6, utf8Bytes(title)) });
+    expect(reasonAt(star(['* inner', 'V1 a 0 9', 'R1 a b 1k', 'B1 c 0 V=v(b', 'R3 c 0 1k', '.end']))).toEqual({ line: 9, reason: RUN_COPY_WORDS.noClose(9, 'v(') });
+    const nested = `* t\nV9 z 0 1\nR9 z 0 1\n.op\n.control\ncircbyline * mid\ncircbyline V8 y 0 1\ncircbyline *# circbyline * inner\ncircbyline *# circbyline .end\ncircbyline .end\nop\n.endc\n.end\n`;
+    expect(reasonAt(nested)).toEqual({ line: 8, reason: RUN_COPY_WORDS.nestedCircuit(8) });
+  });
+});
+
+describe('a command’s words as ngspice’s control reader makes them (limit-19)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  const star = (line: string): string => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n*# ${line}\n.end\n`;
+  const control = (line: string): string => `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.control\n${line}\n.endc\n.end\n`;
+
+  it('keeps the blanks inside quotes on a *# line and in an *ng_script file, but makes them one in a .control block', () => {
+    const quoted = `op '${' '.repeat(600)}'`;
+    expect(reasonAt(star(quoted))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 'op', 604) });
+    expect(reasonAt(`*ng_script\n${quoted}\n`)).toEqual({ line: 2, reason: RUN_COPY_WORDS.longCommand(2, 'op', 604) });
+    expect(reasonAt(star(`op "${' '.repeat(600)}"`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 'op', 606) });
+    expect(reasonAt(control(quoted))).toBeUndefined();
+    expect(reasonAt(control(`op\nprint 'v(b)${' '.repeat(600)}+v(b)'`))).toBeUndefined();
+    expect(reasonAt(star(`print 'v(b)${' '.repeat(600)}+v(b)'`))?.reason).toMatch(/^Line 6: print names .* 609 bytes\./);
+  });
+
+  it('drops a backslash and reads the next character as any other: \\" starts a quote', () => {
+    expect(reasonAt(star(`op \\"${' '.repeat(600)}"`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 'op', 606) });
+  });
+
+  it('refuses choices in braces, which ngspice makes into a word each, but not one choice, nor a circbyline line', () => {
+    const op = 'op x({aaaaaaaaaa,bbbbbbbbbb}{1,2}{1,2}{1,2}{1,2}{1,2})';
+    expect(reasonAt(control(op))).toEqual({ line: 7, reason: RUN_COPY_WORDS.braceChoices(7, 'x({aaaaaaaaaa,bbbbbbbbbb}{1,2}{1,2}{1,2}{1,2}{1,2})') });
+    expect(reasonAt(control('op\nprint ({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+ v(b)'))?.reason).toBe(RUN_COPY_WORDS.braceChoices(8, '({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+'));
+    expect(reasonAt(star('echo "{a,b}"'))?.line).toBe(6);
+    // A comma outside brackets ends a word, so {a,b} there is two words with a { and a } each: no choices.
+    expect(reasonAt(control('echo {a,b}'))).toBeUndefined();
+    expect(reasonAt(control('op\nprint {v(b)}'))).toBeUndefined();
+    expect(reasonAt(control('circbyline * u\ncircbyline V1 a 0 {9}\ncircbyline R1 a 0 ({1k,2k})\ncircbyline .end'))).toBeUndefined();
+    // ngspice keeps the braces only when the line's first word is circbyline: after a ; it expands them (native
+    // 47: the title is "* t(a) t(b)").
+    expect(reasonAt('*ng_script\n;circbyline * t({a,b})\ncircbyline .end\n')).toEqual({ line: 2, reason: RUN_COPY_WORDS.braceChoices(2, 't({a,b})') });
+    expect(reasonAt('*ng_script\ncircbyline * t({a,b})\ncircbyline .end\n')).toBeUndefined();
+  });
+
+  it('counts a ~ that starts a word as the engine’s home folder, /home/web_user (14 bytes)', () => {
+    // 1 + 2 + 33 × 15 = 498 bytes; 34 make 513.
+    expect(reasonAt(control(`op${' ~'.repeat(33)}`))).toBeUndefined();
+    expect(reasonAt(control(`op${' ~'.repeat(34)}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longCommand(7, 'op', 513) });
+    expect(reasonAt(control(`op${' ~/x'.repeat(30)}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longCommand(7, 'op', 513) });
+    // Not inside a word, nor quoted.
+    expect(reasonAt(control(`op${' x~'.repeat(100)}`))).toBeUndefined();
+  });
+});
+
+describe('a .title line of a circuit built with circbyline (limit-16)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  /** A title of `n` bytes made of short words. */
+  const words = (n: number): string => Array.from({ length: Math.floor((n + 1) / 3) }, () => 'ab').join(' ').padEnd(n, 'x');
+  const built = (title: string, keyword = '.title'): string =>
+    `* t\nV9 z 0 1\nR9 z 0 1\n.op\n.control\ncircbyline * short\ncircbyline ${keyword} ${title}\ncircbyline V1 a 0 9\ncircbyline R1 a 0 1k\ncircbyline .op\ncircbyline .end\nop\n.endc\n.end\n`;
+
+  it('measures it as the circuit’s title, its words after .title as ngspice joins them: at most 504 bytes', () => {
+    expect([utf8Bytes(words(504)), utf8Bytes(words(505))]).toEqual([504, 505]);
+    expect(reasonAt(built(words(504)))).toBeUndefined();
+    expect(reasonAt(built(words(505)))).toEqual({ line: 7, reason: RUN_COPY_WORDS.circuitDotTitle(7, 505) });
+    // ngspice joins the words with one blank: more blanks between them do not count.
+    expect(reasonAt(built(words(504).replaceAll(' ', '    ')))).toBeUndefined();
+    expect(reasonAt(built(words(505), '.TITLE'))?.line).toBe(7);
   });
 });
