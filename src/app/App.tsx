@@ -3703,6 +3703,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         // Why there is no plot, for the state it is in: no sweep line; numbers that are not answers; not run yet.
         if (!sweepNames.length) return <p className="muted">{t('plotNone')}</p>;
         if (current && record && record.status !== 'ok') return <p className="muted">{t('plotNotAnswers')}</p>;
+        // A netlist that did not run says why, as the ngspice output panel does (the round-2 critic's CR2-3).
+        const o = liveState.outcome;
+        if (o.kind === 'failed' && o.text === text) return <p>{t('statusFailedText', { reason: o.reason })}</p>;
         return <p className="muted">{[t('plotWaiting'), status.tone === 'paused' ? status.detail : undefined].filter(Boolean).join(' ')}</p>;
       }
       case 'output':

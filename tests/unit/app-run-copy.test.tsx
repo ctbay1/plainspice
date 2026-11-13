@@ -190,6 +190,19 @@ describe('a node card and the ngspice output panel say why there are no numbers,
     expect(output.textContent).not.toContain('Nothing yet');
   }, 30_000);
 
+  // 0104ec1: the Plot panel said only "The plot comes once ngspice has run this netlist.", a run that does not come
+  // until the netlist changes, while the status line, the cards and the output panel gave the reason.
+  it('a sweep PlainSpice does not run: the Plot panel says the simulation could not run and why, as the output panel does (the round-2 critic’s CR2-3)', async () => {
+    const netlist = '* t\nV1 in 0 PULSE(0 5 0 1n 1n 1u 2u)\nR1 in out 1k\nC1 out 0 1n\nB1 x 0 V=v(in\nR2 x 0 1k\n.tran 1u 10u\n.end\n';
+    render(<App startup={{ source: 'saved', netlist }} engine={realEngine()} serviceWorker={false} />);
+    const why = RUN_COPY_WORDS.noClose(5, 'v(');
+    await waitFor(() => expect(statusLine()).toContain(why), { timeout: 15000 });
+    fireEvent.click(within(panels()).getByRole('button', { name: /^Plot/ }));
+    const plot = await screen.findByRole('region', { name: 'Plot' });
+    expect(plot.textContent).toContain(`The simulation could not run: ${why}`);
+    expect(plot.textContent).not.toContain('The plot comes once');
+  }, 30_000);
+
   // The first fix and c520a49: after Run on a link opened without running, the status line, the node card and R1's
   // card kept "This link opens without running: press Run (Ctrl+Enter) to run it.", while the alert said why it did
   // not run. A change runs nothing while live runs are paused, so the failure of the text as it is now came from Run.
