@@ -607,7 +607,7 @@ function lexPart(text: string, from: number, to: number, head: string, before: r
       }
       netDone = true; // this word and the rest are read by the number reader
       // VALUE, even written right before such a character (VALUE<no-break space>{...}), as the parser reads it.
-      if (startsForm && /^value(?![a-z0-9_])/i.test(word) && (head === 'E' || head === 'G')) {
+      if (startsForm && (head === 'E' || head === 'G') && /^value/i.test(word) && (word.length === 5 || SPACE_LIKE.test(word[5]!) || INVISIBLE.test(word[5]!))) {
         push('word', i, i + 5);
         i += 5;
         words++;
