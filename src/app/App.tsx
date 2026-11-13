@@ -2155,14 +2155,19 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // moves the sheet's rows (the second re-check, AP-2). Its result is measured again only if it differs.
   const running = status.tone === 'busy' && status.main === t('statusSolving');
   // So are the rows the sheet keeps below its head (rowsKept): a run's own rows (Numbers' "ngspice is running
-  // the netlist…" above a short sheet's) are no new room for the lines either.
-  const [settled, setSettled] = useState({ key: statusKeyNow, rows: rowsKept });
+  // the netlist…" above a short sheet's) are no new room for the lines either. And so is its head: Checks'
+  // head, "before every run", says "1 found" while the run of the change that found it is under way; taken
+  // as a new room then, it lost the step the lines had (the hint came back, the lines out of sight came
+  // back too, 61 px, on an iPhone SE at 150 %, until the run ended: the critic of the second re-check's
+  // second fixes, whose window error "ResizeObserver loop" it was).
+  const [settled, setSettled] = useState({ key: statusKeyNow, rows: rowsKept, head: sheetHead });
   useLayoutEffect(() => {
-    if (!running && (settled.key !== statusKeyNow || Math.round(settled.rows) !== Math.round(rowsKept))) setSettled({ key: statusKeyNow, rows: rowsKept });
-  }, [running, statusKeyNow, rowsKept, settled]);
+    if (!running && (settled.key !== statusKeyNow || Math.round(settled.rows) !== Math.round(rowsKept) || settled.head !== sheetHead)) setSettled({ key: statusKeyNow, rows: rowsKept, head: sheetHead });
+  }, [running, statusKeyNow, rowsKept, sheetHead, settled]);
   const statusKey = running ? settled.key : statusKeyNow;
   const rowsKeptNow = running ? settled.rows : rowsKept;
-  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}|${Math.round(rowsKeptNow)}|${statusKey}` : undefined;
+  const sheetHeadNow = running ? settled.head : sheetHead;
+  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHeadNow}|${Math.round(rowsKeptNow)}|${statusKey}` : undefined;
   const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
   // Lines that need more room just after a finger was on the open sheet wait at the height they had, until
   // the sheet has been still for a double tap's time (SheetHold below); out of sight before, they stay so.
@@ -2175,7 +2180,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const hintAside = linesStep >= 1;
   const linesAside = linesStep === 2 || (!!waiting && waiting.height < LINE_WAIT_MIN_PX);
   /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows (all its rows, when it has less). */
-  const linesStepMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - rowsKeptNow)) : undefined;
+  const linesStepMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHeadNow - rowsKeptNow)) : undefined;
   const linesMax = waiting ? Math.min(linesStepMax ?? Number.POSITIVE_INFINITY, waiting.height) : linesStepMax;
   const linesBox = useRef<HTMLElement | null>(null);
   const linesBoxRef = useCallback(
