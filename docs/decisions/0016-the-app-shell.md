@@ -617,7 +617,8 @@ Ctrl+K stay as they are.
     a separate node, without a message"). Now these are errors with words of their own; the fix connects
     the formula to the node it was written for, and is left out where no such node has parts, as a rename
     alone would leave the run failing (space-character-32, nbsp-8, invisible-character-68,
-    look-alike-letter-19, non-ascii-node-26).
+    look-alike-letter-19, non-ascii-node-26). A part after a plain `.end` on such a name is on it for ngspice
+    (S25: b = 10 V there, no singular matrix), so the older words for a node the parts are on apply.
   - *Two spellings that differ only in capital letters* (CR2-3). `Çıkış` and `çıkış` on part lines are one
     node for ngspice (both `____k____`), as the student means, while the parser keys them apart (it
     lower-cases ASCII letters only). The checks gave the "one node for ngspice" error, whose fix split the
