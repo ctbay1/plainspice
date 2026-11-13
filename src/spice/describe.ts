@@ -1255,8 +1255,9 @@ function lostValues(netlist: Netlist, ex: Exact, view: View, op: NonNullable<Ana
  */
 function withExact(netlist: Netlist, ex: Exact, view: View, rule: RoundingNoise, off: readonly Answer[]): RoundingNoise {
   const { model } = ex;
-  const { zero, nodeZero, same } = exactly(ex, view);
-  const out: RoundingNoise = { ...noNoise('rule'), grounded: new Set(rule.grounded) };
+  const { zero, same } = exactly(ex, view);
+  // The rule writes no node voltage as 0 V, so only its currents and levels are looked at.
+  const out: RoundingNoise = noNoise('rule');
   if (ex.diodes) out.diodes = true;
   const partIndex = (key: string): number | undefined => ex.part.get(ngspiceSpelling(key));
   const nodeOf = (name: string): number => (name === '0' ? -1 : (ex.node.get(ngspiceSpelling(name)) ?? -2));
@@ -1269,12 +1270,6 @@ function withExact(netlist: Netlist, ex: Exact, view: View, rule: RoundingNoise,
       out.currents.set(key, others.every((j) => zero[j]) ? why : { kind: 'exact' });
     } else out.currents.set(key, why);
   }
-  for (const name of rule.nodes) {
-    const k = nodeOf(name);
-    if (k >= 0 && nodeZero(k)) out.nodes.add(name);
-    else out.grounded.delete(name);
-  }
-  for (const name of out.grounded) if (!out.nodes.has(name)) out.grounded.delete(name);
   // A level is kept for a group of nodes whose exact voltages are all equal (ground's: all 0).
   const groups = new Map<number, string[]>();
   for (const [name, level] of rule.levels) {
@@ -1291,7 +1286,7 @@ function withExact(netlist: Netlist, ex: Exact, view: View, rule: RoundingNoise,
   out.off = [];
   for (const a of off) {
     const name = a.kind === 'voltage' ? netlistNode(netlist, a.name) : netlistPart(netlist, a.name);
-    if (a.exact === 0 && (a.kind === 'voltage' ? out.nodes.has(name) : out.currents.has(name) || a.given === 0)) continue;
+    if (a.exact === 0 && a.kind === 'current' && out.currents.has(name)) continue;
     out.off.push({ ...a, name });
   }
   return out;
