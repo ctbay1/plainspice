@@ -837,6 +837,13 @@ test('a small phone with the largest text keeps the hand bar, the sheets, the st
     await bar.getByRole('button', { name: t('barParts') }).tap();
     const sheet = page.getByRole('dialog', { name: t('partsSheetTitle') });
     await settle(page);
+    // On its side the lines step aside for the sheet as it opens, before it is drawn, and the sheet takes
+    // the room they leave (it is held where it is only from then on): the paper above it is the least the
+    // stack leaves, 48 px (held at once, it kept 55 px, and its tall last rows could not clear the bar).
+    if (!upright) {
+      const above = await paperLeft(page);
+      expect(above.bottom - above.top, `${at}: the paper above the Parts sheet`).toBeLessThanOrEqual(49);
+    }
     await expectUsable(sheet.getByRole('button', { name: t('partsClose') }), `${at}: the Parts sheet's ×`);
     const resistor = sheet.getByRole('button', { name: /^Resistor/ });
     await expectUsable(resistor, `${at}: Resistor in the Parts sheet`);
