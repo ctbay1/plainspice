@@ -198,7 +198,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     `B1 c 0 V=1$+v(b` is a formula with a `v(` and no `)`. The lines of `circbyline` commands, which
     ngspice reads as a netlist, are checked as one, a circuit at each `.end`, once: its title (its first
     line, and a `.title` line's words) keeps to 504 bytes, and a `circbyline` command inside it is
-    refused, as ngspice crashes on it (limit-12, limit-16). The run fails with the reason, the line and
+    refused, as ngspice crashes on it (limit-12, limit-16); so is a netlist that sets `ngbehavior` and
+    builds a circuit, which ngspice then reads in another mode (with `ps` a `$` starts no comment). The run fails with the reason, the line and
     what to do: the status line says "ngspice could not run" and why, the Numbers panel and the live
     region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
     checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
