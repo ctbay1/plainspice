@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COORD_LIMIT,
   DRAWING_HEADER,
+  EDIT_STRINGS,
   MAX_DRAWING_LINES,
   MAX_WIRE_LENGTH,
   MAX_WIRE_POINTS,
@@ -30,7 +31,7 @@ import {
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { TURN_LIMITS, turnedQuarter } from '../../src/notebook/turn.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
-import { groundRowsAndWave } from './schematic-hostile.ts';
+import { groundRowsAndWave, namedGrid, starAtOnePoint } from './schematic-hostile.ts';
 
 const DIVIDER = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
 
@@ -514,6 +515,31 @@ describe('limits: a drawing written is read to its end (the critic of the second
       const drawn = units(after);
       expect(gridUnits(70).filter((u) => !drawn.has(u)), op.kind).toEqual([]);
     }
+  });
+
+  it('an edit whose drawing would need more than the format reads is refused, never written in part', { timeout: 60_000 }, () => {
+    // 1990 ground symbols along ground's wire, a line each: 1998 lines with the parts, wires and
+    // names. A part added (its line and its two nodes' names) makes 2001: the last would not be read.
+    const grounds = (n: number): string =>
+      `${[...HEAD, `*@ wire 0,5 0,8 ${n + 10},8 ${n + 10},5 7,5`, ...Array.from({ length: n }, (_, i) => `*@ ground ${i + 10} 8 0`), '.end'].join('\n')}\n`;
+    const add = { kind: 'add-part', letter: 'R', at: { x: -20, y: -20 } } as const;
+    const full = buildSchematic(grounds(1990), NOTEBOOK_OPTIONS);
+    const refused = applyEdit(full, add, NOTEBOOK_OPTIONS);
+    expect(refused.ok).toBe(false);
+    expect(refused.reason).toBe(EDIT_STRINGS.tooBig);
+    expect(refused.text).toBe(full.netlist.text);
+    // Two symbols fewer, it fits, and is read to its end.
+    const room = buildSchematic(grounds(1988), NOTEBOOK_OPTIONS);
+    const made = applyEdit(room, add, NOTEBOOK_OPTIONS);
+    expect(made.ok).toBe(true);
+    expect(buildSchematic(made.text, NOTEBOOK_OPTIONS).problems.map((p) => p.kind)).not.toContain('too-many-lines');
+    // Wire: 60 parts between node 1 and ground at one point, beside a 99 × 99 grid named 1. The
+    // repairs' wires make 20,077 grid units, more than a reading takes: a part moved wrote the 2000
+    // lines read, and the grid was gone.
+    const star = buildSchematic(starAtOnePoint(60, namedGrid(99, '1')), NOTEBOOK_OPTIONS);
+    const moved = applyEdit(star, { kind: 'move-part', part: 'r2', to: { x: star.drawing.parts.get('r2')!.at.x, y: star.drawing.parts.get('r2')!.at.y - 3 } }, NOTEBOOK_OPTIONS);
+    expect(moved.ok).toBe(false);
+    expect(moved.reason).toBe(EDIT_STRINGS.tooBig);
   });
 });
 
