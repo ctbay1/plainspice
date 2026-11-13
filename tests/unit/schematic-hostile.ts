@@ -1,7 +1,8 @@
 /**
  * Drawings at the format's limits that the schematic tests build (security:F1, and the second
  * re-check's P2 and P3): not a test file itself, shared by schematic-format.test.ts,
- * schematic-ground-search.test.ts, schematic-piles.test.ts and notebook-drawing-work.test.tsx.
+ * schematic-ground-search.test.ts, schematic-piles.test.ts, schematic-shapes-work.test.ts and
+ * notebook-drawing-work.test.tsx.
  */
 
 /**
@@ -48,6 +49,19 @@ export function partsAtOnePoint(n: number, extra: readonly string[] = []): strin
   out.push('.op', '*@ V1 0 0 0');
   for (let i = 2; i <= n; i++) out.push(`*@ R${i} 0 0 0`);
   return `${[...out, ...extra].join('\n')}\n`;
+}
+
+/**
+ * The same chain as partsAtOnePoint, its parts piled at `groups` points ten units apart along a row
+ * (R_i at x = 10 · (i mod groups)): the second re-check's critic found names written on crossings of two
+ * nodes' wires in 11 of these at three points (n = 2 … 60).
+ */
+export function partsInGroups(n: number, groups: number): string {
+  const out = ['*', 'V1 1 0 1'];
+  for (let i = 2; i <= n; i++) out.push(`R${i} ${i - 1} ${i} 1`);
+  out.push('.op', '*@ V1 0 0 0');
+  for (let i = 2; i <= n; i++) out.push(`*@ R${i} ${10 * (i % groups)} 0 0`);
+  return `${out.join('\n')}\n`;
 }
 
 /**

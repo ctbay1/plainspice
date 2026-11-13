@@ -16,7 +16,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { applyEdit, buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
-import { partsAtOnePoint, piled, slantedLattice } from './schematic-hostile.ts';
+import { partsAtOnePoint, partsInGroups, piled, slantedLattice } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0 }));
 
@@ -110,6 +110,28 @@ describe('parts piled on one point move from one scene (second re-check, P3)', (
     // place tried was 198,000 for this drawing.
     const sixty = counted(() => build(partsAtOnePoint(60)));
     expect(sixty.geometries).toBeLessThan(20_000);
+  });
+});
+
+describe('a name the repairs write never sits where another node’s wire crosses (the second re-check’s critic)', () => {
+  // The last repair writes the name of each node that has none at the first free point of its copper:
+  // an open end, a corner, the middle of a wire, a pin. The middle of a wire could be where a wire the
+  // repairs routed for another node crosses it, so the name was read as that node's: "A label says 3
+  // on wires of 2." for the 125-character link with V1 and R2 … R10 at one point (4 piles of 2 … 60
+  // parts; 11 of the same parts in three groups, 3 in six). The drawing must connect exactly what the
+  // netlist connects.
+  it('V1 and R2 … Rn at one point, and in three and in six groups, for n = 2 … 60', { timeout: 240_000 }, () => {
+    const wrong: string[] = [];
+    for (let n = 2; n <= 60; n++) {
+      for (const [what, text] of [
+        ['at one point', partsAtOnePoint(n)],
+        ['in three groups', partsInGroups(n, 3)],
+        ['in six groups', partsInGroups(n, 6)],
+      ] as const) {
+        for (const c of schematicConnectivity(build(text))) wrong.push(`${n} parts ${what}: ${c.message}`);
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 });
 

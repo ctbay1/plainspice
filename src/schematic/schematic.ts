@@ -940,7 +940,10 @@ function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]
 /**
  * Where to write a node's name: the first of its open wire ends (a terminal), wire corners and ends
  * (top left first), the middles of its wires and its pins where the name fits clear of everything
- * (scene.ts places it at the freest spot around the point); else the first of them.
+ * (scene.ts places it at the freest spot around the point); else the first of them. Never a point
+ * another node's wire runs through (`wires`: the scene's wires, indexed): a name there sits on a
+ * crossing of two nodes' wires, where it reads as the other node's (the middle of a wire a route of
+ * another node crosses, say; second re-check's critic: in 4 piles of V1 and R2 … Rn at one point).
  */
 function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], segs: readonly Segment[], islands: Islands, scene: Scene, wires: SegmentIndex, taken: readonly Box[], options: LayoutOptions): Point {
   const own = pins.filter((p) => p.node === node);
@@ -959,16 +962,18 @@ function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], s
   const open = points.filter((p) => counts.get(pointKey(p)) === 1 && !pinKeys.has(pointKey(p)));
   const sorted = (list: Point[]): Point[] => list.slice().sort((a, b) => a.y - b.y || a.x - b.x);
   const seen = new Set<string>();
-  const candidates = [...sorted(open), ...sorted(points.filter((p) => !pinKeys.has(pointKey(p)))), ...sorted(middles), ...sorted(points), ...own.map((p) => p.at)].filter((p) => {
+  const all = [...sorted(open), ...sorted(points.filter((p) => !pinKeys.has(pointKey(p)))), ...sorted(middles), ...sorted(points), ...own.map((p) => p.at)].filter((p) => {
     const k = pointKey(p);
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
+  const crossed = (p: Point): boolean => wires.at(p).some((t) => scene.wires[t.wire]?.node !== node);
+  const candidates = all.filter((p) => !crossed(p));
   const text = circuit.nodes.get(node)?.text ?? node;
   const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box), ...taken];
   for (const at of candidates.slice(0, 40)) if (labelFits(boxes, wires, text, at, options)) return at;
-  return candidates[0] ?? pt(0, 0);
+  return candidates[0] ?? all[0] ?? pt(0, 0);
 }
 
 /** True when a node's name fits at one of its spots around a point, clear of the boxes and the wires (indexed: the scene's). */
