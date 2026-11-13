@@ -121,6 +121,6 @@ describe('after the final reviews (12 November 2026)', () => {
     const sol = await solve(withDrawingBlock('* t\nV1 ş 0 12\nR1 ş ç 1k\nR2 ç 0 2k\n.op\n.end\n'), engine);
     expect(sol.status).toBe('check');
     expect(answers(sol)).toBeUndefined();
-    expect(sol.checks.map((c) => [c.id, c.severity, c.title])).toEqual([['non-ascii-node', 'error', 'ş and ç are one node for ngspice']]);
+    expect(sol.checks.map((c) => [c.id, c.severity, c.title])).toEqual([['non-ascii-node', 'error', 'Node ş and node ç are one node for ngspice']]);
   });
 });

@@ -584,7 +584,7 @@ describe.each(FACTS)('$code', (fact) => {
 
 it('non-ascii-node-6: the fix keeps gñd off ground: gnd3 is 2.5 V, as g__d was (code-3)', () => {
   const [f] = fixed.get('non-ascii-node-6')!;
-  expect(f!.label).toBe('non-ascii-node: Rename g\u00f1d to gnd3');
+  expect(f!.label).toBe('non-ascii-node: Rename node g\u00f1d to gnd3');
   expect(vector(f!.run, 'v(gnd3)')).toEqual([2.5]);
   expect(vector(f!.run, 'i(@r2[i])')).toEqual([0.0025]);
 });
@@ -599,7 +599,7 @@ it('non-ascii-node-3, -4, -14: the rename writes the plain name on the .print li
 
 it('non-ascii-node-5: the fix gives aµ a plain name of its own, and R1 then carries current: a divider (words-recheck-8)', () => {
   const [f] = fixed.get('non-ascii-node-5')!;
-  expect(f!.label).toBe('non-ascii-node: Rename a\u00b5 to au2');
+  expect(f!.label).toBe('non-ascii-node: Rename node a\u00b5 to au2');
   expect(vector(f!.run, 'v(au2)')).toEqual([12]);
   expect(vector(f!.run, 'v(au)')).toEqual([8]);
   expect(vector(f!.run, 'i(@r1[i])')).toEqual([0.004]);
