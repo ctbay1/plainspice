@@ -603,6 +603,6 @@ page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
   R1 from node in"), where the skeptic of the problem would have kept them bare as words to write
   ("Rename n12 to n2"): the name after "to" is the text written, the one before it a node. So decision
   0016's examples of these checks now read "Node ÇIKIŞ has no DC path to ground", "Did you mean node
-  ÇIKIŞ?" and "Rename node ÇIKIŞS to ÇIKIŞ". The editor's refusal to reverse a part whose line ends with gnd quotes the Checks
-  panel's button, so it follows it: 'Rename node "gnd" first: the Checks panel says why and offers
-  “Rename node "gnd" to 0”.' (`src/schematic/edit.ts`, decision 0013's W10).
+  ÇIKIŞ?" and "Rename node ÇIKIŞS to ÇIKIŞ". The editor's refusal to reverse a part whose line ends
+  with gnd quotes the Checks panel's button, so it follows it: 'Rename node "gnd" first: the Checks
+  panel says why and offers “Rename node "gnd" to 0”.' (`src/schematic/edit.ts`, decision 0013's W10).
