@@ -2846,7 +2846,9 @@ ngspice 47, ngspice -b (exit 1):
     -b -r prints only "Note: v1: has no value, DC 0 assumed"; two steps out (.subckt top holding
     X3 p q mid, .subckt mid holding X2 p q inner); with inner used by X2 in outer and by X3 in a
     second subcircuit other, neither used; with X1 a b outer inside inner (a loop, the main circuit
-    using neither); and with .subckt inner … .ends written inside outer
+    using neither); with .subckt inner … .ends written inside outer; and with an .op in a subcircuit s
+    no X line uses beside a .tf v(out) V1 in inner (the words: "The analysis lines are inside
+    subcircuits that the main circuit does not use, directly or through other subcircuits")
   with X1 out 0 outer in the main circuit and .tf v(out) V1 in place of the .op, ngspice -b (exit 0):
     transfer_function = 3.333333e-01
     output_impedance_at_v(out) = 3.333333e+02
@@ -2856,7 +2858,8 @@ ngspice 42: the same exit codes, notes and rawfile values, with 'Note: No ".plot
   ".fourier" lines; no simulations run' for the -b ending
 our engine (wasm), as ngspice -b -r: no results for each skipped one, with only the note about V1 for
   the .ac; with X1: the same vectors, bit for bit (golden rows an-skip-through, -through-ac,
-  -through-two, -through-several, -through-loop, -through-nested and an-tf-subckt-through-used)
+  -through-two, -through-several, -through-loop, -through-nested, -through-mixed and
+  an-tf-subckt-through-used)
 ```
 
 ngspice counts the lines it reads that start with `.subckt` and with `.ends` (all but the title line,

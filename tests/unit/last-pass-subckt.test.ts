@@ -349,6 +349,11 @@ describe('critic1-4: a subcircuit that only an unused subcircuit\'s X line uses 
     expect(await title(two)).toBe('.op is inside the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit mid, which only X3 uses, and X3 is inside the subcircuit top, which no X line uses');
     expect(await title(several)).toBe('.op is inside the subcircuit inner, which the main circuit does not use, directly or through other subcircuits');
     expect(await title(loop)).toBe('.op is inside the subcircuit inner, which only X2 uses, and X2 is inside the subcircuit outer, which the main circuit does not use, directly or through other subcircuits');
+    // An .op in s, which no X line uses, beside a .tf in inner, which only X2 in outer uses (native: nothing runs, nothing said).
+    const mixed = `${BASE}.subckt s a b\nR9 a b 1k\n.op\n.ends\n.subckt outer p q\nX2 p q inner\n.ends\n.subckt inner c d\nR8 c d 1k\n.tf v(out) V1\n.ends\n.end\n`;
+    const m = (await solve(mixed, await engine)).words.warnings[0];
+    expect([m?.title, m?.why, m?.line]).toEqual(['The analysis lines are inside subcircuits that the main circuit does not use, directly or through other subcircuits', THROUGH, 7]);
+    expect(describeCircuit(parseNetlist(mixed))).toContain('Its analysis lines are inside subcircuits that the main circuit does not use, directly or through other subcircuits, where ngspice skips them');
     expect(explainNetlist(parseNetlist(several))[12]!.notes).toEqual([
       'ngspice skips this line: it is inside the subcircuit inner (from line 11), which the main circuit does not use, directly or through other subcircuits. Put analysis lines in the main circuit, outside .subckt … .ends.',
     ]);
