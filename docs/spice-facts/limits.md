@@ -531,6 +531,18 @@ limit, `X` names of 100 bytes and a node of 48 (250 bytes), native 47 and 42 and
 xa…a.xb…b.n…n = 3.000000e+00
 ```
 
+ngspice reads a built circuit in the compatibility mode the variable `ngbehavior` holds when it reads it
+(`set_compat_mode()`, `src/frontend/inpcompat.c`), so a `set ngbehavior=ps` command or a `.options
+ngbehavior=ps` line before it changes how the circuit's lines are read; with `ps` a `$` starts no comment
+(`inp_stripcomments_line()`). With `*# set ngbehavior=ps` and then `*# circbyline` lines of the divider
+and `B1 c 0 V=1 $ + v(b`, native 47 and 42 crash, `-b -r` and `-b` (exit 139), the sanitized build:
+`heap-buffer-overflow … READ of size 1 … in inp_modify_exp … in inp_bsource_compat`, and our engine
+crashes (`RuntimeError: memory access out of bounds`); the same with `.options ngbehavior=ps` (native 47
+`-b -r`: "stack smashing detected", exit 134; the other runs exit 139). With `*# echo no mode` in place of the `set`, the `$` starts a comment and all
+of them run (exit 0). PlainSpice does not run a netlist that sets `ngbehavior` and builds a circuit with
+`circbyline`: "this line sets ngbehavior. ngspice then reads the circuit that circbyline builds another way
+… Take out ngbehavior."
+
 ## limit-13: ngspice takes the blanks out of brackets, so words written apart become one name
 
 **Claim.** In three places ngspice takes the blanks out of brackets before it reads the names in them

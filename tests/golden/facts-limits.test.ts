@@ -262,6 +262,17 @@ describe('limit-12: ngspice reads the lines of circbyline commands as a netlist,
     expect(runCopy(nested(18, 250))).toBeUndefined();
   });
 
+  it('set ngbehavior=ps before it: ngspice reads a $ in the built circuit as no comment, our engine crashes (native 47 and 42 too); PlainSpice does not run it', async () => {
+    const lines = ['* inner', 'V1 a 0 9', 'R1 a b 1k', 'R2 b 0 2k', 'B1 c 0 V=1 $ + v(b', 'R3 c 0 1k', '.end'].map((l) => `*# circbyline ${l}`).join('\n');
+    const text = (mode: string): string => `* t\nV9 z 0 1\nR9 z 0 1\n.op\n${mode}\n${lines}\n*# op\n.end\n`;
+    expect(crashed(await engine.run(text('*# set ngbehavior=ps')))).toBe(true);
+    expect(runCopy(text('*# set ngbehavior=ps'))).toBeUndefined();
+    // Without it, the $ starts a comment there: B1 is V=1, and the circuit runs.
+    const run = await engine.run(text('*# echo no mode'));
+    expect(crashed(run)).toBe(false);
+    expect(run.exitCode).toBe(0);
+  });
+
   it('at PlainSpice’s limit, a node of 250 bytes, the circuit runs and prints what native 47 and 42 print', async () => {
     const copy = runCopy(nested(48, 100));
     expect(copy).toBeDefined();

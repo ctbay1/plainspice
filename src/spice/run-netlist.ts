@@ -100,6 +100,8 @@ const S = {
     `Line ${line}: this circbyline line is the title of the circuit it builds, ${bytes} bytes. ngspice copies a title into a space of 513 bytes when it writes its results file, so PlainSpice gives it at most ${TITLE_BYTES} bytes. Shorten it.`,
   circuitDotTitle: (line: number, bytes: number): string =>
     `Line ${line}: this circbyline line gives the circuit it builds a title of ${bytes} bytes, its words after .title. ngspice copies a title into a space of 513 bytes when it writes its results file, so PlainSpice gives it at most ${TITLE_BYTES} bytes. Shorten it.`,
+  circuitMode: (line: number): string =>
+    `Line ${line}: this line sets ngbehavior. ngspice then reads the circuit that circbyline builds another way (with ps, a $ starts no comment), which PlainSpice does not check, so it did not run the netlist. Take out ngbehavior.`,
   nestedCircuit: (line: number): string =>
     `Line ${line}: the circuit built with circbyline has a circbyline command of its own. ngspice cannot build a circuit while it is reading one it built (it crashes), so PlainSpice did not run it. Build the circuits one after the other.`,
   failed: 'PlainSpice could not prepare this netlist for ngspice (a bug in PlainSpice), so it did not run it.',
@@ -1315,6 +1317,8 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
     return undefined;
   };
 
+  /** The first line that sets ngbehavior, which changes how ngspice reads a circuit built after it (limit-12). */
+  let modeLine: number | undefined;
   for (const card of cards) {
     const { line, code } = card;
     // limit-18: the text ngspice runs as a command, if it runs this line as one.
@@ -1329,6 +1333,7 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
     }
     const number = lineOf(line.number);
     const d = line.directive?.name;
+    if (modeLine === undefined && /ngbehavior/i.test(code)) modeLine = number;
     // limit-3 to limit-7: every name, as ngspice ends it in a formula or a list (the comment cut first, which
     // ngspice never reads).
     const long = code.split(NAME_END).find((w) => utf8Bytes(w) > WORD_BYTES);
@@ -1477,6 +1482,9 @@ export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (
     }
   }
   if (current.length) circuits.push(current);
+  // limit-12: set before it, ngbehavior makes ngspice read a built circuit in another mode, which the checks
+  // below do not follow (with ps, a $ starts no comment).
+  if (circuits.length && modeLine !== undefined) note(modeLine, S.circuitMode(modeLine));
   for (const lines of circuits) {
     const title = utf8Bytes(lines[0]!.text.trim());
     if (title > TITLE_BYTES) {

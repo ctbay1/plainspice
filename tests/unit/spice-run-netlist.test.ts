@@ -518,6 +518,18 @@ describe('circuits built with circbyline (limit-12, limit-16)', () => {
     expect(reasonAt(`*ng_script\n${cb(['* one', 'V1 a 0 9', '.end', '* two', 'V1 a 0 9', 'B1 c 0 V=v(a', 'R3 c 0 1k', '.end'])}\nop\n`)).toEqual({ line: 7, reason: RUN_COPY_WORDS.noClose(7, 'v(') });
   });
 
+  it('refuses a netlist that sets ngbehavior and builds a circuit: ngspice reads that circuit in another mode', () => {
+    const built = (mode: string): string =>
+      `* t\nV9 z 0 1\nR9 z 0 1\n.op\n${mode}\n${cb(['* inner', 'V1 a 0 9', 'R1 a b 1k', 'B1 c 0 V=1 $ + v(b', 'R3 c 0 1k', '.end']).replaceAll('circbyline', '*# circbyline')}\n*# op\n.end\n`;
+    expect(reasonAt(built('*# set ngbehavior=ps'))).toEqual({ line: 5, reason: RUN_COPY_WORDS.circuitMode(5) });
+    expect(reasonAt(built('.options ngbehavior=ps'))).toEqual({ line: 5, reason: RUN_COPY_WORDS.circuitMode(5) });
+    // Without it the $ starts a comment, as ngspice reads the built circuit; nor does a comment set it.
+    expect(reasonAt(built('*# echo no mode'))).toBeUndefined();
+    expect(reasonAt(built('* ngbehavior=ps'))).toBeUndefined();
+    // Without a built circuit, ngspice reads nothing in that mode.
+    expect(reasonAt('* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.control\nset ngbehavior=ps\nop\n.endc\n.end\n')).toBeUndefined();
+  });
+
   it('refuses a circbyline command inside a circuit built with circbyline: ngspice crashes on it', () => {
     const scriptInside = `*ng_script\n${cb(['*ng_script', 'circbyline * inner', 'circbyline V1 a 0 1', 'circbyline R1 a 0 2', 'circbyline .end', 'op', '.end'])}\necho done\n`;
     expect(reasonAt(scriptInside)).toEqual({ line: 3, reason: RUN_COPY_WORDS.nestedCircuit(3) });
