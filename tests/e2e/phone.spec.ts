@@ -1249,6 +1249,86 @@ test('the Numbers and Plot sheets keep their rows where they are through each ru
   expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), '320 × 568, Plot open: window errors').toEqual([]);
 });
 
+test('a sheet scrolled to its end keeps no empty room below its last row after a run: Numbers through two runs (AP-2)', async ({ page }) => {
+  // The critic of the second re-check's second fixes: the room kept below a sheet's rows (so that rows below
+  // the ones in view may go without moving them) was measured from its rows' own boxes, which miss a margin
+  // that ends a row inside its box (Numbers' last table, 12 px): with Numbers scrolled to its end, each run
+  // kept 12 px of empty paper below its last row (an iPhone SE: what it scrolls, 415 → 427).
+  const rows = '.card-body > * > *, .card-body tr, .card-body button, .card-body li';
+  for (const view of [
+    { width: 320, height: 568 },
+    { width: 863, height: 360 },
+  ] as const) {
+    const at = `${view.width} × ${view.height}`;
+    await page.setViewportSize(view);
+    await openApp(page);
+    await expectSolved(page);
+    await openPanel(page, 'numbers');
+    await settle(page);
+    const range = (): Promise<number> => page.evaluate(() => {
+      const body = document.querySelector('.phone-bottom > .sheet > .card-body')!;
+      return body.scrollHeight - body.clientHeight;
+    });
+    await page.evaluate(() => {
+      const body = document.querySelector('.phone-bottom > .sheet > .card-body')!;
+      body.scrollTop = body.scrollHeight;
+    });
+    await settle(page);
+    const before = await range();
+    expect(before, `${at}: Numbers scrolls`).toBeGreaterThan(40);
+    await logSheetRows(page, rows);
+    for (const step of ['Ctrl+Enter', 'Ctrl+Enter again']) await stepAndRun(page, step, () => page.keyboard.press('Control+Enter'));
+    expect(await rowsThatMoved(page), `${at}, Numbers at its end: the rows that moved`).toEqual([]);
+    await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
+    expect(await range(), `${at}, Numbers at its end: what it scrolls after the runs`).toBe(before);
+    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}: window errors`).toEqual([]);
+    expect(await page.evaluate(() => {
+      const body = document.querySelector('.phone-bottom > .sheet > .card-body')!;
+      return body.scrollHeight - body.clientHeight - body.scrollTop;
+    }), `${at}: still at its end`).toBeLessThanOrEqual(1);
+  }
+});
+
+test('a part deleted with Numbers scrolled to its end moves none of its rows: room is kept where its row was until it comes back (AP-2)', async ({ page }) => {
+  // Example 1 (V1, R1, R2 and I1) on an iPhone SE, Numbers scrolled to its end, I1 deleted with the keys: the
+  // Currents table loses I1's row, below the rows in view. Without room kept below them, the scroll the
+  // browser cuts back took V1's, R1's and R2's rows 71 px down; kept, they stay, and the room goes as I1's
+  // row comes back with the undo.
+  const rows = '.card-body > * > *, .card-body tr, .card-body button, .card-body li';
+  await page.setViewportSize({ width: 320, height: 568 });
+  await openApp(page);
+  await expectSolved(page);
+  await chooseExample(page, WIDE);
+  await expectSolved(page);
+  await openPanel(page, 'numbers');
+  await settle(page);
+  const range = (): Promise<number> => page.evaluate(() => {
+    const body = document.querySelector('.phone-bottom > .sheet > .card-body')!;
+    return body.scrollHeight - body.clientHeight;
+  });
+  await page.evaluate(() => {
+    const body = document.querySelector('.phone-bottom > .sheet > .card-body')!;
+    body.scrollTop = body.scrollHeight;
+  });
+  await settle(page);
+  const before = await range();
+  await logSheetRows(page, rows);
+  await stepAndRun(page, 'I1 deleted', async () => {
+    await partOnDrawing(page, 'I1').focus();
+    await page.keyboard.press('Delete');
+  });
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'ok');
+  await expect(page.locator('.phone-bottom > .sheet tr', { hasText: /^I1/ })).toHaveCount(0);
+  await stepAndRun(page, 'the deletion undone', () => page.keyboard.press('Control+z'));
+  await expect(page.locator('.phone-bottom > .sheet tr', { hasText: /^I1/ })).not.toHaveCount(0);
+  expect(await rowsThatMoved(page), '320 × 568, Numbers at its end: the rows that moved').toEqual([]);
+  await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
+  // The row back, the room kept for it has gone: what Numbers scrolls is what it was.
+  expect(await range(), 'what Numbers scrolls once I1 is back').toBeLessThanOrEqual(before + 1);
+  expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), 'window errors').toEqual([]);
+  await page.evaluate(() => localStorage.removeItem('plainspice:netlist'));
+});
+
 test('a second tap meant for the row just under More’s head presses it: a status that needs more room waits until the sheet is still (AP-2)', async ({ page }) => {
   // The critic of the second re-check's fixes: when the first tap made the status line taller (an undo that
   // clears the error brings the status line back above the sheet; a redo brings the error back), the sheet
