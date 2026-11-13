@@ -269,19 +269,20 @@ describe('where the parts are drawn', () => {
     expect(keepDrawing(drawn, withValue(spot, spotValue(spot)))).toBe(text);
   });
 
-  it('the drawing shown is written for a value only where ten parts or more move: nine at one point keep their lines', () => {
-    // Building nine parts at one point again for each key costs a few milliseconds (decision 0012).
-    for (const [n, written] of [
-      [10, false],
-      [11, true],
+  it('the drawing shown is written for a value only where ten parts or more move, or any on a thousand pieces of wire: nine at one point keep their lines', { timeout: 60_000 }, () => {
+    // Building nine parts at one point again for each key costs a few milliseconds; one part moved
+    // beside a 99 × 99 grid, two to four times what the drawing written costs (decision 0012).
+    for (const [name, text, moved, written] of [
+      ['10 parts at one point', partsAtOnePoint(10), 9, false],
+      ['11 parts at one point', partsAtOnePoint(11), 10, true],
+      ['2 parts between node 1 and ground at one point, a 99 × 99 grid named 1 far away', starAtOnePoint(2, namedGrid(99, '1')), 1, true],
     ] as const) {
-      const text = partsAtOnePoint(n);
       const drawn = drawnOf(text);
-      expect(drawn.problems.filter((p) => p.kind === 'moved-part').length).toBe(n - 1);
+      expect(drawn.problems.filter((p) => p.kind === 'moved-part').length, name).toBe(moved);
       const next = withValue(valueSpot(text, 'r2')!, '3');
       const kept = keepDrawing(drawn, next);
-      expect(kept !== next, `${n} parts`).toBe(written);
-      expect(picture(drawnOf(kept))).toEqual(picture(drawn));
+      expect(kept !== next, name).toBe(written);
+      expect(picture(drawnOf(kept)), name).toEqual(picture(drawn));
     }
   });
 });

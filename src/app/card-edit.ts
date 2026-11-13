@@ -15,9 +15,9 @@
  * Where each part is drawn goes into the netlist (the *@ lines, decision 0013) only when the new
  * value would move it (`keepDrawing`: a 0 V ammeter that becomes a source, a longer gain), so the
  * drawing never changes under the student's eyes, and a netlist whose drawing did not move keeps its
- * text exactly as written; or when the lines put ten parts or more on other nodes' pins (crafted
- * lines), which every build of them moves again, and the drawing shown, written as lines, reads back
- * as it is (decisions 0012 and 0016). Plain TypeScript.
+ * text exactly as written; or when crafted lines put parts on other nodes' pins (ten parts or more,
+ * or any on a thousand pieces of wire), which every build of them moves again, and the drawing shown,
+ * written as lines, reads back as it is (decisions 0012 and 0016). Plain TypeScript.
  */
 import { NOTEBOOK_OPTIONS } from '../notebook/schematic.ts';
 import { applyChanges, buildSchematic, drawingBlockChanges, linesFit, serializeDrawing, type PartLetter, type Schematic } from '../schematic/index.ts';
@@ -216,15 +216,18 @@ const builtOf = (text: string): Schematic => remember(recent.find((s) => s.netli
 const sameLines = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((l, i) => l === b[i]);
 
 /**
- * How many parts a build must move for a value typed to write the drawing it shows. Only crafted
- * lines move that many: a student's own drawing has a part moved when a node renamed in the text
- * leaves two parts meeting pin to pin on different nodes, one or two at a time. With fewer, building
- * the lines again for each key costs a few milliseconds more than building the drawing written
- * (nine parts at one point: 18 ms against 2), so a value changes only the value, as decision 0016
- * says (the critic of the second re-check's fixes, D6: a value typed on a student's divider wrote
- * the repaired drawing over the lines).
+ * What a build must move for a value typed to write the drawing it shows: ten parts or more, or any
+ * part on a drawing of a thousand pieces of wire or more. Only crafted lines do either: a student's
+ * own drawing has a part moved when a node renamed in the text leaves two parts meeting pin to pin on
+ * different nodes, one or two at a time, and no drawing a student makes comes near a thousand pieces
+ * (the largest example has 21; TURN_LIMITS, src/notebook/turn.ts). Below both, building the lines
+ * again for each key costs a few milliseconds more than building the drawing written (nine parts at
+ * one point: 18 ms against 2); on heavy wire, two to four times as much even for one part moved (one
+ * part beside a 99 × 99 grid: 0.46 s against 0.19). So elsewhere a value changes only the value, as
+ * decision 0016 says (the critic of the second re-check's fixes, D6: a value typed on a student's
+ * divider wrote the repaired drawing over the lines).
  */
-const PILED = 10;
+const PILED = { parts: 10, wirePieces: 1000 } as const;
 
 /**
  * For each schematic a card opened on whose build moves parts: the drawing lines that read back as
@@ -237,25 +240,26 @@ const shownLines = new WeakMap<Schematic, string[] | null>();
  * `next` as it should be written: unchanged when its parts are drawn where they were in `drawn`
  * (the drawing of the text the card opened on), or with `drawn`'s drawing written in (the *@ lines)
  * when the new value would move them (and those lines fit what a reading takes), or when the build
- * moves PILED parts or more (lines that put parts' pins on other nodes' pins). Every build of such
- * lines moves the parts again, whatever the value (where a part's pins are does not depend on it): a
- * crafted link with 60 parts at one point took a fifth of a second for each key on a computer, and a
- * second on a phone. So each value typed then writes the drawing shown (the parts where they are
- * drawn, and the wires, names and ground symbols the repairs drew) without building the piled lines
- * again (second re-check's critic), but only when those lines read back as that drawing: checked
- * once for each text a card opens on, by building the first value's text, which the page then draws.
- * Otherwise (D5 of its critic: the first value made most of a joined grid vanish, and wrote 4,900
- * lines) each value changes only the value and is built as the general case is. Lines of parts and
- * nodes the netlist does not have yet are kept as written (decision 0013: only a change made in the
- * drawing drops them). The value as the card opened (Put back) gives the text it opened on, exactly
- * (D6).
+ * moves parts as only crafted lines do (PILED: lines that put parts' pins on other nodes' pins).
+ * Every build of such lines moves the parts again, whatever the value (where a part's pins are does
+ * not depend on it): a crafted link with 60 parts at one point took a fifth of a second for each key
+ * on a computer, and a second on a phone. So each value typed then writes the drawing shown (the
+ * parts where they are drawn, and the wires, names and ground symbols the repairs drew) without
+ * building the piled lines again (second re-check's critic), but only when those lines read back as
+ * that drawing: checked once for each text a card opens on, by building the first value's text,
+ * which the page then draws. Otherwise (D5 of its critic: the first value made most of a joined grid
+ * vanish, and wrote 4,900 lines) each value changes only the value and is built as the general case
+ * is. Lines of parts and nodes the netlist does not have yet are kept as written (decision 0013:
+ * only a change made in the drawing drops them). The value as the card opened (Put back) gives the
+ * text it opened on, exactly (D6).
  */
 export function keepDrawing(drawn: Schematic, next: string): string {
   // The text the card opened on stays among the last built while the card types: an undo goes back to it.
   remember(drawn);
   if (next === drawn.netlist.text || drawn.foreign.length) return next;
   const lines = (): string[] => serializeDrawing(drawn.circuit, drawn.drawing, [...drawn.kept, ...drawn.orphans]);
-  if (new Set(drawn.problems.filter((p) => p.kind === 'moved-part').map((p) => p.message)).size >= PILED) {
+  const moved = new Set(drawn.problems.filter((p) => p.kind === 'moved-part').map((p) => p.message)).size;
+  if (moved >= PILED.parts || (moved > 0 && drawn.drawing.wires.length >= PILED.wirePieces)) {
     const known = shownLines.get(drawn);
     if (known) return applyChanges(next, drawingBlockChanges(parseNetlist(next), known));
     if (known === undefined) {
