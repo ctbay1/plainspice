@@ -762,8 +762,9 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                   -1
     No. of Data Rows : 156
   rawfile: time: 156 points from 0 to 0.013000000000000001, largest step 0.0001, v(a) at time 0, 0.001, 0.002, 0.005, 0.006, 0.007, 0.011, 0.012 s: 1, 1, 3, 3, 2, 1, 1, 3
-ngspice 42: the same output, exit code and summary as ngspice 47; 7 of its 156 time points differ slightly
-  (the first: 0.000928 s where 47 has 0.000914 s), with v(a) on the same pulse at each
+ngspice 42: the same output, exit code and summary as ngspice 47; 7 of its 156 time points differ slightly:
+  each is the last point before a corner of the pulse or the end (0.000928 s where 47 has 0.000914 s,
+  before the corner at 1 ms), with v(a) on the same pulse at each
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -1772,8 +1773,9 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                    0
     No. of Data Rows : 73
   rawfile: time: 73 points from 0 to 0.005, largest step 0.0001
-ngspice 42: the same output, exit code and summary as ngspice 47; 60 of its 73 time points differ, and the
-  values with them; its last point is the same to 7 significant figures (v(out) = 4.966430 V)
+ngspice 42: the same output, exit code and summary as ngspice 47; its last point before the corner at 1 µs is
+  at 8.693e-7 s, where 47's is at 7.196e-7 s, and from there its time points part from 47's (60 of the 73
+  differ), and the values with them; its last point is the same to 7 significant figures (v(out) = 4.966430 V)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -1810,8 +1812,9 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                    0
     No. of Data Rows : 2517
   rawfile: time: 2517 points from 0 to 0.005, largest step 0.000002
-ngspice 42: the same output, exit code and summary as ngspice 47; 2504 of its 2517 time points differ, and the
-  values with them; its last point is the same to 9 significant figures (v(out) = 4.96629347 V)
+ngspice 42: the same output, exit code and summary as ngspice 47; its last point before the corner at 1 µs is
+  at 8.693e-7 s, where 47's is at 7.196e-7 s, and from there its time points part from 47's (2504 of the 2517
+  differ), and the values with them; its last point is the same to 9 significant figures (v(out) = 4.96629347 V)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
