@@ -217,13 +217,24 @@ export async function setNetlistWithDrawing(page: Page, text: string): Promise<v
  */
 export const TYPING = { delay: 40 };
 
-/** Replace the whole netlist by typing it key by key (Enter for each line break). */
+/**
+ * Replace the whole netlist by typing it key by key (Enter for each line break). Each Enter waits for
+ * its line break before the next line is typed: CodeMirror on Android holds Enter until the next frame
+ * and drops it when a key typed before that frame has changed the text, and on a busy machine a frame
+ * can take longer than TYPING's 40 ms (13 Nov 2026, at load 20: "R2 n2 0 1meg.op", the line break lost).
+ */
 export async function typeNetlist(page: Page, text: string): Promise<void> {
   const editor = await openNetlist(page);
   await editor.click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('Delete');
-  await page.keyboard.type(text, TYPING);
+  const lines = text.split('\n');
+  for (const [i, line] of lines.entries()) {
+    if (line) await page.keyboard.type(line, TYPING);
+    if (i === lines.length - 1) break;
+    await page.keyboard.press('Enter');
+    await expect.poll(async () => (await netlistText(page)).split('\n').length).toBeGreaterThanOrEqual(i + 2);
+  }
   await expect.poll(() => netlistText(page)).toBe(text);
 }
 
