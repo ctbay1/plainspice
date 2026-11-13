@@ -429,7 +429,7 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     expect(current(words, 'R5')).toBe('53.56 µA from node b to node m through R5');
     expect(noise(words)).toEqual([]);
     expect(note(words)).toBeUndefined();
-    expect(off(words)).toEqual({ title: 'Some of ngspice\'s answers here are off', severity: 'warning', why: 'Solved exactly, with fractions, from the netlist\'s values, node a is at 4.5 V, where ngspice gives 4.321 V; node m is at 4.5 V, where ngspice gives 4.321 V; V1 carries 1.407 mA, where ngspice gives 1.452 mA; and node b is at 4.5 V, where ngspice gives 4.374 V. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice\'s numbers as it gives them, so they may not agree with each other.' });
+    expect(off(words)).toEqual({ title: 'Some of ngspice\'s answers here are off', severity: 'warning', why: 'Solved exactly, with fractions, from the netlist\'s values, R5 carries no current, where ngspice gives 53.56 µA; R1 carries 450 µA, where ngspice gives 467.9 µA; node a is at 4.5 V, where ngspice gives 4.321 V; node m is at 4.5 V, where ngspice gives 4.321 V; and 5 more. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice\'s numbers as it gives them, so they may not agree with each other.' });
     // A bridge with a 1 nΩ wire read by a G of 1000: G1's 13.84 mA, ngspice's, not 0 A next to it.
     const g = await solved(lines('V1 top1 0 15', 'R1 top1 s2 1u', 'R2 s2 0 1meg', 'R3 s2 a3 2.7meg', 'R4 a3 0 3.9k', 'R5 s2 b4 2.7meg', 'R6 b4 0 3.9k', 'R7 a3 m5 1n', 'R8 m5 b4 1meg', 'G1 0 g6 a3 b4 1e3', 'R9 g6 0 1.2k'));
     expect([g.by, current(g.words, 'G1'), node(g.words, 'g6'), noise(g.words)]).toEqual(['rule', '13.84 mA from ground to node g6 through G1', '16.61 V', []]);
@@ -440,11 +440,19 @@ describe('after the critic of the re-check\'s fixes: what the exact solution may
     // C9s.2 with R4 and R6 at 1.8k: a3 and b4 at 10 mV, where ngspice is 1.75 µV apart.
     const g = await solved(lines('V1 top1 0 15', 'R1 top1 s2 1u', 'R2 s2 0 1meg', 'R3 s2 a3 2.7meg', 'R4 a3 0 1.8k', 'R5 s2 b4 2.7meg', 'R6 b4 0 1.8k', 'R7 a3 m5 1n', 'R8 m5 b4 1meg', 'G1 0 g6 a3 b4 1e3', 'R9 g6 0 1.2k'));
     expect([g.by, node(g.words, 'g6'), current(g.words, 'G1'), current(g.words, 'R9'), noise(g.words), note(g.words)]).toEqual(['rule', '2.097 V', '1.747 mA from ground to node g6 through G1', '1.747 mA from node g6 to ground through R9', [], undefined]);
-    expect(sp(off(g.words)!.why)).toContain('node g6 is at 0 V, where ngspice gives 2.097 V; node a3 is at 9.993 mV, where ngspice gives 9.995 mV; and node m5 is at 9.993 mV, where ngspice gives 9.995 mV.');
+    expect(sp(off(g.words)!.why)).toContain('node g6 is at 0 V, where ngspice gives 2.097 V; G1 carries no current, where ngspice gives 1.747 mA; R9 carries no current, where ngspice gives 1.747 mA; R8 carries no current, where ngspice gives 1.747 pA; and 3 more.');
     // A 1000:1 divider into the C9 bridge with a 10 pΩ wire, read by an E of 1000: out is ngspice's −82.78 mV.
     const e = await solved(lines('V1 top 0 12', 'Rd1 top s 999k', 'Rd2 s 0 1k', 'R1 s a 10k', 'R2 a 0 10k', 'R3 s b 4.7k', 'R4 b 0 4.7k', 'Rw a m 10p', 'R5 m b 1k', 'E1 out 0 a b 1000', 'Rl out 0 10k'));
     expect([e.by, node(e.words, 'a'), node(e.words, 'out'), current(e.words, 'E1'), current(e.words, 'Rl'), noise(e.words)]).toEqual(['rule', '4.882 mV', '−82.78 mV', '8.278 µA from node out to ground through E1', '8.278 µA from ground to node out through Rl', []]);
-    expect(sp(off(e.words)!.why)).toContain('node out is at 0 V, where ngspice gives −82.78 mV; E1 carries no current, where ngspice gives 8.278 µA; node a is at 5.189 mV, where ngspice gives 4.882 mV; node m is at 5.189 mV, where ngspice gives 4.882 mV; and 2 more.');
+    expect(sp(off(e.words)!.why)).toContain('node out is at 0 V, where ngspice gives −82.78 mV; E1 carries no current, where ngspice gives 8.278 µA; Rl carries no current, where ngspice gives 8.278 µA; Rw carries no current, where ngspice gives 86.74 nA; and 10 more.');
+  });
+
+  it('where ngspice\'s answers are off, every number is ngspice\'s and the warning names the resistors\' currents that are off too: the unbalanced bridge with a 1e-12 Ω wire shows ngspice\'s Rw 0 A in series with R5\'s 53.56 µA, and the warning says both carry 46.46 µA, R5 the other way (the critic of round 2)', async () => {
+    // C9s with R2 12k: ngspice gives a = m = 4.321 V and Rw exactly 0 A; the circuit makes a = m = 4.656 V and 46.46 µA from m to b.
+    const { words, by } = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 12k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'Rw a m 1e-12', 'R5 m b 1k'));
+    expect([by, current(words, 'Rw'), current(words, 'R5'), node(words, 'a')]).toEqual(['rule', 'no current through Rw', '53.56 µA from node b to node m through R5', '4.321 V']);
+    expect(words.currents.filter((c) => c.given !== undefined || c.noise !== undefined)).toEqual([]);
+    expect(off(words)!.why).toBe('Solved exactly, with fractions, from the netlist\'s values, R5 carries 46.46 µA, where ngspice gives 53.56 µA the other way; Rw carries 46.46 µA, where ngspice gives 0 A; R1 carries 434.4 µA, where ngspice gives 467.9 µA; node a is at 4.656 V, where ngspice gives 4.321 V; and 6 more. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice\'s numbers as it gives them, so they may not agree with each other.');
   });
 
   it('a real current ngspice gives as exactly 0 is the exact one, with ngspice\'s 0 in `given` and a note: a 1 nΩ wire in series with 10 MΩ carries 454.1 pA, as the 10 MΩ does', async () => {
@@ -547,7 +555,7 @@ describe('after the critic of the re-check\'s fixes: where ngspice\'s answers ar
     expect([current(words, 'V1'), current(words, 'R1'), current(words, 'R2')]).toEqual(['no current through V1', 'no current through R1', '1 aA from node s2 to ground through R2']);
     expect(lost(words)).toEqual([]);
     expect(words.warnings.find((m) => m.code === 'rounded-to-0')).toBeUndefined();
-    expect(sp(off(words)!.why)).toContain('values, V1 carries 1 aA, where ngspice gives 0 A. ngspice computes');
+    expect(sp(off(words)!.why)).toContain('values, V1 carries 1 aA, where ngspice gives 0 A; and R1 carries 1 aA, where ngspice gives 0 A. ngspice computes');
   });
 
   it('V1 of 1 µV through 1 mΩ and 10 TΩ: ngspice gives V1 217 zA where the circuit makes 100 zA; the rule alone would call V1 and R1 noise (R1\'s ends are one double), the exact solution keeps them as ngspice gives them', async () => {

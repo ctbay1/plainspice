@@ -1198,9 +1198,12 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
   if (!agrees(ex.model, ng, view.level, budget)) return { check: 'other' };
   const list = answers(ex.model, view.x, ng, view.level);
   if (!list) return { check: 'other' };
-  // Imprecise when an answer whose exact value is not 0 is off; the note then also names the exact 0s ngspice gives beyond rounding.
-  const off = list.filter((a) => a.gap > ANSWER_GAP);
-  return { check: list.some((a) => a.exact !== 0 && a.gap > ANSWER_GAP) ? 'imprecise' : 'same', view, off };
+  // Imprecise when an answer whose exact value is not 0 is off. The note then names every value that is off:
+  // the answers, the exact 0s ngspice gives beyond rounding, and the currents of the R, G and F (a wire ngspice
+  // gives as 0 A where a current flows, in series with a resistor it gives that current the other way).
+  if (!list.some((a) => a.exact !== 0 && a.gap > ANSWER_GAP)) return { check: 'same', view, off: [] };
+  const all = answers(ex.model, view.x, ng, view.level, true) ?? list;
+  return { check: 'imprecise', view, off: all.filter((a) => a.gap > ANSWER_GAP) };
 }
 
 /**
@@ -2521,16 +2524,19 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
 /**
  * The note for a circuit PlainSpice solves exactly whose answers ngspice gave farther from the exact ones
  * than the page's digits (opCheck 'imprecise'; the critic of round 2 of the re-check's fixes): the page
- * shows ngspice's numbers, and this says they are off, with the exact values of the answers farthest
- * off (at most NOTE_LIST of them when there are more than NOTE_LIST + 1): first the exact 0s ngspice
- * gives as numbers (node g6 at 0 V, where ngspice gives 2.097 V), the largest first, then the others by
- * how far they are from the exact value, as a share of it.
+ * shows ngspice's numbers, and this says they are off, with the exact values of those farthest off (at
+ * most NOTE_LIST of them when there are more than NOTE_LIST + 1): first the exact 0s ngspice gives as
+ * numbers (node g6 at 0 V, where ngspice gives 2.097 V), node voltages before currents and the largest
+ * first, then the others by how far they are from the exact value, as a share of it (a current ngspice
+ * gives the other way, then one it gives as 0 A where a current flows). Node voltages, the currents of the
+ * V, E, H and L, and those of the R, G and F that ngspice reports are named.
  */
 function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | undefined {
   const off = noiseOf(netlist, results).off;
   if (!off?.length) return undefined;
   const share = (a: Answer): number => (a.exact === 0 ? Number.POSITIVE_INFINITY : Math.abs(a.given - a.exact) / Math.abs(a.exact));
-  const list = [...off].sort((x, y) => share(y) - share(x) || Math.abs(y.given) - Math.abs(x.given));
+  // The exact 0s first, node voltages before currents (volts and amps are not compared), then by how far off.
+  const list = [...off].sort((x, y) => share(y) - share(x) || (x.exact === 0 && x.kind !== y.kind ? (x.kind === 'voltage' ? -1 : 1) : 0) || Math.abs(y.given) - Math.abs(x.given));
   const items = list.map((a) => {
     if (a.kind === 'voltage') return S.offVoltage(bare(a.name), formatSI(a.exact, 'V'), formatSI(a.given, 'V'));
     const name = partsOf(netlist).byKey.get(a.name)?.element?.name.text ?? a.name;

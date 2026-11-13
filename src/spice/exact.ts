@@ -1353,12 +1353,14 @@ export interface Answer {
  * ngspice's answers beside the exact unknowns `x` of one solution: every node voltage and every V, E, H
  * and L current. The current of an R, F or G is not among them: ngspice works it out from these answers
  * (a resistor's from the voltages at its ends, which can cancel to a few digits), and `agrees` holds it
- * to that product. Undefined when ngspice gave no value for one of them. Worked out in doubles from the
+ * to that product. With `devices`, for the note that names the answers that are off, the current of each
+ * R, G and F that ngspice reports follows them (a wire ngspice gives as 0 A where 46.46 µA flows).
+ * Undefined when ngspice gave no value for one of the answers. Worked out in doubles from the
  * exact values (each rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
  * The largest value of each kind, which ANSWER_FLOOR is a share of, counts every part's current, so
  * that a 0 V ammeter beside milliamps is weighed against the milliamps.
  */
-export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value): Answer[] | undefined {
+export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value, devices = false): Answer[] | undefined {
   const exactV = model.nodes.map((_, k) => (isZero(x[k]!) ? 0 : toDouble(x[k]!)));
   const branches = model.parts.filter((p) => p.branch >= 0);
   const exactI = branches.map((p) => (isZero(x[p.branch]!) ? 0 : toDouble(x[p.branch]!)));
@@ -1380,6 +1382,15 @@ export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceVa
   };
   for (let k = 0; k < model.nodes.length; k++) if (!one('voltage', model.nodes[k]!, exactV[k]!, ng.voltage(model.nodes[k]!), largestV)) return undefined;
   for (let k = 0; k < branches.length; k++) if (!one('current', branches[k]!.key, exactI[k]!, ng.branch(branches[k]!.key), largestI)) return undefined;
+  if (devices) {
+    // For the note only, never for the decision: each R, G and F whose current ngspice reports, exact from the
+    // unknowns over one denominator (a resistor's ends can be nearly the same voltage).
+    const whole = overCommon(x);
+    model.parts.forEach((p, k) => {
+      if (p.kind !== 'R' && p.kind !== 'G' && p.kind !== 'F') return;
+      one('current', p.key, currentDouble(model, whole.num, whole.den, k), ng.device(p.key), largestI);
+    });
+  }
   return out;
 }
 
