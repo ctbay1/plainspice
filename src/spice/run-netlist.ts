@@ -255,10 +255,7 @@ function cardsOf(netlist: Netlist): Card[] {
   const out: Card[] = [];
   // Every line of an *ng_script file is a command, as in a .control block (from .control to the line before .endc).
   const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));
-  const end = netlist.end;
   let control = false;
-  /** The last line a + line joins as ngspice joins them (inp_stitch_continuation_lines): not blank, no comment, no + line, not .title or .end. */
-  let last: Card | undefined;
   for (const line of netlist.lines) {
     const read = asRead(line.text);
     // Line 1 is the title, whatever it says.
@@ -266,10 +263,8 @@ function cardsOf(netlist: Netlist): Card[] {
     if (/^\.endc/i.test(read)) control = false;
     // ngspice cuts no comment from line 1, the title.
     const code = line.index === 0 ? line.text : withoutComment(read, control || script);
-    // After .end the parser joins no + line, but ngspice reads on and joins them as before it (limit-18).
-    const after = end !== undefined && line.index > end && read.startsWith('+');
     // A + line is checked on its own after a title line, whose words are cut, not checked.
-    const head = after ? last : line.kind === 'continuation' && line.continues !== undefined ? cards.get(line.continues) : undefined;
+    const head = line.kind === 'continuation' && line.continues !== undefined ? cards.get(line.continues) : undefined;
     if (head && !isTitleLine(head.line.text, head.line.index)) {
       head.text += ` ${line.text.replace(/^\s*\+/, '')}`;
       head.code += ` ${code.replace(/^\+/, '')}`;
@@ -278,7 +273,6 @@ function cardsOf(netlist: Netlist): Card[] {
     const card = { line, text: line.text, code, control };
     cards.set(line.index, card);
     out.push(card);
-    if (line.index > 0 && !/^[#$*+]/.test(read) && code.trim() !== '' && !DOT_TITLE.test(read) && !isEndLine(read)) last = card;
   }
   return out;
 }
