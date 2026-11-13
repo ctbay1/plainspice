@@ -3471,6 +3471,9 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const realNode = new Set<string>();
   const nodeQueue: string[] = [];
   const markRealNode = (node: string): void => {
+    // Every node of one double is marked in one call, so a node already marked has nothing to add: without this, 7,600
+    // dividers from one source walked the 7,600 nodes at its double once per proven resistor (1.2 s; the critic of round 2).
+    if (realNode.has(node)) return;
     const v = volts.get(node);
     for (const m of v === undefined ? [node] : (byValue.get(v) ?? [node])) {
       if (realNode.has(m)) continue;
