@@ -306,9 +306,10 @@ const Highlights = memo(function Highlights({ scene: sc, shifts, selected, relat
       })}
       {sc.nodeLabels.map((l, i) => {
         const cls = highlightClass({ kind: 'node', name: l.node });
+        if (!cls) return null;
         // A highlighter stroke under the name only: its value stays plain to read.
         const b = l.lines.find((x) => x.role === 'node')?.box ?? l.box;
-        return cls ? <rect key={`l${i}`} className={`nb-hl nb-hl--name ${cls}`} x={u(b.x0 - 0.1 + shifts[i]!)} y={u(b.y0 + 0.08)} width={u(b.x1 - b.x0 + 0.2)} height={u(b.y1 - b.y0 - 0.12)} rx={u(0.2)} /> : null;
+        return <rect key={`l${i}`} className={`nb-hl nb-hl--name ${cls}`} x={u(b.x0 - 0.1 + shifts[i]!)} y={u(b.y0 + 0.08)} width={u(b.x1 - b.x0 + 0.2)} height={u(b.y1 - b.y0 - 0.12)} rx={u(0.2)} />;
       })}
       {sc.grounds.map((g) => {
         const cls = highlightClass({ kind: 'node', name: GROUND });

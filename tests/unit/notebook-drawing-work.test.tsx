@@ -54,14 +54,29 @@ const colours: ReadonlyMap<string, string> = new Map([
   ['in', IN],
 ]);
 
-/** The schematic with its wires, dots and hops counted as they are read. */
-function counting(s: Schematic): { s: Schematic; wires: { count: number }; dots: { count: number }; hops: { count: number }; parts: { count: number } } {
+/**
+ * The schematic with its wires, dots and hops counted as they are read, and the words: each part's
+ * lines of words (its name and value) and the lines of each node's name.
+ */
+function counting(s: Schematic): { s: Schematic; wires: { count: number }; dots: { count: number }; hops: { count: number }; parts: { count: number }; partWords: { count: number }; names: { count: number } } {
   const wires = { count: 0 };
   const dots = { count: 0 };
   const hops = { count: 0 };
   const parts = { count: 0 };
-  const scene = { ...s.scene, wires: watched(s.scene.wires, wires), junctions: watched(s.scene.junctions, dots), crossings: watched(s.scene.crossings, hops), parts: watched(s.scene.parts, parts) };
-  return { s: { ...s, scene }, wires, dots, hops, parts };
+  const partWords = { count: 0 };
+  const names = { count: 0 };
+  const scene = {
+    ...s.scene,
+    wires: watched(s.scene.wires, wires),
+    junctions: watched(s.scene.junctions, dots),
+    crossings: watched(s.scene.crossings, hops),
+    parts: watched(
+      s.scene.parts.map((p) => ({ ...p, labels: watched(p.labels, partWords) })),
+      parts,
+    ),
+    nodeLabels: s.scene.nodeLabels.map((l) => ({ ...l, lines: watched(l.lines, names) })),
+  };
+  return { s: { ...s, scene }, wires, dots, hops, parts, partWords, names };
 }
 
 const props = (s: Schematic, hovered?: NavItem, selected?: NavItem): Parameters<typeof Drawing>[0] => ({
@@ -168,6 +183,7 @@ describe('the drawing finds each dot’s and hop’s colour at its point (second
 describe('a hover, a selection or the focus draws only what changes (P2)', () => {
   it('on the lattice, hovering R1 and then selecting it reads no dot, no hop and no part’s words again', { timeout: 60_000 }, () => {
     const c = counting(lattice);
+    const outNames = lattice.scene.nodeLabels.filter((l) => l.node === 'out').length;
     const { container, rerender } = render(
       <svg>
         <Drawing {...props(c.s)} />
@@ -178,6 +194,8 @@ describe('a hover, a selection or the focus draws only what changes (P2)', () =>
       c.dots.count = 0;
       c.hops.count = 0;
       c.wires.count = 0;
+      c.partWords.count = 0;
+      c.names.count = 0;
       act(() =>
         rerender(
           <svg>
@@ -191,6 +209,10 @@ describe('a hover, a selection or the focus draws only what changes (P2)', () =>
       expect(c.hops.count).toBe(0);
       // The highlights look at each wire once, for the one hovered or selected.
       expect(c.wires.count).toBeLessThanOrEqual(lattice.scene.wires.length);
+      // No part's words are drawn again, and of the nodes' names only the selected node's, for its
+      // highlighter (the second re-check's critic: the words' layer drawn again went unseen).
+      expect(c.partWords.count).toBe(0);
+      expect(c.names.count).toBeLessThanOrEqual(next.selected?.kind === 'node' ? 2 * outNames : 0);
     }
   });
 });
