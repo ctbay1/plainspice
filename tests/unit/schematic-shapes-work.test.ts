@@ -13,7 +13,7 @@ import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { SegmentIndex } from '../../src/schematic/connectivity.ts';
 import { MAX_DRAWING_LINES, applyEdit, buildSchematic, schematicConnectivity, type EditOp, type Schematic } from '../../src/schematic/index.ts';
-import { block, groundRowsAndWave, latticeAround, latticeAbove, longSlantedFar, namedGrid, namedStubs, ownNodesAtPoint, partsAtOnePoint, piled, slantedLattice, slantedOverParts, starAtOnePoint } from './schematic-hostile.ts';
+import { block, groundRowsAndWave, latticeAround, latticeAbove, latticeThrough, longSlantedFar, namedGrid, namedStubs, ownNodesAtPoint, partsAtOnePoint, piled, slantedLattice, slantedOverParts, starAtOnePoint } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ checks: 0 }));
 
@@ -251,5 +251,24 @@ describe('crafted shapes at the format’s limits: work bounded for each thing d
       grounds: x.scene.grounds.map((g) => [g.at, g.rot]),
     });
     expect(picture(shown)).toEqual(picture(s));
+  });
+
+  it('60 parts at one point, a slanted lattice of 70 × 70 points through their pins: opens, and takes a value typed, with at most a fixed amount of work for each thing it draws', { timeout: 240_000 }, () => {
+    // The critic of these fixes (D5): reading the drawing the repairs drew, they draw it again,
+    // differently, so the drawing shown is not written and each value builds the pile again: one
+    // opening's work a key. (Slanted wire is never cut, so the lattice joins the nodes whose pins it runs
+    // through, as decision 0013 says: the shapes above all draw what the netlist connects.)
+    const text = partsAtOnePoint(60, latticeThrough(70));
+    const opened = counted(() => buildSchematic(text, NOTEBOOK_OPTIONS));
+    const s = opened.result;
+    const n = size(text, s);
+    expect(opened.work).toBeLessThan(4000 * n);
+    const spot = valueSpot(text, 'r2')!;
+    for (const value of ['3', '32']) {
+      const next = withValue(spot, value);
+      const key = counted(() => schematicOf(parseNetlist(keepDrawing(s, next))));
+      expect(key.result.netlist.text).toBe(next);
+      expect(key.work).toBeLessThan(2 * opened.work + 100 * n + 50_000);
+    }
   });
 });
