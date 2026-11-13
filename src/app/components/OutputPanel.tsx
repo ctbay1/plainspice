@@ -1,6 +1,7 @@
 /**
  * The ngspice output panel: exactly what ngspice printed, the command it was run like, the line
- * PlainSpice added, and what else PlainSpice did to the copy ngspice ran (a title cut).
+ * PlainSpice added, and what else PlainSpice did to the copy ngspice ran (a title cut, the line it did
+ * not add and why); or why there is nothing to show, when the netlist as it is now could not run.
  */
 import type { ReactNode } from 'react';
 import type { RunResult } from '../../engine/types.ts';
