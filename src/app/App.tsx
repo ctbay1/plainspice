@@ -397,14 +397,15 @@ const rowsOf = (body: HTMLElement): number => {
   return sum;
 };
 
-/** How tall what a sheet's body holds is, its padding included and the room kept below its rows not. */
-function naturalOf(body: HTMLElement): number {
-  const style = getComputedStyle(body);
-  const start = body.getBoundingClientRect().top + body.clientTop - body.scrollTop;
-  let end = start + Number.parseFloat(style.paddingTop);
-  for (const el of body.children) if (!besideFlow(el)) end = Math.max(end, el.getBoundingClientRect().bottom + Number.parseFloat(getComputedStyle(el).marginBottom));
-  return end - start + Number.parseFloat(style.paddingBottom);
-}
+/**
+ * How tall what a held sheet's body holds is, its padding included and the room kept below its rows not:
+ * what it scrolls, less that room (the body's last box, app.css), so a margin that ends a row inside its
+ * box (Numbers' last table, 12 px) counts as the browser counts it (the boxes' own margins missed it, and
+ * 12 px of empty room was kept below Numbers' rows after each run at its end: the critic of the second
+ * re-check's second fixes).
+ */
+const naturalOf = (held: SheetHold): number => held.body.scrollHeight - held.kept;
+
 
 /**
  * The rows in view at the top of a sheet's body, with where each begins in what scrolls: the boxes in view
@@ -484,7 +485,7 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
   // The student's own scroll moves its rows: the rows in view are noted again, and room kept below them that
   // the scroll no longer needs goes (never more is kept for a scroll).
   const onScroll = (): void => {
-    if (held.kept) keepRoom(held, Math.min(held.kept, body.scrollTop + body.clientHeight - naturalOf(body)));
+    if (held.kept) keepRoom(held, Math.min(held.kept, body.scrollTop + body.clientHeight - naturalOf(held)));
     noteRows(held);
   };
   const onTouch = (): void => {
@@ -566,7 +567,7 @@ function keepRows(held: SheetHold): void {
     const top = bodyTopOf(held);
     const moved = row.el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - row.at;
     want = Math.max(0, from + top - held.top + moved);
-    const kept = Math.max(0, want + body.clientHeight - naturalOf(body));
+    const kept = Math.max(0, want + body.clientHeight - naturalOf(held));
     if (Math.abs(kept - held.kept) <= 0.5) break;
     keepRoom(held, kept);
   }
