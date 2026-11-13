@@ -12,9 +12,9 @@
  *   E and G with four nodes and a plain gain; F and H that read a V, E or H (P10, P10b) with a plain
  *   gain; and a diode, as a part whose current is left free (at most MAX_DIODES). Anything else leaves
  *   the decision to describe.ts's rule for other circuits: a transistor, a switch, a subcircuit, a B
- *   source, POLY, VALUE or TABLE, a source with a transient function, a part with settings (m=, tc1=,
- *   ...), .param and expressions, .options and .temp lines, a .control block, a value below ngspice's
- *   smallest resistance, too many unknowns or parts.
+ *   source, POLY, VALUE or TABLE, a source with a transient function and no DC value, a part with settings
+ *   other than m=1, .param and expressions, .options and .temp lines that change the circuit, a .control
+ *   block that does more than run, a value below ngspice's smallest resistance, too many unknowns or parts.
  * - `solveExact` solves the circuit's nodal equations with fractions, for several right-hand sides at
  *   once (the operating point, a unit current through each diode, a swept source at 1, a .tf input at
  *   1), within a counted amount of work (MAX_WORK).
@@ -422,6 +422,9 @@ export interface NetlistInput {
 export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], afterEnd: readonly { text: string }[] = []): ExactModel | NotExact {
   if (parts.length > MAX_PARTS) return 'size';
   for (const line of netlist.lines) {
+    // A .control block that only runs the netlist's analyses again leaves its results file as it is: one set of plots,
+    // the same doubles (C9x.7, native 47 and 42); any other control line can change what ngspice reports.
+    if (line.kind === 'control' && /^\s*(\.control|run|\.endc)\s*$/i.test(line.text)) continue;
     if (line.kind === 'control' || line.kind === 'invalid') return 'directive';
     const d = line.directive;
     if (!d) continue;

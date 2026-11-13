@@ -10,6 +10,8 @@ import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
+import { exactModel } from '../../src/spice/exact.ts';
+import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
 
@@ -182,5 +184,29 @@ describe('by the rule, a node proven real proves the current of a resistor from 
     const r = await solveText(netlist('.param x=1', 'V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 node3 1.5k', 'R6 node3 0 12', 'Rw node3 p 1u', 'Vm p node4 0', 'Rvm node4 0 1t', 'R9 node3 nodeq 1e20', '.op'), ngspice);
     expect([by(r), node(r.words, 'node4'), sp(current(r.words, 'Rvm')?.text), sp(current(r.words, 'Vm')?.text)]).toEqual(['rule', '738.2 nV', '7.382e-19 A from node4 to ground through Rvm', 'Vm measures 7.382e-19 A flowing from node p to node4']);
     expect(message(r.words, 'maybe-noise')).toBeUndefined();
+  });
+});
+
+describe('a .control block that only runs is modelled exactly, behind the same-circuit check (C8)', () => {
+  const modelled = (text: string): string => {
+    const n = parseNetlist(text);
+    const m = exactModel(n, n.lines.flatMap((l) => (l.element ? [l.element] : [])), readAfterEnd(n));
+    return typeof m === 'string' ? m : 'modelled';
+  };
+
+  it('".control / run / .endc", with comments and blank lines, leaves the circuit to the exact solution; any other control line does not', () => {
+    const base = '* t\nV1 a 0 1\nR1 a 0 1\n.op\n';
+    expect(modelled(`${base}.control\n* again\nrun\n\n.endc\n.end\n`)).toBe('modelled');
+    expect(modelled(`${base}.control\nRUN\n.endc\n.end\n`)).toBe('modelled');
+    for (const line of ['op', 'set filetype=ascii', 'print v(a)', 'alter R1 2', 'run\nwrite out.raw']) expect(modelled(`${base}.control\n${line}\n.endc\n.end\n`), line).toBe('directive');
+  });
+
+  it('the H of 1 GΩ reading a balanced bridge\'s ammeter, run from a .control block: out is 0 V and H1 carries no current, with the note, as without the block (it drew "node out: −193.5 nV" and "H1 delivers 37.45 aW")', async () => {
+    const lines = ['V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k', '.options savecurrents', '.op'];
+    for (const extra of [[], ['.control', 'run', '.endc']]) {
+      const r = await solveText(netlist(...lines, ...extra), ngspice);
+      expect([by(r), node(r.words, 'out'), sp(current(r.words, 'H1')?.text), current(r.words, 'H1')?.power], extra.join(' ')).toEqual(['exact', '0 V', 'no current through H1', undefined]);
+      expect(message(r.words, 'rounding-noise'), extra.join(' ')).toContain('ngspice gave R5 -3.779483e-16 A, Vm -1.935098e-16 A, H1 1.935098e-10 A, Rl -1.935098e-10 A and node out -1.935098e-07 V.');
+    }
   });
 });
