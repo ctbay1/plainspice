@@ -415,7 +415,9 @@ function DoneResults({
           : t('statusUnreliableText')
         : kind === 'error'
           ? t('statusErrorText')
-          : t('statusEmptyText');
+          : description.warnings.some((m) => m.code === 'no-results')
+            ? t('statusEmptyNoWhyText') // describe.ts's message when ngspice said nothing: no reason below (critic1-2)
+            : t('statusEmptyText');
   const sweeps = description.sweeps.length > 0 && (
     <ul className="sweeps">
       {description.sweeps.map((s, i) => (

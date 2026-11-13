@@ -666,6 +666,8 @@ export const en = {
   statusErrorText: 'ngspice stopped with an error, so there are no results.',
   statusEmpty: 'No results',
   statusEmptyText: 'ngspice finished without an error, but gave no results that PlainSpice can show. The message below says why.',
+  /** The same when ngspice printed no message that says why: no promise of a reason (last pass critic1-2). */
+  statusEmptyNoWhyText: 'ngspice finished without an error, but gave no results that PlainSpice can show.',
   statusCheckedText: 'A check found an error in this netlist, so the numbers ngspice printed are not answers: {title}.',
   statusStoppedText: 'The simulation was stopped.',
   statusTimeoutText: 'ngspice had not finished after {seconds} s, so PlainSpice stopped it.',

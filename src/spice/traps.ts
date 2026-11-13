@@ -35,7 +35,7 @@ import {
   withSpaces,
   zeroForLetterO,
 } from './characters.ts';
-import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
+import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -3769,10 +3769,12 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
   // The circuit's nodes and parts, with those of the parts written after a plain .end, which ngspice
   // reads (S25): a .tf after .end (A3c) may name them.
   const late = afterEndParts(c.n);
-  const connected = (key: string): boolean => (c.n.nodes.get(key)?.connections.length ?? 0) > 0 || late.some((e) => e.nodes.some((r) => r.name === key));
+  // ngspice's name for a node inside a subcircuit an X line uses (x1.m, x1.x2.m) is a node too (A3h).
+  const connected = (key: string): boolean => (c.n.nodes.get(key)?.connections.length ?? 0) > 0 || late.some((e) => e.nodes.some((r) => r.name === key)) || innerNode(c.n, key) !== undefined;
+  // A part inside a subcircuit an X line uses, by ngspice's name for it (v.x1.vs), is a part too (A3h).
   const partOf = (key: string): Element | undefined => {
     const at = c.byKey.get(key);
-    return at !== undefined ? el(c, at) : late.find((e) => e.key === key);
+    return at !== undefined ? el(c, at) : (late.find((e) => e.key === key) ?? innerPart(c.n, key)?.part);
   };
   // A node is offered as first written when it has a character outside ASCII ("Use ÇIKIŞ", never the
   // key's "Use ÇikiŞ": S7, decision 0016), a name like ground quoted and such a character named. Never an
@@ -4001,8 +4003,8 @@ function oddTfPart(c: Ctx, t: Token, part: Element, role: 'output' | 'input'): v
 function checkAnalyses(c: Ctx): void {
   for (const l of c.n.lines) {
     const d = l.directive;
-    // ngspice ignores an analysis line in a subcircuit no X line uses (A3f); in one an X line uses, it
-    // runs the line as the main circuit's (graph.inSubcircuit holds part lines only).
+    // ngspice skips an analysis line in a subcircuit the main circuit does not use (A3f); in one it uses,
+    // it runs the line as the main circuit's (graph.inSubcircuit holds part lines only).
     if (!d || l.kind !== 'directive' || unusedSubcircuit(c.n, l.index)) continue;
     if (d.name === '.dc') checkDc(c, d);
     else if (d.name === '.tran') checkTran(c, d);

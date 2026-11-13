@@ -346,9 +346,35 @@ export const EXPLAIN_STRINGS = {
     items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`,
   insideSubcircuit: (name: string, line: number): string =>
     `This part belongs to the subcircuit ${name} (from line ${line}): its nodes are the subcircuit's own.`,
-  /** A3f: an analysis line in a subcircuit no X line uses does not run (critic of the words re-check's fix, round 2). */
+  /**
+   * A3f: an analysis line in a subcircuit no X line uses does not run (critic of the words re-check's fix,
+   * round 2). ngspice "skips" it, the word for a whole line (W11, last pass F2).
+   */
   analysisInUnusedSubcircuit: (name: string, line: number): string =>
-    `ngspice ignores this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+  /**
+   * A3f: the same where X lines use the subcircuit, but the main circuit does not, directly or through
+   * other subcircuits (last pass critic1-4): `because` is skippedBecause's ("which only X2 uses, and X2 is
+   * inside the subcircuit outer (from line 5), which no X line uses").
+   */
+  analysisInSkippedSubcircuit: (name: string, line: number, because: string): string =>
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), ${because}. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+  /** A3f: one step out: the only X lines that use a subcircuit, and the subcircuit they are in. */
+  skipStep: (xs: string, many: boolean, where: string): string =>
+    `which only ${xs} ${many ? 'use' : 'uses'}, and ${many ? 'they are' : `${xs} is`} inside the subcircuit ${where}`,
+  skipAt: (name: string, line: number): string => `${name} (from line ${line})`,
+  skipNoX: 'which no X line uses',
+  skipNotUsed: 'which the main circuit does not use, directly or through other subcircuits',
+  /**
+   * A3h: ngspice's name for a node inside a subcircuit an X line uses (x1.m), read back: the node, its
+   * subcircuit, and the X lines that lead to it, from the inside out ("X2, inside X1"); how ngspice builds
+   * the name ends with the node's own name, as the part's does (last pass critic1-8).
+   */
+  innerNodeNote: (name: string, node: string, subcircuit: string, line: number, inside: string, many: boolean): string =>
+    `${name} is ngspice's name for ${node} of the subcircuit ${subcircuit} (from line ${line}), inside ${inside}: ngspice names a node inside a subcircuit by ${many ? "its X lines, each followed by a dot, and the node's own name" : "its X line, a dot and the node's own name"}.`,
+  /** A3h: the same for a part (v.x1.vs): its first letter, the X lines and its own name. */
+  innerPartNote: (name: string, part: string, subcircuit: string, line: number, inside: string, many: boolean): string =>
+    `${name} is ngspice's name for ${part} of the subcircuit ${subcircuit} (from line ${line}), inside ${inside}: ngspice names a part inside a subcircuit by its first letter, ${many ? 'its X lines' : 'its X line'} and its own name, joined by dots.`,
 
   // ---- dot commands
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
@@ -520,6 +546,11 @@ interface Context {
   subckts: Map<string, number>;
   /** For each line inside a .subckt … .ends: the .subckt line. */
   insideSubckt: Map<number, number>;
+  /**
+   * ngspice counts the lines it reads that start with .subckt and .ends (after .end too, up to an @
+   * line), and stops when the counts differ: "Mismatch of .subckt ... .ends statements!" (A3f).
+   */
+  subcktMismatch: boolean;
   /** .param values that are plain numbers. */
   params: Map<string, ParamValue>;
   /** Every name a top-level .param line defines (after .end too), with any value (an expression too), lower-case. */
@@ -558,6 +589,7 @@ function contextOf(netlist: Netlist): Context {
     models: new Map(),
     subckts: new Map(),
     insideSubckt: new Map(),
+    subcktMismatch: false,
     params: new Map(),
     paramNames: new Set(),
     endStops: false,
@@ -568,6 +600,10 @@ function contextOf(netlist: Netlist): Context {
     drawing: new Map(),
   };
   const open: number[] = [];
+  // ngspice's own count (inp_check_syntax): every line it reads but the title, by its first word, so not
+  // .macro and .eom, which it renames later; it reads past .end, and stops at an @ line (S4, S29).
+  let subs = 0;
+  let reading = true;
   let run: number | undefined;
   const closeRun = (last: number): void => {
     if (run === undefined) return;
@@ -582,6 +618,12 @@ function contextOf(netlist: Netlist): Context {
       const list = ctx.continuedBy.get(line.continues);
       if (list) list.push(line.index);
       else ctx.continuedBy.set(line.continues, [line.index]);
+    }
+    if (reading && line.index > 0) {
+      const t = line.text.trimStart();
+      if (t.startsWith('@')) reading = false;
+      else if (/^\.subckt/i.test(t)) subs++;
+      else if (/^\.ends/i.test(t)) subs--;
     }
     const inside = open[open.length - 1];
     if (inside !== undefined && line.kind !== 'title') ctx.insideSubckt.set(line.index, inside);
@@ -625,6 +667,7 @@ function contextOf(netlist: Netlist): Context {
     }
   }
   closeRun(netlist.lines.length - 1);
+  ctx.subcktMismatch = subs !== 0;
   if (netlist.end !== undefined && (ctx.stop === undefined || netlist.end < ctx.stop)) {
     ctx.stop = netlist.end;
     ctx.endStops = endIsGlued(netlist.lines[netlist.end]!);
@@ -1217,10 +1260,39 @@ function nodeOfWord(netlist: Netlist, token: Token): NodeRef {
     for (const info of netlist.nodes.values()) for (const t of info.refs) byStart.set(t.from, info);
     wordNodes.set(netlist, byStart);
   }
-  const info = byStart.get(token.from);
+  const info = byStart.get(token.from) ?? subcircuitWords(netlist).get(token.from);
   if (info) return { token, name: info.name, ground: info.ground };
   const name = ngspiceName(token.text);
   return { token, name, ground: name === '0' };
+}
+
+const subcircuitWordCache = new WeakMap<Netlist, Map<number, NodeInfo>>();
+
+/**
+ * The words in v( ) on the dot commands between .subckt and .ends, which the parser files under no node
+ * (a subcircuit's nodes are its own), read as the parser reads the same line in the main circuit, by
+ * where each word starts. ngspice turns gnd into 0 on every line, inside a subcircuit too, before it runs
+ * an analysis line there as the main circuit's (an X line uses the subcircuit: A3f), so `.tf v(a,gnd) V1`
+ * there is v(a,0): its gnd is ground, as at the top level (A3b, A3g; last pass regress-2).
+ */
+function subcircuitWords(netlist: Netlist): Map<number, NodeInfo> {
+  let byStart = subcircuitWordCache.get(netlist);
+  if (byStart) return byStart;
+  byStart = new Map();
+  const ctx = contextOf(netlist);
+  for (const i of ctx.insideSubckt.keys()) {
+    const line = netlist.lines[i]!;
+    if (!line.directive) continue;
+    // The line and its continuation lines, which the parser reads as one (comment lines between them too):
+    // continuedBy lists them in line order, so the last is the last (never spread into Math.max, whose
+    // arguments overflow the stack at 150,000 such lines: last pass critic1-7).
+    const more = ctx.continuedBy.get(i);
+    const last = netlist.lines[more?.length ? more[more.length - 1]! : i]!;
+    const alone = parseNetlist(`*\n${netlist.text.slice(line.span.from, last.span.to)}`);
+    for (const node of alone.nodes.values()) for (const t of node.refs) byStart.set(line.span.from + t.from - 2, node);
+  }
+  subcircuitWordCache.set(netlist, byStart);
+  return byStart;
 }
 
 /** The first .dc line (0-based) that sweeps the part with lower-case name `key`, if any. */
@@ -1228,43 +1300,300 @@ export function sweptBy(netlist: Netlist, key: string): number | undefined {
   return contextOf(netlist).swept.get(key);
 }
 
-/** The analyses A3f ran inside a subcircuit no X line uses: ngspice ignores each of them there. */
+/** The analyses A3f ran inside a subcircuit no X line uses: ngspice skips each of them there. */
 const RUN_ANALYSES: ReadonlySet<string> = new Set(['.op', '.tf', '.dc', '.tran', '.ac', '.noise']);
 
-const usedCache = new WeakMap<Netlist, Set<string>>();
+/** One circuit ngspice builds from the netlist's lines (A3f, A3h): the main circuit or a subcircuit. */
+interface Level {
+  /** Its X lines, in line order. */
+  xs: Element[];
+  /** The same by lower-case name, the first of each name. */
+  xByName: Map<string, Element>;
+  /** The lengths of those names, each once, shortest first: a dotted name is read back by them (A3h). */
+  xLengths: number[];
+  /** Its parts by lower-case name, the first of each name, with their line (0-based). */
+  parts: Map<string, { part: Element; line: number }>;
+  /** Its nodes by name, the first word of each name; never ground. */
+  nodes: Map<string, NodeRef>;
+}
 
-/** The subcircuits an X line uses, by lower-case name: X lines anywhere, those after a plain .end too (S25). */
-function usedSubcircuits(netlist: Netlist): Set<string> {
-  const cached = usedCache.get(netlist);
-  if (cached) return cached;
-  const used = new Set<string>();
-  const add = (el: Element | undefined): void => {
-    const model = el?.letter === 'X' ? el.fields.find((f) => f.role === 'model') : undefined;
-    if (model) used.add(lowerAscii(model.token.text));
-  };
-  for (const l of netlist.lines) add(l.element);
-  for (const l of readAfterEnd(netlist)) add(parseNetlist(`*\n${l.text}`).lines[1]?.element);
-  usedCache.set(netlist, used);
-  return used;
+/** One step out from a subcircuit the main circuit does not use (A3f): the only X lines that use it, all in one subcircuit, and that subcircuit (its name as written and its .subckt line, 0-based). */
+export interface SkipStep {
+  xs: string[];
+  name: string;
+  line: number;
 }
 
 /**
- * The subcircuit a line is in (its name as written and its .subckt line, 0-based) when no X line uses
- * that subcircuit; undefined for any other line. ngspice ignores such a subcircuit, an analysis line in
- * it too (A3f: .op, .tf, .dc, .tran, .ac and .noise run nothing there); in a subcircuit an X line uses, it runs
- * an analysis line as if the main circuit had it, once for each such X line.
+ * A subcircuit the main circuit does not use (A3f): its name as written and its .subckt line (0-based),
+ * and why. `through` holds the steps out, while every X line that uses it is in one subcircuit; `noX`
+ * says no X line uses the last one named; otherwise several subcircuits' X lines use it, or the steps
+ * come back to one already named. `direct`: no X line uses it at all.
  */
-export function unusedSubcircuit(netlist: Netlist, index: number): { name: string; line: number } | undefined {
-  const at = contextOf(netlist).insideSubckt.get(index);
-  const name = at === undefined ? undefined : netlist.lines[at]?.directive?.args[0];
-  if (at === undefined || !name || usedSubcircuits(netlist).has(lowerAscii(name.text))) return undefined;
-  return { name: name.text, line: at };
+export interface UnusedSubcircuit {
+  name: string;
+  line: number;
+  through: readonly SkipStep[];
+  noX: boolean;
+  direct: boolean;
 }
 
-/** An analysis line A3f found ngspice ignores: one of those it ran, in a subcircuit no X line uses. */
+/** The netlist's subcircuits as ngspice builds them, read once for each netlist (last pass critic1-6). */
+interface Subcircuits {
+  /**
+   * The main circuit under undefined: its lines outside .subckt … .ends, and those after a plain .end,
+   * which ngspice reads (S25); and each subcircuit under its .subckt line: its own lines, not those of a
+   * subcircuit defined inside it.
+   */
+  levels: Map<number | undefined, Level>;
+  /** The subcircuits the main circuit uses, by lower-case name: those its X lines use, then those the X lines of each such subcircuit use, and so on (A3f). */
+  reached: Set<string>;
+  /** The X lines inside subcircuits, by the lower-case name of the subcircuit each uses, with the .subckt line each is inside. */
+  users: Map<string, { x: Element; at: number }[]>;
+  /** For each .subckt line, the nodes its subcircuit shares with the main circuit (A3h): those of the .subckt line, which take the X line's nodes, and those a .global line names. */
+  shared: Map<number, Set<string>>;
+  unused: Map<number, UnusedSubcircuit>;
+  innerNodes: Map<string, InnerNode | undefined>;
+  innerParts: Map<string, InnerPart | undefined>;
+}
+
+const subcircuitsCache = new WeakMap<Netlist, Subcircuits>();
+
+/** The subcircuit an X line uses: its .subckt line (0-based), if the netlist has one. */
+function usesSubckt(ctx: Context, x: Element): number | undefined {
+  const model = x.fields.find((f) => f.role === 'model');
+  return model ? ctx.subckts.get(lowerAscii(model.token.text)) : undefined;
+}
+
+function subcircuitsOf(netlist: Netlist): Subcircuits {
+  const cached = subcircuitsCache.get(netlist);
+  if (cached) return cached;
+  const ctx = contextOf(netlist);
+  const levels = new Map<number | undefined, Level>();
+  const add = (at: number | undefined, part: Element, line: number): void => {
+    let level = levels.get(at);
+    if (!level) levels.set(at, (level = { xs: [], xByName: new Map(), xLengths: [], parts: new Map(), nodes: new Map() }));
+    if (!level.parts.has(part.key)) level.parts.set(part.key, { part, line });
+    if (part.letter === 'X') {
+      level.xs.push(part);
+      if (!level.xByName.has(part.key)) level.xByName.set(part.key, part);
+      if (!level.xLengths.includes(part.key.length)) level.xLengths.push(part.key.length);
+    }
+    for (const r of part.nodes) if (!r.ground && !level.nodes.has(r.name)) level.nodes.set(r.name, r);
+  };
+  const defs = new Map<string, number[]>();
+  const globals: string[] = [];
+  for (const l of netlist.lines) {
+    if (l.element) add(ctx.insideSubckt.get(l.index), l.element, l.index);
+    const d = l.directive;
+    if (d?.name === '.global') for (const t of d.args) globals.push(ngspiceName(t.text));
+    if ((d?.name === '.subckt' || d?.name === '.macro') && d.args[0]) {
+      const key = lowerAscii(d.args[0].text);
+      const list = defs.get(key);
+      if (list) list.push(l.index);
+      else defs.set(key, [l.index]);
+    }
+  }
+  // Each line after .end parsed alone, once (it was once for every name read back: critic1-6).
+  for (const l of readAfterEnd(netlist)) {
+    const e = parseNetlist(`*\n${l.text}`).lines[1]?.element;
+    if (e) add(undefined, e, l.index);
+  }
+  for (const level of levels.values()) level.xLengths.sort((a, b) => a - b);
+  // The nodes of each .subckt line: the words after its name, up to params: or a name=value; and the .global names.
+  const shared = new Map<number, Set<string>>();
+  for (const lines of defs.values()) {
+    for (const at of lines) {
+      const set = new Set(globals);
+      for (const t of netlist.lines[at]!.directive!.args.slice(1)) {
+        if (/^params:$/i.test(t.text) || /^[ \t]*=/.test(netlist.text.slice(t.to, t.to + 80))) break;
+        set.add(ngspiceName(t.text));
+      }
+      shared.set(at, set);
+    }
+  }
+  // The subcircuits the main circuit uses, through as many subcircuits as it takes: a breadth-first walk,
+  // each name once (critic1-4: a subcircuit only an unused one's X line uses is not used).
+  const modelKey = (x: Element): string | undefined => {
+    const model = x.fields.find((f) => f.role === 'model');
+    return model ? lowerAscii(model.token.text) : undefined;
+  };
+  const reached = new Set<string>();
+  const queue: string[] = [];
+  const reach = (x: Element): void => {
+    const key = modelKey(x);
+    if (key !== undefined && !reached.has(key)) {
+      reached.add(key);
+      queue.push(key);
+    }
+  };
+  for (const x of levels.get(undefined)?.xs ?? []) reach(x);
+  for (let k = 0; k < queue.length; k++) for (const at of defs.get(queue[k]!) ?? []) for (const x of levels.get(at)?.xs ?? []) reach(x);
+  const users = new Map<string, { x: Element; at: number }[]>();
+  for (const [at, level] of levels) {
+    if (at === undefined) continue;
+    for (const x of level.xs) {
+      const key = modelKey(x);
+      const list = key === undefined ? undefined : users.get(key);
+      // Pushed, never copied: 40,000 X lines using one subcircuit cost 9 s when each copied the list.
+      if (list) list.push({ x, at });
+      else if (key !== undefined) users.set(key, [{ x, at }]);
+    }
+  }
+  const s: Subcircuits = { levels, reached, users, shared, unused: new Map(), innerNodes: new Map(), innerParts: new Map() };
+  subcircuitsCache.set(netlist, s);
+  return s;
+}
+
+/**
+ * The subcircuit a line is in when the main circuit does not use it, and why (A3f); undefined for any
+ * other line. The main circuit uses a subcircuit through its X lines (those after a plain .end too, S25),
+ * and then through those of each subcircuit it uses: ngspice skips the lines of any other, an analysis
+ * line too (A3f: .op, .tf, .dc, .tran, .ac and .noise run nothing there, in a subcircuit only such a
+ * subcircuit's X line uses too); in a subcircuit the main circuit uses, it runs an analysis line as if the
+ * main circuit had it, once for each such X line.
+ */
+export function unusedSubcircuit(netlist: Netlist, index: number): UnusedSubcircuit | undefined {
+  const at = contextOf(netlist).insideSubckt.get(index);
+  const name = at === undefined ? undefined : netlist.lines[at]?.directive?.args[0];
+  if (at === undefined || !name) return undefined;
+  const s = subcircuitsOf(netlist);
+  if (s.reached.has(lowerAscii(name.text))) return undefined;
+  let found = s.unused.get(at);
+  if (!found) {
+    // The X lines that use it, outward, while they are all in one subcircuit not named yet.
+    const through: SkipStep[] = [];
+    const seen = new Set([at]);
+    let here = at;
+    let noX = false;
+    for (;;) {
+      const using = s.users.get(lowerAscii(netlist.lines[here]!.directive!.args[0]!.text)) ?? [];
+      const next = using[0]?.at;
+      if (using.length === 0) noX = true;
+      if (next === undefined || seen.has(next) || using.some((u) => u.at !== next)) break;
+      through.push({ xs: using.map((u) => u.x.name.text), name: netlist.lines[next]!.directive!.args[0]!.text, line: next });
+      seen.add(next);
+      here = next;
+    }
+    found = { name: name.text, line: at, through, noX, direct: noX && through.length === 0 };
+    s.unused.set(at, found);
+  }
+  return found;
+}
+
+/**
+ * An analysis line A3f found ngspice skips: one of those it ran, in a subcircuit the main circuit does
+ * not use. Never while the .subckt and .ends lines do not pair up: ngspice stops first ("Mismatch of
+ * .subckt ... .ends statements!"), and its message is the reason (last pass critic1-1).
+ */
 export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   const name = netlist.lines[index]?.directive?.name;
-  return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;
+  return name !== undefined && RUN_ANALYSES.has(name) && !contextOf(netlist).subcktMismatch && unusedSubcircuit(netlist, index) !== undefined;
+}
+
+/**
+ * Why the main circuit does not use a subcircuit, after its name (A3f): "which no X line uses"; the X
+ * lines that use it, outward ("which only X2 uses, and X2 is inside the subcircuit outer, which no X
+ * line uses"); or, where several subcircuits' X lines use one or the steps come back, "which the main
+ * circuit does not use, directly or through other subcircuits". With `lines`, each subcircuit's .subckt
+ * line too ("outer (from line 5)").
+ */
+export function skippedBecause(u: UnusedSubcircuit, lines: boolean): string {
+  const steps = u.through.map((t) => S.skipStep(S.listJoin(t.xs), t.xs.length > 1, lines ? S.skipAt(t.name, t.line + 1) : t.name));
+  return [...steps, u.noX ? S.skipNoX : S.skipNotUsed].join(', ');
+}
+
+/** Where a name ngspice builds inside a subcircuit leads (A3h): the X lines that lead there, from the main circuit's down, as written, and the subcircuit the last one uses, as its .subckt line writes it, with that line (0-based). */
+export interface InnerPlace {
+  path: string[];
+  subcircuit: string;
+  line: number;
+}
+
+/** A node of a subcircuit an X line uses, by ngspice's name for it (A3h): the node as the subcircuit's own lines write it. */
+export interface InnerNode extends InnerPlace {
+  node: NodeRef;
+}
+
+/** A part of a subcircuit an X line uses, by ngspice's name for it (A3h), and its own line (0-based). */
+export interface InnerPart extends InnerPlace {
+  part: Element;
+  partLine: number;
+}
+
+/**
+ * Reads a name ngspice builds inside subcircuits back (A3h): X lines joined by dots, from the main
+ * circuit's down (each an X line of the circuit the one before uses), a dot, and a name `own` finds in
+ * the subcircuit the last one uses. A dot may sit inside an X line's name or the own name too: ngspice
+ * names m.1 inside X1 x1.m.1, and m inside X1.a x1.a.m (A3h). So every X line whose name starts the rest
+ * is tried, longest name first, each (subcircuit, place in the name) once: the work grows with the
+ * name's dots, never with the netlist (critic1-3, critic1-6).
+ */
+function readBack<T>(netlist: Netlist, name: string, own: (at: number, rest: string) => T | undefined): (InnerPlace & { own: T }) | undefined {
+  const ctx = contextOf(netlist);
+  const { levels } = subcircuitsOf(netlist);
+  interface Place { at: number | undefined; from: number; x?: Element; back?: Place }
+  const seen = new Set<string>();
+  const stack: Place[] = [{ at: undefined, from: 0 }];
+  while (stack.length) {
+    const p = stack.pop()!;
+    const hit = p.at === undefined ? undefined : own(p.at, name.slice(p.from));
+    if (hit !== undefined) {
+      const path: string[] = [];
+      for (let q: Place | undefined = p; q?.x; q = q.back) path.push(q.x.name.text);
+      return { path: path.reverse(), subcircuit: netlist.lines[p.at!]!.directive!.args[0]!.text, line: p.at!, own: hit };
+    }
+    const level = levels.get(p.at);
+    // xLengths runs from the shortest name up, so the longest is pushed last and tried first.
+    for (const len of level?.xLengths ?? []) {
+      if (name.charCodeAt(p.from + len) !== 46) continue; // a dot after the X line's name
+      const x = level!.xByName.get(name.slice(p.from, p.from + len));
+      const at = x ? usesSubckt(ctx, x) : undefined;
+      const from = p.from + len + 1;
+      if (!x || at === undefined || seen.has(`${at} ${from}`)) continue;
+      seen.add(`${at} ${from}`);
+      stack.push({ at, from, x, back: p });
+    }
+  }
+  return undefined;
+}
+
+/**
+ * ngspice's name for a node inside a subcircuit, read back (A3h): the X lines that lead to it, from the
+ * main circuit's down, and the node, joined by dots. x1.m is the node m of the subcircuit X1 uses, x1.x2.m
+ * the node m of the subcircuit that X2, a line of X1's subcircuit, uses, and x1.m.1 its node m.1;
+ * capitals do not matter. ngspice makes such a node once for each X line, so `.tf v(x1.m) V1` measures it
+ * (0.5 and 500 Ω in A3h). undefined for any other name: one without a dot, an X line the circuit does not
+ * have there, a subcircuit with no .subckt line, or a name that is no node of the subcircuit's own: a node
+ * of its .subckt line takes the X line's node, so x1.a for it is a new node with nothing on it (0 and 1 Ω,
+ * as tf-problems-1), and ground (x1.0) and a node a .global line names are the main circuit's.
+ */
+export function innerNode(netlist: Netlist, name: string): InnerNode | undefined {
+  const s = subcircuitsOf(netlist);
+  const key = ngspiceName(name);
+  if (s.innerNodes.has(key)) return s.innerNodes.get(key);
+  const found = readBack(netlist, key, (at, rest) => (s.shared.get(at)?.has(rest) ? undefined : s.levels.get(at)?.nodes.get(rest)));
+  const node = found && { path: found.path, subcircuit: found.subcircuit, line: found.line, node: found.own };
+  s.innerNodes.set(key, node);
+  return node;
+}
+
+/**
+ * ngspice's name for a part inside a subcircuit, read back (A3h): its first letter, the X lines that lead
+ * to it and its own name, joined by dots, in lower case: v.x1.vs is Vs of the subcircuit X1 uses, which a
+ * .tf can take as its input or its i( ) (0.3333 and 3.333e-4 in A3h), and v.x1.vs.1 its Vs.1. undefined for
+ * any other name: x1.vs (no part: 0 and 1e20 Ω, as tf-problems-5), and i.x1.vs, whose letter is not Vs's
+ * (ngspice stops: "Transfer function source i.x1.vs not in circuit").
+ */
+export function innerPart(netlist: Netlist, name: string): InnerPart | undefined {
+  const s = subcircuitsOf(netlist);
+  const key = ngspiceName(name);
+  if (s.innerParts.has(key)) return s.innerParts.get(key);
+  const letter = key[0];
+  const found = key[1] === '.' && letter ? readBack(netlist, key.slice(2), (at, rest) => (rest[0] === letter ? s.levels.get(at)?.parts.get(rest) : undefined)) : undefined;
+  const part = found && { path: found.path, subcircuit: found.subcircuit, line: found.line, part: found.own.part, partLine: found.own.line };
+  s.innerParts.set(key, part);
+  return part;
 }
 
 function partKind(netlist: Netlist, name: string): { line?: number; letter?: ElementLetter } {
@@ -1355,7 +1684,10 @@ export function readAnalysis(netlist: Netlist, lineIndex: number): AnalysisReadi
       if (input) {
         reading.input = input;
         const part = partKind(netlist, input.text);
-        reading.inputKind = part.letter === 'V' ? 'voltage' : part.letter === 'I' ? 'current' : part.line === undefined ? 'missing' : 'other';
+        // A part inside a subcircuit, by ngspice's name for it (v.x1.vs), is a part of the circuit (A3h).
+        const inner = part.line === undefined ? innerPart(netlist, input.text) : undefined;
+        const letter = part.letter ?? inner?.part.letter;
+        reading.inputKind = letter === 'V' ? 'voltage' : letter === 'I' ? 'current' : part.line === undefined && !inner ? 'missing' : 'other';
       }
       return reading;
     }
@@ -1943,15 +2275,19 @@ function commandRow(token: Token, what: string): FieldExplanation {
 function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation {
   const d = line.directive!;
   const name = d.name;
-  // A3f: ngspice ignores an analysis line in a subcircuit no X line uses, so what the line would make
-  // ngspice do (a missing node's 0, a stop) is not said: only that it is ignored.
+  // A3f: ngspice skips an analysis line in a subcircuit the main circuit does not use, so what the line
+  // would make ngspice do (a missing node's 0, a stop) is not said: only that it is skipped. Nothing at
+  // all when the .subckt and .ends lines do not pair up: ngspice stops before it skips or runs a line
+  // ("Mismatch of .subckt ... .ends statements!"), and a missing .ends is no reason to move the line out
+  // of the subcircuit (last pass critic1-1).
   const unused = RUN_ANALYSES.has(name) ? unusedSubcircuit(netlist, line.index) : undefined;
+  const skipped = !unused || contextOf(netlist).subcktMismatch ? [] : [unused.direct ? S.analysisInUnusedSubcircuit(unused.name, unused.line + 1) : S.analysisInSkippedSubcircuit(unused.name, unused.line + 1, skippedBecause(unused, true))];
   const out = (what: string, summary: string, fields: FieldExplanation[] = [], notes: string[] = []): LineExplanation => ({
     line: line.number,
     heading: S.dotHeading(d.token.text, what),
     summary,
     fields: [commandRow(d.token, what), ...fields],
-    notes: unused ? [S.analysisInUnusedSubcircuit(unused.name, unused.line + 1)] : notes,
+    notes: unused ? skipped : notes,
   });
   const ctx = contextOf(netlist);
   switch (name) {
@@ -2122,20 +2458,35 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     for (const n of r.outputNodes) {
       // Ground is always a node (every voltage is measured from it); a circuit with nothing on it has its own check.
       const info = netlist.nodes.get(n.name);
-      if (!n.ground && (!info || info.connections.length === 0)) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
+      if (n.ground || (info && info.connections.length > 0)) continue;
+      // ngspice's name for a node inside a subcircuit an X line uses: said which node it is (A3h).
+      const inner = innerNode(netlist, n.name);
+      if (!inner) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
+      else {
+        const inside = [...inner.path].reverse().join(', inside ');
+        addNote(notes, S.innerNodeNote(nodeName(n), nodeText(inner.node), inner.subcircuit, inner.line + 1, inside, inner.path.length > 1));
+      }
     }
   }
+  // A part inside a subcircuit, by ngspice's name for it (v.x1.vs): said which part it is (A3h).
+  const partNote = (name: string, inner: InnerPart): void =>
+    addNote(notes, S.innerPartNote(name, inner.part.name.text, inner.subcircuit, inner.line + 1, [...inner.path].reverse().join(', inside '), inner.path.length > 1));
+  const current = r.outputKind === 'current' && g?.names[0] && partKind(netlist, g.names[0].text).line === undefined ? innerPart(netlist, g.names[0].text) : undefined;
+  if (current) partNote(g!.names[0]!.text, current);
   const input = r.input;
   if (input) {
     const part = partKind(netlist, input.text);
+    const inner = part.line === undefined ? innerPart(netlist, input.text) : undefined;
+    const at = part.line ?? inner?.partLine;
     let meaning: string;
     if (r.inputKind === 'missing') {
       meaning = S.tfInputMissing(input.text);
       addNote(notes, S.tfInputMissingNote(input.text)); // M10
     } else if (r.inputKind === 'other') {
-      meaning = S.tfInputWrong(input.text, partWord(netlist, part.line!));
+      meaning = S.tfInputWrong(input.text, partWord(netlist, at!));
       addNote(notes, S.tfInputWrongNote(input.text)); // M11
-    } else meaning = S.tfInput(input.text, part.line! + 1, partWord(netlist, part.line!));
+    } else meaning = S.tfInput(input.text, at! + 1, partWord(netlist, at!));
+    if (inner) partNote(input.text, inner);
     fields.push(fieldOf('input source', input, meaning));
   }
   // The formula keeps the line's words, but never a character hidden in them (S11): the words after it name it.

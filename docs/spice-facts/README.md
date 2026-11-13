@@ -166,7 +166,7 @@ numbers, alone they stop ngspice), tf-problems-9 to -11 (the character in the pa
 in the `.tf`, in a part's name in `.tf`, and a `.tf` after `.end`, which ngspice runs) and two more
 runs in tf-problems-8 (a second output, which adds 1 Ω, and a name with two kinds of character); in
 explanations.md P3b, P4b and P4c (a source .dc sweeps has no one value there; beside a SIN, .op uses
-the value and .tran the SIN) and A3f (an analysis line in a subcircuit no X line uses is ignored).
+the value and .tran the SIN) and A3f (an analysis line in a subcircuit no X line uses is skipped).
 
 After the re-check of 12 November 2026 and the fixes of the rounding-noise rule (12 and 13 November):
 C9m to C9v.8 in explanations.md (what the exact solution decides, ngspice's answers far off, .tf and
@@ -222,3 +222,24 @@ file too ("a … plot with 0 points, its header only"), and the ngspice 42 lines
 P20b, A17, A18 and non-ascii-node-12 (the same output and summary, but their time points differ, said
 where). No engine run can check those, so `tests/unit/facts-records.test.ts` pins the records themselves,
 and checks that no fact ID heads two sections.
+
+## The last pass of 13 November 2026 (the subckt lane)
+
+Run on 13 November 2026 with native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, and asserted
+by `tests/golden/facts-explain.test.ts`: in explanations.md, A3f gained the runs that show ngspice reads
+no line of a subcircuit no X line uses (a `.tran` and a dot command it stops at elsewhere say nothing
+there), on which the word "skips" rests; A3g (a gnd in a `.tf`'s `v( )` inside a subcircuit an X line
+uses is ground, as at the top level); and A3h (ngspice names a node inside a subcircuit by its X lines
+and a dot, `x1.m`, `x1.x2.m`, and a part there after its first letter, `v.x1.vs`, and a `.tf` can use
+either; a `.global` node is the main circuit's).
+
+After the round-1 critic of those fixes (the same day, the same versions and modes): A3f gained a
+subcircuit that only an X line of a skipped subcircuit uses, which is skipped too (two steps out,
+two such users, a loop, a definition inside another; and the chain used from the main circuit, which
+runs); `.subckt` and `.ends` lines that do not pair up, which stop ngspice before it skips anything
+("Mismatch of .subckt ... .ends statements!"), counted as ngspice counts them (after `.end` too, not
+`.macro`); a run ngspice stops at another line first; and an `.include` there, which ngspice still
+reads, so A3f now says ngspice runs none of such a subcircuit's analysis lines, parts and dot
+commands, where it said it reads none of its lines. A3h gained names with a dot of the netlist's
+own (`x1.m.1`, `x1.a.m`, `v.x1.vs.1`, `x1.x2.m.1`) and the names that are no node or part there
+(`x1.m.1` beside m, `x1.0`, `x1.gnd`, `i.x1.vs`).
