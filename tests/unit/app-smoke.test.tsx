@@ -965,6 +965,58 @@ describe('<App /> after the words re-check of step B', () => {
     finished.stop();
   }, 30000);
 
+  // The summary says four nodes and counts the currents: a change that moves only numbers it does not say
+  // keeps its words, and is said all the same (resultsHeard: every number), once. Native ngspice 47 and 42
+  // (-b): v(in) = 6 V and v(out) = 4 V with R3 1k or 2k, i(v1) = −8 mA then −5 mA; v(a..d) = 10, 7.5, 5,
+  // 2.5 V with R6 1k or 3k, v(e) = 5 V then 7.5 V.
+  it('a value change that moves only a current is said, though the summary’s words stay the same (AP-3)', async () => {
+    const engine = realEngine();
+    const netlist = '* Only the currents change\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\nR3 in 0 1k\n.op\n.end\n';
+    const words = 'Simulation finished: node in is 6 volts, node out is 4 volts; 4 currents.';
+    render(<App startup={start(netlist)} engine={engine} serviceWorker={false} />);
+    await solved();
+    await waitFor(() => expect(polite()).toContain(words), { timeout: 5000 });
+    const finished = heard(/^Simulation finished/);
+    fireEvent.click(part('R3'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R3/ }), { target: { value: '2k' } });
+    await waitFor(() => expect(engine.runs.at(-1)).toContain('R3 in 0 2k'), { timeout: 15000 });
+    await waitFor(() => expect(finished.said).toHaveLength(1), { timeout: 5000 });
+    expect(finished.said[0]).toBe(words);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(finished.said).toHaveLength(1);
+    finished.stop();
+  }, 30000);
+
+  it('a value change that moves only a fifth node is said, though the summary names four (AP-3)', async () => {
+    const engine = realEngine();
+    const netlist = '* Five nodes: only the fifth changes\nV1 a 0 10\nR1 a b 1k\nR2 b c 1k\nR3 c d 1k\nR4 d 0 1k\nR5 a e 1k\nR6 e 0 1k\n.op\n.end\n';
+    const words = 'Simulation finished: node a is 10 volts, node b is 7.5 volts, node c is 5 volts, node d is 2.5 volts and 1 more node; 7 currents.';
+    render(<App startup={start(netlist)} engine={engine} serviceWorker={false} />);
+    await solved();
+    await waitFor(() => expect(polite()).toContain(words), { timeout: 5000 });
+    const finished = heard(/^Simulation finished/);
+    fireEvent.click(part('R6'));
+    fireEvent.change(screen.getByRole('textbox', { name: /R6/ }), { target: { value: '3k' } });
+    await waitFor(() => expect(engine.runs.at(-1)).toContain('R6 e 0 3k'), { timeout: 15000 });
+    await waitFor(() => expect(finished.said).toHaveLength(1), { timeout: 5000 });
+    expect(finished.said[0]).toBe(words);
+    finished.stop();
+  }, 30000);
+
+  it('a circuit opened again from the menu is said again, its words and numbers the same (AP-3)', async () => {
+    const engine = realEngine();
+    render(<App startup={firstVisit()} engine={engine} serviceWorker={false} />);
+    await solved();
+    await waitFor(() => expect(polite()).toMatch(/Simulation finished/), { timeout: 5000 });
+    const finished = heard(/^Simulation finished/);
+    fireEvent.click(screen.getByRole('button', { name: 'Examples' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /A 6 V source and two resistors: change R1/ }, { timeout: 5000 }));
+    await waitFor(() => expect(engine.runs).toHaveLength(2), { timeout: 15000 });
+    await waitFor(() => expect(finished.said).toHaveLength(1), { timeout: 5000 });
+    expect(finished.said[0]).toBe('Simulation finished: node in is 6 volts, node out is 4 volts; 3 currents.');
+    finished.stop();
+  }, 30000);
+
   it('Help lists every editing key in the margin’s words, spells Esc one way, and says the screen-reader behaviour is not yet tried (new-21, new-22, new-23, new-24, new-34)', async () => {
     render(<App startup={firstVisit()} engine={realEngine()} serviceWorker={false} />);
     await solved();
