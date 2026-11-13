@@ -9,6 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
+import { tfRows } from '../../src/app/components/NumbersPanel.tsx';
 import { DESCRIBE_STRINGS, describeResults, roundingNoise, shownSweep, SWEEP_VALUES, sweepTooLarge, type ResultsInWords } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
@@ -272,5 +273,38 @@ describe('on the exact path, ngspice\'s numbers are answers only where the page 
     // Beside the warning, the note leaves out what the warning names: g520d's R1, 4.441e-31 A, is named once.
     const g = await solveText(netlist('V1 top 0 3.3', 'Rw top f1 100u', 'Va f1 n 0', 'R2 n 0 150', 'R1 n f2 1e15', 'C1 f2 0 1p', 'G1 0 g n f2 1e6', 'R3 g 0 820k', 'I1 0 g 1n', '.options savecurrents', '.op'), ngspice);
     expect([off(g.words).includes('R1 carries no current, where ngspice gives 4.441e-31 A'), g.words.warnings.some((m) => m.code === 'maybe-noise')]).toEqual([true, false]);
+  });
+});
+
+describe('a .tf ratio is judged against the exact one as the .op beside it is (last pass: tf-lost-ratio-contradiction; C9w.10 to C9w.12)', () => {
+  const by = (r: Awaited<ReturnType<typeof solveText>>): string => roundingNoise(r.netlist, r.results).by;
+  const text = (w: ResultsInWords, name: string): string => sp(w.currents.find((c) => c.name === name)!.text);
+  const lostNote = (w: ResultsInWords): string => sp(w.warnings.find((m) => m.title === 'The transfer function is not 0, though ngspice gave 0')?.why);
+  const offTf = (w: ResultsInWords): string => sp(w.warnings.find((m) => m.title === "ngspice's transfer function is off")?.why);
+  const divider = ['V1 top 0 10', 'R1 top s 100', 'R2 s 0 1e20', '.options savecurrents'];
+
+  it('a real 1e-18 V/V ngspice gives as exactly 0, beside an .op decided exactly, is shown so, with a note; the Numbers panel keeps ngspice\'s 0 in its own column', async () => {
+    const r = await solveText(netlist(...divider, '.op', '.dc V1 0 10 5', '.tf v(top,s) V1'), ngspice);
+    const q = r.words.tf!.transferFunction!;
+    expect([sp(q.text), q.given, sp(text(r.words, 'R1'))]).toEqual(['v(top,s)/V1 = 1e-18 (V/V)', 0, '1e-19 A from node top to node s through R1']);
+    expect(lostNote(r.words)).toContain('Solved exactly, with fractions, from the netlist\'s values, it is 1e-18 V/V, so PlainSpice shows 1e-18 V/V.');
+    const [row] = tfRows(r.words.tf!);
+    expect([sp(row!.text), row!.given]).toEqual(['1e-18 V/V', 0]);
+    // With no .op, the sweep beside it, decided exactly, does the same.
+    const noOp = await solveText(netlist(...divider, '.dc V1 0 10 5', '.tf v(top,s) V1'), ngspice);
+    expect([sp(noOp.words.tf!.transferFunction!.text), lostNote(noOp.words) !== '']).toEqual(['v(top,s)/V1 = 1e-18 (V/V)', true]);
+  });
+
+  it('with nothing beside it decided exactly (a .tf alone, or an .op whose answers are off) ngspice\'s 0 stays, with the warning that names the exact ratio', async () => {
+    const alone = await solveText(netlist(...divider.slice(0, 3), '.tf v(top,s) V1'), ngspice);
+    expect([alone.words.tf!.transferFunction!.value, offTf(alone.words)]).toEqual([0, "Solved exactly, with fractions, from the netlist's values, v(top,s)/V1 is 1e-18 V/V, where ngspice gives 0 V/V. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's ratio as it gives it, so it may not agree with the other numbers here."]);
+    const off = await solveText(netlist('V1 top1 0 9', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.options savecurrents', '.op', '.tf v(d2,p3) V1'), ngspice);
+    expect([by(off), off.words.tf!.transferFunction!.value, offTf(off.words)]).toEqual(['rule', 0, expect.stringContaining('v(d2,p3)/V1 is 3.028e-19 V/V, where ngspice gives 0 V/V.')]);
+  });
+
+  it('a nonzero ratio drawn with the exact one\'s digits says nothing; a 0 V ammeter\'s 1e-20 A/V is its own (ngspice gives it, not 0)', async () => {
+    const r = await solveText(netlist('V1 top 0 10', 'R1 top m 100', 'Vm m s 0', 'R2 s 0 1e20', '.options savecurrents', '.op', '.tf i(Vm) V1'), ngspice);
+    const q = r.words.tf!.transferFunction!;
+    expect([sp(q.text), q.given, q.exact, offTf(r.words), lostNote(r.words)]).toEqual(['i(Vm)/V1 = 1e-20 (A/V)', undefined, undefined, '', '']);
   });
 });

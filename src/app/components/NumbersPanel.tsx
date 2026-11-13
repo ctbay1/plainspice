@@ -182,7 +182,7 @@ export interface TfRow {
   text: string;
   speech: string;
   value: number;
-  /** ngspice's own value, when PlainSpice shows its rounding noise of a 0 as 0 (decision 0015, C9p). */
+  /** ngspice's own value, when PlainSpice shows its rounding noise of a 0 as 0 (decision 0015, C9p), or the exact ratio for its 0 (C9w.10). */
   given?: number;
 }
 
@@ -196,7 +196,7 @@ export function tfRows(tf: TransferFunctionWords): TfRow[] {
       text: `${formatNumber(v)} ${tf.ratio}`,
       speech: `${formatNumber(v).replace('−', `${t('minusWord')} `)} ${ratioWords(tf.ratio, formatNumber(v))}`,
       value: v,
-      ...(tf.transferFunction.noise !== undefined ? { given: tf.transferFunction.noise } : {}),
+      ...((tf.transferFunction.given ?? tf.transferFunction.noise) !== undefined ? { given: tf.transferFunction.given ?? tf.transferFunction.noise } : {}),
     });
   }
   if (tf.outputResistance) {

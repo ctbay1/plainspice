@@ -166,6 +166,9 @@ const FACTS: Fact[] = [
   { code: 'C9w.7', id: 'cur-sweep-off-wire', netlist: "* the 1 nohm wire of C9n.4, its .op and a long sweep\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.options savecurrents\n.op\n.dc V1 0 1.5 0.00025\n.end\n", summaries: { "i(@r3[i])": { points: 6001, first: 0, last: 0 } } },
   { code: 'C9w.8', id: 'cur-guarded-maybe-noise', netlist: "* a reverse diode's leak beside a 1 nV divider: the exact solution keeps the run's tiny values as ngspice gives them\nV1 top1 0 0.5\nR1 top1 s2 1m\nR2 s2 0 1e12\nD1 d3 s2 dmod\nR3 d3 0 120k\nR4 d3 x4 1.2\nC1 x4 0 1n\nV2 d3 v5 0\nR5 v5 0 1\nF1 0 f6 V1 1m\nR6 f6 0 10\nV3 n1 0 1n\nR7 n1 n2 1k\nR8 n2 0 1k\n.model dmod D(is=1e-14)\n.options savecurrents\n.op\n.end\n", vectors: {"v(d3)": 5.099938892338058e-13, "v(n2)": 5.000000000000001e-10, "i(v2)": 5.099938892338058e-13, "i(v3)": -5e-13, "i(@r3[i])": 4.2499490769483816e-18, "i(@r5[i])": 5.099938892338058e-13, "i(@r7[i])": 4.999999999999999e-13, "i(@r8[i])": 5.000000000000002e-13} },
   { code: 'C9w.9', id: 'cur-wire-two-ammeters', netlist: "* a 1 nohm wire into two 0 V ammeters in series (the skeptic of the last pass, P1-1n)\nV1 a 0 9\nRw a b 1n\nVm1 b c 0\nVm2 c d 0\nRl d 0 820\n.options savecurrents\n.op\n.end\n", vectors: {"v(b)": 8.999999999989024, "v(c)": 8.9994049072265625, "v(d)": 8.9994049072265625, "i(vm1)": 0.010974884033203125, "i(vm2)": 0.010974884033203125, "i(@rw[i])": 0.010976108910654146, "i(@rl[i])": 0.010974884033203125} },
+  { code: 'C9w.10', id: 'cur-tf-lost-ratio', netlist: "* C9n.5's 1 n wire in series with 10 meg, with .op, .dc and .tf of the wire's voltage\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.options savecurrents\n.op\n.dc V1 0 1.5 0.5\n.tf v(d2,p3) V1\n.end\n", vectors: {"v(d2)": [0.0, 0.001513784765078957, 0.003027569530157914, 0.0045413542952368715], "i(@r3[i])": [0.0, 0.0, 0.0, 0.0], "v(Transfer_function)": 0.0, "v(v1#Input_impedance)": 270819.92615659133, "v(output_impedance_at_V(d2,p3))": 1e-09} },
+  { code: 'C9w.11', id: 'cur-tf-lost-alone', netlist: "* a 100 ohm resistor feeding a 1e20 ohm load: only the .tf of the voltage across it\nV1 top 0 10\nR1 top s 100\nR2 s 0 1e20\n.tf v(top,s) V1\n.end\n", vectors: {"v(Transfer_function)": 0.0, "v(v1#Input_impedance)": 1e+20, "v(output_impedance_at_V(top,s))": 100.0} },
+  { code: 'C9w.12', id: 'cur-tf-off-ratio', netlist: "* a bridge 1e-14 off balance read through a chain of resistors, with .tf of one link's voltage\nV1 top1 0 5\nR1 top1 a2 1.8\nR2 a2 0 680\nR3 top1 b3 0.18\nR4 b3 0 68.0000000000007\nR5 a2 m4 2.7k\nR6 m4 m5 120\nR7 m5 m6 3.3k\nR8 m6 m7 4.7meg\nR9 m7 m8 4.7k\nR10 m8 m9 5.6k\nR11 m9 m10 12k\nR12 m10 m11 56\nR13 m11 b3 68k\n.options savecurrents\n.op\n.tf v(m7,m8) V1\n.end\n", vectors: {"v(m7)": 4.986799647990032, "v(m8)": 4.986799647990031, "v(Transfer_function)": 1.1102230246251565e-16, "v(v1#Input_impedance)": 61.98181818182076, "v(output_impedance_at_V(m7,m8))": 4695.394537384268} },
   { code: 'C9', id: 'cur-noise-bridge', netlist: "* a balanced bridge: no current through R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19 } },
   { code: 'C9b', id: 'cur-noise-everywhere', netlist: "* a 0 V ammeter whose last word is gnd: no current anywhere\nV1 in 0 12\nR1 in a 1k\nR2 a x 2k\nVm x gnd\nR3 a b 3k\nF1 0 b V1 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.999999999999998, "v(x)": 11.999999999999998, "v(gnd)": 11.999999999999998, "v(b)": 11.999999999999995, "i(v1)": -1.734723475976807e-18, "i(vm)": 0, "i(@r1[i])": 1.7763568394002505e-18, "i(@r2[i])": 0, "i(@r3[i])": 1.1842378929335003e-18, "i(@f1[i])": -3.469446951953614e-18 }, prints: ["vm: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'C9c', id: 'cur-abstol', netlist: "* ngspice's tolerances\nV1 a 0 1\nR1 a 0 1k\n.control\nop\noptions\n.endc\n.end\n", prints: ["abstol      (current) = 1e-12", "vntol       (voltage) = 1e-06", "reltol      (current) = 0.001"], fails: true },
@@ -1459,6 +1462,27 @@ describe('after the last pass (13 November 2026)', () => {
     const d = ofFact('C9w.9');
     expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm1')), plain(d.words.nodes.find((n) => n.node === 'c')?.text)]).toEqual(['rule', 'Vm1 measures 10.97 mA flowing from node b to node c', '8.999 V']);
     expect(plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')?.why)).toContain('V1 carries 10.98 mA, where ngspice gives 10.97 mA; Vm1 carries 10.98 mA, where ngspice gives 10.97 mA;');
+  });
+
+  it('C9w.10: a .tf ratio ngspice gives as exactly 0 beside an .op decided exactly is the exact 3.028e-19 V/V, with a note; it read "0 V/V" beside R3\'s card, "V(d2) − V(p3) = 4.541e-19 V" (tf-lost-ratio-contradiction)', () => {
+    const d = ofFact('C9w.10');
+    const q = d.words.tf!.transferFunction!;
+    expect([roundingNoise(d.netlist, d.results).by, plain(q.text), q.given, plain(currentText(d, 'R3'))]).toEqual(['exact', 'v(d2,p3)/V1 = 3.028e-19 (V/V)', 0, '454.1 pA from node d2 to node p3 through R3']);
+    const lost = d.words.warnings.find((m) => m.code === 'rounded-to-0' && m.title === 'The transfer function is not 0, though ngspice gave 0')!;
+    expect(plain(lost.why)).toBe("ngspice gave v(d2,p3)/V1 as exactly 0. The ratio is too small beside the larger numbers ngspice works it out from for its arithmetic (about 16 significant digits), so it comes out as 0. Solved exactly, with fractions, from the netlist's values, it is 3.028e-19 V/V, so PlainSpice shows 3.028e-19 V/V.");
+  });
+
+  it('C9w.11: a .tf alone, with nothing beside it decided exactly, keeps ngspice\'s 0 V/V, with the warning that names the exact 1e-18 V/V', () => {
+    const d = ofFact('C9w.11');
+    const q = d.words.tf!.transferFunction!;
+    expect([q.value, q.given, q.exact]).toEqual([0, undefined, 1e-18]);
+    expect(plain(d.words.warnings.find((m) => m.title === "ngspice's transfer function is off")?.why)).toContain('v(top,s)/V1 is 1e-18 V/V, where ngspice gives 0 V/V.');
+  });
+
+  it('C9w.12: a .tf ratio ngspice gives as 1.11e-16 V/V, one step of a double at 5 V, where the circuit makes −2.656e-20 V/V, is shown with the warning; it was shown with nothing said', () => {
+    const d = ofFact('C9w.12');
+    expect(plain(d.words.tf!.transferFunction!.text)).toBe('v(m7,m8)/V1 = 1.11e-16 (V/V)');
+    expect(plain(d.words.warnings.find((m) => m.title === "ngspice's transfer function is off")?.why)).toContain('v(m7,m8)/V1 is −2.656e-20 V/V, where ngspice gives 1.11e-16 V/V.');
   });
 
   it('C9w: a .temp line, a SIN beside V1\'s DC value and m=1 on R5 leave the bridge\'s doubles as they are, and PlainSpice models them exactly: Vm is 0 A with the note, where the rule drew "Vm measures 2.168e-19 A" beside "R5: no current" (regress-1)', () => {

@@ -146,6 +146,10 @@ export interface QuantityWords {
   speech: string;
   /** ngspice's own value when it is rounding noise of a ratio the circuit makes exactly 0 (decision 0015, C9p). */
   noise?: number;
+  /** ngspice's own 0 when its arithmetic rounded a ratio the circuit makes real to exactly 0: `value` is the exact ratio (C9n). */
+  given?: number;
+  /** The exact ratio, where ngspice's (`value`) is drawn with other digits and is more than ANSWER_GAP from it: a warning names both. */
+  exact?: number;
 }
 
 export interface TransferFunctionWords {
@@ -684,6 +688,13 @@ export const DESCRIBE_STRINGS = {
   noiseTfTitle: 'The transfer function is shown as 0',
   noiseTfWhy: (tf: string, value: string, output: string, input: string, ratio: string): string =>
     `ngspice gave ${tf} = ${value}. That is rounding noise, what its arithmetic leaves of a ratio that is 0: ${output} does not change when ${input} changes. Solved exactly, with fractions, from the netlist's values, the circuit makes the ratio exactly 0, so PlainSpice shows 0 ${ratio}.`,
+  // C9n, C9w.10: a real .tf ratio ngspice gave as exactly 0, shown exactly; one drawn with other digits, with a warning.
+  lostTfTitle: 'The transfer function is not 0, though ngspice gave 0',
+  lostTfWhy: (tf: string, value: string): string =>
+    `ngspice gave ${tf} as exactly 0. The ratio is too small beside the larger numbers ngspice works it out from for its arithmetic (about 16 significant digits), so it comes out as 0. Solved exactly, with fractions, from the netlist's values, it is ${value}, so PlainSpice shows ${value}.`,
+  offTfTitle: "ngspice's transfer function is off",
+  offTfWhy: (tf: string, exact: string, given: string): string =>
+    `Solved exactly, with fractions, from the netlist's values, ${tf} is ${exact}, where ngspice gives ${given}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's ratio as it gives it, so it may not agree with the other numbers here.`,
   noiseSweepTitle: (names: readonly string[], kind: string): string =>
     names.length === 1 ? `${names[0]} is shown as 0 at some points of the ${kind}` : `${names.length} results are shown as 0 at some points of the ${kind}`,
   noiseSweepGave: (name: string, value: string, unit: string, at: string): string => `${name} ${value}${unit ? ` ${unit}` : ''} at ${at}`,
@@ -1993,9 +2004,19 @@ function diodeWhy(ex: Exact, netlist: Netlist, shape: DiodeStructure, changes: (
 
 // ---- .tf and .dc in a circuit solved exactly (S8)
 
+/** What PlainSpice makes of ngspice's .tf ratio in a circuit it solves exactly (transferCheck). */
+interface TransferCheck {
+  /** ngspice's ratio, rounding noise of a ratio the circuit makes exactly 0: shown as 0 (S8, C9p). */
+  noise?: number;
+  /** The exact ratio, which ngspice's arithmetic rounded to exactly 0: shown so (C9n, C9w.10). */
+  lost?: number;
+  /** The exact ratio, where ngspice's is drawn with other digits and is more than ANSWER_GAP from it: ngspice's is shown, with a warning. */
+  off?: number;
+}
+
 /**
- * ngspice's .tf ratio when it is rounding noise of a ratio the circuit makes exactly 0, else undefined
- * (decision 0015, C9p). In a circuit PlainSpice solves exactly every value is a + b·s in the input s,
+ * ngspice's .tf ratio judged against the exact one, or undefined where it is shown as ngspice gives it with
+ * nothing said (decision 0015, C9p). In a circuit PlainSpice solves exactly every value is a + b·s in the input s,
  * so the ratio is b, from one more exact solution with the input at 1 V or 1 A. ngspice's .tf gives no
  * node voltages, so its input and output resistances must be the exact ones to within ANSWER_GAP (5e-5
  * of each, as an operating point's answers). Then, as in an operating point, an exact 0 is 0 whatever
@@ -2005,11 +2026,17 @@ function diodeWhy(ex: Exact, netlist: Netlist, shape: DiodeStructure, changes: (
  * −2.15e-8 V/V where its .op gives out 0 V, the critic of round 2 of the re-check's fixes). Without that
  * .op, only a ratio within RESIDUAL_SHARE of the largest change the input makes in a value of the
  * output's kind is taken as rounding noise: the three numbers of a .tf are all there is to check.
+ * A real ratio ngspice gives as exactly 0 is shown as the exact one where an .op beside it (with none, a sweep)
+ * is decided exactly, as that .op's or sweep's own lost values are (the last pass, tf-lost-ratio-contradiction:
+ * "v(d2,p3)/V1 0 V/V" sat beside R3's card, "V(d2) − V(p3) = 4.541e-19 V"); with nothing decided beside it, it
+ * stays ngspice's 0, with the warning below. A real ratio ngspice gives drawn with other digits than the exact
+ * one, and more than ANSWER_GAP from it, is off, as an operating point's answers are: shown as ngspice gives it,
+ * with a warning that names the exact one.
  */
-function transferNoise(netlist: Netlist, results: AnalysisResults, reading: Extract<AnalysisReading, { kind: 'tf' }> | undefined): number | undefined {
+function transferCheck(netlist: Netlist, results: AnalysisResults, reading: Extract<AnalysisReading, { kind: 'tf' }> | undefined): TransferCheck | undefined {
   const tf = results.tf;
   const given = tf?.transferFunction;
-  if (!tf || given === undefined || given === 0 || !Number.isFinite(given) || !reading) return undefined;
+  if (!tf || given === undefined || !Number.isFinite(given) || !reading) return undefined;
   const ex = exactOf(netlist);
   if (!ex?.tf) return undefined;
   const { model, tf: t } = ex;
@@ -2050,10 +2077,20 @@ function transferNoise(netlist: Netlist, results: AnalysisResults, reading: Extr
     const top = at(a) - at(b);
     return top === 0n ? undefined : toDouble({ n: top, d: into.den });
   })() : undefined;
-  if (ratio !== 0n || !near(tf.inputImpedance?.value, inputR) || !near(tf.outputImpedance?.value, outputR)) return undefined;
+  if (!near(tf.inputImpedance?.value, inputR) || !near(tf.outputImpedance?.value, outputR)) return undefined;
   const sameOp = !!results.op && noiseOf(netlist, results).by === 'exact';
-  if (!sameOp && Math.abs(given) > RESIDUAL_SHARE * scale()) return undefined;
-  return given;
+  if (ratio === 0n) {
+    if (given === 0 || (!sameOp && Math.abs(given) > RESIDUAL_SHARE * scale())) return undefined;
+    return { noise: given };
+  }
+  // Below the smallest double the exact ratio has no number to show.
+  const exact = double(ratio);
+  if (exact === 0 || !Number.isFinite(exact)) return undefined;
+  if (given === 0) {
+    const sweep = !results.op && !!results.dc && !!ex.sweep && !sweepTooLarge(results.dc) && decidedSweep(netlist, results) !== undefined;
+    return sameOp || sweep ? { lost: exact } : { off: exact };
+  }
+  return formatNumber(given) !== formatNumber(exact) && Math.abs(given - exact) > ANSWER_GAP * Math.abs(exact) ? { off: exact } : undefined;
 }
 
 /** A .dc sweep in a circuit solved exactly: by series, the points where ngspice gave rounding noise of an exact 0, and those where it gave 0 for a real value. */
@@ -3461,8 +3498,10 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
   const words: TransferFunctionWords = { output, input, ratio };
   if (tf.transferFunction !== undefined) {
     // S8: a ratio the circuit makes exactly 0 is 0; ngspice's rounding noise is kept in `noise` (decision 0015, C9p).
-    const noise = transferNoise(netlist, results, reading);
-    const value = noise === undefined ? tf.transferFunction : 0;
+    // C9n: a real ratio ngspice rounded to exactly 0 is the exact one; `given` keeps ngspice's 0.
+    const check = transferCheck(netlist, results, reading);
+    const noise = check?.noise;
+    const value = noise !== undefined ? 0 : (check?.lost ?? tf.transferFunction);
     const v = formatNumber(value);
     const [n1, n2] = tfNodes(netlist, reading, tf);
     const outSpeech = outKind === 'current' ? S.currentIn(reading?.outputNames[0] ?? outPart?.name.text ?? output) : n1 === undefined ? output : n2 === undefined ? S.voltageOf(n1) : S.voltageBetween(n1, n2);
@@ -3472,6 +3511,8 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
       speech: S.transferSpeech(outSpeech, input, v.replace(MINUS, 'minus '), (v === '1' ? S.ratioWordsOne[ratio] : S.ratioWords[ratio]) ?? ratio),
     };
     if (noise !== undefined) words.transferFunction.noise = noise;
+    if (check?.lost !== undefined) words.transferFunction.given = tf.transferFunction;
+    if (check?.off !== undefined) words.transferFunction.exact = check.off;
   }
   if (tf.inputImpedance) {
     const o = ohms(tf.inputImpedance.value);
@@ -3958,6 +3999,22 @@ function tfNoiseNote(netlist: Netlist, words: SummaryInput): MessageWords | unde
   return m;
 }
 
+/** The note for a real .tf ratio ngspice gave as exactly 0, shown as the exact one, and the warning for one drawn with other digits (C9w.10). */
+function tfExactNote(netlist: Netlist, words: SummaryInput): MessageWords | undefined {
+  const tf = words.tf;
+  const q = tf?.transferFunction;
+  if (!tf || !q || (q.given === undefined && q.exact === undefined)) return undefined;
+  const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
+  const ratio = (v: number): string => `${formatNumber(v)} ${tf.ratio}`;
+  const name = `${tf.output}/${tf.input}`;
+  const m: MessageWords =
+    q.exact !== undefined
+      ? { code: 'imprecise-answers', severity: 'warning', title: S.offTfTitle, why: S.offTfWhy(name, ratio(q.exact), ratio(q.value)) }
+      : { code: 'rounded-to-0', severity: 'note', title: S.lostTfTitle, why: S.lostTfWhy(name, ratio(q.value)) };
+  if (line !== undefined) m.line = line + 1;
+  return m;
+}
+
 /** A point of a sweep in a note: "V1 = 3 V", or "50 °C" in a sweep of the temperature (as the sweep's words say it). */
 function sweepPoint(noise: SweepNoise, dc: Sweep, k: number): string {
   if (noise.name) return noise.name(k);
@@ -4115,7 +4172,7 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   const off = status === 'ok' ? offNote(netlist, results) : undefined;
   if (off) words.warnings.push(off);
   // S8, C9p: the same for a .tf ratio and for the points of a .dc sweep.
-  for (const extra of status === 'ok' ? [tfNoiseNote(netlist, words), sweepNoiseNote(netlist, results), sweepLostNote(netlist, results), sweepSizeNote(netlist, results), sweepOffNote(netlist, results)] : []) if (extra) words.warnings.push(extra);
+  for (const extra of status === 'ok' ? [tfNoiseNote(netlist, words), tfExactNote(netlist, words), sweepNoiseNote(netlist, results), sweepLostNote(netlist, results), sweepSizeNote(netlist, results), sweepOffNote(netlist, results)] : []) if (extra) words.warnings.push(extra);
   return {
     status,
     ngspiceError,

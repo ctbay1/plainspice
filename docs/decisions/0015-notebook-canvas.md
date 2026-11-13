@@ -312,7 +312,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   are more than 5 ("… and 3991 more currents, each in the tables above"), never "and 1 more".
   `CurrentWords.noise` and `NodeVoltageWords.noise` keep ngspice's values for the panel's ngspice
   columns.
-- **.tf and .dc of a circuit solved exactly are decided the same way** (C9p). Every value is a + b·s in
+- **.tf and .dc of a circuit solved exactly are decided the same way** (C9p; a real ratio ngspice gives as 0, and
+  one it gives off, since the last pass, C9w.10 to C9w.12). Every value is a + b·s in
   the source s, so one more exact solution, with that source at 1 V or 1 A and the others at 0, gives the
   .tf ratio (b of the output) and every point of a .dc sweep of one V or I source. ngspice's .tf gives no
   node voltages to check its circuit against, so its input and output resistances must be the exact ones
@@ -733,3 +734,15 @@ that a phone left no room to watch the numbers move; this record says what the c
   775 before; 769 with the warning, 553). "Linear runs within the exact solution's limits that the rule decides
   with no warning: 0" (after round 4, above) held for those corpora only; ngspice's leftovers of 3.8e−15 and
   4.4e−11 are what that set of netlists measured, not a bound.
+- **The .tf ratio is judged as the .op beside it is** (tf-lost-ratio-contradiction; C9w.10 to C9w.12). A ratio
+  ngspice gives as exactly 0 was never compared with the exact one, nor was a ratio other than 0: C9n.5 with ".tf
+  v(d2,p3) V1" read "0 V/V" beside R3's card, "V(d2) − V(p3) = 4.541e-19 V", and a bridge read through a chain
+  showed ngspice's 1.11e−16 V/V for −2.656e−20 V/V with nothing said. Now a real ratio ngspice gives as exactly 0
+  is shown as the exact one where an .op beside it (with none, a sweep) is decided exactly, with a note, the
+  Numbers panel keeping ngspice's 0 in its own column (`given`, as for the .op's lost values); with nothing beside
+  it decided exactly (a .tf alone, an .op whose answers are off), ngspice's 0 stays, with the warning "ngspice's
+  transfer function is off", which names the exact ratio; and a ratio drawn with other digits than the exact one,
+  more than ANSWER_GAP from it, gets that warning too. Its input and output resistances must still be the exact
+  ones to within 5e−5, a ratio below the smallest double stays ngspice's, and a circuit with a diode keeps its
+  ratio. NumbersPanel's `tfRows` takes ngspice's value from `given` before `noise` (a two-line change outside the
+  noise lane's files).
