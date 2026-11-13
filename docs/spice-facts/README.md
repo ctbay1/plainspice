@@ -76,8 +76,9 @@ digits not grouped in threes end the number too) and look-alike-letter-6 (a look
 sign: `-５` stops ngspice).
 
 After the re-check of 12 November 2026 and the fixes of the rounding-noise rule (12 and 13 November):
-C9m to C9t.11 in explanations.md (what the exact solution decides, ngspice's answers far off, .tf and
-.dc of balanced bridges, diodes left free, and a diode loop ngspice settles on a current around).
+C9m to C9u.8 in explanations.md (what the exact solution decides, ngspice's answers far off, .tf and
+.dc of balanced bridges, diodes left free, a diode loop ngspice settles on a current around, a circuit
+at rest, each answer's own floor, diodes placed alike, and an .op decided with its sweep).
 
 ## Where the evidence came from
 

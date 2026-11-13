@@ -2882,7 +2882,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### C9h. A tiny current flows on through every part of its loop: in a loop with a source written 2A, R1 and V1 carry its 2 aA
 
-Added after the critic of round 2 (12 November 2026). A 12 V source, 1 kΩ and a current source written `2A`, which SPICE reads as 2 attoamps (unit-letter-1 in traps.md), in one loop. I1 pushes 2e−18 A into node b, and R1 is the only other part there, so R1 carries it, and then V1: the currents at a node add up to 0. 2 aA through 1 kΩ is 2e−15 V, less than the step between two doubles at 12 V (1.8e−15 V), so ngspice gives node b one step above 12 V (12.000000000000002), and R1's current comes out as that one step over 1 kΩ, −1.776e−18 A: the 2 aA to within ngspice's rounding. R1's two ends are as close as R5's in the balanced bridge (C9), but here the circuit makes a current flow, so PlainSpice shows what ngspice gave (R1 1.776 aA, V1 1.735 aA), and the unit-letter check says why it is so small. The same doubles in native 47, native 42 and our engine.
+Added after the critic of round 2 (12 November 2026). A 12 V source, 1 kΩ and a current source written `2A`, which SPICE reads as 2 attoamps (unit-letter-1 in traps.md), in one loop. I1 pushes 2e−18 A into node b, and R1 is the only other part there, so R1 carries it, and then V1: the currents at a node add up to 0. 2 aA through 1 kΩ is 2e−15 V, less than the step between two doubles at 12 V (1.8e−15 V), so ngspice gives node b one step above 12 V (12.000000000000002), and R1's current comes out as that one step over 1 kΩ, −1.776e−18 A: the 2 aA to within ngspice's rounding. R1's two ends are as close as R5's in the balanced bridge (C9), but here the circuit makes a current flow, so PlainSpice shows what ngspice gave (R1 1.776 aA, V1 1.735 aA), and the unit-letter check says why it is so small. Those numbers are 11 and 13 % from the circuit's 2 aA: since the critic of round 2 of the re-check's fixes the page adds the warning that ngspice's answers are off, "V1 carries 2 aA, where ngspice gives 1.735 aA; and R1 carries 2 aA, where ngspice gives 1.776 aA" (a value as large as any other current at its nodes is held to 5e−5 of itself). The same doubles in native 47, native 42 and our engine.
 
 ```spice
 * a 12 V source, 1 k and a current source written 2A (2 attoamps) in one loop
@@ -2909,7 +2909,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### C9i. A resistor in series with one 10¹³ times larger carries the same real current: 10 Ω and 100 TΩ across 12 V each carry 1.2e−13 A
 
-R2 has 12 V across it, so it lets 1.2e−13 A through (as in C9f), and R1 is the only other part at node a, so it carries the same current, though it has only 1.2e−12 V across it, 10⁻¹³ of 12 V. Its two ends are 675 steps of a double apart (12 against 11.9999999999988): far more than the 1 or 2 steps the balanced bridges of C9 and C9b leave (other balanced circuits leave 7 or 9, C9m). The same doubles in native 47, native 42 and our engine.
+R2 has 12 V across it, so it lets 1.2e−13 A through (as in C9f), and R1 is the only other part at node a, so it carries the same current, though it has only 1.2e−12 V across it, 10⁻¹³ of 12 V. Its two ends are 675 steps of a double apart (12 against 11.9999999999988): far more than the 1 or 2 steps the balanced bridges of C9 and C9b leave (other balanced circuits leave 7 or 9, C9m). ngspice's 120.1 fA for V1 and R1 is 7e−4 from the circuit's 120 fA, so the page shows ngspice's numbers with the warning that they are off: "V1 carries 120 fA, where ngspice gives 120.1 fA; and R1 carries 120 fA, where ngspice gives 120.1 fA". The same doubles in native 47, native 42 and our engine.
 
 ```spice
 * 12 V across 10 ohms in series with 100 T ohms
@@ -2936,7 +2936,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 
 ### C9j. Side by side, both carry it: in the loop of C9h with two 1 kΩ resistors, each carries 1 aA
 
-I1's 2 aA now splits between R1 and R2, 1 aA each. ngspice gives each −1.776e−18 A (one step of a double over 1 kΩ, as in C9h) and V1 3.469e−18 A: the currents to within its rounding. Node b has three parts here, so it is the rule for a node, not only for parts in series, that says R1 and R2 carry I1's current: where the real currents at a node do not add up to 0, the node's other parts carry the difference. The same doubles in native 47, native 42 and our engine.
+I1's 2 aA now splits between R1 and R2, 1 aA each. ngspice gives each −1.776e−18 A (one step of a double over 1 kΩ, as in C9h) and V1 3.469e−18 A: the currents to within its rounding. Node b has three parts here, so it is the rule for a node, not only for parts in series, that says R1 and R2 carry I1's current: where the real currents at a node do not add up to 0, the node's other parts carry the difference. Those numbers are far from the circuit's 1 aA and 2 aA, so the page shows them with the warning that ngspice's answers are off: "R1 carries 1 aA, where ngspice gives 1.776 aA; R2 carries 1 aA, where ngspice gives 1.776 aA; and V1 carries 2 aA, where ngspice gives 3.469 aA". The same doubles in native 47, native 42 and our engine.
 
 ```spice
 * the loop of C9h with two 1 k resistors side by side
@@ -4391,7 +4391,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(in) = 9, v(top) = 0.7691572401059934, v(a) = 0.3926329591523753, v(b) = 0.39022867882420265, v(m) = 0.39263295915237534, i(v1) = -0.08230842759894007, i(@r0[i]) = 0.08230842759894007, i(@d1[id]) = 0.08219017562144401, i(@r1[i]) = 0.00003765242809536181, i(@r2[i]) = 0.00003926329591523753, i(@r3[i]) = 0.00008062309814506186, i(@r4[i]) = 0.00008302737847323461, i(@rw[i]) = -0.00005551115123125783, i(@r5[i]) = 0.000002404280328172692
 ```
 
-Added after the critic of round 2 of the re-check's fixes (13 November 2026), with its second fix (C9t.9): two equal diode arms with 1 kΩ between them, swept from 0 V by ".dc V1 0 9 3". At V1 = 0 the circuit makes every value 0, and each diode, with 0 V across it, carries 0 A; ngspice's Newton iterations leave v(a) and v(b) at −7.4e−25 V, R5 at −3.6e−37 A and each diode at 7.4e−37 A there. No equation weighs these against anything larger, so at such a point PlainSpice holds each of ngspice's values to 2⁻³⁰ of the largest it gives of that kind over the sweep (9 V; 1.669 mA), the share of rounding the answers check allows, and shows them as 0. R5 is 0 only when the two diodes carry the same current, which only ngspice's numbers give: it keeps ngspice's 4.441e−19 A at 3 V and its 0 at 6 and 9 V (C9t). The same doubles in native 47, native 42 and our engine.
+Added after the critic of round 2 of the re-check's fixes (13 November 2026), with its second fix (C9t.9): two equal diode arms with 1 kΩ between them, swept from 0 V by ".dc V1 0 9 3". At V1 = 0 the circuit makes every value 0, and each diode, with 0 V across it, carries 0 A; ngspice's Newton iterations leave v(a) and v(b) at −7.4e−25 V, R5 at −3.6e−37 A and each diode at 7.4e−37 A there. No equation weighs these against anything larger, so at such a point PlainSpice holds each of ngspice's values to 2⁻³⁰ of the largest it gives of that kind over the sweep (9 V; 1.669 mA), the share of rounding the answers check allows, and shows them as 0. R5 is 0 only when the two diodes carry the same current; they are placed alike (C9u.3), so they do, and R5 is 0 at every point, ngspice's 4.441e−19 A at 3 V too (until the critic of round 3 it kept that number, as a value a diode's current changes). The same doubles in native 47, native 42 and our engine.
 
 ```spice
 * two equal diode arms with 1k between them, swept from 0 V: .op and .dc V1 0 9 3
@@ -4564,6 +4564,392 @@ ngspice 42, ngspice -b (exit 1):
   rawfile from ngspice -b -r (exit 0): v(top) = 9, v(a) = 4.500000009047006, v(b) = 4.500000006346407, i(v1) = -0.0014074468107656381; v(Transfer_function) = 2.994011705226285e-10, v(v1#Input_impedance) = 6394.557812906659, v(output_impedance_at_V(a,b)) = 880.2395205995194
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(top) = 9, v(a) = 4.500000009047006, v(b) = 4.500000006346407, i(v1) = -0.0014074468107656381; v(Transfer_function) = 2.994011705226285e-10, v(v1#Input_impedance) = 6394.557812906659, v(output_impedance_at_V(a,b)) = 880.2395205995194
+```
+
+### C9u. A circuit at rest, a value tiny beside the numbers it is worked out from, and two diodes placed alike: an I-V sweep of a diode from 0 V, whose .op is all leftovers of ngspice's Newton iterations
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026). A diode's I-V curve swept from 0 V, with its source at 0 V for the .op: at V1 = 0 the circuit makes every value exactly 0. With every diode at 0 A, D1 has exactly 0 V across it, and 0 V across a diode makes 0 A through it (C9t.2), so it carries none. ngspice's Newton iterations leave v(a) at 7.323e−29 V, V1 and R1 at 7.323e−32 A and the diode at 7.3e−41 A, in the .op and at the sweep's 0 V point alike. No equation weighs these against anything larger: each of the circuit's equations holds only leftovers. So at rest PlainSpice holds each of ngspice's values to 2⁻³⁰ of ngspice's own tolerances, vntol (1 µV) and abstol (1 pA), or of the largest value of its kind the run's sweep gives (here 1 V and 370.3 µA), the larger, and shows them as 0: "the circuit makes each of them exactly 0 (D1 has 0 V across it, so it carries no current)". Before, the .op was left to the rule and drew 7.323e−32 A with arrows, beside a sweep note that called the same values rounding noise of exact 0s at the same point. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the I-V curve of a diode swept from 0 V, its source at 0 V for the .op
+V1 in 0 0
+R1 in a 1k
+D1 a 0 dmod
+.model dmod d
+.options savecurrents
+.op
+.dc V1 0 1 0.25
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        a                                7.323378e-29
+        in                               0.000000e+00
+        @d1[id]                          7.323378e-41
+        @r1[i]                           -7.32338e-32
+        v1#branch                        7.323378e-32
+  rawfile from ngspice -b -r (exit 0): v(v-sweep) = [0, 0.25, 0.5, 0.75, 1], v(in) = [0, 0.25, 0.5, 0.75, 1], v(a) = [7.323378444748195e-29, 0.24999984210234252, 0.4977237724822676, 0.6051466622248889, 0.6296706738025182], i(v1) = [7.323378444748195e-32, -1.578976574598441e-10, -0.000002276227517732359, -0.00014485333777511107, -0.00037032932619748187], i(@r1[i]) = [-7.323378444748195e-32, 1.5789765747675767e-10, 0.0000022762275177323765, 0.00014485333777511112, 0.0003703293261974818], i(@d1[id]) = [7.323378444748195e-41, 1.5789765748689402e-10, 0.000002276227641451018, 0.00014485699554772006, 0.0003738685935656918]; v(in) = 0, v(a) = 7.323378444748195e-29, i(v1) = 7.323378444748195e-32, i(@r1[i]) = -7.323378444748195e-32, i(@d1[id]) = 7.323378444748195e-41
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(v-sweep) = [0, 0.25, 0.5, 0.75, 1], v(in) = [0, 0.25, 0.5, 0.75, 1], v(a) = [7.323378444748195e-29, 0.24999984210234252, 0.4977237724822676, 0.6051466622248889, 0.6296706738025182], i(v1) = [7.323378444748195e-32, -1.578976574598441e-10, -0.000002276227517732359, -0.00014485333777511107, -0.00037032932619748187], i(@r1[i]) = [-7.323378444748195e-32, 1.5789765747675767e-10, 0.0000022762275177323765, 0.00014485333777511112, 0.0003703293261974818], i(@d1[id]) = [7.323378444748195e-41, 1.5789765748689402e-10, 0.000002276227641451018, 0.00014485699554772006, 0.0003738685935656918]; v(in) = 0, v(a) = 7.323378444748195e-29, i(v1) = 7.323378444748195e-32, i(@r1[i]) = -7.323378444748195e-32, i(@d1[id]) = 7.323378444748195e-41
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.2): the bridge of C9s.4, a few millivolts beside a 12 V supply with a 10 pΩ wire, beside an E of 100k reading the supply into 10 kΩ, as an open-loop op-amp used as a comparator: out is at 1.2 MV and E1 carries 120 A. ngspice gives the bridge as in C9s.4, a and m at 4.882 mV and b at 4.965 mV, where the circuit makes all three 5.189 mV and R5 carry 0 A (E1 reads top and takes no current from it). The check that ngspice's answers are the exact ones allowed each answer 2⁻³⁰ of the largest exact value of its kind anywhere in the circuit: 1.2 MV made that 1.1 mV, the bridge's 0.31 mV passed, and the page drew R5 as 0 A, "its two ends at the same voltage, 5.189 mV", between tags of 4.882 mV and 4.965 mV. Each answer is now held to 2⁻³⁰ of the numbers it is worked out from: a node to the terms of Kirchhoff's law at it over its conductance, or to the own equation of a source there; a current to the currents that flow at its nodes; and what a controlled source makes in another part of the circuit to its gain times the floor of what it reads. The bridge's floor is then about 1e−11 V, and the page shows ngspice's numbers, R5 at 82.78 nA, with the warning that gives the exact values. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the bridge of C9s.4 (a 10 pOhm wire at 5 mV beside 12 V) beside an open-loop E of 100k reading the supply
+V1 top 0 12
+Rd1 top s 999k
+Rd2 s 0 1k
+R1 s a 10k
+R2 a 0 10k
+R3 s b 4.7k
+R4 b 0 4.7k
+Rw a m 10p
+R5 m b 1k
+E1 out 0 top 0 100k
+Rl out 0 10k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        out                              1.200000e+06
+        m                                4.882133e-03
+        b                                4.964910e-03
+        a                                4.882133e-03
+        s                                1.031887e-02
+        top                              1.200000e+01
+        @rl[i]                           1.200000e+02
+        @r5[i]                           -8.27765e-08
+        @rw[i]                           0.000000e+00
+        @r4[i]                           1.056364e-06
+        @r3[i]                           1.139140e-06
+        @r2[i]                           4.882133e-07
+        @r1[i]                           5.436736e-07
+        @rd2[i]                          1.031887e-05
+        @rd1[i]                          1.200168e-05
+        v1#branch                        -1.20017e-05
+        e1#branch                        -1.20000e+02
+  rawfile from ngspice -b -r (exit 0): v(top) = 12, v(s) = 0.010318868972790083, v(a) = 0.004882133225318445, v(b) = 0.0049649097211622055, v(m) = 0.004882133225318445, v(out) = 1200000, i(e1) = -120, i(v1) = -0.00001200168281384105, i(@rd1[i]) = 0.00001200168281384105, i(@rd2[i]) = 0.000010318868972790084, i(@r1[i]) = 5.436735747471639e-7, i(@r2[i]) = 4.882133225318445e-7, i(@r3[i]) = 0.0000011391402663038038, i(@r4[i]) = 0.0000010563637704600437, i(@rw[i]) = 0, i(@r5[i]) = -8.27764958437607e-8, i(@rl[i]) = 120
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 12, v(s) = 0.010318868972790083, v(a) = 0.004882133225318445, v(b) = 0.0049649097211622055, v(m) = 0.004882133225318445, v(out) = 1200000, i(e1) = -120, i(v1) = -0.00001200168281384105, i(@rd1[i]) = 0.00001200168281384105, i(@rd2[i]) = 0.000010318868972790084, i(@r1[i]) = 5.436735747471639e-7, i(@r2[i]) = 4.882133225318445e-7, i(@r3[i]) = 0.0000011391402663038038, i(@r4[i]) = 0.0000010563637704600437, i(@rw[i]) = 0, i(@r5[i]) = -8.27764958437607e-8, i(@rl[i]) = 120
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.3): two equal diode arms fed through 100 Ω from 9 V, each a diode, 1 kΩ and 2.2 kΩ, with 4.7 kΩ and a 0 V ammeter between their middles c and d. The arms are the same, so c and d are at exactly the same voltage and R5 and Vm carry 0 A. ngspice gives c and d one step of a double apart (5.384580645483332 against 5.384580645483333), Vm −2.168e−19 A and R5 −1.890e−19 A. A diode's current is left free (C9t), and R5's current is then c·I1 − c·I2: 0 only when the two diodes carry the same current. PlainSpice finds the diodes placed alike: the same model line, their own currents (on no loop of diodes), the same voltage across each with every diode at 0 A, and the same voltage across each from each class's currents together (an equitable partition of the diodes' own equations, refined until it holds). The circuit's equations then have a solution with their currents equal, and ngspice's numbers must show that solution: the currents Kirchhoff's law gives the two within 2⁻³⁰ of the largest sum of the sizes of a node's terms (a circuit placed alike can settle unevenly, as a latch does; then the diodes are taken one by one). So R5 and Vm are 0 A, "(D1 and D2, placed alike in the circuit, carry the same current)". Before, both were drawn with ngspice's numbers and arrows. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* two equal diode arms, a link between their middle nodes, read by an ammeter
+V1 top 0 9
+R0 top t 100
+D1 t a dmod
+R1 a c 1k
+R2 c 0 2.2k
+D2 t b dmod
+R3 b d 1k
+R4 d 0 2.2k
+R5 c m 4.7k
+Vm m d 0
+.model dmod d
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        m                                5.384581e+00
+        d                                5.384581e+00
+        b                                7.832117e+00
+        c                                5.384581e+00
+        a                                7.832117e+00
+        t                                8.510493e+00
+        top                              9.000000e+00
+        @r5[i]                           -1.88974e-19
+        @r4[i]                           2.447537e-03
+        @r3[i]                           2.447537e-03
+        @d2[id]                          2.457611e-03
+        @r2[i]                           2.447537e-03
+        @r1[i]                           2.447537e-03
+        @d1[id]                          2.457611e-03
+        @r0[i]                           4.895073e-03
+        v1#branch                        -4.89507e-03
+        vm#branch                        -2.16840e-19
+  rawfile from ngspice -b -r (exit 0): v(top) = 9, v(t) = 8.51049266859241, v(a) = 7.83211730252121, v(c) = 5.384580645483332, v(b) = 7.832117302521211, v(d) = 5.384580645483333, v(m) = 5.384580645483333, i(vm) = -2.168404344971009e-19, i(v1) = -0.004895073314075904, i(@r0[i]) = 0.004895073314075908, i(@d1[id]) = 0.002457611230743598, i(@r1[i]) = 0.002447536657037878, i(@r2[i]) = 0.0024475366570378783, i(@d2[id]) = 0.0024576112307435195, i(@r3[i]) = 0.002447536657037878, i(@r4[i]) = 0.0024475366570378787, i(@r5[i]) = -1.8897413185109047e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top) = 9, v(t) = 8.51049266859241, v(a) = 7.83211730252121, v(c) = 5.384580645483332, v(b) = 7.832117302521211, v(d) = 5.384580645483333, v(m) = 5.384580645483333, i(vm) = -2.168404344971009e-19, i(v1) = -0.004895073314075904, i(@r0[i]) = 0.004895073314075908, i(@d1[id]) = 0.002457611230743598, i(@r1[i]) = 0.002447536657037878, i(@r2[i]) = 0.0024475366570378783, i(@d2[id]) = 0.0024576112307435195, i(@r3[i]) = 0.002447536657037878, i(@r4[i]) = 0.0024475366570378787, i(@r5[i]) = -1.8897413185109047e-19
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.4): the balanced bridge of C9 with .op and ".dc TEMP 0 50 25". No part of it changes with the temperature: a resistor without temperature coefficients keeps its value (tc1 and tc2 are 0 unless written, and a part with them is left to the rule), so ngspice gives the .op's values at 0, 25 and 50 °C, R5's −8.882e−19 A at each. PlainSpice decides such a sweep exactly, each point being the .op's circuit, a + 0·s (a diode's current, which does change with the temperature, is left free at each point): R5 is 0 at every point as in the .op, and the note says "i(@r5[i]) −8.881784e−19 A at 0 °C, … at 25 °C and … at 50 °C". Before, a sweep of the temperature was left as ngspice gives it, and its words gave R5 −8.882e−19 A at 50 °C, the .op's own state, beside the .op's "exactly 0". The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the C9 bridge, .op and a temperature sweep
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+.options savecurrents
+.op
+.dc TEMP 0 50 25
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+  rawfile from ngspice -b -r (exit 0): temp-sweep = [0, 25, 50], v(top) = [9, 9, 9], v(a) = [4.499999999999999, 4.499999999999999, 4.499999999999999], v(b) = [4.5, 4.5, 4.5], i(v1) = [-0.0014074468085106386, -0.0014074468085106386, -0.0014074468085106386], i(@r1[i]) = [0.0004500000000000001, 0.0004500000000000001, 0.0004500000000000001], i(@r2[i]) = [0.00044999999999999993, 0.00044999999999999993, 0.00044999999999999993], i(@r3[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r4[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r5[i]) = [-8.881784197001253e-19, -8.881784197001253e-19, -8.881784197001253e-19]; v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: temp-sweep = [0, 25, 50], v(top) = [9, 9, 9], v(a) = [4.499999999999999, 4.499999999999999, 4.499999999999999], v(b) = [4.5, 4.5, 4.5], i(v1) = [-0.0014074468085106386, -0.0014074468085106386, -0.0014074468085106386], i(@r1[i]) = [0.0004500000000000001, 0.0004500000000000001, 0.0004500000000000001], i(@r2[i]) = [0.00044999999999999993, 0.00044999999999999993, 0.00044999999999999993], i(@r3[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r4[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r5[i]) = [-8.881784197001253e-19, -8.881784197001253e-19, -8.881784197001253e-19]; v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.5): the same bridge with ".dc R5 1k 2k 500". A sweep of a resistor changes the circuit at each point, which the exact solution of the netlist does not follow (nor does it follow a sweep of two sources); ngspice gives R5 −8.882e−19, −5.921e−19 and −4.441e−19 A at 1, 1.5 and 2 kΩ. Such a sweep is left as ngspice gives it, and since a run's .op and .dc are decided together, the .op beside it is decided by the rule for other circuits, held to the exact solution: R5 is 0 A there with the rule's words, "It is below 1 pA, ngspice's current tolerance", not "exactly 0", and the Plot panel draws ngspice's −8.882e−19 A at 1 kΩ, the .op's state. Before, the .op called that value rounding noise of an exact 0 beside the sweep's words giving it as a current. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* the C9 bridge, .op and a sweep of R5
+V1 top 0 9
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+.options savecurrents
+.op
+.dc R5 1k 2k 500
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                4.500000e+00
+        a                                4.500000e+00
+        top                              9.000000e+00
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+  rawfile from ngspice -b -r (exit 0): res-sweep = [1000, 1500, 2000], v(top) = [9, 9, 9], v(a) = [4.499999999999999, 4.499999999999999, 4.499999999999999], v(b) = [4.5, 4.5, 4.5], i(v1) = [-0.0014074468085106386, -0.0014074468085106386, -0.0014074468085106386], i(@r1[i]) = [0.0004500000000000001, 0.0004500000000000001, 0.0004500000000000001], i(@r2[i]) = [0.00044999999999999993, 0.00044999999999999993, 0.00044999999999999993], i(@r3[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r4[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r5[i]) = [-8.881784197001253e-19, -5.921189464667501e-19, -4.440892098500626e-19]; v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: res-sweep = [1000, 1500, 2000], v(top) = [9, 9, 9], v(a) = [4.499999999999999, 4.499999999999999, 4.499999999999999], v(b) = [4.5, 4.5, 4.5], i(v1) = [-0.0014074468085106386, -0.0014074468085106386, -0.0014074468085106386], i(@r1[i]) = [0.0004500000000000001, 0.0004500000000000001, 0.0004500000000000001], i(@r2[i]) = [0.00044999999999999993, 0.00044999999999999993, 0.00044999999999999993], i(@r3[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r4[i]) = [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], i(@r5[i]) = [-8.881784197001253e-19, -5.921189464667501e-19, -4.440892098500626e-19]; v(top) = 9, v(a) = 4.499999999999999, v(b) = 4.5, i(v1) = -0.0014074468085106386, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.6): a 1.5 V source, 47 Ω and a current source written 1A, 1 attoamp (unit-letter-1 in traps.md), in one loop: I1's 1 aA flows through R1 and V1. 47 aV across R1 is far below one step of a double at 1.5 V (2.2e−16 V), so ngspice gives top1 and i2 as the same double, and R1 and V1 exactly 0 A; every other value is the exact one. Such a 0 is ngspice's arithmetic, not the circuit's (C9n), and where it is the only kind of value off, with every other current, the resistors' too, the exact one, the run is this circuit's, solved to the page's digits: PlainSpice shows V1 and R1 at their exact 1 aA, with ngspice's 0 in the Numbers panel's ngspice column and the note of C9n, and Kirchhoff's law holds on the page. Before, such a run was taken as off: the warning sat beside "V1: no current", "R1: no current" and "I1: 1 aA". Where ngspice gives another current with no correct digit beside such a 0 (3 aA through 150 Ω at 5 V, where it gives R1 5.921 aA the other way), the exact value would sit beside it, and the page keeps ngspice's numbers with the warning. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* a 1.5 V source, 47 ohms and a current source written 1A (1 attoamp) in one loop
+V1 top1 0 1.5
+R1 top1 i2 47
+I1 0 i2 1A
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        i2                               1.500000e+00
+        top1                             1.500000e+00
+        @i1[current]                     1.000000e-18
+        @r1[i]                           0.000000e+00
+        v1#branch                        0.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(top1) = 1.5, v(i2) = 1.5, i(v1) = 0, i(@r1[i]) = 0, i(@i1[current]) = 1e-18
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top1) = 1.5, v(i2) = 1.5, i(v1) = 0, i(@r1[i]) = 0, i(@i1[current]) = 1e-18
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.7): a bridge of 4.7 MΩ over 33 kΩ arms with a 1 nΩ wire and 100 MΩ in its middle branch, read by a G of 1 mS into 3.3 Ω, with a diode and 5.6 Ω from a2 to ground. The wire beside megohms makes the equations ill-conditioned: ngspice gives a2 and m4 63.01 mV, where the circuit makes them 62.75 mV, as ngspice gives b3, and G1 263 nA, where the circuit makes it −5.48 pA, 48,000 times smaller and the other way. The diode's current, which only ngspice's numbers give (167.3 fA), moves a2 by about 5 nV, 1/50,000 of ngspice's error there, so a2's exact value is known to the page's digits. The warning now names such values, "node a2 is at 62.75 mV, where ngspice gives 63.01 mV", and leaves out those the diode's current moves by more than 5e−5 of them or by more than a thousandth of their gap (G1, g6). Before, a value any diode's current changed was never named, here every value off, and the page showed ngspice's numbers with no warning. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* a bridge with a 1 nOhm wire read by a G of 1 mS, and a diode with 5.6 ohms from a2 to ground
+V1 top1 0 9
+R1 top1 a2 4.7meg
+R2 a2 0 33k
+R3 top1 b3 4.7meg
+R4 b3 0 33k
+R5 a2 m4 1n
+R6 m4 b3 100meg
+R7 top1 s5 1k
+R8 s5 0 1e15
+G1 0 g6 a2 b3 1m
+R9 g6 0 3.3
+D1 a2 d7 dmod
+R10 d7 0 5.6
+.model dmod D(is=1e-14)
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        d7                               9.369771e-13
+        g6                               8.677882e-07
+        s5                               9.000000e+00
+        m4                               6.301395e-02
+        b3                               6.275098e-02
+        a2                               6.301395e-02
+        top1                             9.000000e+00
+        @r10[i]                          1.673173e-13
+        @d1[id]                          1.673173e-13
+        @r9[i]                           2.629661e-07
+        @g1[i]                           2.629661e-07
+        @r8[i]                           9.000000e-15
+        @r7[i]                           8.999024e-15
+        @r6[i]                           2.629661e-12
+        @r5[i]                           0.000000e+00
+        @r4[i]                           1.901545e-06
+        @r3[i]                           1.901542e-06
+        @r2[i]                           1.909514e-06
+        @r1[i]                           1.901486e-06
+        v1#branch                        -3.80303e-06
+  rawfile from ngspice -b -r (exit 0): v(top1) = 9, v(a2) = 0.06301395023536004, v(b3) = 0.06275098412432668, v(m4) = 0.06301395023536004, v(s5) = 8.999999999991001, v(g6) = 8.677881664100572e-7, v(d7) = 9.369770927092972e-13, i(v1) = -0.0000038030287463696474, i(@r1[i]) = 0.0000019014863935669448, i(@r2[i]) = 0.0000019095136434957588, i(@r3[i]) = 0.0000019015423438033348, i(@r4[i]) = 0.000001901544973464445, i(@r5[i]) = 0, i(@r6[i]) = 2.6296611103335257e-12, i(@r7[i]) = 8.999023748401669e-15, i(@r8[i]) = 8.999999999991002e-15, i(@g1[i]) = 2.6296611103335256e-7, i(@r9[i]) = 2.629661110333506e-7, i(@d1[id]) = 1.6731733798380313e-13, i(@r10[i]) = 1.6731733798380306e-13
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top1) = 9, v(a2) = 0.06301395023536004, v(b3) = 0.06275098412432668, v(m4) = 0.06301395023536004, v(s5) = 8.999999999991001, v(g6) = 8.677881664100572e-7, v(d7) = 9.369770927092972e-13, i(v1) = -0.0000038030287463696474, i(@r1[i]) = 0.0000019014863935669448, i(@r2[i]) = 0.0000019095136434957588, i(@r3[i]) = 0.0000019015423438033348, i(@r4[i]) = 0.000001901544973464445, i(@r5[i]) = 0, i(@r6[i]) = 2.6296611103335257e-12, i(@r7[i]) = 8.999023748401669e-15, i(@r8[i]) = 8.999999999991002e-15, i(@g1[i]) = 2.6296611103335256e-7, i(@r9[i]) = 2.629661110333506e-7, i(@d1[id]) = 1.6731733798380313e-13, i(@r10[i]) = 1.6731733798380306e-13
+```
+
+Added after the critic of round 3 of the re-check's fixes (13 November 2026) (C9u.8): a ladder of 20 sections of 27 kΩ and 270 Ω from 5 V, read at n8 by a 1e14 Ω meter through a 1 nΩ wire. The wire's 1e9 S beside the 3.8 mS of the ladder at n8 makes ngspice's elimination lose digits there: n8 and p22 come out at 43.55 fV where the circuit makes them 43.56 fV, 5.5e−5 off, and each node beyond n8 is off by the same share. The answers check allowed 2⁻³⁰ of the ladder's 5 V, 4.7e−9 V, and let it through; each node's floor is now 2⁻³⁰ of the terms of its own equations (about 1e−13 V at n8), so the page shows ngspice's numbers with the warning. The same doubles in native 47, native 42 and our engine.
+
+```spice
+* a 20-section ladder of 27k and 270, read at n8 by a 1e14 ohm meter through a 1 nOhm wire
+V1 top1 0 5
+R1 top1 n2 27k
+R2 n2 0 270
+R3 n2 n3 27k
+R4 n3 0 270
+R5 n3 n4 27k
+R6 n4 0 270
+R7 n4 n5 27k
+R8 n5 0 270
+R9 n5 n6 27k
+R10 n6 0 270
+R11 n6 n7 27k
+R12 n7 0 270
+R13 n7 n8 27k
+R14 n8 0 270
+R15 n8 n9 27k
+R16 n9 0 270
+R17 n9 n10 27k
+R18 n10 0 270
+R19 n10 n11 27k
+R20 n11 0 270
+R21 n11 n12 27k
+R22 n12 0 270
+R23 n12 n13 27k
+R24 n13 0 270
+R25 n13 n14 27k
+R26 n14 0 270
+R27 n14 n15 27k
+R28 n15 0 270
+R29 n15 n16 27k
+R30 n16 0 270
+R31 n16 n17 27k
+R32 n17 0 270
+R33 n17 n18 27k
+R34 n18 0 270
+R35 n18 n19 27k
+R36 n19 0 270
+R37 n19 n20 27k
+R38 n20 0 270
+R39 n20 n21 27k
+R40 n21 0 270
+R41 n8 p22 1n
+R42 p22 0 1e14
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        p22                              4.355490e-14
+        n21                              3.404200e-40
+        n20                              3.438242e-38
+        n19                              3.506666e-36
+        n18                              3.576456e-34
+        n17                              3.647634e-32
+        n16                              3.720229e-30
+        n15                              3.794269e-28
+        n14                              3.869782e-26
+        n13                              3.946798e-24
+        n12                              4.025347e-22
+        n11                              4.105460e-20
+        n10                              4.187166e-18
+        n9                               4.270499e-16
+        n8                               4.355490e-14
+        n7                               4.442418e-12
+        n6                               4.530831e-10
+        n5                               4.621004e-08
+        n4                               4.712971e-06
+        n3                               4.806768e-04
+        n2                               4.902432e-02
+        top1                             5.000000e+00
+        @r42[i]                          4.355490e-28
+        @r41[i]                          6.310887e-21
+        @r40[i]                          1.260815e-42
+        @r39[i]                          1.260815e-42
+        @r38[i]                          1.273423e-40
+        @r37[i]                          1.286031e-40
+        @r36[i]                          1.298765e-38
+        @r35[i]                          1.311626e-38
+        @r34[i]                          1.324613e-36
+        @r33[i]                          1.337729e-36
+        @r32[i]                          1.350976e-34
+        @r31[i]                          1.364353e-34
+        @r30[i]                          1.377863e-32
+        @r29[i]                          1.391506e-32
+        @r28[i]                          1.405285e-30
+        @r27[i]                          1.419200e-30
+        @r26[i]                          1.433253e-28
+        @r25[i]                          1.447445e-28
+        @r24[i]                          1.461777e-26
+        @r23[i]                          1.476252e-26
+        @r22[i]                          1.490869e-24
+        @r21[i]                          1.505632e-24
+        @r20[i]                          1.520541e-22
+        @r19[i]                          1.535597e-22
+        @r18[i]                          1.550802e-20
+        @r17[i]                          1.566158e-20
+        @r16[i]                          1.581666e-18
+        @r15[i]                          1.597328e-18
+        @r14[i]                          1.613145e-16
+        @r13[i]                          1.629209e-16
+        @r12[i]                          1.645340e-14
+        @r11[i]                          1.661632e-14
+        @r10[i]                          1.678086e-12
+        @r9[i]                           1.694702e-12
+        @r8[i]                           1.711483e-10
+        @r7[i]                           1.728430e-10
+        @r6[i]                           1.745545e-08
+        @r5[i]                           1.762829e-08
+        @r4[i]                           1.780284e-06
+        @r3[i]                           1.797913e-06
+        @r2[i]                           1.815716e-04
+        @r1[i]                           1.833695e-04
+        v1#branch                        -1.83369e-04
+  rawfile from ngspice -b -r (exit 0): v(top1) = 5, v(n2) = 0.04902432036075849, v(n3) = 0.0004806767973668559, v(n4) = 0.000004712970660819228, v(n5) = 4.621003670537149e-8, v(n6) = 4.5308312866507694e-10, v(n7) = 4.442418466369907e-12, v(n8) = 4.355490465360492e-14, v(n9) = 4.2704991980412374e-16, v(n10) = 4.187166415702717e-18, v(n11) = 4.105459755344378e-20, v(n12) = 4.0253474854840795e-22, v(n13) = 3.946798493834904e-24, v(n14) = 3.869782275222429e-26, v(n15) = 3.7942689197377853e-28, v(n16) = 3.7202291011218854e-30, v(n17) = 3.6476340653763185e-32, v(n18) = 3.576455619596522e-34, v(n19) = 3.50666612134043e-36, v(n20) = 3.4382417071680744e-38, v(n21) = 3.4041997100674006e-40, v(p22) = 4.355490465360491e-14, i(v1) = -0.0001833694696162682, i(@r1[i]) = 0.0001833694696162682, i(@r2[i]) = 0.00018157155689169812, i(@r3[i]) = 0.0000017979127245700606, i(@r4[i]) = 0.000001780284434692059, i(@r5[i]) = 1.762828987800136e-8, i(@r6[i]) = 1.7455446891923066e-8, i(@r7[i]) = 1.7284298607829096e-10, i(@r8[i]) = 1.7114828409396848e-10, i(@r9[i]) = 1.6947019843224596e-12, i(@r10[i]) = 1.6780856617225073e-12, i(@r11[i]) = 1.6616322599952112e-14, i(@r12[i]) = 1.6453401727295952e-14, i(@r13[i]) = 1.6292087265615931e-16, i(@r14[i]) = 1.6131446168001822e-16, i(@r15[i]) = 1.5973279531037331e-18, i(@r16[i]) = 1.5816663696449028e-18, i(@r17[i]) = 1.5661583458830407e-20, i(@r18[i]) = 1.5508023761861914e-20, i(@r19[i]) = 1.535596969684916e-22, i(@r20[i]) = 1.5205406501275474e-22, i(@r21[i]) = 1.5056319557368655e-24, i(@r22[i]) = 1.4908694390681776e-24, i(@r23[i]) = 1.476251666868789e-26, i(@r24[i]) = 1.4617772199388533e-26, i(@r25[i]) = 1.447444692993585e-28, i(@r26[i]) = 1.4332526945268256e-28, i(@r27[i]) = 1.4191998466759448e-30, i(@r28[i]) = 1.4052847850880687e-30, i(@r29[i]) = 1.3915061587876173e-32, i(@r30[i]) = 1.3778626300451428e-32, i(@r31[i]) = 1.3643528742474527e-34, i(@r32[i]) = 1.3509755797690069e-34, i(@r33[i]) = 1.3377294478445753e-36, i(@r34[i]) = 1.3246131924431563e-36, i(@r35[i]) = 1.3116255401418954e-38, i(@r36[i]) = 1.2987652301260852e-38, i(@r37[i]) = 1.2860310015810181e-40, i(@r38[i]) = 1.2734228545066943e-40, i(@r39[i]) = 1.2608147074323703e-42, i(@r40[i]) = 1.2608147074323707e-42, i(@r41[i]) = 6.310887241768094e-21, i(@r42[i]) = 4.355490465360491e-28
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(top1) = 5, v(n2) = 0.04902432036075849, v(n3) = 0.0004806767973668559, v(n4) = 0.000004712970660819228, v(n5) = 4.621003670537149e-8, v(n6) = 4.5308312866507694e-10, v(n7) = 4.442418466369907e-12, v(n8) = 4.355490465360492e-14, v(n9) = 4.2704991980412374e-16, v(n10) = 4.187166415702717e-18, v(n11) = 4.105459755344378e-20, v(n12) = 4.0253474854840795e-22, v(n13) = 3.946798493834904e-24, v(n14) = 3.869782275222429e-26, v(n15) = 3.7942689197377853e-28, v(n16) = 3.7202291011218854e-30, v(n17) = 3.6476340653763185e-32, v(n18) = 3.576455619596522e-34, v(n19) = 3.50666612134043e-36, v(n20) = 3.4382417071680744e-38, v(n21) = 3.4041997100674006e-40, v(p22) = 4.355490465360491e-14, i(v1) = -0.0001833694696162682, i(@r1[i]) = 0.0001833694696162682, i(@r2[i]) = 0.00018157155689169812, i(@r3[i]) = 0.0000017979127245700606, i(@r4[i]) = 0.000001780284434692059, i(@r5[i]) = 1.762828987800136e-8, i(@r6[i]) = 1.7455446891923066e-8, i(@r7[i]) = 1.7284298607829096e-10, i(@r8[i]) = 1.7114828409396848e-10, i(@r9[i]) = 1.6947019843224596e-12, i(@r10[i]) = 1.6780856617225073e-12, i(@r11[i]) = 1.6616322599952112e-14, i(@r12[i]) = 1.6453401727295952e-14, i(@r13[i]) = 1.6292087265615931e-16, i(@r14[i]) = 1.6131446168001822e-16, i(@r15[i]) = 1.5973279531037331e-18, i(@r16[i]) = 1.5816663696449028e-18, i(@r17[i]) = 1.5661583458830407e-20, i(@r18[i]) = 1.5508023761861914e-20, i(@r19[i]) = 1.535596969684916e-22, i(@r20[i]) = 1.5205406501275474e-22, i(@r21[i]) = 1.5056319557368655e-24, i(@r22[i]) = 1.4908694390681776e-24, i(@r23[i]) = 1.476251666868789e-26, i(@r24[i]) = 1.4617772199388533e-26, i(@r25[i]) = 1.447444692993585e-28, i(@r26[i]) = 1.4332526945268256e-28, i(@r27[i]) = 1.4191998466759448e-30, i(@r28[i]) = 1.4052847850880687e-30, i(@r29[i]) = 1.3915061587876173e-32, i(@r30[i]) = 1.3778626300451428e-32, i(@r31[i]) = 1.3643528742474527e-34, i(@r32[i]) = 1.3509755797690069e-34, i(@r33[i]) = 1.3377294478445753e-36, i(@r34[i]) = 1.3246131924431563e-36, i(@r35[i]) = 1.3116255401418954e-38, i(@r36[i]) = 1.2987652301260852e-38, i(@r37[i]) = 1.2860310015810181e-40, i(@r38[i]) = 1.2734228545066943e-40, i(@r39[i]) = 1.2608147074323703e-42, i(@r40[i]) = 1.2608147074323707e-42, i(@r41[i]) = 6.310887241768094e-21, i(@r42[i]) = 4.355490465360491e-28
 ```
 
 ## 4. Messages
