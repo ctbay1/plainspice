@@ -19,10 +19,11 @@
  *   smashing detected") or runs on with its memory overwritten, and PlainSpice's engine runs on,
  *   gives no results or crashes. So PlainSpice does not give ngspice a netlist with such a name
  *   (`notRun`, with the line and why): the student shortens it. No real netlist comes near these
- *   lengths; a link can.
+ *   lengths; a link can. A circuit built with `circbyline` commands is checked the same way (limit-12).
  *
  * The ngspice output tab lists what PlainSpice added and changed (`added`, `notes`).
  */
+import { parseNetlist } from './parse.ts';
 import type { Netlist, NetlistLine } from './types.ts';
 
 export const SAVE_CURRENTS_LINE = '.options savecurrents';
@@ -374,14 +375,28 @@ function formulaRuns(code: string): { at: number; close: number; bytes: number }
   return out;
 }
 
-/** The first thing in the netlist that ngspice cannot take, by line. */
-export function whyNotRun(netlist: Netlist): NotRun | undefined {
+/** A command that hands ngspice one line of a circuit (limit-12): its text after the command's name. */
+const CIRCBYLINE = /^circbyline(?:[ \t]+|$)/i;
+
+/**
+ * The first thing in the netlist that ngspice cannot take, by line. `lineOf` gives the line of the
+ * student's text for a line of this netlist: a circuit made of circbyline commands is checked as the
+ * netlist ngspice reads from them (limit-12), and its problems are said at the commands' lines.
+ */
+export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (line) => line): NotRun | undefined {
   const found: NotRun[] = [];
   const note = (line: number, reason: string): void => void found.push({ line, reason });
   const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));
+  /** The circuit lines of circbyline commands, in a .control block or an *ng_script file, and the lines they are on. */
+  const circuit: { text: string; line: number }[] = [];
   for (const { line, text, code } of cardsOf(netlist)) {
     if (line.kind === 'blank' || line.kind === 'comment' || isTitleLine(line.text, line.index)) continue;
-    const number = line.number;
+    const number = lineOf(line.number);
+    if (line.kind === 'control' || (script && line.index > 0)) {
+      const read = asRead(line.text);
+      const command = CIRCBYLINE.exec(read);
+      if (command) circuit.push({ text: read.slice(command[0].length), line: number });
+    }
     // limit-3 to limit-7: every name, as ngspice ends it in a formula or a list.
     const long = text.split(NAME_END).find((w) => utf8Bytes(w) > WORD_BYTES);
     if (long !== undefined) {
@@ -452,7 +467,12 @@ export function whyNotRun(netlist: Netlist): NotRun | undefined {
   // limit-3, limit-7, limit-10: the names ngspice makes inside subcircuits, saved as currents (with
   // .options savecurrents, which PlainSpice adds for .op, or .save alli) or printed by a .control block.
   const longest = longestFullName(netlist);
-  if (longest && longest.bytes > WORD_BYTES) note(longest.line, S.longFullName(longest.line, shown(longest.name), longest.bytes));
+  if (longest && longest.bytes > WORD_BYTES) note(lineOf(longest.line), S.longFullName(lineOf(longest.line), shown(longest.name), longest.bytes));
+  // limit-12: ngspice reads the lines of circbyline commands as a netlist, which meets the same spaces.
+  if (circuit.length) {
+    const inside = whyNotRun(parseNetlist(circuit.map((c) => c.text).join('\n')), (line) => circuit[line - 1]?.line ?? lineOf(line));
+    if (inside) found.push(inside);
+  }
   return found.sort((a, b) => a.line - b.line)[0];
 }
 

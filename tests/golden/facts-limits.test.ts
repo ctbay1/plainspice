@@ -1,6 +1,6 @@
 /**
  * docs/spice-facts/limits.md, checked in our WebAssembly engine: where ngspice copies a title or a
- * name into a space of fixed size (limit-1 to limit-11), what the engine does past the end of it, and
+ * name into a space of fixed size (limit-1 to limit-12), what the engine does past the end of it, and
  * that the copy PlainSpice runs (src/spice/run-netlist.ts) stays inside: a title cut to 504 bytes gives
  * the numbers of a short title in every analysis, equal to native ngspice 47's (recorded 13 November
  * 2026, `ngspice -b -r`), and every netlist the engine would run past the end is not run at all.
@@ -239,5 +239,26 @@ describe('limit-11: a .control block can make a name while it runs, which PlainS
     const run = await engine.run(text);
     expect(run.exitCode).toBe(0);
     expect(run.ok).toBe(true);
+  });
+});
+
+describe('limit-12: ngspice reads the lines of circbyline commands as a netlist, with the same spaces', () => {
+  const script = (lines: string[]): string => `*ng_script\n${lines.map((l) => `circbyline ${l}`).join('\n')}\nop\nprint all\n`;
+  const nested = (node: number, x: number): string =>
+    script(['* t', 'V1 a 0 9', 'R1 a b 1k', '.subckt inner p q', `Ri p ${w(node, 'n')} 1k`, `Rj ${w(node, 'n')} q 1k`, '.ends', '.subckt outer p q', `X${w(x - 1, 'b')} p q inner`, '.ends', `X${w(x - 1, 'a')} b 0 outer`, '.end']);
+  it('a B source without its ) and a 520-byte node, built by an *ng_script file, crash our engine; PlainSpice does not run them', async () => {
+    const noClose = script(['* t', 'V1 a 0 9', 'R1 a b 1k', 'R2 b 0 2k', 'B1 c 0 V=v(b', 'R3 c 0 1k', '.end']);
+    expect(crashed(await engine.run(noClose))).toBe(true);
+    expect(runCopy(noClose)).toBeUndefined();
+    expect(crashed(await engine.run(nested(18, 250)))).toBe(true);
+    expect(runCopy(nested(18, 250))).toBeUndefined();
+  });
+
+  it('at PlainSpice’s limit, a node of 250 bytes, the circuit runs and prints what native 47 and 42 print', async () => {
+    const copy = runCopy(nested(48, 100));
+    expect(copy).toBeDefined();
+    const run = await engine.run(copy!);
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toContain(`x${w(99, 'a')}.x${w(99, 'b')}.${w(48, 'n')} = 3.000000e+00`);
   });
 });

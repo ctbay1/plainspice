@@ -279,6 +279,21 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
     expect(at(`B1 c 0 V=1$+v(b ${'b '.repeat(300)})`)?.reason).toMatch(/is 605 bytes long from v\( to \)/);
   });
 
+  it('checks the circuit a .control block or an *ng_script file builds with circbyline as a netlist, at the commands’ lines (limit-12)', () => {
+    const cb = (lines: string[]): string => lines.map((l) => `circbyline ${l}`).join('\n');
+    const script = (lines: string[]): string => `*ng_script\n${cb(lines)}\nop\nprint all\n`;
+    expect(reasonAt(script(['* t', 'V1 a 0 9', 'R1 a b 1k', 'B1 c 0 V=v(b', 'R3 c 0 1k', '.end']))).toEqual({ line: 5, reason: RUN_COPY_WORDS.noClose(5, 'v(') });
+    expect(reasonAt(script(['* t', 'V1 a 0 9', 'R1 a b 1k', 'B1 c 0 V=v(b)', 'R3 c 0 1k', '.end']))).toBeUndefined();
+    const nested = (node: number): string =>
+      script(['* t', 'V1 a 0 9', 'R1 a b 1k', '.subckt inner p q', `Ri p ${w(node, 'n')} 1k`, `Rj ${w(node, 'n')} q 1k`, '.ends', '.subckt outer p q', `X${w(99, 'b')} p q inner`, '.ends', `X${w(99, 'a')} b 0 outer`, '.end']);
+    expect(reasonAt(nested(48))).toBeUndefined();
+    expect(reasonAt(nested(49))).toEqual({ line: 12, reason: RUN_COPY_WORDS.longFullName(12, `x${w(15, 'a')}…`, 251) });
+    const control = `* t\nV9 z 0 1\nR9 z 0 1\n.control\n${cb(['* inner', 'V1 a 0 9', 'B1 c 0 V=v(a', 'R3 c 0 1k', '.end'])}\nop\n.endc\n.end\n`;
+    expect(reasonAt(control)).toEqual({ line: 7, reason: RUN_COPY_WORDS.noClose(7, 'v(') });
+    // A line that only mentions circbyline is no command.
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n.control\necho circbyline B1 c 0 V=v(b\n.endc\n.op\n.end\n`)).toBeUndefined();
+  });
+
   it('says the first problem, by line', () => {
     expect(reasonAt(`* t\nV1 a 0 9\nB1 c 0 V=v(a\nR1 a ${w(300)} 1k\n.op\n.end\n`)?.line).toBe(3);
   });
