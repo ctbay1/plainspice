@@ -570,3 +570,17 @@ describe('after the critic of the re-check\'s fixes: where ngspice\'s answers ar
     expect(sp(annotateLines(rule.netlist, rule.results, rule.run).find((a) => a.line === 11)!.text)).toBe('−909.5 fV across');
   });
 });
+
+describe('after the critic of round 2 of the re-check\'s fixes: every run of a netlist is checked with the same budget', () => {
+  it('the same text run three times (Run pressed again, or an undo back to it: readNetlist gives the same parsed netlist) is decided the same way each time; with one budget kept for the netlist, the second run lost its sweep\'s note and the third its 0s', async () => {
+    const primes: number[] = [];
+    for (let k = 1009; primes.length < 200; k += 2) if (primes.every((p) => k % p !== 0) && [3, 5, 7, 11, 13, 17, 19, 23, 29, 31].every((p) => k % p !== 0)) primes.push(k);
+    const text = `* the bridge of C9o.2 beside 200 resistors of prime values, swept\n${['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'E1 out 0 a b 1e6', 'Rl out 0 100', ...primes.map((p, k) => `Rp${k} top 0 ${p}`)].join('\n')}\n.op\n.dc V1 0 9 1\n.end\n`;
+    const said = (w: ResultsInWords): unknown[] => [w.warnings.map((m) => m.code), current(w, 'E1'), node(w, 'out'), sp(w.sweeps[0]!.text).slice(0, 400)];
+    const runs: unknown[][] = [];
+    for (let k = 0; k < 3; k++) runs.push(said((await solveText(text, ngspice)).words));
+    expect(runs[0]!.slice(0, 3)).toEqual([['rounding-noise', 'rounding-noise'], 'no current through E1', '0 V']);
+    expect(runs[1]).toEqual(runs[0]);
+    expect(runs[2]).toEqual(runs[0]);
+  });
+});

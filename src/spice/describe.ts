@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { agrees, ANSWER_GAP, answers, answersAgree, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
+import { agrees, ANSWER_GAP, answers, answersAgree, checkWork, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -1018,8 +1018,13 @@ interface Exact {
   sweep?: { part: number; slope: Fraction[] };
   /** .tf: its input and how much every unknown changes for 1 V or 1 A of it; for a voltage output, the voltages 1 A into it makes. */
   tf?: { part: number; slope: Fraction[]; into?: Fraction[] };
-  /** The work left for the checks of ngspice's values against the solution (exact.ts MAX_WORK): the solve's own work is spent. */
-  budget: Budget;
+  /**
+   * The work the solve took (exact.ts MAX_WORK), done once per netlist. Each run's checks of ngspice's
+   * values get what it leaves of MAX_WORK, afresh (`checkBudget`): a budget kept with the netlist and
+   * spent run after run made the same text, run again (Run pressed twice, or an undo back to it), lose
+   * its sweep's decision and then its operating point's to the other rule.
+   */
+  solveWork: number;
   /**
    * The diodes, whose currents are left free: one diode for each branch of a forest of the diodes' graph
    * (the currents of these span every current the diodes can carry into the rest of the circuit), each
@@ -1097,7 +1102,7 @@ function exactOf(netlist: Netlist): Exact | undefined {
     const budget = newBudget();
     const x = solveExact(model, sides, budget);
     if (x) {
-      ex = { model, op: x[0]!, part, node, budget };
+      ex = { model, op: x[0]!, part, node, solveWork: MAX_WORK - budget.left };
       if (diodes) ex.diodes = { tree, slopes: x.slice(1, 1 + tree.length) };
       if (sweep !== undefined) ex.sweep = { part: sweep, slope: x[1]! };
       if (tf) {
@@ -1108,6 +1113,15 @@ function exactOf(netlist: Netlist): Exact | undefined {
   }
   exactCache.set(netlist, ex);
   return ex ?? undefined;
+}
+
+/**
+ * A budget for one run's checks of ngspice's values against the exact solution: what the solve left of
+ * MAX_WORK, less `reserved` (the operating point's check, which a run's sweep leaves to it). The same for
+ * every run of the netlist, so its decisions are too, and one run's work stays within MAX_WORK.
+ */
+function checkBudget(ex: Exact, reserved = 0): Budget {
+  return { left: Math.max(0, MAX_WORK - ex.solveWork - reserved) };
 }
 
 /** A node's index in the model by a name as written (−1 for ground, −2 when it has none). */
@@ -1129,9 +1143,9 @@ function ngspiceValues(nodes: Map<string, number>, branch: Map<string, number>, 
  * exact one to within 5e-5 of it, beyond what rounding leaves, `answersAgree`). 'imprecise': this
  * circuit's, but ngspice's answers are farther from the exact ones (a 1e-12 Ω wire beside kilohms:
  * 4.321 V for 4.5 V); `off` lists them. 'other': not this circuit's, as far as its values show, or more
- * work to check than the netlist's budget has left. With diodes, each diode's current is the one
+ * work to check than the run's budget has. With diodes, each diode's current is the one
  * Kirchhoff's law gives it from ngspice's other values (exact.ts treeCurrents), and the rest is checked
- * against that.
+ * against that. The checks get the budget `checkBudget` gives every run of the netlist.
  */
 function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 'same' | 'imprecise'; view: View; off: Answer[] } | { check: 'other' } {
   const nodes = new Map<string, number>();
@@ -1154,11 +1168,12 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
     } else if (p.kind !== 'V' && p.kind !== 'E' && p.kind !== 'H') device.set(c.element, c.value);
   }
   const ng = ngspiceValues(nodes, branch, device);
+  const budget = checkBudget(ex);
   let view: View = { x: ex.op, all: [ex.op], level: (p) => p.value };
   if (ex.diodes) {
     const { model } = ex;
     const { tree, slopes } = ex.diodes;
-    const currents = treeCurrents(model, tree, ng);
+    const currents = treeCurrents(model, tree, ng, budget);
     if (!currents) return { check: 'other' };
     // A diode with exactly 0 V across it when every diode carries 0 A, whose voltage no other diode's current
     // changes, carries 0 A: 0 V across a diode makes 0 A through it, which leaves its 0 V (a G that reads a
@@ -1180,7 +1195,7 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
     const byPart = new Map(live.map((k) => [model.parts[k]!, currents.get(k) ?? ZERO]));
     view = { x: withCurrents(ex.op, liveSlopes, live, currents), all: [ex.op, ...liveSlopes], level: (p) => (p.kind === 'D' ? (byPart.get(p) ?? ZERO) : p.value), live };
   }
-  if (!agrees(ex.model, ng, view.level, ex.budget)) return { check: 'other' };
+  if (!agrees(ex.model, ng, view.level, budget)) return { check: 'other' };
   const list = answers(ex.model, view.x, ng, view.level);
   if (!list) return { check: 'other' };
   // Imprecise when an answer whose exact value is not 0 is off; the note then also names the exact 0s ngspice gives beyond rounding.
@@ -1527,6 +1542,8 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     factor.push(f);
   }
   // ngspice's values at a few points solve the exact equations as closely as its rounding can, and are the exact answers to the page's digits.
+  // Their budget is the run's, less the operating point's check when the run has one (it comes first).
+  const budget = checkBudget(ex, results.op ? checkWork(model) : 0);
   const checks = new Set([0, n - 1, ...Array.from({ length: SWEEP_CHECKS - 2 }, (_, i) => Math.round(((i + 1) * (n - 1)) / (SWEEP_CHECKS - 1)))]);
   for (const k of checks) {
     if (k < 0 || k >= n) continue;
@@ -1541,7 +1558,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const level = (p: ExactModel['parts'][number]): Fraction => (p === swept ? x : p.value);
     const ng = ngspiceValues(nodes, branch, device);
     const unknowns = a.map((ai, i) => ({ n: ai * x.d + b[i]! * x.n, d: den * x.d }));
-    if (!agrees(model, ng, level, ex.budget) || !answersAgree(model, unknowns, ng)) return undefined;
+    if (!agrees(model, ng, level, budget) || !answersAgree(model, unknowns, ng)) return undefined;
   }
   // a + b·s is 0 at every point when a and b are, else only at s = −a/b, where ngspice's x must be that number exactly.
   const zero = new Map<number, number[]>();

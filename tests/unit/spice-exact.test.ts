@@ -19,6 +19,7 @@ import {
   fraction,
   fromDouble,
   isZero,
+  MAX_DIODES,
   MAX_UNKNOWNS,
   operatingPoint,
   overCommon,
@@ -175,6 +176,10 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
     expect(m.parts.find((p) => p.key === 'd1')).toMatchObject({ kind: 'D', a: m.nodes.indexOf('a'), b: -1, branch: -1, value: ZERO });
     expect(m.size).toBe(4);
     expect(model(`${bridge}D1 a 0 t dmod\n.model dmod d\n.op\n.end\n`)).toBe('part');
+    // Each diode takes a solution of its own: at most MAX_DIODES (16) of them (a beginner's circuit has a few).
+    const diodes = (n: number): string => Array.from({ length: n }, (_, k) => `D${k} a d${k} dmod\nRd${k} d${k} 0 1k`).join('\n');
+    expect(typeof model(`${bridge}${diodes(MAX_DIODES)}\n.model dmod d\n.op\n.end\n`)).toBe('object');
+    expect(model(`${bridge}${diodes(MAX_DIODES + 1)}\n.model dmod d\n.op\n.end\n`)).toBe('size');
   });
 
   it('leaves to the other rule a subcircuit, a B source, POLY, a transient source, a part with settings, .param, .temp, other options, a 0 Ω resistor, an F reading a resistor', () => {

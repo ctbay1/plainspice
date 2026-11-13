@@ -383,6 +383,12 @@ export const MAX_UNKNOWNS = 150;
  * value is read (reading the values of a 256 kB netlist of 12,000 resistors alone took 40 to 80 ms).
  */
 export const MAX_PARTS = 1600;
+/**
+ * At most this many diodes are modelled exactly: each one's current is left free and takes a solution of
+ * its own (describe.ts), and a check of ngspice's values with it. A beginner's circuit has a few (the
+ * corpora's have one to three); more leave the netlist to the other rule.
+ */
+export const MAX_DIODES = 16;
 
 /** Why a netlist is not modelled exactly, for tests and records: undefined when it is. */
 export type NotExact =
@@ -481,7 +487,7 @@ export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], a
   }
   let size = nodes.length;
   for (const p of out) if (p.kind === 'V' || p.kind === 'E' || p.kind === 'H' || p.kind === 'L') p.branch = size++;
-  if (size > MAX_UNKNOWNS) return 'size';
+  if (size > MAX_UNKNOWNS || out.filter((p) => p.kind === 'D').length > MAX_DIODES) return 'size';
   return { nodes, parts: out, size };
 }
 
@@ -608,12 +614,21 @@ const ENTRY_WORK = 16;
 export const TERM_WORK = 1000;
 export const MAX_BITS = 4096;
 
-/** The work left for one netlist's exact solution and its checks (MAX_WORK); spent as they go. */
+/**
+ * The work left for one netlist's exact solution and its checks (MAX_WORK); spent as they go. Each run's
+ * checks get a budget of their own (describe.ts), from what the netlist's solve, worked out once, left:
+ * the same text run again is checked again with the same budget, and decided the same way.
+ */
 export interface Budget {
   left: number;
 }
 /** A new budget of MAX_WORK. */
 export const newBudget = (): Budget => ({ left: MAX_WORK });
+/**
+ * What one check of ngspice's values against the exact equations counts (`shares`, and `treeCurrents`
+ * with diodes), before it starts: about four terms for each part and one for each unknown, TERM_WORK each.
+ */
+export const checkWork = (model: ExactModel): number => (4 * model.parts.length + model.size) * TERM_WORK;
 
 /** What one entry written with numbers the size of x counts (MAX_WORK). */
 function entryWork(x: bigint): number {
@@ -1017,9 +1032,17 @@ function signedSum(terms: readonly Dyadic[], limit: bigint): Fraction | undefine
  * current adds nothing at a node that the tree's cannot, and only what the diodes add at each node
  * reaches the rest of the circuit. ngspice's own diode currents are not used: it reports the current of
  * its last iteration, which can be 1e-4 of it away (a diode with a 10 Ω series resistance). Undefined
- * when a value is missing or a sum's denominator passes MAX_BITS.
+ * when a value is missing, a sum's denominator passes MAX_BITS, or `budget` has less left than a check
+ * counts (`checkWork`, taken from it).
  */
-export function treeCurrents(model: ExactModel, tree: readonly number[], ng: NgspiceValues): Map<number, Fraction> | undefined {
+export function treeCurrents(model: ExactModel, tree: readonly number[], ng: NgspiceValues, budget: Budget = newBudget()): Map<number, Fraction> | undefined {
+  // Counted as one check of ngspice's values (its terms are a check's), before it starts.
+  const work = checkWork(model);
+  if (work > budget.left) {
+    budget.left = 0;
+    return undefined;
+  }
+  budget.left -= work;
   const volts: Dyadic[] = [];
   for (const n of model.nodes) {
     const v = ng.voltage(n);
@@ -1172,7 +1195,7 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
   }
   const v = (n: number): Dyadic => (n < 0 ? { m: 0n, q: 1n, e: 0 } : volts[n]!);
   // Every term is counted before any is added: about four for each part.
-  const work = (4 * model.parts.length + model.size) * TERM_WORK;
+  const work = checkWork(model);
   if (work > budget.left) {
     budget.left = 0;
     return undefined;
