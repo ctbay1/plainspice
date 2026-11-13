@@ -2256,7 +2256,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     held.height = height;
     keepRows(held);
   });
-  useEffect(() => () => sheetHold.current?.release(), []);
+  useEffect(
+    () => () => {
+      sheetHold.current?.release();
+      sheetHold.current = undefined;
+    },
+    [],
+  );
   // The lines wait until the sheet has been still for a double tap's time since its last press.
   useEffect(() => {
     if (!waiting) return undefined;
