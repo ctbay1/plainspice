@@ -261,7 +261,8 @@ function cardsOf(netlist: Netlist): Card[] {
   let last: Card | undefined;
   for (const line of netlist.lines) {
     const read = asRead(line.text);
-    if (/^\.control/i.test(read)) control = true;
+    // Line 1 is the title, whatever it says.
+    if (line.index > 0 && /^\.control/i.test(read)) control = true;
     if (/^\.endc/i.test(read)) control = false;
     // ngspice cuts no comment from line 1, the title.
     const code = line.index === 0 ? line.text : withoutComment(read, control || script);
@@ -1226,6 +1227,19 @@ function measuresCurrent(stripped: string): boolean {
   return false;
 }
 
+/**
+ * The netlist as ngspice reads it: it makes each .end line a comment as it reads it and reads on to the end
+ * of the file (limit-18), so the lines after .end are part of the circuit, and the parser, which stops at
+ * .end, reads them so with each .end line made a comment (every line keeps its place).
+ */
+function asNgspiceReads(netlist: Netlist): Netlist {
+  if (netlist.end === undefined) return netlist;
+  const lines = netlist.text.split('\n');
+  if (lines.slice(netlist.end + 1).every((l) => l.trim() === '')) return netlist;
+  for (let i = 1; i < lines.length; i++) if (isEndLine(asRead(lines[i]!))) lines[i] = lines[i]!.replace('.', '*');
+  return parseNetlist(lines.join('\n'));
+}
+
 /** The line that ends a circuit built with circbyline: ngspice then reads it (create_circbyline). */
 const CIRCUIT_END = /^\.end(?:[ \t]|$)/i;
 
@@ -1237,7 +1251,8 @@ const CIRCUIT_END = /^\.end(?:[ \t]|$)/i;
  * lines is measured as its title (limit-16). Every line ngspice runs as a command (limit-18) is checked
  * as its words are when ngspice runs it (limit-19).
  */
-export function whyNotRun(netlist: Netlist, lineOf: (line: number) => number = (line) => line, built = false): NotRun | undefined {
+export function whyNotRun(given: Netlist, lineOf: (line: number) => number = (line) => line, built = false): NotRun | undefined {
+  const netlist = built ? given : asNgspiceReads(given);
   const found: NotRun[] = [];
   const note = (line: number, reason: string): void => void found.push({ line, reason });
   const script = /^\*ng_script/i.test(asRead(netlist.lines[0]?.text ?? ''));

@@ -480,6 +480,17 @@ describe('limit-18: the lines ngspice runs as commands', () => {
     expect(agrees(vectors(run).get('v(c)')![0]!, 7)).toBe(true);
   });
 
+  it('the lines after .end are circuit lines to our engine as to native 47: R3 and R4 there take v(b) to 4.5 V, and a B source there without its ) crashes it; PlainSpice does not run that', async () => {
+    const after = (lines: string): string => `* t\n${DIVIDER}.op\n.end\n${lines}`;
+    const run = await engine.run(runCopy(after('R3 c 0 1k\nR4 c b 1k\n'))!);
+    // Native 47 (-b -r): v(b) = 4.5, v(c) = 2.25.
+    expect(agrees(vectors(run).get('v(b)')![0]!, 4.5)).toBe(true);
+    expect(agrees(vectors(run).get('v(c)')![0]!, 2.25)).toBe(true);
+    const broken = after('B1 c 0 V=v(b\nR3 c 0 1k\n');
+    expect(crashed(await engine.run(broken))).toBe(true); // native 47 and 42: "stack smashing detected"
+    expect(runCopy(broken)).toBeUndefined();
+  });
+
   it('a circuit built by *# circbyline lines with a title of 601 bytes crashes our engine (native 47 and 42 -b -r: "buffer overflow detected"); PlainSpice does not run it', async () => {
     const text = `* t\n${DIVIDER}.op\n*# circbyline * ${'ab '.repeat(200).trimEnd()}\n*# circbyline V1 a 0 9\n*# circbyline R1 a 0 1k\n*# circbyline .op\n*# circbyline .end\n*# op\n.end\n`;
     expect(crashed(await engine.run(text))).toBe(true);

@@ -733,6 +733,13 @@ describe('the lines ngspice runs as commands (limit-18)', () => {
     expect(reasonAt(at('*# op', `+${op(501).slice(2)}\n`).replace('.end\n+', '+'))).toBeUndefined();
   });
 
+  it('reads the lines after .end as circuit lines, as ngspice does (native 47: R3 and R4 there take v(b) to 4.5 V)', () => {
+    expect(reasonAt('* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\nB1 c 0 V=v(b\nR3 c 0 1k\n')).toEqual({ line: 7, reason: RUN_COPY_WORDS.noClose(7, 'v(') });
+    expect(reasonAt('* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\nB1 c 0 V=v(b)\nR3 c 0 1k\n')).toBeUndefined();
+    // Line 1 is the title whatever it says: a .control there opens no block.
+    expect(reasonAt('.control\nB1 c 0 V=v(b\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\nR3 c 0 1k\n.op\n.end\n')).toEqual({ line: 2, reason: RUN_COPY_WORDS.noClose(2, 'v(') });
+  });
+
   it('runs a line that starts with ; in an *ng_script file, as the ; is a word that ends no command', () => {
     expect(reasonAt(`*ng_script\n;${op(501)}\n`)).toEqual(long(2));
     expect(reasonAt(`*ng_script\n; ${op(501)}\n`)).toEqual(long(2));

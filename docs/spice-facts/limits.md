@@ -904,6 +904,14 @@ savecurrents` added just before `.end`, the `+` line continues that line instead
 native 47 and our engine stop with "YYparse error, syntax error, in expression" (exit 1), 42 with "Error on
 line 7 or its substitute".
 
+The lines after `.end` are part of the circuit too, not only its commands: with `R3 c 0 1k` and `R4 c b
+1k` after `.end`, native 47 and 42 (`-b`) and our engine give v(b) = 4.5 V and v(c) = 2.25 V (6 V without
+them), and `B1 c 0 V=v(b` there stops native 47 and 42, `-b -r` and `-b` (exit 134, "stack smashing
+detected"; the sanitized build: `heap-buffer-overflow … READ of size 1 … in inp_modify_exp`) and crashes
+our engine. Line 1 is the title whatever it says: with `.control` there, `B1 c 0 V=v(b` on line 2 is a
+circuit line, and stops native 47 and 42 the same way. PlainSpice reads the lines after `.end` as ngspice
+does, with every check of a circuit line.
+
 A circuit built by `*# circbyline` lines meets limit-12 and limit-16 like any other: with a first line of
 601 bytes (`*` and 200 times ` ab`), native 47 and 42, `-b -r`, stop ("buffer overflow detected"; the
 sanitized build: `WRITE of size 610 … in fileInit`) and our engine crashes (`RuntimeError: memory access
@@ -995,6 +1003,7 @@ One choice, `{abc}`, is the word without its braces, and a line whose first word
 | A `v(…)` or `i(…)` over 500 bytes in a formula, or a `v(` with no `)` in a B, E or G formula or a `.model` with `temper` | not run | limit-5 |
 | An end-of-line comment, cut where ngspice cuts it | never read | limit-5 |
 | Every line ngspice runs as a command: a `.control` block's (after `.end` too), a `*#` line and its kin (`##`, `;#` …), a line of an `*ng_script` file (one that starts with `;` too), with `pre_` taken off and its commands split at `;`; a `+` line after `.end` joined where ngspice joins it | checked by the rows below, its words as ngspice's control reader makes them (blanks kept in quotes, `~` as `/home/web_user`) | limit-18, limit-19 |
+| The lines after `.end`, which ngspice reads as part of the circuit | checked as the lines before it | limit-18 |
 | A command word with choices in braces (`{a,b}`), which ngspice makes a word each, but on a line whose first word is `circbyline` | not run | limit-19 |
 | An analysis command over 500 bytes, as ngspice writes it: a dot, then its words with one blank each | not run | limit-6 |
 | A `.model` line's version over 90 bytes | not run | limit-9 |
