@@ -1391,6 +1391,97 @@ our engine (wasm), as ngspice -b -r (exit 0):
     vectors: i(@d1[id]) = 0.004307674725988779, i(@q1[ic]) = 0.00005670347201442283, i(@m1[id]) = 0.0000049000050100000015
 ```
 
+### A2c. A `+` line after `.end` continues the last line before `.end`, so `.options savecurrents` added just before `.end` would take that line's place
+
+ngspice does not stop reading at `.end` (S25): it makes `.end` a comment, and a `+` line after it continues the last line before it that is no comment (S28, limit-18). Here `+ 3` continues R1, which takes the second value, 3 Ω: v(n1) = 3 V. Without `.options savecurrents`, ngspice saves the current only in voltage sources, E and H sources and inductors (A1): the results file has v(n1) and no current, and with a voltage source, its current alone. With the line added just before `.end`, `+ 3` continues that line instead, R1 keeps 2 Ω and v(n1) is 2 V. So PlainSpice leaves the line out of the copy it runs here (decision 0011) and says why in the ngspice output panel; with `.end` moved to the bottom (the after-end check's fix), the line goes in before it, and the run has the same 3 V and every current.
+
+```spice
+* a + line after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+With `.options savecurrents` just before `.end`:
+
+```spice
+* a + line after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.options savecurrents
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+With `.end` moved to the bottom and the line added before it, as PlainSpice runs the netlist after the after-end check's fix "Move .end to the bottom":
+
+```spice
+* a + line after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
++ 3
+.options savecurrents
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+With a voltage source, as written: its current is saved, the resistors' are not (R2 takes 3 Ω: v(b) = 6 × 3/4 = 4.5 V).
+
+```spice
+* a + line after .end, with a voltage source
+V1 a 0 6
+R1 a b 1
+.op
+R2 b 0 2
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                4.500000e+00
+        a                                6.000000e+00
+        v1#branch                        -1.50000e+00
+  rawfile from ngspice -b -r (exit 0): v(a) = 6, v(b) = 4.5, i(v1) = -1.5
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 6, v(b) = 4.5, i(v1) = -1.5
+```
+
 ### A3. .tf v(a) V1 gives the transfer function v(a)/V1, the input resistance seen by V1 and the output resistance at a
 
 F4: v(a) = 24 × 3/9 = 8 V, so the transfer function is 8/24 = 1/3; V1 sees R1 + R2 = 9 Ω; looking back into a with V1 replaced by a short, the resistance is R3 + R1 ‖ R2 = 2 + 2 = 4 Ω, the Thévenin resistance at a. ngspice writes the three as `transfer_function`, `v1#input_impedance` and `output_impedance_at_v(a)`.

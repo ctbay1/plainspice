@@ -79,6 +79,16 @@ test.describe('what PlainSpice hands ngspice', () => {
     await expectSolved(page);
   });
 
+  // The last pass's regress-3: the copy adds no .options savecurrents when a + line after .end would continue it
+  // (decision 0011), and the parts' currents were gone with no word of why.
+  test('a + line after .end: the copy runs as written, and the ngspice output panel says why the parts’ currents are missing', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n', { run: true })}`);
+    await expectSolved(page);
+    const output = await openPanel(page, 'output');
+    await expect(output.getByText(RUN_COPY_WORDS.plusAfterEnd(6, 4))).toBeVisible();
+    await expect(output.getByText(t('outputAdded'))).toHaveCount(0);
+  });
+
   test('a B source typed without its ) is not given to ngspice: the status line says why, until the ) is there', async ({ page }) => {
     await openApp(page);
     await setNetlist(page, '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n');

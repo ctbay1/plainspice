@@ -193,3 +193,13 @@ to it, and how its control reader makes their words (blanks kept in quotes, a ba
 braces made into words, `~` made the home folder); limit-12, limit-16 and limit-17 gained `ngbehavior` set
 before a built circuit, a built circuit's `.title` line, a formula's name with its blanks and quotes, and
 `fft`, `psd`, `spec` and `asciiplot`.
+
+## The last pass of 13 November 2026
+
+A2c in [explanations.md](explanations.md), run the same way on 13 November 2026 (native ngspice 47 and 42,
+and our engine): a `+` line after `.end` continues the last line before `.end`, so `.options savecurrents`
+added just before `.end` would take that line's place (v(n1) 2 V instead of 3 V); as written, ngspice saves
+the current only in voltage sources, and with `.end` moved to the bottom, the line goes in before it and the
+run has the same 3 V and every current. The run copy's note in the ngspice output panel and Explain's `.op`
+note rely on it.
+

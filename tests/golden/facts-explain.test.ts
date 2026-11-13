@@ -26,6 +26,8 @@ import { formatSI } from '../../src/format/si.ts';
 import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { netlistToRun, RUN_COPY_WORDS, SAVE_CURRENTS_LINE } from '../../src/spice/run-netlist.ts';
+import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 import type { Netlist } from '../../src/spice/types.ts';
 
 interface Fact {
@@ -90,6 +92,10 @@ const FACTS: Fact[] = [
   { code: 'A1', id: 'an-op-vectors', netlist: "* .op: what it saves\nV1 a 0 10\nR1 a b 2\nL1 b c 1m\nR2 c 0 3\nC1 c 0 1u\nI1 0 c 1\nE1 e 0 c 0 2\nRE e 0 4\nVs c d 0\nRD d 0 5\nF1 0 f Vs 3\nRF f 0 1\nG1 0 g c 0 0.1\nRG g 0 1\nH1 h 0 Vs 7\nRH h 0 1\n.op\n.end\n", vectors: { "v(a)": 10, "v(b)": 5.806451612903226, "v(c)": 5.806451612903226, "v(e)": 11.612903225806452, "v(d)": 5.806451612903226, "v(f)": 3.483870967741936, "v(g)": 0.5806451612903226, "v(h)": 8.129032258064516, "i(vs)": 1.1612903225806452, "i(h1)": -8.129032258064516, "i(l1)": 2.096774193548387, "i(e1)": -2.903225806451613, "i(v1)": -2.096774193548387 } },
   { code: 'A2', id: 'an-savecurrents', netlist: "* .op with .options savecurrents\nV1 a 0 10\nR1 a b 2\nL1 b c 1m\nR2 c 0 3\nC1 c 0 1u\nI1 0 c 1\nE1 e 0 c 0 2\nRE e 0 4\nVs c d 0\nRD d 0 5\nF1 0 f Vs 3\nRF f 0 1\nG1 0 g c 0 0.1\nRG g 0 1\nH1 h 0 Vs 7\nRH h 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 10, "v(b)": 5.806451612903226, "v(c)": 5.806451612903226, "v(e)": 11.612903225806452, "v(d)": 5.806451612903226, "v(f)": 3.483870967741936, "v(g)": 0.5806451612903226, "v(h)": 8.129032258064516, "i(vs)": 1.1612903225806452, "i(h1)": -8.129032258064516, "i(l1)": 2.096774193548387, "i(e1)": -2.903225806451613, "i(v1)": -2.096774193548387, "i(@r1[i])": 2.096774193548387, "i(@l1[i])": 2.096774193548387, "i(@r2[i])": 1.935483870967742, "i(@c1[i])": 0, "i(@i1[current])": 1, "i(@re[i])": 2.903225806451613, "i(@rd[i])": 1.1612903225806452, "i(@f1[i])": 3.483870967741936, "i(@rf[i])": 3.483870967741936, "i(@g1[i])": 0.5806451612903226, "i(@rg[i])": 0.5806451612903226, "i(@rh[i])": 8.129032258064516 } },
   { code: 'A2b', id: 'an-savecurrents-semiconductors', netlist: "* savecurrents with a diode, a BJT and a MOSFET\nV1 a 0 5\nR1 a b 1k\nD1 b 0 dmod\n.model dmod D\nVc c 0 5\nVb bb 0 0.7\nQ1 c bb 0 qm\n.model qm npn\nM1 c bb 0 0 nm\n.model nm nmos\n.options savecurrents\n.op\n.end\n", vectors: { "i(@d1[id])": 0.004307674725988779, "i(@q1[ic])": 0.00005670347201442283, "i(@m1[id])": 0.0000049000050100000015 } },
+  { code: 'A2c', id: 'an-plus-after-end', netlist: "* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n", vectors: { "v(n1)": 3 } },
+  { code: 'A2c', id: 'an-plus-after-end-added', netlist: "* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.options savecurrents\n.end\n+ 3\n", vectors: { "v(n1)": 2, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2c', id: 'an-plus-after-end-moved', netlist: "* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n+ 3\n.options savecurrents\n.end\n", vectors: { "v(n1)": 3, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2c', id: 'an-plus-after-end-vsource', netlist: "* a + line after .end, with a voltage source\nV1 a 0 6\nR1 a b 1\n.op\nR2 b 0 2\n.end\n+ 3\n", vectors: { "v(a)": 6, "v(b)": 4.5, "i(v1)": -1.5 } },
   { code: 'A3', id: 'an-tf', netlist: "* F4: output impedance at v(a) with .tf\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n.end\n", vectors: { "v(Transfer_function)": 0.33333333333333337, "v(v1#Input_impedance)": 9, "v(output_impedance_at_V(a))": 4 } },
   { code: 'A3b', id: 'an-tf-gnd', netlist: "* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(out,gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(out,0))": 500 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'A3b-op', id: 'an-tf-gnd-op', netlist: "* .op beside the .tf of a3b: the ordinary node gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "v(x)": 2.5, "v(gnd)": 2.5, "i(vx)": 0, "i(v1)": -0.004999999999999999 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
@@ -749,6 +755,26 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
     expect(d.words.currents.map((c) => c.element)).not.toContain('s1');
     expect(d.words.currents.map((c) => c.element)).not.toContain('w1');
     expect(plain(currentText(d, 'Rc'))).toBe('1.5 A from node c to ground through Rc');
+  });
+
+  it('A2c: a + line after .end continues the last line before .end, so the copy leaves .options savecurrents out and says why; with .end moved to the bottom it has the line, 3 V and every current (the last pass, regress-3)', () => {
+    const byId = (id: string): Fact => FACTS.find((f) => f.id === id)!;
+    const names = (id: string): string[] => runs.get(id)!.plots.flatMap((p) => p.variables.map((v) => v.name)).sort();
+    // As written, the run saves the current only in voltage sources (A1): none here, V1's there.
+    expect(names('an-plus-after-end')).toEqual(['v(n1)']);
+    expect(names('an-plus-after-end-vsource')).toEqual(['i(v1)', 'v(a)', 'v(b)']);
+    // The copy PlainSpice runs is the netlist as written, with the note naming the + line and the line it continues.
+    const s28 = byId('an-plus-after-end').netlist;
+    expect(netlistToRun(parseNetlist(s28))).toEqual({ text: s28, added: [], notes: [RUN_COPY_WORDS.plusAfterEnd(6, 4)] });
+    // The line added just before .end would take R1's place: 2 V, not 3 V (an-plus-after-end-added). The after-end
+    // check's fix moves .end to the bottom; the copy then adds the line before it, and runs with 3 V and both currents.
+    const trap = checkTraps(parseNetlist(s28)).find((t) => t.id === 'after-end')!;
+    const moved = netlistToRun(parseNetlist(applyFix(s28, trap.fixes.find((f) => f.label === 'Move .end to the bottom')!)));
+    expect([moved.added, moved.notes, moved.text]).toEqual([[SAVE_CURRENTS_LINE], [], byId('an-plus-after-end-moved').netlist]);
+    // Explain says PlainSpice adds the line only where the copy does.
+    const op = (text: string): string => explainLine(parseNetlist(text), 2)!.notes.join(' ');
+    expect(op(s28)).not.toContain('adds that line');
+    expect(op(applyFix(s28, trap.fixes[0]!))).toContain('PlainSpice adds that line to the copy it runs');
   });
 
   it('A1, A2: an inductor appears once, with its branch current', () => {

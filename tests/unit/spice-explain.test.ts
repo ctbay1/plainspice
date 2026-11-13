@@ -610,6 +610,14 @@ describe('dot commands', () => {
     expect(notes(dot('.op'))).toBe('ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.');
     expect(notes(dot('.op', '.options savecurrents\n'))).toBe('');
   });
+
+  it('.op says PlainSpice adds .options savecurrents only where the copy it runs does: not with a + line after .end (the last pass, regress-3; A2c)', () => {
+    const s28 = '* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n';
+    expect(notes(line(s28, 3))).toBe('ngspice saves the current through every part only with .options savecurrents. PlainSpice does not add that line to the copy it runs here, because of the + line after .end (line 6).');
+    expect(notes(line(s28, 3))).not.toContain('adds that line');
+    // .end moved to the bottom (the after-end check's fix): the copy adds it, and Explain says so.
+    expect(notes(line('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n+ 3\n.end\n', 3))).toBe(EXPLAIN_STRINGS.opSaveCurrents);
+  });
 });
 
 describe('point counts and analysis readings', () => {

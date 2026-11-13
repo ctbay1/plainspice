@@ -60,7 +60,7 @@ export interface NetlistToRun {
   text: string;
   /** The lines PlainSpice added to that text (empty when it is the student's text unchanged). */
   added: string[];
-  /** What else PlainSpice did to that copy, a sentence each: a title cut. */
+  /** What else PlainSpice did to that copy, a sentence each: a title cut, the line left out for a + line after .end. */
   notes: string[];
   /** Set when PlainSpice must not give this netlist to ngspice: `text` is then not to be run. */
   notRun?: NotRun;
@@ -107,6 +107,9 @@ const S = {
   nestedCircuit: (line: number): string =>
     `Line ${line}: the circuit built with circbyline has a circbyline command of its own. ngspice cannot build a circuit while it is reading one it built (it crashes), so PlainSpice did not run it. Build the circuits one after the other.`,
   failed: 'PlainSpice could not prepare this netlist for ngspice (a bug in PlainSpice), so it did not run it.',
+  /** The copy has no .options savecurrents for a + line after .end (A2c): why, and the after-end check's own fix. */
+  plusAfterEnd: (plus: number, joins: number): string =>
+    `PlainSpice did not add .options savecurrents to the copy ngspice ran. Line ${plus}, after .end, starts with +: ngspice does not stop reading at .end, so line ${plus} continues line ${joins}, and with the line added just before .end it would continue that line instead. So ngspice saved the current only through voltage sources, E and H sources and inductors, not through every part. Move .end to the bottom (the Checks panel offers it) to see the current through every part.`,
 };
 
 /** A long word, as the words above show it: its first characters. */
@@ -1530,17 +1533,45 @@ export function cutTitles(text: string): { text: string; notes: string[] } {
   return { text: notes.length ? lines.join('\n') : text, notes };
 }
 
+/** A line ngspice keeps as a line of its own when it joins + lines: not blank, no comment (.title and .end are comments by then, limit-18). */
+const ownLine = (read: string): boolean => !/^[#$*]/.test(read) && withoutComment(read, false).trim() !== '' && !DOT_TITLE.test(read) && !isEndLine(read);
+
 /**
  * A + line after .end that ngspice joins to a line before .end (limit-18): .end is a comment to it, so the + line
- * continues the last line before it, which a line added just before .end would take its place as.
+ * continues the last line before it, which a line added just before .end would take its place as. `plus` is its
+ * line, `joins` the line it continues (1-based: the last line of its own before .end, A2c); none after a .end with a
+ * comment glued to it, where ngspice stops reading (S27).
  */
-function joinsAcrossEnd(netlist: Netlist, end: number): boolean {
+function joinsAcrossEnd(netlist: Netlist, end: number): { plus: number; joins?: number } | undefined {
   for (let i = end + 1; i < netlist.lines.length; i++) {
     const read = asRead(netlist.lines[i]!.text);
-    if (read.startsWith('+')) return true;
-    if (!/^[#$*]/.test(read) && withoutComment(read, false).trim() !== '' && !DOT_TITLE.test(read) && !isEndLine(read)) return false;
+    if (read.startsWith('+')) {
+      if (!isEndLine(asRead(netlist.lines[end]!.text))) return { plus: i + 1 };
+      for (let j = end - 1; j > 0; j--) {
+        const line = netlist.lines[j]!;
+        if (line.kind !== 'continuation' && ownLine(asRead(line.text))) return { plus: i + 1, joins: j + 1 };
+      }
+      return { plus: i + 1 };
+    }
+    if (ownLine(read)) return undefined;
   }
-  return false;
+  return undefined;
+}
+
+const plusLines = new WeakMap<Netlist, { plus: number; joins?: number } | null>();
+
+/**
+ * A + line after .end, which keeps .options savecurrents out of the copy (decision 0011), and the line ngspice
+ * continues with it. Found once per netlist: Explain asks for each .op line, and a scan past many comment lines
+ * for each of many .op lines would grow with the square of the text.
+ */
+export function plusLineAfterEnd(netlist: Netlist): { plus: number; joins?: number } | undefined {
+  let found = plusLines.get(netlist);
+  if (found === undefined) {
+    found = (netlist.end === undefined ? undefined : joinsAcrossEnd(netlist, netlist.end)) ?? null;
+    plusLines.set(netlist, found);
+  }
+  return found ?? undefined;
 }
 
 export function netlistToRun(netlist: Netlist): NetlistToRun {
@@ -1549,8 +1580,12 @@ export function netlistToRun(netlist: Netlist): NetlistToRun {
   const done = (added: string[], copy: string): NetlistToRun => (notRun ? { text: copy, added, notes, notRun } : { text: copy, added, notes });
   const hasOp = netlist.analyses.some((i) => netlist.lines[i]?.directive?.name === '.op');
   // With a + line right after .end, the line would change what ngspice reads: it runs without it (every
-  // voltage is the same, A2), as the student wrote it.
-  if (!hasOp || hasSaveCurrents(netlist) || (netlist.end !== undefined && joinsAcrossEnd(netlist, netlist.end))) return done([], text);
+  // voltage is the same, A2), as the student wrote it, and the ngspice output panel says why (A2c).
+  const plus = plusLineAfterEnd(netlist);
+  if (!hasOp || hasSaveCurrents(netlist) || plus) {
+    if (hasOp && plus?.joins !== undefined && !hasSaveCurrents(netlist)) notes.push(S.plusAfterEnd(plus.plus, plus.joins));
+    return done([], text);
+  }
   const end = netlist.end === undefined ? undefined : netlist.lines[netlist.end];
   if (end) {
     // Where .end starts in the copy, after any title cut before it (every line keeps its place).

@@ -59,3 +59,44 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   copy then runs as written, every voltage the same (A2), without the extra currents. Not taken: adding the
   line after the `+` lines, at the end of the text, where a `.control` block left open would take it as a
   command; the case is a `+` line after `.end`, which no netlist we have comes near.
+
+## After the last pass (13 November 2026)
+
+- **When the `+` line keeps the line out, the student is told** (the last pass, regress-3). What runs is
+  the same; only the words change. S28 (`R1 n1 0 2`, `.end`, `+ 3`) gave the right 3 V with no current at
+  all (I1's 1 A and R1's were gone), and nothing said why, while Explain's `.op` note said "PlainSpice adds
+  that line to the copy it runs". Now the copy's notes (`RUN_COPY_WORDS.plusAfterEnd`, shown in the ngspice
+  output panel where the added line is shown otherwise) name the `+` line and the line ngspice continues
+  with it, the last line of its own before `.end` (past blank and comment lines, `+` lines before `.end`, a
+  `.title` line and `*#` lines, which are comments to ngspice by then): "PlainSpice did not add .options
+  savecurrents to the copy ngspice ran. Line 6, after .end, starts with +: ngspice does not stop reading at
+  .end, so line 6 continues line 4, and with the line added just before .end it would continue that line
+  instead. So ngspice saved the current only through voltage sources, E and H sources and inductors, not
+  through every part. Move .end to the bottom (the Checks panel offers it) to see the current through every
+  part." The way out is the after-end check's own fix, in its words. Explain's `.op` note says PlainSpice
+  adds the line only where the copy does (`plusLineAfterEnd`, found once per netlist), and otherwise "…
+  PlainSpice does not add that line to the copy it runs here, because of the + line after .end (line 6)."
+  Fact A2c (native ngspice 47 and 42, and our engine): as written v(n1) = 3 V and no current saved; with
+  the line just before `.end`, 2 V (the `+` line continues it); with `.end` moved to the bottom and the line
+  before it, 3 V, 1 A through R1 and 1 A from I1. Tests: `tests/unit/spice-run-netlist.test.ts` (the note,
+  naming lines 9 and 7 for the B source above and 6 and 4 for S28; the lines it skips; none with
+  savecurrents written, without `.op`, or after a glued `.end`), `tests/unit/spice-explain.test.ts`,
+  `tests/golden/facts-explain.test.ts` (A2c, the fix's copy and Explain), `tests/e2e/run-copy.spec.ts` (the
+  S28 link's output panel). Not taken: a note in the Numbers panel, which would need a new place there and
+  already sends the student to the Checks panel.
+- **Still open, for after the release** (left as they are, as what runs does not change now):
+  - The parser does not join a `+` line after `.end` to the line it continues (it stops reading at `.end`),
+    so the drawing, the overview, R1's card ("SPICE reads it as 2 Ω") and Explain call R1 2 Ω where ngspice
+    uses 3 Ω (S28). This is older, pinned by the S28 golden row; the results are ngspice's (3 V), and the
+    after-end check's fix makes both agree.
+  - After a `.end` with a comment glued to it (`.end;x`), ngspice stops reading (S27): a `+` line after it
+    continues no line before it, yet the copy still leaves the line out, so the currents are gone with no
+    note (none could say the `+` line continues a line, as it does not). Adding the line there changes
+    nothing: native 47 and 42 give v(n1) = 2 V with it or without, and 1 A through R1 and from I1 with it.
+  - A `+` line that brings no words (`+`, or `+ ; a note`) changes nothing either way (native 47 and 42:
+    2 V, and both currents with the line), but keeps the line out; the note's words hold for it (line 6
+    continues line 4, adding nothing).
+  - Both would end with the line added there, and the currents back; adding it after the `+` lines when no
+    `.control` block is left open (native 47 and 42: S28 3 V with both currents, the B source above 7 V)
+    would bring them back for S28 too. Each changes what runs, so not in this pass.
+

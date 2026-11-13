@@ -66,11 +66,36 @@ describe('netlistToRun', () => {
   it('adds no line when a + line after .end continues the line before .end: the added line would take that line’s place (limit-18)', () => {
     // ngspice reads past .end, a comment to it: the + line continues B1 (native 47: v(c) = 7). With the line
     // added before .end it would continue .options instead, and B1 end in "1+" (native 47: "YYparse error").
+    // The ngspice output panel says why, naming both lines (the last pass, regress-3; A2c).
     const text = '* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\nR3 c 0 1k\nB1 c 0 V=1+\n.end\n+ v(b)\n';
-    expect(toRun(text)).toEqual({ text, added: [], notes: [] });
+    expect(toRun(text)).toEqual({ text, added: [], notes: [RUN_COPY_WORDS.plusAfterEnd(9, 7)] });
     expect(toRun('* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.end\n* note\n\n+ 2\n').added).toEqual([]);
     // A line between .end and the + line is the one it continues: the line is added as before.
     expect(toRun('* t\nV1 a 0 9\nR1 a 0 1k\n.op\n.end\nR2 a 0 1k\n+ 2\n').added).toEqual([SAVE_CURRENTS_LINE]);
+  });
+
+  it('says why the line is left out, naming the + line and the line ngspice continues with it, as ngspice joins them (the last pass, regress-3; A2c)', () => {
+    // S28: + 3 continues R1 (native 47 and 42: v(n1) = 3 V); with the line added it would continue that line (2 V).
+    const s28 = '* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n';
+    expect(toRun(s28)).toEqual({ text: s28, added: [], notes: [RUN_COPY_WORDS.plusAfterEnd(6, 4)] });
+    expect(RUN_COPY_WORDS.plusAfterEnd(6, 4)).toBe(
+      'PlainSpice did not add .options savecurrents to the copy ngspice ran. Line 6, after .end, starts with +: ngspice does not stop reading at .end, so line 6 continues line 4, and with the line added just before .end it would continue that line instead. So ngspice saved the current only through voltage sources, E and H sources and inductors, not through every part. Move .end to the bottom (the Checks panel offers it) to see the current through every part.',
+    );
+    // The line it continues is the last line of its own before .end: past comments and blank lines on either
+    // side, a + line before .end (part of R1), a .title line and a *# line (comments to ngspice by then).
+    const joined = (text: string): string[] => toRun(text).notes;
+    expect(joined('* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n* note\n\n.end\n* more\n\n+ 3\n')).toEqual([RUN_COPY_WORDS.plusAfterEnd(10, 4)]);
+    expect(joined('* t\nI1 0 n1 1\n.op\nR1 n1 0\n+ 2\n.end\n+ 3\n')).toEqual([RUN_COPY_WORDS.plusAfterEnd(7, 4)]);
+    expect(joined('* t\nI1 0 n1 1\nR1 n1 0 2\n.op\n.title hello\n*# echo hi\n.END\n+ 3\n')).toEqual([RUN_COPY_WORDS.plusAfterEnd(8, 4)]);
+    // A ; line takes it (ngspice makes it a comment only later), as a .control block's .endc does.
+    expect(joined('* t\nI1 0 n1 1\nR1 n1 0 2\n.op\n;x\n.end\n+ 3\n')).toEqual([RUN_COPY_WORDS.plusAfterEnd(7, 5)]);
+    expect(joined('* t\nI1 0 n1 1\nR1 n1 0 2\n.op\n.control\nop\n.endc\n.end\n+ 3\n')).toEqual([RUN_COPY_WORDS.plusAfterEnd(9, 7)]);
+    // No note where the copy saves every current anyway, or has no .op.
+    expect(joined('* t\nI1 0 n1 1\n.op\n.options savecurrents\nR1 n1 0 2\n.end\n+ 3\n')).toEqual([]);
+    expect(joined('* t\nI1 0 n1 1\nR1 n1 0 2\n.dc I1 0 1 1\n.end\n+ 3\n')).toEqual([]);
+    // After a .end with a comment glued to it ngspice stops reading (S27), so the + line continues no line
+    // before it, and no note says it does; the line is still left out (decision 0011, an open item).
+    expect(toRun('* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end;x\n+ 3\n')).toMatchObject({ added: [], notes: [] });
   });
 });
 

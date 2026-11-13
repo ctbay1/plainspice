@@ -21,6 +21,7 @@ import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist } from './parse.ts';
+import { plusLineAfterEnd } from './run-netlist.ts';
 import type {
   Element,
   ElementLetter,
@@ -355,6 +356,9 @@ export const EXPLAIN_STRINGS = {
   opWhat: 'operating point',
   op: 'Find the DC operating point: every node voltage and the current in every voltage source. Capacitors act as open circuits and inductors as short circuits.',
   opSaveCurrents: 'ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.',
+  /** The copy has no such line here (src/spice/run-netlist.ts, A2c): a + line after .end would continue it. */
+  opSaveCurrentsLeftOut: (line: number): string =>
+    `ngspice saves the current through every part only with .options savecurrents. PlainSpice does not add that line to the copy it runs here, because of the + line after .end (line ${line}).`,
   tfWhat: 'transfer function',
   tf: (out: string, input: string, at: string): string =>
     `Find three DC quantities: the transfer function ${out}/${input} (output ÷ input), the input resistance seen by ${input}, and the output resistance ${at}, which is the Thévenin resistance seen ${at}. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms.`,
@@ -1956,7 +1960,9 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
   const ctx = contextOf(netlist);
   switch (name) {
     case '.op': {
-      const notes = ctx.hasSaveCurrents ? [] : [S.opSaveCurrents]; // A2, A2b, C7
+      // "PlainSpice adds that line" only where the copy does: not with a + line after .end (A2c, decision 0011).
+      const plus = ctx.hasSaveCurrents ? undefined : plusLineAfterEnd(netlist);
+      const notes = ctx.hasSaveCurrents ? [] : [plus ? S.opSaveCurrentsLeftOut(plus.plus) : S.opSaveCurrents]; // A2, A2b, C7
       return out(S.opWhat, S.op, [], notes); // A1, P11, P12
     }
     case '.tf':
