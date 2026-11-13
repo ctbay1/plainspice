@@ -142,7 +142,9 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
       expect(sp(r.words.sweeps[0]!.text), lines.join(' | ')).toContain('i(@r5[i]) = 0 A');
       expect(message(r.words, 'rounding-noise'), lines.join(' | ')).toBeDefined();
       expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)), lines.join(' | ')).toContain(
-        "ngspice gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. That is the operating point's own state, where ngspice gives the operating point's numbers, and the operating point shows it as 0, as its note says. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.",
+        // Not "the operating point's own state, where ngspice gives the operating point's numbers": only R5's double is the
+        // .op's there (v(a) is 4.499999999999926, not 4.499999999999999; the critic of round 2).
+        "ngspice gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. At ngspice's point nearest the operating point's 9 V, 8.999999999999853 V (its 10 mV step added up in doubles), ngspice gives it the very number the operating point shows as 0, as the operating point's note says. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.",
       );
     }
   });
@@ -235,7 +237,8 @@ describe('the paths no test held (C9): a temperature sweep too large to look thr
     const given = dc.series.find((x) => x.name === 'i(vm0)')!.values;
     const shown = shownSweep(r.netlist, r.results)!.series.find((x) => x.name === 'i(vm0)')!.values;
     expect([given[at50] !== 0, shown[at50], shown[at27]]).toEqual([true, 0, given[at27]]);
-    expect(message(r.words, 'sweep-not-checked')).toContain("except at 50 °C, the operating point's own state, where the sweep shows what the operating point shows.");
+    // ngspice adds the step to the temperature in kelvin, so its point nearest 50 °C is not 50 °C bit for bit: the note says which it is.
+    expect(message(r.words, 'sweep-not-checked')).toContain(`except at ngspice's point nearest the operating point's 50 °C, ${sp(formatSI(dc.scale.values[at50]!, '°C', 17))} (its 5 m°C step added up in doubles), where the sweep shows what the operating point shows.`);
   }, 120_000);
 
   const c9m = ['V1 n1 0 9', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k'];

@@ -9,7 +9,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { describeResults } from '../../src/spice/describe.ts';
+import { formatSI } from '../../src/format/si.ts';
+import { describeResults, roundingNoise, shownSweep } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
 
@@ -76,4 +77,62 @@ describe('a controlled source\'s gain widens the same-circuit check only for the
     expect(message(r.words, 'imprecise-answers')).toContain('node out is at 9.15 V, where ngspice gives 9.5 V');
     expect(sp(r.words.nodes.find((n) => n.node === 'n1')?.text)).toBe('2 V');
   });
+});
+
+const idle3 = (dc: string, ...extra: string[]): string => netlist(...extra, 'V1 a 0 9', 'R1 a b 3k', 'R2 b 0 6k', 'V2 c 0 6', 'R3 b c 1k', '.options savecurrents', '.op', dc);
+const sweepText = (r: Awaited<ReturnType<typeof solveText>>): string => sp(r.words.sweeps[0]!.text);
+
+describe('a sweep point is named by ngspice\'s own x where a value there reads otherwise than at the value its steps say (N1: "at V1 = 9 V, V2 carries 32.76 aA" beside the .op\'s "V2: no current")', () => {
+  it('idle3, ".dc V1 0 9 0.01": ngspice\'s last point is 8.999999999999853 V, where V2, idle at 9 V, carries a real 32.76 aA that ngspice gives as 32.96 aA; the sweep is decided exactly, draws the exact digits, and names the point by its x, with notes that say why; no warning, and the .op keeps "V2: no current"', async () => {
+    const r = await solveText(idle3('.dc V1 0 9 0.01'), ngspice);
+    expect(r.results.dc!.scale.values[900]).toBe(8.999999999999853);
+    expect([text(r.words, 'V2'), text(r.words, 'R3')]).toEqual(['no current through V2', 'no current through R3']);
+    expect(sweepText(r)).toContain('At V1 = 8.999999999999853 V: v(a) = 9 V, v(b) = 6 V, v(c) = 6 V, i(v2) = −32.76 aA, i(v1) = −1 mA, i(@r1[i]) = 1 mA, i(@r2[i]) = 1 mA, i(@r3[i]) = −32.76 aA.');
+    expect(sp(r.words.sweeps[0]!.speech)).toContain('When V1 is 8.999999999999853 volts: ');
+    expect(message(r.words, 'imprecise-answers')).toBeUndefined();
+    expect(message(r.words, 'sweep-point')).toBe(
+      "The DC sweep's last point is V1 = 8.999999999999853 V, not 9 V: ngspice adds the step, 10 mV, to V1 once a point, in doubles (about 16 significant digits), so its points drift from the values the steps say: its last point is 8.999999999999853 V, 147.4 fV short of 9 V. There the circuit makes i(v2) −32.76 aA, where at 9 V it makes 0 A. So PlainSpice names that point by ngspice's own value.",
+    );
+    expect(message(r.words, 'exact-digits')).toBe(
+      "2 results are shown with their exact digits near 0 in the DC sweep: ngspice gave i(v2) -3.295975e-17 A at V1 = 8.999999999999853 V and i(@r3[i]) -3.286260e-17 A at V1 = 8.999999999999853 V. Each is too small beside the larger numbers ngspice works them out from for its arithmetic (about 16 significant digits) to give their digits. Solved exactly, with fractions, from the netlist's values, i(v2) is −32.76 aA at V1 = 8.999999999999853 V and i(@r3[i]) is −32.76 aA at V1 = 8.999999999999853 V, so PlainSpice shows those, in these words and in the Plot panel.",
+    );
+    // The Plot panel draws the exact value there too; every other point is ngspice's.
+    const shown = shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(v2)')!.values;
+    const given = r.results.dc!.series.find((s) => s.name === 'i(v2)')!.values;
+    expect([sp(formatSI(shown[900]!, 'A')), shown[899]]).toEqual(['−32.76 aA', given[899]]);
+  });
+
+  it('v2idle, ".dc V1 0 12 0.1", ends at 11.999999999999973 V: V2 carries the exact 8.882 aA there, which ngspice gives as 8.674 aA, with no warning; in steps of 0.5 V the sweep lands on 12 V and nothing is said', async () => {
+    const v2idle = (dc: string): string => netlist('V1 a 0 12', 'V2 c 0 6', 'R1 a b 1k', 'R2 b c 1k', 'R3 b 0 1k', '.op', dc);
+    const r = await solveText(v2idle('.dc V1 0 12 0.1'), ngspice);
+    expect(sweepText(r)).toContain('At V1 = 11.999999999999973 V: v(a) = 12 V, v(c) = 6 V, v(b) = 6 V, i(v2) = −8.882 aA,');
+    expect([message(r.words, 'imprecise-answers'), text(r.words, 'V2')]).toEqual([undefined, 'no current through V2']);
+    const half = await solveText(v2idle('.dc V1 0 12 0.5'), ngspice);
+    expect(sweepText(half)).toContain('At V1 = 12 V: v(a) = 12 V, v(c) = 6 V, v(b) = 6 V, i(v2) = 0 A,');
+    expect(half.words.warnings.map((m) => m.code)).toEqual([]);
+  });
+
+  it('by the rule (idle3 with a .param line), the last point does not show what the .op shows at 9 V: it keeps ngspice\'s numbers, unmarked, and is named by its x, with the note that says so', async () => {
+    const r = await solveText(idle3('.dc V1 0 9 0.01', '.param rb=6k').replace('R2 b 0 6k', 'R2 b 0 {rb}'), ngspice);
+    expect([by(r), text(r.words, 'V2')]).toEqual(['rule', 'no current through V2']);
+    expect(sweepText(r)).toContain('At V1 = 8.999999999999853 V: v(a) = 9 V, v(b) = 6 V, v(c) = 6 V, i(v2) = −32.96 aA,');
+    expect(message(r.words, 'sweep-point')).toContain('There ngspice gives i(v2) −32.96 aA, where the operating point, at 9 V, shows 0 A. So PlainSpice names that point by ngspice\'s own value.');
+    expect(message(r.words, 'rounding-noise')).toBeUndefined();
+  });
+});
+
+const by = (r: Awaited<ReturnType<typeof solveText>>): string => roundingNoise(r.netlist, r.results).by;
+
+describe('a point found within the step\'s rounding of the .op\'s value stands for the .op\'s state only where it shows what the .op shows, and the notes say what it is (N2)', () => {
+  it('idle3 swept in 10 µV steps, past SWEEP_VALUES: its last point, 8.999999999828448 V, shows V2\'s 38.12 fA beside the .op\'s 0, so the size note names no point as the .op\'s state ("where the sweep shows what the operating point shows" was false), and the point is named by its x', async () => {
+    const r = await solveText(idle3('.dc V1 0 9 0.00001'), ngspice);
+    const last = r.results.dc!.scale.values.length - 1;
+    expect(r.results.dc!.scale.values[last]).toBe(8.999999999828448);
+    expect(message(r.words, 'sweep-not-checked')).toBe(
+      "The DC sweep is shown as ngspice gives it: It has 900001 points of 8 results, more values than PlainSpice looks through for rounding noise (2000000 in all). So at its points a value the circuit makes exactly 0 may show ngspice's rounding noise, and a tiny value ngspice's arithmetic rounded to 0 shows 0.",
+    );
+    expect(sweepText(r)).toContain('At V1 = 8.999999999828448 V: v(a) = 9 V, v(b) = 6 V, v(c) = 6 V, i(v2) = −38.12 fA,');
+    expect(message(r.words, 'sweep-point')).toContain('its last point is 8.999999999828448 V, 171.6 pV short of 9 V. There the circuit makes i(v2) −38.12 fA, where at 9 V it makes 0 A.');
+    expect([by(r), text(r.words, 'V2')]).toEqual(['exact', 'no current through V2']);
+  }, 120_000);
 });

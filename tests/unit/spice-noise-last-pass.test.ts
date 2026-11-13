@@ -273,7 +273,7 @@ describe('on the exact path, ngspice\'s numbers are answers only where the page 
     expect(sp(r.words.sweeps[0]!.text)).toContain('At V1 = 1.5 V: v(top1) = 1.5 V, v(d2) = 4.541 mV, v(p3) = 4.541 mV, i(v1) = −5.539 µA, i(@r1[i]) = 5.539 µA, i(@r2[i]) = 5.538 µA, i(@r3[i]) = 454.1 pA');
     const warning = r.words.warnings.find((m) => m.code === 'imprecise-answers')!;
     expect(sp(warning.title)).toBe("Some of ngspice's answers in the DC sweep are off");
-    expect(sp(warning.why)).toBe("Solved exactly, with fractions, from the netlist's values, at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them there. PlainSpice shows the sweep as ngspice gives it, but at V1 = 1.5 V, the operating point's own state, where it shows what the operating point shows, so its numbers may not agree with each other.");
+    expect(sp(warning.why)).toBe("Solved exactly, with fractions, from the netlist's values, at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them there. PlainSpice shows the sweep as ngspice gives it, but at ngspice's point nearest the operating point's 1.5 V, 1.5000000000000846 V (its 250 µV step added up in doubles), where it shows what the operating point shows, so its numbers may not agree with each other.");
   });
 
   it('where the rule decides beside the exact solution with no warning (values that hang on a diode\'s current), the tiny values it cannot tell from noise keep the note, except those real whatever the diode carries (C9w.8: "V2 measures 510 fA" and "node d3 510 fV" were drawn with nothing said)', async () => {
@@ -337,7 +337,7 @@ describe('beside an .op the rule decides, the sweep never gives a number at the 
     expect([raw[16], shown[16], shown[15], shown[7]]).toEqual([-8.881784197001253e-19, 0, raw[15], raw[7]]);
     expect(raw[15]).not.toBe(0);
     expect(sp(r.words.sweeps[0]!.text)).toContain('i(@r5[i]) = 0 A');
-    expect(sp(r.words.warnings.find((m) => m.title === 'i(@r5[i]) is shown as 0 at some points of the DC sweep')?.why)).toContain('at V1 = 9 V. That is the operating point\'s own state');
+    expect(sp(r.words.warnings.find((m) => m.title === 'i(@r5[i]) is shown as 0 at some points of the DC sweep')?.why)).toContain('at V1 = 9 V. At V1 = 9 V, the operating point\'s own state, ngspice gives it the very number the operating point shows as 0');
   });
 
   it('a sweep of two sources marks its point at V1 = 9 V, V2 = 0 V; beside a transistor the point at 9 V too, and the .tf, a slope the rule cannot decide, stays ngspice\'s', async () => {
