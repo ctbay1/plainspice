@@ -60,8 +60,8 @@ describe('F10: a message only ngspice 47 prints is said as ngspice 47’s, with 
     const pss = first('* .pss in a netlist\nV1 a 0 1\nR1 a 0 1k\n.pss 1k 1m a 1\n.op\n.end\n', 'unknown-dot-command');
     expect([pss.title, pss.why, pss.ngspice]).toEqual([
       'ngspice 47 does not know .pss',
-      'A line starting with a dot is a dot command for SPICE, and .pss is not one ngspice 47 knows as built for PlainSpice (ngspice 42 knows it). To keep the line as a note, start it with * instead.',
-      "ngspice 47 stops before running anything, with 'unimplemented dot command' for .pss; ngspice 42 knows .pss. [unknown-dot-command-2]",
+      'A line starting with a dot is a dot command for SPICE, and .pss is not one ngspice 47 knows as built for PlainSpice, without its experimental .pss analysis (ngspice 42 as Ubuntu builds it knows it). To keep the line as a note, start it with * instead.',
+      "ngspice 47 as built for PlainSpice stops before running anything, with 'unimplemented dot command' for .pss; ngspice 42 as Ubuntu builds it knows .pss. [unknown-dot-command-2]",
     ]);
     expect(first('* t\nV1 a 0 1\nR1 a 0 1k\n.PSS 1k 1m a 1\n.op\n.end\n', 'unknown-dot-command').title).toBe('ngspice 47 does not know .PSS');
     const tarn = first('* a misspelt dot command\nV1 a 0 1\nR1 a 0 1k\n.tarn 1u 1m\n.op\n.end\n', 'unknown-dot-command');

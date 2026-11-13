@@ -742,7 +742,9 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   and the C and L runs recorded beside them), "mal formed B source instance" (42: "mal formed B
   line", fatal-syntax-7), "no simulations run!" (42: 'Note: No ".plot", ".print", or ".fourier"
   lines; no simulations run', no-analysis-1), and "unimplemented dot command" for `.pss`, which
-  ngspice 47 as built for PlainSpice does not know and ngspice 42 does (unknown-dot-command-2, A29b).
+  ngspice 47 as built for PlainSpice does not know and ngspice 42 does (unknown-dot-command-2, A29b): it is
+  an experimental build option (`--enable-pss` in ngspice's `configure.ac`), off by default and on in
+  Ubuntu's ngspice 42 package, so the words say "as built for PlainSpice" and "as Ubuntu builds it".
   Each now says "ngspice 47 …" with ngspice 42's words beside it, as the newer texts do; for `.pss`
   the title and the why say "ngspice 47" too, and a misspelt dot command, which stops both, keeps
   "ngspice" and cites only unknown-dot-command-1. The fallback ngspice takes when its DC solution

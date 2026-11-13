@@ -4307,13 +4307,14 @@ function checkUnknownDots(c: Ctx): Set<number> {
     const near = COMMON_DOTS.filter((x) => fits(x) && nearDot(d.name, x)).slice(0, 2);
     if (near.some((x) => ANALYSIS_DOTS.has(x))) analysisTypos.add(l.index);
     const word = d.token.text;
-    // ngspice 42 knows .pss; ngspice 47 as built for PlainSpice does not (unknown-dot-command-2, A29b; last pass F10).
+    // .pss is an experimental build option (--enable-pss, configure.ac): ngspice 47 as built for PlainSpice does not know
+    // it, ngspice 42 as Ubuntu builds it does (unknown-dot-command-2, A29b; last pass F10).
     const pss = d.name === '.pss';
     const who = pss ? 'ngspice 47' : 'ngspice';
     add(c, 'unknown-dot-command', 'error', d.token, `${who} does not know ${word}`,
-      `A line starting with a dot is a dot command for SPICE, and ${word} is not one ${who} knows${pss ? ' as built for PlainSpice (ngspice 42 knows it)' : ''}${near.length ? `. Did you mean ${near.join(' or ')}?` : '.'} To keep the line as a note, start it with * instead.`,
+      `A line starting with a dot is a dot command for SPICE, and ${word} is not one ${who} knows${pss ? ' as built for PlainSpice, without its experimental .pss analysis (ngspice 42 as Ubuntu builds it knows it)' : ''}${near.length ? `. Did you mean ${near.join(' or ')}?` : '.'} To keep the line as a note, start it with * instead.`,
       pss
-        ? "ngspice 47 stops before running anything, with 'unimplemented dot command' for .pss; ngspice 42 knows .pss. [unknown-dot-command-2]"
+        ? "ngspice 47 as built for PlainSpice stops before running anything, with 'unimplemented dot command' for .pss; ngspice 42 as Ubuntu builds it knows .pss. [unknown-dot-command-2]"
         : `ngspice stops before running anything, with 'unimplemented dot command' for ${lowerAscii(word)}. [unknown-dot-command-1]`,
       [...near.map((x) => fix(`Use ${x}`, replace(d.token, x))), commentFix(c, l)]);
   }
