@@ -3243,7 +3243,10 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
  * no diode's current changes (opCheck), and no warning when none of them is off.
  */
 function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | undefined {
-  const off = noiseOf(netlist, results).off;
+  // A value whose exact and given numbers read the same at the page's digits is not off on the page: 5e-5 of a
+  // value is within its last digit when its first digits are large (24.003 nA and 24 nA both read 24 nA).
+  const unit = (a: Answer): 'V' | 'A' => (a.kind === 'voltage' ? 'V' : 'A');
+  const off = noiseOf(netlist, results).off?.filter((a) => a.exact === 0 || formatSI(a.exact, unit(a)) !== formatSI(a.given, unit(a)));
   if (!off?.length) return undefined;
   const share = (a: Answer): number => (a.exact === 0 ? Number.POSITIVE_INFINITY : Math.abs(a.given - a.exact) / Math.abs(a.exact));
   // The exact 0s first, node voltages before currents (volts and amps are not compared), then by how far off.
