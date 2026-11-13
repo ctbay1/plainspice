@@ -358,6 +358,9 @@ export const EXPLAIN_STRINGS = {
    */
   innerNodeNote: (name: string, node: string, subcircuit: string, line: number, inside: string, many: boolean): string =>
     `${name} is ngspice's name for ${node} of the subcircuit ${subcircuit} (from line ${line}), inside ${inside}: ngspice names a node inside a subcircuit by ${many ? 'its X lines, each followed by a dot' : 'its X line, then a dot'}.`,
+  /** A3h: the same for a part (v.x1.vs): its first letter, the X lines and its own name. */
+  innerPartNote: (name: string, part: string, subcircuit: string, line: number, inside: string, many: boolean): string =>
+    `${name} is ngspice's name for ${part} of the subcircuit ${subcircuit} (from line ${line}), inside ${inside}: ngspice names a part inside a subcircuit by its first letter, ${many ? 'its X lines' : 'its X line'} and its own name, joined by dots.`,
 
   // ---- dot commands
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
@@ -1302,15 +1305,47 @@ export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;
 }
 
-/** A node of a subcircuit an X line uses, by ngspice's name for it (A3h). */
-export interface InnerNode {
-  /** The X lines that lead to it, from the main circuit's down, as written: X1, then X2 inside X1's subcircuit. */
+/** Where a name ngspice builds inside a subcircuit leads (A3h): the X lines that lead there, from the main circuit's down, as written, and the subcircuit the last one uses, as its .subckt line writes it, with that line (0-based). */
+export interface InnerPlace {
   path: string[];
-  /** The node as the subcircuit's own lines write it. */
-  node: NodeRef;
-  /** The subcircuit the last X line uses, as its .subckt line writes it, and that line (0-based). */
   subcircuit: string;
   line: number;
+}
+
+/** A node of a subcircuit an X line uses, by ngspice's name for it (A3h): the node as the subcircuit's own lines write it. */
+export interface InnerNode extends InnerPlace {
+  node: NodeRef;
+}
+
+/** A part of a subcircuit an X line uses, by ngspice's name for it (A3h), and its own line (0-based). */
+export interface InnerPart extends InnerPlace {
+  part: Element;
+  partLine: number;
+}
+
+/**
+ * The X lines `steps` name, from the main circuit's down (A3h): each an X line of the circuit the step
+ * before leads to, the main circuit's first (outside .subckt … .ends, or after a plain .end, which ngspice
+ * reads: S25), then the lines of the subcircuit the last one uses. undefined when a step is no such X
+ * line or its subcircuit has no .subckt line.
+ */
+function walkSubcircuits(netlist: Netlist, steps: readonly string[]): (InnerPlace & { lines: NetlistLine[] }) | undefined {
+  const ctx = contextOf(netlist);
+  const linesOf = (at: number | undefined): NetlistLine[] => netlist.lines.filter((l) => l.element && ctx.insideSubckt.get(l.index) === at);
+  let lines = linesOf(undefined);
+  let parts = [...lines.map((l) => l.element!), ...readAfterEnd(netlist).flatMap((l) => parseNetlist(`*\n${l.text}`).lines[1]?.element ?? [])];
+  const path: string[] = [];
+  let at: number | undefined;
+  for (const step of steps) {
+    const x = parts.find((e) => e.letter === 'X' && lowerAscii(e.name.text) === step);
+    const model = x?.fields.find((f) => f.role === 'model');
+    at = model ? ctx.subckts.get(lowerAscii(model.token.text)) : undefined;
+    if (!x || at === undefined) return undefined;
+    path.push(x.name.text);
+    lines = linesOf(at);
+    parts = lines.map((l) => l.element!);
+  }
+  return at === undefined ? undefined : { path, subcircuit: netlist.lines[at]!.directive!.args[0]!.text, line: at, lines };
 }
 
 /**
@@ -1321,36 +1356,38 @@ export interface InnerNode {
  * undefined for any other name: one without a dot, an X line the circuit does not have there, a
  * subcircuit with no .subckt line, or a name that is no node of the subcircuit's own: a node of its
  * .subckt line takes the X line's node, so x1.a for it is a new node with nothing on it (0 and 1 Ω, as
- * tf-problems-1), and ground is the main circuit's.
+ * tf-problems-1), and ground and a node a .global line names are the main circuit's.
  */
 export function innerNode(netlist: Netlist, name: string): InnerNode | undefined {
   const steps = lowerAscii(name).split('.');
   if (steps.length < 2 || steps.some((s) => s === '')) return undefined;
-  const ctx = contextOf(netlist);
-  const linesOf = (at: number | undefined): Element[] =>
-    netlist.lines.filter((l) => l.element && ctx.insideSubckt.get(l.index) === at).map((l) => l.element!);
-  // The main circuit's X lines: those outside .subckt … .ends, and those after a plain .end, which ngspice reads (S25).
-  let parts = [...linesOf(undefined), ...readAfterEnd(netlist).flatMap((l) => parseNetlist(`*\n${l.text}`).lines[1]?.element ?? [])];
-  const path: string[] = [];
-  let at: number | undefined;
-  for (const step of steps.slice(0, -1)) {
-    const x = parts.find((e) => e.letter === 'X' && lowerAscii(e.name.text) === step);
-    const model = x?.fields.find((f) => f.role === 'model');
-    at = model ? ctx.subckts.get(lowerAscii(model.token.text)) : undefined;
-    if (!x || at === undefined) return undefined;
-    path.push(x.name.text);
-    parts = linesOf(at);
-  }
-  const sub = netlist.lines[at!]!;
-  // The nodes of the .subckt line: the words after the name, up to params: or a name=value (none of them a node of its own).
-  const ports = new Set<string>();
-  for (const t of sub.directive!.args.slice(1)) {
+  const walk = walkSubcircuits(netlist, steps.slice(0, -1));
+  if (!walk) return undefined;
+  // The nodes of the .subckt line: the words after the name, up to params: or a name=value; and those .global names.
+  const shared = new Set<string>();
+  for (const t of netlist.lines[walk.line]!.directive!.args.slice(1)) {
     if (/^params:$/i.test(t.text) || /^[ \t]*=/.test(netlist.text.slice(t.to, t.to + 80))) break;
-    ports.add(ngspiceName(t.text));
+    shared.add(ngspiceName(t.text));
   }
+  for (const l of netlist.lines) if (l.directive?.name === '.global') for (const t of l.directive.args) shared.add(ngspiceName(t.text));
   const last = steps[steps.length - 1]!;
-  const node = ports.has(last) ? undefined : parts.flatMap((e) => e.nodes).find((r) => !r.ground && r.name === last);
-  return node ? { path, node, subcircuit: sub.directive!.args[0]!.text, line: at! } : undefined;
+  const node = shared.has(last) ? undefined : walk.lines.flatMap((l) => l.element!.nodes).find((r) => !r.ground && r.name === last);
+  return node ? { path: walk.path, subcircuit: walk.subcircuit, line: walk.line, node } : undefined;
+}
+
+/**
+ * ngspice's name for a part inside a subcircuit, read back (A3h): its first letter, the X lines that lead
+ * to it and its own name, joined by dots, in lower case: v.x1.vs is Vs of the subcircuit X1 uses, which a
+ * .tf can take as its input or its i( ) (0.3333 and 3.333e-4 in A3h). undefined for any other name, x1.vs
+ * among them (no part: 0 and 1e20 Ω, as tf-problems-5).
+ */
+export function innerPart(netlist: Netlist, name: string): InnerPart | undefined {
+  const steps = lowerAscii(name).split('.');
+  const own = steps[steps.length - 1]!;
+  if (steps.length < 3 || steps.some((s) => s === '') || steps[0]!.length !== 1 || own[0] !== steps[0]) return undefined;
+  const walk = walkSubcircuits(netlist, steps.slice(1, -1));
+  const line = walk?.lines.find((l) => lowerAscii(l.element!.name.text) === own);
+  return walk && line ? { path: walk.path, subcircuit: walk.subcircuit, line: walk.line, part: line.element!, partLine: line.index } : undefined;
 }
 
 function partKind(netlist: Netlist, name: string): { line?: number; letter?: ElementLetter } {
@@ -1441,7 +1478,10 @@ export function readAnalysis(netlist: Netlist, lineIndex: number): AnalysisReadi
       if (input) {
         reading.input = input;
         const part = partKind(netlist, input.text);
-        reading.inputKind = part.letter === 'V' ? 'voltage' : part.letter === 'I' ? 'current' : part.line === undefined ? 'missing' : 'other';
+        // A part inside a subcircuit, by ngspice's name for it (v.x1.vs), is a part of the circuit (A3h).
+        const inner = part.line === undefined ? innerPart(netlist, input.text) : undefined;
+        const letter = part.letter ?? inner?.part.letter;
+        reading.inputKind = letter === 'V' ? 'voltage' : letter === 'I' ? 'current' : part.line === undefined && !inner ? 'missing' : 'other';
       }
       return reading;
     }
@@ -2218,17 +2258,25 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
       }
     }
   }
+  // A part inside a subcircuit, by ngspice's name for it (v.x1.vs): said which part it is (A3h).
+  const partNote = (name: string, inner: InnerPart): void =>
+    addNote(notes, S.innerPartNote(name, inner.part.name.text, inner.subcircuit, inner.line + 1, [...inner.path].reverse().join(', inside '), inner.path.length > 1));
+  const current = r.outputKind === 'current' && g?.names[0] && partKind(netlist, g.names[0].text).line === undefined ? innerPart(netlist, g.names[0].text) : undefined;
+  if (current) partNote(g!.names[0]!.text, current);
   const input = r.input;
   if (input) {
     const part = partKind(netlist, input.text);
+    const inner = part.line === undefined ? innerPart(netlist, input.text) : undefined;
+    const at = part.line ?? inner?.partLine;
     let meaning: string;
     if (r.inputKind === 'missing') {
       meaning = S.tfInputMissing(input.text);
       addNote(notes, S.tfInputMissingNote(input.text)); // M10
     } else if (r.inputKind === 'other') {
-      meaning = S.tfInputWrong(input.text, partWord(netlist, part.line!));
+      meaning = S.tfInputWrong(input.text, partWord(netlist, at!));
       addNote(notes, S.tfInputWrongNote(input.text)); // M11
-    } else meaning = S.tfInput(input.text, part.line! + 1, partWord(netlist, part.line!));
+    } else meaning = S.tfInput(input.text, at! + 1, partWord(netlist, at!));
+    if (inner) partNote(input.text, inner);
     fields.push(fieldOf('input source', input, meaning));
   }
   // The formula keeps the line's words, but never a character hidden in them (S11): the words after it name it.

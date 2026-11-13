@@ -5,7 +5,7 @@
  * and A3h in docs/spice-facts/explanations.md).
  *
  * - code review C3-6: `.tf v(x1.m) V1` asks about the node m inside the subcircuit X1 uses, by ngspice's
- *   name for it, so it is no error, and Explain says which node it is (A3h).
+ *   name for it, so it is no error, and Explain says which node it is (A3h); so is a part there, v.x1.vs.
  * - regress-2: a gnd in the v( ) of a .tf inside a subcircuit an X line uses is ground, as at the top
  *   level (A3g); and the summary names every warning it counts, four and how many more.
  * - facts F3: when every analysis line is in a subcircuit no X line uses, the run's message and the
@@ -85,6 +85,30 @@ describe('code review C3-6: ngspice\'s name for a node inside a subcircuit (A3h)
     // X2 only inside a subcircuit no X line uses places nothing: x2.m is no node (0 and 1 Ω natively).
     const unused = '* t\nV1 in 0 10\nR9 in 0 1k\n.subckt outer p q\nX2 p q div\n.ends\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n.tf v(x2.m) V1\n.end\n';
     expect(tfErrors(unused)).toEqual(['.tf asks about node x2.m, which is not in the circuit']);
+    // A node a .global line names is the main circuit's: x1.vdd is no node (0 and 1 Ω natively), x1.m still is.
+    const global = (out: string): string => `* t\n.global vdd\nV1 in 0 10\nVd vdd 0 2\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m vdd 1k\nR3 m b 1\n.ends\n.tf v(${out}) V1\n.end\n`;
+    expect(tfErrors(global('x1.vdd'))).toEqual(['.tf asks about node x1.vdd, which is not in the circuit']);
+    expect(tfErrors(global('x1.m'))).toEqual([]);
+  }, 30000);
+
+  it('v.x1.vs, ngspice\'s name for the source Vs inside X1, is a part: the .tf input or its i( ), and Explain says which (code skeptic)', async () => {
+    // Native 47 and 42: v(out)/v.x1.vs = 0.3333 with 1.5 kΩ; i(v.x1.vs)/V1 = 3.333e-4; i.x1.is as the input gives 500 V/A.
+    const VS = '* t\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\nVs m q 0\nR4 q 0 1k\n.ends\n';
+    const input = `${VS}.tf v(out) v.x1.vs\n.end\n`;
+    expect(tfErrors(input)).toEqual([]);
+    const s = await solve(input, await engine);
+    expect([s.status, sp(s.words.tf?.transferFunction?.text), sp(s.words.tf?.inputResistance?.text)]).toEqual(['ok', 'v(out)/v.x1.vs = 0.3333 (V/V)', 'input resistance seen by v.x1.vs: 1.5 kΩ (ngspice calls it the input impedance)']);
+    const line = explainNetlist(parseNetlist(input))[10]!;
+    expect(line.fields.find((f) => f.label === 'input source')?.meaning).toBe('the input: v.x1.vs, the voltage source on line 8');
+    expect(line.notes).toEqual(["v.x1.vs is ngspice's name for Vs of the subcircuit div (from line 4), inside X1: ngspice names a part inside a subcircuit by its first letter, its X line and its own name, joined by dots."]);
+    const current = `${VS}.tf i(v.x1.vs) V1\n.end\n`;
+    expect(tfErrors(current)).toEqual([]);
+    expect(sp((await solve(current, await engine)).words.tf?.transferFunction?.text)).toBe('i(v.x1.vs)/V1 = 3.333e-4 (A/V)');
+    const isource = '* t\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\nIs 0 m 1m\n.ends\n.tf v(out) i.x1.is\n.end\n';
+    expect(tfErrors(isource)).toEqual([]);
+    expect(sp((await solve(isource, await engine)).words.tf?.transferFunction?.text)).toBe('v(out)/i.x1.is = 500 (V/A)');
+    // x1.vs is no name of a part (0 and 1e20 Ω natively): the error stays.
+    expect(tfErrors(`${VS}.tf i(x1.vs) V1\n.end\n`)).toEqual(['i(x1.vs) needs a voltage source']);
   }, 30000);
 });
 

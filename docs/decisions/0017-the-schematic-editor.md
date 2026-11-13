@@ -597,9 +597,15 @@ check each, A3f to A3h in `docs/spice-facts/explanations.md`):
   subcircuit by its X line, then a dot." The .tf words keep the name as written, "at node x1.m", as the
   `.op` words name the same node (`node x1.n = 6.25 V`): one name for one node. A dotted name that is no
   such node keeps its error, as ngspice makes it a new node with nothing on it (0 and 1 Ω): `x1.a` for
-  a node of the `.subckt` line (that node is the X line's own, `in`), and `x2.m` where X2 is only a
-  line of a subcircuit no X line uses. Not done: telling the student that `x1.a` is node in, with a
-  "Use in" fix; the error says what holds.
+  a node of the `.subckt` line (that node is the X line's own, `in`), `x2.m` where X2 is only a line
+  of a subcircuit no X line uses, and `x1.vdd` for a node a `.global` line names, which is the main
+  circuit's. The skeptic of C3-6 found the same for parts: ngspice names Vs inside X1 `v.x1.vs`, after
+  its first letter, and a `.tf` takes it as its input or its `i( )` (0.3333 and 3.333e-4 A/V), where
+  the check said ngspice stops ("Transfer function source v.x1.vs not in circuit"). `innerPart` reads
+  such a name back, so the .tf check takes it as that part, the input's kind (V/A for `i.x1.is`) and
+  its line come from it, and Explain says which part it is. `x1.vs` is no part's name and keeps its
+  error. Not done: telling the student that `x1.a` is node in, with a "Use in" fix; the error says what
+  holds.
 - **gnd in a used subcircuit's `.tf` is ground** (regress-2). ngspice turns gnd into 0 on every line,
   the subcircuit's lines included, before it runs such a `.tf` as the main circuit's (A3g: `.tf
   v(out,gnd) V1` there is `v(out,0)`, 1/3). The parser files no node for the words of a line inside

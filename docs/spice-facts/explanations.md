@@ -72,7 +72,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   0 without a message (A6). An analysis line in a subcircuit no X line uses is skipped, as is every
   line of such a subcircuit; in one an X line uses, it runs as the main circuit's, once for each X
   line (A3f), with gnd as ground there too (A3g). ngspice names a node inside a subcircuit by its X
-  lines and a dot, `x1.m`, and a `.tf` can ask about it (A3h).
+  lines and a dot, `x1.m`, and a part there after its first letter, `v.x1.vs`, and a `.tf` can use
+  either (A3h).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -2916,6 +2917,56 @@ ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in each (golden rows
   an-tf-inner, -inner-caps, -inner-after-end, an-op-inner-nested, an-tf-inner-nested, -inner-outer,
   -inner-port and -inner-unused)
+```
+
+ngspice names a part there the same way, after its first letter: Vs inside X1 is `v.x1.vs` (as in
+its device list, `r.x1.x2.r4` above), and a `.tf` can take it as its input (0.3333 and 1.5 kΩ, the
+input named `v.x1.vs#input_impedance`) or its `i( )` (3.333e-4 A/V); a current source there,
+`i.x1.is`, makes the transfer function V/A. So the .tf check, the words and Explain read such a name
+as that part, and Explain says which ("v.x1.vs is ngspice's name for Vs of the subcircuit div …"),
+where the check said ngspice stops ("Transfer function source v.x1.vs not in circuit") and Explain
+that it runs no analysis (the skeptic of C3-6). `x1.vs` is no part's name: 0 and 1e20 Ω, as
+tf-problems-5, and the error stays. A node a `.global` line names is the main circuit's, not one of the
+subcircuit's own: `x1.vdd` is a new node (0 and 1 Ω), while `x1.m` beside it is still m inside X1.
+
+```spice
+* a .tf whose input is the source Vs inside X1
+V1 in 0 10
+X1 in out div
+.subckt div a b
+R1 a m 1k
+R2 m 0 1k
+R3 m b 1
+Vs m q 0
+R4 q 0 1k
+.ends
+.tf v(out) v.x1.vs
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 3.333333e-01
+    output_impedance_at_v(out) = 3.343333e+02
+    v.x1.vs#input_impedance = 1.500000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.33333333333335785, v(v.x1.vs#Input_impedance) = 1500.000000000055, v(output_impedance_at_V(out)) = 334.3333333333578
+  with .tf i(v.x1.vs) V1: transfer_function = 3.333333e-04, v.x1.vs#output_impedance = 1.000000e+20,
+    v1#input_impedance = 1.500000e+03; rawfile 0.0003333333333333578, 1500.000000000055 and 1e20
+  with .tf i(x1.vs) V1: transfer_function = 0.000000e+00, v1#input_impedance = 1.500000e+03,
+    x1.vs#output_impedance = 1.000000e+20; rawfile 0, 1500.000000000055 and 1e20
+  with Is 0 m 1m in place of Vs and R4, and .tf v(out) i.x1.is: transfer_function = 5.000000e+02,
+    i.x1.is#input_impedance = 5.000000e+02, output_impedance_at_v(out) = 5.010000e+02; rawfile
+    500.0000000000551, 500.0000000000551 and 501.0000000000551
+  .global vdd, Vd vdd 0 2, and R2 m vdd 1k in place of R2 m 0 1k (no Vs, no R4), .tf v(x1.vdd) V1:
+    transfer_function = 0.000000e+00, output_impedance_at_v(x1.vdd) = 1.000000e+00,
+    v1#input_impedance = 2.000000e+03; rawfile 0, 2000.0000000002203 and 1; the same with .tf
+    v(x1.m) V1: 5.000000e-01, 5.000000e+02 and 2.000000e+03; rawfile 0.5000000000000551,
+    2000.0000000002203 and 500.0000000000551
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in each (golden rows
+  an-tf-inner-input, -inner-current, -inner-current-plain, -inner-isource, -inner-global and
+  -inner-global-m)
 ```
 
 ## 3. Currents and power in the results
