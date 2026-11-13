@@ -17,6 +17,7 @@ import {
   buildSchematic,
   drawingBlockChanges,
   findOverlaps,
+  linesFit,
   parseDrawingLines,
   readDrawing,
   schematicConnectivity,
@@ -456,6 +457,63 @@ describe('limits: wire over wire, slanted wire and long chains build quickly (se
     const again = buildSchematic(`${head.slice(0, head.indexOf('* plainspice-drawing'))}${written.join('\n')}\n.end\n`, NOTEBOOK_OPTIONS);
     expect(serializeDrawing(again.circuit, again.drawing)).toEqual(written);
     expect(written.some((l) => l.includes('18,6') || l.includes('29,7'))).toBe(false);
+  });
+});
+
+describe('limits: a drawing written is read to its end (the critic of the second re-check’s fixes, D7)', () => {
+  const HEAD = ['* divider', 'V1 in 0 6', 'R1 in out 1k', 'R2 out 0 2k', '.op', '* plainspice-drawing v1', '*@ V1 0 3 0 m', '*@ R1 4 0 270', '*@ R2 7 3 0'];
+  /** A k × k grid on ground's pin, every point joined: typed in 2k lines, read as about k² pieces. */
+  const grid = (k: number): string => {
+    const row = (j: number): string => `*@ wire ${Array.from({ length: k }, (_, i) => `${7 + i},${5 + j}`).join(' ')}`;
+    const column = (i: number): string => `*@ wire ${Array.from({ length: k }, (_, j) => `${7 + i},${5 + j}`).join(' ')}`;
+    return `${[...HEAD, ...Array.from({ length: k }, (_, j) => row(j)), ...Array.from({ length: k }, (_, i) => column(i)), '.end'].join('\n')}\n`;
+  };
+  /** Each grid unit of straight wire a drawing draws, as "x,y x,y". */
+  const units = (s: Schematic): Set<string> => {
+    const out = new Set<string>();
+    for (const w of s.drawing.wires) {
+      for (const [a, b] of segmentsOf(w)) {
+        const [dx, dy] = [Math.sign(b.x - a.x), Math.sign(b.y - a.y)];
+        if (dx && dy) continue;
+        for (let x = a.x, y = a.y; x !== b.x || y !== b.y; x += dx, y += dy) out.add([`${x},${y}`, `${x + dx},${y + dy}`].sort().join(' '));
+      }
+    }
+    return out;
+  };
+  const gridUnits = (k: number): string[] => {
+    const out: string[] = [];
+    for (let a = 0; a < k; a++) for (let b = 0; b + 1 < k; b++) out.push([`${7 + b},${5 + a}`, `${8 + b},${5 + a}`].sort().join(' '), [`${7 + a},${5 + b}`, `${7 + a},${6 + b}`].sort().join(' '));
+    return out;
+  };
+
+  it('writes the pieces of a joined grid chained when a line for each would be more than the format reads, and they read back as drawn', () => {
+    const text = grid(70);
+    const s = buildSchematic(text, NOTEBOOK_OPTIONS);
+    expect(s.drawing.wires.length).toBeGreaterThan(MAX_DRAWING_LINES);
+    const written = serializeDrawing(s.circuit, s.drawing);
+    expect(written.length - 1).toBeLessThanOrEqual(MAX_DRAWING_LINES);
+    expect(linesFit(written)).toBe(true);
+    const back = buildSchematic(applyChanges(text, drawingBlockChanges(s.netlist, written)), NOTEBOOK_OPTIONS);
+    expect(back.drawing.wires).toEqual(s.drawing.wires);
+    expect(back.scene.junctions).toEqual(s.scene.junctions);
+    expect(serializeDrawing(back.circuit, back.drawing)).toEqual(written);
+    // Pieces that fit are written one to a line, as always.
+    const small = buildSchematic(grid(5), NOTEBOOK_OPTIONS);
+    expect(serializeDrawing(small.circuit, small.drawing).filter((l) => l.startsWith('*@ wire '))).toEqual(small.drawing.wires.map((w) => `*@ wire ${w.map((p) => `${p.x},${p.y}`).join(' ')}`));
+  });
+
+  it('an edit on a joined 70 × 70 grid keeps every piece of it', { timeout: 60_000 }, () => {
+    // The lines were written a piece to a line, 4,770 of them: reading stopped at 2000, and the edit
+    // wrote the drawing of those, about 2,700 grid units of wire short.
+    const s = buildSchematic(grid(70), NOTEBOOK_OPTIONS);
+    for (const op of [{ kind: 'move-part', part: 'r1', to: { x: 4, y: -3 } }, { kind: 'rotate-part', part: 'r1' }] as const) {
+      const r = applyEdit(s, op, NOTEBOOK_OPTIONS);
+      expect(r.ok, op.kind).toBe(true);
+      const after = buildSchematic(r.text, NOTEBOOK_OPTIONS);
+      expect(after.problems.map((p) => p.kind)).not.toContain('too-many-lines');
+      const drawn = units(after);
+      expect(gridUnits(70).filter((u) => !drawn.has(u)), op.kind).toEqual([]);
+    }
   });
 });
 

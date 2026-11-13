@@ -43,6 +43,7 @@ export {
   newlineOf,
   drawingBlockChanges,
   isDrawingLine,
+  linesFit,
   parseDrawingLines,
   readDrawing,
   serializeDrawing,
