@@ -197,8 +197,9 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
 - **A very short window.** Below 300 px of height (a laptop at 300 % or 400 %), a calm status
   ("Finished in 32 ms") folds to its dot, in the paper's margin left of the red line where the drawing
   never goes, its words still read by screen readers; with buttons on it (Undo; Show the whole
-  drawing until the second re-check, below) it keeps them. Running, paused or an error keep their words, their reason and their buttons.
-  The status line keeps its height, so the drawing does not move as runs come and go.
+  drawing until the second re-check, below) it keeps them. Running, paused or an error keep their
+  words, their reason and their buttons. The status line keeps its height, so the drawing does not move
+  as runs come and go.
 - **Two buttons on one row.** On a phone, when "Show the whole drawing" shares the status line with
   another button (the turn, Undo), a calm status keeps its words for screen readers only and leaves
   out its dot, so the line is just the buttons, on one row: at 360 px the two buttons take 175 and
@@ -374,11 +375,11 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
     its tall last rows could not be scrolled clear of the bar: the phone audit and the 320 × 568 test
     check it); a sheet whose own rows change is laid out afresh in that frame and held at once, so the
     error's row in Checks stays put while the lines step aside for the error (followed for two frames
-    more, it moved up to 110 px with the largest text). Considered: the lines only (the skeptic's first fix, the busy tone out of the key and their
-    height kept), which leaves the move a new settled status makes; a sheet that never gives room, its
-    lines stepping aside instead, which hides the status line above a sheet opened while an error stood
-    even once the error is undone; and letting the stack grow past its ceiling, which leaves under 48 px
-    of paper on the small phones.
+    more, it moved up to 110 px with the largest text). Considered: the lines only (the skeptic's first
+    fix, the busy tone out of the key and their height kept), which leaves the move a new settled status
+    makes; a sheet that never gives room, its lines stepping aside instead, which hides the status line
+    above a sheet opened while an error stood even once the error is undone; and letting the stack grow
+    past its ceiling, which leaves under 48 px of paper on the small phones.
   Measured on every frame (each of More's rows, and each box and list item of Checks, through the
   ground deleted, T, T, Ctrl+Z, Ctrl+Z and the error undone), on the 12 phone views, 640 × 400 and 1280
   × 800 at 150 %: on b060bc8 rows moved up to 175.6 px (a Pixel 7 upright at 150 %), 59.5 px (an iPhone
@@ -387,8 +388,8 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   Tests (`tests/e2e/phone.spec.ts`): "an open sheet keeps its rows where they are through each run, a
   new status and an undo" (863 × 360 and 640 × 400 with Checks, 320 × 568 with More and the error
   undone, and with Checks at 150 %; Checks' new rows from their first frame; and a run that keeps its
-  status moves not even the sheet's head): on b060bc8 Checks' rows go
-  165 → 203 → 165 px with each run at 863 × 360; without the sheet held, rows move 25 px at an undo at
+  status moves not even the sheet's head): on b060bc8 Checks' rows go 165 → 203 → 165 px with each run
+  at 863 × 360; without the sheet held, rows move 25 px at an undo at
   640 × 400; without the hold through a run, the sheet's top goes 148 → 199 there. "Two quick taps on
   More's Undo, 150 ms apart, undo twice while an error stands": b060bc8 pressed Undo, then Redo.
 
