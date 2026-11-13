@@ -757,12 +757,12 @@ function classifyElementFields(
 
   if (letter === 'E' || letter === 'G') {
     // Given by a formula, as the parser reads it (C3-5): VALUE (with '=' or not), vol= (E) or cur= (G) after the
-    // two output nodes, or after two more words, which ngspice drops. The formula is shown as on a B line.
+    // two output nodes, or after more words, which ngspice drops. The formula is shown as on a B line.
     const at = ps.findIndex((p, i) => {
       const w = p.text.toLowerCase();
       if (i === 0 || p.kind !== 'word' || (w !== 'value' && !(w === (letter === 'E' ? 'vol' : 'cur') && ps[i + 1]?.kind === 'equals'))) return false;
       const before = fields.filter((f) => f < i);
-      return (before.length === 2 || before.length === 4) && before[before.length - 1] === i - 1;
+      return before.length >= 2 && before[before.length - 1] === i - 1;
     });
     if (at > 0) {
       const before = fields.filter((f) => f < at);

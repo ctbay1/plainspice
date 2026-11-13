@@ -2045,6 +2045,7 @@ function checkIncomplete(c: Ctx, i: number): void {
   // A formula, a table or a polynomial where the control and the gain go (C3-5): nothing is missing.
   if (e.form) {
     if (e.form.kind !== 'formula') checkXspiceForm(c, i);
+    else checkFormulaForm(c, i);
     return;
   }
   const notEnough = "Native ngspice 47 stops: 'not enough parameters in line'.";
@@ -2106,6 +2107,46 @@ function checkXspiceForm(c: Ctx, i: number): void {
     `POLY makes ${name}'s output a polynomial of its controls, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out; first- and second-year circuits don't need it. ${'EG'.includes(e.letter!) ? 'For a gain, write the control nodes and then the gain' : 'For a gain, write the control source and then the gain'}${written ? `: ${written}` : ''}.`,
     "PlainSpice's engine stops: 'XSPICE is required to run the 'poly' option'. Native ngspice 47 runs it. [model-not-in-engine-7, model-not-in-engine-9]",
     written ? [fix(`Write it without POLY: ${written}`, change(form.keyword.from, lineEnd, plain!))] : []);
+}
+
+/**
+ * An E or G given by a formula that ngspice cannot read (C3-5). ngspice takes the formula from its '{' to the
+ * end of the line, and adds the braces itself only after '=' and before a letter or a bracket (v(out)*2, k*2,
+ * (v(out)*2)): VALUE=3, VALUE=2*v(out) and VALUE v(out)*2 stop it (fatal-syntax-12 to -15). One word between
+ * the output nodes and the formula stops native ngspice, whose XSPICE first reads the line as a polynomial;
+ * PlainSpice's engine drops it, as ngspice drops two or more (missing-fields-9, unknown-word-54, -55).
+ */
+function checkFormulaForm(c: Ctx, i: number): void {
+  const e = el(c, i);
+  const form = e.form!;
+  const name = nameOf(e);
+  const kw = form.keyword.text;
+  const word = form.dropped?.length === 1 ? form.dropped[0]! : undefined;
+  if (word) {
+    add(c, 'missing-fields', 'warning', word, `Native ngspice stops at ${name}'s word ${word.text}`,
+      `ngspice drops the words between ${name}'s output nodes and ${kw}, so ${word.text} changes nothing in PlainSpice. With exactly one word there, native ngspice first reads the line as a polynomial (an XSPICE step that PlainSpice's engine leaves out) and stops.`,
+      `Native ngspice 47 and 42 stop: 'not enough parameters in line'. PlainSpice's engine drops ${word.text} and runs the formula. [missing-fields-9]`,
+      [fix(`Take out ${word.text}`, change(word.from, form.keyword.from, ''))]);
+  }
+  const formula = form.formula;
+  const equals = /^[ \t]*=/.test(c.text.slice(form.keyword.to, form.keyword.to + 200));
+  if (!formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(formula.text)) {
+    // VALUE= or VALUE={} with nothing in it (fatal-syntax-15).
+    c.broken.add(i);
+    add(c, 'fatal-syntax', 'error', formula ?? form.keyword, `${name} has an empty formula`,
+      `After ${kw}= comes the formula, for example ${kw}={2*v(in)}.`,
+      equals || formula ? "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression'. [fatal-syntax-15]"
+        : `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance'. [fatal-syntax-15]`);
+    return;
+  }
+  if (/^[{'"]/.test(formula.text)) return;
+  if (equals && !/^[0-9.+-]/.test(formula.text)) return;
+  c.broken.add(i);
+  const braced = `{${formula.text}}`;
+  add(c, 'fatal-syntax', 'error', formula, `ngspice can't read ${name}'s formula without braces`,
+    `ngspice takes ${name}'s formula from its { to the end of the line. It adds the braces itself only after ${kw}= and before a letter or a bracket, as in ${kw}=v(out)*2, so write ${kw}=${braced}.`,
+    `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance'. [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14]`,
+    formula.text.includes('=') ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
 }
 
 /**

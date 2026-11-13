@@ -155,6 +155,9 @@ describe('tokenizer: E, F, G and H given by a formula, POLY or the word for thei
       'v:expression', '(:expression', 'out:expression', '):expression', '*:expression', '2m:expression',
     ]);
     expect(tok('E1 e 0 VALUE {v(out)*2}')).toEqual(['E1:element', 'e:node=e', '0:ground=0', 'VALUE:keyword', '{v(out)*2}:expression']);
+    expect(tok('E1 e 0 out 0 2 VALUE={v(out)*2}')).toEqual([
+      'E1:element', 'e:node=e', '0:ground=0', 'out:word', '0:word', '2:word', 'VALUE:parameter', '=:operator', '{v(out)*2}:expression',
+    ]);
   });
 
   it('POLY(n): n pairs of control nodes (E, G) or n voltage sources (F, H), then the coefficients', () => {

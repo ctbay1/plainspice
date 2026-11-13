@@ -136,7 +136,7 @@ export interface ControlledForm {
   formula?: Token;
   /** 'poly': the n of POLY(n), when it is a whole number above 0. */
   dimension?: number;
-  /** 'formula': the two words between the output nodes and VALUE= that ngspice drops (E1 e 0 in 0 VALUE={...}). */
+  /** 'formula': the words between the output nodes and VALUE= that ngspice drops (E1 e 0 in 0 VALUE={...}). */
   dropped?: Token[];
 }
 

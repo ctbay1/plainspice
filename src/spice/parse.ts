@@ -745,14 +745,15 @@ function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | '
   const form: ControlledForm = { kind: formula ? 'formula' : 'table', keyword: b.field(r.take(w), 'parameter') };
   b.formula(w.b, s.length);
   const first = r.peek('word');
-  let last: Word | undefined;
-  for (let c = r.next('word'); c; c = r.next('word')) {
-    b.field(c, 'parameter');
-    last = c;
-  }
-  // The formula: a group in braces or quotes; for VALUE=, vol= and cur= without one, the rest of the line.
+  for (let c = r.next('word'); c; c = r.next('word')) b.field(c, 'parameter');
+  // The formula: a group in braces or quotes; for VALUE=, vol= and cur= without one, the rest of the line
+  // (with its last bracket: v(out)*(1+2)).
   if (first && isGroupStart(first.clean.charCodeAt(0))) form.formula = b.token(first);
-  else if (first && last && formula) form.formula = b.token({ a: first.a, b: last.b, clean: '' });
+  else if (first && formula) {
+    let end = s.length;
+    while (end > first.a && isSpaceCode(s.charCodeAt(end - 1))) end -= 1;
+    form.formula = b.token({ a: first.a, b: end, clean: '' });
+  }
   return form;
 }
 
@@ -860,13 +861,16 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       fixedNodes(r, b, letter === 'E' ? ['plus', 'minus'] : ['from', 'to']);
       form = b.nodes.length === 2 ? controlledForm(r, b, src.text, letter) : undefined;
       if (form) break;
-      // Two words and then a formula: ngspice keeps the output nodes and the formula, and drops the two
-      // words (inp_compat; unknown-word-54).
-      const w1 = b.nodes.length === 2 ? r.peek('net') : undefined;
-      const w2 = w1 && r.peek('net', w1.b);
-      const w3 = w2 && r.peek('net', w2.b);
-      if (w1 && w2 && w3 && isFormulaWord(r, w3, letter)) {
-        const dropped = [b.field(r.take(w1), 'parameter'), b.field(r.take(w2), 'parameter')];
+      // Words and then a formula: ngspice keeps the output nodes and the formula, and drops the words
+      // between (inp_compat; unknown-word-54, -55, missing-fields-9). A setting (name=) ends the search.
+      const between: Word[] = [];
+      let at = b.nodes.length === 2 ? r.peek('net') : undefined;
+      while (at && !isFormulaWord(r, at, letter) && !isGroupStart(at.clean.charCodeAt(0)) && !r.equalsAfter(at.b)) {
+        between.push(at);
+        at = r.peek('net', at.b);
+      }
+      if (at && between.length && isFormulaWord(r, at, letter)) {
+        const dropped = between.map((w) => b.field(r.take(w), 'parameter'));
         form = controlledForm(r, b, src.text, letter);
         if (form) form.dropped = dropped;
         break;

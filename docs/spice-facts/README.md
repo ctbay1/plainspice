@@ -204,6 +204,9 @@ XSPICE, stops; POLY(1) with the coefficients 0 and k is the plain gain k), non-a
 formula that reads a node, a part or a `.tf` after `.end`, and `.pz`'s bare nodes name the node too: a
 rename that changes them all gives the same numbers), invisible-character-67, look-alike-letter-18 and
 space-character-24 (the same for those fixes), space-character-22, -23 and nbsp-4 (a character that
-looks like a space in a formula stops ngspice; taken out, the formula runs), and unknown-word-53 and -54
+looks like a space in a formula stops ngspice; taken out, the formula runs), unknown-word-53 to -55
 (ngspice takes HSPICE's `vcvs`, `vccs`, `cccs` and `ccvs` out of a line of exactly seven or six words,
-and drops two words between an E's or G's output nodes and its formula).
+and drops the words between an E's or G's output nodes and its formula), missing-fields-9 (one such word
+stops native ngspice, not our engine) and fatal-syntax-12 to -16 (a formula without braces that starts
+with a number, or after VALUE without `=`, or an empty one, stops ngspice; one that starts with a letter
+or a bracket runs).

@@ -178,6 +178,7 @@ describe('the editor highlighter reads netlists as the verified parser does', ()
       'E1 e 0 POLY(1) out 0 0 2', 'E1 e 0 POLY(2) out 0 in 0 0 1 1', 'G1 0 e poly(1) out 0 0 2m', 'F1 0 e POLY(1) Vx 0 2', 'H1 e 0 POLY(2) Vx V1 0 1k 1k',
       'E1 e 0 TABLE {v(out)} = (0,0) (5,10)', 'E1 e 0 out 0 table=(0,0,5,10)',
       'E1 e 0 vcvs out 0 2', 'G1 0 e vccs out 0 2m', 'F1 0 e cccs Vx 2', 'H1 e 0 ccvs Vx 1k', 'E1 e 0 vcvs out 2', 'E1 e 0 POLY(1) value 0 0 2',
+      'E1 e 0 x VALUE={2}', 'E1 e 0 out 0 2 VALUE={v(out)*2}', 'E1 e 0 a b c d VALUE={2}', 'E1 e 0 VALUE=3', 'E1 e 0 VALUE v(out)*2',
     ]) {
       expect(compare(`${divider}${line}\nRe e 0 1k\n.op\n.end\n`), line).toEqual([]);
     }

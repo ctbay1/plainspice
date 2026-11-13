@@ -388,6 +388,43 @@ describe('words ngspice takes out of an E, F, G or H line before it reads it (C3
     expect(checkTraps(n)).toEqual([]);
   });
 
+  it('three or more words, such as a gain left on the line, are dropped too; one word stops native ngspice: a warning whose fix takes it out', () => {
+    const n = parseNetlist(`* t\n${DIVIDER}E1 e 0 out 0 2 VALUE={v(out)*2}\nE2 e2 0 a b c d VALUE={2}\nRe e 0 1k\nRe2 e2 0 1k\n.op\n.end\n`);
+    expect(n.lines[4]!.element!.form?.dropped?.map((t) => t.text)).toEqual(['out', '0', '2']);
+    expect(n.lines[5]!.element!.nodes.map((r) => r.name)).toEqual(['e2', '0']);
+    expect(checkTraps(n)).toEqual([]);
+    const one = `* t\n${DIVIDER}E1 e 0 x VALUE={2}\nRe e 0 1k\n.op\n.end\n`;
+    const traps = checkTraps(parseNetlist(one));
+    expect(traps.map((t) => [t.id, t.severity, t.title])).toEqual([['missing-fields', 'warning', "Native ngspice stops at E1's word x"]]);
+    expect(applyFix(one, traps[0]!.fixes[0]!)).toBe(one.replace('x VALUE', 'VALUE'));
+    // A setting ends the search: after m=1, value= starts no formula.
+    expect(parseNetlist(`* t\n${DIVIDER}E1 e 0 out 0 2 m=1 value={3}\n.op\n.end\n`).lines[4]!.element!.form).toBeUndefined();
+  });
+
+  it("a formula ngspice can't read (no braces and a number first, VALUE without =, or nothing) is an error, and braces fix it (fatal-syntax-12 to -16)", () => {
+    const said = (line: string): string[] => {
+      const text = `* t\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`;
+      return checkTraps(parseNetlist(text)).map((t) => `${t.id}: ${t.title}${t.fixes[0] ? ` -> ${applyFix(text, t.fixes[0]).split('\n')[4]}` : ''}`);
+    };
+    expect(said('E1 e 0 VALUE=3')).toEqual(["fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 VALUE={3}"]);
+    expect(said('E1 e 0 VALUE=2*v(out)')).toEqual(["fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 VALUE={2*v(out)}"]);
+    expect(said('G1 0 e cur=2m*v(out)')).toEqual(["fatal-syntax: ngspice can't read G1's formula without braces -> G1 0 e cur={2m*v(out)}"]);
+    expect(said('E1 e 0 VALUE v(out)*2')).toEqual(["fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 VALUE {v(out)*2}"]);
+    expect(said('E1 e 0 VALUE=')).toEqual(['fatal-syntax: E1 has an empty formula']);
+    expect(said('E1 e 0 VALUE={}')).toEqual(['fatal-syntax: E1 has an empty formula']);
+    for (const runs of ['E1 e 0 VALUE=v(out)*2', 'E1 e 0 VALUE=(v(out)*2)', 'E1 e 0 VALUE=v(out)*(1+1)', 'G1 0 e cur=v(out)*2m', "E1 e 0 vol='v(out)*2'"]) {
+      expect(said(runs), runs).toEqual([]);
+    }
+    // Without braces the formula is the rest of the line, with its last bracket.
+    expect(parseNetlist(`* t\n${DIVIDER}E1 e 0 VALUE=v(out)*(1+1)\n.op\n.end\n`).lines[4]!.element!.form?.formula?.text).toBe('v(out)*(1+1)');
+  });
+
+  it('Explain says how many words ngspice drops, and that native ngspice stops at one', () => {
+    const n = parseNetlist(`* t\n${DIVIDER}E1 e 0 x VALUE={2}\nE2 e2 0 out 0 2 VALUE={v(out)*2}\n.op\n.end\n`);
+    expect(explainLine(n, 4)!.notes).toContain("PlainSpice's engine drops the word before the formula (x), so it changes nothing here: the output is the formula alone. Native ngspice stops at it (see the checks).");
+    expect(explainLine(n, 5)!.notes).toContain('ngspice drops the three words before the formula (out 0 2), so they change nothing: the output is the formula alone.');
+  });
+
   it('Explain shows them as words ngspice takes out or drops, and names a form line as the overview does', () => {
     const n = parseNetlist(`${KINDS}E1 e 0 vcvs out 0 2\nH1 h 0 ccvs Vs 1k\nE2 e2 0 in 0 VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n`);
     const e = explainLine(n, 5)!;
