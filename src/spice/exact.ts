@@ -1370,19 +1370,153 @@ export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
  */
 export const ANSWER_GAP = 5e-5;
 /**
- * What ngspice's rounding may add to the gap of an answer, as a share of the largest exact value of its
- * kind (node voltages; currents): an answer tiny beside the others can be off by more than ANSWER_GAP of
- * itself with nothing wrong (a 10 mΩ wire beside attoamps leaves a source's 4 aA at 21 fA, beside
- * milliamps). ngspice's LU solution leaves each unknown a few units in the last place of the largest
- * values times what the circuit's conditioning makes of them: what it leaves of the equations was at
- * most 3.8e-15 of their sizes over the 9,627 netlists of the corpora and the repository that PlainSpice
- * models exactly (RESIDUAL_SHARE). 2^-30 (about 9.3e-10) leaves room above that, and it is the check
- * that catches a bridge at a few millivolts beside a 12 V source: there ngspice's 4.882 mV, 5.9 % from
- * the exact 5.189 mV, is 3.1e-4 V off, far more than 2^-30 of 12 V (1.1e-8 V), where an earlier check
- * skipped every answer below 1e-3 of the largest and called ngspice's 2.097 V and 82.78 mV rounding
- * noise beside it (the critic of round 2 of the re-check's fixes).
+ * What ngspice's rounding may add to the gap of an answer, as a share of the size of the terms of the
+ * equations that fix it (`answerScales`): an answer tiny beside the numbers it is worked out from can be
+ * off by more than ANSWER_GAP of itself with nothing wrong (a source's 2 aA through 1 kΩ from 12 V is
+ * worked out from 12 V, one step of which over 1 kΩ is 1.8 aA, C9h). ngspice's LU solution leaves each
+ * equation a few units in the last place of the sizes of its terms (what it leaves of the equations was
+ * at most 3.8e-15 of their sizes over the 9,627 netlists of the corpora and the repository that
+ * PlainSpice models exactly, RESIDUAL_SHARE), and an unknown that equation fixes is off by that over
+ * the equation's own coefficient, where the circuit is well conditioned. 2^-30 (about 9.3e-10) leaves room
+ * above that. The scale is each answer's own, not the circuit's largest value: an open-loop E making
+ * 1.2 MV beside a bridge at a few millivolts made the floor 1.1 mV for every node, and hid ngspice's
+ * 4.882 mV there, 5.9 % from the exact 5.189 mV, which then sat beside a 0 claiming one voltage for both
+ * ends of R5 (the critic of round 3 of the re-check's fixes). The bridge's own equations have terms of a
+ * few millivolts over its conductances, so its floor is about 1e-11 V, and the 3.1e-4 V gap is caught.
  */
 export const ANSWER_FLOOR = 2 ** -30;
+
+/**
+ * The scale of each answer for ANSWER_FLOOR, from the exact values `v` (node voltages) and `branchI` (the
+ * current of each V, E, H and L, by its branch unknown), in doubles (only a scale): what ngspice works the
+ * answer out from, near the answer, not anywhere in the circuit.
+ * - A node voltage: the sizes of the terms of Kirchhoff's current law at the node (each resistor's
+ *   |v(a)|/R and |v(b)|/R, each source's current) over the node's own conductance, and the sizes of the own
+ *   equation of each V, E, H or L at the node (|v(a)| + |v(b)| and what the part makes); the larger. A 1 nΩ
+ *   probe wire on a ladder node of 43.56 fV makes that node's terms about 1e-13 V, and ngspice's 43.55 fV
+ *   there (its Schur complement loses digits beside the wire's 1e9 S) is caught, where 2^-30 of the 5 V
+ *   source at the ladder's other end let it through.
+ * - A current: the largest current that flows at its nodes, of the parts there (for a V, E, H or L, at
+ *   every node it joins with other such parts: a chain of 0 V ammeters carries a current that Kirchhoff's
+ *   law fixes at the chain's ends, where milliamps meet). A current tiny beside the others at its nodes is
+ *   held only to the floor (a 0 V ammeter beside milliamps); one that is as large as any there is held to
+ *   ANSWER_GAP of itself: in a loop of a 12 V source, 1 kΩ and a source of 2 aA, ngspice gives V1 1.735 aA,
+ *   with no correct digit beyond the first, and the warning says so (C9h).
+ * The parts of the circuit that conduct to each other (ground taken out) are weighed on their own: an E
+ * making 1.2 MV from the 12 V it reads, into a load of its own, leaves the 12 V's floor alone, since
+ * ngspice's rounding of what a source makes does not reach what it reads. What a controlled source makes
+ * in another such part carries its gain times the scale of what it reads there: ngspice's rounding of a
+ * 0 V ammeter's current beside milliamps reaches what an H of 1 GΩ makes of it, 1e9 times larger (an H
+ * reading a bridge 1e-14 off balance makes −219.6 pV, which ngspice gives as −223.6 pV, since the
+ * ammeter's 1.83 fA comes out as 1.86 fA beside the bridge's milliamps), so a floor from the H's own values
+ * would call the ammeter fine and the H's output off. Within one part a source reading its own part (an
+ * amplifier with feedback) is solved with it, and the margin of 2^-30 covers it. Where there is nothing to
+ * weigh by, the largest value of its kind stands in.
+ */
+export function answerScales(model: ExactModel, v: readonly number[], branchI: (p: ExactPart) => number, level: (p: ExactPart) => number): { volts: number[]; amps: (p: ExactPart) => number } {
+  const n = model.nodes.length;
+  const at = (k: number): number => (k < 0 ? 0 : Math.abs(v[k]!));
+  const signed = (k: number): number => (k < 0 ? 0 : v[k]!);
+  const largestV = v.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+  /** Union-find over the nodes (ground, -1, is never joined). */
+  const groups = (): { find: (k: number) => number; join: (a: number, b: number) => void } => {
+    const up = Int32Array.from({ length: n }, (_, k) => k);
+    const find = (k: number): number => {
+      while (up[k] !== k) k = up[k] = up[up[k]!]!;
+      return k;
+    };
+    return { find, join: (a, b) => (a >= 0 && b >= 0 ? void (up[find(a)] = find(b)) : undefined) };
+  };
+  // The parts that conduct to each other, and the nodes the V, E, H and L join.
+  const part = groups();
+  const joined = groups();
+  /** Per node: the sizes of the terms of Kirchhoff's law (amps), its conductance, the largest own equation of a branch there (volts), and the largest current that flows there. */
+  const terms = new Float64Array(n);
+  const conductance = new Float64Array(n);
+  const own = new Float64Array(n);
+  const flow = new Float64Array(n);
+  let largestI = 0;
+  const add = (p: ExactPart, size: number, current: number): void => {
+    const c = Math.abs(current);
+    for (const k of [p.a, p.b]) {
+      if (k < 0) continue;
+      if (Number.isFinite(size)) terms[k] = terms[k]! + size;
+      if (Number.isFinite(c) && c > flow[k]!) flow[k] = c;
+    }
+    if (Number.isFinite(c) && c > largestI) largestI = c;
+  };
+  for (const p of model.parts) {
+    if (p.kind === 'C') continue;
+    part.join(p.a, p.b);
+    const gain = Math.abs(toDouble(p.value));
+    if (p.kind === 'R') {
+      const g = 1 / gain;
+      add(p, (at(p.a) + at(p.b)) * g, (signed(p.a) - signed(p.b)) * g);
+      for (const k of [p.a, p.b]) if (k >= 0) conductance[k] = conductance[k]! + g;
+    } else if (p.kind === 'I' || p.kind === 'D') add(p, Math.abs(level(p)), level(p));
+    else if (p.kind === 'G') {
+      add(p, gain * (at(p.c) + at(p.d)), gain * (signed(p.c) - signed(p.d)));
+      // A G that reads its own node acts there as a conductance.
+      for (const k of [p.a, p.b]) if (k >= 0 && (k === p.c || k === p.d)) conductance[k] = conductance[k]! + gain;
+    } else if (p.kind === 'F') {
+      const i = gain * branchI(model.parts[p.control]!);
+      add(p, Math.abs(i), i);
+    } else {
+      joined.join(p.a, p.b);
+      add(p, Math.abs(branchI(p)), branchI(p));
+      const makes = p.kind === 'V' ? gain : p.kind === 'E' ? gain * (at(p.c) + at(p.d)) : p.kind === 'H' ? gain * Math.abs(branchI(model.parts[p.control]!)) : 0;
+      const size = at(p.a) + at(p.b) + makes;
+      for (const k of [p.a, p.b]) if (k >= 0 && size > own[k]!) own[k] = size;
+    }
+  }
+  const ok = (s: number, otherwise: number): number => (Number.isFinite(s) && s > 0 ? s : otherwise);
+  const volts0 = Array.from({ length: n }, (_, k) => ok(Math.max(conductance[k]! > 0 ? terms[k]! / conductance[k]! : 0, own[k]!), largestV));
+  const flowJoined = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const r = joined.find(k);
+    if (flow[k]! > flowJoined[r]!) flowJoined[r] = flow[k]!;
+  }
+  // What controlled sources carry into another part of the circuit: a voltage scale (E, H) and a current
+  // scale (G, F) for each part, worked through chains of them as many times as there are controlled sources.
+  const carriedV = new Float64Array(n);
+  const carriedI = new Float64Array(n);
+  const scaleV = (k: number): number => {
+    if (k < 0) return 0;
+    const r = part.find(k);
+    return Math.max(volts0[k]!, carriedV[r]!, conductance[k]! > 0 ? carriedI[r]! / conductance[k]! : 0);
+  };
+  const amps = (p: ExactPart): number => {
+    let s = 0;
+    for (const k of [p.a, p.b]) {
+      if (k < 0) continue;
+      const r = part.find(k);
+      s = Math.max(s, p.branch >= 0 ? flowJoined[joined.find(k)]! : flow[k]!, carriedI[r]!, carriedV[r]! * conductance[k]!);
+    }
+    return ok(s, largestI);
+  };
+  const controlled = model.parts.filter((p) => p.kind === 'E' || p.kind === 'G' || p.kind === 'F' || p.kind === 'H');
+  for (let pass = 0; pass < controlled.length; pass++) {
+    let changed = false;
+    for (const p of controlled) {
+      const out = p.a >= 0 ? p.a : p.b;
+      if (out < 0) continue;
+      const r = part.find(out);
+      const control = p.kind === 'F' || p.kind === 'H' ? model.parts[p.control]! : undefined;
+      const reads = control ? [control.a, control.b] : [p.c, p.d];
+      if (reads.some((k) => k >= 0 && part.find(k) === r)) continue;
+      const gain = Math.abs(toDouble(p.value));
+      const size = gain * (control ? amps(control) : scaleV(p.c) + scaleV(p.d));
+      const into = p.kind === 'E' || p.kind === 'H' ? carriedV : carriedI;
+      if (Number.isFinite(size) && size > into[r]!) {
+        into[r] = size;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const volts = Array.from({ length: n }, (_, k) => scaleV(k));
+  return { volts, amps };
+}
 
 /** One of ngspice's answers beside the exact one: a node voltage, or the current of a V, E, H or L. */
 export interface Answer {
@@ -1392,7 +1526,7 @@ export interface Answer {
   exact: number;
   given: number;
   /**
-   * How far it is, beyond what rounding leaves (ANSWER_FLOOR of the largest of its kind), as a share of
+   * How far it is, beyond what rounding leaves (ANSWER_FLOOR of its scale, `answerScales`), as a share of
    * the exact value; for an exact value of 0, 0 within what rounding leaves and Infinity beyond it.
    */
   gap: number;
@@ -1406,38 +1540,31 @@ export interface Answer {
  * R, G and F that ngspice reports follows them (a wire ngspice gives as 0 A where 46.46 µA flows).
  * Undefined when ngspice gave no value for one of the answers. Worked out in doubles from the
  * exact values (each rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
- * The largest value of each kind, which ANSWER_FLOOR is a share of, counts every part's current, so
- * that a 0 V ammeter beside milliamps is weighed against the milliamps.
+ * Each answer is held to ANSWER_FLOOR of its own scale (`answerScales`): a 0 V ammeter beside milliamps
+ * is weighed against the milliamps that flow at its nodes, a node against the terms of its own equations.
  */
 export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value, devices = false): Answer[] | undefined {
   const exactV = model.nodes.map((_, k) => (isZero(x[k]!) ? 0 : toDouble(x[k]!)));
   const branches = model.parts.filter((p) => p.branch >= 0);
   const exactI = branches.map((p) => (isZero(x[p.branch]!) ? 0 : toDouble(x[p.branch]!)));
-  const largestV = exactV.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
-  // Every part's current, in doubles from the node voltages and branch currents: only a scale.
-  const at = (n: number): number => (n < 0 ? 0 : exactV[n]!);
   const branchOf = new Map(branches.map((p, k) => [p.branch, exactI[k]!]));
-  let largestI = exactI.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
-  for (const p of model.parts) {
-    const value = p.kind === 'R' ? (at(p.a) - at(p.b)) / toDouble(p.value) : p.kind === 'I' || p.kind === 'D' ? toDouble(level(p)) : p.kind === 'G' ? toDouble(p.value) * (at(p.c) - at(p.d)) : p.kind === 'F' ? toDouble(p.value) * (branchOf.get(model.parts[p.control]!.branch) ?? 0) : 0;
-    if (Number.isFinite(value)) largestI = Math.max(largestI, Math.abs(value));
-  }
+  const { volts, amps } = answerScales(model, exactV, (p) => branchOf.get(p.branch) ?? 0, (p) => toDouble(level(p)));
   const out: Answer[] = [];
-  const one = (kind: Answer['kind'], name: string, exact: number, given: number | undefined, largest: number): boolean => {
+  const one = (kind: Answer['kind'], name: string, exact: number, given: number | undefined, scale: number): boolean => {
     if (given === undefined || !Number.isFinite(given)) return false;
-    const beyond = Math.max(0, Math.abs(given - exact) - ANSWER_FLOOR * largest);
+    const beyond = Math.max(0, Math.abs(given - exact) - ANSWER_FLOOR * scale);
     out.push({ kind, name, exact, given, gap: exact !== 0 ? beyond / Math.abs(exact) : beyond > 0 ? Number.POSITIVE_INFINITY : 0 });
     return true;
   };
-  for (let k = 0; k < model.nodes.length; k++) if (!one('voltage', model.nodes[k]!, exactV[k]!, ng.voltage(model.nodes[k]!), largestV)) return undefined;
-  for (let k = 0; k < branches.length; k++) if (!one('current', branches[k]!.key, exactI[k]!, ng.branch(branches[k]!.key), largestI)) return undefined;
+  for (let k = 0; k < model.nodes.length; k++) if (!one('voltage', model.nodes[k]!, exactV[k]!, ng.voltage(model.nodes[k]!), volts[k]!)) return undefined;
+  for (let k = 0; k < branches.length; k++) if (!one('current', branches[k]!.key, exactI[k]!, ng.branch(branches[k]!.key), amps(branches[k]!))) return undefined;
   if (devices) {
     // For the note only, never for the decision: each R, G and F whose current ngspice reports, exact from the
     // unknowns over one denominator (a resistor's ends can be nearly the same voltage).
     const whole = overCommon(x);
     model.parts.forEach((p, k) => {
       if (p.kind !== 'R' && p.kind !== 'G' && p.kind !== 'F') return;
-      one('current', p.key, currentDouble(model, whole.num, whole.den, k), ng.device(p.key), largestI);
+      one('current', p.key, currentDouble(model, whole.num, whole.den, k), ng.device(p.key), amps(p));
     });
   }
   return out;

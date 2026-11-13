@@ -298,17 +298,29 @@ describe('answersAgree: ngspice\'s answers are the exact ones to the page\'s dig
     expect(answersAgree(m, x, ng({ ...good, a: 4.5 * (1 + 0.9 * ANSWER_GAP) }, currents))).toBe(true);
   });
 
-  it('a value tiny beside the others of its kind is held to what rounding leaves, 2^-30 of the largest (8.4 nV beside 9 V, 1.3 pA beside 1.4 mA), not skipped (the critic of round 2); a resistor\'s current, a product of the node voltages, is not compared', () => {
+  it('a value is held to what rounding leaves of the numbers it is worked out from, 2^-30 of its own equations\' terms, not of the circuit\'s largest value (the critic of round 3: a 1 nV source in a loop of its own beside a 9 V bridge was let 8.4 nV off); a resistor\'s current, a product of the node voltages, is not compared', () => {
     const m = model(text) as ExactModel;
     const x = solve(m);
-    expect(answersAgree(m, x, ng({ ...good, s: 2e-9 }, { ...currents, v2: -2e-12 }))).toBe(true);
-    // 1 nV off by 9 nV, or 1 pA off by 2 pA: more than rounding leaves.
-    expect(answersAgree(m, x, ng({ ...good, s: 1e-8 }, currents))).toBe(false);
-    expect(answersAgree(m, x, ng(good, { ...currents, v2: -3e-12 }))).toBe(false);
+    // The 1 nV source and its 1 kΩ make a loop of their own: 1 nV off by 1 nV, or 1 pA off by 1 pA, is caught.
+    expect(answersAgree(m, x, ng({ ...good, s: 2e-9 }, currents))).toBe(false);
+    expect(answersAgree(m, x, ng(good, { ...currents, v2: -2e-12 }))).toBe(false);
+    // Within 2^-30 of its own terms (1e-9 V, 1e-12 A) it passes, as the bridge's own values do within 2^-30 of theirs.
+    expect(answersAgree(m, x, ng({ ...good, s: 1e-9 * (1 + 0.5 * ANSWER_FLOOR) }, currents))).toBe(true);
     expect(ANSWER_FLOOR).toBe(2 ** -30);
     expect(answersAgree(m, x, ng(good, currents, { r1: 1 }))).toBe(true);
     // A value ngspice did not give for an answer it must give: no agreement.
     expect(answersGap(m, x, ng({ a: 4.5, b: 4.5, s: 1e-9 }, currents))).toBeUndefined();
+  });
+
+  it('a value tiny beside the numbers at its own nodes is held only to what rounding leaves of them: a 0 V ammeter 1e-8 off balance beside the bridge\'s 450 µA may be 2^-30 of those milliamps off, not more', () => {
+    const bridge = model('* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.700000047k\nR5 a m 1k\nVm m b 0\n.op\n.end\n') as ExactModel;
+    const xb = solve(bridge);
+    const vm = toDouble(xb[bridge.parts.find((p) => p.key === 'vm')!.branch]!);
+    const volts = Object.fromEntries(bridge.nodes.map((n, k) => [n, toDouble(xb[k]!)]));
+    const v1 = toDouble(xb[bridge.parts.find((p) => p.key === 'v1')!.branch]!);
+    // The flow at Vm's nodes is R1's 450 µA (and R3's, R4's): its floor is 2^-30 of that, about 4.2e-13 A.
+    expect(answersAgree(bridge, xb, ng(volts, { v1, vm: vm + 2e-13 }))).toBe(true);
+    expect(answersAgree(bridge, xb, ng(volts, { v1, vm: vm + 2e-12 }))).toBe(false);
   });
 });
 
