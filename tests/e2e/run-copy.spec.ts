@@ -34,6 +34,22 @@ test.describe('what PlainSpice hands ngspice', () => {
     await expectSolved(page);
   });
 
+  // The round-1 critic's R1: ngspice takes the blanks out of the brackets of a .save line, so three
+  // words of 200 bytes are one name of 600, which crashed the page on b060bc8 and on the first fix.
+  test('a run=1 link whose .save line joins three 200-byte words is not given to ngspice: the status line says why', async ({ page }) => {
+    const words = `${'W'.repeat(200)} ${'W'.repeat(200)} ${'W'.repeat(200)}`;
+    await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.save i( ${words} ) v(b)\n.op\n.end\n`, { run: true })}`);
+    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.joinedWord(5, `i( ${words} )`, 603));
+  });
+
+  // The round-1 critic's R5: only analysis commands are written into 512 bytes; the first fix refused
+  // every .control line over 500 bytes, though ngspice runs these.
+  test('a .control block with a print line of 525 bytes runs', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.control\nop\nprint${' v(b)'.repeat(104)}\n.endc\n.end\n`, { run: true })}`);
+    await expectSolved(page);
+  });
+
   test('a B source typed without its ) is not given to ngspice: the status line says why, until the ) is there', async ({ page }) => {
     await openApp(page);
     await setNetlist(page, '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n');
