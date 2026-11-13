@@ -74,3 +74,30 @@ describe('the verb follows the unit word: "1 amp flows", "1 times 10 to the powe
     expect(milli.words.currents.find((c) => c.name === 'R1')!.speech).toBe('1 milliamp flows from node a to ground through R1');
   });
 });
+
+describe('a transistor\'s currents are named by their terminals in the sweep\'s words (last pass: transistor-currents-same-name; C8b)', () => {
+  it('a BJT, a MOSFET and a JFET swept: "the collector current of Q1", "the drain current of M1", "the gate-to-drain current of J1"', async () => {
+    const r = await solveText(
+      netlist('V1 vcc 0 9', 'Rc vcc c 1k', 'Rb vcc b 100k', 'Q1 c b 0 qmod', 'Rd vcc d 1k', 'M1 d g 0 0 mmod', 'Vg g 0 2', 'Rj vcc dj 1k', 'J1 dj gj 0 jmod', 'Vgj gj 0 -0.5', '.model qmod npn bf=100', '.model mmod nmos level=1 vto=1 kp=1m', '.model jmod njf vto=-2 beta=1m', '.options savecurrents', '.dc V1 9 9 1'),
+      ngspice,
+    );
+    const speech = r.words.sweeps[0]!.speech;
+    for (const said of [
+      'the collector current of Q1 is 8.171 milliamps',
+      'the emitter current of Q1 is minus 8.253 milliamps',
+      'the base current of Q1 is 81.71 microamps',
+      'the substrate current of Q1 is 828.6 femtoamps',
+      'the drain current of M1 is 500 microamps',
+      'the source current of M1 is minus 500 microamps',
+      'the gate current of M1 is 0 amps',
+      'the bulk current of M1 is minus 8.51 picoamps',
+      'the drain current of J1 is 2.25 milliamps',
+      'the source current of J1 is minus 2.25 milliamps',
+      'the gate current of J1 is minus 7.77 picoamps',
+      'the gate-to-drain current of J1 is minus 7.26 picoamps',
+      'the current in Rc is 8.171 milliamps',
+    ])
+      expect(speech).toContain(said);
+    expect(speech).not.toMatch(/the current in (Q1|M1|J1)\b/);
+  });
+});

@@ -369,6 +369,17 @@ export const DESCRIBE_STRINGS = {
   voltageOf: (n: string): string => `the voltage at ${nodeIn(n)}`,
   voltageBetween: (a: string, b: string): string => `the voltage between ${nodeIn(a)} and ${nodeIn(b)}`,
   currentIn: (name: string): string => `the current in ${name}`,
+  /** A transistor's current at one of its terminals (C8b): "the collector current of Q1". */
+  terminalCurrent: (name: string, terminal: string): string => `the ${terminal} current of ${name}`,
+  /**
+   * The terminal of each current savecurrents gives a BJT, a MOSFET and a JFET, by the letter in brackets, as
+   * ngspice's own devhelp describes it (C8b): @q1[is] is the substrate's, @m1[is] the source's.
+   */
+  terminals: {
+    Q: { ic: 'collector', ib: 'base', ie: 'emitter', is: 'substrate' },
+    M: { id: 'drain', ig: 'gate', is: 'source', ib: 'bulk' },
+    J: { id: 'drain', ig: 'gate', is: 'source', igd: 'gate-to-drain' },
+  } as Readonly<Record<string, Readonly<Record<string, string>>>>,
   dcSweepText: (what: string, points: number): string => `DC sweep of ${what}: ${points} ${points === 1 ? 'point' : 'points'}.`,
   dcNoPoints: (what: string): string => `DC sweep of ${what}: no points.`,
   tranText: (from: string, to: string, points: number): string => `Transient from ${from} to ${to}: ${points} time ${points === 1 ? 'point' : 'points'}.`,
@@ -3297,10 +3308,14 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
     const [a, b] = m[2]!.split(',').map((x) => said(shownNode(netlist, netlistNode(netlist, x))));
     return b === undefined ? S.voltageOf(a!) : S.voltageBetween(a!, b);
   }
-  // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents.
-  const inner = /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
-  const part = partsOf(netlist).byKey.get(netlistPart(netlist, inner));
-  return S.currentIn(part?.element?.name.text ?? inner);
+  // i(v1) is a branch current; i(@r1[i]) a part's current with savecurrents; i(@q1[ic]) a transistor's current at
+  // one of its terminals, each named, so its four currents are not all "the current in Q1" (C8b).
+  const device = /^@([^[\]]+)\[([^\]]*)\]$/.exec(m[2]!);
+  const inner = device?.[1] ?? /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
+  const el = partsOf(netlist).byKey.get(netlistPart(netlist, inner))?.element;
+  const name = el?.name.text ?? inner;
+  const terminal = device && el?.letter ? S.terminals[el.letter]?.[lowerAscii(device[2]!)] : undefined;
+  return terminal ? S.terminalCurrent(name, terminal) : S.currentIn(name);
 }
 
 /**

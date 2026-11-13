@@ -87,7 +87,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
 so a source whose + side is the higher one reads negative while it delivers power, and one with a
 negative value reads positive (C1, C1b, C2); a part's current is positive from its first
 node to its second, and a current source reports its value as written (C3); F, G, E, H and B follow
-the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8); a current that is 0 can
+the same rules (C4–C7); savecurrents gives wrong currents for switches in `.op` (C8), and a transistor's
+currents at its terminals, which the words name by terminal (C8b); a current that is 0 can
 come out as rounding noise of about 10⁻¹⁸ A, far below ngspice's current tolerance abstol, 1 pA (C9–C9c), and
 the noise passes on through the parts it drives (C9d), while a tiny current the circuit makes is real
 (C9e–C9g).
@@ -3026,6 +3027,125 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(c) = 4.5, v(e) = 5, i(vs) = 1, i(@s1[i]) = 1.5000000000000002e-9, i(@rc[i]) = 1.5, i(@w1[i]) = 1e-9, i(@re[i]) = 1
+```
+
+### C8b. A transistor's savecurrents vectors are the currents at its terminals: @q1[ic] at the collector, [ib] at the base, [ie] the emitter's, [is] the substrate's
+
+With savecurrents ngspice saves one current for each terminal of a BJT, a MOSFET and a JFET (A2b), each
+named by the letters in brackets, which ngspice's own `devhelp` describes: for a BJT, ic "Current at
+collector node", ib "Current at base node", ie "Emitter current" and is "Substrate current"; for a MOSFET
+(level 1), id "Drain current", is "Source current", ig "Gate current" and ib "Bulk current"; for a JFET,
+ig "Current at gate node", id "Current at drain node", is "Source current" and igd "Current G-D". So
+[is] is a BJT's substrate current, but a MOSFET's or a JFET's source current. Each is positive flowing
+into the part at that terminal: Q1's collector current is the 8.171 mA that Rc brings to it, its base
+current the 81.71 µA through Rb, and its emitter current −(ic + ib), −8.253 mA; M1's drain current is
+Rd's 500 µA and its source current −500 µA. ngspice 42 and 47 agree, and so does our engine. So a
+sweep's words name each current by its terminal, "the collector current of Q1 is 8.171 milliamps",
+"the gate-to-drain current of J1" (`describe.ts`, the sweep's last point); they said "the current in Q1"
+for all four (the last pass before milestone 2's release).
+
+```spice
+* the currents savecurrents gives a transistor, a MOSFET and a JFET
+V1 vcc 0 9
+Rc vcc c 1k
+Rb vcc b 100k
+Q1 c b 0 qmod
+Rd vcc d 1k
+M1 d g 0 0 mmod
+Vg g 0 2
+Rj vcc dj 1k
+J1 dj gj 0 jmod
+Vgj gj 0 -0.5
+.model qmod npn bf=100
+.model mmod nmos level=1 vto=1 kp=1m
+.model jmod njf vto=-2 beta=1m
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+          @j1[igd]                         -7.26000e-12
+          @j1[ig]                          -7.77000e-12
+          @j1[is]                          -2.25000e-03
+          @j1[id]                          2.250000e-03
+          @rj[i]                           2.250000e-03
+          @m1[ib]                          -8.51000e-12
+          @m1[ig]                          0.000000e+00
+          @m1[is]                          -5.00000e-04
+          @m1[id]                          5.000000e-04
+          @rd[i]                           5.000000e-04
+          @q1[is]                          8.285633e-13
+          @q1[ib]                          8.171437e-05
+          @q1[ie]                          -8.25315e-03
+          @q1[ic]                          8.171437e-03
+          @rb[i]                           8.171437e-05
+          @rc[i]                           8.171437e-03
+  rawfile from ngspice -b -r (exit 0): i(vgj) = 7.769998131313016e-12, i(@rc[i]) = 0.008171436673483043, i(@rb[i]) = 8.171436755511125e-05, i(@q1[ic]) = 0.008171437395948791, i(@q1[ie]) = -0.008253151771565406, i(@q1[ib]) = 8.171437478805107e-05, i(@q1[is]) = 8.285633265169585e-13, i(@rd[i]) = 0.0005000000085099981, i(@m1[id]) = 0.00050000000851, i(@m1[is]) = -0.0005, i(@m1[ig]) = 0, i(@m1[ib]) = -8.509999991490001e-12, i(@rj[i]) = 0.002250000007259999, i(@j1[id]) = 0.00225000000726, i(@j1[is]) = -0.002249999999490002, i(@j1[ig]) = -7.769998131313016e-12, i(@j1[igd]) = -7.259999992129622e-12
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: i(vgj) = 7.769998131313016e-12, i(@rc[i]) = 0.008171436673483043, i(@rb[i]) = 8.171436755511125e-05, i(@q1[ic]) = 0.008171437395948791, i(@q1[ie]) = -0.008253151771565406, i(@q1[ib]) = 8.171437478805107e-05, i(@q1[is]) = 8.285633265169585e-13, i(@rd[i]) = 0.0005000000085099981, i(@m1[id]) = 0.00050000000851, i(@m1[is]) = -0.0005, i(@m1[ig]) = 0, i(@m1[ib]) = -8.509999991490001e-12, i(@rj[i]) = 0.002250000007259999, i(@j1[id]) = 0.00225000000726, i(@j1[is]) = -0.002249999999490002, i(@j1[ig]) = -7.769998131313016e-12, i(@j1[igd]) = -7.259999992129622e-12
+```
+
+```spice
+* device help
+V1 a 0 1
+R1 a 0 1
+.control
+devhelp bjt
+devhelp mos1
+devhelp jfet
+.endc
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    222         ic                 out         Current at collector node
+    223         ib                 out         Current at base node
+    247         ie                 out         Emitter current
+    248         is                 out         Substrate current
+    215         id                 out         Drain current
+     18         is                 out         Source current
+     17         ig                 out         Gate current
+     16         ib                 out         Bulk current
+    308         ig                 out         Current at gate node
+    309         id                 out         Current at drain node
+    319         is                 out         Source current
+    310         igd                out         Current G-D
+  ngspice -b -r out.raw (exit 0): the same lines, and no results file (there is no analysis, A36)
+ngspice 42: the same printout, exit codes and no results file, as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same lines, and no results
+```
+
+```spice
+* the same, in a .dc sweep of one point
+V1 vcc 0 9
+Rc vcc c 1k
+Rb vcc b 100k
+Q1 c b 0 qmod
+Rd vcc d 1k
+M1 d g 0 0 mmod
+Vg g 0 2
+Rj vcc dj 1k
+J1 dj gj 0 jmod
+Vgj gj 0 -0.5
+.model qmod npn bf=100
+.model mmod nmos level=1 vto=1 kp=1m
+.model jmod njf vto=-2 beta=1m
+.options savecurrents
+.dc V1 9 9 1
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r out.raw (exit 0; plain ngspice -b runs no .dc without a .print line):
+  rawfile: i(@q1[ic]) = 0.008171437395948791, i(@q1[ie]) = -0.008253151771565406, i(@q1[ib]) = 8.171437478805107e-05, i(@q1[is]) = 8.285633265169585e-13, i(@m1[id]) = 0.00050000000851, i(@j1[igd]) = -7.259999992129622e-12
+ngspice 42: the same exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: i(@q1[ic]) = 0.008171437395948791, i(@q1[ie]) = -0.008253151771565406, i(@q1[ib]) = 8.171437478805107e-05, i(@q1[is]) = 8.285633265169585e-13, i(@m1[id]) = 0.00050000000851, i(@j1[igd]) = -7.259999992129622e-12
+  words (describe.ts), the sweep's last point: … the collector current of Q1 is 8.171 milliamps, the emitter current of Q1 is minus 8.253 milliamps, the base current of Q1 is 81.71 microamps, the substrate current of Q1 is 828.6 femtoamps, … the drain current of M1 is 500 microamps, … the gate-to-drain current of J1 is minus 7.26 picoamps
 ```
 
 ### C9. A current that is 0 can come out as rounding noise, about 10⁻¹⁸ A: in a balanced bridge, R5 shows −8.88e−19 A
