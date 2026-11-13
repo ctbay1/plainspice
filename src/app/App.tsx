@@ -1011,7 +1011,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const words = new Map<string, string>();
     for (const [key, trap] of partTraps) words.set(itemKey({ kind: 'part', key }), trap.title);
     const ns = current ? record.noSingleAnswer : undefined;
-    if (ns) words.set(itemKey({ kind: 'node', name: ns.at }), ns.title);
+    // Not said twice: a part's check can say the node's very sentence ("Node in has no DC path to ground"; round-1 critic C1).
+    if (ns && ![...partTraps.values()].some((trap) => trap.title === ns.title)) words.set(itemKey({ kind: 'node', name: ns.at }), ns.title);
     return words;
   }, [partTraps, current, record]);
 
@@ -2146,7 +2147,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       add(partBox(sc, key), trap.title);
     }
     const ns = current && !building ? record.noSingleAnswer : undefined;
-    if (ns) add(nodeBox(sc, ns.at), ns.title);
+    // Once on the paper: a part's note may already say it, floating-dc's title being the node's sentence (round-1 critic C1).
+    if (ns && !notes.some((n) => n.text === ns.title)) add(nodeBox(sc, ns.at), ns.title);
     const was = card && current ? wasMarks(sc, results, beforeResults, [...avoid, ...notes.map((n) => n.box)]) : [];
     return notes.length || was.length || circled.size ? { notes, was, circled } : undefined;
     // insets and area by their numbers
