@@ -822,6 +822,10 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     expect(applyFix(net(T, undefined, 'cikis'), there[0]!.fixes[0]!)).toBe(net('cikis', undefined, 'cikis'));
     // A part on the name: the words for a node the parts are on, as before (space-character-10).
     expect(traps(`* t\nV1 in 0 5\nR1 in o${THIN}ut 1k\nR2 o${THIN}ut 0 1k\n.op\n.end\n`)[0]!.ngspice).toContain('[space-character-10]');
+    // So is a part after a plain .end, which ngspice reads (S25): native 47 and 42 give b = 10 V and 0 V, no singular matrix.
+    const afterEnd = (name: string, parts: string): string => `* t\nV1 giris 0 10\nR1 giris out 1k\nR2 out 0 1k\nB1 b 0 V=v(${name})*2\nRb b 0 1k\n.op\n.end\n${parts}`;
+    expect(traps(afterEnd(T, `R3 ${T} giris 1k\nR4 ${T} 0 1k\n`)).map((t) => [t.id, t.severity])).toEqual([['non-ascii-node', 'warning'], ['after-end', 'warning']]);
+    expect(traps(afterEnd(`o${THIN}ut`, `R3 o${THIN}ut 0 1k\n`)).map((t) => [t.id, t.severity])).toEqual([['space-character', 'warning'], ['after-end', 'warning']]);
   });
   it('CR2-3: two spellings that differ only in capital letters on part lines are one node, as written: a warning, one name for both, and no dangling or floating words (non-ascii-node-27)', () => {
     const TC = 'Çıkış'; // Çıkış

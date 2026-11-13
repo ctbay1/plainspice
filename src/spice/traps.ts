@@ -194,6 +194,8 @@ interface Ctx {
   alias: Map<string, string>;
   /** The part whose formula reads a node's name, by where the name stands, read on the first use (formulaReader). */
   formulaReaders?: Map<number, number>;
+  /** ngspice's spellings of the nodes parts after a plain .end name, read with formulaReaders. */
+  afterEndSpellings?: Set<string>;
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
@@ -3726,7 +3728,10 @@ function formulaReader(c: Ctx, info: NodeInfo): Element | undefined {
   if (!c.formulaReaders) {
     c.formulaReaders = new Map();
     for (const k of c.top) for (const r of el(c, k).reads ?? []) c.formulaReaders.set(r.token.from, k);
+    // A part after a plain .end, which ngspice reads (S25), connects to the nodes it names, as ngspice spells them.
+    c.afterEndSpellings = new Set(afterEndParts(c.n).flatMap((e) => e.nodes.map((r) => ngspiceSpelling(r.name))));
   }
+  if (c.afterEndSpellings!.has(ngspiceSpelling(info.name))) return undefined;
   for (const t of info.refs) {
     const k = c.formulaReaders.get(t.from);
     if (k !== undefined) return el(c, k);
