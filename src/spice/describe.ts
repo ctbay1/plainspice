@@ -850,7 +850,7 @@ const SOURCE_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'I', 'E', 'F', 
 const DEVICE_LETTERS: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'F', 'G', 'I', 'B']);
 const BRANCH_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'E', 'H', 'L']);
 
-// ------------------------------------------------------------------ rounding noise (C9–C9p)
+// ------------------------------------------------------------------ rounding noise (C9–C9t)
 
 /** ngspice's current tolerance, abstol (C9c). The rule for other circuits calls only a current below it noise. */
 export const ABSTOL = 1e-12;
@@ -906,7 +906,8 @@ export interface RoundingNoise {
   /**
    * How it was decided: 'exact' from PlainSpice's exact solution of the circuit (exact.ts), which
    * ngspice's values were checked against; 'rule' by the rule for the circuits it does not solve
-   * exactly (a diode, a transistor, a subcircuit, ...).
+   * exactly (a transistor, a subcircuit, ...) and for those whose answers ngspice gave farther off than
+   * the page's digits (`off`).
    */
   by: 'exact' | 'rule';
   /**
@@ -976,23 +977,25 @@ class Groups {
 
 /**
  * Which currents and node voltages of an operating point ngspice gave as rounding noise of a 0, and
- * which nodes are at the same voltage (decision 0015; C9 to C9r).
+ * which nodes are at the same voltage (decision 0015; C9 to C9t).
  *
- * For a circuit PlainSpice solves exactly (exact.ts: R, C, L, V, I, E, F, G and H with plain values;
- * the circuit ngspice simulated, as its values show, and solved by ngspice to the digits the page
- * shows), the exact solution decides: a current or node voltage whose exact value is 0 is noise of 0,
- * whatever size ngspice gives it (an H of 1 GΩ makes 193.5 pA of a balanced bridge's noise, C9o); one
- * whose exact value is not 0 is real, however tiny, and shown as ngspice gives it (732 nV and 61 nA
- * beside a 1 TΩ meter, C9n), or as the exact solution gives it where ngspice's arithmetic rounded it to
- * exactly 0 (the 1 µΩ wire in series with that meter; `lostCurrents`, `lostNodes`). Two nodes are at
+ * For a circuit PlainSpice solves exactly (exact.ts: R, C, L, V, I, E, F, G and H with plain values,
+ * and diodes, whose currents are left free; the circuit ngspice simulated, as its values show, and
+ * solved by ngspice to the digits the page shows), the exact solution decides: a current or node
+ * voltage whose exact value is 0 (for every current the diodes could carry) is noise of 0, whatever
+ * size ngspice gives it (an H of 1 GΩ makes 193.5 pA of a balanced bridge's noise, C9o); one whose exact
+ * value is not 0 is real, however tiny, and shown as ngspice gives it (732 nV and 61 nA beside a 1 TΩ
+ * meter, C9n), or as the exact solution gives it where ngspice's arithmetic rounded it to exactly 0 (the
+ * 1 µΩ wire in series with that meter; `lostCurrents`, `lostNodes`; not with diodes). Two nodes are at
  * the same voltage when their exact voltages are equal.
  *
  * Where ngspice's answers are not the exact ones to the page's digits (a 1e-12 Ω wire beside kilohms
- * gives 4.321 V for 4.5 V), a 0 from the exact solution would sit beside ngspice's other numbers and
- * break Ohm's law on the page: the rule decides from ngspice's own numbers (ruleNoise), and the exact
- * solution only keeps it from calling a real value noise and shows the real values ngspice gave as
- * exactly 0 (`withExact`). For other circuits (a diode, a transistor, a subcircuit, ...) the rule
- * decides alone, and calls a value noise only where ngspice's numbers show it is 0.
+ * gives 4.321 V for 4.5 V), a 0 or an exact value from the exact solution would sit beside ngspice's
+ * other numbers and break Ohm's law on the page: the rule decides from ngspice's own numbers
+ * (ruleNoise), every number shown is ngspice's, the exact solution only keeps the rule's words true
+ * (`withExact`), and a warning names the answers that are off (`off`). For other circuits (a
+ * transistor, a subcircuit, ...) the rule decides alone, and calls a value noise only where ngspice's
+ * numbers show it is 0. The checks of ngspice's values get the same budget on every run (`checkBudget`).
  */
 export function roundingNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const op = results.op;

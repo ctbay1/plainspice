@@ -1,6 +1,6 @@
 /**
  * The operating point of a circuit worked out exactly, with fractions: what PlainSpice uses to tell a
- * value the circuit makes exactly 0 from a tiny real one (rounding noise, decision 0015; C9 to C9p in
+ * value the circuit makes exactly 0 from a tiny real one (rounding noise, decision 0015; C9 to C9t in
  * docs/spice-facts/explanations.md). Plain TypeScript: no floating point in the solution, BigInt
  * fractions only.
  *
@@ -10,16 +10,20 @@
  * - `exactModel` takes a netlist only when PlainSpice knows exactly what each of its parts is in an
  *   operating point: R; C (open, P11); L (a wire); V and I with a plain DC value or none (0: P9, P16);
  *   E and G with four nodes and a plain gain; F and H that read a V, E or H (P10, P10b) with a plain
- *   gain. Anything else leaves the decision to describe.ts's rule for other circuits: a diode, a
- *   transistor, a switch, a subcircuit, a B source, POLY, VALUE or TABLE, a source with a transient
- *   function, a part with settings (m=, tc1=, r=, ...), .param and expressions, .options and .temp
- *   lines, a .control block, a value below ngspice's smallest resistance, too many unknowns.
+ *   gain; and a diode, as a part whose current is left free (at most MAX_DIODES). Anything else leaves
+ *   the decision to describe.ts's rule for other circuits: a transistor, a switch, a subcircuit, a B
+ *   source, POLY, VALUE or TABLE, a source with a transient function, a part with settings (m=, tc1=,
+ *   ...), .param and expressions, .options and .temp lines, a .control block, a value below ngspice's
+ *   smallest resistance, too many unknowns or parts.
  * - `solveExact` solves the circuit's nodal equations with fractions, for several right-hand sides at
- *   once (the operating point, a swept source at 1, a .tf input at 1), within a counted amount of work.
+ *   once (the operating point, a unit current through each diode, a swept source at 1, a .tf input at
+ *   1), within a counted amount of work (MAX_WORK).
+ * - `treeCurrents` gives each diode the current Kirchhoff's law gives it from ngspice's other values.
  * - `agrees` checks that ngspice simulated that same circuit: its node voltages and branch currents,
  *   put into the exact equations, leave only what its own rounding can leave.
- * - `answersAgree` checks that ngspice solved it to the digits the page shows: its answers are the
- *   exact ones to within 5e-5, where they are not tiny beside the others of their kind.
+ * - `answersAgree` checks that ngspice solved it to the digits the page shows: each answer whose exact
+ *   value is not 0 is that value to within 5e-5 of it, beyond what rounding leaves (ANSWER_FLOOR);
+ *   `answers` lists them, and the currents of the R, G and F too, for the note where they are off.
  */
 import type { NumberReading } from './types.ts';
 import { isSpaceCode, numberWordEnd } from './numbers.ts';
@@ -1311,7 +1315,8 @@ export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
  * unit of 9.999 is 5e-5 of it, of 1.000 5e-4). Within it, ngspice's number is drawn with the exact
  * value's digits, or one unit off in the last where the exact value lies that close to a rounding
  * boundary, so the 0s and the exact values PlainSpice puts in place of ngspice's rounding agree with
- * ngspice's own numbers beside them. ngspice solves a well-conditioned circuit to a few units in the
+ * ngspice's own numbers beside them to the page's digits, wherever those are not tiny beside the others
+ * of their kind (ANSWER_FLOOR). ngspice solves a well-conditioned circuit to a few units in the
  * last place of a double (about 1e-16 of a value). A wire far smaller than the resistors around it
  * makes the equations ill-conditioned, and ngspice's answers can then be far off while what they leave
  * of the equations stays small (`agrees`): a 1e-12 Ω wire in the middle branch of a balanced bridge
