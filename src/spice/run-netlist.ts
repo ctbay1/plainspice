@@ -1592,7 +1592,7 @@ function endBackslashes(s: string): number {
  * after one that starts with @, where it stops reading (S29, S30). It finds the option as inp_savecurrents does:
  * savecurrents anywhere in the line (which ngspice reads in lower case), with its + lines joined (past comments,
  * blank lines and a plain .end, limit-18) and its comment cut. A command (option or set savecurrents) does not count.
- * The lines are read as inp_read reads them (A2d): a line after one that ends in two backslashes is a + line, whatever
+ * The lines are read as inp_read reads them (A2e): a line after one that ends in two backslashes is a + line, whatever
  * it is, past blank lines and .hdl and .biaschk lines, which ngspice 47 drops (not after a line starting with * or $,
  * nor after a .title or .end line, which ngspice has made a comment by then); and a comment is cut by the .control
  * rule (a $ only before a blank) from a .control line to the line before .endc, and on every line when the netlist
