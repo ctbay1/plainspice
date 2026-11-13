@@ -786,9 +786,8 @@ class RouteCopper {
   /** The island of each pin and of each piece of wire (segs[i]), kept up to date. */
   readonly anchors: number[];
   readonly wires: number[];
-  /** The pieces of wire there were (indexed by `index`); routes add the rest. */
+  /** The pieces of wire there were, indexed (routes add the rest, filed in `addedAt`). */
   private readonly index: SegmentIndex;
-  private readonly first: number;
   /** Each island's pieces of wire (`sorted`: in order) and pins. */
   private readonly members = new Map<number, { wires: number[]; pins: number[]; sorted: boolean }>();
   private next: number;
@@ -812,7 +811,6 @@ class RouteCopper {
     this.pins = pins;
     this.index = index;
     this.grounds = grounds;
-    this.first = segs.length;
     const islands = findIslands(segs, pins.map((p) => p.at), index);
     this.wires = islands.wires.slice();
     this.anchors = islands.anchors.slice();
