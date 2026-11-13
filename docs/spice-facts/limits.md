@@ -7,7 +7,7 @@ engine runs on, writes a broken results file or crashes. No real netlist comes n
 but a link can carry anything, and a title can be a pasted problem statement. So the copy PlainSpice
 gives ngspice (`src/spice/run-netlist.ts`, decision [0012](../decisions/0012-netlists-and-links-are-data.md))
 keeps inside every space below, but for one way past it that we know: what ngspice's commands compute
-while they run, from variables and aliases (limit-11). This file is the evidence; the claim IDs
+while they run, from variables, aliases and the files they write (limit-11). This file is the evidence; the claim IDs
 are named in that code.
 
 **How it was checked (13 November 2026).** Each netlist was run four ways, as for the other facts
@@ -485,10 +485,15 @@ native 47 and 42, `-b -r` and `-b` (exit 134), "*** buffer overflow detected ***
 build: `stack-buffer-overflow … WRITE of size 1004 … in if_run`; our engine runs on (exit 0). (After `op`,
 `echo [$curplottitle] [$curplot]` prints `[* short title] [op1]` for a circuit titled `* short title`.)
 
+A file the commands write and then read is another: `echo *ng_script > f.sp`, `echo op` and words of 250, 250
+and 10 bytes `>> f.sp`, then `source f.sp` runs an analysis command of 516 bytes that no line holds: native
+47 and 42, `-b -r` (exit 134), "*** buffer overflow detected ***: terminated"; the sanitized build:
+`stack-buffer-overflow … WRITE of size 517 … in if_run`; our engine runs on (exit 0).
+
 The same is true wherever ngspice runs commands: in a `.control` block, on a `*#` line or in an
 `*ng_script` file (limit-18). PlainSpice gives ngspice such commands as written, measured as their words
-are (limit-19) but for what they compute while they run: variables (`$…`, ngspice's own too) and aliases
-are the one way past the checks in this file that we know of. Backquotes are not: ngspice puts the output
+are (limit-19) but for what they compute while they run: variables (`$…`, ngspice's own too), aliases and
+the files they write and read back are the one way past the checks in this file that we know of. Backquotes are not: ngspice puts the output
 of a shell command in their place (native 47: `` echo [`echo aa bb`] `` prints `[aa bb]`), and our engine
 runs no shell command: it says "Error: can't evaluate echo aa bb." and puts nothing there.
 

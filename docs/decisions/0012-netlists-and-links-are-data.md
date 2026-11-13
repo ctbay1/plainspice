@@ -263,14 +263,15 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     program, in a `.control` block, on `*#` lines anywhere or in an `*ng_script` file (limit-18): `set t =
     $s$s$s$s$s$s` joins short words into a 600-byte name, and `display` then writes it past 512 bytes;
     `alias xx op` makes `xx` and long words an analysis command of more than 512 bytes; after `op`,
-    `$curplottitle` is the circuit's title, so `op $curplottitle $curplottitle` writes two titles. Native
+    `$curplottitle` is the circuit's title, so `op $curplottitle $curplottitle` writes two titles; `echo`
+    with `>` writes a file of commands that `source` then runs. Native
     ngspice stops; our engine runs on with its memory overwritten. PlainSpice does not run the program
     before ngspice does, so it gives ngspice the commands as written, measured as their words are
     (limit-19). Backquotes, which put a shell command's output in a command, are no way past: our engine
     runs no shell command. A `.control` block writes nothing to the results file (A36): PlainSpice shows
     its words in the ngspice output panel only. Not running any command (no `.control` block, no `*#`
-    line or its kin, no `*ng_script` file) would close this; refusing only commands with a `$` or an
-    `alias` would too, with fewer netlists refused, but a `foreach` over values with `$`, the way
+    line or its kin, no `*ng_script` file) would close this; refusing only commands with a `$`, an
+    `alias` or a `source` would too, with fewer netlists refused, but a `foreach` over values with `$`, the way
     ngspice's manual sweeps a part, is one. Either changes what this record allows above ("Never a
     program": the commands run, `system()` refuses), so it is Tarık's choice. An earlier version of this
     bullet said not running `.control` blocks would close it: it would not, as `*#` lines run outside
