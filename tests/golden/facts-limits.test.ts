@@ -206,24 +206,24 @@ describe('limit-9: a part’s .model line copies its version into a space of 100
     expect((await engine.run(model(150, false))).ok).toBe(true);
   });
 
-  it('from 105 bytes, where native 47 and 42 stop ("stack smashing detected"), our engine runs on with ngspice’s message up to 111 bytes and crashes from 112 (last pass F9)', async () => {
-    for (const n of [105, 111]) {
-      for (const level of ['level=8', 'level=14']) {
+  it('from 105 bytes, where native 47 and 42 stop ("stack smashing detected"), our engine runs on with ngspice’s message up to 111 bytes and crashes from 112, at levels 8, 14, 49, 54 and 73 (last pass F9)', async () => {
+    for (const level of ['level=8', 'level=14', 'level=49', 'level=54', 'level=73']) {
+      for (const n of [105, 111]) {
         const run = await engine.run(model(n).replace('level=8', level));
         expect(run.exitCode, `${n} ${level}`).toBe(1);
         expect(run.stderr, `${n} ${level}`).toMatch(/could not find a valid modelname/);
       }
+      expect(crashed(await engine.run(model(112).replace('level=8', level))), level).toBe(true);
     }
-    expect(crashed(await engine.run(model(112)))).toBe(true);
-    expect(crashed(await engine.run(model(112).replace('level=8', 'level=14')))).toBe(true);
     expect((await engine.run(model(105, false))).ok).toBe(true);
   });
 
-  it('PlainSpice gives ngspice a version of at most 90 bytes, below 100, where native 47 and 42 start to write past the space', () => {
+  it('PlainSpice gives ngspice a version of at most 90 bytes, below 100, where native 47 and 42 start to write past the space, at every level', () => {
     expect(VERSION_BYTES).toBe(90);
     expect(runCopy(model(90))).toBeDefined();
     expect(runCopy(model(91))).toBeUndefined();
     for (const n of [100, 104, 105]) expect(runCopy(model(n)), String(n)).toBeUndefined();
+    expect(runCopy(model(91).replace('level=8', 'level=73'))).toBeUndefined();
   });
 });
 
