@@ -445,7 +445,8 @@ export const DESCRIBE_STRINGS = {
   controlOnlyTitle: 'ngspice ran the .control block',
   controlOnlyWhy:
     'ngspice ran the commands in the .control block; what they printed is in the ngspice output tab. PlainSpice shows the results of analysis lines such as .op, .dc and .tran, and this netlist has none.',
-  noResultsTitle: 'No results',
+  /** Never the status's own word, "No results": the panel would say it twice (last pass critic1-2). */
+  noResultsTitle: 'ngspice gave no reason',
   noResultsWhy: 'ngspice finished without writing any results, and it printed no message that says why.',
   noGroundTitle: 'No ground (node 0)',
   noGroundWhy:

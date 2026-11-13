@@ -214,7 +214,8 @@ describe('facts F3: every analysis line in a subcircuit no X line uses (A3f)', (
 
   it('never says "no results" twice: with no message from ngspice, the summary says so once', () => {
     const empty = describeResults(parseNetlist('* t\nR1 a 0 1\n.op\n'), { other: [] }, nothing());
-    expect(empty.warnings.map((m) => m.title)).toEqual(['No results']);
+    // Its title is never the status's own word, "No results" (critic1-2).
+    expect(empty.warnings.map((m) => m.title)).toEqual(['ngspice gave no reason']);
     expect(empty.summary).toBe('ngspice finished without writing any results, and it printed no message that says why. Open the results for details.');
     expect(empty.summarySpeech).toBe(empty.summary);
   });
