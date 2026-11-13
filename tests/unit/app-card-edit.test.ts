@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { keepDrawing, spotValue, valueSpot, withValue, writeValue, type CardWrite, type ValueSpot } from '../../src/app/card-edit.ts';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/index.ts';
 import { buildSchematic, stripDrawing } from '../../src/schematic/index.ts';
+import { partsAtOnePoint } from './schematic-hostile.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const START = readFileSync(resolve(ROOT, 'examples/start-here.cir'), 'utf8');
@@ -145,5 +146,40 @@ describe('where the parts are drawn', () => {
     const at = (s: ReturnType<typeof buildSchematic>): unknown => s.scene.parts.map((p) => [p.key, p.box.x0, p.box.y0]);
     expect(at(drawnOf(kept))).toEqual(at(drawnOf(text)));
     expect(lineOf(kept, 'Vm')).toBe(lineOf(r.text, 'Vm'));
+  });
+
+  it('a value that would move the drawing keeps the line of a part the netlist does not have yet', () => {
+    // Only a change made in the drawing drops it (decision 0013); writing the drawing for a value
+    // dropped it with the rest of the old lines.
+    const text = stripDrawing(readFileSync(resolve(ROOT, 'examples/sp01/sp01-2-ammeter.cir'), 'utf8')).replace(/^\.end/m, '*@ R99 5 5 0\n.end');
+    expect(drawnOf(text).orphans).toEqual(['*@ R99 5 5 0']);
+    const r = writeValue(valueSpot(text, 'vm')!, '5', FALLBACK);
+    if (r.kind !== 'write') throw new Error('not written');
+    const kept = keepDrawing(drawnOf(text), r.text);
+    expect(kept).toMatch(/^\*@ Vm /m);
+    expect(kept).toMatch(/^\*@ R99 5 5 0$/m);
+  });
+
+  it('a value typed where the lines put parts on other nodes’ pins writes where they are drawn, once (second re-check’s critic)', () => {
+    // Every build of such lines moves the parts again (60 parts at one point: a fifth of a second on a
+    // computer, a second on a phone, for every key and every visit). The first value typed writes the
+    // drawing shown, so the next builds read it as written.
+    const text = partsAtOnePoint(10, ['*@ R99 5 5 0', '*@ label nope 3 3']);
+    const drawn = drawnOf(text);
+    expect(drawn.problems.filter((p) => p.kind === 'moved-part').length).toBe(9);
+    expect(drawn.orphans).toEqual(['*@ R99 5 5 0', '*@ label nope 3 3']);
+    const next = withValue(valueSpot(text, 'r2')!, '3');
+    const kept = keepDrawing(drawn, next);
+    expect(kept).not.toBe(next);
+    const again = drawnOf(kept);
+    expect(again.problems.filter((p) => p.kind === 'moved-part')).toEqual([]);
+    // Drawn where it was, with the value typed, and the line of the part the netlist does not have yet kept.
+    const at = (s: ReturnType<typeof buildSchematic>): unknown => s.scene.parts.map((p) => [p.key, p.box.x0, p.box.y0]);
+    expect(at(again)).toEqual(at(drawn));
+    expect(lineOf(kept, 'R2')).toBe('R2 1 2 3');
+    expect(again.orphans).toEqual(['*@ R99 5 5 0', '*@ label nope 3 3']);
+    // A later key on the same card: the lines say where the parts are now, so only the value changes.
+    const later = withValue(valueSpot(kept, 'r2')!, '4');
+    expect(keepDrawing(drawn, later)).toBe(later);
   });
 });

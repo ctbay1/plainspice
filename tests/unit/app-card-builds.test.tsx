@@ -4,7 +4,10 @@
  * builds it to tell whether the new value would move a part (src/app/card-edit.ts), and the page used
  * to build the same text again a frame later, which doubled every key typed: 1.5 to 3.5 s a key on the
  * crafted 60 parts at one point, on a computer. The page now takes the schematic keepDrawing built
- * (schematicOf). Counted here, not timed: the schematic builds (src/schematic/schematic.ts) a key makes.
+ * (schematicOf). Where the lines pile parts on other nodes' pins, each value typed writes where the
+ * parts are drawn without building the piled lines again, and an undo draws the text it goes back to
+ * without building it again (the second re-check's critic). Counted here, not timed: the schematic
+ * builds (src/schematic/schematic.ts) a key or an undo makes.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -55,31 +58,55 @@ afterEach(() => {
 /** An engine that never answers: the drawing and the card are what is looked at here. */
 const quiet: Engine = { warmUp: async () => 1, run: () => new Promise(() => undefined), cancel: () => undefined };
 
-/**
- * Opens `name`'s card on `netlist`, types `value`, waits until the drawing shows it (`shown`), and
- * counts the builds of the text the card wrote (the value in place: neither netlist here has a part
- * that the new value would move, so no drawing line is written).
- */
-async function typed(netlist: string, name: string, value: string, shown: RegExp): Promise<number> {
-  const next = withValue(valueSpot(netlist, name.toLowerCase())!, value);
+/** The drawing shows a text: wait until it does, and a moment more. */
+async function shows(text: RegExp, not = false): Promise<void> {
+  // The drawing follows the text a frame later.
+  await waitFor(() => (not ? expect(document.querySelector('.nb-canvas svg')?.textContent).not.toMatch(text) : expect(document.querySelector('.nb-canvas svg')?.textContent).toMatch(text)), { timeout: 15000 });
+  await new Promise((r) => setTimeout(r, 100));
+}
+
+/** Opens `name`'s card on `netlist` and gives its field. */
+async function cardOf(netlist: string, name: string): Promise<HTMLElement> {
   render(<App startup={{ source: 'saved', netlist }} engine={quiet} serviceWorker={false} />);
   await waitFor(() => expect(document.querySelector('.nb-canvas svg .nb-part')).not.toBeNull(), { timeout: 15000 });
   fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}, `) }));
-  const field = within(screen.getByRole('dialog', { name: new RegExp(`^${name} `) })).getByRole('textbox');
+  return within(screen.getByRole('dialog', { name: new RegExp(`^${name} `) })).getByRole('textbox');
+}
+
+/** Types `value` in the field, waits until the drawing shows it (`shown`), and gives the texts built meanwhile. */
+async function typed(field: HTMLElement, value: string, shown: RegExp): Promise<string[]> {
   builds.texts = [];
   fireEvent.change(field, { target: { value } });
-  // The drawing follows the text a frame later: wait until it shows the new value, and a moment more.
-  await waitFor(() => expect(document.querySelector('.nb-canvas svg')?.textContent).toMatch(shown), { timeout: 15000 });
-  await new Promise((r) => setTimeout(r, 100));
-  return builds.texts.filter((t) => t === next).length;
+  await shows(shown);
+  return builds.texts;
 }
 
 describe('a value typed on a card is drawn from one build (second re-check, P3)', () => {
   it('Start here: R1 = 2k is built once, not twice', async () => {
-    expect(await typed(readFileSync(resolve(root, 'examples/start-here.cir'), 'utf8'), 'R1', '2k', /2\skΩ/)).toBe(1);
+    const netlist = readFileSync(resolve(root, 'examples/start-here.cir'), 'utf8');
+    // The value in place: no part of this netlist moves with the new value, so no drawing line is written.
+    const next = withValue(valueSpot(netlist, 'r1')!, '2k');
+    const built = await typed(await cardOf(netlist, 'R1'), '2k', /2\skΩ/);
+    expect(built.filter((t) => t === next).length).toBe(1);
+    expect(built.length).toBe(1);
   }, 30000);
 
-  it('60 parts at one point (the 542-character link): R2 = 3 is built once', async () => {
-    expect(await typed(partsAtOnePoint(60), 'R2', '3', /3\sΩ/)).toBe(1);
+  it('60 parts at one point (the 542-character link): each value is drawn from one build, the piled lines are built only when the link opens, and an undo builds nothing', async () => {
+    const netlist = partsAtOnePoint(60);
+    /** Texts whose lines still put R3 where the others are (on their pins). */
+    const piled = (texts: readonly string[]): number => texts.filter((t) => /^\*@ R3 0 0 0$/m.test(t)).length;
+    const field = await cardOf(netlist, 'R2');
+    // The first value writes where the parts are drawn, and only that text is built.
+    const first = await typed(field, '3', /3\sΩ/);
+    expect(piled(first)).toBe(0);
+    expect(first.length).toBe(1);
+    const second = await typed(field, '47', /47\sΩ/);
+    expect(piled(second)).toBe(0);
+    expect(second.length).toBe(1);
+    // One undo takes the card's change back: the text it opened on, built when it opened.
+    builds.texts = [];
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await shows(/47\sΩ/, true);
+    expect(builds.texts).toEqual([]);
   }, 60000);
 });
