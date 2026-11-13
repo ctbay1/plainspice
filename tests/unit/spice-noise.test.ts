@@ -747,6 +747,12 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect(r.words.warnings.filter((m) => m.code === 'rounding-noise' || m.code === 'rounded-to-0')).toEqual([]);
   });
 
+  it('so is one swept away from 0 V with no part currents saved, where the check of ngspice\'s values would let a + b·s through: Vm keeps its real −65.73 fA at 9 V, which a model with the diode at 0 A makes 0 at every point', async () => {
+    const r = await solveText('* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nR6 top c 4.6k\nR7 c 0 4.4k\nD1 c a dmod\n.model dmod d\n.dc V1 3 9 3\n.end\n', ngspice);
+    expect(r.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: -6.572929568108906e-14 });
+    expect(r.words.warnings.filter((m) => m.code === 'rounding-noise' || m.code === 'rounded-to-0')).toEqual([]);
+  });
+
   it('the rule for other circuits: the current a real F copies is real (Vm keeps its 193.5 aA beside F1\'s 193.5 pA, 1e6 times it), and a 0 it writes at a node whose shown currents do not add up to 0 gets ngspice\'s number back (G1\'s 888.2 zA beside its two loads, whose ends are not alike)', async () => {
     const f = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'F1 0 out Vm 1e6', 'Rl out 0 1k', RULE));
     expect([f.by, current(f.words, 'Vm'), current(f.words, 'F1'), noise(f.words)]).toEqual(['rule', 'Vm measures 193.5 aA flowing from node b to node m', '193.5 pA from node out to ground through F1', []]);

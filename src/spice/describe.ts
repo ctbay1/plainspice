@@ -1077,12 +1077,12 @@ function exactOf(netlist: Netlist): Exact | undefined {
     for (const k of tree) sides.push(unitSource(model, k));
     // .dc of one source (decision 0015): every value is a + b·s, so one more solution gives every point.
     // A circuit with a diode is not a + b·s in its sources: its sweeps and .tf are left as ngspice gives them.
-    let sweep: number | undefined;
+    let sweep: { part: number; at: number } | undefined;
     const dc = netlist.analyses.map((i) => readAnalysis(netlist, i)).find((r) => r?.kind === 'dc');
     if (!diodes && dc?.kind === 'dc' && dc.sweeps.length === 1 && (dc.sweeps[0]!.kind === 'voltage' || dc.sweeps[0]!.kind === 'current')) {
       const k = partOf(dc.sweeps[0]!.source.text);
       if (k !== undefined && (model.parts[k]!.kind === 'V' || model.parts[k]!.kind === 'I')) {
-        sweep = k;
+        sweep = { part: k, at: sides.length };
         sides.push(unitSource(model, k));
       }
     }
@@ -1109,7 +1109,7 @@ function exactOf(netlist: Netlist): Exact | undefined {
     if (x) {
       ex = { model, op: x[0]!, part, node, solveWork: MAX_WORK - budget.left };
       if (diodes) ex.diodes = { tree, slopes: x.slice(1, 1 + tree.length) };
-      if (sweep !== undefined) ex.sweep = { part: sweep, slope: x[1]! };
+      if (sweep) ex.sweep = { part: sweep.part, slope: x[sweep.at]! };
       if (tf) {
         ex.tf = { part: tf.part, slope: x[tf.at]! };
         if (tf.into !== undefined) ex.tf.into = x[tf.into]!;
