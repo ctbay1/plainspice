@@ -670,17 +670,24 @@ test('the status line speaks of numbers in pencil only while the drawing shows s
   await expectSolved(page);
   const status = statusLine(page);
   const canvas = page.locator('.nb-canvas');
+  // After a delete the app puts the focus on a nearby item once the drawing has caught up, a frame
+  // later (App.tsx, pendingFocus). Focusing the next part before that lands let the focus jump back
+  // to a node, and the next Delete then fell on the node (1 run in 12 at load 4, 13 Nov 2026). So
+  // each delete waits for the focus to come back into the drawing first.
+  const focusLanded = (): Promise<void> => expect.poll(() => drawing(page).evaluate((el) => el.contains(document.activeElement))).toBe(true);
   // The ground deleted on the drawing: no answers (no node 0), so the last ones stay, in pencil, and the status line says so.
   await drawing(page).getByRole('button', { name: /^Ground, / }).focus();
   await page.keyboard.press('Delete');
   await expect(status).toHaveAttribute('data-tone', 'bad');
   await expect(status).toContainText(t('statusOldPencil'));
   await expect(canvas).toHaveClass(/\bis-pending\b/);
+  await focusLanded();
   // Every part deleted: no numbers are left on the paper, so none are spoken of, in words or in pencil.
   for (const name of ['R2', 'R1', 'V1']) {
     await partOnDrawing(page, name).focus();
     await page.keyboard.press('Delete');
     await expect(partOnDrawing(page, name)).toHaveCount(0);
+    if (name !== 'V1') await focusLanded();
   }
   await expect(status).toContainText(t('noAnalysisTitle'));
   await expect(page.locator('.nb-results text')).toHaveCount(0);
