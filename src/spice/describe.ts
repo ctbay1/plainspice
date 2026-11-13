@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { agrees, ANSWER_GAP, answers, answersAgree, checkWork, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
+import { agrees, ANSWER_FLOOR, ANSWER_GAP, answers, answersAgree, checkWork, currentDouble, currentIsZero, equal, exactModel, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, RESIDUAL_SHARE, solveExact, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -583,8 +583,8 @@ export const DESCRIBE_STRINGS = {
   lostCarries: (name: string, value: string): string => `${name} carries ${value}`,
   lostIsAt: (node: string, value: string): string => `node ${node} is at ${value}`,
   /** `shows`: for one value, what it is ("R3 carries 454.1 pA") and its value; for several, the list of their exact values. */
-  lostWhy: (gave: string, reason: string, shows: string, value: string | undefined, diodes = false): string =>
-    `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values${diodes ? ' and its diodes\' currents' : ''}, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
+  lostWhy: (gave: string, reason: string, shows: string, value: string | undefined): string =>
+    `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
   // Where ngspice's answers are farther from the exact ones than the page's digits (opCheck 'imprecise'):
   // PlainSpice shows ngspice's numbers and says that they are off, and by how much.
   offTitle: 'Some of ngspice\'s answers here are off',
@@ -595,8 +595,8 @@ export const DESCRIBE_STRINGS = {
   /** The items, each with a comma of its own, joined by semicolons; a list cut short counts the rest (never "and 1 more"). */
   offList: (items: readonly string[], more: number): string =>
     more ? `${items.join('; ')}; and ${more} more` : items.length === 1 ? items[0]! : `${items.slice(0, -1).join('; ')}; and ${items[items.length - 1]}`,
-  offWhy: (list: string, diodes = false): string =>
-    `Solved exactly, with fractions, from the netlist's values${diodes ? ' and its diodes\' currents' : ''}, ${list}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.`,
+  offWhy: (list: string): string =>
+    `Solved exactly, with fractions, from the netlist's values, ${list}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.`,
   // S8, C9p: a .tf ratio and .dc points ngspice gives as rounding noise of a 0.
   noiseTfTitle: 'The transfer function is shown as 0',
   noiseTfWhy: (tf: string, value: string, output: string, input: string, ratio: string): string =>
@@ -613,8 +613,8 @@ export const DESCRIBE_STRINGS = {
   lostSweepShows: (name: string, value: string, at: string): string => `${name} ${value} at ${at}`,
   lostSweepWhy: (gave: string, shows: string, one: boolean): string =>
     `ngspice gave ${gave}. ${one ? 'It is' : 'Each is'} too small beside the larger numbers ngspice works ${one ? 'it' : 'them'} out from for its arithmetic (about 16 significant digits), so ${one ? 'it comes' : 'they come'} out as 0. Solved exactly, with fractions, from the netlist's values, ${one ? 'it is not 0, so PlainSpice shows it' : 'none of them is 0, so PlainSpice shows each'} as the exact solution gives it, in these words and in the Plot panel: ${shows}.`,
-  noiseSweepWhy: (gave: string, one: boolean): string =>
-    `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${one ? 'a value' : 'values'} that ${one ? 'is' : 'are'} 0 there. Solved exactly, with fractions, from the netlist's values, the circuit makes ${one ? 'it' : 'each of them'} exactly 0 there, so PlainSpice shows 0 in these words and in the Plot panel.`,
+  noiseSweepWhy: (gave: string, one: boolean, diodes = false): string =>
+    `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${one ? 'a value' : 'values'} that ${one ? 'is' : 'are'} 0 there. Solved exactly, with fractions, from the netlist's values${diodes ? " and its diodes' currents" : ''}, the circuit makes ${one ? 'it' : 'each of them'} exactly 0 there, so PlainSpice shows 0 in these words and in the Plot panel.`,
 } as const;
 
 const S = DESCRIBE_STRINGS;
@@ -1003,7 +1003,7 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
   const ex = exactOf(netlist);
   // A sweep the exact solution decides is checked at up to SWEEP_CHECKS points (checkPoints): its share of the
   // run's budget is kept for it, so the .op and the .dc of one run are decided together, both exactly or neither.
-  const seen = ex ? opCheck(ex, op, ex.sweep && results.dc ? checkPoints(results.dc.scale.values.length).length * checkWork(ex.model) : 0) : undefined;
+  const seen = ex ? opCheck(ex, op, ex.sweep && results.dc ? checkPoints(results.dc.scale.values.length).length * checkCost(ex) : 0) : undefined;
   if (ex && seen?.check === 'same') return exactNoise(netlist, ex, seen.view, op);
   const rule = ruleNoise(netlist, results);
   return ex && seen?.check === 'imprecise' ? withExact(netlist, ex, seen.view, rule, seen.off) : rule;
@@ -1019,7 +1019,7 @@ interface Exact {
   /** Part and node indexes, by the names ngspice gives them in its results. */
   part: Map<string, number>;
   node: Map<string, number>;
-  /** .dc of one V or I: that source, and how much every unknown changes for 1 V or 1 A of it. */
+  /** .dc of one V or I: that source, and how much every unknown changes for 1 V or 1 A of it (with each diode at 0 A). */
   sweep?: { part: number; slope: Fraction[] };
   /** .tf: its input and how much every unknown changes for 1 V or 1 A of it; for a voltage output, the voltages 1 A into it makes. */
   tf?: { part: number; slope: Fraction[]; into?: Fraction[] };
@@ -1075,11 +1075,12 @@ function exactOf(netlist: Netlist): Exact | undefined {
     });
     const diodes = model.parts.some((p) => p.kind === 'D');
     for (const k of tree) sides.push(unitSource(model, k));
-    // .dc of one source (decision 0015): every value is a + b·s, so one more solution gives every point.
-    // A circuit with a diode is not a + b·s in its sources: its sweeps and .tf are left as ngspice gives them.
+    // .dc of one source (decision 0015): every value is a + b·s, so one more solution gives every point; with
+    // diodes, a + b·s plus what each diode's current at that point makes (findSweepNoise). A .tf of a circuit with
+    // a diode is left as ngspice gives it: its ratio depends on the diode's conductance at the operating point.
     let sweep: { part: number; at: number } | undefined;
     const dc = netlist.analyses.map((i) => readAnalysis(netlist, i)).find((r) => r?.kind === 'dc');
-    if (!diodes && dc?.kind === 'dc' && dc.sweeps.length === 1 && (dc.sweeps[0]!.kind === 'voltage' || dc.sweeps[0]!.kind === 'current')) {
+    if (dc?.kind === 'dc' && dc.sweeps.length === 1 && (dc.sweeps[0]!.kind === 'voltage' || dc.sweeps[0]!.kind === 'current')) {
       const k = partOf(dc.sweeps[0]!.source.text);
       if (k !== undefined && (model.parts[k]!.kind === 'V' || model.parts[k]!.kind === 'I')) {
         sweep = { part: k, at: sides.length };
@@ -1131,6 +1132,9 @@ function exactOf(netlist: Netlist): Exact | undefined {
 function checkBudget(ex: Exact, reserved = 0): Budget {
   return { left: Math.max(0, MAX_WORK - ex.solveWork - reserved) };
 }
+
+/** What one check of ngspice's values at one point takes from a run's budget: with diodes, their currents first (exact.ts treeCurrents). */
+const checkCost = (ex: Exact): number => checkWork(ex.model) * (ex.diodes ? 2 : 1);
 
 /** A node's index in the model by a name as written (−1 for ground, −2 when it has none). */
 function nodeIndex(model: ExactModel, node: Map<string, number>, written: string): number {
@@ -1209,10 +1213,21 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
   if (!list) return { check: 'other' };
   // Imprecise when an answer whose exact value is not 0 is off. The note then names every value that is off:
   // the answers, the exact 0s ngspice gives beyond rounding, and the currents of the R, G and F (a wire ngspice
-  // gives as 0 A where a current flows, in series with a resistor it gives that current the other way).
+  // gives as 0 A where a current flows, in series with a resistor it gives that current the other way). With
+  // diodes, only those that no diode's current changes: the exact value of any other depends on the diodes'
+  // currents, which only ngspice's numbers give, so it is not the circuit's exact value when they are off.
   if (!list.some((a) => a.exact !== 0 && a.gap > ANSWER_GAP)) return { check: 'same', view, off: [] };
   const all = answers(ex.model, view.x, ng, view.level, true) ?? list;
-  return { check: 'imprecise', view, off: all.filter((a) => a.gap > ANSWER_GAP) };
+  const slopes = view.all.slice(1);
+  const free = (a: Answer): boolean => {
+    if (!slopes.length) return true;
+    const k = a.kind === 'voltage' ? ex.node.get(a.name) : ex.part.get(a.name);
+    if (k === undefined) return false;
+    if (a.kind === 'voltage') return slopes.every((x) => isZero(x[k]!));
+    const p = ex.model.parts[k]!;
+    return p.branch >= 0 ? slopes.every((x) => isZero(x[p.branch]!)) : slopes.every((x) => currentIsZero(ex.model, x, k, ZERO));
+  };
+  return { check: 'imprecise', view, off: all.filter((a) => a.gap > ANSWER_GAP && free(a)) };
 }
 
 /**
@@ -1240,22 +1255,24 @@ function exactly(ex: Exact, view: View): { zero: boolean[]; nodeZero: (k: number
 /**
  * The real currents and node voltages ngspice gave as exactly 0 (C9n): its arithmetic rounds a value
  * that is tiny beside the numbers it is worked out from to 0, where the exact solution has it. A value
- * below the smallest double (about 4.9e-324) has no number to show: it stays as ngspice gave it. Not with
- * diodes: there a tiny value depends on the diodes' currents, which ngspice's numbers give only to their
- * rounding (a diode across a null of 0 V carries exactly 0, but Kirchhoff's law with ngspice's numbers
- * leaves it 4.4e-19 A, and that made a node ngspice rightly gives as 0 V read 2.4e-16 V).
+ * below the smallest double (about 4.9e-324) has no number to show: it stays as ngspice gave it. With
+ * diodes, only a value that no free diode's current changes, whose exact value does not depend on the
+ * diodes' currents: those only ngspice's numbers give, to their rounding (a diode across a null of 0 V
+ * carries exactly 0, but Kirchhoff's law with ngspice's numbers leaves it 4.4e-19 A, and that made a node
+ * ngspice rightly gives as 0 V read 2.4e-16 V), and a diode's own current is never shown as a part's.
  */
 function lostValues(netlist: Netlist, ex: Exact, view: View, op: NonNullable<AnalysisResults['op']>, out: RoundingNoise): void {
-  if (ex.diodes) return;
   const { model } = ex;
   const { x } = view;
   const { zero, nodeZero } = exactly(ex, view);
+  const slopes = view.all.slice(1);
   const whole = overCommon(x);
   const at = (n: number): bigint => (n < 0 ? 0n : whole.num[n]!);
   for (const c of op.currents) {
     const k = c.value === 0 ? ex.part.get(c.element) : undefined;
     if (k === undefined || zero[k]) continue;
     const p = model.parts[k]!;
+    if (p.kind === 'D' || !slopes.every((s) => currentIsZero(model, s, k, ZERO))) continue;
     const value = currentDouble(model, whole.num, whole.den, k, view.level(p));
     if (value === 0) continue;
     // A resistor: the voltage across it too, which ngspice's two equal end voltages do not show.
@@ -1263,7 +1280,7 @@ function lostValues(netlist: Netlist, ex: Exact, view: View, op: NonNullable<Ana
   }
   for (const n of op.nodes) {
     const k = n.value === 0 ? ex.node.get(n.node) : undefined;
-    if (k === undefined || nodeZero(k) || isZero(x[k]!)) continue;
+    if (k === undefined || nodeZero(k) || isZero(x[k]!) || !slopes.every((s) => isZero(s[k]!))) continue;
     const value = toDouble(x[k]!);
     if (value !== 0) out.lostNodes.set(netlistNode(netlist, n.node), value);
   }
@@ -1450,6 +1467,8 @@ interface SweepNoise {
   lost: Map<number, { points: number[]; values: number[] }>;
   /** The swept source as written. */
   source: string;
+  /** True when the circuit has diodes: a 0 is 0 whatever current they carry at that point (the note says so). */
+  diodes: boolean;
 }
 
 /**
@@ -1483,8 +1502,12 @@ function checkPoints(n: number): number[] {
  * x is −a/b exactly: a search through the doubles, with no fractions at each point (a sweep can have
  * 99,999 points). ngspice's values at the first point, the last and three between must solve the exact
  * equations as closely as its rounding can (exact.ts `agrees`), and be the exact answers to the page's
- * digits (`answersAgree`), as for an operating point. Undefined for a sweep of two sources, of a resistor
- * or of the temperature, and for a circuit not solved exactly.
+ * digits (`answersAgree`), as for an operating point. With diodes, each diode's current is left free at
+ * each point, as in the operating point: a value is 0 at a point where a + b·s is 0 and no diode free
+ * there changes it, and a diode with exactly 0 V across it there, whatever the free ones carry, carries
+ * 0 A (the H of 1 GΩ with a diode said out 0 V in the .op beside the sweep's −193.5 nV at the same 9 V).
+ * No real value ngspice gives as 0 is worked out with diodes (lostValues). Undefined for a sweep of two
+ * sources, of a resistor or of the temperature, and for a circuit not solved exactly.
  */
 function sweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise | undefined {
   const cached = sweepCache.get(results);
@@ -1504,65 +1527,133 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   if (!sweep) return undefined;
   const { model, sweep: sw } = ex;
   const swept = model.parts[sw.part]!;
-  // Whole numbers over one denominator (the operating point and the slope share solveExact's): with the
-  // swept source at s, unknown i is (a[i] + b[i]·s) / den, a with the source at 0, b its change for 1 V or 1 A.
-  const op = overCommon(ex.op);
-  const slope = overCommon(sw.slope);
-  if (op.num.some((v) => v !== 0n) && slope.num.some((v) => v !== 0n) && op.den !== slope.den) return undefined;
-  const den = (op.num.some((v) => v !== 0n) ? op.den : slope.den) * swept.value.d;
+  // Whole numbers over one denominator (the operating point, the slope and each diode's unit current share
+  // solveExact's): with the swept source at s and diode j of the forest (exactOf) at the current I_j, unknown i
+  // is (a[i] + b[i]·s + Σ c[j][i]·I_j) / den, a with the source at 0 and every diode at 0 A, b its change for
+  // 1 V or 1 A, c[j] the change a unit current through diode j makes.
+  const tree = ex.diodes?.tree ?? [];
+  const solutions = [overCommon(ex.op), overCommon(sw.slope), ...(ex.diodes?.slopes ?? []).map((x) => overCommon(x))];
+  const dens = solutions.filter((w) => w.num.some((v) => v !== 0n)).map((w) => w.den);
+  if (dens.some((d) => d !== dens[0])) return undefined;
+  const den = (dens[0] ?? 1n) * swept.value.d;
+  const [op, slope] = solutions as [(typeof solutions)[number], (typeof solutions)[number]];
   const a = op.num.map((v, i) => v * swept.value.d - swept.value.n * slope.num[i]!);
   const b = slope.num.map((v) => v * swept.value.d);
+  const c = solutions.slice(2).map((w) => w.num.map((v) => v * swept.value.d));
   const xs = dc.scale.values;
   const n = xs.length;
   for (let k = 0; k < n; k++) if (!Number.isFinite(xs[k]!)) return undefined;
-  // Each series as a + b·s, up to a factor that is not 0 (a resistor's 1/R, a G's gain): a node's
-  // voltage, a branch's current, or a part's current (savecurrents). `null` for a series that is 0 at
-  // every point (a capacitor, a G or F of gain 0).
-  const affine: ([bigint, bigint] | null)[] = [];
-  /** What turns a series' (a + b·s) / den into its value: 1 for a voltage or a branch's current, 1/R, a G's or an F's gain; undefined for a current source's, which ngspice gives as its value. */
+  const at = (v: readonly bigint[], node: number): bigint => (node < 0 ? 0n : v[node]!);
+  // Each series as a linear function of the unknowns, up to a factor that is not 0 (a resistor's 1/R, a G's
+  // gain): a node's voltage, a branch's current, a part's current (savecurrents), or a diode's voltage for its
+  // own current (0 exactly where that is 0 V). `null` for a series that is 0 at every point (a capacitor, a G
+  // or F of gain 0); a pair [a, b] of its own for a current source's, which no diode changes.
+  const forms: (((v: readonly bigint[]) => bigint) | [bigint, bigint] | null)[] = [];
+  /** What turns a series' (a + b·s) / den into its value: 1 for a voltage or a branch's current, 1/R, a G's or an F's gain; undefined for a current source's, which ngspice gives as its value, and a diode's. */
   const factor: (Fraction | undefined)[] = [];
   const kinds: { kind: 'voltage' | 'branch' | 'device'; name: string }[] = [];
-  const at = (n: number): [bigint, bigint] => (n < 0 ? [0n, 0n] : [a[n]!, b[n]!]);
-  const minus = (x: [bigint, bigint], y: [bigint, bigint]): [bigint, bigint] => [x[0] - y[0], x[1] - y[1]];
   for (const s of dc.series) {
     const m = /^([vi])\((.*)\)$/i.exec(s.name);
     const inner = m?.[2] ?? '';
-    const device = /^@([^[\]]+)\[(?:i|current)\]$/i.exec(inner);
-    let pair: [bigint, bigint] | null | undefined;
+    const device = /^@([^[\]]+)\[(i|id|current)\]$/i.exec(inner);
+    let form: ((v: readonly bigint[]) => bigint) | [bigint, bigint] | null | undefined;
     let f: Fraction | undefined = ONE;
     if (m?.[1] === 'v' && !inner.includes(',')) {
       const k = ex.node.get(inner);
       if (k !== undefined) {
-        pair = at(k);
+        form = (v) => at(v, k);
         kinds.push({ kind: 'voltage', name: inner });
       }
     } else if (m?.[1] === 'i' && device) {
       const k = ex.part.get(device[1]!);
       const p = k === undefined ? undefined : model.parts[k]!;
-      if (p) {
-        if (p.kind === 'R') [pair, f] = [minus(at(p.a), at(p.b)), p.value.n < 0n ? { n: -p.value.d, d: -p.value.n } : { n: p.value.d, d: p.value.n }];
-        else if (p.kind === 'G') [pair, f] = [isZero(p.value) ? null : minus(at(p.c), at(p.d)), p.value];
-        else if (p.kind === 'F') [pair, f] = [isZero(p.value) ? null : at(model.parts[p.control]!.branch), p.value];
-        else if (p.kind === 'I') [pair, f] = [p === swept ? [0n, 1n] : isZero(p.value) ? null : [1n, 0n], undefined];
-        else if (p.kind === 'C') pair = null;
-        else if (p.branch >= 0) pair = at(p.branch);
-        if (pair !== undefined) kinds.push({ kind: 'device', name: device[1]! });
+      // A diode's current is "id"; every other part's "i" or "current".
+      if (p && (p.kind === 'D') === (device[2]!.toLowerCase() === 'id')) {
+        const across = (x: number, y: number) => (v: readonly bigint[]): bigint => at(v, x) - at(v, y);
+        if (p.kind === 'R') [form, f] = [across(p.a, p.b), p.value.n < 0n ? { n: -p.value.d, d: -p.value.n } : { n: p.value.d, d: p.value.n }];
+        else if (p.kind === 'G') [form, f] = [isZero(p.value) ? null : across(p.c, p.d), p.value];
+        else if (p.kind === 'F') [form, f] = [isZero(p.value) ? null : (v) => at(v, model.parts[p.control]!.branch), p.value];
+        else if (p.kind === 'I') [form, f] = [p === swept ? [0n, 1n] : isZero(p.value) ? null : [1n, 0n], undefined];
+        // 0 V across a diode makes 0 A through it, and any other voltage a current that is not 0.
+        else if (p.kind === 'D') [form, f] = [across(p.a, p.b), undefined];
+        else if (p.kind === 'C') form = null;
+        else if (p.branch >= 0) form = (v) => at(v, p.branch);
+        if (form !== undefined) kinds.push({ kind: 'device', name: device[1]! });
       }
     } else if (m?.[1] === 'i') {
       const k = ex.part.get(inner);
       if (k !== undefined && model.parts[k]!.branch >= 0) {
-        pair = at(model.parts[k]!.branch);
+        form = (v) => at(v, model.parts[k]!.branch);
         kinds.push({ kind: 'branch', name: inner });
       }
     }
-    if (pair === undefined) return undefined;
-    affine.push(pair);
+    if (form === undefined) return undefined;
+    forms.push(form);
     factor.push(f);
   }
+  // The diodes whose current is free at a point: every diode of the forest but those with exactly 0 V across them
+  // with every diode at 0 A, whose voltage no free diode's current changes, which carry 0 A (opCheck's, at each
+  // point). Their voltage is a + b·s too: 0 at every point when a and b are, else only at one x, where the
+  // diodes free there are worked out again.
+  const across = tree.map((k) => {
+    const p = model.parts[k]!;
+    const of = (v: readonly bigint[]): bigint => at(v, p.a) - at(v, p.b);
+    return { a: of(a), b: of(b), c: c.map(of) };
+  });
+  /** The diodes (by their place in the forest) whose current is free at x, or at every point when x is undefined. */
+  const freeAt = (x: Fraction | undefined): boolean[] => {
+    const quiet = across.map((d) => (x === undefined ? d.a === 0n && d.b === 0n : d.a * x.d + d.b * x.n === 0n));
+    for (let changed = true; changed; ) {
+      changed = false;
+      across.forEach((d, t) => {
+        if (quiet[t] && d.c.some((v, j) => v !== 0n && !quiet[j])) [quiet[t], changed] = [false, true];
+      });
+    }
+    return quiet.map((q) => !q);
+  };
+  const free = freeAt(undefined);
+  // The points where a diode free elsewhere may have 0 V across it: ngspice's x is −a/b of its voltage exactly.
+  const special = new Map<number, boolean[]>();
+  across.forEach((d, t) => {
+    if (!free[t] || d.b === 0n) return;
+    const root = toDouble(d.b < 0n ? { n: d.a, d: -d.b } : { n: -d.a, d: d.b });
+    const x = Number.isFinite(root) ? fromDouble(root) : undefined;
+    if (x && d.a * x.d + d.b * x.n === 0n && !special.has(root) && xs.includes(root)) special.set(root, freeAt(x));
+  });
+  const freeAtPoint = (k: number): boolean[] => special.get(xs[k]!) ?? free;
+  /** The points at those x, in order (looked up once: a sweep can have 99,999 points). */
+  const specialPoints: number[] = [];
+  if (special.size) for (let k = 0; k < n; k++) if (special.has(xs[k]!)) specialPoints.push(k);
   // ngspice's values at a few points solve the exact equations as closely as its rounding can, and are the exact answers to the page's digits.
-  // Their budget is the run's, less the operating point's check when the run has one (it comes first).
-  const budget = checkBudget(ex, results.op ? checkWork(model) : 0);
+  // Their budget is the run's, less the operating point's check when the run has one (it comes first). With
+  // diodes, each point's diode currents are the ones Kirchhoff's law gives them from ngspice's other values
+  // there (exact.ts treeCurrents), as for the operating point, and the rest is checked against those.
+  const budget = checkBudget(ex, results.op ? checkCost(ex) : 0);
+  // At a point where the circuit makes every value exactly 0 (a source swept through 0 V, its diodes at 0 V),
+  // ngspice's Newton iterations can leave a diode circuit 1e-25 V here and there, which no equation weighs
+  // against anything larger: each of its values there must be within ANSWER_FLOOR of the largest it gives of
+  // that kind over the sweep, the share of rounding the answers check allows (equal diode arms swept from 0 V).
+  const kindOf = (j: number): 'voltage' | 'current' => (kinds[j]!.kind === 'voltage' ? 'voltage' : 'current');
+  let largest: { voltage: number; current: number } | undefined;
+  const tiny = (k: number): boolean => {
+    if (!largest) {
+      const l = { voltage: 0, current: 0 };
+      dc.series.forEach((s, j) => {
+        for (const v of s.values) if (Number.isFinite(v)) l[kindOf(j)] = Math.max(l[kindOf(j)], Math.abs(v));
+      });
+      largest = l;
+    }
+    const l = largest;
+    return dc.series.every((s, j) => Math.abs(s.values[k]!) <= ANSWER_FLOOR * l[kindOf(j)]);
+  };
   for (const k of checkPoints(n)) {
+    const x0 = fromDouble(xs[k]!);
+    if (!freeAtPoint(k).some(Boolean) && a.every((ai, i) => ai * x0.d + b[i]! * x0.n === 0n)) {
+      // Counted as the check it stands for, so the run's .op and .dc still fit in its budget together or not at all.
+      if (!tiny(k) || checkCost(ex) > budget.left) return undefined;
+      budget.left -= checkCost(ex);
+      continue;
+    }
     const nodes = new Map<string, number>();
     const branch = new Map<string, number>();
     const device = new Map<string, number>();
@@ -1571,36 +1662,61 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       (what.kind === 'voltage' ? nodes : what.kind === 'branch' ? branch : device).set(what.name, s.values[k]!);
     });
     const x = fromDouble(xs[k]!);
-    const level = (p: ExactModel['parts'][number]): Fraction => (p === swept ? x : p.value);
+    let level = (p: ExactPart): Fraction => (p === swept ? x : p.value);
     const ng = ngspiceValues(nodes, branch, device);
-    const unknowns = a.map((ai, i) => ({ n: ai * x.d + b[i]! * x.n, d: den * x.d }));
+    let unknowns: Fraction[] = a.map((ai, i) => ({ n: ai * x.d + b[i]! * x.n, d: den * x.d }));
+    if (ex.diodes) {
+      const currents = treeCurrents(model, tree, ng, budget);
+      if (!currents) return undefined;
+      const live = freeAtPoint(k);
+      const liveTree = tree.filter((_, t) => live[t]);
+      const slopes = c.filter((_, t) => live[t]).map((cj) => cj.map((v) => ({ n: v * x.d, d: den * x.d })));
+      unknowns = withCurrents(unknowns, slopes, liveTree, currents);
+      const byPart = new Map(liveTree.map((j) => [model.parts[j]!, currents.get(j) ?? ZERO]));
+      level = (p) => (p === swept ? x : p.kind === 'D' ? (byPart.get(p) ?? ZERO) : p.value);
+    }
     if (!agrees(model, ng, level, budget) || !answersAgree(model, unknowns, ng)) return undefined;
   }
-  // a + b·s is 0 at every point when a and b are, else only at s = −a/b, where ngspice's x must be that number exactly.
+  // a + b·s is 0 at every point when a and b are, else only at s = −a/b, where ngspice's x must be that number
+  // exactly; and with diodes, only where no diode free there changes it.
   const zero = new Map<number, number[]>();
   const lost = new Map<number, { points: number[]; values: number[] }>();
   let exactLeft = SWEEP_EXACT_POINTS;
   dc.series.forEach((s, j) => {
-    const pair = affine[j]!;
+    const form = forms[j]!;
+    const pair: [bigint, bigint] | null = typeof form === 'function' ? [form(a), form(b)] : form;
+    const cs = typeof form === 'function' ? c.map(form) : [];
+    const changes = (live: readonly boolean[]): boolean => cs.some((v, t) => v !== 0n && live[t]);
     const values = s.values;
     const points: number[] = [];
     /** ngspice's x where a + b·s is exactly 0, when there is one (b not 0, and −a/b a double). */
     let root: number | undefined;
-    if (pair === null || (pair[0] === 0n && pair[1] === 0n)) {
-      for (let k = 0; k < n; k++) if (values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
-    } else if (pair[1] !== 0n) {
+    if (!changes(free)) {
+      if (pair === null || (pair[0] === 0n && pair[1] === 0n)) {
+        for (let k = 0; k < n; k++) if (values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
+      } else if (pair[1] !== 0n) {
+        const [p, q] = pair;
+        const r = toDouble(q < 0n ? { n: p, d: -q } : { n: -p, d: q });
+        const x = Number.isFinite(r) ? fromDouble(r) : undefined;
+        if (x && p * x.d + q * x.n === 0n) {
+          root = r;
+          for (let k = 0; k < n; k++) if (xs[k] === root && values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
+        }
+      }
+    } else if (pair !== null) {
+      // It changes with a diode's current: 0 only at a point where every diode it changes with carries 0 A.
       const [p, q] = pair;
-      const r = toDouble(q < 0n ? { n: p, d: -q } : { n: -p, d: q });
-      const x = Number.isFinite(r) ? fromDouble(r) : undefined;
-      if (x && p * x.d + q * x.n === 0n) {
-        root = r;
-        for (let k = 0; k < n; k++) if (xs[k] === root && values[k] !== 0 && Number.isFinite(values[k]!)) points.push(k);
+      for (const k of specialPoints) {
+        if (changes(freeAtPoint(k)) || values[k] === 0 || !Number.isFinite(values[k]!)) continue;
+        const x = fromDouble(xs[k]!);
+        if (p * x.d + q * x.n === 0n) points.push(k);
       }
     }
     if (points.length) zero.set(j, points);
-    // The points where ngspice gave exactly 0 though a + b·s is not 0 there: a real value its arithmetic rounded to 0.
+    // The points where ngspice gave exactly 0 though a + b·s is not 0 there: a real value its arithmetic rounded
+    // to 0. With diodes, only for a series no free diode's current changes (lostValues).
     const f = factor[j];
-    if (pair === null || f === undefined || (pair[0] === 0n && pair[1] === 0n)) return;
+    if (changes(free) || pair === null || f === undefined || (pair[0] === 0n && pair[1] === 0n)) return;
     const [p, q] = pair;
     /** The value at point k, exactly: f × (p + q·x) / den, x ngspice's own x. */
     const exactAt = (k: number): number => {
@@ -1637,7 +1753,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     }
     if (list.points.length) lost.set(j, list);
   });
-  return { zero, lost, source: sweep.source.text };
+  return { zero, lost, source: sweep.source.text, diodes: !!ex.diodes };
 }
 
 /**
@@ -2614,7 +2730,7 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
       currents.map((c) => c.name),
       nodes.map((x) => bare(x.node)),
     ),
-    why: S.lostWhy(gave, reason, shows, value, noiseOf(netlist, results).diodes),
+    why: S.lostWhy(gave, reason, shows, value),
   };
   if (one && currents.length && currents[0]!.line !== undefined) note.line = currents[0]!.line;
   return note;
@@ -2628,7 +2744,8 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
  * numbers (node g6 at 0 V, where ngspice gives 2.097 V), node voltages before currents and the largest
  * first, then the others by how far they are from the exact value, as a share of it (a current ngspice
  * gives the other way, then one it gives as 0 A where a current flows). Node voltages, the currents of the
- * V, E, H and L, and those of the R, G and F that ngspice reports are named.
+ * V, E, H and L, and those of the R, G and F that ngspice reports are named; with diodes, only those that
+ * no diode's current changes (opCheck), and no warning when none of them is off.
  */
 function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | undefined {
   const off = noiseOf(netlist, results).off;
@@ -2643,7 +2760,7 @@ function offNote(netlist: Netlist, results: AnalysisResults): MessageWords | und
     return S.offCurrent(name, formatSI(Math.abs(a.exact), 'A'), formatSI(Math.abs(a.given), 'A'), a.given !== 0 && Math.sign(a.given) !== Math.sign(a.exact));
   });
   const shown = items.length <= NOTE_LIST + 1 ? S.offList(items, 0) : S.offList(items.slice(0, NOTE_LIST), items.length - NOTE_LIST);
-  return { code: 'imprecise-answers', severity: 'warning', title: S.offTitle, why: S.offWhy(shown, noiseOf(netlist, results).diodes) };
+  return { code: 'imprecise-answers', severity: 'warning', title: S.offTitle, why: S.offWhy(shown) };
 }
 
 /** The note for a .tf ratio shown as 0 because ngspice gave rounding noise of a 0 (S8, C9p). */
@@ -2687,7 +2804,7 @@ function sweepNoiseNote(netlist: Netlist, results: AnalysisResults): MessageWord
   }
   const list = count <= NOTE_LIST + 1 ? listWords(gave) : S.noiseSweepMore(gave.slice(0, NOTE_LIST).join(', '), count - NOTE_LIST);
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
-  const m: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseSweepTitle(names, 'DC sweep'), why: S.noiseSweepWhy(list, count === 1) };
+  const m: MessageWords = { code: 'rounding-noise', severity: 'note', title: S.noiseSweepTitle(names, 'DC sweep'), why: S.noiseSweepWhy(list, count === 1, noise.diodes) };
   if (line !== undefined) m.line = line + 1;
   return m;
 }

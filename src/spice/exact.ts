@@ -1030,14 +1030,19 @@ function signedSum(terms: readonly Dyadic[], limit: bigint): Fraction | undefine
 /**
  * The currents of the diodes in `tree` (one per branch of a forest of the diodes' graph, describe.ts)
  * that make Kirchhoff's current law hold exactly, with ngspice's node voltages and branch currents, at
- * every node of each tree but one: ground where the tree has it, else the node the tree ends at, whose
- * law `agrees` then checks. A diode's current is the rest of the currents at a node where it is the last
- * diode of the tree, worked from the leaves in. Every other diode (on a loop of diodes) carries 0: its
- * current adds nothing at a node that the tree's cannot, and only what the diodes add at each node
- * reaches the rest of the circuit. ngspice's own diode currents are not used: it reports the current of
- * its last iteration, which can be 1e-4 of it away (a diode with a 10 Ω series resistance). Undefined
- * when a value is missing, a sum's denominator passes MAX_BITS, or `budget` has less left than a check
- * counts (`checkWork`, taken from it).
+ * every node of each tree but one, whose law `agrees` then checks. A diode's current is the rest of the
+ * currents at a node where it is the last diode of the tree, worked from the leaves in. The node left out
+ * of each tree is the one whose law ngspice's rounding leaves farthest from 0, by an estimate in doubles
+ * (a resistor's current, worked out from the voltages at its ends, can be off by a unit in the last place
+ * of each over its resistance; a branch's by a unit in its own last place), and ground can be one of the
+ * others: its law has only the parts that touch it. A 1 nΩ wire beside a diode made the diode's current
+ * from the wire's node 4.1e-10 A where it carried 6.5e-15 A (one step of a double at 4.5 mV over 1 nΩ is
+ * 8.7e-10 A), and a warning gave the exact values worked out from it, 1e-4 off. Every other diode (on a
+ * loop of diodes) carries 0: its current adds nothing at a node that the tree's cannot, and only what the
+ * diodes add at each node reaches the rest of the circuit. ngspice's own diode currents are not used: it
+ * reports the current of its last iteration, which can be 1e-4 of it away (a diode with a 10 Ω series
+ * resistance). Undefined when a value is missing, a sum's denominator passes MAX_BITS, or `budget` has
+ * less left than a check counts (`checkWork`, taken from it).
  */
 export function treeCurrents(model: ExactModel, tree: readonly number[], ng: NgspiceValues, budget: Budget = newBudget()): Map<number, Fraction> | undefined {
   // Counted as one check of ngspice's values (its terms are a check's), before it starts.
@@ -1048,34 +1053,53 @@ export function treeCurrents(model: ExactModel, tree: readonly number[], ng: Ngs
   }
   budget.left -= work;
   const volts: Dyadic[] = [];
+  const doubles: number[] = [];
   for (const n of model.nodes) {
     const v = ng.voltage(n);
     if (v === undefined || !Number.isFinite(v)) return undefined;
     volts.push(dyadic(v));
+    doubles.push(v);
   }
   const branch = new Map<number, Dyadic>();
+  const branchDoubles = new Map<number, number>();
   for (const p of model.parts) {
     if (p.branch < 0) continue;
     const i = ng.branch(p.key);
     if (i === undefined || !Number.isFinite(i)) return undefined;
     branch.set(p.branch, dyadic(i));
+    branchDoubles.set(p.branch, i);
   }
   const v = (n: number): Dyadic => (n < 0 ? { m: 0n, q: 1n, e: 0 } : volts[n]!);
-  // The current leaving each node through the parts other than diodes.
-  const leaving: Dyadic[][] = model.nodes.map(() => []);
+  const vd = (n: number): number => (n < 0 ? 0 : doubles[n]!);
+  // The current leaving each node through the parts other than diodes, ground's last (at `ground`), and what
+  // ngspice's rounding may leave in each node's sum.
+  const ground = model.nodes.length;
+  const at = (n: number): number => (n < 0 ? ground : n);
+  const leaving: Dyadic[][] = Array.from({ length: ground + 1 }, () => []);
+  const rounding = new Float64Array(ground + 1);
   for (const p of model.parts) {
     let t: Dyadic[] = [];
+    let off = 0;
     if (p.kind === 'R') {
       const g: Fraction = { n: p.value.d, d: p.value.n };
       t = [times(v(p.a), g), negD(times(v(p.b), g))];
+      off = (ulp(vd(p.a)) + ulp(vd(p.b))) / Math.abs(toDouble(p.value));
     } else if (p.kind === 'I') t = [dyadicOf(p.value)];
-    else if (p.kind === 'G') t = [times(v(p.c), p.value), negD(times(v(p.d), p.value))];
-    else if (p.kind === 'F') t = [times(branch.get(model.parts[p.control]!.branch)!, p.value)];
-    else if (p.branch >= 0) t = [branch.get(p.branch)!];
-    for (const x of t) {
-      if (p.a >= 0) leaving[p.a]!.push(x);
-      if (p.b >= 0) leaving[p.b]!.push(negD(x));
+    else if (p.kind === 'G') {
+      t = [times(v(p.c), p.value), negD(times(v(p.d), p.value))];
+      off = Math.abs(toDouble(p.value)) * (ulp(vd(p.c)) + ulp(vd(p.d)));
+    } else if (p.kind === 'F') {
+      t = [times(branch.get(model.parts[p.control]!.branch)!, p.value)];
+      off = Math.abs(toDouble(p.value)) * ulp(branchDoubles.get(model.parts[p.control]!.branch)!);
+    } else if (p.branch >= 0) {
+      t = [branch.get(p.branch)!];
+      off = ulp(branchDoubles.get(p.branch)!);
     }
+    for (const x of t) {
+      leaving[at(p.a)]!.push(x);
+      leaving[at(p.b)]!.push(negD(x));
+    }
+    for (const n of [at(p.a), at(p.b)]) rounding[n] = rounding[n]! + off;
   }
   const limit = 1n << BigInt(MAX_BITS + 2200);
   const sums = new Map<number, Fraction>();
@@ -1095,11 +1119,33 @@ export function treeCurrents(model: ExactModel, tree: readonly number[], ng: Ngs
     else edges.set(n, new Set([k]));
   };
   for (const k of tree) {
-    link(model.parts[k]!.a, k);
-    link(model.parts[k]!.b, k);
+    link(at(model.parts[k]!.a), k);
+    link(at(model.parts[k]!.b), k);
+  }
+  // Each tree's node left out: the one whose sum ngspice's rounding leaves farthest from 0 (ground on a tie).
+  const roots = new Set<number>();
+  const seen = new Set<number>();
+  for (const start of edges.keys()) {
+    if (seen.has(start)) continue;
+    let root = start;
+    const stack = [start];
+    seen.add(start);
+    for (let n = stack.pop(); n !== undefined; n = stack.pop()) {
+      if (rounding[n]! > rounding[root]! || (rounding[n] === rounding[root] && n === ground)) root = n;
+      for (const k of edges.get(n)!) {
+        const p = model.parts[k]!;
+        for (const m of [at(p.a), at(p.b)]) {
+          if (!seen.has(m)) {
+            seen.add(m);
+            stack.push(m);
+          }
+        }
+      }
+    }
+    roots.add(root);
   }
   const out = new Map<number, Fraction>();
-  const queue = [...edges.keys()].filter((n) => n >= 0 && edges.get(n)!.size === 1);
+  const queue = [...edges.keys()].filter((n) => !roots.has(n) && edges.get(n)!.size === 1);
   for (let n = queue.pop(); n !== undefined; n = queue.pop()) {
     const set = edges.get(n)!;
     if (set.size !== 1) continue;
@@ -1108,20 +1154,18 @@ export function treeCurrents(model: ExactModel, tree: readonly number[], ng: Ngs
     const rest = sumAt(n);
     if (rest === undefined) return undefined;
     // What leaves n through the diode makes the currents leaving n add up to 0.
-    const i = n === p.a ? neg(rest) : rest;
+    const i = n === at(p.a) ? neg(rest) : rest;
     out.set(k!, i);
     set.delete(k!);
-    const m = n === p.a ? p.b : p.a;
+    const m = n === at(p.a) ? at(p.b) : at(p.a);
     const other = edges.get(m)!;
     other.delete(k!);
-    if (m >= 0) {
-      const had = sumAt(m);
-      if (had === undefined) return undefined;
-      const now = add(had, m === p.a ? i : neg(i));
-      if ((now.d < 0n ? -now.d : now.d) > limit) return undefined;
-      sums.set(m, now);
-      if (other.size === 1) queue.push(m);
-    }
+    const had = sumAt(m);
+    if (had === undefined) return undefined;
+    const now = add(had, m === at(p.a) ? i : neg(i));
+    if ((now.d < 0n ? -now.d : now.d) > limit) return undefined;
+    sums.set(m, now);
+    if (other.size === 1 && !roots.has(m)) queue.push(m);
   }
   return out;
 }
