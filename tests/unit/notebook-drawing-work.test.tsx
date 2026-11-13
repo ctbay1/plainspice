@@ -12,7 +12,8 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Drawing, NO_RESULTS, coverCost, drawingRoom, notebookSchematic, placeCard } from '../../src/notebook/index.ts';
+import { Drawing, NO_RESULTS, coverCost, drawingRoom, notebookSchematic, partBox, placeCard, placeNote, placeResults, wasMarks } from '../../src/notebook/index.ts';
+import type { ResultsInWords } from '../../src/spice/describe.ts';
 import type { NavItem, Schematic } from '../../src/schematic/index.ts';
 import { slantedLattice } from './schematic-hostile.ts';
 
@@ -193,5 +194,30 @@ describe('a click’s card finds its place by looking near each place it tries (
     checks.count = 0;
     expect(placeCard({ scene: sc, part: 'r1', view, area, width: 340, height: 230, pan: true, freeOnly: true })).toBeUndefined();
     expect(checks.count).toBeLessThan(1_000_000);
+  });
+});
+
+describe('a place beside something is looked for nearest first, without making every place on the paper (second re-check)', () => {
+  it('a red-pen note next to R1 and the old voltages crossed out, on a drawing that reaches ±2000: a few places made and sorted, not millions', () => {
+    // A frame at the edge of the coordinates: the paper the note may go on is 4,000 grid units wide,
+    // and every place a quarter of a unit apart along each side was made and sorted before the nearest
+    // free one was looked for: 1.6 million places sorted for the note (about a second of work, each
+    // time the page drew the notes again), 720,000 for each crossed-out voltage.
+    const frame = '*@ wire 7,5 7,2000 2000,2000 2000,-2000 -2000,-2000 -2000,2000 7,2000';
+    const s = notebookSchematic(`* divider\nV1 in 0 6\nR1 in out 1M\nR2 out 0 2k\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0 m\n*@ R1 4 0 270\n*@ R2 7 3 0\n${frame}\n.end\n`);
+    const sc = s.scene;
+    expect(sc.bounds.x1 - sc.bounds.x0).toBe(4000);
+    const words = (k: number): ResultsInWords => ({ status: 'ok', ngspiceError: false, nodes: [{ node: 'in', text: `${6 * k} V` }, { node: 'out', text: `${4 * k} V` }], currents: [], sweeps: [], warnings: [], summary: '', summarySpeech: '' }) as unknown as ResultsInWords;
+    const now = placeResults(sc, words(1));
+    const before = placeResults(sc, words(0.5));
+    const sort = vi.spyOn(Array.prototype, 'sort');
+    const note = placeNote(sc, partBox(sc, 'r1')!, 'R1 = 1M is 1 milliohm, not 1 megaohm: SPICE reads M as milli.');
+    const was = wasMarks(sc, now, before);
+    const sorted = sort.mock.contexts.reduce((n: number, list) => n + (list as unknown[]).length, 0);
+    sort.mockRestore();
+    expect(note).toBeDefined();
+    expect(was.length).toBe(2);
+    // 270 places sorted in all here, where 3 million were.
+    expect(sorted).toBeLessThan(20_000);
   });
 });

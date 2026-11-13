@@ -155,42 +155,90 @@ export function placeBeside(target: Box, w: number, h: number, room: Room, optio
   const reach = options.reach ?? Math.max(width(area), height(area));
   const cx = (target.x0 + target.x1) / 2;
   const cy = (target.y0 + target.y1) / 2;
-  const candidates: { box: Box; side: Side; rank: number; distance: number }[] = [];
-  sides.forEach((side, rank) => {
-    const along = side === 'above' || side === 'below';
-    // Away from the target (as near as the gap first), and along its side (its middle first).
-    const awaySteps = Math.max(0, Math.floor(reach / step));
-    const alongReach = along ? width(area) : height(area);
-    const alongSteps = Math.ceil(alongReach / step);
-    for (let a = 0; a <= awaySteps; a++) {
-      const away = gap + a * step;
-      for (let s = -alongSteps; s <= alongSteps; s++) {
-        const shift = s * step;
-        let box: Box;
-        if (side === 'above') box = { x0: cx - w / 2 + shift, y0: target.y0 - away - h, x1: cx + w / 2 + shift, y1: target.y0 - away };
-        else if (side === 'below') box = { x0: cx - w / 2 + shift, y0: target.y1 + away, x1: cx + w / 2 + shift, y1: target.y1 + away + h };
-        else if (side === 'right') box = { x0: target.x1 + away, y0: cy - h / 2 + shift, x1: target.x1 + away + w, y1: cy + h / 2 + shift };
-        else box = { x0: target.x0 - away - w, y0: cy - h / 2 + shift, x1: target.x0 - away, y1: cy + h / 2 + shift };
-        if (!inside(box, area)) continue;
-        candidates.push({ box, side, rank, distance: a * step + Math.abs(shift) });
-      }
-    }
-  });
-  if (!candidates.length) return undefined;
+  type Candidate = { box: Box; side: Side; rank: number; distance: number };
   // The first side with room wins, on it the nearest place; or, with a side penalty, the nearest place on any side.
   const pen = options.sidePenalty;
-  if (pen === undefined) candidates.sort((p, q) => p.rank - q.rank || p.distance - q.distance);
-  else candidates.sort((p, q) => p.distance + p.rank * pen - (q.distance + q.rank * pen));
-  // The first place that covers nothing, found by looking near each place and stopping at the first
-  // thing it covers; only when every place covers something is each one's cover summed, for the least,
-  // each sum stopping once it is no less than the least so far (on a drawing at the format's limits,
-  // summing each place's whole cover took two seconds a click; second re-check, P2).
-  for (const c of candidates) if (!covers(c.box, room)) return { box: c.box, side: c.side, cost: 0 };
+  const order = pen === undefined ? (p: Candidate, q: Candidate): number => p.rank - q.rank || p.distance - q.distance : (p: Candidate, q: Candidate): number => p.distance + p.rank * pen - (q.distance + q.rank * pen);
+  const keyOf = (distance: number, rank: number): number => (pen === undefined ? distance : distance + rank * pen);
+  // Away from the target (as near as the gap first), and along its side (its middle first).
+  const awaySteps = Math.max(0, Math.floor(reach / step));
+  const alongStepsOf = (side: Side): number => Math.ceil((side === 'above' || side === 'below' ? width(area) : height(area)) / step);
+  /**
+   * The places of the sides `ranks` whose order key is in (lo, hi], in the order they are made: side,
+   * then away, then along (from one end to the other). The key grows with the distance along, so the
+   * steps along that fall in the band are found by halving, not by making every place.
+   */
+  const band = (ranks: readonly number[], lo: number, hi: number): Candidate[] => {
+    const out: Candidate[] = [];
+    for (const rank of ranks) {
+      const side = sides[rank]!;
+      const alongSteps = alongStepsOf(side);
+      for (let a = 0; a <= awaySteps; a++) {
+        const away = gap + a * step;
+        const key = (s: number): number => keyOf(a * step + Math.abs(s * step), rank);
+        /** The first step along, from 0, whose key is above `k` (alongSteps + 1 when none is). */
+        const above = (k: number): number => {
+          let l = 0;
+          let r = alongSteps + 1;
+          while (l < r) {
+            const m = Math.floor((l + r) / 2);
+            if (key(m) > k) r = m;
+            else l = m + 1;
+          }
+          return l;
+        };
+        const first = above(lo);
+        const last = above(hi) - 1;
+        if (first > last) continue;
+        const add = (s: number): void => {
+          const shift = s * step;
+          let box: Box;
+          if (side === 'above') box = { x0: cx - w / 2 + shift, y0: target.y0 - away - h, x1: cx + w / 2 + shift, y1: target.y0 - away };
+          else if (side === 'below') box = { x0: cx - w / 2 + shift, y0: target.y1 + away, x1: cx + w / 2 + shift, y1: target.y1 + away + h };
+          else if (side === 'right') box = { x0: target.x1 + away, y0: cy - h / 2 + shift, x1: target.x1 + away + w, y1: cy + h / 2 + shift };
+          else box = { x0: target.x0 - away - w, y0: cy - h / 2 + shift, x1: target.x0 - away, y1: cy + h / 2 + shift };
+          if (inside(box, area)) out.push({ box, side, rank, distance: a * step + Math.abs(shift) });
+        };
+        for (let s = -last; s <= -Math.max(first, 1); s++) add(s);
+        for (let s = first; s <= last; s++) add(s);
+      }
+    }
+    return out;
+  };
+  // The places in order of their key, a band of keys at a time (each twice as wide as the one before),
+  // each band put in order as all the places were: the same order, but only the places up to the first
+  // free one are made and sorted. Making every place first grew with the paper, not with what is
+  // drawn: a note on a drawing that reaches ±2000 made and sorted three million places (second
+  // re-check). With no side penalty, each side's places come before the next side's.
+  const longest = awaySteps * step + Math.max(...sides.map(alongStepsOf)) * step;
+  const top = keyOf(longest, sides.length - 1) * (1 + 1e-9) + step;
+  const lazy = step > 0 && Number.isFinite(top);
+  const groups = pen === undefined ? sides.map((_, r) => [r]) : [sides.map((_, r) => r)];
+  const made: Candidate[][] = [];
+  for (const ranks of groups) {
+    let lo = -Infinity;
+    for (let hi = 8 * step; ; hi *= 2) {
+      const upTo = !lazy || hi >= top ? Infinity : hi;
+      const list = band(ranks, lo, upTo);
+      list.sort(order);
+      // The first place that covers nothing, found by looking near each place and stopping at the first
+      // thing it covers (on a drawing at the format's limits, summing each place's whole cover took two
+      // seconds a click; second re-check, P2).
+      for (const c of list) if (!covers(c.box, room)) return { box: c.box, side: c.side, cost: 0 };
+      if (!options.freeOnly) made.push(list);
+      if (upTo === Infinity) break;
+      lo = upTo;
+    }
+  }
   if (options.freeOnly) return undefined;
+  // Only when every place covers something is each one's cover summed, for the least, each sum
+  // stopping once it is no less than the least so far.
   let best: Placement | undefined;
-  for (const c of candidates) {
-    const cost = coverCostBelow(c.box, room, best ? best.cost : Infinity);
-    if (!best || cost < best.cost) best = { box: c.box, side: c.side, cost };
+  for (const list of made) {
+    for (const c of list) {
+      const cost = coverCostBelow(c.box, room, best ? best.cost : Infinity);
+      if (!best || cost < best.cost) best = { box: c.box, side: c.side, cost };
+    }
   }
   return best && Number.isFinite(best.cost) ? best : undefined;
 }

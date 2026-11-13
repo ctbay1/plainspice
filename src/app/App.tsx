@@ -1857,7 +1857,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const part = firstScreenInvite;
     const room = drawingRoom(shown.scene, viewInfo.view, area);
     const target = boxOnScreen(viewInfo.view, unionBoxes([part.box, part.labelBox])!);
-    const p = placeBeside(target, noteRect.width + 8, noteRect.height + 8, room, { gap: 30, sides: ['above', 'right', 'left', 'below'], step: 8 });
+    const p = placeBeside(target, noteRect.width + 8, noteRect.height + 8, room, { gap: 30, sides: ['above', 'right', 'left', 'below'], step: 8, freeOnly: true });
     if (!p || p.cost > 0) return undefined;
     const box = { x0: p.box.x0 + 4, y0: p.box.y0 + 4, x1: p.box.x1 - 4, y1: p.box.y1 - 4 };
     const name = part.labels.find((l) => l.role === 'name');
