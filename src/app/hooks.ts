@@ -80,10 +80,7 @@ export function useRect<T extends HTMLElement>(): [(el: T | null) => void, Rect]
  * sizes (the words in them wrapping again), and what is in it (other words, a child replaced by another,
  * which is then watched in its turn). It also marks which ends hide some of the content, as it scrolls
  * (`data-more`: "above", "below" or "both"; none while all of it shows), so the page can show it: a box
- * cut exactly between two lines of words gives no other sign that there are more. A change the watchers
- * see is marked in the next frame: the mark can change the box's size (app.css, .hint-scroll[data-more]),
- * and a box watched changing size inside a ResizeObserver's delivery is the window's "ResizeObserver loop"
- * error (the Plot sheet opened on a phone, a11y-phone-4).
+ * cut exactly between two lines of words gives no other sign that there are more.
  */
 export function useOverflowing<T extends HTMLElement>(): [(el: T | null) => void, boolean] {
   const [over, setOver] = useState(false);
@@ -104,25 +101,19 @@ export function useOverflowing<T extends HTMLElement>(): [(el: T | null) => void
         else delete el.dataset.more;
       }
     };
-    let frame = 0;
-    const endsLater = (): void => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(ends);
-    };
-    const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => update(endsLater));
-    const update = (mark: () => void): void => {
+    const ro = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => update());
+    const update = (): void => {
       setOver(el.scrollHeight > el.clientHeight + 1);
-      mark();
+      ends();
       // Watching an element already watched does nothing; a new child is watched from now on.
       for (const child of el.children) ro?.observe(child);
     };
     ro?.observe(el);
-    const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(() => update(endsLater));
+    const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(update);
     mo?.observe(el, { childList: true, subtree: true, characterData: true });
     el.addEventListener('scroll', ends, { passive: true });
-    update(ends);
+    update();
     stop.current = () => {
-      cancelAnimationFrame(frame);
       ro?.disconnect();
       mo?.disconnect();
       el.removeEventListener('scroll', ends);

@@ -3344,9 +3344,9 @@ html[data-contrast='more'] .lines .hint {
   min-height: 1.375rem;
   overscroll-behavior: contain;
 }
-/* Squeezed (it hides words: hooks.ts, useOverflowing sets data-more as it measures, or in the frame after
-   a change its watchers see), a line and a half: the first line whole and the top of the next, which fades
-   (below), so the box says that more words follow. Cut to its first line, the box's fade fell on the bottoms of its
+/* Squeezed (it hides words: hooks.ts, useOverflowing sets data-more as it measures, before the page is
+   drawn), a line and a half: the first line whole and the top of the next, which fades (below), so the
+   box says that more words follow. Cut to its first line, the box's fade fell on the bottoms of its
    letters and could not be seen (an iPhone SE with the largest text, a part in hand). */
 .hint-scroll[data-more] {
   min-height: 2.0625rem;

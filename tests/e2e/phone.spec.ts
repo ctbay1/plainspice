@@ -1256,11 +1256,12 @@ test('the Numbers and Plot sheets keep their rows where they are through each ru
   expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), '320 × 568, Plot open: window errors').toEqual([]);
 });
 
-test('the Plot sheet opened on a phone, and opened again, raises no "ResizeObserver loop" error (AP-2)', async ({ page }) => {
-  // The last pass's a11y-phone-4: opening it (RC charging) raised the window error on c520a49, about 1 run
-  // in 3 there and 5 of 5 at a load of 10 to 20, on an iPhone SE, a Pixel 7 on its side and 640 × 400. Two
-  // watchers changed a watched box's size inside a ResizeObserver's delivery: the hint's mark of hidden words
-  // (data-more, which gives it a line and a half), and the sheet laid out afresh as its plot came in.
+test('the first plot drawn into a phone\'s Plot sheet raises no "ResizeObserver loop" error: opened on a sweep, or open when a sweep is chosen (AP-2)', async ({ page }) => {
+  // The last pass's a11y-phone-4: on c520a49 the window reported the error each time a page drew its first plot
+  // into the sheet (RC charging; 5 of 5 on an iPhone SE, a Pixel 7 on its side and 640 × 400 at a load of 10 to
+  // 20): the plot took the place of "Loading the plot…", none of the rows noted in view was left, and the
+  // sheet's hold laid the sheet out afresh inside its ResizeObserver's delivery, changing the size of boxes
+  // other watchers watch. A second opening in the same page draws no first plot: it never raised it.
   for (const view of [
     { width: 320, height: 568 },
     { width: 863, height: 360 },
@@ -1268,23 +1269,28 @@ test('the Plot sheet opened on a phone, and opened again, raises no "ResizeObser
   ] as const) {
     const at = `${view.width} × ${view.height}`;
     await page.setViewportSize(view);
+    // Plot open on Start here (no sweep), then a sweep chosen: its first plot comes into the open sheet.
+    await openApp(page);
+    await expectSolved(page);
+    await logSheetRows(page);
+    const plot = await openPanel(page, 'plot');
+    await expect(plot).toContainText(t('plotNone'));
+    await chooseExample(page, 'RC charging (.tran)');
+    await expectSolved(page);
+    await expect(plot.locator('figure'), `${at}, Plot open as the sweep is chosen: its plot`).toBeVisible();
+    await settle(page);
+    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}, Plot open as the sweep is chosen: window errors`).toEqual([]);
+    // A new page: the sweep chosen, then Plot opened from More.
     await openApp(page);
     await expectSolved(page);
     await chooseExample(page, 'RC charging (.tran)');
     await expectSolved(page);
     await settle(page);
-    // The window's errors from here on (logSheetRows starts the log after the page was opened).
     await logSheetRows(page);
-    for (const time of ['first', 'again']) {
-      const plot = await openPanel(page, 'plot');
-      await expect(plot.locator('figure'), `${at}, opened ${time}: its plot`).toBeVisible();
-      await settle(page);
-      await closePanel(page, 'plot');
-      await settle(page);
-    }
+    await expect((await openPanel(page, 'plot')).locator('figure'), `${at}, Plot opened on the sweep: its plot`).toBeVisible();
+    await settle(page);
     await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
-    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}: window errors`).toEqual([]);
-    await page.evaluate(() => localStorage.removeItem('plainspice:netlist'));
+    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}, Plot opened on the sweep: window errors`).toEqual([]);
   }
 });
 
