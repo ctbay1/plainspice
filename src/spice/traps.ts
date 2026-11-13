@@ -1076,17 +1076,21 @@ function printedNames(c: Ctx, i: number): string[] | undefined {
  * A resistor's value that ngspice reads as 0 because of how it is written (0<zero-width space>.47,
  * 0R47, 0．47, 1,0): ngspice 47 cannot use 0 Ω, so it uses 1e-12 Ω and warns, and ngspice 42 used 1 mΩ
  * without a word (zero-ohm-1, zero-ohm-4). The check that reads the value says so, never "says
- * nothing", and zero-ohm leaves such a value to it (re-check critic CR1-1). `who`: the resistor's names in
- * ngspice's messages (printedNames), r.x1.r1 inside a subcircuit (zero-ohm-6).
+ * nothing", and zero-ohm leaves such a value to it (re-check critic CR1-1). So for any other value below
+ * 1e-12 Ω in size (3a, 1e-15, -3a): ngspice 47 uses 1e-12 Ω (−1e-12 Ω for a negative one) and warns, and
+ * ngspice 42 keeps it as written, without a word (zero-ohm-7, P24; last pass F4). `who`: the resistor's names
+ * in ngspice's messages (printedNames), r.x1.r1 inside a subcircuit (zero-ohm-6).
  */
 function zeroOhm(letter: ElementLetter | undefined, value: number, who: readonly string[] | undefined): { says: string; claims: string } | undefined {
-  if (letter !== 'R' || value !== 0) return undefined;
-  return { says: `which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${tooSmall(who)} (ngspice 42 used 0.001 Ω without a word).`, claims: `zero-ohm-1, zero-ohm-4${who?.length === 1 && !who[0]!.includes('.') ? '' : ', zero-ohm-6'}` };
+  if (letter !== 'R' || !(Math.abs(value) < 1e-12)) return undefined;
+  const sub = who?.length === 1 && !who[0]!.includes('.') ? '' : ', zero-ohm-6';
+  if (value === 0) return { says: `which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${tooSmall(who)} (ngspice 42 used 0.001 Ω without a word).`, claims: `zero-ohm-1, zero-ohm-4${sub}` };
+  return { says: `which ngspice 47 cannot use: it uses ${value < 0 ? MINUS : ''}1e-12 Ω instead and ${tooSmall(who, value)} (ngspice 42 keeps it as written, without a word).`, claims: `zero-ohm-7${sub}` };
 }
 
-/** "warns 'Value of resistor r1 is too small, set to 1.000000e-12'", with ngspice's name for each use of the resistor (zero-ohm-1, -6). */
-function tooSmall(who: readonly string[] | undefined): string {
-  const quote = (n: string): string => `'Value of resistor ${n} is too small, set to 1.000000e-12'`;
+/** "warns 'Value of resistor r1 is too small, set to 1.000000e-12'", with ngspice's name for each use of the resistor (zero-ohm-1, -6), and -1.000000e-12 for a negative value (zero-ohm-7). */
+function tooSmall(who: readonly string[] | undefined, value = 0): string {
+  const quote = (n: string): string => `'Value of resistor ${n} is too small, set to ${value < 0 ? '-' : ''}1.000000e-12'`;
   if (!who) return "warns that the resistor's value is too small, once for each use of its subcircuit";
   return `warns ${quote(who[0]!)}${who.length > 1 ? `, and the same for ${list(who.slice(1))}` : ''}`;
 }
@@ -4089,20 +4093,26 @@ function checkZeroOhm(c: Ctx, i: number): void {
   if (e.letter !== 'R' || v === undefined || Math.abs(v) >= 1e-12 || e.nodes.length < 2) return;
   const [a, b] = [e.nodes[0]!.name, e.nodes[1]!.name];
   const across = a !== b && !c.graph.inSubcircuit.has(i) && c.graph.voltagePaths.same(a, b) ? voltageAcross(c, a, b) : undefined;
+  // A value that is not 0 (3a, 1e-15): ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative one, and ngspice 42
+  // keeps it as written (zero-ohm-7, P24; last pass F4).
+  const zero = v === 0;
+  const sign = v < 0 ? '-' : '';
   if (across?.nonzero) {
     // zero-ohm-2: ngspice puts 1e-12 ohm there, so the current is the voltage times a million million.
     const sources = across.parts.filter((p) => p.letter !== 'L').map(nameOf);
-    add(c, 'zero-ohm', 'error', e.value!.token, `${nameOf(e)} shorts ${list(sources)}: its current has no finite answer`,
-      `A resistance of 0 straight across ${sources.length === 1 ? 'a voltage source' : 'voltage sources'} would need an endless current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where ${nameOf(e)} should go.`,
-      `ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to 1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2]`);
+    add(c, 'zero-ohm', 'error', e.value!.token, `${nameOf(e)} shorts ${list(sources)}: ${zero ? 'its current has no finite answer' : 'its current comes out enormous'}`,
+      `A resistance ${zero ? 'of 0' : 'this close to 0'} straight across ${sources.length === 1 ? 'a voltage source' : 'voltage sources'} would need ${zero ? 'an endless' : 'an enormous'} current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where ${nameOf(e)} should go.`,
+      `ngspice 47 uses ${sign ? MINUS : ''}1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to ${sign}1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2${zero ? '' : ', zero-ohm-7'}]`);
     return;
   }
   // A 0 that another check already explains (0<zero-width space>.47, 0R47, 0k47, 0．47 ...: the student
   // meant 470 mΩ, and ngspice reads 0 only because of how it is written) is that check's: its fix
   // writes what was meant, where "Use a 0 V source" would make a short (re-check C1), and its words say
-  // what ngspice 47 does with 0 Ω, as these do (zeroOhm; its critic, CR1-1).
+  // what ngspice 47 does with 0 Ω, as these do (zeroOhm; its critic, CR1-1). So is any other value below
+  // 1e-12 Ω another check explains (3a, unit-letter): one card for one word, which says what each version
+  // does with it (zeroOhm), where "Use a 0 V source" would make a short where 3 Ω was meant (last pass F4).
   const tok = e.value!.token;
-  if (v === 0 && (c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
+  if ((c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
   const fixes: Fix[] = [];
   if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
     const name = freshName(c, `V${e.name.text}`);
@@ -4112,8 +4122,11 @@ function checkZeroOhm(c: Ctx, i: number): void {
   const who = printedNames(c, i);
   const inside = !(who?.length === 1 && !who[0]!.includes('.'));
   add(c, 'zero-ohm', 'warning', e.value!.token, `${nameOf(e)} has a resistance of ${formatSI(v, 'Ω')}`,
-    "SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).",
-    `ngspice 47 uses 1e-12 Ω instead and ${tooSmall(who)}. ngspice 42 used 0.001 Ω without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2${inside ? ', zero-ohm-6' : ''}]`,
+    `${zero ? "SPICE can't use a resistance of exactly 0" : "A resistance this small is almost 0, and SPICE can't use a resistance of 0"}: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).`,
+    // The 4th digit is zero-ohm-1's; other circuits change elsewhere, or by far more (last pass F5).
+    zero
+      ? `ngspice 47 uses 1e-12 Ω instead and ${tooSmall(who)}. ngspice 42 used 0.001 Ω without a word, which, in one test, changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2${inside ? ', zero-ohm-6' : ''}]`
+      : `ngspice 47 uses ${sign ? MINUS : ''}1e-12 Ω instead and ${tooSmall(who, v)}. ngspice 42 keeps it as written, without a word. [zero-ohm-7${inside ? ', zero-ohm-6' : ''}]`,
     fixes);
 }
 

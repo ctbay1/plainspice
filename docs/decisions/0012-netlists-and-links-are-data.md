@@ -749,3 +749,25 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   fails is quoted as it prints it, "Note: Transient op started", where five texts quoted a
   lower-case 'transient op'. A unit test (`tests/unit/traps-last-pass-words.test.ts`) checks, on the
   parts that reach these texts, that none of these 47-only messages is put to plain "ngspice".
+- **A resistance below 1e-12 Ω that is not 0** (last pass F4). The words for a 0 (C1, CR1-1 above)
+  covered a value of exactly 0 only: on `R1 n1 0 3a` the unit-letter card said "ngspice reads 3a as 3
+  attoohms and says nothing", where native ngspice 47 warns "Value of resistor r1 is too small, set to
+  1.000000e-12" and uses 1e-12 Ω, and the zero-ohm card beside it said "ngspice 42 used 0.001 Ω", where
+  ngspice 42 keeps 3 aΩ as written (P24). From runs of every such value (zero-ohm-7, zero-ohm-8):
+  ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative value (quoted "set to -1.000000e-12"), with a
+  warning; ngspice 42 keeps any value that is not 0 as written, without a word, and uses 1 mΩ for 0
+  only. The words every check gives a resistor's value (`zeroOhm` in `src/spice/traps.ts`: unit-letter,
+  mega-as-milli, rkm-notation, greek-mu, the character checks, the settings, a decimal comma, a sign)
+  now say that for any value below 1e-12 Ω in size, and the zero-ohm check leaves such a value to the
+  check that explains how it is written, as it did for a 0: one card for one word, whose fix writes
+  what was meant ("Write 3 (3 ohms)"), where "Use a 0 V source instead" would make a short. The error
+  for a resistor straight across a source stays beside it ("its current comes out enormous" for a value
+  that is not 0; 6e12 A in ngspice 47 with 3a too). We chose this over the reviewer's other ways (no
+  unit-letter card on a resistor, which would leave only the 0 V source; or "see the other check",
+  which keeps two cards for one word), as the skeptic of the problem argued.
+- **"In one test"** (last pass F5). "ngspice 42 used 0.001 Ω without a word, which changed the answer
+  in the 4th digit" was said for every 0 Ω resistor, but holds for zero-ohm-1's circuit only: with a
+  subcircuit the answer changes in the 3rd digit (zero-ohm-6), in series with 1 kΩ the current in the
+  2nd (P13), across a source by a factor of 1e9 (zero-ohm-2). The words now say "which, in one test,
+  changed the answer in the 4th digit", as the other checks say a test's numbers ("in one test a 6 V
+  source then gave 6e12 A").

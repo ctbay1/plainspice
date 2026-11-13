@@ -85,12 +85,67 @@ describe('F10: a message only ngspice 47 prints is said as ngspice 47’s, with 
 
   it('no other text puts these 47-only messages to plain "ngspice"', () => {
     const only47 = ['no such parameter on this device or parameter is missing', 'mal formed B source instance', 'no simulations run!'];
-    const lines = ['R1 n1 0 1 p', 'R1 n1 0 1k i', 'C1 n1 0 1 p', 'L1 n1 0 1 v', 'L1 n1 0 1m i', 'B1 n1 0 5', 'E1 n1 0 n2 0 2 p', 'G1 0 n1 n2 0 2 i', 'V2 n2 0 PULSE(0 ​1 0 1n 1n 1 2)'];
+    const lines = ['R1 n1 0 1 p', 'R1 n1 0 1k i', 'C1 n1 0 1 p', 'L1 n1 0 1 v', 'L1 n1 0 1m i', 'B1 n1 0 5', 'E1 n1 0 n2 0 2 p', 'G1 0 n1 n2 0 2 i', 'V2 n2 0 PULSE(0 \u200b1 0 1n 1n 1 2)'];
     for (const line of lines) {
       for (const t of traps(`* t\nI1 0 n1 1\nR0 n1 0 1k\n${line}\nR8 n2 0 1k\n.op\n.end\n`)) {
         for (const q of only47) for (const who of quotedBy(t.ngspice, q)) expect([`${line}: ${who}`]).not.toContain(`${line}: ngspice`);
       }
     }
     for (const who of quotedBy(first('* t\nV1 a 0 6\nR1 a 0 2\n.end\n', 'no-analysis').ngspice, 'no simulations run!')) expect(who).toBe('ngspice 47');
+  });
+});
+
+describe('F4, F5: a resistance below 1e-12 Ω, said as each ngspice version treats it (zero-ohm-1, -7, -8, P24)', () => {
+  const warn47 = (name: string, sign = ''): string => `warns 'Value of resistor ${name} is too small, set to ${sign}1.000000e-12'`;
+
+  it('3a on a resistor: one card, unit-letter’s, saying ngspice 47 warns and raises it and ngspice 42 keeps it; its fix writes 3 (P24, zero-ohm-8)', () => {
+    const found = traps('* 3a on a resistor\nI1 0 n1 1\nR1 n1 0 3a\n.op\n.end\n');
+    expect(found.map((t) => t.id)).toEqual(['unit-letter']);
+    expect(found[0]!.ngspice).toBe(
+      `ngspice reads 3a as 3 attoohms, which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${warn47('r1')} (ngspice 42 keeps it as written, without a word). [unit-letter-1, unit-letter-2, zero-ohm-7]`,
+    );
+    expect(found[0]!.ngspice).not.toMatch(/says nothing|without a message|0\.001/);
+    expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Write 3 (3 ohms)']);
+    // Across a source the error stays beside it, as for a 0 (zero-ohm-2, -8).
+    const across = traps('* t\nV1 a 0 6\nR1 a 0 3a\n.op\n.end\n');
+    expect(across.map((t) => [t.id, t.severity])).toEqual([['unit-letter', 'warning'], ['zero-ohm', 'error']]);
+    expect(across[1]!.title).toBe('R1 shorts V1: its current comes out enormous');
+    expect(across[1]!.why).toMatch(/^A resistance this close to 0 straight across a voltage source would need an enormous current/);
+  });
+
+  it('a plain value below 1e-12 Ω that is not 0: ngspice 42 keeps it as written, and a negative one is set to −1e-12 Ω (zero-ohm-7)', () => {
+    const f = first('* t\nV1 a 0 6\nR1 a b 1f\nR2 b 0 2\n.op\n.end\n', 'zero-ohm');
+    expect([f.title, f.ngspice]).toEqual(['R1 has a resistance of 1\u00a0fΩ', `ngspice 47 uses 1e-12 Ω instead and ${warn47('r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7]`]);
+    expect(f.why).toBe("A resistance this small is almost 0, and SPICE can't use a resistance of 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).");
+    expect(f.fixes.map((x) => x.label)).toEqual(['Use a 0 V source instead (VR1)']);
+    const neg = first('* t\nV1 a 0 6\nR1 a b -3e-18\nR2 b 0 2\n.op\n.end\n', 'zero-ohm');
+    expect(neg.ngspice).toBe(`ngspice 47 uses −1e-12 Ω instead and ${warn47('r1', '-')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7]`);
+    expect(first('* t\nV1 a 0 6\nR1 a b -3a\nR2 b 0 2\n.op\n.end\n', 'unit-letter').ngspice).toContain(`${warn47('r1', '-')} (ngspice 42 keeps it as written, without a word)`);
+    // Inside a subcircuit, with ngspice's name for each use (zero-ohm-6).
+    const sub = first('* t\n.subckt div a b\nR1 a b 1f\nR2 b 0 1\n.ends\nV1 in 0 1\nX1 in out div\n.op\n.end\n', 'zero-ohm');
+    expect(sub.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r.x1.r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-6]`);
+  });
+
+  it('a value of exactly 0 keeps ngspice 42’s 1 mΩ, and the 4th digit is said as one test’s (zero-ohm-1; F5)', () => {
+    const f = first('* a 0 ohm resistor\nV1 a 0 6\nR1 a b 0\nR2 b 0 2\n.op\n.end\n', 'zero-ohm');
+    expect(f.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r1')}. ngspice 42 used 0.001 Ω without a word, which, in one test, changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]`);
+    expect(f.why).toMatch(/^SPICE can't use a resistance of exactly 0/);
+    // Never "0.001" or the 4th digit for a value that is not 0.
+    for (const value of ['1f', '1e-15', '-1e-13', '0.5p', '999999a']) {
+      for (const t of traps(`* t\nV1 a 0 6\nR1 a b ${value}\nR2 b 0 2\n.op\n.end\n`)) expect(`${value}: ${t.ngspice}`).not.toMatch(/0\.001|4th digit|says nothing|without a message/);
+    }
+    // 1e-12 itself is no trap: ngspice 47 warns only below it (zero-ohm-7's sweep: 1e-12, 1p and 1000000a run silently).
+    expect(traps('* t\nV1 a 0 6\nR1 a b 1p\nR2 b 0 2\n.op\n.end\n')).toEqual([]);
+  });
+
+  it('every check that reads a tiny value says what ngspice 47 and 42 do with it, never "without a message" (mega-as-milli, a hidden character, a decimal comma)', () => {
+    const mega = first('* t\nV1 a 0 6\nR1 a b 1e-10M\nR2 b 0 2\n.op\n.end\n', 'mega-as-milli');
+    expect(mega.ngspice).toContain(`which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${warn47('r1')} (ngspice 42 keeps it as written, without a word)`);
+    const hidden = first('* t\nV1 a 0 6\nR1 a b 1e-15\u200b5\nR2 b 0 2\n.op\n.end\n', 'invisible-character');
+    expect(hidden.ngspice).toContain(`which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${warn47('r1')} (ngspice 42 keeps it as written, without a word)`);
+    expect(hidden.ngspice).not.toContain('without a message');
+    for (const text of ['* t\nV1 a 0 6\nR1 a b 1e-10M\nR2 b 0 2\n.op\n.end\n', '* t\nV1 a 0 6\nR1 a b 1e-15\u200b5\nR2 b 0 2\n.op\n.end\n']) {
+      expect(traps(text).map((t) => t.id), text).not.toContain('zero-ohm');
+    }
   });
 });

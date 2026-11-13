@@ -54,7 +54,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | Trap | What it catches | Severity | What ngspice does |
 |---|---|---|---|
 | [mega-as-milli](#mega-as-milli) | `1M`, `4.7M`, `1MOhm` as a value | warning | reads milli, silently |
-| [unit-letter](#unit-letter) | `3A` (atto), `1F` on a capacitor (femto) | warning, info | reads atto or femto, silently |
+| [unit-letter](#unit-letter) | `3A` (atto), `1F` on a capacitor (femto) | warning, info | reads atto or femto, silently (on a resistor ngspice 47 warns that it is too small: see zero-ohm) |
 | [greek-mu](#greek-mu) | the Greek letter μ in a value | warning | ignores it; silently, except a model warning on C and L |
 | [rkm-notation](#rkm-notation) | `2k2`, `4k7`, `1M5`, `4R7` | warning | ignores the digits after the letter, silently (`0R47` is 0 Ω: see zero-ohm) |
 | [decimal-comma](#decimal-comma) | `1,5k` | error, warning | R, C, L: keeps the second number; V, I: stops |
@@ -83,7 +83,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [no-analysis](#no-analysis) | no analysis line | error | runs nothing |
 | [missing-end](#missing-end) | no `.end` | info | fine from a file |
 | [after-end](#after-end) | lines after `.end` | warning | still read from a file (unless `.end;...`) |
-| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω, `r=0` too (a 0 another check explains is that check's, with the same words) | warning, error | 47: 1e-12 Ω with a warning (inside a subcircuit for r.x1.r1); 42: 1 mΩ silently; across a source: absurd currents |
+| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω, `r=0` too (a 0 another check explains is that check's, with the same words) | warning, error | 47: 1e-12 Ω with a warning (inside a subcircuit for r.x1.r1; −1e-12 Ω for a negative value); 42: 1 mΩ for 0, any other value as written, silently; across a source: absurd currents |
 | [fatal-syntax](#fatal-syntax) | an unclosed `{` or `'`, an undefined parameter, a malformed B line | error | stops with a fatal error |
 | [include-not-available](#include-not-available) | `.include`, `.lib file section`, `.lib` with one word | error | stops: the file is not there, or `.lib` is not recognised |
 | [lost-continuation](#lost-continuation) | a `+` line that ngspice loses | warning | loses it, silently |
@@ -189,6 +189,8 @@ PlainSpice's checks: `mega-as-milli`, `mega-as-milli`, `mega-as-milli`.
 ## unit-letter
 
 A value whose scale letter is `A`/`a` (atto) on any part with a main value, or `F` (femto) on a capacitor. Warning; a lower-case `f` on a capacitor is only info, because femtofarads are sometimes meant. Fix: the number alone (`3`, `1`). `100mA` or `10uF` raise nothing: the scale letter is m or u and the letters after it are ignored (unit-letter-3).
+
+On a resistor an atto value is below 1e-12 Ω (`3a` is 3e-18 Ω): ngspice 47 raises it to 1e-12 Ω and warns, and ngspice 42 keeps it as written, without a word (zero-ohm-7, zero-ohm-8, P24). After the last pass (13 November 2026, F4) this check says so there, where it said "says nothing", and the zero-ohm check leaves such a value to it: one card for the word, whose fix writes the number meant.
 
 What PlainSpice shows for unit-letter-1 (warning, line 2):
 
@@ -7773,11 +7775,13 @@ PlainSpice's checks: `after-end`.
 
 A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3). An error, with no fix, when the resistor sits straight across a voltage source, or a chain of voltage sources and inductors whose voltages need not add up to 0: its current then has no finite answer, and ngspice's stand-in gives an absurd one (zero-ohm-2: 6e12 A from a 6 V source). After the re-check of the fixes (12 November 2026, C1), a 0 that another check already explains (`0<ZWSP>.47`, `0R47`, `0k47`, `0．47`: 470 mΩ was meant) is that check's, whose fix writes what was meant; the 0 V source would make a short. The error across a source stays. After the critic of those fixes (12 November 2026, CR1-1), that check says what this one says of a 0, from the runs of zero-ohm-4: ngspice 47 uses 1e-12 Ω and warns, ngspice 42 used 1 mΩ without a word; never "without a message" or "says nothing".
 
+After the last pass (13 November 2026, F4 and F5), the same for a value below 1e-12 Ω that is not 0 (zero-ohm-7, zero-ohm-8, P24): ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative value, and warns ("set to -1.000000e-12" for a negative one), and ngspice 42 keeps the value as written, without a word; only a value of exactly 0 becomes 1 mΩ in ngspice 42. Such a value that another check explains (`3a`, unit-letter) is that check's alone, whose words say what each version does, where "Use a 0 V source" would make a short where 3 Ω was meant; the error across a source stays. The 4th digit in the words for a 0 is zero-ohm-1's test only: other circuits change in other digits (zero-ohm-6: the 3rd; P13: the 2nd), or by far more across a source (zero-ohm-2), so the words say "in one test".
+
 What PlainSpice shows for zero-ohm-1 (warning, line 3):
 
 > **R1 has a resistance of 0 Ω.** SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
 >
-> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 Ω without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]
+> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 Ω without a word, which, in one test, changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]
 >
 > *Fixes:* "Use a 0 V source instead (VR1)"
 
@@ -7804,6 +7808,30 @@ What PlainSpice shows for zero-ohm-4 (warning, line 4):
 > *ngspice:* ngspice reads 0R47 as 0 Ω (R2), which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to 1.000000e-12' (ngspice 42 used 0.001 Ω without a word). [rkm-notation-1, zero-ohm-1, zero-ohm-4]
 >
 > *Fixes:* "Write 0.47 (470 mΩ)"
+
+What PlainSpice shows for zero-ohm-7 (warning, line 3):
+
+> **R1 has a resistance of 1 fΩ.** A resistance this small is almost 0, and SPICE can't use a resistance of 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
+>
+> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7]
+>
+> *Fixes:* "Use a 0 V source instead (VR1)"
+
+What PlainSpice shows for zero-ohm-7 (warning, line 5):
+
+> **R2 has a resistance of −3 aΩ.** A resistance this small is almost 0, and SPICE can't use a resistance of 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
+>
+> *ngspice:* ngspice 47 uses −1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to -1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7]
+>
+> *Fixes:* "Use a 0 V source instead (VR2)"
+
+What PlainSpice shows for zero-ohm-8 (warning, line 3):
+
+> **3a means 3 attoohms.** A is not amps here: SPICE reads it as the scale letter a, atto (10⁻¹⁸), and it does not use units. Write the number alone: 3 means 3 ohms.
+>
+> *ngspice:* ngspice reads 3a as 3 attoohms, which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12' (ngspice 42 keeps it as written, without a word). [unit-letter-1, unit-letter-2, zero-ohm-7]
+>
+> *Fixes:* "Write 3 (3 ohms)"
 
 ### zero-ohm-1. A 0 Ω resistor: 47 uses 1e-12 Ω and warns, 42 used 1 mΩ silently
 
@@ -8050,6 +8078,86 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `zero-ohm`, `invisible-character`.
+
+### zero-ohm-7. Below 1e-12 Ω but not 0: ngspice 47 uses 1e-12 Ω (−1e-12 Ω for a negative value) and warns; ngspice 42 keeps the value as written, silently
+
+Added after the last pass (13 November 2026, F4). A current of 1 A goes into each resistor, so each node sits at the resistance ngspice uses: ngspice 47 raises 1e-15 and 3a (3e-18) to 1e-12 Ω and −3e-18 to −1e-12 Ω, with a warning for each; ngspice 42 keeps all three as written and says nothing. Only a value of exactly 0 becomes 1 mΩ in ngspice 42 (zero-ohm-1). R1 and R2 get zero-ohm's warning; 3a is unit-letter's alone (zero-ohm-8).
+
+```spice
+* resistances below 1e-12 ohm that are not 0, 1 A into each: each node is at the resistance used
+I1 0 n1 1
+R1 n1 0 1e-15
+I2 0 n2 1
+R2 n2 0 -3e-18
+I3 0 n3 1
+R3 n3 0 3a
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n3                               1.000000e-12
+        n2                               -1.00000e-12
+        n1                               1.000000e-12
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+    Warning: Value of resistor r2 is too small, set to -1.000000e-12
+    Warning: Value of resistor r3 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 1e-12
+ngspice 42, ngspice -b (exit 0):
+        n3                               3.000000e-18
+        n2                               -3.00000e-18
+        n1                               1.000000e-15
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1e-15, v(n2) = -3.0000000000000002e-18, v(n3) = 3.0000000000000002e-18
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same messages as ngspice 47
+    vectors: v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 1e-12
+```
+
+PlainSpice's checks: `zero-ohm`, `zero-ohm`, `unit-letter`.
+
+### zero-ohm-8. 3a on a resistor: one check for the word; in series ngspice 42's current goes wrong, and across a source ngspice 47 gives 6e12 A
+
+Added after the last pass (13 November 2026, F4). 3a is read as 3 attoohms (unit-letter), which ngspice 47 raises to 1e-12 Ω with a warning, as in zero-ohm-7. In series with 2 Ω, ngspice 47 gives the 3 A of a wire; ngspice 42 keeps 3 aΩ and gives the source a current of 0 A, though 6 V sits across the 2 Ω. Straight across a 6 V source, ngspice 47 gives 6e12 A, as for a 0 (zero-ohm-2), and ngspice 42 gives 2e18 A. The unit-letter check owns each 3a, and its words say what each version does; the error for the resistor across the source stays, as for a 0.
+
+```spice
+* 3a in series with 2 ohm, and 3a across a voltage source
+V1 a 0 6
+R1 a b 3a
+R2 b 0 2
+V2 c 0 6
+R3 c 0 3a
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        c                                6.000000e+00
+        b                                6.000000e+00
+        a                                6.000000e+00
+        v1#branch                        -3.00000e+00
+        v2#branch                        -6.00000e+12
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+    Warning: Value of resistor r3 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 5.999999999997, v(c) = 6, i(v2) = -6000000000000, i(v1) = -3
+ngspice 42, ngspice -b (exit 0):
+        c                                6.000000e+00
+        b                                6.000000e+00
+        a                                6.000000e+00
+        v1#branch                        0.000000e+00
+        v2#branch                        -2.00000e+18
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6, v(c) = 6, i(v2) = -2000000000000000000, i(v1) = 0
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same messages as ngspice 47
+    vectors: v(a) = 6, v(b) = 5.999999999997, v(c) = 6, i(v2) = -6000000000000, i(v1) = -3
+```
+
+PlainSpice's checks: `unit-letter`, `unit-letter`, `zero-ohm`.
 
 ## fatal-syntax
 
