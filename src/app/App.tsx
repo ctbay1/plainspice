@@ -2167,6 +2167,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // Lines that need more room just after a finger was on the open sheet wait at the height they had, until
   // the sheet has been still for a double tap's time (SheetHold below); out of sight before, they stay so.
   const [linesWait, setLinesWait] = useState<{ room: string; height: number } | undefined>(undefined);
+  /** The wait just ended: whether the lines are still squeezed is measured before they are drawn (linesCut). */
+  const [waitEnded, setWaitEnded] = useState(false);
   const waiting = linesWait && linesWait.room === sheetRoom ? linesWait : undefined;
   const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
   const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
@@ -2272,7 +2274,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const check = (): void => {
       const left = (sheetHold.current?.touched ?? Number.NEGATIVE_INFINITY) + SHEET_QUIET_MS - performance.now();
       if (left > 0) timer = window.setTimeout(check, left + 1);
-      else setLinesWait(undefined);
+      else {
+        setLinesWait(undefined);
+        setWaitEnded(true);
+      }
     };
     check();
     return () => window.clearTimeout(timer);
@@ -2336,7 +2341,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   }, [sheetKey, running, waiting, linesAside, statusKeyNow, hint, linesSqueezed, hintSqueezed, linesMax]);
   const linesHeld = running && !!sheetKey && !linesAside && linesSettled > 0 ? Math.min(linesSettled, linesMax ?? Number.POSITIVE_INFINITY) : undefined;
   // Squeezed, the lines scroll (a named region the keys reach): too tall for their room, or waiting at the height they had.
-  const linesCut = (linesSqueezed || !!waiting) && !linesAside;
+  // Just after a wait the lines' watcher still says squeezed (it saw them capped) for a frame: how they are
+  // is measured before they are drawn, or the strip's edge took 5 px for that frame and the head came down
+  // 5 px too far and went back.
+  const linesCut = ((linesSqueezed && !waitEnded) || !!waiting) && !linesAside;
+  useLayoutEffect(() => {
+    if (!waitEnded) return;
+    const box = linesBox.current;
+    if (!linesSqueezed || (!!box && box.scrollHeight > box.clientHeight + 1)) setWaitEnded(false);
+  }, [waitEnded, linesSqueezed]);
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
   // netlist being typed puts it aside, as does a sheet that needs its room (hintAside).
   const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !hintAside));
