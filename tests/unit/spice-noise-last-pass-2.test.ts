@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { describeResults, shownSweep } from '../../src/spice/describe.ts';
+import { describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
 
@@ -20,6 +20,14 @@ beforeAll(async () => {
 });
 
 const netlist = (...l: string[]): string => `* t\n${l.join('\n')}\n.end\n`;
+const sp = (s: string | undefined): string => (s ?? '').replace(/[\u00a0\u2009\u202f]/g, ' ');
+const by = (r: Awaited<ReturnType<typeof solveText>>): string => roundingNoise(r.netlist, r.results).by;
+const node = (w: ResultsInWords, name: string): string => sp(w.nodes.find((n) => n.node === name)?.text);
+const current = (w: ResultsInWords, name: string): ResultsInWords['currents'][number] | undefined => w.currents.find((c) => c.name === name);
+const message = (w: ResultsInWords, code: string): string | undefined => {
+  const m = w.warnings.find((x) => x.code === code);
+  return m && `${sp(m.title)}: ${sp(m.why)}`;
+};
 
 describe('the sweep\'s words name a transistor inside a subcircuit by its terminals too (C6: "the current in q.x1.q1" four times)', () => {
   it('ngspice names it q.x1.q1 and m.x2.x3.m1: "the collector current of q.x1.q1", "the drain current of m.x2.x3.m1"', async () => {
@@ -54,4 +62,58 @@ describe('the work of a sweep\'s real values that ngspice gives as 0 is bounded 
     const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), copies.pop()!, r.run)], 3);
     expect(ms).toBeLessThan(80);
   }, 120_000);
+});
+
+describe('an op-amp modelled as an E of high gain is never decided by the rule with nothing said (C1: 9.5 V for 9.15 V)', () => {
+  it('a non-inverting amplifier with an E of 1e15: ngspice gives out 9.5 V, its gain lifting a step of a double at inm, where the circuit makes 9.15 V; the page shows ngspice\'s numbers with the warning that names the exact ones', async () => {
+    const r = await solveText(netlist('V1 in 0 3.3', 'E1 out 0 in inm 1e15', 'R1 inm 0 220', 'R2 out inm 390', 'Rl out 0 390', '.op'), ngspice);
+    expect([by(r), node(r.words, 'out'), sp(current(r.words, 'R2')?.text)]).toEqual(['rule', '9.5 V', '15.9 mA from node out to node inm through R2']);
+    expect(message(r.words, 'imprecise-answers')).toContain('R2 carries 15 mA, where ngspice gives 15.9 mA; E1 carries 38.46 mA, where ngspice gives 40.26 mA; Rl carries 23.46 mA, where ngspice gives 24.36 mA; and node out is at 9.15 V, where ngspice gives 9.5 V.');
+  });
+
+  it('a difference amplifier with an E of 1e12: ngspice gives out −999.9 mV where the circuit makes −1 V, with the warning', async () => {
+    const r = await solveText(netlist('V1 a 0 2', 'V2 b 0 1.5', 'R1 a inm 10k', 'R2 inm out 20k', 'R3 b inp 10k', 'R4 inp 0 20k', 'E1 out 0 inp inm 1e12', '.op'), ngspice);
+    expect([by(r), node(r.words, 'out')]).toEqual(['rule', '−999.9 mV']);
+    expect(message(r.words, 'imprecise-answers')).toContain('node out is at −1 V, where ngspice gives −999.9 mV; E1 carries 100 µA, where ngspice gives 99.99 µA; and R2 carries 100 µA, where ngspice gives 99.99 µA.');
+  });
+
+  it('a balanced difference amplifier with an E of 1e9: out, exactly 0 V, which ngspice gives as −476.8 nV, is 0 V with the rounding-noise note, and E1 makes no power (it was "E1 delivers 119.2 pW")', async () => {
+    const r = await solveText(netlist('V1 a 0 5', 'R1 a inm 10k', 'R2 inm out 10k', 'R3 a inp 10k', 'R4 inp 0 10k', 'E1 out 0 inp inm 1e9', '.op'), ngspice);
+    expect([by(r), node(r.words, 'out'), r.words.nodes.find((n) => n.node === 'out')?.noise, current(r.words, 'E1')?.power]).toEqual(['exact', '0 V', -4.76837158203125e-7, undefined]);
+    expect(message(r.words, 'rounding-noise')).toContain('ngspice gave node out -4.768372e-07 V. That is rounding noise');
+    expect(message(r.words, 'maybe-noise')).toBeUndefined();
+  });
+
+  it('a circuit whose conductances are more than the largest double apart (1e-12 Ω beside 1e300 Ω) is checked, not dropped: describing it threw "not a finite number"', async () => {
+    const r = await solveText(netlist('V1 a 0 1', 'R1 a b 1e-12', 'R2 b 0 1e300', 'R3 b 0 1k', '.op'), ngspice);
+    expect([r.words.status, by(r)]).toEqual(['ok', 'rule']);
+    expect(message(r.words, 'imprecise-answers')).toContain('V1 carries 1 mA, where ngspice gives 976.6 µA; and R1 carries 1 mA, where ngspice gives 999.2 µA.');
+  });
+
+  it('where ngspice\'s numbers do not fit the circuit PlainSpice reads, past what its arithmetic can leave, though they agree with their own products (S28: a "+ 3" after .end makes ngspice\'s R1 3 Ω), a note says that they could not be checked, never "node n1 is at 2 V, where ngspice gives 3 V"', async () => {
+    const r = await solveText('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n', ngspice);
+    expect([by(r), node(r.words, 'n1'), message(r.words, 'imprecise-answers')]).toEqual(['rule', '3 V', undefined]);
+    expect(message(r.words, 'unchecked-answers')).toBe(
+      "PlainSpice could not check ngspice's numbers: ngspice's numbers in the operating point do not fit the circuit PlainSpice reads from this netlist: the currents at one of its nodes do not add up to 0, or a source does not make what it is written to make, by more than ngspice's arithmetic can leave. Either ngspice lost most of its digits solving this circuit, or it reads a line of the netlist otherwise than PlainSpice does. So PlainSpice shows ngspice's numbers as it gives them, finding rounding noise from those numbers alone, and they may not agree with each other.",
+    );
+    // A note, not a warning: the summary counts none.
+    expect(sp(r.words.summary)).toBe('Simulation finished: node n1 = 3 V. Open the results for details.');
+  });
+
+  it('a checked point of a sweep whose values do not fit the circuit, though they agree with their own products (doctored), leaves the sweep as ngspice gives it with the same note, "in the DC sweep at V1 = 9 V"', async () => {
+    const text = netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', '.options savecurrents', '.op', '.dc V1 0 9 3');
+    const r = await solveText(text, ngspice);
+    expect(by(r)).toBe('exact');
+    const doctored = structuredClone(r.results);
+    const dc = doctored.dc!;
+    const last = dc.scale.values.length - 1;
+    const series = (name: string): Float64Array => dc.series.find((s) => s.name === name)!.values as Float64Array;
+    // Node a 1 % high, and every resistor current its own voltages over its resistance: Kirchhoff's law at a fails.
+    series('v(a)')[last] = series('v(a)')[last]! * 1.01;
+    const v = (n: string): number => (n === '0' ? 0 : series(`v(${n})`)[last]!);
+    for (const [name, a, b, ohms] of [['r1', 'top', 'a', 10e3], ['r2', 'a', '0', 10e3], ['r5', 'a', 'b', 1e3]] as const) series(`i(@${name}[i])`)[last] = (v(a) - v(b)) / ohms;
+    const w = describeResults(parseNetlist(text), doctored, r.run);
+    expect(shownSweep(parseNetlist(text), doctored)).toBe(doctored.dc);
+    expect(message(w, 'unchecked-answers')).toContain("ngspice's numbers in the DC sweep at V1 = 9 V do not fit the circuit PlainSpice reads from this netlist");
+  });
 });

@@ -1362,13 +1362,28 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
 
 /**
  * True when ngspice's values solve this model's equations as closely as its own rounding can
- * (RESIDUAL_SHARE), and the other parts' currents it reports are their own numbers' products
+ * (RESIDUAL_SHARE, `spread` times over), and the other parts' currents it reports are their own numbers' products
  * (PRODUCT_SHARE): then the model is the circuit ngspice simulated, and every difference between its
  * values and the exact ones (the noise of a 0 among them) is what that rounding leaves.
  */
 export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget(), spread = 1): boolean {
+  return sameCircuit(model, ng, level, budget, spread) === 'agrees';
+}
+
+/**
+ * The same-circuit check's verdict (`agrees`). 'agrees'. 'residual': every R, F, G and I current ngspice reports is its
+ * own numbers' product, but its values leave more of the equations than RESIDUAL_SHARE times `spread` (what its
+ * arithmetic was let leave; describe.ts judges such a run by the page's digits and says what is off, decision 0015 after
+ * the last pass). 'other': a product is off, so ngspice simulated another value than the model's; or the check cannot be
+ * made (a value missing, a denominator past MAX_BITS, past `budget`). A share is never more than 1 (no equation's sum is
+ * larger than the sum of its terms' sizes), so an allowance of 1 or more, or past the largest double, holds whatever is
+ * left.
+ */
+export function sameCircuit(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget(), spread = 1): 'agrees' | 'residual' | 'other' {
   const s = shares(model, ng, level, budget);
-  return !!s && compare(s.equations, fromDouble(RESIDUAL_SHARE * Math.max(1, spread))) <= 0 && compare(s.products, fromDouble(PRODUCT_SHARE)) <= 0;
+  if (!s || compare(s.products, fromDouble(PRODUCT_SHARE)) > 0) return 'other';
+  const allowed = RESIDUAL_SHARE * Math.max(1, spread);
+  return !(allowed < 1) || compare(s.equations, fromDouble(allowed)) <= 0 ? 'agrees' : 'residual';
 }
 
 /**
@@ -1391,6 +1406,33 @@ export function conductanceSpread(model: ExactModel): number {
     hi = Math.max(hi, g);
   }
   return hi > 0 && Number.isFinite(lo) ? hi / lo : 1;
+}
+
+/**
+ * How much the circuit's controlled sources can lift ngspice's rounding: the product, over its E and F, of their gains
+ * (volts per volt, amps per amp), and over its H, of their transresistances times the largest conductance of its R and
+ * G (volts per amp, in the circuit's own scale), each where it is more than 1 (a G is a conductance, which
+ * conductanceSpread counts). What ngspice's arithmetic leaves of the equations grows with it as with that spread: an E of
+ * 1e15 reading 3.3 V turns a step of a double there into most of a volt at its output, and a non-inverting amplifier
+ * whose every value is the circuit's left 9.2e-3 of the equations' sizes; E of 1e12 and 1e9 left 1.5e-5 and 2.4e-8,
+ * each about 1e-17 of its gain (the critic of the last pass's fixes). `agrees` allows RESIDUAL_SHARE times this and
+ * conductanceSpread together (describe.ts).
+ */
+export function amplification(model: ExactModel): number {
+  let largest = 0;
+  for (const p of model.parts) {
+    if (p.kind !== 'R' && p.kind !== 'G') continue;
+    const v = Math.abs(toDouble(p.value));
+    const g = p.kind === 'R' ? 1 / v : v;
+    if (Number.isFinite(g) && g > largest) largest = g;
+  }
+  let a = 1;
+  for (const p of model.parts) {
+    const gain = Math.abs(toDouble(p.value));
+    if (p.kind === 'E' || p.kind === 'F') a *= Math.max(1, gain);
+    else if (p.kind === 'H') a *= Math.max(1, gain * (largest || 1));
+  }
+  return a;
 }
 
 // ------------------------------------------------------------------ ngspice's answers beside the exact ones
