@@ -966,15 +966,21 @@ test('a sheet on a phone on its side keeps the status line and its Undo above it
 
 /**
  * From now on, on every frame: where each row of the open sheet is on the screen (More's rows, and each
- * box and list item of a panel, or the rows named), each element by itself, and the status line's tone.
+ * box and list item of a panel, or the rows named), each element by itself, the status line's tone and the
+ * lines' classes; and the window's errors (a "ResizeObserver loop" is one: neither the console nor the
+ * page's own errors show it).
  */
 async function logSheetRows(page: Page, rowsNamed = '.more-row, .card-body > *, .card-body li'): Promise<void> {
   await page.evaluate((rowsNamed) => {
-    const w = window as unknown as { sheetRows: { mark: string; tone: string; top: number; rows: [number, string, number][] }[]; sheetMark: string; sheetIds: WeakMap<Element, number>; sheetStop?: boolean };
+    const w = window as unknown as { sheetRows: { mark: string; tone: string; top: number; lines: string; rows: [number, string, number][] }[]; sheetMark: string; sheetIds: WeakMap<Element, number>; sheetStop?: boolean; windowErrors?: string[] };
     w.sheetRows = [];
     w.sheetMark = 'start';
     w.sheetIds = new WeakMap();
     w.sheetStop = false;
+    if (!w.windowErrors) {
+      const errors: string[] = (w.windowErrors = []);
+      window.addEventListener('error', (e) => errors.push(`${w.sheetMark}: ${e.message}`));
+    }
     let next = 0;
     const tick = (): void => {
       const sheet = document.querySelector('.phone-bottom > .sheet');
@@ -985,7 +991,13 @@ async function logSheetRows(page: Page, rowsNamed = '.more-row, .card-body > *, 
         if (!w.sheetIds.has(e)) w.sheetIds.set(e, next++);
         rows.push([w.sheetIds.get(e)!, (e.textContent ?? '').trim().slice(0, 30), r.top]);
       }
-      w.sheetRows.push({ mark: w.sheetMark, tone: document.querySelector('.status')?.getAttribute('data-tone') ?? '', top: sheet?.getBoundingClientRect().top ?? Number.NaN, rows });
+      w.sheetRows.push({
+        mark: w.sheetMark,
+        tone: document.querySelector('.status')?.getAttribute('data-tone') ?? '',
+        top: sheet?.getBoundingClientRect().top ?? Number.NaN,
+        lines: document.querySelector('.phone-lines')?.className ?? '',
+        rows,
+      });
       if (!w.sheetStop) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -1005,6 +1017,28 @@ async function stepAndRun(page: Page, what: string, act: () => Promise<void>): P
     return frames.some((f) => f.tone === 'busy') && /^(ok|bad)$/.test(frames.at(-1)?.tone ?? '');
   }, what);
   await settle(page);
+}
+
+/** The window's errors since the rows were first logged on this page (logSheetRows): a ResizeObserver loop is one. */
+async function windowErrors(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { windowErrors?: string[] }).windowErrors ?? []);
+}
+
+/**
+ * The frames of a run's "Running…" in which the lines above the sheet took another step than they had just
+ * before it (the hint back, the lines back in sight): a run keeps the step of the status before it.
+ */
+async function stepsLostInRuns(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const step = (lines: string): string => ['is-hint-aside', 'is-aside'].filter((c) => lines.split(' ').includes(c)).join(' ') || 'all in sight';
+    const lost: string[] = [];
+    let before: string | undefined;
+    for (const f of (window as unknown as { sheetRows: { mark: string; tone: string; lines: string }[] }).sheetRows) {
+      if (f.tone !== 'busy') before = step(f.lines);
+      else if (before !== undefined && step(f.lines) !== before && lost.at(-1) !== `${f.mark}: ${before} → ${step(f.lines)}`) lost.push(`${f.mark}: ${before} → ${step(f.lines)}`);
+    }
+    return lost;
+  });
 }
 
 /** Where the sheet's top was, at least and at most, in the frames of one step. */
@@ -1091,6 +1125,12 @@ test('an open sheet keeps its rows where they are through each run, a new status
     const moved = view.sheet === 'More' ? await rowsThatMoved(page) : [...(await rowsThatMoved(page, { step: 'the ground deleted', onlyNew: true })), ...(await rowsThatMoved(page, { step: 'T on R2' }))];
     await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
     expect(moved, `${at}: the sheet's rows that moved`).toEqual([]);
+    // Through each run the lines keep their step, whatever else changes meanwhile: Checks' head says "1 found"
+    // while the run of the deletion that found it is under way (taken as a new room, the step was lost and
+    // the lines came back for the run, 61 px at 320 × 568 with the largest text), and no window error says
+    // a ResizeObserver loop (the hint coming back for the run gave one, on a Galaxy S5 at 150 %).
+    expect(await stepsLostInRuns(page), `${at}: steps the lines lost during a run`).toEqual([]);
+    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}: window errors`).toEqual([]);
     // Start here as it was for the next view (the netlist is saved on this device).
     if (view.sheet === 'Checks') await page.keyboard.press('Control+z');
     await expectSolved(page);
@@ -1206,6 +1246,7 @@ test('the Numbers and Plot sheets keep their rows where they are through each ru
   // Its plot is still the one figure, drawn again in place.
   await expect(plot.locator('figure')).toHaveCount(1);
   await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
+  expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), '320 × 568, Plot open: window errors').toEqual([]);
 });
 
 test('a second tap meant for the row just under More’s head presses it: a status that needs more room waits until the sheet is still (AP-2)', async ({ page }) => {
@@ -1344,6 +1385,7 @@ test('an open sheet the student scrolled keeps its head where it is: a later run
     }
     expect(Math.abs((await close.boundingBox())!.y - before), `${at}: the × moved`).toBeLessThanOrEqual(1);
     expect(await rowsThatMoved(page), `${at}: the sheet's rows that moved`).toEqual([]);
+    expect((await windowErrors(page)).filter((e) => /ResizeObserver loop/.test(e)), `${at}: window errors`).toEqual([]);
     // Start here again for the next view (the netlist is saved on this device).
     await page.evaluate(() => {
       (window as unknown as { sheetStop: boolean }).sheetStop = true;
