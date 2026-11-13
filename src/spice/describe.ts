@@ -120,7 +120,7 @@ export interface TransferFunctionWords {
 export interface SweepWords {
   kind: 'dc' | 'tran';
   points: number;
-  /** The last point alone, as `speech` ends ("When V1 is 12 volts: the voltage at node out is 8 volts, …"); '' without one. */
+  /** The last point as the live region says it after a run: its first four values, then how many more ("When V1 is 12 volts: the voltage at node out is 8 volts, …"); '' without one. */
   end?: string;
   /** "DC sweep of V1 from 0 V to 12 V: 13 points. At V1 = 12 V: v(out) = 8 V, …" */
   text: string;
@@ -315,6 +315,8 @@ export const DESCRIBE_STRINGS = {
   summaryFailed: (why: string): string => `ngspice stopped with an error: ${why}. Open the results for details.`,
   summaryEmpty: (why: string): string => `ngspice finished but gave no results: ${why}. Open the results for details.`,
   summaryNodes: (list: string, more: number): string => (more ? `${list} and ${more} more ${more === 1 ? 'node' : 'nodes'}` : list),
+  /** A sweep's last point as the live region says it: its first four values, then how many more, as summaryNodes. */
+  summaryValues: (values: readonly string[]): string => (values.length > 4 ? `${values.slice(0, 4).join(', ')} and ${values.length - 4} more ${values.length === 5 ? 'value' : 'values'}` : values.join(', ')),
   summaryCurrents: (n: number): string => `${n} ${n === 1 ? 'current' : 'currents'}`,
   summaryTf: (value: string): string => `transfer function ${value}`,
   summaryDc: (n: number): string => `a DC sweep of ${n} ${n === 1 ? 'point' : 'points'}`,
@@ -1340,8 +1342,9 @@ function sweepsOf(netlist: Netlist, results: AnalysisResults): SweepWords[] {
     const whereSpeech = !one ? S.atLastPoint : one.kind === 'temperature' ? speakSI(last!, sweep.scale.unit) : S.sweepAtSpeech(sweepName(one), speakSI(last!, sweep.scale.unit));
     const head = points ? S.dcSweepText(what, points) : S.dcNoPoints(what);
     const text = points && f.length ? `${head} ${S.atEnd(where, f.map((x) => x.text).join(', '))}` : head;
-    const end = points && f.length ? (one && one.kind !== 'temperature' ? S.atEndSpeech : S.atEnd)(whereSpeech, f.map((x) => x.speech).join(', ')) : '';
-    const speech = end ? `${head} ${end}` : head;
+    const speech =
+      points && f.length ? `${head} ${(one && one.kind !== 'temperature' ? S.atEndSpeech : S.atEnd)(whereSpeech, f.map((x) => x.speech).join(', '))}` : head;
+    const end = points && f.length ? (one && one.kind !== 'temperature' ? S.atEndSpeech : S.atEnd)(whereSpeech, S.summaryValues(f.map((x) => x.speech))) : '';
     out.push({ kind: 'dc', points, end, text, speech, final: f });
   }
   if (results.tran) {
@@ -1353,8 +1356,8 @@ function sweepsOf(netlist: Netlist, results: AnalysisResults): SweepWords[] {
     const to = formatSI(t[points - 1] ?? 0, 's');
     const head = S.tranText(from, to, points);
     const text = points && f.length ? `${head} ${S.atEnd(to, f.map((x) => x.text).join(', '))}` : head;
-    const end = points && f.length ? S.atEnd(speakSI(t[points - 1] ?? 0, 's'), f.map((x) => x.speech).join(', ')) : '';
-    const speech = end ? `${head} ${end}` : head;
+    const speech = points && f.length ? `${head} ${S.atEnd(speakSI(t[points - 1] ?? 0, 's'), f.map((x) => x.speech).join(', '))}` : head;
+    const end = points && f.length ? S.atEnd(speakSI(t[points - 1] ?? 0, 's'), S.summaryValues(f.map((x) => x.speech))) : '';
     out.push({ kind: 'tran', points, end, text, speech, final: f });
   }
   return out;
