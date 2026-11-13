@@ -69,3 +69,11 @@ paragraph stays there for 10 s, so a check of the region's words passes on the o
 here, then Run, then Ctrl+Enter: two more (none on the merged build); a comment typed: none. The DC
 sweep example with R2 changed to 1k: one more, with v(out) = 6 V (none on the merged build); then Run:
 one more.
+
+In the browser (1280 × 800, every live region watched): Start here's Run, Ctrl+Enter with nothing and
+with R2 focused, Ctrl+K's "Run ngspice now" and Run twice after a change are each said once (b060bc8:
+none of the six); a value changed on a card is said once, as before. The DC sweep with R2 at 1k is said
+with v(out) = 6 V and Run says it again; the 120,001-point sweep, whose live runs wait for Run, is said
+after each Ctrl+Enter, the second time with 6 V (b060bc8: the second not at all); RC charging with R1 at
+2k is said with v(out) = 4.589 V and −205.3 µA at 5 ms (native ngspice 47: 4.58947 V and −2.05263e-04
+A), and again for Run (b060bc8: neither).
