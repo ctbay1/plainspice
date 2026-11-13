@@ -117,3 +117,37 @@ describe('an op-amp modelled as an E of high gain is never decided by the rule w
     expect(message(w, 'unchecked-answers')).toContain("ngspice's numbers in the DC sweep at V1 = 9 V do not fit the circuit PlainSpice reads from this netlist");
   });
 });
+
+describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own state is found within what ngspice\'s adding up of the step leaves, and the .tf beside it gets a note (C2)', () => {
+  const bridge = ['V1 top 0 9', 'R1 top a {rtop}', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', '.options savecurrents', '.op'];
+  const r5At = (r: Awaited<ReturnType<typeof solveText>>, k: number): [number, number] => {
+    const pick = (dc: { series: { name: string; values: ArrayLike<number> }[] }): number => dc.series.find((s) => s.name === 'i(@r5[i])')!.values[k]!;
+    return [pick(r.results.dc!), pick(shownSweep(r.netlist, r.results)!)];
+  };
+
+  it('".dc V1 0 9 0.01" ends at 8.999999999999853 V, where ngspice gives R5 the .op\'s very −8.882e-19 A: the sweep shows 0 there, as the .op does, with a .param line, beside a transistor, and with a .control block that runs', async () => {
+    const variants = [
+      ['.param rtop=10k', ...bridge, '.dc V1 0 9 0.01'],
+      ['.param rtop=10k', ...bridge, 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.dc V1 0 9 0.01'],
+      ['.param rtop=10k', ...bridge, '.dc V1 0 9 0.01', '.control', 'run', '.endc'],
+    ];
+    for (const lines of variants) {
+      const r = await solveText(netlist(...lines), ngspice);
+      const last = r.results.dc!.scale.values.length - 1;
+      expect(r.results.dc!.scale.values[last], lines.join(' | ')).toBe(8.999999999999853);
+      expect([by(r), sp(current(r.words, 'R5')?.text), r5At(r, last)], lines.join(' | ')).toEqual(['rule', 'no current through R5', [-8.881784197001253e-19, 0]]);
+      expect(sp(r.words.sweeps[0]!.text), lines.join(' | ')).toContain('i(@r5[i]) = 0 A');
+      expect(message(r.words, 'rounding-noise'), lines.join(' | ')).toBeDefined();
+      expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)), lines.join(' | ')).toContain(
+        "ngspice gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. That is the operating point's own state, where ngspice gives the operating point's numbers, and the operating point shows it as 0, as its note says. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.",
+      );
+    }
+  });
+
+  it('a sweep that never comes within a quarter of a step of the .op\'s 9 V (to 8.5 V) has no point at its state, and keeps ngspice\'s numbers', async () => {
+    const r = await solveText(netlist('.param rtop=10k', ...bridge, '.dc V1 0 8.5 0.01'), ngspice);
+    expect(by(r)).toBe('rule');
+    expect(shownSweep(r.netlist, r.results)).toBe(r.results.dc);
+  });
+
+});

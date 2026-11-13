@@ -1448,10 +1448,11 @@ describe('after the last pass (13 November 2026)', () => {
     expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R7'))]).toEqual(['exact', 'no current through R7']);
   });
 
-  it('C9w.7: a sweep whose checked point ngspice gives with other digits (R3 433.7 pA for 340.6 pA) is shown as ngspice gives it, with the warning; the .op beside it is decided exactly', () => {
+  it('C9w.7: a sweep whose checked point ngspice gives with other digits (R3 433.7 pA for 340.6 pA) is shown as ngspice gives it, with the warning, but at its last point, 1.5000000000000846 V, the .op\'s own state, which shows R3\'s exact 454.1 pA as the .op beside it does (it showed 0 A there)', () => {
     const d = ofFact('C9w.7');
-    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R3')), shownSweep(d.netlist, d.results) === d.results.dc]).toEqual(['exact', '454.1 pA from node d2 to node p3 through R3', true]);
-    expect(plain(d.words.warnings.find((m) => m.title === "Some of ngspice's answers in the DC sweep are off")?.why)).toContain('at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA.');
+    const r3 = Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === 'i(@r3[i])')!.values);
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R3')), plain(formatSI(r3[r3.length - 1]!, 'A')), r3[r3.length - 2]]).toEqual(['exact', '454.1 pA from node d2 to node p3 through R3', '454.1 pA', 0]);
+    expect(plain(d.words.warnings.find((m) => m.title === "Some of ngspice's answers in the DC sweep are off")?.why)).toContain('at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them there. PlainSpice shows the sweep as ngspice gives it, but at V1 = 1.5 V, the operating point\'s own state, where it shows what the operating point shows');
   });
 
   it('C9w.8: beside a reverse diode, whose leak only ngspice\'s numbers give, the rule\'s tiny values keep the note that they may be noise, but the 1 nV divider\'s 500 fA, real whatever the diode carries, is left out of it', () => {

@@ -10,6 +10,7 @@ import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { tfRows } from '../../src/app/components/NumbersPanel.tsx';
+import { formatSI } from '../../src/format/si.ts';
 import { DESCRIBE_STRINGS, describeResults, roundingNoise, shownSweep, SWEEP_VALUES, sweepTooLarge, type ResultsInWords } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
@@ -259,13 +260,20 @@ describe('on the exact path, ngspice\'s numbers are answers only where the page 
     expect([by(r), text(r.words, 'R7')]).toEqual(['exact', 'no current through R7']);
   });
 
-  it('a long sweep of the 1 nΩ wire of C9n.4 whose checked point at V1 = 1.125 V ngspice gives one step of a double over 1 nΩ (433.7 pA for 340.6 pA) is shown as ngspice gives it, with a warning that names it; the .op beside it is still decided exactly', async () => {
+  it('a long sweep of the 1 nΩ wire of C9n.4 whose checked point at V1 = 1.125 V ngspice gives one step of a double over 1 nΩ (433.7 pA for 340.6 pA) is shown as ngspice gives it, with a warning that names it, but at its last point, the .op\'s own 1.5 V, a few steps of a double away (1.5000000000000846), which shows the .op\'s exact 454.1 pA (it showed ngspice\'s 0 A there: the critic of the last pass\'s fixes); the .op beside it is still decided exactly', async () => {
     const r = await solveText(netlist('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.options savecurrents', '.op', '.dc V1 0 1.5 0.00025'), ngspice);
     expect([by(r), text(r.words, 'R3')]).toEqual(['exact', '454.1 pA from node d2 to node p3 through R3']);
-    expect(shownSweep(r.netlist, r.results)).toBe(r.results.dc);
+    const dc = r.results.dc!;
+    const last = dc.scale.values.length - 1;
+    expect(dc.scale.values[last]).toBe(1.5000000000000846);
+    const given = dc.series.find((s) => s.name === 'i(@r3[i])')!.values;
+    const shown = shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r3[i])')!.values;
+    expect([given[last], given[last - 1]]).toEqual([0, 0]);
+    expect([sp(formatSI(shown[last]!, 'A')), shown[last - 1]]).toEqual(['454.1 pA', 0]);
+    expect(sp(r.words.sweeps[0]!.text)).toContain('At V1 = 1.5 V: v(top1) = 1.5 V, v(d2) = 4.541 mV, v(p3) = 4.541 mV, i(v1) = −5.539 µA, i(@r1[i]) = 5.539 µA, i(@r2[i]) = 5.538 µA, i(@r3[i]) = 454.1 pA');
     const warning = r.words.warnings.find((m) => m.code === 'imprecise-answers')!;
     expect(sp(warning.title)).toBe("Some of ngspice's answers in the DC sweep are off");
-    expect(sp(warning.why)).toBe("Solved exactly, with fractions, from the netlist's values, at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them there. PlainSpice shows the sweep as ngspice gives it, so its numbers may not agree with each other.");
+    expect(sp(warning.why)).toBe("Solved exactly, with fractions, from the netlist's values, at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them there. PlainSpice shows the sweep as ngspice gives it, but at V1 = 1.5 V, the operating point's own state, where it shows what the operating point shows, so its numbers may not agree with each other.");
   });
 
   it('where the rule decides beside the exact solution with no warning (values that hang on a diode\'s current), the tiny values it cannot tell from noise keep the note, except those real whatever the diode carries (C9w.8: "V2 measures 510 fA" and "node d3 510 fV" were drawn with nothing said)', async () => {

@@ -1461,7 +1461,7 @@ function ngspiceValues(nodes: Map<string, number>, branch: Map<string, number>, 
  * against that. The checks get the budget `checkBudget` gives every run of the netlist, less `reserved`
  * (the run's sweep checks, which come after).
  */
-function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0, dc?: Sweep, given?: Budget): { check: 'same' | 'imprecise'; view: View; off: Answer[] } | { check: 'other'; unchecked?: boolean } {
+function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0, dc?: Sweep, given?: Budget, base?: { x: Fraction[]; level: (p: ExactPart) => Fraction }): { check: 'same' | 'imprecise'; view: View; off: Answer[] } | { check: 'other'; unchecked?: boolean } {
   const nodes = new Map<string, number>();
   const branch = new Map<string, number>();
   const device = new Map<string, number>();
@@ -1483,7 +1483,8 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
   }
   const ng = ngspiceValues(nodes, branch, device);
   const budget = given ?? checkBudget(ex, reserved);
-  let view: View = { x: ex.op, all: [ex.op], level: (p) => p.value };
+  // `base`: a point of a sweep of one source, at ngspice's own x there (opStateSweep; never with diodes).
+  let view: View = { x: base?.x ?? ex.op, all: [base?.x ?? ex.op], level: base?.level ?? ((p) => p.value) };
   // A .save line keeps only some values: those ngspice gave are judged by the page's digits (judgeAnswers), with no
   // same-circuit check, which needs every equation's values (the last pass: C9m with ".save v(n3) v(n5) @r7[i]" went
   // to the rule, which drew R7's exact 0 as 6.217e-20 A). With diodes, whose currents only ngspice's values give,
@@ -1873,7 +1874,7 @@ function exactly(ex: Exact, view: View): { zero: boolean[]; nodeZero: (k: number
   const { all } = view;
   const tree = view.live ?? [];
   // A current source's or diode's current in solution s: its level in the operating point, a unit diode's in its own slope.
-  const levelIn = (s: number, p: ExactPart): Fraction => (s === 0 ? (p.kind === 'D' ? ZERO : p.value) : p === model.parts[tree[s - 1]!] ? ONE : ZERO);
+  const levelIn = (s: number, p: ExactPart): Fraction => (s === 0 ? (p.kind === 'D' ? ZERO : view.level(p)) : p === model.parts[tree[s - 1]!] ? ONE : ZERO);
   const zero = model.parts.map((p, k) => p.kind !== 'D' && all.every((x, s) => currentIsZero(model, x, k, p.kind === 'I' ? levelIn(s, p) : undefined)));
   const at = (x: readonly Fraction[], n: number): Fraction => (n < 0 ? ZERO : x[n]!);
   return {
@@ -2199,6 +2200,8 @@ interface SweepNoise {
   name?: (k: number) => string;
   /** Beside an .op the rule decides: only the points at the .op's own state are marked, with the .op's 0s (ruleStateSweep). */
   rule?: boolean;
+  /** Decided at the .op's own state only (opStateSweep): those points, which the notes name. */
+  state?: number[];
 }
 
 /**
@@ -2324,7 +2327,7 @@ const sweepUncheckedCache = new WeakMap<AnalysisResults, { netlist: Netlist; k: 
  * it. With each point's name for the notes. Undefined for any other sweep, or when the points do not come as the
  * two sweeps' counts say.
  */
-function opStatePoints(netlist: Netlist, results: AnalysisResults): { points: number[]; name: (k: number) => string } | undefined {
+function opStatePoints(netlist: Netlist, results: AnalysisResults): StatePoints | undefined {
   // Once per run: the .op's check, the sweep's decision and the size note each need them, and a sweep can have
   // hundreds of thousands of points.
   const cached = statePointsCache.get(results);
@@ -2334,9 +2337,16 @@ function opStatePoints(netlist: Netlist, results: AnalysisResults): { points: nu
   return at;
 }
 
-const statePointsCache = new WeakMap<AnalysisResults, { netlist: Netlist; at: { points: number[]; name: (k: number) => string } | undefined }>();
+const statePointsCache = new WeakMap<AnalysisResults, { netlist: Netlist; at: StatePoints | undefined }>();
 
-function findStatePoints(netlist: Netlist, results: AnalysisResults): { points: number[]; name: (k: number) => string } | undefined {
+/** A sweep's points at the .op's own state, each point's name for the notes, and whether ngspice's x there is its swept part's netlist value bit for bit. */
+interface StatePoints {
+  points: number[];
+  name: (k: number) => string;
+  exact: (k: number) => boolean;
+}
+
+function findStatePoints(netlist: Netlist, results: AnalysisResults): StatePoints | undefined {
   const dc = results.dc;
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
@@ -2353,15 +2363,31 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): { points: 
     return v === undefined || !Number.isFinite(v) ? null : v;
   };
   const label = (sw: SweepReading, v: number): string => (sw.kind === 'temperature' ? formatSI(v, sw.unit) : S.sweepAt(sweepName(sw), formatSI(v, sw.unit)));
+  /**
+   * The point of a run of the inner sweep (`count` points from `from`) where ngspice's x is the target `t`, or the
+   * nearest within what its adding up of the step can leave: ngspice adds the step once a point, in doubles
+   * (dctrcurv.c), so ".dc V1 0 9 0.01" ends at 8.999999999999853 V, and the page names that point "V1 = 9 V" (the critic
+   * of the last pass's fixes). Within a quarter of the step, so never its neighbour.
+   */
+  const nearest = (sw: SweepReading, t: number, from: number, count: number): number | undefined => {
+    let best = -1;
+    let gap = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < count; i++) {
+      const g = Math.abs(xs[from + i]! - t);
+      if (g < gap) [best, gap] = [from + i, g];
+    }
+    if (best < 0 || gap === 0) return best < 0 ? undefined : best;
+    const scale = Math.max(Math.abs(sw.startValue ?? 0), Math.abs(sw.stopValue ?? 0), Math.abs(t)) + (sw.kind === 'temperature' ? KELVIN : 0);
+    return gap <= Math.min(Math.abs(sw.stepValue ?? 0) / 4, 4 * (best - from + 1) * ulp(scale)) ? best : undefined;
+  };
   const [inner, outer] = r.sweeps as [SweepReading, SweepReading | undefined];
   const t1 = target(inner);
   if (t1 === null) return undefined;
   if (!outer) {
     // A sweep of the temperature alone (too large to look through, SWEEP_VALUES): its point at the .op's own temperature.
     const at = t1 ?? opTemperature(netlist);
-    const points: number[] = [];
-    for (let k = 0; k < xs.length; k++) if (xs[k] === at) points.push(k);
-    return { points, name: (k) => label(inner, xs[k]!) };
+    const k = nearest(inner, at, 0, xs.length);
+    return { points: k === undefined ? [] : [k], name: (j) => label(inner, xs[j]!), exact: (j) => xs[j] === at };
   }
   const t2 = target(outer);
   const n1 = inner.points;
@@ -2372,8 +2398,15 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): { points: 
   const values: number[] = [];
   for (let j = 0, v = outer.startValue + (temperature ? KELVIN : 0); j < n2; j++, v += outer.stepValue) values.push(temperature ? v - KELVIN : v);
   const points: number[] = [];
-  for (let k = 0; k < xs.length; k++) if ((t1 === undefined || xs[k] === t1) && (t2 === undefined || values[Math.floor(k / n1)] === t2)) points.push(k);
-  return { points, name: (k) => `${label(inner, xs[k]!)}, ${label(outer, values[Math.floor(k / n1)]!)}` };
+  for (let j = 0; j < n2; j++) {
+    if (t2 !== undefined && values[j] !== t2) continue;
+    if (t1 === undefined) for (let i = 0; i < n1; i++) points.push(j * n1 + i);
+    else {
+      const k = nearest(inner, t1, j * n1, n1);
+      if (k !== undefined) points.push(k);
+    }
+  }
+  return { points, name: (k) => `${label(inner, xs[k]!)}, ${label(outer, values[Math.floor(k / n1)]!)}`, exact: (k) => t1 === undefined || xs[k] === t1 };
 }
 
 /** 0 °C in kelvin, as ngspice adds it to a temperature (CONSTCtoK). */
@@ -2415,9 +2448,14 @@ function opStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
   const quiet = new Set<string>();
   const classes = new Map<string, string[]>();
   let alike: boolean | undefined;
-  for (const k of at.points) {
+  // A point a few steps of a double from the .op's own value (ngspice adding up its step) is judged at ngspice's own x,
+  // as findSweepNoise judges every point, a + b·x, where the exact solution follows the swept source and no diode's
+  // current is free; elsewhere only a point at the netlist's value bit for bit is the .op's state.
+  const sw = ex.sweep && ex.sweep.part >= 0 && !ex.diodes ? ex.sweep : undefined;
+  const state = at.points.filter((k) => at.exact(k) || sw);
+  for (const k of state) {
     const op = pointOp(dc, k);
-    const seen = opCheck(ex, op, 0, dc, budget);
+    const seen = opCheck(ex, op, 0, dc, budget, at.exact(k) || !sw ? undefined : ownX(ex, sw, dc.scale.values[k]!));
     if (seen.check !== 'same' || (alike !== undefined && seen.view.alike !== undefined && seen.view.alike !== alike)) return undefined;
     alike ??= seen.view.alike;
     const noise = exactNoise(netlist, ex, seen.view, op);
@@ -2459,12 +2497,34 @@ function opStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
       }
     });
   }
-  const out: SweepNoise = { zero, lost, source: '', temperature: false, diodes: !!ex.diodes, name: at.name };
+  const out: SweepNoise = { zero, lost, source: '', temperature: false, diodes: !!ex.diodes, name: at.name, state };
   if (ex.diodes) {
     if (alike !== undefined) out.alike = alike;
     out.diodeWhy = { quiet: [...quiet], alike: [...classes.values()] };
   }
   return out;
+}
+
+/**
+ * The unknowns at a point of a sweep of one source, at ngspice's own x there (a + b·x, over solveExact's one denominator
+ * times x's, as findSweepNoise builds them), and each source's level there: the swept one at x.
+ */
+function ownX(ex: Exact, sw: { part: number; slope: Fraction[] }, x: number): { x: Fraction[]; level: (p: ExactPart) => Fraction } {
+  const swept = ex.model.parts[sw.part]!;
+  const at = fromDouble(x);
+  const op = overCommon(ex.op);
+  const slope = overCommon(sw.slope);
+  // x − the netlist's value, as dn / dd.
+  const dn = at.n * swept.value.d - swept.value.n * at.d;
+  const dd = at.d * swept.value.d;
+  const den = (op.num.some((v) => v !== 0n) ? op.den : slope.den) * dd;
+  return {
+    x: op.num.map((v, i) => {
+      const n = v * dd + dn * slope.num[i]!;
+      return n === 0n ? ZERO : { n, d: den };
+    }),
+    level: (p) => (p === swept ? at : p.value),
+  };
 }
 
 /** The values of a sweep at point k, as an operating point (results.ts interpretOperatingPoint): node voltages, branch currents, part currents. */
@@ -4215,7 +4275,7 @@ function sweepOffNote(netlist: Netlist, results: AnalysisResults): MessageWords 
   if (!items.length) return undefined;
   const noise = decidedSweep(netlist, results);
   const ex = exactOf(netlist);
-  const state = results.op && noise && ex ? (opStatePoints(netlist, results)?.points ?? []) : [];
+  const state = results.op && noise && ex ? (noise.state ?? []) : [];
   const at = state.length && noise ? listWords(state.slice(0, NOTE_LIST).map((k) => sweepPoint(noise, dc, k))) : undefined;
   const shown = items.length <= NOTE_LIST + 1 ? S.offList(items, 0) : S.offList(items.slice(0, NOTE_LIST), items.length - NOTE_LIST);
   const m: MessageWords = { code: 'imprecise-answers', severity: 'warning', title: S.sweepOffTitle('DC sweep'), why: S.sweepOffWhy(shown, at) };
@@ -4256,7 +4316,7 @@ function sweepSizeNote(netlist: Netlist, results: AnalysisResults): MessageWords
   const ex = dc && sweepTooLarge(dc) ? exactOf(netlist) : undefined;
   if (!dc || !ex?.sweep || (results.op && noiseOf(netlist, results).by !== 'exact')) return undefined;
   const noise = decidedSweep(netlist, results);
-  const points = results.op && noise ? (opStatePoints(netlist, results)?.points ?? []) : [];
+  const points = results.op && noise ? (noise.state ?? []) : [];
   const at = noise && points.length ? listWords(points.slice(0, NOTE_LIST).map((k) => sweepPoint(noise, dc, k))) : undefined;
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const m: MessageWords = { code: 'sweep-not-checked', severity: 'note', title: S.sweepLargeTitle('DC sweep'), why: S.sweepLargeWhy(dc.scale.values.length, dc.series.length, SWEEP_VALUES, at) };
