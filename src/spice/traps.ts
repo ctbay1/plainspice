@@ -1845,6 +1845,19 @@ function checkUnknownWord(c: Ctx, i: number): void {
   // polynomial; another name=value there is read as part of a polynomial (unknown-word-40, -41; re-check critic CR2-8).
   const next = e.fields[k + 1];
   const multiplier = (e.letter === 'E' || e.letter === 'H') && lowerAscii(word) === 'm' && next !== undefined && /^[ \t]*=[ \t]*$/.test(c.text.slice(f.token.to, next.token.from));
+  // HSPICE's word for the kind kept as a node, on an E or G line that is not seven words long (vcvs, vccs): ngspice
+  // reads no polynomial there and stops at the word after the gain, natively too, before it simulates anything,
+  // so no node of the line has a singular matrix to warn about (unknown-word-53; critic CR1-8).
+  const kindWord = e.letter === 'E' ? 'vcvs' : e.letter === 'G' ? 'vccs' : undefined;
+  const kept = e.fields.find((x) => x.role === 'control-plus' && lowerAscii(x.token.text) === kindWord);
+  if (kept) {
+    c.broken.add(i);
+    const gain = e.fields[k - 1];
+    add(c, 'unknown-word', 'error', f.token, `SPICE can't use ${word} on this line`,
+      `ngspice takes ${kept.token.text}, HSPICE's word for this kind of part, out of ${name}'s line only when the line has exactly seven words. This one has more, so ngspice reads ${kept.token.text} as a control node${gain && MAIN_ROLES.has(gain.role) ? ` and ${gain.token.text} as the ${e.letter === 'E' ? 'gain' : 'value'}` : ''}, and stops at ${word}: one word too many.`,
+      `ngspice stops: 'unknown parameter (${ngspiceSpelling(word)})', native ngspice 47 and 42 too. [unknown-word-53]`);
+    return;
+  }
   const why = glued
     ? `A + or ${MINUS} right after a digit or a letter starts a new word in SPICE, so ${prev.token.text}${word} is read as ${prev.token.text} and then ${word}, a word ${name} can't use. For an exponent, write e: 1e-3.`
     : report
@@ -2227,7 +2240,11 @@ function checkFormulaForm(c: Ctx, i: number): void {
   const form = e.form!;
   const name = nameOf(e);
   const kw = form.keyword.text;
-  const word = form.dropped?.length === 1 ? form.dropped[0]! : undefined;
+  const equals = /^[ \t]*=/.test(c.text.slice(form.keyword.to, form.keyword.to + 200));
+  // One word before the formula stops native ngspice only where its XSPICE step (inp_poly_2g6_compat) finds no
+  // bracket after it to stop at: VALUE={2}, VALUE=3, vol='2', cur={2m}; with a v(...) in the formula, or VALUE {2},
+  // it runs the line as our engine does (missing-fields-9, -10).
+  const word = form.dropped?.length === 1 && equals && !c.text.slice(form.keyword.from, cardEnd(c, i)).includes('(') ? form.dropped[0]! : undefined;
   if (word) {
     add(c, 'missing-fields', 'warning', word, `Native ngspice stops at ${name}'s word ${word.text}`,
       `ngspice drops the words between ${name}'s output nodes and ${kw}, so ${word.text} changes nothing in PlainSpice. With exactly one word there, native ngspice first reads the line as a polynomial (an XSPICE step that PlainSpice's engine leaves out) and stops.`,
@@ -2235,7 +2252,6 @@ function checkFormulaForm(c: Ctx, i: number): void {
       [fix(`Take out ${word.text}`, change(word.from, form.keyword.from, ''))]);
   }
   const formula = form.formula;
-  const equals = /^[ \t]*=/.test(c.text.slice(form.keyword.to, form.keyword.to + 200));
   if (!formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(formula.text)) {
     // VALUE= or VALUE={} with nothing in it (fatal-syntax-15).
     c.broken.add(i);
@@ -2249,10 +2265,32 @@ function checkFormulaForm(c: Ctx, i: number): void {
   if (equals && !/^[0-9.+-]/.test(formula.text)) return;
   c.broken.add(i);
   const braced = `{${formula.text}}`;
+  // Two words or more after VALUE without = (E1 e 0 value 0 2): ngspice reads the word value as VALUE wherever it
+  // stands on an E or G line, so a node called value makes the line a formula it can't read, in braces or not
+  // (fatal-syntax-17; critic CR1-10). Braces fit a formula only, never words a blank keeps apart.
+  const words = /[\w.)}'"][ \t]+[\w.{'"]/.test(formula.text);
+  const node = c.n.nodes.get('value');
+  if (valueAsNode(c, e)) {
+    // The fix renames the node, and the word value on every line that reads it as VALUE so.
+    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
+    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => valueAsNode(c, x)).map((x) => replace(x.form!.keyword, to));
+    add(c, 'fatal-syntax', 'error', form.keyword, `ngspice reads ${kw} on ${name}'s line as the start of a formula`,
+      `ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so it takes ${shownWord(formula.text)} for ${name}'s formula, which it can't read. A node can't be called value here: give it another name${node?.connections.length ? `, such as ${to}` : ''}.`,
+      `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-17]`,
+      node?.connections.length ? [fix(`Rename the node ${kw} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to))] : []);
+    return;
+  }
   add(c, 'fatal-syntax', 'error', formula, `ngspice can't read ${name}'s formula without braces`,
     `ngspice takes ${name}'s formula from its { to the end of the line. It adds the braces itself only after ${kw}= and before a letter or a bracket, as in ${kw}=v(out)*2, so write ${kw}=${braced}.`,
     `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14]`,
-    formula.text.includes('=') ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
+    formula.text.includes('=') || words ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
+}
+
+/** An E or G line where value, with no = after it, comes before two words or more: a node called value, read as VALUE (CR1-10). */
+function valueAsNode(c: Ctx, e: Element): boolean {
+  const form = e.form;
+  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || /^[ \t]*=/.test(c.text.slice(form.keyword.to, form.keyword.to + 200))) return false;
+  return !/^[{'"]/.test(form.formula.text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(form.formula.text);
 }
 
 /**

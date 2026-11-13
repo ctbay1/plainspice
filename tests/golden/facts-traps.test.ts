@@ -525,6 +525,8 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-23', netlist: "* .save names the node bare\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.save \u00e7\u0131k\u0131\u015f\n.op\n.end\n", vectors: { "v(____k____)": 5 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-24', netlist: "* .global with a node with Turkish letters\n.global \u00e7\u0131k\u0131\u015f\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 2k\nX1 sub\n.subckt sub\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.ends\n.op\n.end\n", vectors: { "v(____k____)": 4 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-25', netlist: "* a .func that reads a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.func vo() {v(\u00e7\u0131k\u0131\u015f)}\nB1 b 0 V=vo()*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'fatal-syntax-17', netlist: "* a node called value\nV1 in 0 5\nR1 in value 1k\nR2 value 0 1k\nE1 e 0 value 0 2\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'missing-fields-10', netlist: "* one word before a formula with a bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 x VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(e)": 5 }, traps: [] },
   { code: 'space-character-25', netlist: "* a thin space at the start of a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=\u2009v(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
   { code: 'space-character-26', netlist: "* a thin space after an operator in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*\u20092\nRe e 0 1k\n.op\n.end\n", prints: ["The internal check of parse tree", "parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
   { code: 'space-character-27', netlist: "* a thin space between the digits of a number in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V={1\u2009000*v(out)/1k}\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
@@ -756,6 +758,13 @@ it('CR1-2, CR1-4: the fix takes every character that looks like a space out of t
   // Before B's own setting the character becomes a normal space: without one, ngspice stops again (space-character-30).
   expect(fixed.get('space-character-30')![0]!.netlist).toContain('B1 e 0 V=v(out)*2 tc1=0\n');
   expect(fixed.get('nbsp-6')![0]!.label).toBe('nbsp: Take them out');
+});
+
+it('fatal-syntax-17: a node called value is renamed, on the E line too, and E1 then gives what native ngspice gave', () => {
+  const [f] = fixed.get('fatal-syntax-17')!;
+  expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
+  expect(f!.netlist).toContain('E1 e 0 val 0 2');
+  expect(vector(f!.run, 'v(e)')).toEqual([5]);
 });
 
 it('model-not-in-engine-7, -9 to -11: POLY(1) with the coefficients 0 and k is written as the plain gain k, which gives what native ngspice gave', () => {

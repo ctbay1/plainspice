@@ -398,7 +398,15 @@ describe('words ngspice takes out of an E, F, G or H line before it reads it (C3
   it('with one word more ngspice keeps the word as a node and stops at the next one ("unknown parameter (2)"), and so do the checks', () => {
     const text = `* t\n${DIVIDER}E1 e 0 vcvs out 0 2 m=1\nRe e 0 1k\n.op\n.end\n`;
     expect(parseNetlist(text).lines[4]!.element!.nodes.map((r) => r.name)).toEqual(['e', '0', 'vcvs', 'out']);
-    expect(ids(text).sort()).toEqual(['floating-dc', 'unknown-word']);
+    // Native ngspice 47 and 42 stop there too, before any simulation: no polynomial, and no singular matrix at vcvs (CR1-8).
+    const traps = checkTraps(parseNetlist(text));
+    expect(traps.map((t) => t.id)).toEqual(['unknown-word']);
+    expect(traps[0]!.ngspice).toBe("ngspice stops: 'unknown parameter (2)', native ngspice 47 and 42 too. [unknown-word-53]");
+    expect(traps[0]!.why).toContain('reads vcvs as a control node and 0 as the gain, and stops at 2');
+    const g = checkTraps(parseNetlist(`* t\n${DIVIDER}G1 0 e vccs out 0 2m m=1\nRe e 0 1k\n.op\n.end\n`));
+    expect(g.map((t) => [t.id, t.ngspice])).toEqual([['unknown-word', "ngspice stops: 'unknown parameter (2m)', native ngspice 47 and 42 too. [unknown-word-53]"]]);
+    // Seven words with numbers only are still a polynomial for native ngspice (unknown-word-4).
+    expect(checkTraps(parseNetlist(`* t\n${DIVIDER}E1 e 0 out 0 2 3\nRe e 0 1k\n.op\n.end\n`))[0]!.ngspice).toContain('reads the extra number as part of a polynomial and runs');
   });
 
   it('two words between the output nodes and VALUE= or cur= are dropped: no nodes, nothing connected, no trap', () => {
@@ -593,5 +601,27 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
       expect(found.some((t) => t.id === 'space-character'), text).toBe(true);
       for (const t of found) for (const f of t.fixes) expect(applyFix(text, f), `${t.id}: ${f.label}`).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
     }
+  });
+
+  it('CR1-10: a node called value is no formula in braces: the fix renames the node, on every E or G line that reads it as VALUE', () => {
+    const text = '* t\nV1 in 0 5\nR1 in value 1k\nR2 value 0 1k\nE1 e 0 value 0 2\nG1 0 g value 0 2m\nRe e 0 1k\nRg g 0 1k\n.op\n.end\n';
+    const found = traps(text);
+    expect(found.map((t) => [t.id, t.title])).toEqual([
+      ['fatal-syntax', "ngspice reads value on E1's line as the start of a formula"],
+      ['fatal-syntax', "ngspice reads value on G1's line as the start of a formula"],
+    ]);
+    expect(found[0]!.ngspice).toBe("ngspice stops with a fatal error: 'mal formed E source instance' (ngspice 42: 'mal formed E line'). [fatal-syntax-17]");
+    expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Rename the node value to val']);
+    const fixed = applyFix(text, found[0]!.fixes[0]!);
+    expect(fixed).toContain('E1 e 0 val 0 2\nG1 0 g val 0 2m');
+    expect(traps(fixed)).toEqual([]);
+    // With no node of that name there is nothing to rename, and still no braces; a formula with blanks around an operator keeps them.
+    expect(traps(formula('E1 e 0 value 0 2'))[0]!.fixes).toEqual([]);
+    expect(traps(formula('E1 e 0 VALUE v(out) * 2'))[0]!.fixes.map((f) => f.label)).toEqual(['Put it in braces: {v(out) * 2}']);
+  });
+
+  it('missing-fields-10: one word before a formula is warned about only where native ngspice stops at it', () => {
+    for (const line of ['E1 e 0 x VALUE={v(out)*2}', 'E1 e 0 x VALUE {2}', 'E1 e 0 x VALUE=v(out)*2', "E1 e 0 x vol='v(out)*2'", 'G1 0 e x cur={v(out)*2m}']) expect(ids(formula(line)), line).toEqual([]);
+    for (const line of ['E1 e 0 x VALUE={2}', 'E1 e 0 x VALUE = {2}', 'G1 0 e x cur={2m}', "E1 e 0 x vol='2'"]) expect(ids(formula(line)), line).toEqual(['missing-fields']);
   });
 });
