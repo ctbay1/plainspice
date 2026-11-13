@@ -5,7 +5,7 @@
 import { expect, test } from '@playwright/test';
 import { encodeShare } from '../../src/share/link.ts';
 import { RUN_COPY_WORDS } from '../../src/spice/run-netlist.ts';
-import { expectSolved, openApp, openPanel, setNetlist, statusLine, t } from './helpers.ts';
+import { expectSolved, openApp, openPanel, runButton, setNetlist, statusLine, t } from './helpers.ts';
 
 const DIVIDER = 'V1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n';
 
@@ -87,6 +87,29 @@ test.describe('what PlainSpice hands ngspice', () => {
     const output = await openPanel(page, 'output');
     await expect(output.getByText(RUN_COPY_WORDS.plusAfterEnd(6, 4))).toBeVisible();
     await expect(output.getByText(t('outputAdded'))).toHaveCount(0);
+  });
+
+  // The round-1 critic's CR1-2: ngspice reads an .options savecurrents line after .end too (A2d), and the panel said
+  // the currents were missing beside the Numbers panel's currents.
+  test('a + line after .end with the student’s own .options savecurrents after it: every current, and no note says one is missing', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options savecurrents\n', { run: true })}`);
+    await expectSolved(page);
+    const numbers = await openPanel(page, 'numbers');
+    await expect(numbers).toContainText('i(@r1[i]) = 1.000000e+00');
+    await expect(numbers).toContainText('i(@i1[current]) = 1.000000e+00');
+    const output = await openPanel(page, 'output');
+    await expect(output).toContainText(t('outputIntro'));
+    await expect(output).not.toContainText('PlainSpice did not add .options savecurrents');
+  });
+
+  // The round-1 critic's CR1-1: after Run on a link opened without running, the status line said "press Run" again.
+  test('Run on a link opened without running, of a netlist PlainSpice does not run: the status line says why, not "press Run"', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n', { run: false })}`);
+    await expect(statusLine(page)).toContainText(t('statusNotRun'));
+    await runButton(page).click();
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.noClose(4, 'v('));
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
   });
 
   test('a B source typed without its ) is not given to ngspice: the status line says why, until the ) is there', async ({ page }) => {

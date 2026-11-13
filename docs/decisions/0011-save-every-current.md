@@ -106,7 +106,12 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   Tests: `tests/unit/spice-run-netlist.test.ts` (the note's words; no note for seven netlists where native
   ngspice saves every current, the note for five where it saves none), `tests/unit/spice-explain.test.ts`,
   `tests/golden/facts-explain.test.ts` (A2c's B row, A2d's twelve rows, and the note and Explain's "does
-  not add" exactly where our engine's run has no part's own current); all fail on a0fcb61.
+  not add" exactly where our engine's run has no part's own current), `tests/e2e/run-copy.spec.ts` (a `+`
+  line after `.end` with the student's own line after it: both currents in the Numbers panel, no note in
+  the output panel, both projects); all fail on a0fcb61. In the built site (1280 × 800, run=1 links): that
+  netlist, and the same after a `.end` with a comment glued on, show both currents with no note and no
+  `.op` note in Explain; S28, the B source above and the line after a line starting with `@` show the note
+  in its new words and Explain's "does not add".
 - **Still open, for after the release** (left as they are, as what runs does not change now):
   - The parser does not join a `+` line after `.end` to the line it continues (it stops reading at `.end`),
     so the drawing, the overview, R1's card ("SPICE reads it as 2 Ω") and Explain call R1 2 Ω where ngspice

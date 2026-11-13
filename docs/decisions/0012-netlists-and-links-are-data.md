@@ -783,5 +783,10 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   before it (`live.ts` keeps no text typed during a pause). Tests: `tests/unit/app-words.test.ts` (each
   of the five pauses with a refused netlist, an engine that stopped and no analysis line; a changed text
   keeps the pause's words), `tests/unit/app-run-copy.test.tsx` (Run on a link opened without running: the
-  status line, the node card and R1's card give the reason); both fail on a0fcb61.
+  status line, the node card and R1's card give the reason), `tests/e2e/run-copy.spec.ts` (the same link
+  in the built site, both projects); all fail on a0fcb61. In the built site (1280 × 800, the critic's
+  probes): Run on that link gives "PlainSpice did not run it · Line 4: …", and the node card and R1's card
+  the reason; Ctrl+Enter on the 120,001-point sweep with the B line typed in gives the same, for line 6; Run
+  on a link opened without running of a netlist with no analysis line gives "Nothing to run yet · Add an
+  analysis line…" (a0fcb61: "Not run yet" or "Live runs paused" and "press Run", each time).
 
