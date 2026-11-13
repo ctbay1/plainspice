@@ -95,3 +95,21 @@ with v(out) = 6 V and Run says it again; the 120,001-point sweep, whose live run
 after each Ctrl+Enter, the second time with 6 V (b060bc8: the second not at all); RC charging with R1 at
 2k is said with v(out) = 4.589 V and −205.3 µA at 5 ms (native ngspice 47: 4.58947 V and −2.05263e-04
 A), and again for Run (b060bc8: neither).
+
+## After the last pass (13 November 2026)
+
+- **A run Run asks for that fails is said too** (the last pass, C3-2 and a11y-phone-1; WCAG 4.1.3 as read
+  above). A netlist PlainSpice does not give ngspice (decision 0012) fails again at every pause while it
+  is typed, so its reason is said once and not again until it changes. That rule also silenced Run,
+  Ctrl+Enter and Ctrl+K's "Run ngspice now" after the first alert, and so a student who missed it heard
+  nothing from the key that means "run it and tell me": the status line went "Running…" and back within
+  1 to 2 ms, and it is in no live region. A run the engine stopped ("The engine stopped unexpectedly.")
+  was silent from its second time too, which fix-base said every time. Now a failed run's outcome says
+  whether Run asked for it (`live.ts`, as a finished run's does), and one Run asked for is always said,
+  in the alert's words ("The simulation could not run: …"); after a change, the same reason is still
+  said once. Tests (`tests/unit/app-run-copy.test.tsx`) count the alert's paragraphs as they come: after
+  the first alert, Run, Ctrl+Enter and Ctrl+K's "Run ngspice now" each add one for a refused netlist,
+  and Run and Ctrl+Enter one each for an engine whose run stops (c520a49: none of the five);
+  `tests/unit/app-live.test.ts`: a failed change's outcome has `manual: false`, a failed Run's
+  `manual: true`.
+

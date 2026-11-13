@@ -42,6 +42,27 @@ afterEach(() => {
 
 const statusLine = (): string => document.querySelector('.status')?.textContent ?? '';
 const alerts = (): string[] => [...screen.getByTestId('live-alert').children].map((p) => p.textContent ?? '');
+/**
+ * The paragraphs added to the alert region from now on: one paragraph is one announcement. Counted as
+ * they come, not read from the region: a paragraph stays there for 10 s, so the one from before would
+ * pass a check of the region's words (as app-smoke.test.tsx counts the polite region's).
+ */
+function heard(): { said: string[]; stop: () => void } {
+  const said: string[] = [];
+  const mo = new MutationObserver((records) => {
+    for (const r of records) for (const n of r.addedNodes) said.push(n.textContent ?? '');
+  });
+  mo.observe(screen.getByTestId('live-alert'), { childList: true });
+  return { said, stop: () => mo.disconnect() };
+}
+const runButton = (): HTMLElement => within(screen.getByRole('toolbar', { name: 'Actions' })).getByRole('button', { name: 'Run' });
+/** Ctrl+K, then its "Run ngspice now". */
+function runFromPalette(): void {
+  fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+  const input = within(screen.getByRole('dialog', { name: 'Commands' })).getByRole('combobox');
+  fireEvent.change(input, { target: { value: 'run ngspice now' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+}
 
 async function editorView(): Promise<import('@codemirror/view').EditorView> {
   const { EditorView } = await import('@codemirror/view');
@@ -90,5 +111,56 @@ describe('a netlist ngspice cannot take, in the app', () => {
     await waitFor(() => expect(statusLine()).toMatch(/Finished in \d+ ms/), { timeout: 15000 });
     expect(runs).toHaveLength(1);
     expect(runs[0]).toContain('B1 b 0 V=v(a)+1*2\n');
+  }, 30_000);
+});
+
+describe('a run Run asks for that fails is said each time, as one that finishes is (the last pass: C3-2, a11y-phone-1; decision 0010)', () => {
+  // The alert said a refused netlist's reason once, and Run, Ctrl+Enter and Ctrl+K's "Run ngspice now"
+  // then said nothing (c520a49: 0 of 3), while the status line only went "Running…" and back for 1–2 ms.
+  it('a netlist PlainSpice does not run: Run, Ctrl+Enter and Ctrl+K each say the reason again; ngspice is never asked', async () => {
+    const runs: string[] = [];
+    const engine: Engine = {
+      warmUp: async () => (await ngspice, 1),
+      run: async (netlist) => (runs.push(netlist), (await ngspice).run(netlist)),
+      cancel: () => undefined,
+    };
+    render(<App startup={{ source: 'saved', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n' }} engine={engine} serviceWorker={false} />);
+    const why = `The simulation could not run: ${RUN_COPY_WORDS.noClose(4, 'v(')}`;
+    await waitFor(() => expect(alerts()).toEqual([why]), { timeout: 15000 });
+    const said = heard();
+    fireEvent.click(runButton());
+    await waitFor(() => expect(said.said).toEqual([why]), { timeout: 5000 });
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(said.said).toEqual([why, why]), { timeout: 5000 });
+    runFromPalette();
+    await waitFor(() => expect(said.said).toEqual([why, why, why]), { timeout: 5000 });
+    // Said once each, not more.
+    await new Promise((r) => setTimeout(r, 500));
+    expect(said.said).toHaveLength(3);
+    said.stop();
+    expect(runs).toEqual([]);
+  }, 30_000);
+
+  // fix-base said every failed run; c520a49 said only the first (1 alert for 3 runs).
+  it('an engine whose run stops: Run and Ctrl+Enter each say why again', async () => {
+    let runs = 0;
+    const engine: Engine = {
+      warmUp: async () => 1,
+      run: async () => {
+        runs += 1;
+        throw new Error('The engine stopped unexpectedly.');
+      },
+      cancel: () => undefined,
+    };
+    render(<App startup={{ source: 'saved', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n' }} engine={engine} serviceWorker={false} />);
+    const why = 'The simulation could not run: The engine stopped unexpectedly.';
+    await waitFor(() => expect(alerts()).toEqual([why]), { timeout: 15000 });
+    const said = heard();
+    fireEvent.click(runButton());
+    await waitFor(() => expect(said.said).toEqual([why]), { timeout: 5000 });
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => expect(said.said).toEqual([why, why]), { timeout: 5000 });
+    expect(runs).toBe(3);
+    said.stop();
   }, 30_000);
 });

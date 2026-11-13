@@ -659,7 +659,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
     checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
     types on in a refused line, each pause fails again with the same reason, which is not said again
-    until it changes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
+    until it changes; a run Run asks for says it each time (decision 0010).
+    250, not 511: ngspice joins two names in one space when it turns a resistor's
     formula into a B source (`v(n1, n2)`), and a `.control` block's `display` writes about 40 more
     bytes around a name (limit-10); one number for every name, written or made inside subcircuits, is
     simpler to say than one per place. Where ngspice joins more than two (a `.probe` line's formula: a
@@ -731,4 +732,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     program": the commands run, `system()` refuses), so it is Tarık's choice. An earlier version of this
     bullet said not running `.control` blocks would close it: it would not, as `*#` lines run outside
     them.
+
+## After the last pass (13 November 2026)
+
+- **Run says a refused netlist's reason each time** (the last pass, C3-2 and a11y-phone-1). The reason
+  said once was meant for the pauses while the student types on in a refused line; it also silenced Run,
+  Ctrl+Enter and Ctrl+K's "Run ngspice now" after the first alert. A run Run asks for is now always said,
+  as decision 0010 records.
 

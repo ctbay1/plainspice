@@ -203,8 +203,19 @@ describe('live runs', () => {
     const f = fake();
     f.live.run('e');
     await f.fail(new Error('ngspice could not load'));
-    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'ngspice could not load' });
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'ngspice could not load', manual: true });
     expect(f.live.getState().paused).toBeUndefined();
+  });
+
+  it('a failed run’s outcome says whether Run asked for it, as a finished one does (the last pass: C3-2)', async () => {
+    const f = fake();
+    f.live.edited('e');
+    vi.advanceTimersByTime(LIVE_DELAY_MS);
+    await f.fail(new Error('the same reason'));
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'the same reason', manual: false });
+    f.live.run('e');
+    await f.fail(new Error('the same reason'));
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'the same reason', manual: true });
   });
 
   it('a new circuit starts afresh: the old run is dropped, the pause lifted, the new one runs at once', async () => {

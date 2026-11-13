@@ -44,7 +44,8 @@ export type LiveOutcome<R> =
   | { kind: 'nothing'; text: string }
   | { kind: 'stopped'; text: string }
   | { kind: 'timeout'; text: string; seconds: number; points?: number }
-  | { kind: 'failed'; text: string; reason: string };
+  /** `manual` as for 'done': a run Run asked for is said even when it fails for the reason said last. */
+  | { kind: 'failed'; text: string; reason: string; manual?: boolean };
 
 export interface LiveState<R> {
   outcome: LiveOutcome<R>;
@@ -191,7 +192,7 @@ export function createLiveRunner<R>(options: LiveOptions<R>): LiveRunner<R> {
         paused = { reason: 'timeout', seconds: options.timeoutSeconds };
         queued = undefined;
       } else {
-        outcome = { kind: 'failed', text, reason: error instanceof Error ? error.message : String(error) };
+        outcome = { kind: 'failed', text, reason: error instanceof Error ? error.message : String(error), manual };
       }
     } finally {
       if (gen === generation) clearTimeout(slowTimer);
