@@ -128,15 +128,18 @@ describe('F4, F5: a resistance below 1e-12 Ω, said as each ngspice version trea
 
   it('a plain value below 1e-12 Ω that is not 0: ngspice 42 keeps it as written, and a negative one is set to −1e-12 Ω (zero-ohm-7)', () => {
     const f = first('* t\nV1 a 0 6\nR1 a b 1f\nR2 b 0 2\n.op\n.end\n', 'zero-ohm');
-    expect([f.title, f.ngspice]).toEqual(['R1 has a resistance of 1\u00a0fΩ', `ngspice 47 uses 1e-12 Ω instead and ${warn47('r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7]`]);
-    expect(f.why).toBe("A resistance this small is almost 0, and SPICE can't use a resistance of 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).");
+    expect([f.title, f.ngspice]).toEqual(['R1 has a resistance of 1\u00a0fΩ', `ngspice 47 uses 1e-12 Ω instead and ${warn47('r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9]`]);
+    // The why is ngspice 47's floor, in the Numbers panel's words, never "SPICE can't use a resistance of 0" for a value that is
+    // not 0 (round-1 critic C3); the currents next to it can come out inaccurate (zero-ohm-9: 5.859 mA for 6 mA).
+    expect(f.why).toBe('ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).');
     expect(f.fixes.map((x) => x.label)).toEqual(['Use a 0 V source instead (VR1)']);
     const neg = first('* t\nV1 a 0 6\nR1 a b -3e-18\nR2 b 0 2\n.op\n.end\n', 'zero-ohm');
-    expect(neg.ngspice).toBe(`ngspice 47 uses −1e-12 Ω instead and ${warn47('r1', '-')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7]`);
+    expect(neg.ngspice).toBe(`ngspice 47 uses −1e-12 Ω instead and ${warn47('r1', '-')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9]`);
+    expect(neg.why).toMatch(/^ngspice 47 cannot use a resistance this close to 0: it uses −10⁻¹² Ω instead, and the currents next to it can come out inaccurate\. /);
     expect(first('* t\nV1 a 0 6\nR1 a b -3a\nR2 b 0 2\n.op\n.end\n', 'unit-letter').ngspice).toContain(`${warn47('r1', '-')} (ngspice 42 keeps it as written, without a word)`);
     // Inside a subcircuit, with ngspice's name for each use (zero-ohm-6).
     const sub = first('* t\n.subckt div a b\nR1 a b 1f\nR2 b 0 1\n.ends\nV1 in 0 1\nX1 in out div\n.op\n.end\n', 'zero-ohm');
-    expect(sub.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r.x1.r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-6]`);
+    expect(sub.ngspice).toBe(`ngspice 47 uses 1e-12 Ω instead and ${warn47('r.x1.r1')}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9, zero-ohm-6]`);
   });
 
   it('a value of exactly 0 keeps ngspice 42’s 1 mΩ, with no digit of one test said as every circuit’s (zero-ohm-1; F5)', () => {

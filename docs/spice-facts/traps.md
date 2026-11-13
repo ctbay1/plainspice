@@ -7814,17 +7814,17 @@ What PlainSpice shows for zero-ohm-4 (warning, line 4):
 
 What PlainSpice shows for zero-ohm-7 (warning, line 3):
 
-> **R1 has a resistance of 1 fΩ.** A resistance this small is almost 0, and SPICE can't use a resistance of 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
+> **R1 has a resistance of 1 fΩ.** ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
 >
-> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7]
+> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9]
 >
 > *Fixes:* "Use a 0 V source instead (VR1)"
 
 What PlainSpice shows for zero-ohm-7 (warning, line 5):
 
-> **R2 has a resistance of −3 aΩ.** A resistance this small is almost 0, and SPICE can't use a resistance of 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
+> **R2 has a resistance of −3 aΩ.** ngspice 47 cannot use a resistance this close to 0: it uses −10⁻¹² Ω instead, and the currents next to it can come out inaccurate. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
 >
-> *ngspice:* ngspice 47 uses −1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to -1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7]
+> *ngspice:* ngspice 47 uses −1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to -1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9]
 >
 > *Fixes:* "Use a 0 V source instead (VR2)"
 
@@ -8161,6 +8161,109 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `unit-letter`, `unit-letter`, `zero-ohm`.
+
+### zero-ohm-9. Below 1e-12 Ω but not 0: the currents next to the resistor can come out inaccurate, in ngspice 47 as for a 0 (P13), and in ngspice 42 too
+
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C3), for the zero-ohm check's why for such a value: "ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate", the words of the Numbers panel's note too (P13, P24). Each resistor is in series with 1 kΩ across 6 V, so the exact current is 6 mA, run as PlainSpice runs an .op (`.options savecurrents`, A2 in explanations.md). ngspice 47 raises 1 fΩ to 1e-12 Ω, as it does a 0 (P13), and gives V1 5.859 mA and R1 6.217 mA; it makes −3 aΩ −1e-12 Ω and gives V1 4.883 mA and R1 5.329 mA. R2's 6 mA is right in both. ngspice 42 keeps each value and gives V1 and R1 0 A. Where a current source sets the current (P24's 3a), R1 carries exactly that 1 A in both versions: the currents can come out inaccurate, not always.
+
+```spice
+* 1 femtoohm in series with 1k, as PlainSpice runs it (.options savecurrents)
+V1 a 0 6
+R1 a b 1f
+R2 b 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           6.217249e-03
+        v1#branch                        -5.85938e-03
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 5.999999999999994, i(v1) = -0.005859375, i(@r1[i]) = 0.006217248937900877, i(@r2[i]) = 0.005999999999999994
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           0.000000e+00
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6, i(v1) = 0, i(@r1[i]) = 0, i(@r2[i]) = 0.006
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same message as ngspice 47
+    vectors: v(a) = 6, v(b) = 5.999999999999994, i(v1) = -0.005859375, i(@r1[i]) = 0.006217248937900877, i(@r2[i]) = 0.005999999999999994
+    diagnostics: resistor-too-small (r1)
+```
+
+```spice
+* minus 3 attoohms in series with 1k, as PlainSpice runs it (.options savecurrents)
+V1 a 0 6
+R1 a b -3e-18
+R2 b 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           5.329071e-03
+        v1#branch                        -4.88281e-03
+    Warning: Value of resistor r1 is too small, set to -1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6.000000000000005, i(v1) = -0.0048828125, i(@r1[i]) = 0.005329070518200751, i(@r2[i]) = 0.006000000000000005
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           -0.000000e+00
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6, i(v1) = 0, i(@r1[i]) = -0, i(@r2[i]) = 0.006
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same message as ngspice 47
+    vectors: v(a) = 6, v(b) = 6.000000000000005, i(v1) = -0.0048828125, i(@r1[i]) = 0.005329070518200751, i(@r2[i]) = 0.006000000000000005
+    diagnostics: resistor-too-small (r1)
+```
+
+```spice
+* 3a on a resistor, as PlainSpice runs it (.options savecurrents)
+I1 0 n1 1
+R1 n1 0 3a
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        n1                               1.000000e-12
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        n1                               3.000000e-18
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 3.0000000000000002e-18, i(@i1[current]) = 1, i(@r1[i]) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same message as ngspice 47
+    vectors: v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
+    diagnostics: resistor-too-small (r1)
+```
+
+PlainSpice's checks: `zero-ohm`; `zero-ohm`; `unit-letter`.
 
 ## fatal-syntax
 
