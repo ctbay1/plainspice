@@ -56,6 +56,62 @@ const overlapArea = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1)
 const inside = (b: Box, area: Box): boolean => b.x0 >= area.x0 - 1e-9 && b.y0 >= area.y0 - 1e-9 && b.x1 <= area.x1 + 1e-9 && b.y1 <= area.y1 + 1e-9;
 export const moveBy = (b: Box, dx: number, dy: number): Box => ({ x0: b.x0 + dx, y0: b.y0 + dy, x1: b.x1 + dx, y1: b.y1 + dy });
 
+/**
+ * A room's boxes and wires filed by the squares of a grid (made once for a room, which is never
+ * changed once made): `covers` looks only at what is near a box.
+ */
+class Near {
+  private readonly size: number;
+  private readonly cells = new Map<number, number[]>();
+  /** What covers too many squares to file: looked at every time. */
+  private readonly big: number[] = [];
+
+  constructor(room: Room) {
+    this.size = Math.max(1e-6, Math.max(width(room.area), height(room.area)) / 64);
+    room.boxes.forEach((b, i) => this.file(b, i));
+    room.segments.forEach(([a, b], i) => this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i));
+  }
+
+  /** The squares a box covers (undefined: too many, or not finite). */
+  private squares(b: Box): { x0: number; x1: number; y0: number; y1: number } | undefined {
+    const q = { x0: Math.floor(b.x0 / this.size), x1: Math.floor(b.x1 / this.size), y0: Math.floor(b.y0 / this.size), y1: Math.floor(b.y1 / this.size) };
+    return (q.x1 - q.x0 + 1) * (q.y1 - q.y0 + 1) <= 4096 ? q : undefined;
+  }
+
+  private file(b: Box, id: number): void {
+    const q = this.squares(b);
+    if (!q) {
+      this.big.push(id);
+      return;
+    }
+    for (let x = q.x0; x <= q.x1; x++) for (let y = q.y0; y <= q.y1; y++) (this.cells.get(x * 65536 + y) ?? this.cells.set(x * 65536 + y, []).get(x * 65536 + y)!).push(id);
+  }
+
+  /** True when one of the room's boxes or wires is in the box's way (what coverCost counts). */
+  covers(box: Box, room: Room): boolean {
+    const hit = (id: number): boolean => {
+      if (id >= 0) return boxesOverlap(box, room.boxes[id]!);
+      const [a, b] = room.segments[-1 - id]!;
+      return segmentCrossesBox(a, b, box);
+    };
+    if (this.big.some(hit)) return true;
+    const q = this.squares(box);
+    if (!q) return room.boxes.some((_, i) => hit(i)) || room.segments.some((_, i) => hit(-1 - i));
+    for (let x = q.x0; x <= q.x1; x++) for (let y = q.y0; y <= q.y1; y++) if (this.cells.get(x * 65536 + y)?.some(hit)) return true;
+    return false;
+  }
+}
+
+const near = new WeakMap<Room, Near>();
+
+/** True when `box` covers something of the room (coverCost is not 0), looking only near it. */
+function covers(box: Box, room: Room): boolean {
+  for (const n of room.never ?? []) if (boxesOverlap(box, n)) return true;
+  let grid = near.get(room);
+  if (!grid) near.set(room, (grid = new Near(room)));
+  return grid.covers(box, room);
+}
+
 /** How much of the room's boxes and wires `box` covers (0: none; Infinity: a box it may never cover). */
 export function coverCost(box: Box, room: Room): number {
   for (const n of room.never ?? []) if (boxesOverlap(box, n)) return Infinity;
@@ -103,10 +159,14 @@ export function placeBeside(target: Box, w: number, h: number, room: Room, optio
   const pen = options.sidePenalty;
   if (pen === undefined) candidates.sort((p, q) => p.rank - q.rank || p.distance - q.distance);
   else candidates.sort((p, q) => p.distance + p.rank * pen - (q.distance + q.rank * pen));
+  // The first place that covers nothing, found by looking near each place and stopping at the first
+  // thing it covers; only when every place covers something is each one's cover summed, for the least
+  // (on a drawing at the format's limits, summing each place's cover took two seconds a click; second
+  // re-check, P2).
+  for (const c of candidates) if (!covers(c.box, room)) return { box: c.box, side: c.side, cost: 0 };
   let best: Placement | undefined;
   for (const c of candidates) {
     const cost = coverCost(c.box, room);
-    if (cost === 0) return { box: c.box, side: c.side, cost };
     if (!best || cost < best.cost) best = { box: c.box, side: c.side, cost };
   }
   return best && Number.isFinite(best.cost) ? best : undefined;

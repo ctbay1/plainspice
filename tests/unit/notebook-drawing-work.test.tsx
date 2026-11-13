@@ -11,12 +11,29 @@
  */
 import { act, cleanup, render } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it } from 'vitest';
-import { Drawing, NO_RESULTS, notebookSchematic } from '../../src/notebook/index.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Drawing, NO_RESULTS, coverCost, drawingRoom, notebookSchematic, placeCard } from '../../src/notebook/index.ts';
 import type { NavItem, Schematic } from '../../src/schematic/index.ts';
 import { slantedLattice } from './schematic-hostile.ts';
 
 afterEach(cleanup);
+
+const checks = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock('../../src/schematic/geometry.ts', async (importOriginal) => {
+  const g = await importOriginal<typeof import('../../src/schematic/geometry.ts')>();
+  return {
+    ...g,
+    boxesOverlap: (...args: Parameters<typeof g.boxesOverlap>): boolean => {
+      checks.count++;
+      return g.boxesOverlap(...args);
+    },
+    segmentCrossesBox: (...args: Parameters<typeof g.segmentCrossesBox>): boolean => {
+      checks.count++;
+      return g.segmentCrossesBox(...args);
+    },
+  };
+});
 
 /** A list whose items are counted as they are read. */
 function watched<T>(list: T[], reads: { count: number }): T[] {
@@ -58,11 +75,13 @@ const props = (s: Schematic, hovered?: NavItem, selected?: NavItem): Parameters<
   traps: NO_TRAPS,
 });
 
-// Built once: the slanted lattice of 70 × 70 points on node out (a 30 kB link, inside the format's limits).
+// Built once: the slanted lattice of 70 × 70 points on node out (a 30 kB link, inside the format's
+// limits). A render of its 4,898 dots takes seconds in jsdom on a busy machine: the counts are checked,
+// with time to spare.
 const lattice = notebookSchematic(slantedLattice(70));
 
 describe('the drawing finds each dot’s and hop’s colour at its point (second re-check, P2)', () => {
-  it('a slanted lattice at the format’s limits: every dot in out’s colour, from one look at the wires', () => {
+  it('a slanted lattice at the format’s limits: every dot in out’s colour, from one look at the wires', { timeout: 60_000 }, () => {
     const sc = lattice.scene;
     expect(sc.junctions.length).toBeGreaterThan(4800);
     expect(sc.wires.reduce((n, w) => n + w.points.length - 1, 0)).toBeGreaterThan(9600);
@@ -83,7 +102,7 @@ describe('the drawing finds each dot’s and hop’s colour at its point (second
     expect(sc.junctionNodes.filter((n) => n !== 'out')).toEqual(['0']);
   });
 
-  it('hops take the hopping wire’s colour, and the dots on straight copper keep theirs', () => {
+  it('hops take the hopping wire’s colour, and the dots on straight copper keep theirs', { timeout: 60_000 }, () => {
     // A frame on out's pin with lines across it inside: 9,604 crossings, every hop on out's copper.
     const lines = ['*@ wire 7,1 9,1', '*@ wire 9,1 108,1 108,100 9,100 9,1'];
     for (let j = 1; j <= 98; j++) lines.push(`*@ wire 9,${1 + j} 108,${1 + j}`);
@@ -110,7 +129,7 @@ describe('the drawing finds each dot’s and hop’s colour at its point (second
 });
 
 describe('a hover, a selection or the focus draws only what changes (P2)', () => {
-  it('on the lattice, hovering R1 and then selecting it reads no dot, no hop and no part’s words again', () => {
+  it('on the lattice, hovering R1 and then selecting it reads no dot, no hop and no part’s words again', { timeout: 60_000 }, () => {
     const c = counting(lattice);
     const { container, rerender } = render(
       <svg>
@@ -136,5 +155,27 @@ describe('a hover, a selection or the focus draws only what changes (P2)', () =>
       // The highlights look at each wire once, for the one hovered or selected.
       expect(c.wires.count).toBeLessThanOrEqual(lattice.scene.wires.length);
     }
+  });
+});
+
+describe('a click’s card finds its place by looking near each place it tries (P2)', () => {
+  it('R1’s card on the whole lattice: a free place beside it, found with a few checks for each place tried', { timeout: 60_000 }, () => {
+    // The lattice shown whole on a 1280 × 800 page, as Show the whole drawing does: the card goes
+    // beside R1 where the paper is free, the drawing panned once to make room. Each place tried was
+    // checked against every word, symbol and piece of wire (9,666): two seconds of work a click.
+    const sc = lattice.scene;
+    const b = sc.bounds;
+    const unit = Math.min(1200 / (b.x1 - b.x0), 700 / (b.y1 - b.y0));
+    const view = { unit, x: 40 - b.x0 * unit, y: 60 - b.y0 * unit };
+    const area = { x0: 0, y0: 48, x1: 1280, y1: 800 };
+    checks.count = 0;
+    const p = placeCard({ scene: sc, part: 'r1', view, area, width: 340, height: 230, pan: true });
+    const looked = checks.count;
+    expect(p?.cost).toBe(0);
+    // Free indeed, where the drawing is once panned: nothing under it.
+    const panned = { ...view, x: view.x + p!.pan.x, y: view.y + p!.pan.y };
+    expect(coverCost(p!.box, drawingRoom(sc, panned, area))).toBe(0);
+    // About 114,000 checks here; summing each place's cover was 140 million.
+    expect(looked).toBeLessThan(1_000_000);
   });
 });
