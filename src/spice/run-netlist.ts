@@ -1627,8 +1627,8 @@ export function netlistToRun(netlist: Netlist): NetlistToRun {
   const done = (added: string[], copy: string): NetlistToRun => (notRun ? { text: copy, added, notes, notRun } : { text: copy, added, notes });
   const hasOp = netlist.analyses.some((i) => netlist.lines[i]?.directive?.name === '.op');
   // With a + line right after .end, the line would change what ngspice reads: it runs without it (every
-  // voltage is the same, A2), as the student wrote it, and the ngspice output panel says why (A2c), unless the
-  // student's own .options savecurrents line, after .end, saves every current (A2d).
+  // voltage is the same, A2), as the student wrote it, and the ngspice output panel says why (A2c), unless an
+  // .options savecurrents line of the student's that ngspice reads (after .end too) saves every current (A2d).
   const plus = plusLineAfterEnd(netlist);
   if (!hasOp || hasSaveCurrents(netlist) || plus) {
     const left = hasOp ? saveCurrentsLeftOut(netlist) : undefined;
