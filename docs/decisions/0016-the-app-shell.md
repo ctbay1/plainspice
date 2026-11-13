@@ -467,3 +467,55 @@ Ctrl+K stay as they are.
   every circuit written in capitals, and is left for after the release. Nothing is lower-cased with
   toLowerCase, which turns İ into i with a combining dot and knows no Turkish ı. Known gap: the
   rounding-noise note (another lane's) still names a node by its key.
+
+## After the last pass (13 November 2026)
+
+- **A rename changes the name wherever ngspice reads it** (code review C3-1). The node-name fixes
+  (non-ascii-node, the aµ/au split, invisible-character, space-character and nbsp, look-alike-letter)
+  renamed only the words the parser listed: the part lines and the dot commands' `v(...)`, the
+  commands for ngspice and the .print and .plot lines. A formula that read the node kept the old name
+  (`B1 b 0 V=v(çıkış)*2`, `E1 e 0 VALUE={v(çıkış)*2}`, `R4 x 0 R={1k+v(çıkış)}`), and so did a `.pz`
+  line and the lines after a plain `.end`, which ngspice reads as part of the circuit (S25): a working
+  circuit then stopped ("no single answer at node ____k____") with the Checks panel saying "No traps
+  found", or a part after `.end` was cut off and the numbers changed silently (3.333 V became 5 V), and
+  "Rename" and "Move .end to the bottom" gave different circuits in different orders. Now the parser
+  lists the nodes a formula reads, inside `v(...)` as ngspice's formula reader takes them (B lines, E and
+  G written with `VALUE=`, `vol=`, `cur=` or `TABLE`, R, C and L values written as formulas), and `.pz`'s
+  four bare nodes, among a node's references (`NodeInfo.refs`; they connect nothing, so the drawing, the
+  graph and the overview's count of nodes are as before). Every rename takes its words from one list,
+  `nodeReferences` in `src/spice/traps.ts`: those references, a name bare on a .print or .plot line, the
+  commands for ngspice, and the same on the lines after a plain `.end`, each read as the parser would read
+  it before `.end`. For a name with a character outside printable ASCII, which no keyword, model or
+  parameter of ngspice's is, any other word on a line ngspice reads that is the name is renamed too (a
+  command that names it bare, `print çıkış`, `let x = 2*çıkış`), so the old name is left nowhere ngspice
+  reads it; a subcircuit's own node of that name stays. Chosen: rename, not withhold the fix, as the
+  review offered: the word is the node for ngspice, and the fixed circuit is the same circuit
+  (non-ascii-node-15 to -19, invisible-character-67, look-alike-letter-18, space-character-24 record the
+  same numbers before and after, native 47 and 42 and our engine). Not changed for this: a name in plain
+  letters (the drawing editor's rename, "Make n3 the ground") is renamed only where the list finds it, as a
+  parameter, a model, a subcircuit or a vector a command makes can share a plain name.
+- **E, F, G and H written as a formula, a table or a polynomial** (code review C3-5). PlainSpice read
+  every E and G line as nodes, control nodes and a gain, so `E1 e 0 VALUE={v(out)*2}`, which native 47 and
+  42 and our engine run (e = 5 V), got three errors ("E1 has no gain", "value has no DC path to ground",
+  "{v(out)*2} has no DC path to ground") and no numbers, as did vol=, cur=, POLY and TABLE. The parser
+  now reads them as ngspice does (its inp_compat makes a formula a B source; XSPICE builds POLY and
+  TABLE): `Element.form` says which, a formula's words are its fields, POLY(n)'s control nodes are nodes
+  (n pairs on E and G) or voltage sources (n on F and H), and nothing is said to be missing
+  (missing-value-15 to -17). POLY and TABLE need XSPICE, which PlainSpice's engine leaves out: one error,
+  model-not-in-engine, says so, and that native ngspice 47 runs it (model-not-in-engine-7 to -14); for
+  POLY(1) with the coefficients 0 and k, its fix writes the plain gain k, which gives what native ngspice
+  gave. The drawing leaves these lines out, as it does a B line, and lists them under "Not in the drawing"
+  (there is no gain and no control to draw); Explain says what the output is ("The voltage at node e,
+  measured from ground, is given by the formula {v(out)*2}"), which nodes the formula reads, and that
+  ngspice makes the line a B source, or that PlainSpice's engine cannot run a POLY or a TABLE; the
+  overview says "a voltage source given by a formula". Not changed for this: HSPICE's words `vcvs`,
+  `vccs`, `cccs` and `ccvs` after the nodes and LAPLACE are read as before; the results list the nodes
+  ngspice adds for a formula (`e1_int1`), as they list a formula capacitor's and a subcircuit's.
+- **A character that looks like a space in a formula** (code review C3-1, the skeptic's addition). The
+  glue check offered "Replace it with a normal space" in a formula too, which turned `v(o<thin space>ut)`
+  into `v(o ut)`: native 47 stops ("YYparse error"), 42 too ("PTerror: syntax error"). Inside a node's
+  name in a formula the character is now that node's (space-character-24), and its fix takes it out there
+  as on the part lines; anywhere else in a B source's formula (a B line's, an E or G line's given by
+  VALUE=, vol= or cur=) ngspice stops ("unknown parameter (_)", or "Undefined
+  parameter [v]" right after a `v`), so the check is an error whose fix takes the character out
+  (space-character-22, -23, nbsp-4): a normal space between a `v` and its bracket stops ngspice too.

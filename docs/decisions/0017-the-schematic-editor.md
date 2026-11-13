@@ -576,3 +576,16 @@ page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
   machine's move for nobody's, and the second click was then taken where the drawing had slid to.
   Considered: a card that never comes to rest under the pointer; its place is decided by the drawing
   and the window (decision 0015), and a keyboard opens it with no pointer at all.
+
+## After the last pass (13 November 2026)
+
+- **Renaming a node renames it wherever ngspice reads it** (code review C3-1, the older half). The
+  editor's node Rename, joining two nodes by a wire, and a ground placed on a node changed the node's
+  name on the part lines, in the dot commands' `v(...)` and in a `.control` block's `v(...)`, but not in a
+  formula that reads it, so "Rename out to vout" left `B1 b 0 V=v(out)*2` on a node with nothing on it
+  (native 47: "singular matrix: check node out"), nor on a `.pz` line, a `.print dc out` or after `save`,
+  nor on the lines after a plain `.end`, which ngspice reads (S25: an `R3 out 0 1k` there was cut off).
+  They now take their words from the same list as the checks' renames (`nodeReferences` in
+  `src/spice/traps.ts`; decision 0016, after the last pass). A node's names in plain letters are renamed
+  only where that list finds them: a word in a command that names the node bare outside `save`
+  (`print out`) may as well be a vector the command made, so it stays.

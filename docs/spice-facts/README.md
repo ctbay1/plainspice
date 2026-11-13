@@ -193,3 +193,15 @@ to it, and how its control reader makes their words (blanks kept in quotes, a ba
 braces made into words, `~` made the home folder); limit-12, limit-16 and limit-17 gained `ngbehavior` set
 before a built circuit, a built circuit's `.title` line, a formula's name with its blanks and quotes, and
 `fft`, `psd`, `spec` and `asciiplot`.
+
+## The last pass of 13 November 2026
+
+Run the same way on 13 November 2026 (native ngspice 47 and 42, `-b` and `-b -r`, and our engine), with
+the netlists each fix gives: in traps.md, missing-value-15 to -17 (an E or G given by a formula, `VALUE=`,
+`vol=`, `cur=`, written any of the ways ngspice reads, has two nodes and no gain, and runs everywhere),
+model-not-in-engine-7 to -14 (POLY and TABLE on E, F, G and H: native 47 runs them, our engine, without
+XSPICE, stops; POLY(1) with the coefficients 0 and k is the plain gain k), non-ascii-node-15 to -19 (a
+formula that reads a node, a part or a `.tf` after `.end`, and `.pz`'s bare nodes name the node too: a
+rename that changes them all gives the same numbers), invisible-character-67, look-alike-letter-18 and
+space-character-24 (the same for those fixes) and space-character-22, -23 and nbsp-4 (a character that
+looks like a space in a formula stops ngspice; taken out, the formula runs).
