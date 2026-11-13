@@ -164,7 +164,9 @@ that a phone left no room to watch the numbers move; this record says what the c
   sum of the sizes of an equation's terms, Kirchhoff's law at the nodes weighed against the nodes'
   own sizes (in amps) and the branches' own equations against theirs (in volts): weighed together, a
   9 V source's equation hid a node's misread nanoamps (measured over the 9,627 netlists of the
-  re-check's corpora and the repository that it models exactly: at most 3.8e−15 for the nodes, 4.4e−11 for the branches);
+  re-check's corpora and the repository that it models exactly: at most 3.8e−15 for the nodes, 4.4e−11 for the branches;
+  no bound, as the last pass found: a 1 nΩ to 10 µΩ wire into 0 V ammeters leaves 1.07e−7 to 1.9e−3, and the
+  check now allows 2⁻³⁰ times the spread of the circuit's conductances, see "After the last pass");
   and each current it reports is its own numbers' product to 2⁻⁴⁰ (measured: at most 3.4e−16). In a
   circuit with every kind of part any value 1 ppm off fails one or the other, and so does a .dc
   point's value 1 ppm off (unit tests keep it so); a source is weighed against the circuit's largest
@@ -310,7 +312,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   are more than 5 ("… and 3991 more currents, each in the tables above"), never "and 1 more".
   `CurrentWords.noise` and `NodeVoltageWords.noise` keep ngspice's values for the panel's ngspice
   columns.
-- **.tf and .dc of a circuit solved exactly are decided the same way** (C9p). Every value is a + b·s in
+- **.tf and .dc of a circuit solved exactly are decided the same way** (C9p; a real ratio ngspice gives as 0, and
+  one it gives off, since the last pass, C9w.10 to C9w.12). Every value is a + b·s in
   the source s, so one more exact solution, with that source at 1 V or 1 A and the others at 0, gives the
   .tf ratio (b of the output) and every point of a .dc sweep of one V or I source. ngspice's .tf gives no
   node voltages to check its circuit against, so its input and output resistances must be the exact ones
@@ -340,7 +343,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   too, and the sweep is shown decided only beside an .op that is (an .op decided exactly beside a sweep
   left as ngspice gives it said 0 V where the sweep's words, at the same point, said ngspice's −931.3 pV;
   the critic of round 3 found it again beside sweeps of the temperature, of a resistor and of two
-  sources, and beside an .op the rule decided while its sweep was decided exactly). Their checks share the
+  sources, and beside an .op the rule decided while its sweep was decided exactly; beside an .op the rule decides,
+  the sweep's points at the .op's own state show the .op's 0s since the last pass, below). Their checks share the
   run's budget (below), the .op's check keeping what the sweep's points need. A sweep of the temperature
   is decided exactly: no part modelled exactly changes with it (a resistor's temperature coefficients are
   settings, which leave the netlist to the rule), so each point is the .op's circuit (C9u.4). A sweep of a
@@ -423,13 +427,16 @@ that a phone left no room to watch the numbers move; this record says what the c
   the rule; this decides them exactly where the rule could not, measured below. What it cannot know is a
   value that is 0 only because two diodes carry currents in some other relation, or two diodes alike in
   their circuit but written with different model lines: it is taken as real and shown as ngspice gives it.
-- **Other circuits keep a rule** (a transistor, a switch, a subcircuit, a B source, a part with settings,
-  .param, .temp and other .options lines, more than 150 unknowns, 1,600 parts or 16 diodes, or more work
+- **Other circuits keep a rule** (a transistor, a switch, a subcircuit, a B source, a part with settings
+  other than m=1, .param, two temperatures and .options lines other than the temperature (a .temp line and
+  a DC value beside a transient function are modelled since the last pass, below), more than 150 unknowns,
+  1,600 parts or 16 diodes, or more work
   than the limit below; and where ngspice's answers are farther off, above). It decides from ngspice's
   numbers alone, and each 0 it writes must agree with the numbers the page shows beside it: a resistor or
   capacitor is 0 only where its two ends are within 4 steps of a double, never as "the only current left
   at a node", and a resistor's current that ngspice gives as exactly 0 proves nothing and joins nothing
-  (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV, C9n); an F that copies a 0 and a G that reads
+  (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV, C9n), but where it is a source's only partner
+  at a node (since the last pass, below); an F that copies a 0 and a G that reads
   two nodes shown alike are 0; a source carrying the only current left at a node is 0. The current an F
   or an H turns into a real value is real (an F of 1e6 showed 193.5 pA beside "Vm measures no current"),
   and each F that copies a current given back gets its number back too (C9r.3: an F of 1 reading the Vm
@@ -442,7 +449,7 @@ that a phone left no room to watch the numbers move; this record says what the c
   is shown copies a current that is shown, and an E whose two ends are shown at voltages that are not
   alike, or a G whose current is shown, reads a voltage that is not 0, so the resistors written as 0 that
   join its two control nodes into one group of nodes (whose 0s claim one voltage for all of them) get
-  ngspice's numbers back, the whole group at once, until nothing changes (C9o.5: with a .temp line, the E
+  ngspice's numbers back, the whole group at once, until nothing changes (C9o.5: with a line it does not model exactly, the E
   of 10⁶ reading the bridge of C9 showed R5 as 0 A, "its two ends at the same voltage", beside out's
   −931.3 pV, which E1 makes from that voltage; the critic of round 2). A chain of controlled sources (an
   E reading what another E makes), and a source whose value is an expression (value=, a B source), are
@@ -450,7 +457,7 @@ that a phone left no room to watch the numbers move; this record says what the c
   a bridge 1e−13 off balance, from noise (the critic of round 2 found 5 real node voltages and 49 real
   currents that the rule's chain turned into 0 in the corpora's circuits with a diode). What that gives
   up: an exact 0 node voltage is drawn with ngspice's noise, and so is what follows from it; with a
-  transistor or a .temp line beside it, the H of 1 GΩ shows out −193.5 nV and Rl and H1 193.5 pA, H1 with
+  transistor or a line it does not model exactly beside it, the H of 1 GΩ shows out −193.5 nV and Rl and H1 193.5 pA, H1 with
   the power that makes, and the fed E delivers 4.657 pW at out's −931.3 pV (C9o.4), R5 keeping ngspice's
   8.882e−19 A as in C9o.5; and since those numbers agree with each other only to ngspice's rounding, Vm's
   193.5 aA and R5's 377.9 aA, alone in series at m, do not add up there. Its levels agree with what the
@@ -522,7 +529,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   drawn so, its gain lifting ngspice's rounding of what it reads (11 runs of gA and 2 of g9501, as before:
   an H's −251.4 nV for −4.164 nV); its floor carries that rounding, with no warning, as for C9o's H.
   Linear runs within the exact solution's limits that the rule decides with no warning: 0
-  (28 before, 15 exact 0s drawn as currents). The rule draws 571 exact 0s as currents (1,242 before) and 240
+  (28 before, 15 exact 0s drawn as currents). That held for those corpora only: the last pass found 131 of
+  1,500 such runs (a tiny wire into 0 V ammeters, a .save line), now none (see "After the last pass"). The rule draws 571 exact 0s as currents (1,242 before) and 240
   as node voltages (622), the imprecise path 1,222 and 14 beside its warning (1,114 and 14). 2 runs with a
   diode go from the exact path to the rule with no warning, their every off value one a diode's current
   changes (their pages are the same: no value of either is noise); 75 go the other way (circuits at rest
@@ -595,3 +603,388 @@ that a phone left no room to watch the numbers move; this record says what the c
   power (it makes 0 V). The drawing's part description (`src/schematic/navigate.ts`) builds its own
   sentence and still calls such a source a wire until it takes the overview's own sentence
   (`partSentenceFor`, exported for it); its lane can change that at the merge.
+
+## After the last pass (13 November 2026)
+
+- **The notes name a node as the rest of the page does** (code C3-3, facts F1 and its skeptic). The
+  rounding-noise note, the note for real values ngspice gave as 0 and the warning that ngspice's answers
+  are off wrote "node" before the node's key: "node node1 is at 4.5 V, where ngspice gives 4.321 V",
+  "node node9's voltage", "node ÇikiŞ", and a hidden character left unnamed. They now say each node as
+  the summary and the currents do (`nodeIn`, `said`, the name as first written): "node1 is at 4.5 V, where
+  ngspice gives 4.321 V", "node ÇIKIŞ", "node out (written with a zero-width space in it)". The title of
+  the second note says "The voltage at node9 is not 0, though ngspice gave 0": "node9's voltage" read
+  "Node9's" at a sentence's start, and put a possessive after "(written with a zero-width space in it)".
+  The notes' reasons name their nodes the same way ("the two ends of R5, node ÇIKIŞ and node b", where they
+  said "node ÇikiŞ"). Decisions 0016 and 0017 no longer list the rounding-noise note as a gap.
+- **"1 times 10 to the power minus 29 amps flow"** (regress-4): the verb was chosen from the first word of
+  the spoken value, so the exact 1e-29 A of C9n.3 "flows". It is singular only for a singular unit word,
+  "1 amp flows", "1 milliamp flows".
+- **A transistor's currents are named by their terminals** (transistor-currents-same-name; C8b). A sweep's
+  words said "the current in Q1" for each of its four currents. ngspice's own `devhelp` describes each
+  vector savecurrents gives (C8b, native 47 and 42): a BJT's ic, ib, ie and is are its collector, base,
+  emitter and substrate currents, a MOSFET's id, ig, is and ib its drain, gate, source and bulk currents, a
+  JFET's igd "Current G-D". These are the model's own quantities by devhelp's names, not always the current
+  through the pin, and they keep no one direction ([is] flows out of the part at the substrate, [ie] is
+  −(ic + ib + is): C8b's ammeters on every terminal, since the critic of the last pass's fixes). The words say
+  "the collector current of Q1 is 8.171 milliamps", "the gate-to-drain current of J1", with no direction; any
+  other current keeps "the current in …".
+- **The work of a sweep's decision is bounded** (sweep-points-unbounded-time). Deciding a sweep reads each
+  of its series a few times, so its work grew with its points times its results, with no cap: a beginner's
+  ".dc I1 0 2A 0.5A" (2A is 2 attoamps) runs 444,094 points, to 222 fA (native 47 and 42 alike), and a
+  51-part ladder's 444,094 points of 78 results took 66 to 77 ms of processor time at c520a49 (load 6;
+  the reviewer: 74 to 84 ms, and 303 to 327 ms at 2.2 million points). A sweep of more than
+  `SWEEP_VALUES`, 2,000,000 values (points × results), is now left as ngspice gives it, except at its
+  points at the .op's own state, which show the .op's 0s and exact values as for a sweep of a resistor
+  (`opStateSweep`; a sweep of the temperature alone at the .op's 27 °C), and a note says so: "It has
+  444094 points of 11 results, more values than PlainSpice looks through for rounding noise (2000000 in
+  all). So at its points a value the circuit makes exactly 0 may show ngspice's rounding noise, and a tiny
+  value ngspice's arithmetic rounded to 0 shows 0[, except at V1 = 9 V, the operating point's own state,
+  where the sweep shows what the operating point shows]." (Since the critic of round 2 of these fixes, a point found
+  within the step's rounding of the .op's value is said "ngspice's point nearest the operating point's 9 V,
+  8.999999999999853 V (its 10 mV step added up in doubles)", and is one only where it shows what the .op shows: below.)
+  Measured (thread CPU, load 5 to 6): the ladder
+  4.0 to 8.0 ms, the beginner's sweep on the bridge of C9 3.4 to 5.8 ms (10.9 to 17.4 ms before), 888,187
+  points 1.5 to 9.5 ms; the 53-ammeter bridge of the critic of round 3 just under the cap (17,000 points
+  of 115 results) is decided at every point in 9.9 ms (least of five), and over it in 0.6 to 1.6 ms.
+  What it gives up: that bridge swept over 99,999 points, decided at every point since round 3 (41 ms),
+  now keeps ngspice's numbers there, with the note; the .op beside it is still decided exactly. The Plot
+  panel still copies a series that has points marked, as it draws it.
+- **An attoamp is never drawn as an answer with nothing said** (regress-1; C9w). The noise lane of the
+  first re-check made the rule take no resistor's 0 as proof (C9n), so a balanced bridge's 0 V ammeter in
+  series with R5, which ngspice gives exactly 0 A, was drawn "Vm measures 2.168e-19 A" beside "R5: no
+  current", with no note, wherever the rule decided: with a .param line, a .temp line, a .control block, a DC
+  value beside a SIN or a PULSE, or m=1 (13 of the 23 rounding-noise facts drew such noise with a .temp line).
+  Three changes:
+  - Lines that leave the operating point as it is are modelled exactly, still behind the check that ngspice
+    simulated this circuit: a .temp line with one temperature and `.options temp` (no part modelled exactly
+    depends on the temperature with no settings; a diode's current, which does, is left free), a DC value
+    written beside a transient function (P3b, P4c), and m=1 on an R, C or L. Native 47 and 42 give every
+    vector the same double with each, alone and together, in the bridge and in a circuit of every kind
+    PlainSpice models (C9w). With a .temp line, none of the 63 C9 facts that have an .op draws an exact 0 as
+    a number with no note (20 did at c520a49). A source with a function and no DC value (its value at time 0, P17), m
+    other than 1, two temperatures and .param stay with the rule: a .param value is written into the line by
+    ngspice's own expression reader, whose numbers this record has not checked. This record also said that a .control
+    block that only runs makes ngspice write the operating point twice, with other vectors: that is wrong (the critic
+    of the last pass's fixes; C9x.6): ngspice runs the analyses twice but writes one results file, the very doubles of
+    the netlist without the block, and such a block is now modelled exactly (below).
+    The tests that reached the rule with `.temp 27` now use `.options gmin=1e-12`, ngspice's own gmin (the
+    same doubles), as do facts C9o.5 and C9r.3.
+  - The rule takes a source whose only partner at a node is a resistor that ngspice gives exactly 0 A, its two
+    ends one double, as carrying 0: the page shows 0 V across that resistor and no current through it (as
+    b060bc8 did, C9w.2). Where the source's current is real, the next node gives it back: a real 0.73 aA after
+    a 1 µΩ wire that ngspice gives 0 A reaches a 1 TΩ meter, whose current is shown, so Kirchhoff's law at
+    that node gives the ammeter its number back (C9w.3).
+  - The rule says which tiny values it can prove neither real nor noise: a current below abstol and a node
+    voltage below vntol that it leaves as ngspice gives them get a note, "Vm's current may be rounding noise:
+    ngspice gave Vm -1.935098e-16 A. It is below 1 pA, … so it may be rounding noise, what its arithmetic
+    leaves of a value that is exactly 0, or a real value that small. PlainSpice cannot tell which from ngspice's
+    numbers alone, so it shows it as ngspice gives it." Proven real here is only a current of
+    at least abstol, a current source's own, a resistor's or a G's with a real voltage across or read, what
+    an F copies of one, and the last current at a node whose proven currents do not add up to 0; the rule's
+    other reasons to keep a number (what an H makes, a part beside a transistor, a share of a node's tiny
+    difference) keep it, but prove nothing. A node voltage is proven real by a resistor to ground with a
+    proven current, a voltage source that holds it, or the very double of such a node. On the rule path
+    (`.options gmin=1e-12` added to the 63 C9 facts that have an .op), 20 drew an exact 0 as a number with
+    no note at c520a49; 5 do now, each the recorded give-up above: what a gain lifts above 1 pA (the H of
+    1 GΩ's 193.5 pA in H1 and Rl, the E of 10⁶'s 9.3 pA) is real by ngspice's tolerance, and so is the node
+    it drives (out's −193.5 nV), and the rule cannot tell; the note names their attoamps (R5, Vm). Our own netlists:
+    the words of the 352 netlists of the repository and the facts' golden tests are the same as at c520a49
+    but for the meant changes (the transistor's currents, the 1 nV source's verb, and C9o.5's and C9r.3's
+    new notes).
+- **A number the page draws is an answer only with its exact digits** (carrier-zero-beside-own-noise; C9w.4,
+  C9w.7). The exact path took a value drawn with other digits than its exact value as off only where it was
+  more than ANSWER_GAP from it beyond what rounding leaves of the numbers it is worked out from (its floor). A
+  floor that large means ngspice cannot give the value's digits, yet the page drew them: in g520d a G of 10⁶ S
+  reads a 1e15 Ω resistor whose two ends ngspice gives a step apart, so G1 carries 444.1 pA where the circuit
+  makes it 0, and lifts node g to 1.465 mV for 820 µV; the page drew "G1: no current" beside R3's 1.786 nA out of
+  g and I1's 1 nA in, with no warning (i9751-450: g4 520.1 V for 715.3 fV, G1 727 µA). A value is now off when
+  the page draws it with other digits and it is more than ANSWER_GAP from its exact value, whatever its floor
+  (two nodes at one voltage drawn differently still need a gap beyond rounding: C9v.5's boundary stays recorded). g520d
+  is shown as ngspice gives it, with the warning "G1 carries no current, where ngspice gives 444.1 pA; R1 …; node g
+  is at 820 µV, where ngspice gives 1.465 mV; and R3 carries 1 nA, where ngspice gives 1.786 nA". This also settles
+  what round 4 left above, a controlled source's output drawn far from its exact value, its floor carrying the
+  rounding of what it reads, with no warning (C9t.3's h5, −433.7 fV for −425.9 fV): where the exact solution
+  decides, it now gets the warning (gA's s6-426, the H's −251.4 nV, is past the exact solution's work since
+  round 4 and goes to the rule, as at c520a49). A sweep's checked point
+  is judged the same way: where one is off, the sweep is shown as ngspice gives it (but at the .op's own state
+  when the .op is decided exactly), with a warning, "Some of ngspice's answers in the DC sweep are off": "…, at
+  V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. … PlainSpice shows the sweep as ngspice gives
+  it, so its numbers may not agree with each other." (C9w.7; g520d swept over I1: v(g) 1.953 mV for 1.64 mV).
+  With diodes, a value whose exact value hangs on a diode's current, which only ngspice's numbers give, is off
+  only beyond its floor, as before, and the warning names only values whose digits are known (s9701-47: a
+  diode's current 1e−4 off left such values drawn with other digits, and a warning could name none). Such a run
+  is decided by the rule beside the exact solution with no warning, and its tiny values keep the rule's note
+  that they may be rounding noise, but those the exact solution shows real whatever the diodes carry, and those a
+  warning names (C9w.8: until now that path dropped the note, and "V2 measures 510 fA" was drawn with nothing
+  said). What it gives up: many more runs carry the warning. Of the critic's 3,000 bridges beside controlled
+  sources of high gain (gA), 2,270 are decided exactly (2,732 at c520a49), 642 with the warning (176), 16 with
+  diodes by the rule with no warning (20); of the generated g9701, 1,139 exactly (1,363), 327 with the warning
+  (99), 12 with diodes by the rule with no warning (16). Open: in one of those 12 (s9701-1341, as at c520a49
+  and b060bc8), a 1 nΩ resistor whose ends ngspice gives a step apart is drawn 3.553 µA in series with a 1e14 Ω
+  resistor's 3.027e−19 A, with no warning: every value there hangs on the diode's current.
+- **ngspice's own rounding no longer sends a run to the rule unsaid** (silent-rule-same-circuit-check; C9w.5,
+  C9w.6, C9w.9). Two ways in led to the rule with no warning and no exact solution beside it. (1) What
+  ngspice's arithmetic leaves of the equations grows with how far apart the circuit's conductances are: a 1 nΩ
+  to 10 µΩ wire into two 0 V ammeters in series left 1.07e−7, 3.3e−5 and 1.9e−3 of the equations' sizes (the
+  skeptic of the last pass), far beyond 2⁻³⁰, and C9m fed that way drew R7's exact 0 as 5.329e−20 A; a 1 nΩ wire
+  into two ammeters drew "Vm1 measures 10.97 mA" beside the wire's 10.98 mA. The check now allows 2⁻³⁰ times
+  that spread (the largest conductance of an R or a G over the smallest; `conductanceSpread`); the products of
+  the R, F, G and I keep their own share. Such a run is then judged by the page's digits: C9m through the 1 µΩ
+  wire has every answer drawn with its exact digits, so it is decided exactly, R7 0 A with the note (C9w.5);
+  the 1 nΩ wire into two ammeters is shown as ngspice gives it, with the warning "V1 carries 10.98 mA, where
+  ngspice gives 10.97 mA; Vm1 …" (C9w.9). What it gives up: where conductances are 2³⁰ or more apart, the check
+  that these are this circuit's numbers rests on the products and the names; a run of another circuit there
+  is judged by the page's digits and shown as ngspice gives it, with the warning, which then blames ngspice's
+  rounding (the unit tests' 1 ppm-off runs, of a bridge whose spread is 2, still fail the check). (2) A .save
+  line that leaves values out: the values ngspice gives are judged by the page's digits with no same-circuit
+  check, which needs every equation's values (C9m saving v(n3), v(n5) and R7's current: R7 0 A with the note,
+  where the rule drew 6.217e−20 A; C9w.6). With diodes, whose currents need every value, such a run goes to the
+  rule; a node missing with no .save line is still not this circuit. The corpus: of i9751's 1,500, 131 were
+  decided by the rule with no warning within the exact solution's limits at c520a49, none now (690 exactly,
+  775 before; 769 with the warning, 553). "Linear runs within the exact solution's limits that the rule decides
+  with no warning: 0" (after round 4, above) held for those corpora only; ngspice's leftovers of 3.8e−15 and
+  4.4e−11 are what that set of netlists measured, not a bound. And "none now" held for i9751 only: an op-amp
+  modelled as an E of 1e9 to 1e15 still went to the rule with nothing said (the critic of these fixes: 12 of 300
+  random op-amp circuits; out 9.5 V for 9.15 V); the check now counts what the circuit amplifies too, and a run it
+  still cannot check gets a note (below).
+- **The .tf ratio is judged as the .op beside it is** (tf-lost-ratio-contradiction; C9w.10 to C9w.12). A ratio
+  ngspice gives as exactly 0 was never compared with the exact one, nor was a ratio other than 0: C9n.5 with ".tf
+  v(d2,p3) V1" read "0 V/V" beside R3's card, "V(d2) − V(p3) = 4.541e-19 V", and a bridge read through a chain
+  showed ngspice's 1.11e−16 V/V for −2.656e−20 V/V with nothing said. Now a real ratio ngspice gives as exactly 0
+  is shown as the exact one where an .op beside it (with none, a sweep) is decided exactly, with a note, the
+  Numbers panel keeping ngspice's 0 in its own column (`given`, as for the .op's lost values); with nothing beside
+  it decided exactly (a .tf alone, an .op whose answers are off), ngspice's 0 stays, with the warning "ngspice's
+  transfer function is off", which names the exact ratio; and a ratio drawn with other digits than the exact one,
+  more than ANSWER_GAP from it, gets that warning too. Its input and output resistances must still be the exact
+  ones to within 5e−5, a ratio below the smallest double stays ngspice's, and a circuit with a diode keeps its
+  ratio. NumbersPanel's `tfRows` takes ngspice's value from `given` before `noise` (a two-line change outside the
+  noise lane's files).
+- **Beside an .op the rule decides, the sweep says what the .op says at the .op's own state** (rule-op-vs-sweep-tf;
+  C9w.13, C9w.14). The rule's 0s were the .op's alone: C9 with a .param line or a transistor showed R5 "0 A", with
+  the note, beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A" and a Plot panel that fell to −8.882e-19 A at 9 V
+  (the sentence that recorded it was dropped in round 4). Now, beside such an .op, the sweep's points at the .op's
+  own state (one source at its netlist value, a resistor at its own, two sources at theirs; found from the
+  netlist's parts, as the rule path has no exact model) show a current the .op shows as 0 as 0 too, where ngspice
+  gives there the very number the .op's 0 stands for, or the rule, run on the point's own values, writes it as 0
+  (a transistor's isolated nodes differ there by a few steps of a double); a note says so ("ngspice gave
+  i(@r5[i]) -8.881784e-19 A at V1 = 9 V. At V1 = 9 V, the operating point's own state, ngspice gives it the very
+  number the operating point shows as 0, as the operating point's note says. So PlainSpice shows 0 there too, in these
+  words and in the Plot panel; at the other points the sweep is as ngspice gives it."; it said "where ngspice gives the
+  operating point's numbers" until the critic of round 2 of these fixes, which beside a transistor need not hold). The other
+  points keep ngspice's numbers, as before. Measured on the generated r9731 and a9721 (rule-path runs with an .op
+  and a .dc whose sweep, at a point with all the .op's node voltages, shows a number the .op shows as 0): 36 runs
+  (66 values) and 1 at c520a49, none now. What stays: the .tf beside such an .op keeps ngspice's ratio
+  (v(a,b)/V1 = −5.551e−17 V/V beside R5's 0): the ratio is a slope, which the rule cannot decide from the .op's
+  numbers (with a transistor it depends on its small-signal model), and it says how the voltage changes, not
+  what it is; since the critic of these fixes, with a note that it may be rounding noise (below). The point at the
+  .op's state was found only where ngspice's x was its netlist value bit for bit, which most decimal steps never reach
+  (below).
+- **Our own netlists after the last pass.** Of the 366 netlists of the repository and the facts' golden tests, 23
+  give other words than c520a49's code: the new facts (C8b, C9w to C9w.14) and the meant changes to older ones. C9l's
+  2.696 fA through R5 and C9u.7's R7 now carry the warning (each drawn with other digits than the exact value);
+  C9t.3's h5 and C9t.7's R3 too (their texts say so); C9o.5, C9r.3 and C9u.7 add the note for tiny values the rule
+  cannot tell from noise; C9n.3's 1e−29 A "flow"; A24, with a .save line, is decided exactly, so its node's level
+  is counted with the node .save leaves out (the same words).
+- **After the critic of the last pass's fixes: the check that ngspice simulated this circuit counts what it amplifies,
+  and a run it still cannot check is said to be so** (C1; C9x, C9x.2, C9x.3). An op-amp modelled as an E of high gain:
+  ngspice's arithmetic leaves a step of a double at the E's inputs, which its gain lifts at the output, and its numbers
+  left 9.2e−3, 1.5e−5 and 2.4e−8 of the equations' sizes for E of 1e15, 1e12 and 1e9 (each about 1e−17 of its gain),
+  past what the spread of the conductances allowed, so the rule decided with nothing said: node out 9.5 V for 9.15 V,
+  R1 15 mA in series with R2's 15.9 mA, and a balanced amplifier's exact 0 V drawn −476.8 nV with "E1 delivers
+  119.2 pW". The check's allowance is now RESIDUAL_SHARE times the conductances' spread times what the E, F and H
+  amplify (`amplification`: the product of the E and F gains above 1 and of each H's transresistance times the largest
+  conductance; a G is a conductance, which the spread counts), and such runs are judged by the page's digits: the
+  warning names 9.15 V and −1 V, and the balanced amplifier is 0 V with the note. Of the critic's 300 random op-amps,
+  31 failed the check before and none now; 12 have other words (the warning, or 0 V with the note), as the critic's
+  trial found; none of the other corpora changes for this. A spread past the largest double (1e−12 Ω beside 1e300 Ω)
+  made the allowance infinite and the check threw, so the page lost its words: an allowance of 1 or more now holds
+  whatever is left (no equation's sum is larger than the sum of its terms' sizes). Where ngspice's numbers agree with
+  their own products but still leave more of the equations than that allowance, PlainSpice cannot tell whether
+  ngspice lost its digits or reads the netlist otherwise: S28's "+ 3" after .end makes ngspice's R1 3 Ω, and treating
+  that as lost digits would say "node n1 is at 2 V, where ngspice gives 3 V", which is false. Such a run is decided by
+  the rule, as another circuit's, and a note says that ngspice's numbers could not be checked (`unchecked`,
+  "PlainSpice could not check ngspice's numbers"; a sweep's checked point likewise); it was the rule with nothing said.
+  The skeptic of the last pass proposed taking such runs as ngspice's lost digits, with the warning; S28 shows why the
+  note says only what is known. With diodes, whose currents ngspice settles to its tolerances only, such leftovers say
+  neither (z9771-103, a circuit at rest beside a diode), and the rule decides with its own notes, as before. What stays:
+  where conductances or gains make the allowance large, a run of another circuit that agrees with its products passes
+  the check and is judged by the page's digits. This record said no such input was known: the critic of round 2 of
+  these fixes found S28 beside an op-amp of 1e6, whose gain widened the whole circuit's allowance (below; C9y.5).
+- **A sweep's point at the .op's own state is found within what ngspice's adding up of the step leaves** (C2, C3;
+  C9x.4, C9w.7). ngspice adds a sweep's step once a point, in doubles, so ".dc V1 0 9 0.01" ends a few steps of a
+  double from 9 V (8.999999999999853; the critic found the same for steps of 0.02, 0.05, 0.09 and 0.15), which the
+  page names "V1 = 9 V"; the .op's state was found
+  only bit for bit, so beside an .op the rule decides (a .param line, a transistor, a .control block) the sweep still
+  said "i(@r5[i]) = −8.882e-19 A" there beside "R5: no current". Each run of the swept source now takes the point
+  nearest its netlist value, within a few steps of a double for each point added and within a quarter of the step,
+  never its neighbour. Beside the rule's .op, that point is decided by the rule on its own values, as before; on the
+  exact path, a point the exact solution follows (one source, no diode whose current is free) is judged at its own x,
+  a + b·x, as every point of a decided sweep is, and a temperature point is the .op's own circuit (no part modelled
+  exactly follows the temperature). So C9w.7's last point, 1.5000000000000846 V, shows R3's exact 454.1 pA beside the
+  .op's 454.1 pA, where it showed ngspice's 0 A (a9721-747's and r9731-747's L1 likewise). Elsewhere (a sweep of a
+  resistor or of two sources, with diodes) the point must still be the netlist's value bit for bit. Measured: sweeps
+  whose .op's state is now found, where it was not, a9721 5, r9731 5, d9761 4 (a9761-898's I1 = 1 aA point of 888,183,
+  past the size cap, now shows R7's exact value); their warnings and size notes now say "but at V1 = 3.3 V, the
+  operating point's own state".
+- **A .tf ratio the rule cannot judge gets a note where the .op shows its output as 0** (C2; C9x.5). Beside an .op the
+  rule decides, the .tf of C9's bridge beside a transistor, v(a,b)/V1 = −5.551e−17 V/V, sat beside "the two ends of R5,
+  node a and node b, are at the same voltage" with nothing said. A ratio is a slope, which the rule cannot decide, so
+  it stays ngspice's; where the .op beside it shows the output as 0 (its two nodes at one level, its node at ground's,
+  its ammeter's current as none) or says the output's own values may be noise, and the ratio is less than
+  RESIDUAL_SHARE of what the input makes of itself in the output's unit (a volt for each volt; the current through the
+  input for each of its volts, or the voltage across it for each of its amps, from ngspice's input resistance), a note
+  says it may be rounding noise or a real ratio that small. A first trial weighed the ratio by the .op's node voltages
+  for each volt of the input there, and called a 3.6 V/A ratio fed by a source of 1 aA, and the far node of a ladder
+  the .op shows real, maybe noise; neither is now. Where the .op's own note says the output node's voltage may be noise
+  (a ladder's node the rule cannot prove real), the .tf's note says so of the ratio too, so the two never disagree: so
+  it is in every one of the corpora's new .tf notes (r9731 17, d9761 4, a9721 3); the bridge's own case is C9x.5.
+- **The real values a sweep's points lose are counted, then filled in one pass** (C4). SWEEP_VALUES bounded the scans,
+  but each real value ngspice gives as 0 cost a search and two pushes of a growing list: 40 wires of 1 µΩ into a 1 TΩ
+  meter, 45,000 points of 44 results with such a value at every point, took 135 to 159 ms of thread CPU (load 3,
+  min to max of five). Each series' zeros are now counted, and their exact values written into arrays of that size in
+  one pass over the series: 46 to 63 ms (51 median), and 40 ms least of three as the unit test times it; 249,001 points
+  of 8 results 28 to 38 ms (63 to 67 ms before); 16,001 points of 122 results 7 to 12 ms; the beginner's 444,094 points,
+  left as ngspice gives them, 0 to 4 ms. The words and the Plot panel are the same, value for value.
+- **A transistor inside a subcircuit is named by its terminals too** (C6): ngspice names it by its letter, then its
+  instance's path ("q.x1.q1", "m.x2.x3.m1"), so its letter is the name's first: "the collector current of q.x1.q1",
+  where it said "the current in q.x1.q1" four times (C8b, native 47 and 42).
+- **By the rule, a node proven real proves the current of a resistor from it to ground** (C7; C9w.3). The rule's note
+  for tiny values it cannot tell from noise called Rvm's 732.4 aA, q over 1 TΩ, maybe noise of an exact 0, while node q
+  beside it, the very double of n3, was shown real: a resistor between a node proven real and ground carries its
+  voltage over its resistance, real, and Kirchhoff's law spreads that proof (Vm, in series with Rvm, is real too). The
+  proof grows node by node and part by part, each looked at once. In 105 runs of the corpora (g9701 10, a9721 8, i9751
+  15, r9731 35, d9761 17, r9743 17, the repository's facts 3) the note names 1 to 8 fewer currents, and in none more;
+  traps.md's 1 A through 1e−12 Ω no longer calls R2's real 1 pA, beside its proven node, maybe noise.
+- **A .control block that only runs is modelled exactly** (C8; C9x.6), behind the same-circuit check: ngspice runs
+  the analyses again but writes one results file, the same doubles as without the block (.op, .dc and .tf alike, native
+  47 and 42), as the critic found; C9o run from it is 0 V with the note, where the rule drew "node out: −193.5 nV" and
+  "H1 delivers 37.45 aW". A block with any other line (op, set, print, alter, write) stays with the rule.
+- **The corpora after the critic's fixes** (base 63e7cb2 against these fixes, one engine run each, every word and note
+  compared): the repository's 846 netlists and facts 14 (the new and changed facts, S28's note, traps.md's 1 pA); the
+  critic's 300 op-amps 12; g9701 10, a9721 15, i9751 15, r9731 52, d9761 23, r9743 17, each of the kinds above; k9741,
+  p9744, s9742, w9711, z9771 and tfscan none. One netlist threw at the base and not now (C9x.2).
+- **After the critic of round 2 of these fixes: a sweep's point is named by ngspice's own value where its label would
+  say otherwise** (N1; C9y, C9y.2). ngspice adds a sweep's step once a point, in doubles, so ".dc V1 0 9 0.01" ends at
+  8.999999999999853 V, which the page named "V1 = 9 V". A source idle at 9 V (V2 holding node b at its own 6 V) carries
+  a real 32.76 aA there, which ngspice gives as 32.96 aA: the page warned "at V1 = 9 V, V2 carries 32.76 aA, where
+  ngspice gives 32.96 aA", false at 9 V, where the circuit makes it 0 and the .op beside it says "V2: no current", and
+  left the sweep as ngspice gives it (rc3 showed ngspice's −32.96 aA there with nothing said). One mechanism names every
+  point the words and notes name (`sweepNames`): its label, the 4 digits of x, unless the label reads as the value the
+  point is meant to have (start + k·step, read exactly; or the .op's own double for a point found near its state), x has
+  drifted from that value's double (adding up the step; a point at that very double is where the steps say, as any value
+  of the netlist is, READ_ULPS), and a value there reads otherwise than at the meant value, other digits and more than
+  ANSWER_GAP apart, as an answer is off (`differ`): by the exact solution wherever it is this run's circuit (`exactRun`:
+  the .op checked as this circuit's, its answers off or not; with no .op, the sweep) and follows the sweep
+  (`exactOtherwise`, a + b·s at both), else by the rule at the point nearest the .op's state, where the .op's own values
+  stand for it. Then the point is named by its shortest exact decimal, "At V1 = 8.999999999999853 V", and a note says
+  why, with the meant value in all its digits: "The DC sweep's last point is V1 = 8.999999999999853 V, not 9 V: ngspice
+  adds the step, 10 mV, to V1 once a point, in doubles (about 16 significant digits), so its points drift from the
+  values the steps say: its last point is 8.999999999999853 V, 147.4 fV short of 9 V. There the circuit makes i(v2)
+  −32.76 aA, where at 9 V it makes 0 A. So PlainSpice names that point by ngspice's own value." A point whose label
+  already reads otherwise ("V1 = −55.51 aV" for a point meant to be 0 V) keeps it. On the rule path (C9y.3) only the
+  point nearest the .op's state can be told: a point at a value the .op is not at keeps its label, and the page cannot
+  know whether a tiny value there is 0 at the label's value (recorded below). Three refinements came from the corpora
+  (C9y.6): the note wrote the meant value to 4 digits, "not 9.123 V" for 9.12345 V (and "where at 9.123 V it makes 0 A",
+  false there), and "is V1 = 3.3 V, not 3.3 V" where the .op's V1 is ngspice's 3.3000000000000003 (N15); a value on a
+  rounding boundary of the 4 digits named a point for nothing (a9761-1102, the only such run in the corpora:
+  5.287500000000001 V "5.288 V" at 9.000000000000002 V, 5.2875 V "5.287 V" at 9 V); and beside an .op whose answers are
+  off, ngspice's own rounding at the point was taken for the drift's doing (a9761-156: V1's −499.6 aA there, −506.5 aA
+  in the .op, where the circuit makes 500 aA at both; "There ngspice gives i(v1) −499.6 aA, where the operating point,
+  at 500 mV, shows −506.5 aA"), in 11 of d9761's runs, 2 of r9731's, 2 of a9721's and C9y.6's own. A trial that let
+  values differ by ngspice's Newton tolerances (reltol, abstol, vntol) before they count changed, of the corpora run
+  with it (d9761, r9731, a9721, w9711, s9742 and the repository), only r9731-909 and r9731-1119, where it kept the label
+  beside a value other than the .op's ("R5 0 A" at the point, "−2 aA" in the .op), and is not kept.
+- **Near a series' own 0, the page draws the exact digits** (N1; C9y). At ngspice's x, a value within ANSWER_FLOOR of its
+  series' largest size is the small difference of that series' larger values, and its 4th digit is not ngspice's to give
+  (V2's 32.96 aA for 32.76 aA, worked out from node b's 6 V); judging it as an answer called a three-resistor circuit off.
+  At a sweep's checked points such a value is no sign that ngspice's answers are off (`excused` in judgeAnswers), and at
+  every point where ngspice's number is that close to its exact value and drawn with other digits, the page draws the
+  exact one (`rounded`, in the words and the Plot panel), with a note, "2 results are shown with their exact digits near
+  0 in the DC sweep: ngspice gave i(v2) -3.295975e-17 A at V1 = 8.999999999999853 V … Solved exactly, …". The scale is the
+  series' own, so a value tiny all along its series is held to its digits as before: C9h's loop of 2 aA, C9w.7's wire
+  (340.6 pA for 433.7 pA, beside its own 454.1 pA) and g520d keep their warnings. A + b·s comes within the floor at a few
+  points (at most NEAR_POINTS a series are looked at); never where a diode's current changes the series. The .op is held
+  to ANSWER_GAP as before: there no x drifts, and a tiny real value ngspice gives with other digits keeps the warning (C9h).
+- **A point found within the step's rounding stands for the .op's state only where it shows what the .op shows** (N2;
+  C9y.4, C9x.4, C9w.7). Round 1 of these fixes took ngspice's point nearest the .op's value as its state and wrote "That
+  is the operating point's own state, where ngspice gives the operating point's numbers", and the size note "where the
+  sweep shows what the operating point shows", beside "i(v2) = −38.12 fA" and the .op's "V2: no current" (idle3 in 10 µV
+  steps, past SWEEP_VALUES, ending at 8.999999999828448 V). Now such a point (not the .op's value bit for bit) is the
+  .op's state only where every value it shows, with the marks the rule or the exact solution makes there, reads as the
+  .op shows it, no two drawn with other digits more than ANSWER_GAP apart (`readsOtherwise` against the .op's own words,
+  `exactOtherwise` against the exact solution at the .op's value); otherwise it is left as ngspice gives it, unmarked,
+  and named by its x where the naming above finds a value that reads otherwise. By the rule it is held only to what the
+  .op's words show: a transistor's currents are not among them, and a value the .op's own note calls maybe rounding
+  noise claims nothing (the floating nodes of r9731's isolated transistors give −1.628e-26 V in the .op and 1.761e-66 V
+  at the sweep's last point, run after run; held to those, 27 such points were named by their x for nothing). The notes
+  say what it is: "At ngspice's point nearest the operating point's 9 V, 8.999999999999853 V (its 10 mV step added up in
+  doubles), ngspice gives it the very number the operating point shows as 0" (or "ngspice's own numbers there show that
+  it is rounding noise of a 0", where the rule run on the point's own values wrote it); "the operating point's own
+  state" only for a point at the .op's value bit for bit. With this guarantee a point judged at its own x or at the
+  .op's values reads the same on the page (to its 4 digits, or within ANSWER_GAP across a rounding boundary of them),
+  but not to all of their digits: judged at its own x (`ownX`), C9w.7's R3 at 1.5000000000000846 V is the circuit's
+  4.5413907894837533e-10 A there, which the Plot panel's data carries, where judged at the .op's values it would be the
+  .op's 4.5413907894834974e-10 A (r9731-747's L1 likewise); a test now holds that (the critic's mutation R10).
+  `exactly`'s level of a swept current source (R13) only matters where that source is at 0 in the .op and not at its
+  point nearest it, which the guarantee turns away whenever a value shown there follows the source; the corpora read the
+  same without it.
+- **Each connected part of the circuit gets its own allowance in the same-circuit check** (N4; C9y.5). The allowance was
+  RESIDUAL_SHARE times the whole circuit's conductance spread times the product of every gain, so an op-amp buffer of 1e6
+  (or three of 1e5, 1e15) widened it for S28's I1 and R1, which nothing joins to the op-amps, and S28's "+ 3" after .end got
+  "node n1 is at 2 V, where ngspice gives 3 V" again. Now each equation is held to the allowance of its own part (the parts
+  that conduct to each other, ground taken out) and of every part it reads through its controlled sources, as far as they
+  go (`allowances`): ngspice's rounding in what an E reads comes out at its output times its gain, but a part nothing joins
+  to it keeps its own. S28 beside either gets the note that ngspice's numbers could not be checked; C9x's amplifier of 1e15
+  keeps its warning beside a separate 1 A source. The 300 random op-amps read as before. What stays: within a part an
+  op-amp drives, a misread line could still pass as lost digits; none is known. The H's term (its transresistance times
+  the largest conductance) is gone: it never decided a run. ngspice leaves 2e-17 to 6e-17 of the equations of an H in a
+  feedback loop of 1e9 to 1e18 (an H reads its control current directly, where an E multiplies a near-cancelling
+  difference: 9.2e-3 at 1e15), no test could hold the term (the critic's mutation R2), and with it set to 1 every corpus
+  read the same (the 300 op-amps, g9701, i9751, a9721, w9711, r9731, d9761 and the repository's 851 netlists); an
+  amplifier whose op-amp is an H of 1e15 is decided exactly, out 9.15 V, with no note. An allowance only loosens the
+  check, so one that never decides a run is left out. What it gives up: in d9761's a9761-706, two diodes at 0 V when V1
+  is 0 V leave ngspice's Newton leftovers there (v(d2) −4.726e-11 V where the circuit makes 0), which passed the check only
+  under the spread of a part a capacitor keeps apart from them (R3 and R4, 180 kΩ beside 3.3 Ω, fed by I1); the sweep was
+  decided and drew 0 V there with the note. Under the diodes' own allowance it is shown as ngspice gives it, with nothing
+  said, as the same diodes alone were at round 2's code (a diode's leftovers say neither, z9771-103).
+- **By the rule, Kirchhoff's law gives back a real current ngspice gives as exactly 0** (N6; C9w.3). Once Vm and Rvm were
+  proven real (7.324e−19 A), C9w.3's 1 µΩ wire Rw, ngspice's exact 0 A, its two ends one double, was drawn "no current"
+  beside them at node p, and Kirchhoff's law failed on the page. Now where every other current at one of a resistor's (or
+  a G's) nodes is proven real and those do not add up to 0, it carries what they leave, shown with ngspice's 0 kept as
+  `given` and a note ("But Vm, the only other part at node p, carries 7.324e-19 A, and the currents at a node add up to 0,
+  so Rw carries 7.324e-19 A too. …"), node after node along a chain. Only a current the rounding of its equal end voltages
+  can hide (within SAME_VOLTAGE_ULPS of them): w9711-10's 2.33e18 A "through" a resistor at 0 V is ngspice's numbers
+  breaking Kirchhoff's law, and nothing is given back. Corpora: r9731 29 runs, w9711 38, d9761, s9742 and the repository's
+  C9w.3 one each; none elsewhere.
+- **The rule's proof that a node is real looks at each node once** (N3). Marking a node real walked every node at its
+  double on each call: 7,600 dividers from one source took 1.1 to 1.2 s of describeResults (rc3 0.15 to 0.17 s). Now 0.21 s
+  (load 4), linear in the dividers; a unit test holds 6,000 against 1,500 to less than 7 times the work (8.97 without it).
+- **The corpora after these fixes** (round 2's code, 2a975ee, against them at 6d6e004, one engine run each, every word and
+  note compared; no run threw): the repository's 854 netlists and facts 11 (the new facts C9y to C9y.6, and C9w.3's fill,
+  C9w.7's, C9w.13's and C9w.14's note words, C9x.4); the 300 op-amps, g9701, i9751, r9743, k9741, p9744, z9771 and tfscan
+  none; r9731 62 (29 Kirchhoff's fills, 3 of them beside a point named by its x; 28 the rule note's new words; 5 the
+  nearest point's words in a warning or the size note), d9761 19 (13 the rule note's words, 4 the nearest point's, 1 fill,
+  and a9761-706 above), a9721 8 (the rule note's and the nearest point's words), w9711 39 (38 fills; w9711-141's fill in a
+  run whose numbers the page says cannot be trusted, with no note: below), s9742 1 (a fill).
+- **What stays open** (refix4-noise.md's items 1 to 6): 1, a rounding boundary drawn two ways, unchanged; 2, the points of
+  a resistor or two-source sweep other than the .op's state keep ngspice's numbers, unchanged (its .op-state point must
+  still be bit for bit); 3, settled by the last pass where the exact solution decides, unchanged here; 4, a chain of 70
+  controlled sources goes to the rule, unchanged; 5, diode runs decided by the rule beside the exact solution with no
+  warning, unchanged; 6, the two-source .op-state point relies on ngspice adding the outer step, unchanged (the inner
+  one is now matched within its rounding). New: a .tf alone, or beside an .op that shows its output as real, keeps
+  ngspice's ratio with nothing said where the rule decides; a run whose numbers the check cannot place, with diodes,
+  is left to the rule without the note; and the allowance that counts gains cannot tell a run of another circuit from
+  ngspice's lost digits where gains are large, now only within the part of the circuit a gain drives (none is known).
+  After the critic of round 2 of these fixes (none of items 1 to 6 changes): a sweep's point is named by its own x only
+  for a sweep of one source; by the rule, only the point nearest the .op's state can be told to read otherwise than its
+  label, so at a value the .op is not at (".dc V1 0 12 0.1" beside an .op at 9 V) a tiny value that is 0 only at the
+  label's value keeps the label, as ngspice gives it; and where no exact solution is this run's circuit (a transistor,
+  a .param line), the point nearest the .op's state is named by its x wherever ngspice's numbers there and in the .op
+  read otherwise, whatever made them differ, so its note can read as if the drift had made a difference that ngspice's
+  own rounding or Newton tolerances made (r9731-909: "There ngspice gives i(@r81[i]) 0 A, where the operating point, at
+  1 nA, shows 2.247 fA"), true in what it says but not in what it suggests; by the rule beside an exact solution that is
+  the run's circuit (an .op whose answers are off), that point is held to ngspice's numbers there and the .op's, not to
+  the exact solution at its own x, so a value the rule marks 0 there could be one the circuit makes real at that x (no
+  run of d9761, r9731, a9721, w9711, s9742 or the repository has such a point); in a run ngspice could not solve (a
+  singular matrix, the numbers of its fallback), Kirchhoff's law still gives a wire's current back, where the page says
+  those numbers cannot be trusted and shows no note.

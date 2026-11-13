@@ -465,8 +465,8 @@ Ctrl+K stay as they are.
   lower case ("in" for IN, as W6 says SPICE reads it), as these words always said it; every name as
   written, which would make the words agree with the drawing for capitals too, changes the words of
   every circuit written in capitals, and is left for after the release. Nothing is lower-cased with
-  toLowerCase, which turns İ into i with a combining dot and knows no Turkish ı. Known gap: the
-  rounding-noise note (another lane's) still names a node by its key.
+  toLowerCase, which turns İ into i with a combining dot and knows no Turkish ı. The rounding-noise
+  note and the notes beside it name a node as first written too (the last pass, decision 0015).
 
 ## After the last pass (13 November 2026)
 
