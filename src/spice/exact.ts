@@ -1495,13 +1495,14 @@ function spreadOf(parts: readonly ExactPart[]): number {
 
 /**
  * How much the circuit's controlled sources can lift ngspice's rounding: the product, over its E and F, of their gains
- * (volts per volt, amps per amp), and over its H, of their transresistances times the largest conductance of its R and
- * G (volts per amp, in the circuit's own scale), each where it is more than 1 (a G is a conductance, which
- * conductanceSpread counts). What ngspice's arithmetic leaves of the equations grows with it as with that spread: an E of
- * 1e15 reading 3.3 V turns a step of a double there into most of a volt at its output, and a non-inverting amplifier
- * whose every value is the circuit's left 9.2e-3 of the equations' sizes; E of 1e12 and 1e9 left 1.5e-5 and 2.4e-8,
- * each about 1e-17 of its gain (the critic of the last pass's fixes). `agrees` allows RESIDUAL_SHARE times this and
- * conductanceSpread together (describe.ts).
+ * (volts per volt, amps per amp), each where it is more than 1 (a G is a conductance, which conductanceSpread counts).
+ * What ngspice's arithmetic leaves of the equations grows with it as with that spread: an E of 1e15 reading 3.3 V turns a
+ * step of a double there into most of a volt at its output, and a non-inverting amplifier whose every value is the
+ * circuit's left 9.2e-3 of the equations' sizes; E of 1e12 and 1e9 left 1.5e-5 and 2.4e-8, each about 1e-17 of its gain
+ * (the critic of the last pass's fixes). An H is not counted: it reads its control current directly, where an E
+ * multiplies a near-cancelling difference, and H in feedback loops of 1e9 to 1e18 left 2e-17 to 6e-17 (the critic of
+ * round 2 of those fixes found that its term, transresistance times the largest conductance, decided no run, and the
+ * corpora read the same without it). `allowances` counts this and conductanceSpread over each part of the circuit.
  */
 export function amplification(model: ExactModel): number {
   return amplificationOf(model.parts);
@@ -1509,19 +1510,8 @@ export function amplification(model: ExactModel): number {
 
 /** amplification over some of a circuit's parts (allowances). */
 function amplificationOf(parts: readonly ExactPart[]): number {
-  let largest = 0;
-  for (const p of parts) {
-    if (p.kind !== 'R' && p.kind !== 'G') continue;
-    const v = Math.abs(toDouble(p.value));
-    const g = p.kind === 'R' ? 1 / v : v;
-    if (Number.isFinite(g) && g > largest) largest = g;
-  }
   let a = 1;
-  for (const p of parts) {
-    const gain = Math.abs(toDouble(p.value));
-    if (p.kind === 'E' || p.kind === 'F') a *= Math.max(1, gain);
-    else if (p.kind === 'H') a *= Math.max(1, gain * (largest || 1));
-  }
+  for (const p of parts) if (p.kind === 'E' || p.kind === 'F') a *= Math.max(1, Math.abs(toDouble(p.value)));
   return a;
 }
 

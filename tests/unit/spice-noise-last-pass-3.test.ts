@@ -155,3 +155,37 @@ describe('the rule gives a current back only where rounding can hide it, and a p
     expect(message(r.words, 'sweep-point')).toBeUndefined();
   });
 });
+
+describe('the paths of round 2 that no test held (N5)', () => {
+  it('a point found within a quarter of the step but farther than ngspice\'s adding up of it can leave is not the .op\'s state: beside .temp 50.001, a sweep of the temperature in 5 m°C steps, too large to look through, has no point said to be "nearest the operating point\'s 50 °C" (its 50 °C point is a real 1 m°C away), and at .temp 50 it has one', async () => {
+    const amm = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m0 1k'];
+    for (let k = 0; k < 53; k++) amm.push(`Vm${k} m${k} ${k === 52 ? 'b' : `m${k + 1}`} 0`);
+    const at = async (temp: string): Promise<string | undefined> => message((await solveText(netlist(...amm, '.options savecurrents', '.op', `.temp ${temp}`, '.dc TEMP 0 100 0.005'), ngspice)).words, 'sweep-not-checked');
+    expect(await at('50.001')).not.toContain('except at');
+    expect(await at('50')).toContain("except at ngspice's point nearest the operating point's 50 °C, ");
+  }, 120_000);
+
+  it('an H in a feedback loop needs no allowance of its own (it reads its control current directly): a non-inverting amplifier whose op-amp is an H of 1e15 Ω is decided exactly, out 9.15 V, with no note; its term in the allowance decided no run and is gone (the critic\'s mutation R2)', async () => {
+    const r = await solveText(netlist('V1 in 0 3.3', 'Rs in in2 1k', 'Vs in2 inm 0', 'H1 out 0 Vs 1e15', 'R1 inm 0 220', 'R2 out inm 390', 'Rl out 0 390', '.op'), ngspice);
+    expect([by(r), sp(r.words.nodes.find((n) => n.node === 'out')?.text), r.words.warnings.map((m) => m.code)]).toEqual(['exact', '9.15 V', []]);
+  });
+
+  it('a circuit at rest beside a diode whose numbers leave more of the equations than the check allows (z9771-103): the rule decides with its own notes, and no note says ngspice\'s numbers could not be checked, since ngspice settles a diode\'s current only to its tolerances', async () => {
+    const r = await solveText('* at rest held\nV1 top1 0 0\nR1 top1 f2 1e12\nC1 f2 0 1p\nD1 d3 f2 dmod\nR2 d3 0 39k\nR3 d3 x4 47k\nC2 x4 0 1n\nVh hh 0 1m\nCh hh 0 1u\n.model dmod D(is=1e-14)\n.options savecurrents\n.op\n.end\n', ngspice);
+    expect([by(r), message(r.words, 'unchecked-answers')]).toEqual(['rule', undefined]);
+    expect(message(r.words, 'maybe-noise')).toContain('3 currents and 3 node voltages may be rounding noise');
+  });
+
+  it('beside the rule\'s .op, a .tf ratio of a millionth of its input\'s own response (1e-12 A/V beside 1 µA for each volt) gets no note that it may be rounding noise: only one below a billionth of it does', async () => {
+    const r = await solveText(netlist('.param x=1', 'V1 top 0 9', 'V2 ref 0 9', 'R1 top a 999999', 'R2 a 0 1', 'R3 ref b 999999', 'R4 b 0 1', 'R5 a m 1meg', 'Vm m b 0', '.op', '.tf i(Vm) V1'), ngspice);
+    expect([by(r), sp(r.words.tf!.transferFunction!.text), r.words.tf!.transferFunction!.maybe]).toEqual(['rule', 'i(Vm)/V1 = 1e-12 (A/V)', undefined]);
+    expect(r.words.warnings.some((m) => m.title === 'The transfer function may be rounding noise')).toBe(false);
+  });
+
+  it('beside the rule\'s .op, the .tf of an ammeter\'s current that the .op\'s own note says may be noise gets the note too, saying so (Vm beside a transistor, the H of 1 GΩ reading it)', async () => {
+    const r = await solveText(netlist('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.options savecurrents', '.op', '.tf i(Vm) V1'), ngspice);
+    expect([by(r), r.words.tf!.transferFunction!.maybe]).toEqual(['rule', 'unproven']);
+    expect(message(r.words, 'maybe-noise')).toContain('2 currents may be rounding noise');
+    expect(sp(r.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')?.why)).toContain("ngspice gave i(Vm)/V1 = -2.150024e-17. In the operating point Vm's current may itself be rounding noise, and this ratio is less than a billionth of the current through V1 for each of its volts (2.696 µA)");
+  });
+});

@@ -4635,8 +4635,8 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
     return !sw || sw.kind === 'temperature' ? v : speech ? S.sweepAtSpeech(sweepName(sw), v) : S.sweepAt(sweepName(sw), v);
   };
   const names: PointNames = {
-    text: (k) => (sw ? value(k, false) : (states?.name(k) ?? `point ${k + 1}`)),
-    speech: (k) => (sw ? value(k, true) : (states?.name(k) ?? `point ${k + 1}`)),
+    text: (k) => (sw ? value(k, false) : (states?.name(k) ?? formatSI(xs[k]!, unit))),
+    speech: (k) => (sw ? value(k, true) : (states?.name(k) ?? speakSI(xs[k]!, unit))),
     state: (k) => {
       if (!states || states.exact(k) || states.target === undefined) return S.opStateExact(names.text(k));
       const first = sweeps[0]!;
