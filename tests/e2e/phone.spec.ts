@@ -1422,6 +1422,70 @@ test('a second tap meant for the row just under More’s head presses it: a stat
   }
 });
 
+test('the row the keys are on in More stays whole when the status line takes more room: Enter on Undo at its top edge (375 × 667, the largest text, AP-2)', async ({ page }) => {
+  // The critic of the second re-check's second fixes: the lines' wait was for fingers only, and with the keys
+  // More's head came down over the row with the focus. Shift+Tab up More's rows puts Undo at the top edge (the
+  // browser scrolls it to the nearest edge); Enter clears the error, the status line comes back above the sheet,
+  // and the head came down over Undo and its focus ring, all 69 px of it (an iPhone SE, 3rd generation, at
+  // 150 %; b060bc8 moved the whole sheet down and kept the row whole).
+  await page.addInitScript(() => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: 'x-large', contrast: 'device', motion: 'device' })));
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openApp(page);
+  await expectSolved(page);
+  // Two changes made with the keys: R2 turned, then the ground deleted (an error).
+  await partOnDrawing(page, 'R2').focus();
+  await page.keyboard.press('t');
+  await expectSolved(page);
+  await partOnDrawing(page, 'Ground').focus();
+  await page.keyboard.press('Delete');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  await settle(page);
+  // More with the keys: its button and Enter, Tab down its rows to Help, Shift+Tab back up to Undo.
+  await page.getByRole('navigation', { name: t('barLabel') }).getByRole('button', { name: t('barMore'), exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const more = page.getByRole('dialog', { name: t('barMore') });
+  await expect(more).toBeVisible();
+  await settle(page);
+  const focused = (): Promise<string> => page.evaluate(() => document.activeElement?.textContent?.trim() ?? '');
+  for (let i = 0; i < 20 && (await focused()) !== t('help'); i++) await page.keyboard.press('Tab');
+  expect(await focused(), 'Tab reaches Help').toBe(t('help'));
+  for (let i = 0; i < 20 && (await focused()) !== t('undo'); i++) await page.keyboard.press('Shift+Tab');
+  expect(await focused(), 'Shift+Tab reaches Undo').toBe(t('undo'));
+  await settle(page);
+  const headBefore = await more.evaluate((el) => el.querySelector(':scope > .card-head')!.getBoundingClientRect().bottom);
+  // From Enter on, on every frame: how much of the row with the focus the sheet's body shows, below its head.
+  await page.evaluate(() => {
+    const w = window as unknown as { focusSeen: { shown: number; tall: number; head: number }[]; focusStop?: boolean };
+    w.focusSeen = [];
+    w.focusStop = false;
+    const tick = (): void => {
+      const body = document.querySelector('.phone-bottom > .sheet > .card-body');
+      const el = document.activeElement;
+      if (body && el && body.contains(el)) {
+        const r = el.getBoundingClientRect();
+        const b = body.getBoundingClientRect();
+        const top = b.top + body.clientTop;
+        w.focusSeen.push({ shown: Math.max(0, Math.min(r.bottom, top + body.clientHeight) - Math.max(r.top, top)), tall: r.height, head: document.querySelector('.phone-bottom > .sheet > .card-head')!.getBoundingClientRect().bottom });
+      }
+      if (!w.focusStop) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.keyboard.press('Enter');
+  await expect(statusLine(page)).toHaveAttribute('data-tone', 'ok');
+  await settle(page);
+  const seen = await page.evaluate(() => {
+    const w = window as unknown as { focusSeen: { shown: number; tall: number; head: number }[]; focusStop: boolean };
+    w.focusStop = true;
+    return w.focusSeen;
+  });
+  expect(await focused(), 'the focus stays on Undo').toBe(t('undo'));
+  // The status line back above the sheet: the head came down (the test's case).
+  expect(Math.max(...seen.map((f) => f.head)) - headBefore, 'the head comes down for the status line').toBeGreaterThan(20);
+  const hidden = seen.filter((f) => f.shown < f.tall - 1).map((f) => `${Math.round(f.shown)} of ${Math.round(f.tall)} px`);
+  expect(hidden, 'frames in which the row with the focus was partly or wholly out of sight').toEqual([]);
+});
+
 test('an open sheet the student scrolled keeps its head where it is: a later run lifts neither its head nor its × (AP-2)', async ({ page }) => {
   // The error undone gives the room the error's words took back to the paper; then the student scrolls More.
   // Held to grow back as far as its scroll gave back at the next change above it, the sheet's head and its ×
