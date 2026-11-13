@@ -103,6 +103,42 @@ describe('the drawing finds each dot’s and hop’s colour at its point (second
     expect(sc.junctionNodes.filter((n) => n !== 'out')).toEqual(['0']);
   });
 
+  it('where node in’s wires cross node out’s, each hop takes the colour of the wire that hops (the horizontal one), and each dot its own node’s', { timeout: 60_000 }, () => {
+    // A frame of node in with lines across it, and a ladder of node out with lines down it, through
+    // the frame: 72 crossings of in's horizontal wires over out's vertical ones (the second re-check's
+    // critic: on a frame of one node the hops could take either wire's colour and look right).
+    const lines = ['*@ wire 2,0 2,-17 10,-17', '*@ wire 10,-3 30,-3 30,-17 10,-17 10,-3'];
+    for (let y = -5; y >= -15; y -= 2) lines.push(`*@ wire 10,${y} 30,${y}`);
+    lines.push('*@ wire 7,1 7,-1 28,-1', '*@ wire 12,-19 28,-19');
+    for (let x = 12; x <= 28; x += 2) lines.push(`*@ wire ${x},-1 ${x},-19`);
+    const s = notebookSchematic(`* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n* plainspice-drawing v1\n*@ V1 0 3 0 m\n*@ R1 4 0 270\n*@ R2 7 3 0\n${lines.join('\n')}\n.end\n`);
+    const sc = s.scene;
+    // Found here from the wires themselves: the node of the horizontal piece running through a point
+    // (a hop's wire), and the node of any piece through or ending at a point (a dot's copper).
+    const pieces = sc.wires.flatMap((w) => w.points.slice(1).map((b, i) => ({ a: w.points[i]!, b, node: w.node })));
+    const between = (v: number, p: number, q: number, open: boolean): boolean => (open ? Math.min(p, q) < v && v < Math.max(p, q) : Math.min(p, q) <= v && v <= Math.max(p, q));
+    const across = (x: number, y: number): string | undefined => pieces.find(({ a, b }) => a.y === y && b.y === y && between(x, a.x, b.x, true))?.node;
+    const through = (x: number, y: number): string | undefined =>
+      pieces.find(({ a, b }) => (a.y === y && b.y === y && between(x, a.x, b.x, false)) || (a.x === x && b.x === x && between(y, a.y, b.y, false)))?.node;
+    const colourOf = (node: string | undefined): string | undefined => (node === 'in' ? IN : node === 'out' ? OUT : undefined);
+    const html = renderToStaticMarkup(
+      <svg>
+        <Drawing {...props(s)} />
+      </svg>,
+    );
+    // The hops and the dots are drawn in the scene's order.
+    const hops = [...html.matchAll(/<path class="nb-wire" d="M[^"]* A[^"]*" style="stroke:([^;"]+)/g)].map((m) => m[1]);
+    expect(hops.length).toBe(sc.crossings.length);
+    expect(sc.crossings.length).toBe(72);
+    expect(hops).toEqual(sc.crossings.map((p) => colourOf(across(p.x, p.y)) ?? 'var(--nb-ink)'));
+    expect(hops.filter((c) => c === IN).length).toBe(72);
+    const dots = [...html.matchAll(/<circle class="nb-junction"[^>]*?(?:style="fill:([^;"]+)[^>]*)?>/g)].map((m) => m[1]);
+    expect(dots.length).toBe(sc.junctions.length);
+    expect(dots).toEqual(sc.junctions.map((p) => colourOf(through(p.x, p.y))));
+    expect(dots.filter((c) => c === IN).length).toBeGreaterThan(10);
+    expect(dots.filter((c) => c === OUT).length).toBeGreaterThan(10);
+  });
+
   it('hops take the hopping wire’s colour, and the dots on straight copper keep theirs', { timeout: 60_000 }, () => {
     // A frame on out's pin with lines across it inside: 9,604 crossings, every hop on out's copper.
     const lines = ['*@ wire 7,1 9,1', '*@ wire 9,1 108,1 108,100 9,100 9,1'];
