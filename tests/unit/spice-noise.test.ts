@@ -258,11 +258,15 @@ describe('S8: .tf and .dc in a circuit solved exactly give 0 where the circuit m
     expect(spec.series.filter((s) => s.given).map((s) => s.label)).toEqual(['i(vm)']);
   });
 
-  it('.dc of a current source: the same for its noise; a sweep of two sources is left as ngspice gave it', async () => {
+  it('.dc of a current source: the same for its noise; a sweep of two sources is decided only at its point at the .op\'s own state (the critic of round 4), the others left as ngspice gave them', async () => {
     const r = await run('I1 0 top 1m', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', '.dc I1 0 1m 0.25m');
     expect(r.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0, noise: -4.336808689942018e-19 });
     const two = await run(...bridge, 'V2 b2 0 1', 'R6 b2 0 1k', 'R5 a m 1k', 'Vm m b 0', '.dc V1 0 9 3 V2 0 1 1');
-    expect(two.words.sweeps[0]!.final.every((f) => f.noise === undefined)).toBe(true);
+    // Its last point is V1 = 9 V and V2 = 1 V, the .op's own state: Vm's noise is 0 there, as in the .op.
+    expect(two.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0 });
+    const vm = Array.from(two.results.dc!.series.find((s) => s.name === 'i(vm)')!.values);
+    const shown = Array.from(shownSweep(two.netlist, two.results)!.series.find((s) => s.name === 'i(vm)')!.values);
+    expect(shown).toEqual(vm.map((v, k) => (k === vm.length - 1 ? 0 : v)));
   });
 });
 
@@ -1061,12 +1065,16 @@ describe('after the critic of round 3 of the re-check\'s fixes: circuits at rest
     expect([roundingNoise(still.netlist, still.results).by, Array.from(shownSweep(still.netlist, still.results)!.series.find((s) => s.name === 'v(a)')!.values)]).toEqual(['exact', [0]]);
   });
 
-  it('an .op beside a sweep the exact solution does not decide (of a resistor, of two sources) is left to the rule, as the sweep is left to ngspice; beside a sweep of the temperature, whose every point is the .op\'s circuit, both are decided exactly (the critic of round 3: the .op called R5\'s −8.882e-19 A an exact 0 beside the sweep\'s words giving it at the same state)', async () => {
-    for (const dc of ['.dc R5 1k 2k 500', '.dc V1 0 9 9 V2 0 1 1']) {
+  it('an .op beside a sweep the exact solution does not follow (of a resistor, of two sources) is decided exactly, and the sweep\'s point at the .op\'s own state shows its 0s, the other points as ngspice gives them (the critic of round 4; round 3 left the .op to the rule, which drew C9m\'s exact 0 with an arrow); beside a sweep of the temperature, whose every point is the .op\'s circuit, both are decided exactly (the critic of round 3: the .op called R5\'s −8.882e-19 A an exact 0 beside the sweep\'s words giving it at the same state)', async () => {
+    for (const [dc, at, name] of [['.dc R5 1k 2k 500', 0, 'R5 = 1 kΩ'], ['.dc V1 0 9 9 V2 0 1 1', 3, 'V1 = 9 V, V2 = 1 V']] as const) {
       const r = await run(...bridge, 'V2 x 0 1', 'R6 x 0 1k', dc);
-      expect(roundingNoise(r.netlist, r.results).by, dc).toBe('rule');
-      expect(note(r.words), dc).toContain("below 1 pA, ngspice's current tolerance (its abstol option)");
-      expect(shownSweep(r.netlist, r.results), dc).toBe(r.results.dc);
+      expect(roundingNoise(r.netlist, r.results).by, dc).toBe('exact');
+      expect(current(r.words, 'R5'), dc).toBe('no current through R5');
+      const given = Array.from(r.results.dc!.series.find((s) => s.name === 'i(@r5[i])')!.values);
+      const shown = Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r5[i])')!.values);
+      expect(shown, dc).toEqual(given.map((v, k) => (k === at ? 0 : v)));
+      expect(given[at], dc).not.toBe(0);
+      expect(notes(r.words)[1], dc).toContain(`ngspice gave i(@r5[i]) -8.881784e-19 A at ${name}.`);
     }
     const t = await run(...bridge, '.dc TEMP 0 50 25');
     expect(roundingNoise(t.netlist, t.results).by).toBe('exact');
@@ -1244,5 +1252,25 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     const { words, by } = await solved(lines('V1 top1 0 24', 'R1 top1 a2 100k', 'R2 a2 0 270', 'R3 top1 b3 10k', 'R4 b3 0 27', 'R5 a2 m4 1n', 'R6 m4 b3 2.7k'));
     expect([by, node(words, 'a2'), node(words, 'b3'), current(words, 'R6')]).toEqual(['rule', '64.62 mV', '64.63 mV', '210.2 pA from node b3 to node m4 through R6']);
     expect(off(words)!.why).toContain('node a2 is at 64.63 mV, where ngspice gives 64.62 mV; and node m4 is at 64.63 mV, where ngspice gives 64.62 mV.');
+  });
+
+  it('beside a sweep of a resistor the .op is decided exactly, and the sweep\'s point at the .op\'s own state shows its 0s: C9m with .dc R1 10k 20k 5k gives R7 0 A in the .op and at R1 = 15 kΩ, with both notes, and ngspice\'s real −4.682 µA at 20 kΩ (the rule drew R7\'s exact 0 as 6.217e-20 A with an arrow); with no point at the .op\'s state nothing in the sweep is marked; a point there that is not this circuit\'s (doctored 1 ppm off) leaves the .op to the rule and the sweep to ngspice', async () => {
+    const c9m = ['V1 n1 0 9', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k', '.options savecurrents', '.op'];
+    const text = `* t\n${[...c9m, '.dc R1 10k 20k 5k'].join('\n')}\n.end\n`;
+    const r = await solveText(text, ngspice);
+    expect([roundingNoise(r.netlist, r.results).by, current(r.words, 'R7')]).toEqual(['exact', 'no current through R7']);
+    const given = Array.from(r.results.dc!.series.find((s) => s.name === 'i(@r7[i])')!.values);
+    expect(series(r, 'i(@r7[i])')).toEqual([given[0], 0, given[2]]);
+    expect(given[1]).not.toBe(0);
+    expect(notes(r.words)[1]).toContain('ngspice gave i(@r7[i]) 6.217249e-20 A at R1 = 15 kΩ.');
+    expect(sp(r.words.sweeps[0]!.text)).toContain('i(@r7[i]) = −4.682 µA');
+    const none = await solveText(text.replace('.dc R1 10k 20k 5k', '.dc R1 10k 20k 3k'), ngspice);
+    expect(roundingNoise(none.netlist, none.results).by).toBe('exact');
+    expect(shownSweep(none.netlist, none.results)).toBe(none.results.dc);
+    const doctored = structuredClone(r.results);
+    const v = doctored.dc!.series.find((s) => s.name === 'v(n2)')!.values;
+    v[1] = v[1]! * (1 + 1e-6);
+    expect(roundingNoise(parseNetlist(text), doctored).by).toBe('rule');
+    expect(shownSweep(parseNetlist(text), doctored)).toBe(doctored.dc);
   });
 });

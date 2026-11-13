@@ -1163,12 +1163,13 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     expect(note(d)).toContain('the circuit makes each of them exactly 0 (D1 and D2, placed alike in the circuit, carry the same current), so PlainSpice shows 0 A.');
   });
 
-  it('C9u.4 and C9u.5: beside a sweep of the temperature both the .op and the sweep are decided exactly, R5 0 at every point; beside a sweep of a resistor both are left to the rule and to ngspice', () => {
+  it('C9u.4 and C9u.5: beside a sweep of the temperature both the .op and the sweep are decided exactly, R5 0 at every point; beside a sweep of a resistor the .op is decided exactly and the sweep at its point at the .op\'s own state, R5 = 1 kΩ, the other points left as ngspice gives them (the critic of round 4)', () => {
     const t = ofFact('C9u.4');
     expect([roundingNoise(t.netlist, t.results).by, Array.from(shownSweep(t.netlist, t.results)!.series.find((s) => s.name === 'i(@r5[i])')!.values)]).toEqual(['exact', [0, 0, 0]]);
     const r = ofFact('C9u.5');
-    expect([roundingNoise(r.netlist, r.results).by, shownSweep(r.netlist, r.results) === r.results.dc, plain(currentText(r, 'R5'))]).toEqual(['rule', true, 'no current through R5']);
-    expect(note(r)).toContain("It is below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.");
+    expect([roundingNoise(r.netlist, r.results).by, Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r5[i])')!.values), plain(currentText(r, 'R5'))]).toEqual(['exact', [0, -5.921189464667501e-19, -4.440892098500626e-19], 'no current through R5']);
+    expect(note(r)).toContain('Solved exactly, with fractions, from the netlist\'s values, the circuit makes it exactly 0, so PlainSpice shows 0 A.');
+    expect(plain(r.words.warnings.filter((m) => m.code === 'rounding-noise')[1]!.why)).toContain('ngspice gave i(@r5[i]) -8.881784e-19 A at R5 = 1 kΩ.');
   });
 
   it('C9u.6: ngspice gives the 1 aA of a loop as exactly 0 in V1 and R1, every other value exact: decided exactly, both shown at their exact 1 aA with the rounded-to-0 note, no warning', () => {
