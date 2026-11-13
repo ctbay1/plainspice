@@ -342,75 +342,236 @@ interface CardEdit {
   written: string;
 }
 
-/** An open phone sheet held where it is (AP-2): its height and scroll, which together put its rows on the screen. */
+/**
+ * How long an open phone sheet waits, after a finger (or the mouse) last pressed or let go on it, before the
+ * lines above it may take its room and bring its head down: a double tap's time, with room to spare (a
+ * second tap 300 ms after the first met the head or its ×: the critic of the second re-check's fixes).
+ */
+const SHEET_QUIET_MS = 600;
+/** Lines that wait at less than this had no room of their own above the sheet (out of sight): they stay out of sight. */
+const LINE_WAIT_MIN_PX = 12;
+
+/**
+ * An open phone sheet held where it is (AP-2): its height, its scroll and the rows in view at its top, which
+ * together put its rows on the screen.
+ */
 interface SheetHold {
   room: string;
   sheet: HTMLElement;
   body: HTMLElement;
-  /** How tall all its rows are, whatever room they have (its scroll box counts all it holds). */
+  /** Its own rows coming or going lay it out afresh (Checks: a check found or fixed shows at once where it belongs). */
+  afresh: boolean;
+  /** How tall its rows are as they are laid out, without the room kept below them (Checks' rows changing). */
   rows: number;
   /** The sheet's own greatest height (app.css), in pixels. */
   cap: number;
   height: number;
-  head: number;
-  scroll: number;
   /** How tall the lines above it were when last drawn, and the room it gave them while held: it takes back only that. */
   above: number;
   given: number;
-  /** The greatest height it is held to (none: its own, app.css), in pixels. */
-  max: number | undefined;
+  /** The greatest height it is held to, in pixels. */
+  max: number;
+  /** Where its body's box began, from the sheet's bottom on the bar (the sheet sliding in moves both), and how far the body was scrolled, when last held. */
+  top: number;
+  scroll: number;
+  /** The rows in view at the top of its body, each the first one in view inside the one before, with where each begins in what scrolls. */
+  rowsInView: { el: Element; at: number }[];
+  /** Room kept below its rows (app.css: --sheet-kept), so the rows in view stay where they are when rows below them go. */
+  kept: number;
   /** Laid out afresh and not yet drawn: the steps above it may still settle, so it follows them. */
   fresh: boolean;
+  /** When a finger or the mouse last pressed or let go on it (performance.now()). */
+  touched: number;
   release: () => void;
 }
 
-const sheetRowsOf = (h: { body: HTMLElement }): number => h.body.scrollHeight;
-/** How far down the sheet its head ends (its grab and head), to the fraction of a pixel. */
-const headOf = (sheet: HTMLElement): number => {
-  const head = sheet.querySelector<HTMLElement>(':scope > .card-head');
-  return head ? head.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top : 0;
-};
 /** How tall the sheet is, to the fraction of a pixel (offsetHeight rounds, and a rounded size moved it). */
 const heightOf = (sheet: HTMLElement): number => sheet.getBoundingClientRect().height;
 /** How tall what stands above the sheet in the stack is (the hint and status lines). */
 const aboveOf = (sheet: HTMLElement): number => sheet.previousElementSibling?.getBoundingClientRect().height ?? 0;
+const besideFlow = (el: Element): boolean => /^(absolute|fixed)$/.test(getComputedStyle(el).position);
+/** How tall a sheet's rows are as they are laid out (what its body holds, each box by itself). */
+const rowsOf = (body: HTMLElement): number => {
+  let sum = 0;
+  for (const el of body.children) sum += el.getBoundingClientRect().height;
+  return sum;
+};
+
+/** How tall what a sheet's body holds is, its padding included and the room kept below its rows not. */
+function naturalOf(body: HTMLElement): number {
+  const style = getComputedStyle(body);
+  const start = body.getBoundingClientRect().top + body.clientTop - body.scrollTop;
+  let end = start + Number.parseFloat(style.paddingTop);
+  for (const el of body.children) if (!besideFlow(el)) end = Math.max(end, el.getBoundingClientRect().bottom + Number.parseFloat(getComputedStyle(el).marginBottom));
+  return end - start + Number.parseFloat(style.paddingBottom);
+}
+
+/**
+ * The rows in view at the top of a sheet's body, with where each begins in what scrolls: the boxes in view
+ * in it, then those inside the first of them, and so on, the innermost first (the first of them that is
+ * still there is kept where it is: keepRows; Numbers' note for a run goes with the run, the result's
+ * banner below it stays). A box that is the only one where it is (a panel's box around all its rows) is
+ * gone through, not kept, unless nothing is found inside it: it stays when all its rows are new, and the
+ * sheet is then laid out for the new ones.
+ */
+function rowsInView(body: HTMLElement): { el: Element; at: number }[] {
+  const box = body.getBoundingClientRect();
+  const view = box.top + body.clientTop;
+  const end = view + body.clientHeight;
+  const levels: { el: Element; at: number }[][] = [];
+  let parent: Element = body;
+  for (let depth = 0; depth < 8; depth++) {
+    const level: { el: Element; at: number }[] = [];
+    for (const el of parent.children) {
+      const r = el.getBoundingClientRect();
+      if (r.top >= end || level.length >= 8) break;
+      if (r.height > 0 && r.bottom > view + 0.5 && !besideFlow(el)) level.push({ el, at: r.top - box.top + body.scrollTop });
+    }
+    if (!level.length) break;
+    if (parent.childElementCount > 1) levels.push(level);
+    parent = level[0]!.el;
+  }
+  if (!levels.length && parent !== body) levels.push([{ el: parent, at: parent.getBoundingClientRect().top - box.top + body.scrollTop }]);
+  return levels.reverse().flat();
+}
+
+/** Where a sheet's body begins, from the sheet's bottom, which stands on the bar: the same while the sheet slides in. */
+const bodyTopOf = (held: SheetHold): number => held.body.getBoundingClientRect().top - held.sheet.getBoundingClientRect().bottom;
+
+/** Notes where a held sheet's rows are now. */
+function noteRows(held: SheetHold): void {
+  held.top = bodyTopOf(held);
+  held.scroll = held.body.scrollTop;
+  held.rowsInView = rowsInView(held.body);
+}
+
+/** Room kept below a sheet's rows, in pixels (app.css: --sheet-kept). */
+function keepRoom(held: SheetHold, px: number): void {
+  held.kept = px > 0.5 ? px : 0;
+  if (held.kept) held.body.style.setProperty('--sheet-kept', `${held.kept}px`);
+  else held.body.style.removeProperty('--sheet-kept');
+}
 
 /**
  * Holds a sheet as it is laid out, from the frame it is first drawn in (until then the lines above it may
- * still take a step: it follows them); its scroll is followed as the student scrolls it.
+ * still take a step: it follows them); its scroll is followed as the student scrolls it, and its rows are
+ * kept where they are as they change size, before they are drawn (a plot drawn, a run's note, the editor's
+ * lines: keepRows), whatever draws them.
  */
-function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement): SheetHold {
+function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: boolean): SheetHold {
   sheet.style.removeProperty('max-height');
   const cap = Number.parseFloat(getComputedStyle(sheet).maxHeight);
-  const held: SheetHold = { room, sheet, body, rows: 0, cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY, height: 0, head: 0, scroll: 0, above: 0, given: 0, max: undefined, fresh: true, release: () => undefined };
-  measureSheet(held);
-  const onScroll = (): void => {
-    held.scroll = body.scrollTop;
+  const held: SheetHold = {
+    room,
+    sheet,
+    body,
+    afresh,
+    rows: 0,
+    cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY,
+    height: 0,
+    above: 0,
+    given: 0,
+    max: Number.POSITIVE_INFINITY,
+    top: 0,
+    scroll: 0,
+    rowsInView: [],
+    kept: 0,
+    fresh: true,
+    touched: Number.NEGATIVE_INFINITY,
+    release: () => undefined,
   };
+  measureSheet(held);
+  // The student's own scroll moves its rows: the rows in view are noted again, and room kept below them that
+  // the scroll no longer needs goes (never more is kept for a scroll).
+  const onScroll = (): void => {
+    if (held.kept) keepRoom(held, Math.min(held.kept, body.scrollTop + body.clientHeight - naturalOf(body)));
+    noteRows(held);
+  };
+  const onTouch = (): void => {
+    held.touched = performance.now();
+  };
+  const ro =
+    typeof ResizeObserver === 'undefined'
+      ? undefined
+      : new ResizeObserver(() => {
+          if (held.fresh) return;
+          if (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5) measureSheet(held);
+          else keepRows(held);
+        });
+  const watch = (): void => {
+    ro?.observe(body);
+    for (const el of body.children) ro?.observe(el);
+  };
+  const mo = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(watch);
+  mo?.observe(body, { childList: true });
+  watch();
   body.addEventListener('scroll', onScroll, { passive: true });
+  sheet.addEventListener('pointerdown', onTouch, { capture: true, passive: true });
+  sheet.addEventListener('pointerup', onTouch, { capture: true, passive: true });
   let frame = requestAnimationFrame(() => {
     frame = requestAnimationFrame(() => {
       held.fresh = false;
+      measureSheet(held);
     });
   });
   held.release = () => {
     cancelAnimationFrame(frame);
+    ro?.disconnect();
+    mo?.disconnect();
     body.removeEventListener('scroll', onScroll);
+    sheet.removeEventListener('pointerdown', onTouch, { capture: true });
+    sheet.removeEventListener('pointerup', onTouch, { capture: true });
     sheet.style.removeProperty('max-height');
+    keepRoom(held, 0);
   };
   return held;
 }
 
-/** The sheet as it is laid out now, by itself. */
+/** The sheet laid out afresh, as it is now by itself, and held there. */
 function measureSheet(held: SheetHold): void {
-  held.sheet.style.removeProperty('max-height');
-  held.rows = sheetRowsOf(held);
-  held.height = heightOf(held.sheet);
-  held.head = headOf(held.sheet);
-  held.scroll = held.body.scrollTop;
-  held.above = aboveOf(held.sheet);
+  const { sheet, body } = held;
+  sheet.style.removeProperty('max-height');
+  keepRoom(held, 0);
+  held.height = heightOf(sheet);
+  held.max = Math.min(held.cap, held.height);
+  sheet.style.maxHeight = `${held.max}px`;
+  held.above = aboveOf(sheet);
   held.given = 0;
-  held.max = undefined;
+  held.rows = rowsOf(body);
+  noteRows(held);
+}
+
+/**
+ * Keeps the rows in view of a held sheet where they are on the screen: its scroll moves on by as far as its
+ * body's box moved (as the lines above it take or give back room) and as far as the row in view moved in
+ * what scrolls (rows that came or went above it: Numbers' "ngspice is running the netlist…" for each run),
+ * and room is kept below its rows as far as that scroll, and so the sheet's height, need it (rows below
+ * them gone). When none of the rows that were in view is left, or there were none (all of them new: the
+ * first numbers, a plot where there was none or "Loading the plot…"), there is nothing to keep, and the
+ * sheet is laid out afresh for the new ones.
+ */
+function keepRows(held: SheetHold): void {
+  const { body } = held;
+  const rows = held.rowsInView;
+  const row = rows.find((r) => r.el.isConnected && body.contains(r.el));
+  if (!row) {
+    measureSheet(held);
+    return;
+  }
+  // What scrolls was cut back under its scroll (the browser took the scroll in with it): from where it was.
+  const scroll = body.scrollTop;
+  const from = scroll < held.scroll - 0.5 && scroll >= body.scrollHeight - body.clientHeight - 0.5 ? held.scroll : scroll;
+  let want = from;
+  for (let tries = 0; tries < 3; tries++) {
+    const top = bodyTopOf(held);
+    const moved = row.el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - row.at;
+    want = Math.max(0, from + top - held.top + moved);
+    const kept = Math.max(0, want + body.clientHeight - naturalOf(body));
+    if (Math.abs(kept - held.kept) <= 0.5) break;
+    keepRoom(held, kept);
+  }
+  if (Math.abs(body.scrollTop - want) > 0.01) body.scrollTop = want;
+  noteRows(held);
 }
 
 /** What the polite region says after a run (decision 0010): the summary, and each sweep's last point. */
@@ -1993,18 +2154,27 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // (linesHeld), so each run neither brings the lines back above the sheet for a fifth of a second nor
   // moves the sheet's rows (the second re-check, AP-2). Its result is measured again only if it differs.
   const running = status.tone === 'busy' && status.main === t('statusSolving');
-  const [settledKey, setSettledKey] = useState(statusKeyNow);
+  // So are the rows the sheet keeps below its head (rowsKept): a run's own rows (Numbers' "ngspice is running
+  // the netlist…" above a short sheet's) are no new room for the lines either.
+  const [settled, setSettled] = useState({ key: statusKeyNow, rows: rowsKept });
   useLayoutEffect(() => {
-    if (!running && settledKey !== statusKeyNow) setSettledKey(statusKeyNow);
-  }, [running, statusKeyNow, settledKey]);
-  const statusKey = running ? settledKey : statusKeyNow;
-  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}|${Math.round(rowsKept)}|${statusKey}` : undefined;
+    if (!running && (settled.key !== statusKeyNow || Math.round(settled.rows) !== Math.round(rowsKept))) setSettled({ key: statusKeyNow, rows: rowsKept });
+  }, [running, statusKeyNow, rowsKept, settled]);
+  const statusKey = running ? settled.key : statusKeyNow;
+  const rowsKeptNow = running ? settled.rows : rowsKept;
+  const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHead}|${Math.round(rowsKeptNow)}|${statusKey}` : undefined;
+  const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
+  // Lines that need more room just after a finger was on the open sheet wait at the height they had, until
+  // the sheet has been still for a double tap's time (SheetHold below); out of sight before, they stay so.
+  const [linesWait, setLinesWait] = useState<{ room: string; height: number } | undefined>(undefined);
+  const waiting = linesWait && linesWait.room === sheetRoom ? linesWait : undefined;
   const [gaveWay, setGaveWay] = useState<{ key: string; step: 1 | 2 } | undefined>(undefined);
   const linesStep: 0 | 1 | 2 = !sheetKey ? 0 : gaveWay?.key === sheetKey ? gaveWay.step : short ? 1 : 0;
   const hintAside = linesStep >= 1;
-  const linesAside = linesStep === 2;
+  const linesAside = linesStep === 2 || (!!waiting && waiting.height < LINE_WAIT_MIN_PX);
   /** Step 1: the most the lines may take above the sheet, which keeps its head and about two rows (all its rows, when it has less). */
-  const linesMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - rowsKept)) : undefined;
+  const linesStepMax = linesStep === 1 && stackMax !== undefined && barRect.height ? Math.max(0, Math.floor(stackMax - barRect.height - sheetHead - rowsKeptNow)) : undefined;
+  const linesMax = waiting ? Math.min(linesStepMax ?? Number.POSITIVE_INFINITY, waiting.height) : linesStepMax;
   const linesBox = useRef<HTMLElement | null>(null);
   const linesBoxRef = useCallback(
     (el: HTMLElement | null) => {
@@ -2018,8 +2188,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       setGaveWay(undefined);
       return;
     }
-    // Not for a run's "Running…": a step taken for it would be kept for the settled status after it.
-    if (running) return;
+    // Not for a run's "Running…": a step taken for it would be kept for the settled status after it. Nor
+    // while the lines wait at the height they had (they are squeezed then, not too tall for this step).
+    if (running || waiting) return;
     // Measured here, at this step and with the room it has now (linesMax): what the lines' watchers said
     // last may be from the step before, when the lines still gave way first.
     const over = (box: Element | null | undefined): boolean => !!box && box.scrollHeight > box.clientHeight + 1;
@@ -2027,17 +2198,22 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     if (linesStep === 0 && (over(box) || over(box?.querySelector('.hint-scroll')))) setGaveWay({ key: sheetKey, step: 1 });
     else if (linesStep === 1 && over(box)) setGaveWay({ key: sheetKey, step: 2 });
     // Measured again when the watchers see a change (words, sizes) or the room changes.
-  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax, running]);
+  }, [sheetKey, linesStep, linesSqueezed, hintSqueezed, linesMax, running, waiting]);
 
-  // An open sheet keeps its rows where they are on the screen while the lines above it change (a run, a
-  // new status, an undo, the hint): its top moves only as far as its scroll takes back, so a finger about
-  // to tap a row again (More's Undo, twice) finds it there. When the lines need more room the sheet gives
-  // it and its scroll moves on by as much; when they need less it takes back what it gave them, no more
-  // than its scroll can give back, and the paper takes the rest. Opening it, scrolling it, rows of its
-  // own coming or going, or a new window, text size or stack (a part in hand, the keyboard) lay it out
-  // afresh (AP-2).
-  const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
+  // An open sheet keeps its rows where they are on the screen, whatever changes above it or in it (a run, a
+  // new status, an undo, the hint, a run's own rows): a finger about to tap a row again (More's Undo, twice)
+  // finds it there. When the lines need more room the sheet gives it from its top and its scroll moves on
+  // by as much, its head coming down over its top rows: not while a finger may be about to tap one, just
+  // after a press on the sheet (the lines wait, squeezed, until it has been still for SHEET_QUIET_MS).
+  // When they need less it takes back what it gave them, no more than its scroll can give back, and the
+  // paper takes the rest. Its own rows coming or going keep the rows in view where they are (keepRows):
+  // its scroll follows them, and room is kept below them while rows below have gone. Opening it, scrolling
+  // it, rows that are all new, Checks' rows (a check found or fixed shows where it belongs, at once) or a
+  // new window, text size or stack (a part in hand, the keyboard) lay it out afresh (AP-2).
   const sheetHold = useRef<SheetHold | undefined>(undefined);
+  // After every render (whatever changed may have moved the sheet); it sets the lines waiting only once, and
+  // not again while they wait.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const sheet = sheetRoom ? document.querySelector<HTMLElement>('.phone-bottom > .sheet') : null;
     const body = sheet?.querySelector<HTMLElement>(':scope > .card-body') ?? null;
@@ -2048,40 +2224,51 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     }
     if (!sheetRoom || !sheet || !body) return;
     if (!held) {
-      sheetHold.current = holdSheet(sheetRoom, sheet, body);
+      sheetHold.current = holdSheet(sheetRoom, sheet, body, sheetOpen === 'checks');
       return;
     }
-    // Not drawn yet (the steps above it may still settle), or its own rows changed (a check found, a
-    // netlist line added): laid out afresh, in the same frame, and held from there.
-    if (held.fresh || held.rows !== sheetRowsOf(held)) {
+    // Not drawn yet (the steps above it may still settle), or Checks' own rows changed: laid out afresh, in
+    // the same frame, and held from there.
+    if (held.fresh || (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5)) {
       measureSheet(held);
       return;
     }
-    // Where its rows are: the sheet's top (its height, the stack standing on the bar), below its head, less
-    // its scroll. (Its head may change on its own: the Checks count as a check is typed in.)
-    const keep = held.height - held.head + held.scroll;
-    const head = headOf(sheet);
+    const above = aboveOf(sheet);
+    // A finger was just on the sheet (an undo or a redo tapped in More, a second tap perhaps on its way):
+    // the lines that need more room wait at the height they had, before this is drawn, and the sheet keeps
+    // its room and its head where they are (the critic of the second re-check's fixes: a second tap 300 ms
+    // after the first met the head, or its ×, which had come down over the row tapped).
+    if (!waiting && above > held.above + 0.5 && performance.now() - held.touched < SHEET_QUIET_MS) {
+      setLinesWait({ room: sheetRoom, height: held.above });
+      return;
+    }
     // It takes back only the room it gave the lines above it while held, as they give it back, and no
     // further than its scroll gives back (its rows staying where they are): the paper takes the rest.
     // Never because its scroll changed: the student's own scroll moves its rows, not its head (grown by
     // its scroll at the next change above it, a run lifted the head and its × by the 40 px scrolled).
-    const above = aboveOf(sheet);
     const gave = held.above - above;
-    if (held.max === undefined) held.max = Math.min(held.cap, held.height);
-    else if (gave > 0.01) held.max = Math.min(held.cap, held.height + Math.min(gave, held.given, held.scroll));
+    if (gave > 0.01) held.max = Math.min(held.cap, held.height + Math.min(gave, held.given, body.scrollTop));
     held.above = above;
     const max = `${held.max}px`;
     if (sheet.style.maxHeight !== max) sheet.style.maxHeight = max;
     const height = heightOf(sheet);
-    if (Math.abs(height - held.height) > 0.01 || Math.abs(head - held.head) > 0.01) {
-      body.scrollTop = keep - (height - head);
-      held.given = Math.max(0, held.given + held.height - height);
-      held.height = height;
-      held.head = head;
-      held.scroll = body.scrollTop;
-    }
+    held.given = Math.max(0, held.given + held.height - height);
+    held.height = height;
+    keepRows(held);
   });
   useEffect(() => () => sheetHold.current?.release(), []);
+  // The lines wait until the sheet has been still for a double tap's time since its last press.
+  useEffect(() => {
+    if (!waiting) return undefined;
+    let timer = 0;
+    const check = (): void => {
+      const left = (sheetHold.current?.touched ?? Number.NEGATIVE_INFINITY) + SHEET_QUIET_MS - performance.now();
+      if (left > 0) timer = window.setTimeout(check, left + 1);
+      else setLinesWait(undefined);
+    };
+    check();
+    return () => window.clearTimeout(timer);
+  }, [waiting]);
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
   const cardPart = card ? schematic?.circuit.parts.find((p) => p.key === card.key) : undefined;
@@ -2135,11 +2322,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // no less room: a taller one, a button that came with the change, takes more).
   const [linesSettled, setLinesSettled] = useState(0);
   useLayoutEffect(() => {
-    if (!sheetKey || running || linesStep === 2) return;
+    if (!sheetKey || running || waiting || linesAside) return;
     const h = linesBox.current?.getBoundingClientRect().height ?? 0;
     setLinesSettled((old) => (Math.abs(old - h) < 0.01 ? old : h));
-  }, [sheetKey, running, linesStep, statusKeyNow, hint, linesSqueezed, hintSqueezed, linesMax]);
-  const linesHeld = running && !!sheetKey && linesStep < 2 && linesSettled > 0 ? Math.min(linesSettled, linesMax ?? Number.POSITIVE_INFINITY) : undefined;
+  }, [sheetKey, running, waiting, linesAside, statusKeyNow, hint, linesSqueezed, hintSqueezed, linesMax]);
+  const linesHeld = running && !!sheetKey && !linesAside && linesSettled > 0 ? Math.min(linesSettled, linesMax ?? Number.POSITIVE_INFINITY) : undefined;
+  // Squeezed, the lines scroll (a named region the keys reach): too tall for their room, or waiting at the height they had.
+  const linesCut = (linesSqueezed || !!waiting) && !linesAside;
   // The hint line shows the note now: on a phone a card's sheet takes the hint line's place, and the
   // netlist being typed puts it aside, as does a sheet that needs its room (hintAside).
   const noteInView = noteInHint && (!phone || (phoneSheet !== 'card' && !typingNetlist && !hintAside));
@@ -3707,10 +3896,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
             // all of them out of sight (linesAside).
             // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             <footer
-              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesSqueezed && !linesAside ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}${linesHeld !== undefined ? ' is-held' : ''}`}
+              className={`phone-lines${hintAside ? ' is-hint-aside' : ''}${linesCut ? ' is-squeezed' : ''}${linesAside ? ' is-aside' : ''}${linesHeld !== undefined ? ' is-held' : ''}`}
               ref={linesBoxRef}
               style={linesMax !== undefined || linesHeld !== undefined ? { ...(linesMax !== undefined ? { maxHeight: linesMax } : {}), ...(linesHeld !== undefined ? { minHeight: linesHeld } : {}) } : undefined}
-              {...(linesSqueezed && !linesAside ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
+              {...(linesCut ? { tabIndex: 0, 'aria-label': t('linesLabel') } : {})}
             >
               {lines}
             </footer>

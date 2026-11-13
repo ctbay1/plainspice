@@ -3298,6 +3298,17 @@ html[data-contrast='more'] .lines .hint {
   flex: 0 1 auto;
   min-height: 0;
 }
+/* An open sheet keeps the rows in view where they are as rows come and go (App.tsx, keepRows): its scroll
+   follows them, so the browser's own anchoring, which does nothing at the top, is off, and room is kept
+   below its rows while rows below them have gone (--sheet-kept). */
+.phone-bottom > .sheet > .card-body {
+  overflow-anchor: none;
+}
+.phone-bottom > .sheet > .card-body::after {
+  content: '';
+  display: block;
+  height: var(--sheet-kept, 0);
+}
 /* The stack and its lines take a new size at once, also where motion is reduced (the motion rules above
    give every property a transition of 0.01 ms, which shows the old size for a frame): the lines measure
    themselves (App.tsx), and a frame at the old size would read as no room for them. */
