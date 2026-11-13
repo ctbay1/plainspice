@@ -90,6 +90,9 @@ describe('a netlist ngspice cannot take, in the app', () => {
     render(<App startup={{ source: 'saved', netlist: typed }} engine={engine} serviceWorker={false} />);
     const why = RUN_COPY_WORDS.noClose(4, 'v(');
     await waitFor(() => expect(statusLine()).toContain(why), { timeout: 15000 });
+    // ngspice was never asked: the status line does not say it could not run (the last pass, C3-4).
+    expect(document.querySelector('.status__main')?.textContent).toBe('PlainSpice did not run it');
+    expect(statusLine()).not.toContain('ngspice could not run');
     await waitFor(() => expect(alerts()).toEqual([`The simulation could not run: ${why}`]));
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Panels' })).getByRole('button', { name: /^Netlist/ }));
     const view = await editorView();
@@ -155,6 +158,8 @@ describe('a run Run asks for that fails is said each time, as one that finishes 
     render(<App startup={{ source: 'saved', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n' }} engine={engine} serviceWorker={false} />);
     const why = 'The simulation could not run: The engine stopped unexpectedly.';
     await waitFor(() => expect(alerts()).toEqual([why]), { timeout: 15000 });
+    // ngspice was asked and stopped: the status line says so.
+    expect(document.querySelector('.status__main')?.textContent).toBe('ngspice could not run');
     const said = heard();
     fireEvent.click(runButton());
     await waitFor(() => expect(said.said).toEqual([why]), { timeout: 5000 });

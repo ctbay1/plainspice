@@ -91,6 +91,9 @@ describe('the status line', () => {
       tone: 'paused',
     });
     expect(statusWords(READY, live({ outcome: { kind: 'failed', text: TEXT, reason: 'out of memory' } }), TEXT)).toEqual({ main: 'ngspice could not run', detail: 'out of memory', tone: 'bad' });
+    // A netlist PlainSpice did not give ngspice: no failure of ngspice's (the last pass, C3-4); the reason follows.
+    const why = 'Line 4: the v( in this formula has no ) after it. ngspice would look for the ) past the end of the line and write over its own memory, so PlainSpice did not run it. Add the ).';
+    expect(statusWords(READY, live({ outcome: { kind: 'failed', text: TEXT, reason: why, refused: true } }), TEXT)).toEqual({ main: 'PlainSpice did not run it', detail: why, tone: 'bad' });
     expect(statusWords({ status: 'failed', reason: 'no WebAssembly' }, live(), TEXT)).toEqual({ main: 'ngspice could not start', detail: 'no WebAssembly', tone: 'bad' });
     // An empty netlist is never sent to ngspice: the status says to type a part.
     expect(statusWords(READY, live({ outcome: { kind: 'nothing', text: '' } }), '', false, false)).toEqual({

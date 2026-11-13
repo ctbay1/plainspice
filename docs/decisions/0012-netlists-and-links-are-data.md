@@ -655,8 +655,9 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     line, and a `.title` line's words) keeps to 504 bytes, and a `circbyline` command inside it is
     refused, as ngspice crashes on it (limit-12, limit-16); so is a netlist that sets `ngbehavior` and
     builds a circuit, which ngspice then reads in another mode (with `ps` a `$` starts no comment). The run fails with the reason, the line and
-    what to do: the status line says "ngspice could not run" and why, the Numbers panel and the live
-    region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
+    what to do: the status line says "PlainSpice did not run it" and why, the Numbers panel and the
+    alert "The simulation could not run:" and why (the path a failed run already had), and nothing
+    reaches ngspice, from the app, the
     checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
     types on in a refused line, each pause fails again with the same reason, which is not said again
     until it changes; a run Run asks for says it each time (decision 0010).
@@ -739,4 +740,18 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   said once was meant for the pauses while the student types on in a refused line; it also silenced Run,
   Ctrl+Enter and Ctrl+K's "Run ngspice now" after the first alert. A run Run asks for is now always said,
   as decision 0010 records.
+- **The status line says "PlainSpice did not run it"** for a refused netlist (the last pass, C3-4), where
+  it said "ngspice could not run" though ngspice was never asked: beside "… so PlainSpice did not run it",
+  the two sentences said opposite things, and for a word over 250 bytes ngspice runs the netlist (native
+  47 and 42, exit 0), so the headline was false about ngspice. `solveText` throws a `NotRunError`, the
+  failed outcome is marked refused (`live.ts`), and `words.ts` gives it its own headline, the words of
+  the reasons themselves; an engine that stops keeps "ngspice could not run". This record said the
+  Numbers panel said "ngspice could not run" too: it says "The simulation could not run:", as the alert
+  does, and both stay so, true of either failure. Measured by the last pass's skeptic at 320 px: the
+  headline is 143 px wide (131 px before), and the page does not scroll sideways. Not taken: "Not run"
+  (45 px), which reads like "Not run yet", a link waiting for Run; and "The simulation could not run"
+  for every failure, which would take the engine's failures their own words. Tests:
+  `tests/unit/app-words.test.ts` and `tests/unit/app-run-copy.test.tsx` (the headline, and an engine that
+  stops keeping its own), `tests/unit/app-live.test.ts` (the outcome), `tests/e2e/run-copy.spec.ts` (the
+  five refused links say the new headline and not "ngspice could not run").
 

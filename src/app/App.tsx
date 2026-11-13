@@ -170,7 +170,7 @@ import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedT
 import { hintShowsNote, noteAfterTool, REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
 import { useKeyboardInset, useMedia, useOverflowing, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
-import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
+import { explainLine, hasParts, hasSweeps, NotRunError, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
 import { nodeColours, sameColours } from './nodes.ts';
 import type { Notice } from './notices.ts';
 import { checkForUpdate, registerServiceWorker } from './pwa.ts';
@@ -722,6 +722,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       cancel: () => engine.cancel(),
       isCancelled,
       isTimeout,
+      isRefused: (error) => error instanceof NotRunError,
       timeoutSeconds: Math.round(RUN_TIMEOUT_MS / 1000),
       pointsOf: (netlist) => pointsAskedFor(readNetlist(netlist).netlist),
       // While ngspice downloads, a run waits without turning Run into Stop.

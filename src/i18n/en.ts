@@ -160,6 +160,8 @@ export const en = {
   cardNoNumbersElsewhere: 'No numbers yet: a check found an error on line {line} ({title}).',
   statusEngineFailed: 'ngspice could not start',
   statusRunFailed: 'ngspice could not run',
+  /** A netlist PlainSpice does not give ngspice (decision 0012): ngspice was never asked; the reason follows. */
+  statusRefused: 'PlainSpice did not run it',
   statusStopped: 'Stopped',
   statusTimedOut: 'Stopped after {seconds} s',
   statusPaused: 'Live runs paused',

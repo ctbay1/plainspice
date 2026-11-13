@@ -89,7 +89,8 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
     case 'timeout':
       return { main: t('statusTimedOut', { seconds: o.seconds }), detail: t('statusPausedStopped', { run }), tone: 'paused' };
     case 'failed':
-      return { main: t('statusRunFailed'), detail: o.reason, tone: 'bad' };
+      // A netlist PlainSpice did not give ngspice is no failure of ngspice's (its reason says why).
+      return { main: t(o.refused ? 'statusRefused' : 'statusRunFailed'), detail: o.reason, tone: 'bad' };
     case 'done': {
       const r = o.result;
       // ngspice's own time for the run, as the ngspice output panel says it (one number for one run).

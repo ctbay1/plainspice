@@ -11,7 +11,8 @@ const DIVIDER = 'V1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n';
 
 // Playwright's browser for these projects (chrome-headless-shell) turns any WebAssembly trap into a
 // crashed page, so on b060bc8 each of these ends in "Target crashed": the engine ran past the end of a
-// space in ngspice. Here ngspice gets only what fits (src/spice/run-netlist.ts).
+// space in ngspice. Here ngspice gets only what fits (src/spice/run-netlist.ts), and the status line of a
+// netlist it never got says "PlainSpice did not run it", not "ngspice could not run" (the last pass, C3-4).
 test.describe('what PlainSpice hands ngspice', () => {
   test('a run=1 link with a title of 600 bytes runs, and the ngspice output panel says the title was cut', async ({ page }) => {
     await openApp(page, `./#${await encodeShare(`* ${'W'.repeat(598)}\n${DIVIDER}`, { run: true })}`);
@@ -39,7 +40,8 @@ test.describe('what PlainSpice hands ngspice', () => {
   test('a run=1 link whose .save line joins three 200-byte words is not given to ngspice: the status line says why', async ({ page }) => {
     const words = `${'W'.repeat(200)} ${'W'.repeat(200)} ${'W'.repeat(200)}`;
     await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.save i( ${words} ) v(b)\n.op\n.end\n`, { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.joinedWord(5, `i( ${words} )`, 603));
   });
 
@@ -50,20 +52,23 @@ test.describe('what PlainSpice hands ngspice', () => {
   test('a run=1 link that builds a circuit by *# circbyline lines with a 601-byte title is not given to ngspice: the status line says why', async ({ page }) => {
     const lines = [`* ${'ab '.repeat(200).trimEnd()}`, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end'].map((l) => `*# circbyline ${l}`).join('\n');
     await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n${lines}\n*# op\n.end\n`, { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.circuitTitle(6, 601));
   });
 
   test('a run=1 link whose circbyline .title line is 599 bytes is not given to ngspice: the status line says why', async ({ page }) => {
     const lines = ['* short', `.title ${'ab '.repeat(200).trimEnd()}`, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end'].map((l) => `circbyline ${l}`).join('\n');
     await openApp(page, `./#${await encodeShare(`* t\nV9 z 0 1\nR9 z 0 1\n.op\n.control\n${lines}\nop\n.endc\n.end\n`, { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.circuitDotTitle(7, 599));
   });
 
   test('a run=1 link whose print line has choices in braces is not given to ngspice: the status line says why', async ({ page }) => {
     await openApp(page, `./#${await encodeShare('* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.control\nop\nprint ({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+ v(b)\n.endc\n.end\n', { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.braceChoices(7, '({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+'));
   });
 
@@ -77,7 +82,8 @@ test.describe('what PlainSpice hands ngspice', () => {
   test('a B source typed without its ) is not given to ngspice: the status line says why, until the ) is there', async ({ page }) => {
     await openApp(page);
     await setNetlist(page, '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n');
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.noClose(4, 'v('));
     await setNetlist(page, '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a)/2\n.op\n.end\n');
     await expectSolved(page);
