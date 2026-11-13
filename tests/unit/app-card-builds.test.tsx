@@ -16,7 +16,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/app/App.tsx';
 import { valueSpot, withValue } from '../../src/app/card-edit.ts';
 import type { Engine } from '../../src/app/engine.ts';
-import { partsAtOnePoint } from './schematic-hostile.ts';
+import { namedStubs, partsAtOnePoint } from './schematic-hostile.ts';
 
 const builds = vi.hoisted(() => ({ texts: [] as string[] }));
 
@@ -108,5 +108,19 @@ describe('a value typed on a card is drawn from one build (second re-check, P3)'
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await shows(/47\sΩ/, true);
     expect(builds.texts).toEqual([]);
+  }, 60000);
+
+  it('10 parts at one point and names left where the repairs took their wire away: the first value checks once the lines it would write, then each value is built once', async () => {
+    // Read again, the drawing shown would drop the names (its critic, D5): so the lines are not
+    // written, and each value is drawn from one build of the piled lines, as before the shortcut.
+    const netlist = partsAtOnePoint(10, namedStubs(9));
+    const piled = (texts: readonly string[]): number => texts.filter((t) => /^\*@ R3 0 0 0$/m.test(t)).length;
+    const field = await cardOf(netlist, 'R2');
+    const first = await typed(field, '3', /3\sΩ/);
+    expect(first.length).toBe(2);
+    expect(piled(first)).toBe(1);
+    const second = await typed(field, '47', /47\sΩ/);
+    expect(second.length).toBe(1);
+    expect(piled(second)).toBe(1);
   }, 60000);
 });

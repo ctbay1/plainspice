@@ -117,6 +117,21 @@ export function latticeAround(k: number): string[] {
   return lines;
 }
 
+/**
+ * A slanted lattice of k × k points round (0, 0) whose points all have x + y even, so it runs through
+ * the pins of partsAtOnePoint's parts and of those placed near them: the repairs leave pins joined to
+ * it, and reading the drawing they draw repairs it again, differently (the critic of the second
+ * re-check's fixes, D5).
+ */
+export function latticeThrough(k: number): string[] {
+  const h = Math.floor(k / 2);
+  const P = (a: number, b: number): string => `${a + b - h},${b - a + (h % 2)}`;
+  const lines: string[] = [];
+  for (let a = 0; a < k; a++) lines.push(`*@ wire ${Array.from({ length: k }, (_, b) => P(a, b)).join(' ')}`);
+  for (let b = 0; b < k; b++) lines.push(`*@ wire ${Array.from({ length: k }, (_, a) => P(a, b)).join(' ')}`);
+  return lines;
+}
+
 /** `count` one-unit pieces of wire far away, each named with a node of partsAtOnePoint(60) (1 … 59 in turn): every name stays. */
 export function namedStubs(count: number, x0 = 200, y0 = 200): string[] {
   const out: string[] = [];

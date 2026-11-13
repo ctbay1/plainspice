@@ -8,9 +8,11 @@
  * Before the fixes, the 60 parts piled on one point with 1900 names took 386 million checks.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { keepDrawing, schematicOf, spotValue, valueSpot, withValue } from '../../src/app/card-edit.ts';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
+import { parseNetlist } from '../../src/spice/parse.ts';
 import { SegmentIndex } from '../../src/schematic/connectivity.ts';
-import { applyEdit, buildSchematic, schematicConnectivity, type EditOp, type Schematic } from '../../src/schematic/index.ts';
+import { MAX_DRAWING_LINES, applyEdit, buildSchematic, schematicConnectivity, type EditOp, type Schematic } from '../../src/schematic/index.ts';
 import { block, groundRowsAndWave, latticeAround, latticeAbove, longSlantedFar, namedGrid, namedStubs, ownNodesAtPoint, partsAtOnePoint, piled, slantedLattice, slantedOverParts, starAtOnePoint } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ checks: 0 }));
@@ -230,5 +232,24 @@ describe('crafted shapes at the format’s limits: work bounded for each thing d
       // was 3.75 million before).
       expect(edited.work, name).toBeLessThan(10 * opened.work + 100 * n + 50_000);
     }
+    // A value typed on a resistor's card, and the drawing of the text it writes (the page's): the
+    // picture as it was (the critic of these fixes, D5: one value made most of a grid vanish), never
+    // more lines than are read, and at most two openings' work (the first value on piled lines builds
+    // the text it would write, once, to check that it reads back as drawn).
+    const part = s.circuit.parts.find((p) => p.letter === 'R' && valueSpot(text, p.key))!;
+    const spot = valueSpot(text, part.key)!;
+    const next = withValue(spot, spotValue(spot).replace(/\d/, (d) => (d === '3' ? '4' : '3')));
+    const key = counted(() => schematicOf(parseNetlist(keepDrawing(s, next))));
+    expect(key.work).toBeLessThan(2 * opened.work + 100 * n + 50_000);
+    const shown = key.result;
+    expect(shown.netlist.text.split('\n').filter((l) => l.startsWith('*@')).length).toBeLessThanOrEqual(MAX_DRAWING_LINES);
+    const picture = (x: Schematic): unknown => ({
+      parts: x.scene.parts.map((p) => [p.key, p.at, p.rot, p.mirror]),
+      wires: x.scene.wires.map((w) => w.points),
+      junctions: x.scene.junctions,
+      names: x.scene.nodeLabels.map((l) => [l.node, l.at]),
+      grounds: x.scene.grounds.map((g) => [g.at, g.rot]),
+    });
+    expect(picture(shown)).toEqual(picture(s));
   });
 });

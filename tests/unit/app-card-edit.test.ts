@@ -9,8 +9,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { keepDrawing, spotValue, valueSpot, withValue, writeValue, type CardWrite, type ValueSpot } from '../../src/app/card-edit.ts';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/index.ts';
-import { buildSchematic, stripDrawing } from '../../src/schematic/index.ts';
-import { partsAtOnePoint } from './schematic-hostile.ts';
+import { MAX_DRAWING_LINES, buildSchematic, stripDrawing, type Schematic } from '../../src/schematic/index.ts';
+import { latticeThrough, namedGrid, namedStubs, partsAtOnePoint, starAtOnePoint } from './schematic-hostile.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const START = readFileSync(resolve(ROOT, 'examples/start-here.cir'), 'utf8');
@@ -18,6 +18,19 @@ const FALLBACK = 'Not written to the netlist yet.';
 
 /** The part's line in a text. */
 const lineOf = (text: string, name: string): string => text.split('\n').find((l) => l.startsWith(`${name} `)) ?? '';
+
+/** What the drawing shows: the parts, the wires, the junction dots and hops, the nodes' names and the ground symbols. */
+const picture = (s: Schematic): unknown => ({
+  parts: s.scene.parts.map((p) => [p.key, p.at, p.rot, p.mirror, p.box]),
+  wires: s.scene.wires.map((w) => w.points),
+  junctions: s.scene.junctions,
+  crossings: s.scene.crossings,
+  names: s.scene.nodeLabels.map((l) => [l.node, l.box]),
+  grounds: s.scene.grounds.map((g) => [g.at, g.rot]),
+});
+
+/** How many drawing lines a text has. */
+const drawingLines = (text: string): number => text.split('\n').filter((l) => l.startsWith('*@')).length;
 
 /** Type `keys` one at a time into a card opened on `text`, as the app does: each from the text at opening. */
 function typeInto(text: string, key: string, keys: string): { text: string; last: CardWrite } {
@@ -173,13 +186,41 @@ describe('where the parts are drawn', () => {
     expect(kept).not.toBe(next);
     const again = drawnOf(kept);
     expect(again.problems.filter((p) => p.kind === 'moved-part')).toEqual([]);
-    // Drawn where it was, with the value typed, and the line of the part the netlist does not have yet kept.
-    const at = (s: ReturnType<typeof buildSchematic>): unknown => s.scene.parts.map((p) => [p.key, p.box.x0, p.box.y0]);
-    expect(at(again)).toEqual(at(drawn));
+    // Drawn as it was, the wires, dots, names and ground symbols too (its critic, D5: not only the
+    // parts), with the value typed, and the line of the part the netlist does not have yet kept.
+    expect(picture(again)).toEqual(picture(drawn));
     expect(lineOf(kept, 'R2')).toBe('R2 1 2 3');
     expect(again.orphans).toEqual(['*@ R99 5 5 0', '*@ label nope 3 3']);
     // A later key on the same card: the lines say where the parts are now, so only the value changes.
     const later = withValue(valueSpot(kept, 'r2')!, '4');
     expect(keepDrawing(drawn, later)).toBe(later);
   });
+
+  it.each([
+    // Written as lines, the drawing shown was 4,921 lines: reading stopped at 2000 and most of the grid
+    // vanished. Its pieces are now written chained (format.ts), in 293 lines that read back as drawn.
+    ['60 parts between node 1 and ground at one point, a 70 × 70 grid named 1 far away (a 29,113-character link)', () => starAtOnePoint(60, namedGrid(70, '1')), true],
+    // The repairs took the pieces of wire away and left the names where they were: read again, 840
+    // of the 900 were dropped. So the value is written alone, as before the piled lines' shortcut.
+    ['60 parts at one point, 900 names each on its own piece of wire far away', () => partsAtOnePoint(60, namedStubs(900)), false],
+    // A slanted lattice through the parts' pins: reading the drawing the repairs drew repairs it again, differently.
+    ['6 parts at one point, a slanted lattice through their pins', () => partsAtOnePoint(6, latticeThrough(20)), false],
+  ])('a value typed where the lines pile parts keeps the picture, and never writes more lines than are read: %s (its critic, D5)', (_, make, written) => {
+    const text = make();
+    const drawn = drawnOf(text);
+    expect(drawn.problems.some((p) => p.kind === 'moved-part')).toBe(true);
+    const spot = valueSpot(text, 'r2')!;
+    for (const value of ['3', '47']) {
+      const next = withValue(spot, value);
+      const kept = keepDrawing(drawn, next);
+      // The drawing shown is written only when its lines read back as it.
+      expect(kept !== next).toBe(written);
+      expect(drawingLines(kept)).toBeLessThanOrEqual(MAX_DRAWING_LINES);
+      const again = drawnOf(kept);
+      expect(again.problems.filter((p) => p.kind === 'too-many-lines' || p.kind === 'label-dropped')).toEqual([]);
+      expect(picture(again)).toEqual(picture(drawn));
+      expect(lineOf(kept, 'R2')).toMatch(new RegExp(` ${value}$`));
+    }
+  }, 120_000);
+
 });
