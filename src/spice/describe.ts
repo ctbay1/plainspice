@@ -181,7 +181,8 @@ export interface MessageWords {
   /**
    * The diagnostic code (src/engine/diagnostics.ts), one PlainSpice adds for messages that file does
    * not classify (unknown-control-source, unknown-dot-command, meas-skipped), or one of: unreliable,
-   * no-analysis, no-results, tf-node-missing, rounding-noise (a note: currents said as 0 A, C9).
+   * no-analysis, no-results, tf-node-missing, rounding-noise (a note: currents said as 0 A, C9), rounded-to-0
+   * and imprecise-answers (decision 0015), sweep-not-checked (a sweep too large to look through, SWEEP_VALUES).
    */
   code: string;
   severity: 'error' | 'warning' | 'note';
@@ -677,6 +678,10 @@ export const DESCRIBE_STRINGS = {
   lostSweepShows: (name: string, value: string, at: string): string => `${name} ${value} at ${at}`,
   lostSweepWhy: (gave: string, shows: string, one: boolean): string =>
     `ngspice gave ${gave}. ${one ? 'It is' : 'Each is'} too small beside the larger numbers ngspice works ${one ? 'it' : 'them'} out from for its arithmetic (about 16 significant digits), so ${one ? 'it comes' : 'they come'} out as 0. Solved exactly, with fractions, from the netlist's values, ${one ? 'it is not 0, so PlainSpice shows it' : 'none of them is 0, so PlainSpice shows each'} as the exact solution gives it, in these words and in the Plot panel: ${shows}.`,
+  // A sweep too large to look through for rounding noise (SWEEP_VALUES): left as ngspice gives it, but at the .op's own state.
+  sweepLargeTitle: (kind: string): string => `The ${kind} is shown as ngspice gives it`,
+  sweepLargeWhy: (points: number, results: number, most: number, at: string | undefined): string =>
+    `It has ${points} points of ${results} ${results === 1 ? 'result' : 'results'}, more values than PlainSpice looks through for rounding noise (${most} in all). So at its points a value the circuit makes exactly 0 may show ngspice's rounding noise, and a tiny value ngspice's arithmetic rounded to 0 shows 0${at ? `, except at ${at}, the operating point's own state, where the sweep shows what the operating point shows` : ''}.`,
   noiseSweepWhy: (gave: string, one: boolean, diodes?: DiodeWhy): string =>
     `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${one ? 'a value' : 'values'} that ${one ? 'is' : 'are'} 0 there. Solved exactly, with fractions, from the netlist's values, the circuit makes ${one ? 'it' : 'each of them'} exactly 0 there${diodeClause(diodes, true)}, so PlainSpice shows 0 in these words and in the Plot panel.`,
 } as const;
@@ -1708,8 +1713,9 @@ function sumOver(list: readonly Fraction[]): Fraction {
 function sweepReserve(netlist: Netlist, results: AnalysisResults, ex: Exact): number {
   const dc = results.dc;
   if (!dc) return 0;
-  // A sweep the exact solution does not follow is checked only at its points at the .op's own state (opStateSweep).
-  if (!ex.sweep) return (opStatePoints(netlist, results, ex)?.points.length ?? 0) * checkCost(ex);
+  // A sweep the exact solution does not follow, or one too large to look through (SWEEP_VALUES), is checked only at its
+  // points at the .op's own state (opStateSweep).
+  if (!ex.sweep || sweepTooLarge(dc)) return (opStatePoints(netlist, results, ex)?.points.length ?? 0) * checkCost(ex);
   return (sweepPlan(netlist, results)?.checks.length ?? checkPoints(dc.scale.values.length).length) * checkCost(ex);
 }
 
@@ -2058,6 +2064,20 @@ const sweepCache = new WeakMap<AnalysisResults, { netlist: Netlist; noise: Sweep
 /** At most this many points of a sweep are checked against the exact equations: its first, its last and some between. */
 const SWEEP_CHECKS = 5;
 
+/**
+ * At most this many of a sweep's values, its points times its results, are looked through for rounding noise
+ * (findSweepNoise reads each series a few times: its work grows with both). A larger sweep is left as ngspice
+ * gives it, but at its points at the .op's own state (opStateSweep), and a note says so (sweepSizeNote): a
+ * beginner's ".dc I1 0 2A 0.5A" (2A is 2 attoamps) runs 444,089 points, and a 51-part ladder's 444,094 points of
+ * 78 results took 74 to 84 ms of processor time, its 2.2 million 303 to 327 ms (the last pass).
+ */
+export const SWEEP_VALUES = 2_000_000;
+
+/** True when a sweep has more values than SWEEP_VALUES: it is left as ngspice gives it, but at the .op's own state. */
+export function sweepTooLarge(dc: Sweep): boolean {
+  return dc.scale.values.length * Math.max(1, dc.series.length) > SWEEP_VALUES;
+}
+
 /** The points of a sweep of `n` points that are checked against the exact equations (SWEEP_CHECKS of them, or all of a shorter one). */
 function checkPoints(n: number): number[] {
   if (n <= 0) return [];
@@ -2087,7 +2107,8 @@ function checkPoints(n: number): number[] {
 function sweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise | undefined {
   const cached = sweepCache.get(results);
   if (cached?.netlist === netlist) return cached.noise;
-  const noise = exactOf(netlist)?.sweep ? findSweepNoise(netlist, results) : opStateSweep(netlist, results);
+  // A sweep too large to look through (SWEEP_VALUES) is decided at its points at the .op's own state only.
+  const noise = exactOf(netlist)?.sweep && !(results.dc && sweepTooLarge(results.dc)) ? findSweepNoise(netlist, results) : opStateSweep(netlist, results);
   sweepCache.set(results, { netlist, noise });
   return noise;
 }
@@ -2102,6 +2123,18 @@ function sweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise | un
  * two sweeps' counts say.
  */
 function opStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact): { points: number[]; name: (k: number) => string } | undefined {
+  // Once per run: the .op's check, the sweep's decision and the size note each need them, and a sweep can have
+  // hundreds of thousands of points.
+  const cached = statePointsCache.get(results);
+  if (cached?.netlist === netlist) return cached.at;
+  const at = findStatePoints(netlist, results, ex);
+  statePointsCache.set(results, { netlist, at });
+  return at;
+}
+
+const statePointsCache = new WeakMap<AnalysisResults, { netlist: Netlist; at: { points: number[]; name: (k: number) => string } | undefined }>();
+
+function findStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact): { points: number[]; name: (k: number) => string } | undefined {
   const dc = results.dc;
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
@@ -2122,9 +2155,10 @@ function opStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact): {
   const t1 = target(inner);
   if (t1 === null) return undefined;
   if (!outer) {
-    if (t1 === undefined) return undefined;
+    // A sweep of the temperature alone (too large to look through, SWEEP_VALUES): its point at the .op's own temperature.
+    const at = t1 ?? OP_TEMPERATURE;
     const points: number[] = [];
-    for (let k = 0; k < xs.length; k++) if (xs[k] === t1) points.push(k);
+    for (let k = 0; k < xs.length; k++) if (xs[k] === at) points.push(k);
     return { points, name: (k) => label(inner, xs[k]!) };
   }
   const t2 = target(outer);
@@ -2142,6 +2176,8 @@ function opStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact): {
 
 /** 0 °C in kelvin, as ngspice adds it to a temperature (CONSTCtoK). */
 const KELVIN = 273.15;
+/** The temperature of an operating point PlainSpice solves exactly, in °C: ngspice's default (A15). */
+const OP_TEMPERATURE = 27;
 
 /**
  * A sweep the exact solution does not follow (of a resistor, of two sources), decided at its points at the .op's
@@ -3772,6 +3808,24 @@ function sweepLostNote(netlist: Netlist, results: AnalysisResults): MessageWords
 }
 
 /**
+ * The note for a sweep too large to look through for rounding noise (SWEEP_VALUES), in a circuit whose sweep
+ * PlainSpice would otherwise decide exactly: it is shown as ngspice gives it, but at its points at the .op's own
+ * state, which show what the .op shows (opStateSweep).
+ */
+function sweepSizeNote(netlist: Netlist, results: AnalysisResults): MessageWords | undefined {
+  const dc = results.dc;
+  const ex = dc && sweepTooLarge(dc) ? exactOf(netlist) : undefined;
+  if (!dc || !ex?.sweep || (results.op && noiseOf(netlist, results).by !== 'exact')) return undefined;
+  const noise = decidedSweep(netlist, results);
+  const points = results.op && noise ? (opStatePoints(netlist, results, ex)?.points ?? []) : [];
+  const at = noise && points.length ? listWords(points.slice(0, NOTE_LIST).map((k) => sweepPoint(noise, dc, k))) : undefined;
+  const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
+  const m: MessageWords = { code: 'sweep-not-checked', severity: 'note', title: S.sweepLargeTitle('DC sweep'), why: S.sweepLargeWhy(dc.scale.values.length, dc.series.length, SWEEP_VALUES, at) };
+  if (line !== undefined) m.line = line + 1;
+  return m;
+}
+
+/**
  * The results of one run in words: node voltages, currents with their direction and the power of
  * each source, the .tf results, sweep summaries, ngspice's messages in plain words, and a one-
  * paragraph summary for a live region. Part currents other than those of voltage sources need
@@ -3803,7 +3857,7 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   const off = status === 'ok' ? offNote(netlist, results) : undefined;
   if (off) words.warnings.push(off);
   // S8, C9p: the same for a .tf ratio and for the points of a .dc sweep.
-  for (const extra of status === 'ok' ? [tfNoiseNote(netlist, words), sweepNoiseNote(netlist, results), sweepLostNote(netlist, results)] : []) if (extra) words.warnings.push(extra);
+  for (const extra of status === 'ok' ? [tfNoiseNote(netlist, words), sweepNoiseNote(netlist, results), sweepLostNote(netlist, results), sweepSizeNote(netlist, results)] : []) if (extra) words.warnings.push(extra);
   return {
     status,
     ngspiceError,

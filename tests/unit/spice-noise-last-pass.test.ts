@@ -9,7 +9,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { DESCRIBE_STRINGS, type ResultsInWords } from '../../src/spice/describe.ts';
+import { DESCRIBE_STRINGS, describeResults, roundingNoise, shownSweep, SWEEP_VALUES, sweepTooLarge, type ResultsInWords } from '../../src/spice/describe.ts';
+import { parseNetlist } from '../../src/spice/parse.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 let ngspice: NgspiceEngine;
@@ -112,4 +114,53 @@ describe('a transistor\'s currents are named by their terminals in the sweep\'s 
       expect(speech).toContain(said);
     expect(speech).not.toMatch(/the current in (Q1|M1|J1)\b/);
   });
+});
+
+describe('the sweep decision\'s work is bounded by points × results (last pass: sweep-points-unbounded-time)', () => {
+  /** The C9 bridge with 53 ammeters in its middle branch (60 parts), every current saved. */
+  const ammeters = (): string[] => {
+    const amm = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m0 1k'];
+    for (let k = 0; k < 53; k++) amm.push(`Vm${k} m${k} ${k === 52 ? 'b' : `m${k + 1}`} 0`);
+    return [...amm, '.options savecurrents', '.op'];
+  };
+  const sizeNote = (w: ResultsInWords): string | undefined => w.warnings.find((m) => m.code === 'sweep-not-checked')?.why;
+
+  it('a beginner\'s ".dc I1 0 2A 0.5A" (2A is 2 attoamps) runs 444,094 points: the sweep is left as ngspice gives it, a note says so, and describeResults stays quick (it took 74 to 84 ms at 444,094 points of 78 results)', async () => {
+    const text = netlist('I1 0 top 1m', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', '.op', '.dc I1 0 2A 0.5A');
+    const r = await solveText(text, ngspice);
+    const dc = r.results.dc!;
+    expect([dc.scale.values.length, dc.series.length]).toEqual([444_094, 11]);
+    expect(sweepTooLarge(dc)).toBe(true);
+    expect(sp(sizeNote(r.words))).toBe(
+      "It has 444094 points of 11 results, more values than PlainSpice looks through for rounding noise (2000000 in all). So at its points a value the circuit makes exactly 0 may show ngspice's rounding noise, and a tiny value ngspice's arithmetic rounded to 0 shows 0.",
+    );
+    expect(shownSweep(r.netlist, r.results)).toBe(dc);
+    // The .op beside it is still decided exactly: no point of the sweep is at its own 1 mA.
+    expect([roundingNoise(r.netlist, r.results).by, r.words.currents.find((c) => c.name === 'Vm')!.text]).toEqual(['exact', 'Vm measures no current']);
+    const copies = [0, 1, 2].map(() => structuredClone(r.results));
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), copies.pop()!, r.run)], 3);
+    expect(ms).toBeLessThan(20);
+  }, 60_000);
+
+  it('past SWEEP_VALUES the sweep keeps ngspice\'s numbers but at the .op\'s own state, V1 = 9 V, which shows the .op\'s 0s; just under it, the sweep is decided at every point, still quickly', async () => {
+    const over = await solveText(netlist(...ammeters(), '.dc V1 0 9 0.000244140625'), ngspice);
+    const dc = over.results.dc!;
+    expect(dc.scale.values.length * dc.series.length).toBeGreaterThan(SWEEP_VALUES);
+    const last = dc.scale.values.length - 1;
+    expect(dc.scale.values[last]).toBe(9);
+    const vm = (s: { series: { name: string; values: ArrayLike<number> }[] }): ArrayLike<number> => s.series.find((x) => x.name === 'i(vm0)')!.values;
+    const shown = shownSweep(over.netlist, over.results)!;
+    expect(vm(dc)[last]).not.toBe(0);
+    expect([vm(shown)[last], vm(shown)[1]]).toEqual([0, vm(dc)[1]]);
+    expect(sp(sizeNote(over.words))).toContain('except at V1 = 9 V, the operating point\'s own state, where the sweep shows what the operating point shows.');
+    expect(over.words.currents.find((c) => c.name === 'Vm0')!.text).toBe('Vm0 measures no current');
+    const text = netlist(...ammeters(), `.dc V1 0 9.9998 ${9.9998 / 16_999}`);
+    const under = await solveText(text, ngspice);
+    expect(under.results.dc!.scale.values.length * under.results.dc!.series.length).toBeLessThanOrEqual(SWEEP_VALUES);
+    expect(sizeNote(under.words)).toBeUndefined();
+    expect(under.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => m.title)).toContain('54 results are shown as 0 at some points of the DC sweep');
+    const copies = [0, 1, 2].map(() => structuredClone(under.results));
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), copies.pop()!, under.run)], 3);
+    expect(ms).toBeLessThan(50);
+  }, 120_000);
 });

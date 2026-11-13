@@ -595,3 +595,42 @@ that a phone left no room to watch the numbers move; this record says what the c
   power (it makes 0 V). The drawing's part description (`src/schematic/navigate.ts`) builds its own
   sentence and still calls such a source a wire until it takes the overview's own sentence
   (`partSentenceFor`, exported for it); its lane can change that at the merge.
+
+## After the last pass (13 November 2026)
+
+- **The notes name a node as the rest of the page does** (code C3-3, facts F1 and its skeptic). The
+  rounding-noise note, the note for real values ngspice gave as 0 and the warning that ngspice's answers
+  are off wrote "node" before the node's key: "node node1 is at 4.5 V, where ngspice gives 4.321 V",
+  "node node9's voltage", "node ÇikiŞ", and a hidden character left unnamed. They now say each node as
+  the summary and the currents do (`nodeIn`, `said`, the name as first written): "node1 is at 4.5 V, where
+  ngspice gives 4.321 V", "node ÇIKIŞ", "node out (written with a zero-width space in it)". The title of
+  the second note says "The voltage at node9 is not 0, though ngspice gave 0": "node9's voltage" read
+  "Node9's" at a sentence's start, and put a possessive after "(written with a zero-width space in it)".
+  Decisions 0016 and 0017 no longer list the rounding-noise note as a gap.
+- **"1 times 10 to the power minus 29 amps flow"** (regress-4): the verb was chosen from the first word of
+  the spoken value, so the exact 1e-29 A of C9n.3 "flows". It is singular only for a singular unit word,
+  "1 amp flows", "1 milliamp flows".
+- **A transistor's currents are named by their terminals** (transistor-currents-same-name; C8b). A sweep's
+  words said "the current in Q1" for each of its four currents. ngspice's own `devhelp` describes each
+  vector savecurrents gives (C8b, native 47 and 42): a BJT's ic, ib, ie and is are its collector, base,
+  emitter and substrate currents, a MOSFET's id, ig, is and ib its drain, gate, source and bulk currents, a
+  JFET's igd "Current G-D". The words say "the collector current of Q1 is 8.171 milliamps", "the
+  gate-to-drain current of J1"; any other current keeps "the current in …".
+- **The work of a sweep's decision is bounded** (sweep-points-unbounded-time). Deciding a sweep reads each
+  of its series a few times, so its work grew with its points times its results, with no cap: a beginner's
+  ".dc I1 0 2A 0.5A" (2A is 2 attoamps) runs 444,094 points, to 222 fA (native 47 and 42 alike), and a
+  51-part ladder's 444,094 points of 78 results took 66 to 77 ms of processor time at c520a49 (load 6;
+  the reviewer: 74 to 84 ms, and 303 to 327 ms at 2.2 million points). A sweep of more than
+  `SWEEP_VALUES`, 2,000,000 values (points × results), is now left as ngspice gives it, except at its
+  points at the .op's own state, which show the .op's 0s and exact values as for a sweep of a resistor
+  (`opStateSweep`; a sweep of the temperature alone at the .op's 27 °C), and a note says so: "It has
+  444094 points of 11 results, more values than PlainSpice looks through for rounding noise (2000000 in
+  all). So at its points a value the circuit makes exactly 0 may show ngspice's rounding noise, and a tiny
+  value ngspice's arithmetic rounded to 0 shows 0[, except at V1 = 9 V, the operating point's own state,
+  where the sweep shows what the operating point shows]." Measured (thread CPU, load 5 to 6): the ladder
+  4.0 to 8.0 ms, the beginner's sweep on the bridge of C9 3.4 to 5.8 ms (10.9 to 17.4 ms before), 888,187
+  points 1.5 to 9.5 ms; the 53-ammeter bridge of the critic of round 3 just under the cap (17,000 points
+  of 115 results) is decided at every point in 9.9 ms (least of five), and over it in 0.6 to 1.6 ms.
+  What it gives up: that bridge swept over 99,999 points, decided at every point since round 3 (41 ms),
+  now keeps ngspice's numbers there, with the note; the .op beside it is still decided exactly. The Plot
+  panel still copies a series that has points marked, as it draws it.
