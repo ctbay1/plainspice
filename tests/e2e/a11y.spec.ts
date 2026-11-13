@@ -371,13 +371,17 @@ async function pixelsOf(page: Page, png: Buffer, points: readonly { x: number; y
 // The last pass's a11y-phone-3: in forced colours the dot was painted in the page's own colour (Canvas) and the
 // folded status kept a CanvasText outline, so a laptop at 400 % showed an empty ring in the margin.
 test('a very short window in forced colours, light and dark: the calm status folds to a dot painted unlike the page, with no outline round it', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 200 });
-  for (const colorScheme of ['light', 'dark'] as const) {
+  for (const [width, height, colorScheme] of [
+    [320, 200, 'light'],
+    [320, 200, 'dark'],
+    [427, 267, 'light'],
+  ] as const) {
+    await page.setViewportSize({ width, height });
     await page.emulateMedia({ forcedColors: 'active', colorScheme });
     await openApp(page);
     await expectSolved(page);
     await settle(page);
-    const at = `forced colours, ${colorScheme}`;
+    const at = `${width} × ${height}, forced colours, ${colorScheme}`;
     // Folded: the dot and the margin round it, with nothing to press (its words are for screen readers only).
     const status = (await statusLine(page).boundingBox())!;
     const dot = (await statusLine(page).locator('.status__dot').boundingBox())!;

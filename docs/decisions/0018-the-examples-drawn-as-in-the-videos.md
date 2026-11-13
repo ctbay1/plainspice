@@ -201,7 +201,8 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   Example 2 does at 427 × 267 with n1 reached), its words still read by screen readers; with buttons on
   it (Undo; Show the whole drawing until the second re-check, below) it keeps them. Running, paused or
   an error keep their words, their reason and their buttons. The status line keeps its height, so the
-  drawing does not move as runs come and go.
+  drawing does not move as runs come and go. In forced colours the folded dot is drawn in the system's
+  text colour and no box round it (decision 0010, the last pass).
 - **Two buttons on one row.** On a phone, when "Show the whole drawing" shares the status line with
   another button (the turn, Undo), a calm status keeps its words for screen readers only and leaves
   out its dot, so the line is just the buttons, on one row: at 360 px the two buttons take 175 and
