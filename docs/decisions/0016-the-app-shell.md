@@ -215,6 +215,22 @@ Ctrl+K stay as they are.
   wrote. A drawing line that already named nothing before the fix stays (the student's, and the panel
   says what is wrong with it). Every fix offered on every video example now ends with no trap and no
   drawing warning (`app-fixes.test.ts`).
+- **A value typed on a crafted pile writes the drawing shown** (second re-check P3, and the critic of
+  its fixes, D5 and D6). Where the drawing lines put parts on other nodes' pins, every build moves
+  those parts again, whatever the value, and each key typed on a card built the pile again: 1.5 to
+  3.5 s a key on the 542-character link of 60 parts at one point. Where the build moves ten parts or
+  more, or any part on a drawing of a thousand pieces of wire or more, the first value typed now
+  writes, in place of the drawing lines, the drawing as the page shows it: the parts where they are
+  drawn, and the wires, names and ground symbols the repairs drew. Only crafted lines do that: a
+  student's own drawing has a part moved only when a node renamed in the text leaves two parts
+  meeting pin to pin on different nodes, one or two at a time, and there a value still changes only
+  the value, so naming the node back draws the circuit as it was. The lines are written only when a
+  reading takes them all and reads them back as the drawing shown (checked once, on the first value,
+  by building the text it writes, which the page then draws); else each value changes only the value
+  and builds the pile again, so the picture never changes under the student's eyes. Put back, or the
+  value typed back as it was, gives the text the card opened on, exactly. And a value that would move
+  a part writes its lines only when a reading takes them all; else the value is written alone, and
+  the drawing is the new value's (decision 0012 has the times).
 - **What is said is the number the Checks tab shows**: after a fix and after an edit, the count says
   the checks, the drawing lines PlainSpice cannot use and the dependent sources still to choose, as
   the tab counts them. While everything counted is a trap it is said as before ("1 trap found.": the

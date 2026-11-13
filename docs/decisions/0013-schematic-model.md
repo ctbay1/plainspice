@@ -323,6 +323,43 @@ groups for names on crossings and counts the pieces of wire indexed, handed to r
 from; `schematic-shapes-work.test.ts` counts the work of every shape decision 0012 measures, the
 pieces of wire its lines draw counted in its size.
 
+Corrected after the critic of the second round of these fixes (D5 to D7; decision 0012 has the
+times): what PlainSpice writes as drawing lines is now read back to its end, and as drawn.
+
+- **Wire too much to write a piece to a line is written in chained lines** (D7, older than this
+  lane). An edit writes the whole drawing, a line for each piece of wire, and reading cuts a joined
+  grid at every point where wires join: a 70 × 70 grid typed in 140 lines was written in 4,770, a
+  100 × 100 grid in 9,800. A reading takes 2000 lines, so a part moved beside such a grid kept the
+  wire of the first 2000 lines and lost the rest, a third of the grid, with only the note that lines
+  were left unread. When a line for each piece would be more than a reading takes (2000 lines,
+  20,000 points), `serializeDrawing` chains the pieces: straight ones end to end, every point kept
+  (reading merges straight copper and cuts it at the points written, in an order of its own), slanted
+  ones only onto the one before them, so they keep their order (reading keeps them as they come). The
+  chained lines read back exactly as a line for each piece: the same drawing lines, scene and problems
+  on 905 drawings (the repository's 147 netlists as written and laid out, 600 random drawings with
+  straight and slanted wire, names and ground symbols, and crafted piles and lattices), and the two
+  grids in 145 and 205 lines. A drawing whose pieces fit is written as before. An edit whose drawing
+  would still need more lines or more wire than a reading takes (`linesFit`) is refused, with a reason
+  in plain words that points to the Netlist panel (`EDIT_STRINGS.tooBig`), never written in part: 60
+  parts between node 1 and ground piled beside a 99 × 99 grid named 1, whose repairs draw 20,077 grid
+  units of wire, or a part added to 1990 ground symbols a line each.
+- **A value typed writes the drawing shown only on crafted piles, and only as it reads back** (D5 and
+  D6, `keepDrawing` in `src/app/card-edit.ts`; the rule is decision 0016's). Where the build moves ten
+  parts or more, or any part on a drawing of a thousand pieces of wire or more, the first value typed
+  on a card checks once whether the drawing shown, written as lines, fits what a reading takes and
+  reads back as it is, by building the text it would write (the page then draws that build); the
+  answer is kept for the schematic the card opened on, so every later key writes the same lines and
+  builds no pile, or changes only the value and builds the piled lines once, as any value does. It
+  read nothing back before: on 60 parts piled beside a 70 × 70 grid the first value wrote 4,921
+  lines, and the grid vanished; names the repairs left where they took their wire away (a stub of
+  one unit, named at one end, is cut back to its name) were all dropped when read, 900 of them; and a
+  slanted lattice through the parts' pins is repaired again, differently, when read. A student's own
+  drawing has a part moved only after a node is renamed in the text, one or two at a time, and kept
+  its lines as written then too. A value that would move a part (a 0 V source drawn as an ammeter)
+  writes its lines only when a reading takes them all, else the value alone, and the drawing is the
+  new value's: on the 60 parts beside the 99 × 99 grid, V1 = 0 wrote 351 lines whose last wire a
+  reading dropped. Put back, or the value typed back as it was, gives the text the card opened on.
+
 **A node's name goes where it is read clear of the parts, wherever its copper or its end leaves
 room** (student:label-on-part). A name with no spot of its own (no `side=`) that touches a symbol,
 words or a wire at every spot around its point moves along its own piece of copper to the nearest

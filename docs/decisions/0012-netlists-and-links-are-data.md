@@ -118,17 +118,26 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 
   The budget at the format's limits (2000 drawing lines, 20,000 grid units and points, 60 parts
   drawn, a 32,000-character link, or saved work as large), as the page's longest task on a computer
-  and on a Pixel 7 slowed four times:
-  - opening: up to about 0.75 s on a computer and 4 s on the slowed phone (the 542-character link
-    that P3 reported: 0.25 s and 1.4 s);
+  and on a Pixel 7 slowed four times (corrected after the critic of the second round of these fixes,
+  below):
+  - opening: up to about 1 s on a computer and 4.5 s on the slowed phone (the heaviest, 60 parts
+    piled in a slanted lattice of 70 × 70 points round or through their pins: 0.9 to 1.0 s and 4.0
+    to 4.2 s; the 542-character link that P3 reported: 0.2 s and 1.3 s);
   - a hover, a selection or the focus ring: no long task; a click on a part with its card placed: up
     to about 0.1 s;
-  - a key typed on a card: up to 0.45 s on a computer and 1.4 s on the slowed phone (the heaviest
-    wire, which every build goes through); where the lines pile parts, up to 0.2 s and 0.6 s, as the
-    pile is not built again; an undo of the card's change: no build;
+  - a key typed on a card: one build, of the text it writes (where crafted lines pile parts, the first
+    key builds once more, the text the drawing shown would make, to check it); up to 0.45 s on a
+    computer and 1.4 s on the slowed phone on the heaviest wire, which every build goes through; where
+    the lines pile parts, the drawing shown is written and the pile not built again (up to 0.25 s and
+    0.75 s, beside a 99 × 99 grid), unless it cannot be (more wire than a reading takes, names the
+    repairs left without their wire, slanted wire they draw again when they read it): then each key
+    builds the pile again, as an opening does, up to 0.8 s and 2.7 s; an undo of the card's change: no
+    build;
   - an edit made in the drawing (move, turn, mirror, wire, delete, rename, disconnect, a name moved):
     two to four builds of what the edit writes (the lines as the page shows them, so a pile no
-    longer), up to 0.45 s on a computer and 1.4 s on the slowed phone, and its undo no build.
+    longer), up to 0.5 s on a computer and 1.8 s on the slowed phone, and its undo no build; an edit
+    whose drawing would need more lines or more wire than a reading takes is refused, in plain words,
+    never written in part.
   The tests count the work, so they hold on any machine (decision 0013 lists them).
 
   Measured on 13 November on the shared machine at a load of 0.4 to 1.5 (3 for the keys on the
@@ -166,16 +175,71 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     link 0.13 s (0.18 s on the first fix of this round), the critic's shapes 0.12 to 0.44 s (0.88 to
     1.73 s), this lane's heaviest 0.47 to 0.95 s (0.59 to 3.36 s).
 
-  Each value typed on a card where the drawing lines put parts on other nodes' pins (the build
-  moves those parts, so the lines are not what the page shows) writes where the parts are drawn.
-  Every build of such lines moves the parts again whatever the value, and the card builds each key
-  from the text it opened on, so without it each key and each visit built the pile again. This is
-  the card's rule of decisions 0016 and 0017 widened by one case: a value changes only the value,
-  unless the new value would move a part, or the lines pile parts that every build moves. The lines
-  of parts and nodes the netlist does not have yet stay as written, as decision 0013 says (writing
-  the drawing for a value that would move a part dropped them too, before this round). The page
-  keeps the last four schematics it built and the one a card opened on while it types, so an undo
-  or a redo of a card's change builds nothing.
+  Where crafted drawing lines put parts on other nodes' pins (the build moves ten parts or more, or
+  any on a drawing of a thousand pieces of wire or more), the first value typed on a card writes the
+  drawing the page shows in place of the lines: the parts where they are drawn, and the wires, names
+  and ground symbols the repairs drew. Every build of such lines moves the parts again whatever the
+  value, and the card builds each key from the text it opened on, so without it each key and each
+  visit built the pile again. The lines are written only when a reading takes them all and reads them
+  back as the drawing shown, which the first value checks by building the text it writes (the page
+  then draws that build); otherwise each value changes only the value. This is the card's rule of
+  decisions 0016 and 0017 widened by one case, recorded there: a value changes only the value, unless
+  the new value would move a part, or crafted lines pile parts that every build moves. A student's own
+  drawing never has so many moved, so there it changes only the value. Put back gives the text the
+  card opened on, exactly. The lines of parts and nodes the netlist does not have yet stay as
+  written, as decision 0013 says (writing the drawing for a value that would move a part dropped them
+  too, before this round). The page keeps the last four schematics it built and the one a card opened
+  on while it types, so an undo or a redo of a card's change builds nothing.
+
+  Corrected after the critic of the second round of these fixes (D5 to D7). The rule above wrote the
+  drawing shown without reading it back. On 60 parts piled beside a 70 × 70 grid, the first value
+  typed wrote 4,921 lines: a reading stops at 2000, so most of the grid vanished (wire elements in the
+  page went from 4,869 to 108); 900 names the repairs had left where they took their wire away were
+  dropped when read; a slanted lattice through the parts' pins was drawn again, differently; and
+  beside a 99 × 99 grid the repairs draw 20,077 grid units, more than a reading takes. The build
+  re-checked drew those links unchanged. It also reached a student's own circuit: a divider whose two
+  resistors meet pin to pin, after a node renamed in the text moved one, had the repaired drawing
+  written over its lines by the first value typed, and Put back no longer gave the text it opened on.
+  An edit made in the drawing lost wire the same way, older than this lane: it writes a line for each
+  piece of wire, and a joined grid typed in 140 lines is 4,770 pieces, so a part moved beside it kept
+  the first 2000 lines and dropped a third of the grid. Now the lines are chained when a line for each
+  piece would be more than a reading takes, and read back exactly as before (decision 0013); an edit
+  whose drawing still does not fit is refused; a value writes the drawing shown only on crafted lines
+  and only when it fits and reads back as shown, and a value that would move a part writes its lines
+  only when they fit. So the keys measured above on the parts inside a slanted lattice (no long task)
+  wrote lines a reading cut short; they now build the pile, as below.
+
+  Measured again on 13 November at a load of 0.7 to 2.8, this build first and the build re-checked
+  (b060bc8) in brackets, the page's longest task:
+  - the 542-character link: on a computer opening 0.21 s (0.92 s), keys no long task (0.65 and
+    0.56 s, then 0.57 and 0.54 s), an undo no long task (0.65 s); on the phone opening 1.26 s, keys
+    0.21 and 0.08 s, an undo no long task;
+  - 60 parts piled beside a 70 × 70 grid (a 29,113-character link): opening 0.57 s (2.61 s), keys
+    0.16 and 0.10 s (2.31 and 2.09 s, then 2.01 and 2.08 s), the picture and the Checks as before the
+    key, 293 lines written; on the phone 2.28 s, keys 0.49 and 0.30 s; a part deleted 0.18 s, on the
+    phone 0.92 s, its undo under 0.1 s;
+  - with 900 names on stubs instead (a 10,597-character link, the value written alone): 0.45 s
+    (2.35 s), keys 0.27 and 0.18 s (2.25 and 2.24 s, then 2.01 and 2.01 s); phone 1.74 s, keys 1.10
+    and 0.79 s;
+  - 60 parts in a slanted lattice of 70 × 70 points through their pins, and round them without
+    touching (30,141-character links, the value written alone): opening 0.98 and 1.0 s (4.73 and
+    4.28 s), keys 0.53 to 0.79 s (3.66 and 4.32 s, then 3.32 and 3.88 s; 3.59 and 3.79 s, then 3.73
+    and 3.73 s), an undo no long task (3.27 and 3.90 s; 3.39 and 3.90 s); on the phone opening 4.0
+    and 4.2 s, keys 2.4 to 2.7 s;
+  - beside a 99 × 99 grid kept as saved work: 60 parts piled (the drawing shown does not fit, the
+    value written alone) open in 0.75 s and take keys in 0.51 and 0.55 s, on the phone 3.3 s and 2.0
+    and 1.7 s, and an edit whose drawing still does not fit is refused (a part deleted); nine parts
+    (the drawing written) 0.63 s, keys 0.21 and 0.15 s, on the phone 2.27 s, keys 0.68 and 0.51 s;
+  - the 100 × 100 grid kept as saved work, every unit of it now written in 205 lines: R1 turned in
+    0.49 s, deleted in 0.26 s, each undo no long task; on the phone turned in 1.72 s;
+  - a student's divider whose renamed node moved R2, and nine and eleven parts at one point: keys no
+    long task on a computer, at most 0.05 s on the phone; the divider and the nine parts keep their
+    lines as written, the eleven parts get the drawing shown;
+  - a value typed on every piled shape the critics and this lane built (57 shapes, Node CPU at a load
+    of 2.4 to 2.6): the picture stays on all, Put back gives the opened text on all, no text has more
+    than 2000 drawing lines; the drawing shown is written on 42 (keys 0.005 to 0.47 s), and on the 15
+    others each key is one build of the piled lines, up to 1.05 s on the lattices and 0.07 s on the
+    small piles.
 - **Characters that are not what they look like** (security review F2). Text copied from a web page
   or a PDF can carry invisible characters, and a phone or another keyboard can type a letter from
   another alphabet that looks like a scale letter. ngspice reads bytes and writes each byte outside
