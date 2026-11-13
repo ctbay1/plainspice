@@ -368,10 +368,13 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
     back above the sheet when there is room (R2-2: the sheet gives it the room, its rows staying put).
     Only opening, closing or scrolling the sheet, its own rows changing (a check found or fixed, a
     netlist line added), or a new window, text size or stack (the keyboard, a part in hand) lay it out
-    afresh; it is held from the frame it is first drawn in, so the step the lines take as it opens is
-    still its own to follow (held at once, the Parts sheet of an iPhone SE on its side at 150 % kept
-    the room the lines had before they stepped aside, 55 px of paper where 48 is the least, and its tall
-    last rows could not be scrolled clear of the bar: the phone audit and the 320 × 568 test check it). Considered: the lines only (the skeptic's first fix, the busy tone out of the key and their
+    afresh. An opened sheet is held from the frame it is first drawn in, so the step the lines take as
+    it opens is still its own to follow (held at once, the Parts sheet of an iPhone SE on its side at
+    150 % kept the room the lines had before they stepped aside, 55 px of paper where 48 is the least, and
+    its tall last rows could not be scrolled clear of the bar: the phone audit and the 320 × 568 test
+    check it); a sheet whose own rows change is laid out afresh in that frame and held at once, so the
+    error's row in Checks stays put while the lines step aside for the error (followed for two frames
+    more, it moved up to 110 px with the largest text). Considered: the lines only (the skeptic's first fix, the busy tone out of the key and their
     height kept), which leaves the move a new settled status makes; a sheet that never gives room, its
     lines stepping aside instead, which hides the status line above a sheet opened while an error stood
     even once the error is undone; and letting the stack grow past its ceiling, which leaves under 48 px
@@ -383,7 +386,8 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   Netlist sheet moved nothing on either build (its lines are out of sight while the netlist is typed).
   Tests (`tests/e2e/phone.spec.ts`): "an open sheet keeps its rows where they are through each run, a
   new status and an undo" (863 × 360 and 640 × 400 with Checks, 320 × 568 with More and the error
-  undone; and a run that keeps its status moves not even the sheet's head): on b060bc8 Checks' rows go
+  undone, and with Checks at 150 %; Checks' new rows from their first frame; and a run that keeps its
+  status moves not even the sheet's head): on b060bc8 Checks' rows go
   165 → 203 → 165 px with each run at 863 × 360; without the sheet held, rows move 25 px at an undo at
   640 × 400; without the hold through a run, the sheet's top goes 148 → 199 there. "Two quick taps on
   More's Undo, 150 ms apart, undo twice while an error stands": b060bc8 pressed Undo, then Redo.
