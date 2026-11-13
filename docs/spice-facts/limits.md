@@ -348,8 +348,8 @@ with no check (`src/spicelib/parser/inpfindv.c`, `INPfindVer()`: `where = strstr
 then blanks, `=`, `,`, `(`, `)` and `+` skipped, then `sscanf(where, "%s", version)` into `char
 ver[100]` of `INPdomodel()`). It does so only when a part uses the model, and before it looks for the
 model in its build, so our engine, which leaves BSIM3 and BSIM4 out, copies it too. A version of 99
-bytes fits; at 100 bytes the end of the string is written past the space; from 150 bytes native
-ngspice 47 and 42 stop.
+bytes fits; from 100 bytes the end of the string is written past the space; from 105 bytes native
+ngspice 47 and 42 stop (exit 134). From 100 to 104 bytes they run on as at 99 and say nothing about it.
 
 **Why.** The word and the end of the string: 99 + 1 = 100.
 
@@ -359,7 +359,7 @@ V1 a 0 9
 R1 a b 1k
 M1 b b 0 0 mm
 R2 b 0 2k
-.model mm nmos level=8 version=4W…W     (the version: 99, 100, 150 bytes)
+.model mm nmos level=8 version=4W…W     (the version: 99 to 111, 120, 130, 140, 149 and 150 bytes)
 .op
 .end
 ```
@@ -377,15 +377,20 @@ Error: circuit not parsed.
 
 100 bytes: the same printout and exit code in native 47 and 42; the sanitized build: `ERROR:
 AddressSanitizer: stack-buffer-overflow … WRITE of size 101 … in __isoc23_sscanf … in INPfindVer`.
-150 bytes, and `level=14` with 150 bytes, native 47 and 42, `-b -r` and `-b` (exit 134):
+101 to 104 bytes: the same printout and exit code in native 47 and 42, `-b -r` and `-b`. From 105
+bytes (105 to 111, 120, 130, 140, 149 and 150 were run), and `level=14` with 105 and 150 bytes, native
+47 and 42, `-b -r` and `-b` (exit 134):
 
 ```
 *** stack smashing detected ***: terminated
 ```
 
-The same 150-byte model with no part using it runs in all of them (exit 0, v(b) = 6). **Our engine**
-gives the 99- and 100-byte ones the same "could not find a valid modelname" (exit 1), crashes on the
-150-byte ones (`RuntimeError: memory access out of bounds`, levels 8 and 14) and runs the unused one.
+The same model of 105 or 150 bytes with no part using it runs in all of them (exit 0, v(b) = 6).
+**Our engine** gives the same "could not find a valid modelname" (exit 1) up to 111 bytes, so from
+105 to 111 bytes it runs on where native 47 and 42 stop; from 112 bytes it crashes (`RuntimeError:
+memory access out of bounds`, levels 8 and 14), and it runs the unused one. (Re-run after the last
+pass, 13 November 2026: this record said native 47 and 42 stop from 150 bytes; they stop from 105.
+PlainSpice's 90 bytes stay below both.)
 
 ## limit-10: a `.control` block prints a name made inside subcircuits through spaces of 512 bytes
 
