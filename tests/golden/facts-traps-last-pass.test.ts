@@ -36,3 +36,18 @@ describe('space-before-suffix-12 and unknown-word-6: a value a capacitor or an i
     expect(traps[0]!.ngspice).toContain("ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')");
   });
 });
+
+describe('a results file with its header only: where native ngspice 47 and 42 exit 0 with a header and 0 points, our engine reports it (dc-sweep-problems-3, -4, -22, invisible-character-33)', () => {
+  // The netlists of those facts (docs/spice-facts/traps.md); native 47 and 42 write a DC transfer characteristic header with 0 points.
+  it.each([
+    ['dc-sweep-problems-3', '* .dc with a negative step and a rising range\nV1 in 0 0\nR1 in out 1k\nR2 out 0 2k\n.dc V1 0 12 -1\n.end\n'],
+    ['dc-sweep-problems-4', '* .dc from 12 down to 0 with a positive step\nV1 in 0 0\nR1 in out 1k\nR2 out 0 2k\n.dc V1 12 0 1\n.end\n'],
+    ['dc-sweep-problems-22', '* both sweeps go the wrong way\nV1 in 0 1\nV2 b 0 1\nR1 in b 1k\n.dc V1 2 1 1 V2 2 1 1\n.end\n'],
+    ['invisible-character-33', '* a zero-width space inside a .dc stop: it reads 1, below the start\nV1 in 0 1\nR1 in 0 1k\n.dc V1 2 1\u200b0 1\n.end\n'],
+  ])('%s', async (_, netlist) => {
+    const run = await engine.run(netlist);
+    expect(run.exitCode).toBe(0);
+    expect(run.ok).toBe(false);
+    expect(run.diagnostics.map((d) => [d.code, d.text])).toEqual([['rawfile', expect.stringContaining('header without a Binary: or Values: section')]]);
+  });
+});

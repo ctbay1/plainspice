@@ -3129,7 +3129,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     DC solution failed -
@@ -3990,7 +3990,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: an Operating Point plot with 0 points (no results)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -6032,6 +6032,7 @@ ngspice 42, ngspice -b (exit 1):
     rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `dc-sweep-problems`.
@@ -6062,6 +6063,7 @@ ngspice 42, ngspice -b (exit 1):
     rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `dc-sweep-problems`.
@@ -6697,6 +6699,7 @@ ngspice 42, ngspice -b (exit 1):
     rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `dc-sweep-problems`, `dc-sweep-problems`.
@@ -11127,7 +11130,7 @@ ngspice 42, ngspice -b (exit 1):
     Shooting cycle iteration number:   0 || rr: 0 || predsum: -5e-10
     No detectable dynamic on voltages nodes or currents branches. PSS analysis aborted
     doAnalyses: impossible error - can't occur
-    rawfile: (no data)
+    rawfile: v(a) = 1, i(v1) = -0.001 (the .op), then a Time Domain Periodic Steady State Analysis plot with 0 points, its header only
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     Error on line 4 or its substitute:
       .pss 1k 1m a 1
@@ -13446,6 +13449,7 @@ ngspice 42, ngspice -b (exit 1):
     rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `invisible-character`.
