@@ -374,7 +374,7 @@ interface SheetHold {
   /** Where its body's box began, from the sheet's bottom on the bar (the sheet sliding in moves both), and how far the body was scrolled, when last held. */
   top: number;
   scroll: number;
-  /** The rows in view at the top of its body, each the first one in view inside the one before, with where each begins in what scrolls. */
+  /** The rows in view at the top of its body (rowsInView: the innermost first), with where each begins in what scrolls. */
   rowsInView: { el: Element; at: number }[];
   /** Room kept below its rows (app.css: --sheet-kept), so the rows in view stay where they are when rows below them go. */
   kept: number;
