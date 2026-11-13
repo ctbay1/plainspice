@@ -346,9 +346,12 @@ export const EXPLAIN_STRINGS = {
     items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`,
   insideSubcircuit: (name: string, line: number): string =>
     `This part belongs to the subcircuit ${name} (from line ${line}): its nodes are the subcircuit's own.`,
-  /** A3f: an analysis line in a subcircuit no X line uses does not run (critic of the words re-check's fix, round 2). */
+  /**
+   * A3f: an analysis line in a subcircuit no X line uses does not run (critic of the words re-check's fix,
+   * round 2). ngspice "skips" it, the word for a whole line (W11, last pass F2).
+   */
   analysisInUnusedSubcircuit: (name: string, line: number): string =>
-    `ngspice ignores this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
 
   // ---- dot commands
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
@@ -1228,7 +1231,7 @@ export function sweptBy(netlist: Netlist, key: string): number | undefined {
   return contextOf(netlist).swept.get(key);
 }
 
-/** The analyses A3f ran inside a subcircuit no X line uses: ngspice ignores each of them there. */
+/** The analyses A3f ran inside a subcircuit no X line uses: ngspice skips each of them there. */
 const RUN_ANALYSES: ReadonlySet<string> = new Set(['.op', '.tf', '.dc', '.tran', '.ac', '.noise']);
 
 const usedCache = new WeakMap<Netlist, Set<string>>();
@@ -1250,7 +1253,7 @@ function usedSubcircuits(netlist: Netlist): Set<string> {
 
 /**
  * The subcircuit a line is in (its name as written and its .subckt line, 0-based) when no X line uses
- * that subcircuit; undefined for any other line. ngspice ignores such a subcircuit, an analysis line in
+ * that subcircuit; undefined for any other line. ngspice skips such a subcircuit, an analysis line in
  * it too (A3f: .op, .tf, .dc, .tran, .ac and .noise run nothing there); in a subcircuit an X line uses, it runs
  * an analysis line as if the main circuit had it, once for each such X line.
  */
@@ -1261,7 +1264,7 @@ export function unusedSubcircuit(netlist: Netlist, index: number): { name: strin
   return { name: name.text, line: at };
 }
 
-/** An analysis line A3f found ngspice ignores: one of those it ran, in a subcircuit no X line uses. */
+/** An analysis line A3f found ngspice skips: one of those it ran, in a subcircuit no X line uses. */
 export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   const name = netlist.lines[index]?.directive?.name;
   return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;

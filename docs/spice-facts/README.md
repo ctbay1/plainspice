@@ -159,7 +159,7 @@ numbers, alone they stop ngspice), tf-problems-9 to -11 (the character in the pa
 in the `.tf`, in a part's name in `.tf`, and a `.tf` after `.end`, which ngspice runs) and two more
 runs in tf-problems-8 (a second output, which adds 1 Ω, and a name with two kinds of character); in
 explanations.md P3b, P4b and P4c (a source .dc sweeps has no one value there; beside a SIN, .op uses
-the value and .tran the SIN) and A3f (an analysis line in a subcircuit no X line uses is ignored).
+the value and .tran the SIN) and A3f (an analysis line in a subcircuit no X line uses is skipped).
 
 After the re-check of 12 November 2026 and the fixes of the rounding-noise rule (12 and 13 November):
 C9m to C9v.8 in explanations.md (what the exact solution decides, ngspice's answers far off, .tf and

@@ -69,8 +69,9 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   node called gnd (A3b); a `.tf` written after `.end` runs too, and ngspice names its output in its
   own words, `v(out,mid)` (A3c); the input can be a current source (A4); for a current
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
-  0 without a message (A6). An analysis line in a subcircuit no X line uses is ignored; in one an X
-  line uses, it runs as the main circuit's, once for each X line (A3f).
+  0 without a message (A6). An analysis line in a subcircuit no X line uses is skipped, as is every
+  line of such a subcircuit; in one an X line uses, it runs as the main circuit's, once for each X
+  line (A3f).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -2694,14 +2695,14 @@ our engine (wasm), as ngspice -b -r (exit 0):
   vectors: v(Transfer_function) = 0.6666666666666667, v(i1#Input_impedance) = 4, v(vm#Output_impedance) = 100000000000000000000
 ```
 
-### A3f. An analysis line in a subcircuit no X line uses is ignored; in one an X line uses, it runs as the main circuit's
+### A3f. An analysis line in a subcircuit no X line uses is skipped; in one an X line uses, it runs as the main circuit's
 
 Added after the second critic of the words re-check's fix (12 November 2026). A `.tf` between `.subckt`
-and `.ends` is not the circuit's `.tf` when no X line uses that subcircuit: ngspice ignores it, and runs
+and `.ends` is not the circuit's `.tf` when no X line uses that subcircuit: ngspice skips it, and runs
 the `.tf v(out)` after `.ends` (0.5 and 500 Ω), which the words named "Transfer function v(a,gnd) / V1"
 until then, with an error that said ngspice makes a new node for a. With nothing else, nothing runs:
 the same for `.op`, `.dc`, `.tran`, `.ac` and `.noise` there. So the words, the checks and the overview leave
-such a line out, and Explain says that ngspice ignores it. When an X line uses the subcircuit, ngspice
+such a line out, and Explain says that ngspice skips it. When an X line uses the subcircuit, ngspice
 runs the line as if the main circuit had it, once for each such X line, with the main circuit's node
 names: `.tf v(out)` there is the main circuit's out, and `.tf v(a)` a new node a with nothing on it (0
 and 1 Ω, as tf-problems-1), not the subcircuit's a; so such a line is read and checked as one in the
@@ -2748,6 +2749,47 @@ our engine (wasm), as ngspice -b -r:
   exit 0, vectors: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(out)) = 500;
   no results for the others with no analysis outside the subcircuit; with X1: 0.3333333333333333 and 333.3333333333333;
   with v(a): 0 and 1; with X1 and X2: two Transfer Function plots
+```
+
+"Skipped" is the word for a whole line ngspice does not read (W11), and it reads none of such a
+subcircuit's lines: a `.tran` and a dot command it stops at anywhere else say nothing there, and the
+`.op` after `.ends` runs; in a subcircuit an X line uses, the same lines stop it (13 November 2026,
+the last pass: F2; the netlists are golden rows an-skip-unused, an-skip-used-tran and an-skip-used-dot).
+
+```spice
+* lines ngspice would stop at, in a subcircuit no X line uses
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt s a b
+R9 a b 1k
+.tran 0 -1
+.foo bar
+.ends
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0): out 2.500000e+00, in 5.000000e+00, v1#branch -2.50000e-03, and no other message
+  rawfile from ngspice -b -r (exit 0, no message): v(in) = 5, v(out) = 2.5, i(v1) = -0.0025
+  with X1 out 0 s before the .op and the .tran alone in the subcircuit, ngspice -b (exit 1):
+    Error on line 7 or its substitute:
+      .tran 0 -1
+    TSTEP is invalid, must be greater than zero.
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r (exit 1): the same first four lines, then "Error: circuit not parsed.", and no rawfile
+  the same with .foo bar alone in that subcircuit: " unimplemented dot command '.foo'" in place of the
+    TSTEP line, exit 1, and no rawfile with -r
+ngspice 42: the same values and exit codes, with "Error on line:" for "Error on line 7 or its
+  substitute:" and 'Note: No ".plot", ".print", or ".fourier" lines; no simulations run' for the -b
+  ending
+our engine (wasm), as ngspice -b -r: exit 0, vectors: v(in) = 5, v(out) = 2.5, i(v1) = -0.0025;
+  with X1: exit 1, "TSTEP is invalid, must be greater than zero." and "unimplemented dot command
+  '.foo'", no results
 ```
 
 ## 3. Currents and power in the results

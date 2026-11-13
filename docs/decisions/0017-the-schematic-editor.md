@@ -509,9 +509,9 @@ what they look like):
   typo of an ordinary node called gnd: written in v( ), gnd is ground (`.tf v(gnd) V1` gives
   output_impedance_at_V(0), A3b), so the fix would measure ground; a name like ground is offered
   quoted ('Use "ground"'). After the second critic of the fix: a .tf in a subcircuit no X line uses,
-  which ngspice ignores (A3f: it ran the .tf after .ends, whose 0.5 and 500 Ω were labelled
+  which ngspice skips (A3f: it ran the .tf after .ends, whose 0.5 and 500 Ω were labelled
   "Transfer function v(a,gnd) / V1"), is left out of the .tf words, the check, the missing-node
-  message and the overview's analyses, and Explain says that ngspice ignores it (so for a .op, .dc,
+  message and the overview's analyses, and Explain says that ngspice skips it (so for a .op, .dc,
   .tran, .ac or .noise line there, which A3f ran too); in a subcircuit an X line uses, ngspice runs the
   line as the main circuit's, so it is
   read as before. A .tf after .end is checked as one above it is, and its words take its nodes from

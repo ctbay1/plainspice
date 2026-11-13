@@ -817,7 +817,7 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     expect(none!.ngspice).toBe("ngspice stops: 'Transfer function source v___9 not in circuit'. [tf-problems-3]");
   });
 
-  it('a .tf in a subcircuit no X line uses is ignored, as ngspice ignores it (A3f): no error, no words, no message', async () => {
+  it('a .tf in a subcircuit no X line uses is skipped, as ngspice skips it (A3f): no error, no words, no message', async () => {
     // Native ngspice 47 and 42: only the .tf v(out) runs (0.5, 500 Ω); with the .tf only in the subcircuit, none runs.
     const SUB = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\n.tf v(out) V1\n.end\n';
     expect(traps(SUB, 'tf-problems')).toEqual([]);
@@ -828,8 +828,8 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     expect(s.words.warnings.map((w) => w.code)).not.toContain('tf-node-missing');
     const n = parseNetlist(SUB);
     expect(describeCircuit(n)).toContain('Analysis: transfer function from V1 to v(out).');
-    expect(explainNetlist(n)[6]!.notes).toEqual(['ngspice ignores this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.']);
-    expect(describeCircuit(parseNetlist(SUB.replace('.tf v(out) V1\n', '')))).toContain('Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.');
+    expect(explainNetlist(n)[6]!.notes).toEqual(['ngspice skips this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.']);
+    expect(describeCircuit(parseNetlist(SUB.replace('.tf v(out) V1\n', '')))).toContain('Its analysis lines are inside a subcircuit that no X line uses, where ngspice skips them, so ngspice will run nothing.');
     // An X line uses it: ngspice runs the line as the main circuit's (A3f), so it is checked and explained so.
     const USED = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\n.tf v(a) V1\n.ends\n.op\n.end\n';
     expect(traps(USED, 'tf-problems').map((c) => c.title)).toEqual(['.tf asks about node a, which is not in the circuit']);

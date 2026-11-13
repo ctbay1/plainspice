@@ -332,8 +332,8 @@ export const DESCRIBE_STRINGS = {
   noAnalysis: 'No analysis line (.op, .dc, .tran, .tf or .ac), so ngspice will run nothing.',
   noAnalysisControl: 'No analysis line (.op, .dc, .tran, .tf or .ac): ngspice runs the commands in the .control block instead.',
   analysisAfterEnd: 'The analysis is written after .end, where ngspice still reads it.',
-  /** A3f: the only analysis lines are in a subcircuit no X line uses. */
-  analysisIgnored: 'Its analysis lines are inside a subcircuit that no X line uses, where ngspice ignores them, so ngspice will run nothing.',
+  /** A3f: the only analysis lines are in a subcircuit no X line uses; ngspice "skips" them, the word for a whole line (W11, last pass F2). */
+  analysisIgnored: 'Its analysis lines are inside a subcircuit that no X line uses, where ngspice skips them, so ngspice will run nothing.',
   opName: 'operating point',
   tfName: (out: string, input: string): string => `transfer function from ${input} to ${out}`,
   dcName: (sweeps: string, points: string): string => `DC sweep of ${sweeps}${points}`,
