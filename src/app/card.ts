@@ -137,6 +137,13 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   const was = beforeWords?.currents.find((x) => x.element === part.key);
   const volts = new Map<string, number>([[GROUND, 0], ...(words?.nodes ?? []).map((n): [string, number] => [lowerAscii(n.node), n.value])]);
   const voltsBefore = new Map<string, number>([[GROUND, 0], ...(beforeWords?.nodes ?? []).map((n): [string, number] => [lowerAscii(n.node), n.value])]);
+  // Two ends at one level are at the same voltage (exactly, or by the rule for other circuits; decision
+  // 0015), whatever ngspice's last bits say: 0 V across, as the part's 0 A through it (words re-check 1).
+  const levelsOf = (w: typeof words): Map<string, number> =>
+    new Map<string, number>([[GROUND, 0], ...(w?.nodes ?? []).filter((n) => n.level !== undefined).map((n): [string, number] => [lowerAscii(n.node), n.level!])]);
+  const level = (levels: Map<string, number>): boolean => levels.has(part.nodes[0]) && levels.get(part.nodes[0]) === levels.get(part.nodes[1]);
+  const sameNow = level(levelsOf(words));
+  const sameBefore = level(levelsOf(beforeWords));
   const written = (i: 0 | 1): string => (part.nodes[i] === GROUND ? '0' : part.nodeText[i]);
   const nodeText = (n: string): string => s.circuit.nodes.get(n)?.text ?? n;
   // A node in a sentence is named as a node ("node in is higher"), as the editor says it (decision
@@ -164,10 +171,11 @@ export function cardContent(part: CircuitPart, card: CardState, s: Schematic, so
   const vb = volts.get(part.nodes[1]);
   if (words && va !== undefined && vb !== undefined && !isAmmeter(part)) {
     // Its size and which end is higher, SPICE's signed difference underneath.
-    const across = acrossWords({ name: part.name, v: [va, vb], nodes: part.nodes, written: [written(0), written(1)], text: nodeSaid });
+    // A resistor whose real current ngspice rounded to 0 has the exact voltage across it (`across`, C9n): its two ends' numbers are the same.
+    const across = acrossWords({ name: part.name, v: c?.across !== undefined ? [c.across, 0] : sameNow ? [va, va] : [va, vb], nodes: part.nodes, written: [written(0), written(1)], text: nodeSaid });
     const pa = voltsBefore.get(part.nodes[0]);
     const pb = voltsBefore.get(part.nodes[1]);
-    const prev = beforeWords && pa !== undefined && pb !== undefined ? formatSI(Math.abs(pa - pb), 'V') : undefined;
+    const prev = beforeWords && pa !== undefined && pb !== undefined ? formatSI(was?.across !== undefined ? Math.abs(was.across) : sameBefore ? 0 : Math.abs(pa - pb), 'V') : undefined;
     const r: Readout = { value: across.text, what: t('readoutAcross'), sub: [across.higher ? t('readoutHigher', { node: across.higher }) : '', across.signed].filter(Boolean), tone: 'voltage', speech: said(across.speech) };
     if (prev && prev !== across.text) r.was = prev;
     readouts.push(r);

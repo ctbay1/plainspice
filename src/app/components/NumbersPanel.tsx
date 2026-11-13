@@ -92,8 +92,8 @@ const NodeTable = memo(
                   </td>
                   <td className="num">
                     <code className="code">
-                      {/* ngspice's own spelling ("giri__" for "giriş", W16) and value, also when the voltage is said as 0 V (rounding noise, C9d). */}
-                      v({n.ngspice ?? n.node}) = {formatLikeNgspice(n.noise ?? n.value)}
+                      {/* ngspice's own spelling ("giri__" for "giriş", W16) and value, also when the voltage is said as 0 V (rounding noise, C9d) or as the exact one where ngspice rounded it to 0 (C9n). */}
+                      v({n.ngspice ?? n.node}) = {formatLikeNgspice(n.given ?? n.noise ?? n.value)}
                     </code>
                   </td>
                 </tr>
@@ -147,8 +147,8 @@ const CurrentTable = memo(function CurrentTable({ description, results }: { desc
               )}
               <td className="num">
                 <code className="code">
-                  {/* ngspice's own vector and value, also when the current is said as 0 A (rounding noise, C9). */}
-                  {c.vector ?? vectorOf(c.element)} = {formatLikeNgspice(c.noise ?? c.value)}
+                  {/* ngspice's own vector and value, also when the current is said as 0 A (rounding noise, C9) or as the exact one where ngspice rounded it to 0 (C9n). */}
+                  {c.vector ?? vectorOf(c.element)} = {formatLikeNgspice(c.given ?? c.noise ?? c.value)}
                 </code>
               </td>
             </tr>
@@ -182,6 +182,8 @@ export interface TfRow {
   text: string;
   speech: string;
   value: number;
+  /** ngspice's own value, when PlainSpice shows its rounding noise of a 0 as 0 (decision 0015, C9p). */
+  given?: number;
 }
 
 /** The .tf results as rows: the transfer function, the output resistance and the input resistance, in words (the drawing's card shows them too). */
@@ -194,6 +196,7 @@ export function tfRows(tf: TransferFunctionWords): TfRow[] {
       text: `${formatNumber(v)} ${tf.ratio}`,
       speech: `${formatNumber(v).replace('−', `${t('minusWord')} `)} ${ratioWords(tf.ratio, formatNumber(v))}`,
       value: v,
+      ...(tf.transferFunction.noise !== undefined ? { given: tf.transferFunction.noise } : {}),
     });
   }
   if (tf.outputResistance) {
@@ -231,7 +234,7 @@ const TfTable = memo(function TfTable({ tf }: { tf: TransferFunctionWords }): Re
                 <Quantity text={r.text} speech={r.speech} />
               </td>
               <td className="num">
-                <code className="code">{formatLikeNgspice(r.value)}</code>
+                <code className="code">{formatLikeNgspice(r.given ?? r.value)}</code>
               </td>
             </tr>
           ))}

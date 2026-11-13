@@ -22,6 +22,16 @@ export function decimateIndices(n: number, maxRows: number): number[] {
 
 const header = (s: PlotSeries): string => (s.unit ? `${s.label} (${s.unit})` : s.label);
 
+/** The columns of the table and the file: x, each series, and next to a series that has them its values as ngspice gave them. */
+function columns(spec: PlotSpec): { head: string; values: ArrayLike<number>; unit: PlotSeries['unit'] }[] {
+  const out = [{ head: header(spec.x), values: spec.x.values, unit: spec.x.unit }];
+  for (const s of spec.series) {
+    out.push({ head: header(s), values: s.values, unit: s.unit });
+    if (s.given) out.push({ head: header({ ...s, label: PLOT_STRINGS.givenColumn(s.label) }), values: s.given, unit: s.unit });
+  }
+  return out;
+}
+
 /** The data table: a header row and evenly spaced rows, every value via formatSI. */
 export function tableRows(spec: PlotSpec, maxRows = 200): PlotTable {
   const n = pointCount(spec);
@@ -33,9 +43,10 @@ export function tableRows(spec: PlotSpec, maxRows = 200): PlotTable {
   for (let digits = 5; digits <= 9 && new Set(xText).size < new Set(xs).size; digits++) {
     xText = xs.map((v) => formatSI(v, spec.x.unit, digits));
   }
+  const ys = columns(spec).slice(1);
   return {
-    header: [header(spec.x), ...spec.series.map(header)],
-    rows: indices.map((k, r) => [xText[r] ?? '', ...spec.series.map((s) => formatSI(s.values[k] ?? Number.NaN, s.unit))]),
+    header: [header(spec.x), ...ys.map((c) => c.head)],
+    rows: indices.map((k, r) => [xText[r] ?? '', ...ys.map((c) => formatSI(c.values[k] ?? Number.NaN, c.unit))]),
   };
 }
 
@@ -51,9 +62,9 @@ function csvField(text: string): string {
  */
 export function csvText(spec: PlotSpec): string {
   const n = pointCount(spec);
-  const columns = [spec.x, ...spec.series];
-  const lines = [columns.map((s) => csvField(header(s))).join(',')];
-  for (let k = 0; k < n; k++) lines.push(columns.map((s) => String(s.values[k] ?? '')).join(','));
+  const all = columns(spec);
+  const lines = [all.map((c) => csvField(c.head)).join(',')];
+  for (let k = 0; k < n; k++) lines.push(all.map((c) => String(c.values[k] ?? '')).join(','));
   return `\uFEFF${lines.join('\r\n')}\r\n`;
 }
 

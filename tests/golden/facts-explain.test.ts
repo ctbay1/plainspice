@@ -23,7 +23,7 @@ import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import { interpretPlots, type AnalysisResults } from '../../src/engine/results.ts';
 import type { RawPlot, RunResult } from '../../src/engine/types.ts';
 import { formatSI } from '../../src/format/si.ts';
-import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, type ResultsInWords } from '../../src/spice/describe.ts';
+import { ABSTOL, VNTOL, annotateLines, describeCircuit, describeResults, explainDiagnostic, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 import { explainLine, explainNetlist, readAnalysis } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import type { Netlist } from '../../src/spice/types.ts';
@@ -165,6 +165,61 @@ const FACTS: Fact[] = [
   { code: 'C9i', id: 'cur-tiny-series', netlist: "* 12 V across 10 ohms in series with 100 T ohms\nV1 in 0 12\nR1 in a 10\nR2 a 0 1e14\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.9999999999988, "i(v1)": -1.2012613126444194e-13, "i(@r1[i])": 1.2008172234345695e-13, "i(@r2[i])": 1.19999999999988e-13 } },
   { code: 'C9j', id: 'cur-tiny-side-by-side', netlist: "* the loop of C9h with two 1 k resistors side by side\nV1 a 0 12\nR1 a b 1k\nR2 a b 1k\nI1 0 b 2A\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 12, "v(b)": 12.000000000000002, "i(v1)": 3.469446951953614e-18, "i(@r1[i])": -1.7763568394002505e-18, "i(@r2[i])": -1.7763568394002505e-18, "i(@i1[current])": 2e-18 } },
   { code: 'C9l', id: 'cur-bridge-voltmeter', netlist: "* the balanced bridge of C9 with a 1e15 ohm voltmeter across R2\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nRvm a 0 1e15\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999990972, "v(b)": 4.499999999993667, "i(v1)": -0.0014074468085128885, "i(@r1[i])": 0.00045000000000090286, "i(@r2[i])": 0.00044999999999909717, "i(@r3[i])": 0.0009574468085119857, "i(@r4[i])": 0.0009574468085092909, "i(@r5[i])": -2.6956215037898802e-15, "i(@rvm[i])": 4.499999999990972e-15 } },
+  { code: 'C9m', id: 'cur-noise-arms', netlist: "* two equal arms of three resistors and a link: no current through R7\nV1 n1 0 9\nR1 n1 n2 15k\nR2 n2 n3 330\nR3 n3 0 33k\nR4 n1 n4 15k\nR5 n4 n5 330\nR6 n5 0 33k\nR7 n3 n5 100k\n.options savecurrents\n.op\n.end\n", vectors: {"v(n1)": 9, "v(n2)": 6.206703910614529, "v(n3)": 6.145251396648049, "v(n4)": 6.2067039106145225, "v(n5)": 6.145251396648042, "i(v1)": -0.00037243947858473, "i(@r1[i])": 0.00018621973929236477, "i(@r2[i])": 0.00018621973929236395, "i(@r3[i])": 0.00018621973929236512, "i(@r4[i])": 0.00018621973929236517, "i(@r5[i])": 0.00018621973929236395, "i(@r6[i])": 0.00018621973929236493, "i(@r7[i])": 6.217248937900877e-20} },
+  { code: 'C9m.2', id: 'cur-noise-arms-9-steps', netlist: "* two equal arms of three resistors and a 3.3 k link: no current through R7\nV1 n1 0 15\nR1 n1 n2 4.7k\nR2 n2 n3 100\nR3 n3 0 150k\nR4 n1 n4 4.7k\nR5 n4 n5 100\nR6 n5 0 150k\nR7 n3 n5 3.3k\n.options savecurrents\n.op\n.end\n", vectors: {"v(n1)": 15, "v(n2)": 14.54457364341081, "v(n3)": 14.534883720930189, "v(n4)": 14.544573643410827, "v(n5)": 14.534883720930205, "i(v1)": -0.0001937984496124174, "i(@r1[i])": 0.00009689922480621051, "i(@r2[i])": 0.00009689922480621505, "i(@r3[i])": 0.00009689922480620126, "i(@r4[i])": 0.0000968992248062071, "i(@r5[i])": 0.00009689922480621505, "i(@r6[i])": 0.00009689922480620137, "i(@r7[i])": -4.8446095620006835e-18} },
+  { code: 'C9n', id: 'cur-real-ladder-meter', netlist: "* a ladder from 1.5 V, node n3 read by a 1 T voltmeter through a 1 u wire\nV1 n0 0 1.5\nR1 n0 n1 1.5k\nR2 n1 0 12\nR3 n1 n2 1.5k\nR4 n2 0 12\nR5 n2 n3 1.5k\nR6 n3 0 12\nR7 n3 n4 1.5k\nR8 n4 0 12\nRw n3 p 1u\nRvm p 0 1t\n.options savecurrents\n.op\n.end\n", vectors: {"v(n0)": 1.5, "v(n1)": 0.011811755997793995, "v(n2)": 0.00009301171983709262, "v(n3)": 7.324215167679476e-7, "v(n4)": 5.812869180697998e-9, "v(p)": 7.324215167679476e-7, "i(v1)": -0.0009921254960014707, "i(@r1[i])": 0.0009921254960014707, "i(@r2[i])": 0.0009843129998161663, "i(@r3[i])": 0.000007812496185304601, "i(@r4[i])": 0.000007750976653091051, "i(@r5[i])": 6.151953221354978e-8, "i(@r6[i])": 6.103512639732897e-8, "i(@r7[i])": 4.844057650581663e-10, "i(@r8[i])": 4.844057650581665e-10, "i(@rw[i])": 0, "i(@rvm[i])": 7.324215167679475e-19} },
+  { code: 'C9n.2', id: 'cur-real-divider-meter', netlist: "* a 1 G over 10 ohm divider read by a 1e20 ohm voltmeter through a 100 ohm probe\nV1 in 0 24\nR1 in mid 1g\nR2 mid 0 10\nRp mid p 100\nRvm p 0 1e20\n.options savecurrents\n.op\n.end\n", vectors: {"v(in)": 24, "v(mid)": 2.3999999760000004e-7, "v(p)": 2.3999999760000004e-7, "i(v1)": -2.3999999760000007e-8, "i(@r1[i])": 2.3999999760000004e-8, "i(@r2[i])": 2.3999999760000007e-8, "i(@rp[i])": 0, "i(@rvm[i])": 2.3999999760000002e-27} },
+  { code: 'C9n.3', id: 'cur-real-1n-source', netlist: "* a 1 nV source\nV1 top 0 1n\nR1 top s 1\nR2 s 0 1e20\nVm top v 0\nR3 v 0 27k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 1e-9, "v(s)": 1e-9, "v(v)": 1e-9, "i(vm)": 3.703703703703704e-14, "i(v1)": -3.703703703703704e-14, "i(@r1[i])": 0, "i(@r2[i])": 1e-29, "i(@r3[i])": 3.703703703703704e-14} },
+  { code: 'C9o', id: 'cur-noise-gain-h', netlist: "* a balanced bridge whose ammeter an H of 1 G reads\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 8.602941176467256, "v(b)": 8.602941176467258, "v(m)": 8.602941176467258, "v(out)": -1.9350975899792844e-7, "i(h1)": 1.9350975899792844e-10, "i(vm)": -1.9350975899792844e-16, "i(v1)": -0.000024264705882556586, "i(@r1[i])": 0.0000022058823529596873, "i(@r2[i])": 0.000002205882352940322, "i(@r3[i])": 0.000022058823529596775, "i(@r4[i])": 0.000022058823529403225, "i(@r5[i])": -3.7794826370218095e-16, "i(@rl[i])": -1.9350975899792844e-10} },
+  { code: 'C9o.2', id: 'cur-noise-gain-e', netlist: "* the balanced bridge of C9 read by an E of 1e6 into 100 ohms\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nE1 out 0 a b 1e6\nRl out 0 100\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -9.313225746154785e-10, "i(e1)": 9.313225746154785e-12, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@rl[i])": -9.313225746154785e-12} },
+  { code: 'C9o.3', id: 'cur-real-e-fed', netlist: "* the same E, its output fed from 5 V through 1 k\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nE1 out 0 a b 1e6\nV2 x 0 5\nRx x out 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -9.313225746154785e-10, "v(x)": 5, "i(e1)": 0.005000000000931323, "i(v2)": -0.005000000000931323, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 0.005000000000931323} },
+  { code: 'C9p', id: 'cur-noise-tf', netlist: "* the balanced bridge of C9 with .tf v(a,b) V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.tf v(a,b) V1\n.end\n", vectors: {"v(Transfer_function)": -5.551115123125783e-17, "v(v1#Input_impedance)": 6394.557823129251, "v(output_impedance_at_V(a,b))": 880.2395209580839} },
+  { code: 'C9p.2', id: 'cur-noise-tf-current', netlist: "* the bridge of C9d with .tf i(Vm) V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n.tf i(Vm) V1\n.end\n", vectors: {"v(Transfer_function)": -2.710505431213761e-20, "v(v1#Input_impedance)": 6394.557823129248, "v(vm#Output_impedance)": 100000000000000000000} },
+  { code: 'C9p.3', id: 'cur-noise-dc', netlist: "* the bridge of C9d swept by .dc V1 0 9 3\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n.dc V1 0 9 3\n.end\n", vectors: {"v(v-sweep)": [0,3,6,9], "v(top)": [0,3,6,9], "v(a)": [0,1.4999999999999996,2.999999999999999,4.499999999999999], "v(b)": [0,1.4999999999999996,2.999999999999999,4.499999999999999], "v(m)": [0,1.4999999999999996,2.999999999999999,4.499999999999999], "i(vm)": [0,-5.421010862427522e-20,-1.0842021724855044e-19,-2.168404344971009e-19], "i(v1)": [0,-0.000469148936170213,-0.000938297872340426,-0.0014074468085106388]} },
+  { code: 'C9p.4', id: 'cur-real-tf-tiny', netlist: "* a real ratio far smaller than noise: 1 Meg over 1e-12 ohm\nV1 in 0 1\nR1 in out 1meg\nR2 out 0 1e-12\n.tf v(out) V1\n.end\n", vectors: {"v(Transfer_function)": 9.999999999999999e-19, "v(v1#Input_impedance)": 1000000, "v(output_impedance_at_V(out))": 1e-12} },
+  { code: 'C9q', id: 'cur-noise-2a-bridge', netlist: "* the balanced bridge of C9 fed by a current source written 2A (2 attoamps)\nI1 0 top 2A\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 1.2789115646258505e-14, "v(a)": 6.394557823129253e-15, "v(b)": 6.394557823129254e-15, "i(@i1[current])": 2e-18, "i(@r1[i])": 6.394557823129252e-19, "i(@r2[i])": 6.394557823129254e-19, "i(@r3[i])": 1.3605442176870746e-18, "i(@r4[i])": 1.3605442176870753e-18, "i(@r5[i])": -7.888609052210118e-34} },
+  { code: 'C9r', id: 'cur-noise-f-two-loads', netlist: "* the bridge of C9d, its F feeding two resistors side by side\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\nR7 out 0 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.499999999999999, "v(m)": 4.499999999999999, "v(out)": -1.0842021724855044e-13, "i(vm)": -2.168404344971009e-19, "i(v1)": -0.0014074468085106388, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106385, "i(@r4[i])": 0.0009574468085106381, "i(@r5[i])": 0, "i(@f1[i])": -2.1684043449710089e-16, "i(@r6[i])": -1.0842021724855044e-16, "i(@r7[i])": -1.0842021724855044e-16} },
+  { code: 'C9r.2', id: 'cur-noise-g-two-loads', netlist: "* the balanced bridge of C9 read by a G feeding two resistors side by side\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nG1 0 out a b 1m\nR6 out 0 1k\nR7 out 0 2k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -8.881784197001252e-16, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@g1[i])": -8.881784197001253e-19, "i(@r6[i])": -8.881784197001253e-19, "i(@r7[i])": -4.440892098500626e-19} },
+  { code: 'C9n.4', id: 'cur-real-wire-rounded', netlist: "* a 1 n wire in series with 10 meg, from a 1.5 V divider\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 1.5, "v(d2)": 0.0045413542952368715, "v(p3)": 0.0045413542952368715, "i(v1)": -5.538735724832456e-06, "i(@r1[i])": 5.538735724832456e-06, "i(@r2[i])": 5.538236945410819e-06, "i(@r3[i])": 0, "i(@r4[i])": 4.5413542952368713e-10} },
+  { code: 'C9o.4', id: 'cur-noise-gain-h-diode', netlist: "* the H of 1 G reading a balanced bridge's ammeter, with a diode\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\nD1 0 top dmod\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 8.602941176467256, "v(b)": 8.602941176467258, "v(m)": 8.602941176467258, "v(out)": -1.9350975899792844e-07, "i(h1)": 1.9350975899792844e-10, "i(vm)": -1.9350975899792844e-16, "i(v1)": -2.426471489255658e-05, "i(@r1[i])": 2.2058823529596873e-06, "i(@r2[i])": 2.205882352940322e-06, "i(@r3[i])": 2.2058823529596775e-05, "i(@r4[i])": 2.2058823529403225e-05, "i(@r5[i])": -3.7794826370218095e-16, "i(@rl[i])": -1.9350975899792844e-10, "i(@d1[id])": -9.00999999968093e-12} },
+  { code: 'C9o.5', id: 'cur-rule-gain-e-temp', netlist: "* the balanced bridge of C9 read by an E of 1e6 into 100 ohms, with a .temp line\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nE1 out 0 a b 1e6\nRl out 0 100\n.temp 27\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -9.313225746154785e-10, "i(e1)": 9.313225746154785e-12, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@rl[i])": -9.313225746154785e-12} },
+  { code: 'C9p.5', id: 'cur-real-dc-cross', netlist: "* a divider swept through 0: .dc V1 -1 1 0.1\nV1 a 0 0\nR1 a b 1k\nR2 b 0 2k\n.dc V1 -1 1 0.1\n.end\n", vectors: {"v(v-sweep)": [-1,-0.9,-0.8,-0.7000000000000001,-0.6000000000000001,-0.5000000000000001,-0.40000000000000013,-0.30000000000000016,-0.20000000000000015,-0.10000000000000014,-1.3877787807814457e-16,0.09999999999999987,0.19999999999999987,0.2999999999999999,0.3999999999999999,0.4999999999999999,0.5999999999999999,0.6999999999999998,0.7999999999999998,0.8999999999999998,0.9999999999999998], "v(a)": [-1,-0.9,-0.8,-0.7000000000000001,-0.6000000000000001,-0.5000000000000001,-0.40000000000000013,-0.30000000000000016,-0.20000000000000015,-0.10000000000000014,-1.3877787807814457e-16,0.09999999999999987,0.19999999999999987,0.2999999999999999,0.3999999999999999,0.4999999999999999,0.5999999999999999,0.6999999999999998,0.7999999999999998,0.8999999999999998,0.9999999999999998], "v(b)": [-0.6666666666666666,-0.6,-0.5333333333333333,-0.46666666666666673,-0.4,-0.33333333333333337,-0.2666666666666667,-0.20000000000000007,-0.13333333333333341,-0.06666666666666676,-9.25185853854297e-17,0.06666666666666658,0.13333333333333325,0.1999999999999999,0.2666666666666666,0.33333333333333326,0.39999999999999986,0.46666666666666656,0.5333333333333332,0.5999999999999999,0.6666666666666665], "i(v1)": [0.0003333333333333334,0.00030000000000000014,0.0002666666666666667,0.00023333333333333339,0.00020000000000000004,0.00016666666666666674,0.0001333333333333334,0.00010000000000000007,6.666666666666672e-05,3.3333333333333376e-05,4.6259292692714865e-20,-3.333333333333328e-05,-6.666666666666662e-05,-9.999999999999996e-05,-0.00013333333333333329,-0.00016666666666666663,-0.00019999999999999998,-0.00023333333333333333,-0.00026666666666666657,-0.00030000000000000003,-0.00033333333333333327]} },
+  { code: 'C9s', id: 'cur-imprecise-wire', netlist: "* the balanced bridge of C9 with a 1e-12 ohm wire in its middle branch\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nRw a m 1e-12\nR5 m b 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.32056594239515, "v(b)": 4.374128347650329, "v(m)": 4.32056594239515, "i(v1)": -0.001452171416898713, "i(@r1[i])": 0.00046794340576048507, "i(@r2[i])": 0.000432056594239515, "i(@r3[i])": 0.000984228011138228, "i(@r4[i])": 0.0009306656058830487, "i(@rw[i])": 0, "i(@r5[i])": -5.356240525517908e-05} },
+  { code: 'C9s.2', id: 'cur-imprecise-g', netlist: "* a balanced bridge with a 1 n wire, read by a G of 1000\nV1 top1 0 15\nR1 top1 s2 1u\nR2 s2 0 1meg\nR3 s2 a3 2.7meg\nR4 a3 0 3.9k\nR5 s2 b4 2.7meg\nR6 b4 0 3.9k\nR7 a3 m5 1n\nR8 m5 b4 1meg\nG1 0 g6 a3 b4 1e3\nR9 g6 0 1.2k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 15, "v(s2)": 14.999999999973905, "v(a3)": 0.021649312700191603, "v(b4)": 0.021635469421805404, "v(m5)": 0.021649312700191607, "v(g6)": 16.61193406343955, "i(v1)": -2.6093795895576477e-05, "i(@r1[i])": 2.609468197078968e-05, "i(@r2[i])": 1.4999999999973905e-05, "i(@r3[i])": 5.547537291582857e-06, "i(@r4[i])": 5.551105820561949e-06, "i(@r5[i])": 5.5475424187229995e-06, "i(@r6[i])": 5.547556262001386e-06, "i(@r7[i])": -3.4694469519536138e-09, "i(@r8[i])": 1.3843278386202472e-11, "i(@g1[i])": 0.013843278386199004, "i(@r9[i])": 0.013843278386199625} },
+  { code: 'C9n.5', id: 'cur-real-dc-wire-rounded', netlist: "* a 1 n wire in series with 10 meg, from a 1.5 V divider, with .op and .dc V1 0 1.5 0.5\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.options savecurrents\n.op\n.dc V1 0 1.5 0.5\n.end\n", vectors: {"v(v-sweep)": [0.0, 0.5, 1.0, 1.5], "v(top1)": [0.0, 0.5, 1.0, 1.5], "v(d2)": [0.0, 0.001513784765078957, 0.003027569530157914, 0.0045413542952368715], "v(p3)": [0.0, 0.001513784765078957, 0.003027569530157914, 0.0045413542952368715], "i(v1)": [0.0, -1.8462452416108186e-06, -3.6924904832216373e-06, -5.538735724832456e-06], "i(@r1[i])": [0.0, 1.8462452416108186e-06, 3.6924904832216373e-06, 5.538735724832456e-06], "i(@r2[i])": [0.0, 1.846078981803606e-06, 3.692157963607212e-06, 5.538236945410819e-06], "i(@r3[i])": [0.0, 0.0, 0.0, 0.0], "i(@r4[i])": [0.0, 1.513784765078957e-10, 3.027569530157914e-10, 4.5413542952368713e-10]} },
+  { code: 'C9p.6', id: 'cur-noise-tf-gain-h', netlist: "* the H of 1 G reading a balanced bridge's ammeter, with .op and .tf v(out) V1\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\n.op\n.tf v(out) V1\n.end\n", vectors: {"v(top)": 9.0, "v(a)": 8.602941176467256, "v(b)": 8.602941176467258, "v(m)": 8.602941176467258, "v(out)": -1.9350975899792844e-07, "i(h1)": 1.9350975899792844e-10, "i(vm)": -1.9350975899792844e-16, "i(v1)": -2.4264705882556586e-05, "v(Transfer_function)": -2.1500237300155906e-08, "v(v1#Input_impedance)": 370909.0909059788, "v(output_impedance_at_V(out))": 0.0} },
+  { code: 'C9s.3', id: 'cur-imprecise-g-10mv', netlist: "* C9s.2 with R4 and R6 at 1.8k: the bridge at 10 mV, read by a G of 1000 through a 1 n wire\nV1 top1 0 15\nR1 top1 s2 1u\nR2 s2 0 1meg\nR3 s2 a3 2.7meg\nR4 a3 0 1.8k\nR5 s2 b4 2.7meg\nR6 b4 0 1.8k\nR7 a3 m5 1n\nR8 m5 b4 1meg\nG1 0 g6 a3 b4 1e3\nR9 g6 0 1.2k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 15.0, "v(s2)": 14.999999999973896, "v(a3)": 0.009995088299682636, "v(b4)": 0.009993340917990978, "v(m5)": 0.009995088299682636, "v(g6)": 2.0968580299886526, "i(v1)": -2.6103109121322632e-05, "i(@r1[i])": 2.610356375498668e-05, "i(@r2[i])": 1.4999999999973897e-05, "i(@r3[i])": 5.551853670990449e-06, "i(@r4[i])": 5.552826833157019e-06, "i(@r5[i])": 5.551854318168854e-06, "i(@r6[i])": 5.551856065550544e-06, "i(@r7[i])": 0.0, "i(@r8[i])": 1.747381691657307e-12, "i(@g1[i])": 0.001747381691657307, "i(@r9[i])": 0.0017473816916572106} },
+  { code: 'C9s.4', id: 'cur-imprecise-e-12v', netlist: "* a 12 V supply, a 1000:1 divider, the C9 bridge with a 10 p wire, and an E of gain 1000\nV1 top 0 12\nRd1 top s 999k\nRd2 s 0 1k\nR1 s a 10k\nR2 a 0 10k\nR3 s b 4.7k\nR4 b 0 4.7k\nRw a m 10p\nR5 m b 1k\nE1 out 0 a b 1000\nRl out 0 10k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 12.0, "v(s)": 0.010318868972790083, "v(a)": 0.004882133225318444, "v(b)": 0.0049649097211622055, "v(m)": 0.004882133225318445, "v(out)": -0.08277649584376157, "i(e1)": 8.277649584376158e-06, "i(v1)": -1.200168281384105e-05, "i(@rd1[i])": 1.200168281384105e-05, "i(@rd2[i])": 1.0318868972790084e-05, "i(@r1[i])": 5.436735747471639e-07, "i(@r2[i])": 4.882133225318445e-07, "i(@r3[i])": 1.1391402663038038e-06, "i(@r4[i])": 1.0563637704600437e-06, "i(@rw[i])": -8.673617379884035e-08, "i(@r5[i])": -8.27764958437607e-08, "i(@rl[i])": -8.277649584376158e-06} },
+  { code: 'C9s.5', id: 'cur-imprecise-unbalanced', netlist: "* the bridge of C9s made unbalanced (R2 12k): a real current through the 1e-12 ohm wire and R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 12k\nR3 top b 4.7k\nR4 b 0 4.7k\nRw a m 1e-12\nR5 m b 1k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9.0, "v(a)": 4.32056594239515, "v(b)": 4.374128347650329, "v(m)": 4.32056594239515, "i(v1)": -0.001452171416898713, "i(@r1[i])": 0.00046794340576048507, "i(@r2[i])": 0.0003600471618662625, "i(@r3[i])": 0.000984228011138228, "i(@r4[i])": 0.0009306656058830487, "i(@rw[i])": 0.0, "i(@r5[i])": -5.356240525517908e-05} },
+  { code: 'C9t', id: 'cur-diode-e-fed', netlist: "* the C9 bridge read by an E of 1e6, fed 5 mA through 1k from 5 V, with a diode across V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nE1 out 0 a b 1e6\nV2 x 0 5\nRx x out 1k\nD1 0 top dmod\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9.0, "v(a)": 4.499999999999999, "v(b)": 4.5, "v(out)": -9.313225746154785e-10, "v(x)": 5.0, "i(e1)": 0.005000000000931323, "i(v2)": -0.005000000000931323, "i(v1)": -0.0014074468175206383, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 0.005000000000931323, "i(@d1[id])": -9.00999999968093e-12} },
+  { code: 'C9t.2', id: 'cur-diode-quiet', netlist: "* a G reading the balanced bridge of C9 drives 1k, with a diode and 1k beside it\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nG1 0 out a b 1m\nR6 out 0 1k\nD1 out x dmod\nR7 x 0 1k\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9.0, "v(a)": 4.5, "v(b)": 4.500000000000001, "v(out)": -8.881784197001252e-16, "v(x)": -1.231405126604393e-24, "i(v1)": -0.0014074468085106383, "i(@r1[i])": 0.00045000000000000004, "i(@r2[i])": 0.00045000000000000004, "i(@r3[i])": 0.0009574468085106381, "i(@r4[i])": 0.0009574468085106385, "i(@r5[i])": -8.881784197001253e-19, "i(@g1[i])": -8.881784197001253e-19, "i(@r6[i])": -8.881784197001253e-19, "i(@d1[id])": -1.2312373330778934e-27, "i(@r7[i])": -1.231405126604393e-27} },
+  { code: 'C9t.3', id: 'cur-diode-real-femtovolts', netlist: "* a bridge 1e-13 off balance read by an H of 1 meg, with a diode beside it\nV1 top1 0 12\nR1 top1 a2 56\nR2 a2 0 22000\nR3 top1 b3 280\nR4 b3 0 110000.000000011\nR5 a2 m4 6.8k\nV2 m4 b3 0\nH1 h5 0 V2 1meg\nR6 h5 0 47\nD1 top1 d7 dmod\nR8 d7 top1 10\nR9 d7 l9 330\nR10 l9 0 120k\n.model dmod D(is=1e-14)\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 12.0, "v(a2)": 11.969532100108815, "v(b3)": 11.969532100108818, "v(m4)": 11.969532100108816, "v(h5)": -4.3368086899420177e-13, "v(d7)": 11.999002825328251, "v(l9)": 11.966096061160062, "i(h1)": 9.227252531791527e-15, "i(v2)": -4.336808689942018e-19, "i(v1)": -0.0007526010362732122, "i(@r1[i])": 0.0005440696409140244, "i(@r2[i])": 0.000544069640914037, "i(@r3[i])": 0.0001088139281827922, "i(@r4[i])": 0.00010881392818279655, "i(@r5[i])": -2.6122894697062505e-19, "i(@r6[i])": -9.227252531791527e-15, "i(@d1[id])": 1.3902345916013558e-15, "i(@r8[i])": -9.971746717489794e-05, "i(@r9[i])": 9.971746717632979e-05, "i(@r10[i])": 9.971746717633385e-05} },
+  { code: 'C9t.4', id: 'cur-diode-series-resistance', netlist: "* a diode with a 10 ohm series resistance, fed through 1k from 5 V\nV1 1 0 5\nR1 1 2 1k\nD1 2 0 dmod\n.model dmod D(is=1e-14 rs=10)\n.options savecurrents\n.op\n.end\n", vectors: {"v(1)": 5.0, "v(2)": 0.7352825914137034, "i(v1)": -0.004264717408586296, "i(@r1[i])": 0.004264717408586296, "i(@d1[id])": 0.004265322389487809} },
+  { code: 'C9n.6', id: 'cur-real-dc-wire-diode-across', netlist: "* the 1 n wire of C9n.4 in series with 10 meg, with a diode across V1, with .op and .dc V1 0 1.5 0.5\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\nD1 0 top1 dmod\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 1.5 0.5\n.end\n", vectors: {"v(v-sweep)": [0,0.5,1,1.5], "v(top1)": [0,0.5,1,1.5], "v(d2)": [0,0.001513784765078957,0.003027569530157914,0.0045413542952368715], "v(p3)": [0,0.001513784765078957,0.003027569530157914,0.0045413542952368715], "i(v1)": [0,-0.0000018462459349228635,-0.000003692491493221405,-0.000005538737234832387], "i(@r1[i])": [0,0.0000018462452416108186,0.0000036924904832216373,0.000005538735724832456], "i(@r2[i])": [0,0.000001846078981803606,0.000003692157963607212,0.000005538236945410819], "i(@r3[i])": [0,0,0,0], "i(@r4[i])": [0,1.513784765078957e-10,3.027569530157914e-10,4.5413542952368713e-10], "i(@d1[id])": [0,-5.099981391833937e-13,-1.0099997673979242e-12,-1.5099999310808666e-12]} },
+  { code: 'C9r.3', id: 'cur-rule-f-two-readers', netlist: "* an F of 1000 into two loads and an F of 1 into a 0 V ammeter, both reading the ammeter of a balanced bridge, with a .temp line\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\nR7 out 0 1k\nF2 0 y Vm 1\nVx y 0 0\n.temp 27\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(a)": 8.602941176467256, "v(b)": 8.602941176467258, "v(m)": 8.602941176467258, "v(out)": -9.675487949896422e-11, "v(y)": 0, "i(vm)": -1.9350975899792844e-16, "i(vx)": -1.9350975899792844e-16, "i(v1)": -0.000024264705882556586, "i(@r1[i])": 0.0000022058823529596873, "i(@r2[i])": 0.000002205882352940322, "i(@r3[i])": 0.000022058823529596775, "i(@r4[i])": 0.000022058823529403225, "i(@r5[i])": -3.7794826370218095e-16, "i(@f1[i])": -1.9350975899792844e-13, "i(@r6[i])": -9.675487949896422e-14, "i(@r7[i])": -9.675487949896422e-14, "i(@f2[i])": -1.9350975899792844e-16} },
+  { code: 'C9t.5', id: 'cur-diode-dc-tia', netlist: "* the H of 1 G reading a balanced bridge's ammeter, with a diode across V1, with .op and .dc V1 0 9 3\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\nD1 0 top dmod\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 9 3\n.end\n", vectors: {"v(v-sweep)": [0,3,6,9], "v(top)": [0,3,6,9], "v(a)": [0,2.8676470588224197,5.735294117644839,8.602941176467256], "v(b)": [0,2.8676470588224197,5.735294117644839,8.602941176467258], "v(m)": [0,2.8676470588224197,5.735294117644839,8.602941176467258], "v(out)": [0,-6.450325299930948e-8,-1.2900650599861896e-7,-1.9350975899792844e-7], "i(h1)": [0,6.450325299930948e-11,1.2900650599861896e-10,1.9350975899792844e-10], "i(vm)": [0,-6.450325299930948e-17,-1.2900650599861896e-16,-1.9350975899792844e-16], "i(v1)": [0,-0.000008088238304186694,-0.000016176476598370973,-0.00002426471489255658], "i(@r1[i])": [0,7.352941176532241e-7,0.0000014705882353064482,0.0000022058823529596873], "i(@r2[i])": [0,7.352941176467743e-7,0.0000014705882352935485,0.000002205882352940322], "i(@r3[i])": [0,0.0000073529411765322414,0.000014705882353064483,0.000022058823529596775], "i(@r4[i])": [0,0.000007352941176467742,0.000014705882352935485,0.000022058823529403225], "i(@r5[i])": [0,0,0,-3.7794826370218095e-16], "i(@rl[i])": [0,-6.450325299930948e-11,-1.2900650599861896e-10,-1.9350975899792844e-10], "i(@d1[id])": [0,-3.0099999913851085e-12,-6.009999998923139e-12,-9.00999999968093e-12]} },
+  { code: 'C9t.6', id: 'cur-diode-dc-quiet-point', netlist: "* a G reading the balanced bridge of C9 drives R6 and R7, with a diode from x to y, which V2 sets, swept\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nG1 0 out a b 1m\nR6 out x 1k\nR7 x 0 1k\nD1 x y dmod\nV2 y 0 0\n.model dmod d\n.options savecurrents\n.op\n.dc V2 0 2 1\n.end\n", vectors: {"v(v-sweep)": [0,1,2], "v(top)": [9,9,9], "v(a)": [4.5,4.5,4.5], "v(b)": [4.500000000000001,4.500000000000001,4.500000000000001], "v(out)": [-1.7763568394002505e-15,1.3866223724789961e-9,2.0099975017728866e-9], "v(x)": [-8.881784190848286e-16,1.38662323026232e-9,2.009998735343814e-9], "v(y)": [0,1,2], "i(v2)": [-1.2305932679744663e-27,-1.3866240880456443e-12,-2.0099999689147417e-12], "i(v1)": [-0.0014074468085106383,-0.0014074468085106383,-0.0014074468085106383], "i(@r1[i])": [0.00045000000000000004,0.00045000000000000004,0.00045000000000000004], "i(@r2[i])": [0.00045000000000000004,0.00045000000000000004,0.00045000000000000004], "i(@r3[i])": [0.0009574468085106381,0.0009574468085106381,0.0009574468085106381], "i(@r4[i])": [0.0009574468085106385,0.0009574468085106385,0.0009574468085106385], "i(@r5[i])": [-8.881784197001253e-19,-8.881784197001253e-19,-8.881784197001253e-19], "i(@g1[i])": [-8.881784197001253e-19,-8.881784197001253e-19,-8.881784197001253e-19], "i(@r6[i])": [-8.881784203154217e-19,-8.577833239847295e-19,-1.2335709274332335e-18], "i(@r7[i])": [-8.881784190848286e-19,1.3866232302623201e-12,2.009998735343814e-12], "i(@d1[id])": [-1.231237333694002e-27,-1.0099997660113e-12,-2.0099999689147417e-12]} },
+  { code: 'C9t.7', id: 'cur-diode-wire-current', netlist: "* the 1 n wire of C9n.4 in series with 10 meg, from a 1.5 V divider, with a diode from the divider to ground\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\nD1 d2 0 dmod\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 1.5, "v(d2)": 0.004541354295384195, "v(p3)": 0.004541354295384194, "i(v1)": -0.0000055387357248319104, "i(@r1[i])": 0.0000055387357248319104, "i(@r2[i])": 0.000005538236945590481, "i(@r3[i])": 8.673617379884034e-10, "i(@r4[i])": 4.5413542953841937e-10, "i(@d1[id])": 6.460724084056888e-15} },
+  { code: 'C9t.8', id: 'cur-diode-wire-warning', netlist: "* the bridge with a 1e-12 ohm wire (C9s), fed through 100 ohms, with a diode from top to ground\nV1 in 0 9\nR0 in top 100\nD1 top 0 dmod\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nRw a m 1e-12\nR5 m b 1k\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(in)": 9, "v(top)": 0.7691572401059934, "v(a)": 0.3926329591523753, "v(b)": 0.39022867882420265, "v(m)": 0.39263295915237534, "i(v1)": -0.08230842759894007, "i(@r0[i])": 0.08230842759894007, "i(@d1[id])": 0.08219017562144401, "i(@r1[i])": 0.00003765242809536181, "i(@r2[i])": 0.00003926329591523753, "i(@r3[i])": 0.00008062309814506186, "i(@r4[i])": 0.00008302737847323461, "i(@rw[i])": -0.00005551115123125783, "i(@r5[i])": 0.000002404280328172692} },
+  { code: 'C9t.9', id: 'cur-diode-dc-zero-point', netlist: "* two equal diode arms with 1k between them, swept from 0 V: .op and .dc V1 0 9 3\nV1 top 0 9\nD1 top a dmod\nR2 a 0 10k\nD2 top b dmod\nR4 b 0 10k\nR5 a b 1k\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 9 3\n.end\n", vectors: {"v(v-sweep)": [0,3,6,9], "v(top)": [0,3,6,9], "v(a)": [-7.3985058599438795e-25,2.381405664529363,5.356213084449984,8.344256960500747], "v(b)": [-7.39850585636142e-25,2.3814056645293626,5.356213084449984,8.344256960500747], "i(v1)": [1.47970117163053e-28,-0.0004762811329058689,-0.0010712426168900668,-0.0016688513921001569], "i(@d1[id])": [7.39850585994388e-37,0.00024363384418924443,0.0006452722319805792,0.0010244640191150918], "i(@r2[i])": [-7.39850585994388e-29,0.0002381405664529363,0.0005356213084449984,0.0008344256960500747], "i(@d2[id])": [7.3985058563614194e-37,0.00024363384418924874,0.0006452722319805792,0.0010244640191150918], "i(@r4[i])": [-7.398505856361421e-29,0.00023814056645293628,0.0005356213084449984,0.0008344256960500747], "i(@r5[i])": [-3.582459542440043e-37,4.440892098500626e-19,0,0]} },
+  { code: 'C9t.10', id: 'cur-diode-loop-spurious', netlist: "* a bridge whose ammeter an F of 1e9 and an H of 1 meg read, with a diode and 2.2 meg in a loop from top1 (the generated circuit s5-137)\nV1 top1 0 100\nR1 top1 a2 3.3k\nR2 a2 0 12\nR3 top1 b3 330\nR4 b3 0 1.2\nR5 a2 m4 560\nV2 m4 b3 0\nF1 0 o5 V2 1e9\nR6 o5 0 22k\nH1 h6 0 V2 1meg\nR7 h6 0 270k\nV3 b3 v7 0\nV4 v7 v8 0\nV5 v8 v9 0\nV6 v9 v10 0\nR8 v10 0 12\nR9 b3 a11 12\nR10 a11 0 5.6\nR11 b3 b12 12000\nR12 b12 0 5605.6\nR13 a11 m13 1.2k\nR14 m13 m14 100k\nR15 m14 m15 2.2\nR16 m15 m16 22k\nR17 m16 m17 2.2\nR18 m17 m18 220\nR19 m18 m19 8.2k\nR20 m19 b12 22k\nD1 d20 top1 dmod\nR21 d20 top1 2.2meg\nE1 e21 0 b3 0 1\nR22 e21 0 27\n.model dmod D(is=1e-14)\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 100, "v(a2)": 0.3612333515243817, "v(b3)": 0.31039299140572524, "v(m4)": 0.31039299140572524, "v(o5)": 1997299861.804358, "v(h6)": 90.78635735474354, "v(v7)": 0.31039299140572524, "v(v8)": 0.31039299140572524, "v(v9)": 0.31039299140572524, "v(v10)": 0.31039299140572524, "v(a11)": 0.09876140798879642, "v(b12)": 0.09882708871827177, "v(m13)": 0.09876192103799805, "v(m14)": 0.09880467513813368, "v(m15)": 0.09880467607872388, "v(m16)": 0.09881408198065472, "v(m17)": 0.09881408292124493, "v(m18)": 0.09881417698026354, "v(m19)": 0.09881768281641147, "v(d20)": 100.67855799103364, "v(e21)": 0.31039299140572524, "i(v2)": 0.00009078635735474354, "i(h1)": -0.00033624576798053164, "i(e1)": -0.011496036718730564, "i(v6)": 0.02586608261714377, "i(v5)": 0.02586608261714377, "i(v4)": 0.02586608261714377, "i(v3)": 0.02586608261714377, "i(v1)": -0.33228328385891703, "i(@r1[i])": 0.03019356565105322, "i(@r2[i])": 0.03010277929369847, "i(@r3[i])": 0.30208971820786146, "i(@r4[i])": 0.25866082617143765, "i(@r5[i])": 0.00009078635735474365, "i(@f1[i])": 90786.35735474354, "i(@r6[i])": 90786.35735474354, "i(@r7[i])": 0.00033624576798053164, "i(@r8[i])": 0.02586608261714377, "i(@r9[i])": 0.01763596528474407, "i(@r10[i])": 0.01763596571228507, "i(@r11[i])": 0.00001763049189062112, "i(@r12[i])": 0.000017630064349627473, "i(@r13[i])": -4.2754100136368123e-10, "i(@r14[i])": -4.275410013562797e-10, "i(@r15[i])": -4.2754100133950016e-10, "i(@r16[i])": -4.275409968563439e-10, "i(@r17[i])": -4.2754100133950016e-10, "i(@r18[i])": -4.275409937067169e-10, "i(@r19[i])": -4.2754099364994414e-10, "i(@r20[i])": -4.275409936499441e-10, "i(@d1[id])": 0.0024750251429858545, "i(@r21[i])": 3.084354504698374e-7, "i(@r22[i])": 0.011496036718730564} },
+  { code: 'C9t.11', id: 'cur-diode-tf-conductance', netlist: "* the balanced bridge of C9 with a reverse-biased diode from a to top, .op and .tf v(a,b) V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nD1 a top dmod\n.model dmod d\n.op\n.tf v(a,b) V1\n.end\n", vectors: {"v(top)": 9, "v(a)": 4.500000009047006, "v(b)": 4.500000006346407, "i(v1)": -0.0014074468107656381, "v(Transfer_function)": 2.994011705226285e-10, "v(v1#Input_impedance)": 6394.557812906659, "v(output_impedance_at_V(a,b))": 880.2395205995194} },
+  { code: 'C9u', id: 'cur-rest-diode-sweep', netlist: "* the I-V curve of a diode swept from 0 V, its source at 0 V for the .op\nV1 in 0 0\nR1 in a 1k\nD1 a 0 dmod\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 1 0.25\n.end\n", vectors: {"v(v-sweep)": [0, 0.25, 0.5, 0.75, 1], "v(in)": [0, 0.25, 0.5, 0.75, 1], "v(a)": [7.323378444748195e-29, 0.24999984210234252, 0.4977237724822676, 0.6051466622248889, 0.6296706738025182], "i(v1)": [7.323378444748195e-32, -1.578976574598441e-10, -2.276227517732359e-06, -0.00014485333777511107, -0.00037032932619748187], "i(@r1[i])": [-7.323378444748195e-32, 1.5789765747675767e-10, 2.2762275177323765e-06, 0.00014485333777511112, 0.0003703293261974818], "i(@d1[id])": [7.323378444748195e-41, 1.5789765748689402e-10, 2.276227641451018e-06, 0.00014485699554772006, 0.0003738685935656918]} },
+  { code: 'C9u.2', id: 'cur-floor-open-loop-e', netlist: "* the bridge of C9s.4 (a 10 pOhm wire at 5 mV beside 12 V) beside an open-loop E of 100k reading the supply\nV1 top 0 12\nRd1 top s 999k\nRd2 s 0 1k\nR1 s a 10k\nR2 a 0 10k\nR3 s b 4.7k\nR4 b 0 4.7k\nRw a m 10p\nR5 m b 1k\nE1 out 0 top 0 100k\nRl out 0 10k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 12, "v(s)": 0.010318868972790083, "v(a)": 0.004882133225318445, "v(b)": 0.0049649097211622055, "v(m)": 0.004882133225318445, "v(out)": 1200000, "i(e1)": -120, "i(v1)": -1.200168281384105e-05, "i(@rd1[i])": 1.200168281384105e-05, "i(@rd2[i])": 1.0318868972790084e-05, "i(@r1[i])": 5.436735747471639e-07, "i(@r2[i])": 4.882133225318445e-07, "i(@r3[i])": 1.1391402663038038e-06, "i(@r4[i])": 1.0563637704600437e-06, "i(@rw[i])": 0, "i(@r5[i])": -8.27764958437607e-08, "i(@rl[i])": 120} },
+  { code: 'C9u.3', id: 'cur-diodes-alike', netlist: "* two equal diode arms, a link between their middle nodes, read by an ammeter\nV1 top 0 9\nR0 top t 100\nD1 t a dmod\nR1 a c 1k\nR2 c 0 2.2k\nD2 t b dmod\nR3 b d 1k\nR4 d 0 2.2k\nR5 c m 4.7k\nVm m d 0\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9, "v(t)": 8.51049266859241, "v(a)": 7.83211730252121, "v(c)": 5.384580645483332, "v(b)": 7.832117302521211, "v(d)": 5.384580645483333, "v(m)": 5.384580645483333, "i(vm)": -2.168404344971009e-19, "i(v1)": -0.004895073314075904, "i(@r0[i])": 0.004895073314075908, "i(@d1[id])": 0.002457611230743598, "i(@r1[i])": 0.002447536657037878, "i(@r2[i])": 0.0024475366570378783, "i(@d2[id])": 0.0024576112307435195, "i(@r3[i])": 0.002447536657037878, "i(@r4[i])": 0.0024475366570378787, "i(@r5[i])": -1.8897413185109047e-19} },
+  { code: 'C9u.4', id: 'cur-temp-sweep-exact', netlist: "* the C9 bridge, .op and a temperature sweep\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.dc TEMP 0 50 25\n.end\n", vectors: {"temp-sweep": [0, 25, 50], "v(top)": [9, 9, 9], "v(a)": [4.499999999999999, 4.499999999999999, 4.499999999999999], "v(b)": [4.5, 4.5, 4.5], "i(v1)": [-0.0014074468085106386, -0.0014074468085106386, -0.0014074468085106386], "i(@r1[i])": [0.0004500000000000001, 0.0004500000000000001, 0.0004500000000000001], "i(@r2[i])": [0.00044999999999999993, 0.00044999999999999993, 0.00044999999999999993], "i(@r3[i])": [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], "i(@r4[i])": [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], "i(@r5[i])": [-8.881784197001253e-19, -8.881784197001253e-19, -8.881784197001253e-19]} },
+  { code: 'C9u.5', id: 'cur-r-sweep-rule', netlist: "* the C9 bridge, .op and a sweep of R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.dc R5 1k 2k 500\n.end\n", vectors: {"res-sweep": [1000, 1500, 2000], "v(top)": [9, 9, 9], "v(a)": [4.499999999999999, 4.499999999999999, 4.499999999999999], "v(b)": [4.5, 4.5, 4.5], "i(v1)": [-0.0014074468085106386, -0.0014074468085106386, -0.0014074468085106386], "i(@r1[i])": [0.0004500000000000001, 0.0004500000000000001, 0.0004500000000000001], "i(@r2[i])": [0.00044999999999999993, 0.00044999999999999993, 0.00044999999999999993], "i(@r3[i])": [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], "i(@r4[i])": [0.0009574468085106382, 0.0009574468085106382, 0.0009574468085106382], "i(@r5[i])": [-8.881784197001253e-19, -5.921189464667501e-19, -4.440892098500626e-19]} },
+  { code: 'C9u.6', id: 'cur-lost-only-exact', netlist: "* a 1.5 V source, 47 ohms and a current source written 1A (1 attoamp) in one loop\nV1 top1 0 1.5\nR1 top1 i2 47\nI1 0 i2 1A\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 1.5, "v(i2)": 1.5, "i(v1)": 0, "i(@r1[i])": 0, "i(@i1[current])": 1e-18} },
+  { code: 'C9u.7', id: 'cur-diode-warning-known', netlist: "* a bridge with a 1 nOhm wire read by a G of 1 mS, and a diode with 5.6 ohms from a2 to ground\nV1 top1 0 9\nR1 top1 a2 4.7meg\nR2 a2 0 33k\nR3 top1 b3 4.7meg\nR4 b3 0 33k\nR5 a2 m4 1n\nR6 m4 b3 100meg\nR7 top1 s5 1k\nR8 s5 0 1e15\nG1 0 g6 a2 b3 1m\nR9 g6 0 3.3\nD1 a2 d7 dmod\nR10 d7 0 5.6\n.model dmod D(is=1e-14)\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 9, "v(a2)": 0.06301395023536004, "v(b3)": 0.06275098412432668, "v(m4)": 0.06301395023536004, "v(s5)": 8.999999999991001, "v(g6)": 8.677881664100572e-07, "v(d7)": 9.369770927092972e-13, "i(v1)": -3.8030287463696474e-06, "i(@r1[i])": 1.9014863935669448e-06, "i(@r2[i])": 1.9095136434957588e-06, "i(@r3[i])": 1.9015423438033348e-06, "i(@r4[i])": 1.901544973464445e-06, "i(@r5[i])": 0, "i(@r6[i])": 2.6296611103335257e-12, "i(@r7[i])": 8.999023748401669e-15, "i(@r8[i])": 8.999999999991002e-15, "i(@g1[i])": 2.6296611103335256e-07, "i(@r9[i])": 2.629661110333506e-07, "i(@d1[id])": 1.6731733798380313e-13, "i(@r10[i])": 1.6731733798380306e-13} },
+  { code: 'C9u.8', id: 'cur-probe-wire-ladder', netlist: "* a 20-section ladder of 27k and 270, read at n8 by a 1e14 ohm meter through a 1 nOhm wire\nV1 top1 0 5\nR1 top1 n2 27k\nR2 n2 0 270\nR3 n2 n3 27k\nR4 n3 0 270\nR5 n3 n4 27k\nR6 n4 0 270\nR7 n4 n5 27k\nR8 n5 0 270\nR9 n5 n6 27k\nR10 n6 0 270\nR11 n6 n7 27k\nR12 n7 0 270\nR13 n7 n8 27k\nR14 n8 0 270\nR15 n8 n9 27k\nR16 n9 0 270\nR17 n9 n10 27k\nR18 n10 0 270\nR19 n10 n11 27k\nR20 n11 0 270\nR21 n11 n12 27k\nR22 n12 0 270\nR23 n12 n13 27k\nR24 n13 0 270\nR25 n13 n14 27k\nR26 n14 0 270\nR27 n14 n15 27k\nR28 n15 0 270\nR29 n15 n16 27k\nR30 n16 0 270\nR31 n16 n17 27k\nR32 n17 0 270\nR33 n17 n18 27k\nR34 n18 0 270\nR35 n18 n19 27k\nR36 n19 0 270\nR37 n19 n20 27k\nR38 n20 0 270\nR39 n20 n21 27k\nR40 n21 0 270\nR41 n8 p22 1n\nR42 p22 0 1e14\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 5, "v(n2)": 0.04902432036075849, "v(n3)": 0.0004806767973668559, "v(n4)": 4.712970660819228e-06, "v(n5)": 4.621003670537149e-08, "v(n6)": 4.5308312866507694e-10, "v(n7)": 4.442418466369907e-12, "v(n8)": 4.355490465360492e-14, "v(n9)": 4.2704991980412374e-16, "v(n10)": 4.187166415702717e-18, "v(n11)": 4.105459755344378e-20, "v(n12)": 4.0253474854840795e-22, "v(n13)": 3.946798493834904e-24, "v(n14)": 3.869782275222429e-26, "v(n15)": 3.7942689197377853e-28, "v(n16)": 3.7202291011218854e-30, "v(n17)": 3.6476340653763185e-32, "v(n18)": 3.576455619596522e-34, "v(n19)": 3.50666612134043e-36, "v(n20)": 3.4382417071680744e-38, "v(n21)": 3.4041997100674006e-40, "v(p22)": 4.355490465360491e-14, "i(v1)": -0.0001833694696162682, "i(@r1[i])": 0.0001833694696162682, "i(@r2[i])": 0.00018157155689169812, "i(@r3[i])": 1.7979127245700606e-06, "i(@r4[i])": 1.780284434692059e-06, "i(@r5[i])": 1.762828987800136e-08, "i(@r6[i])": 1.7455446891923066e-08, "i(@r7[i])": 1.7284298607829096e-10, "i(@r8[i])": 1.7114828409396848e-10, "i(@r9[i])": 1.6947019843224596e-12, "i(@r10[i])": 1.6780856617225073e-12, "i(@r11[i])": 1.6616322599952112e-14, "i(@r12[i])": 1.6453401727295952e-14, "i(@r13[i])": 1.6292087265615931e-16, "i(@r14[i])": 1.6131446168001822e-16, "i(@r15[i])": 1.5973279531037331e-18, "i(@r16[i])": 1.5816663696449028e-18, "i(@r17[i])": 1.5661583458830407e-20, "i(@r18[i])": 1.5508023761861914e-20, "i(@r19[i])": 1.535596969684916e-22, "i(@r20[i])": 1.5205406501275474e-22, "i(@r21[i])": 1.5056319557368655e-24, "i(@r22[i])": 1.4908694390681776e-24, "i(@r23[i])": 1.476251666868789e-26, "i(@r24[i])": 1.4617772199388533e-26, "i(@r25[i])": 1.447444692993585e-28, "i(@r26[i])": 1.4332526945268256e-28, "i(@r27[i])": 1.4191998466759448e-30, "i(@r28[i])": 1.4052847850880687e-30, "i(@r29[i])": 1.3915061587876173e-32, "i(@r30[i])": 1.3778626300451428e-32, "i(@r31[i])": 1.3643528742474527e-34, "i(@r32[i])": 1.3509755797690069e-34, "i(@r33[i])": 1.3377294478445753e-36, "i(@r34[i])": 1.3246131924431563e-36, "i(@r35[i])": 1.3116255401418954e-38, "i(@r36[i])": 1.2987652301260852e-38, "i(@r37[i])": 1.2860310015810181e-40, "i(@r38[i])": 1.2734228545066943e-40, "i(@r39[i])": 1.2608147074323703e-42, "i(@r40[i])": 1.2608147074323707e-42, "i(@r41[i])": 6.310887241768094e-21, "i(@r42[i])": 4.355490465360491e-28} },
+  { code: 'C9v', id: 'cur-carried-moved', netlist: "* the bridge of C9s.4 beside an open-loop comparator: an E of 100k reading a 12 V reference, pulled up by 10k to the bridge supply\nV1 top 0 12\nRd1 top s 999k\nRd2 s 0 1k\nR1 s a 10k\nR2 a 0 10k\nR3 s b 4.7k\nR4 b 0 4.7k\nRw a m 10p\nR5 m b 1k\nV2 x 0 12\nE1 out 0 x 0 100k\nRp top out 10k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 12, "v(s)": 0.01033421695321993, "v(a)": 0.0049610739788227285, "v(b)": 0.005022576813983098, "v(m)": 0.0049610739788227285, "v(x)": 12, "v(out)": 1200000, "i(e1)": -119.9988, "i(v2)": 0, "i(v1)": 119.99878799833255, "i(@rd1[i])": 0.000012001667450497277, "i(@rd2[i])": 0.00001033421695321993, "i(@r1[i])": 5.373142974397202e-7, "i(@r2[i])": 4.961073978822728e-7, "i(@r3[i])": 0.000001130136199837624, "i(@r4[i])": 0.0000010686333646772549, "i(@rw[i])": 0, "i(@r5[i])": -6.150283516036942e-8, "i(@rp[i])": -119.9988} },
+  { code: 'C9v.2', id: 'cur-isweep-diode', netlist: "* the I-V curve of a diode fed by a current source swept from 0, its source at 0 for the .op\nI1 0 a 0\nD1 a 0 dmod\nR1 a 0 1k\n.model dmod d\n.options savecurrents\n.op\n.dc I1 0 1m 0.25m\n.end\n", vectors: {"i(i-sweep)": [0, 0.00025, 0.0005, 0.00075, 0.001], "v(a)": [7.323378444748195e-29, 0.24999999965334396, 0.49773230174399913, 0.6053289558374666, 0.6296832256158842], "i(@i1[current])": [0, 0.00025, 0.0005, 0.00075, 0.001], "i(@d1[id])": [7.323378444748195e-41, 1.5789861798765783e-10, 0.0000022769783780108205, 0.00014588154085181518, 0.0003740500697960956], "i(@r1[i])": [7.323378444748195e-32, 0.000249999999653344, 0.0004977323017439991, 0.0006053289558374666, 0.0006296832256158842]} },
+  { code: 'C9v.3', id: 'cur-page-digits', netlist: "* two equal arms of three resistors and a link (C9m), fed through a 30 nOhm wire\nV1 n0 0 9\nRs n0 n1 30n\nR1 n1 n2 15k\nR2 n2 n3 330\nR3 n3 0 33k\nR4 n1 n4 15k\nR5 n4 n5 330\nR6 n5 0 33k\nR7 n3 n5 100k\n.options savecurrents\n.op\n.end\n", vectors: {"v(n0)": 9, "v(n1)": 8.999999999988827, "v(n2)": 6.206703910606817, "v(n3)": 6.145251396640413, "v(n4)": 6.206703910606823, "v(n5)": 6.145251396640419, "i(v1)": -0.0003724098205566406, "i(@rs[i])": 0.0003724428173275858, "i(@r1[i])": 0.00018621973929213402, "i(@r2[i])": 0.00018621973929213248, "i(@r3[i])": 0.00018621973929213372, "i(@r4[i])": 0.0001862197392921336, "i(@r5[i])": 0.00018621973929213248, "i(@r6[i])": 0.0001862197392921339, "i(@r7[i])": -6.217248937900877e-20} },
+  { code: 'C9v.4', id: 'cur-one-voltage-drawn-apart', netlist: "* a balanced bridge with a 1 nOhm wire in its middle branch\nV1 top1 0 24\nR1 top1 a2 100k\nR2 a2 0 270\nR3 top1 b3 10k\nR4 b3 0 27\nR5 a2 m4 1n\nR6 m4 b3 2.7k\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 24, "v(a2)": 0.06462493801314731, "v(b3)": 0.06462550546077958, "v(m4)": 0.06462493801314731, "i(v1)": -0.0026328912000737905, "i(@r1[i])": 0.00023935375061986855, "i(@r2[i])": 0.00023935162227091598, "i(@r3[i])": 0.0023935374494539223, "i(@r4[i])": 0.0023935372392881325, "i(@r5[i])": 0, "i(@r6[i])": -2.1016578973016892e-10} },
+  { code: 'C9v.5', id: 'cur-rounding-boundary', netlist: "* a balanced bridge whose middle nodes are at exactly 343.75 mV\nV1 top1 0 0.5\nR1 top1 a2 150\nR2 a2 0 330\nR3 top1 b3 15\nR4 b3 0 33\nR5 a2 m4 27\nR6 m4 m5 6.8k\nR7 m5 b3 820\n.options savecurrents\n.op\n.end\n", vectors: {"v(top1)": 0.5, "v(a2)": 0.3437499999999999, "v(b3)": 0.34375, "v(m4)": 0.34374999999999983, "v(m5)": 0.34375, "i(v1)": -0.011458333333333336, "i(@r1[i])": 0.0010416666666666675, "i(@r2[i])": 0.0010416666666666664, "i(@r3[i])": 0.010416666666666666, "i(@r4[i])": 0.010416666666666668, "i(@r5[i])": 2.05596856412066e-18, "i(@r6[i])": -2.4490213778496098e-20, "i(@r7[i])": 0} },
+  { code: 'C9v.6', id: 'cur-rest-idle-source', netlist: "* a diode at rest, its source at 0 V, beside a 5 V source charging only a capacitor\nV1 in 0 0\nR1 in a 1k\nD1 a 0 dmod\nV2 x 0 5\nC1 x 0 1u\n.model dmod d\n.options savecurrents\n.op\n.end\n", vectors: {"v(in)": 0, "v(a)": 7.323378444748195e-29, "v(x)": 5, "i(v2)": 0, "i(v1)": 7.323378444748195e-32, "i(@r1[i])": -7.323378444748195e-32, "i(@d1[id])": 7.323378444748195e-41, "i(@c1[i])": 0} },
+  { code: 'C9v.7', id: 'cur-op-r-sweep', netlist: "* two equal arms of three resistors and a link (C9m), .op and a sweep of R1\nV1 n1 0 9\nR1 n1 n2 15k\nR2 n2 n3 330\nR3 n3 0 33k\nR4 n1 n4 15k\nR5 n4 n5 330\nR6 n5 0 33k\nR7 n3 n5 100k\n.options savecurrents\n.op\n.dc R1 10k 20k 5k\n.end\n", vectors: {"res-sweep": [10000, 15000, 20000], "v(n1)": [9, 9, 9], "v(n2)": [6.877278362577043, 6.206703910614529, 5.6827369940333], "v(n3)": [6.807228548542084, 6.145251396648049, 5.62800215443485], "v(n4)": [6.268079719104217, 6.2067039106145225, 6.158746680760464], "v(n5)": [6.207977472924511, 6.145251396648042, 6.096239107737195], "i(v1)": [-0.0003944001824686815, -0.00037243947858473, -0.00035528003824763724], "i(@r1[i])": [0.00021227216374229574, 0.00018621973929236477, 0.00016586315029833498], "i(@r2[i])": [0.00021227216374229872, 0.00018621973929236395, 0.00016586315029833382], "i(@r3[i])": [0.00020627965298612374, 0.00018621973929236512, 0.00017054551983135908], "i(@r4[i])": [0.00018212801872638553, 0.00018621973929236517, 0.00018941688794930241], "i(@r5[i])": [0.00018212801872638333, 0.00018621973929236395, 0.00018941688794929979], "i(@r6[i])": [0.00018812052948256094, 0.00018621973929236493, 0.00018473451841627864], "i(@r7[i])": [0.000005992510756175733, 6.217248937900877e-20, -0.000004682369533023447]} },
+  { code: 'C9v.8', id: 'cur-op-2src-sweep', netlist: "* the C9 bridge, .op and a sweep of two sources\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nV2 x 0 1\nR6 x 0 1k\n.options savecurrents\n.op\n.dc V1 0 9 9 V2 0 1 1\n.end\n", vectors: {"v(v-sweep)": [0, 9, 0, 9], "v(top)": [0, 9, 0, 9], "v(a)": [0, 4.499999999999999, 0, 4.499999999999999], "v(b)": [0, 4.5, 0, 4.5], "v(x)": [0, 0, 1, 1], "i(v2)": [0, 0, -0.001, -0.001], "i(v1)": [0, -0.0014074468085106386, 0, -0.0014074468085106386], "i(@r1[i])": [0, 0.0004500000000000001, 0, 0.0004500000000000001], "i(@r2[i])": [0, 0.00044999999999999993, 0, 0.00044999999999999993], "i(@r3[i])": [0, 0.0009574468085106382, 0, 0.0009574468085106382], "i(@r4[i])": [0, 0.0009574468085106382, 0, 0.0009574468085106382], "i(@r5[i])": [0, -8.881784197001253e-19, 0, -8.881784197001253e-19], "i(@r6[i])": [0, 0, 0.001, 0.001]} },
   { code: 'M1', id: 'msg-no-ground', netlist: "* no ground\nV1 a b 6\nR1 a b 2\n.op\n.end\n", vectors: { "v(a)": 9.00033307426206, "v(b)": 3.0003330742710626, "i(v1)": -2.9999999999924993 }, prints: ["singular matrix:  check node b","Transient op started"], codes: ["singular-matrix","gmin-stepping-failed","source-stepping-failed","transient-op-fallback"], unreliable: true },
   { code: 'M2', id: 'msg-cap-node', netlist: "* T15b: a node connected only to capacitors, with a resistor elsewhere\nV1 a 0 6\nR1 a c 1k\nC1 c b 1u\nC2 b 0 2u\nR2 c 0 1k\n.op\n.end\n", vectors: { "v(a)": 5.9999999999939995, "v(c)": 0.08866339997380636, "v(b)": 0.029554466657885997, "i(v1)": -0.005911336600014282 }, prints: ["singular matrix:  check node b"], codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
   { code: 'M2b', id: 'msg-isource-cap', netlist: "* T05a: a current source in series with a capacitor\nI1 0 a 1m\nC1 a b 1u\nR1 b 0 1k\n.op\n.end\n", vectors: { "v(a)": 1.0099999979842442, "v(b)": 0.9999999979942681 }, codes: ["singular-matrix","transient-op-fallback"], unreliable: true },
@@ -869,9 +924,9 @@ describe('after the final reviews (12 November 2026): rounding noise is 0 A (stu
     const note = d.words.warnings.find((m) => m.code === 'rounding-noise')!;
     expect(note).toMatchObject({ severity: 'note', title: "R5's current is shown as 0 A", line: 7 });
     expect(note.why).toContain('ngspice gave R5 -8.881784e-19 A.');
-    // The why: the circuit makes the current 0, and ngspice's number is below its tolerance.
+    // The why: the circuit makes the current 0, as its exact solution shows (decision 0015).
     expect(plain(note.why)).toContain('the two ends of R5, node a and node b, are at the same voltage, 4.5 V.');
-    expect(note.why).toContain("below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.");
+    expect(note.why).toContain("Solved exactly, with fractions, from the netlist's values, the circuit makes it exactly 0, so PlainSpice shows 0 A.");
     // The other currents are real and keep their words; a note is no problem for the summary.
     expect(plain(currentText(d, 'R1'))).toBe('450 µA from node top to node a through R1');
     expect(d.words.summary).not.toMatch(/warning/);
@@ -939,7 +994,7 @@ describe('after the final reviews (12 November 2026): rounding noise is 0 A (stu
     for (const code of ['C9h', 'C9i', 'C9j', 'C9l']) exactly(code);
   });
 
-  it('C9h-C9j: a tiny real current flows on through the parts in series and side by side: shown as ngspice gives it, with no note (critic of round 2)', () => {
+  it('C9h-C9j: a tiny real current flows on through the parts in series and side by side: shown as ngspice gives it, with no rounding-noise note, and the warning that ngspice\'s answers are off (critic of round 2, critic of round 3)', () => {
     const cases: [string, string, number][] = [
       ['C9h', 'R1', -1.7763568394002505e-18],
       ['C9h', 'V1', 1.734723475976807e-18],
@@ -954,6 +1009,12 @@ describe('after the final reviews (12 November 2026): rounding noise is 0 A (stu
       expect(d.words.currents.find((c) => c.name === name)!.value, `${code} ${name}`).toBe(value);
       expect(d.words.warnings.some((m) => m.code === 'rounding-noise'), code).toBe(false);
     }
+    // The messages they show, exactly (the critic of round 3: the warning they carry since round 2 was recorded nowhere).
+    const why = (list: string): string => `Solved exactly, with fractions, from the netlist's values, ${list}. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.`;
+    const messages = (code: string): string[] => ofFact(code).words.warnings.map((m) => `${m.code}: ${plain(m.title)}: ${plain(m.why)}`);
+    expect(messages('C9h')).toEqual([`imprecise-answers: Some of ngspice's answers here are off: ${why('V1 carries 2 aA, where ngspice gives 1.735 aA; and R1 carries 2 aA, where ngspice gives 1.776 aA')}`]);
+    expect(messages('C9i')).toEqual([`imprecise-answers: Some of ngspice's answers here are off: ${why('V1 carries 120 fA, where ngspice gives 120.1 fA; and R1 carries 120 fA, where ngspice gives 120.1 fA')}`]);
+    expect(messages('C9j')).toEqual([`imprecise-answers: Some of ngspice's answers here are off: ${why('R1 carries 1 aA, where ngspice gives 1.776 aA; R2 carries 1 aA, where ngspice gives 1.776 aA; and V1 carries 2 aA, where ngspice gives 3.469 aA')}`]);
     // The critic saw "2 aA, delivers 24 aW" next to R1 "0 A" and V1 "0 A". Now R1 and V1 carry I1's current, to within ngspice's rounding.
     expect(plain(currentText(ofFact('C9h'), 'R1'))).toBe('1.776 aA from node b to node a through R1');
     expect(plain(powerText(ofFact('C9h'), 'V1'))).toBe('V1 absorbs 20.82 aW');
@@ -1004,5 +1065,347 @@ describe('after the final reviews (12 November 2026): rounding noise is 0 A (stu
       ['R1', 3.0000000000000002e-18, undefined],
     ]);
     expect(d.words.warnings.some((m) => m.code === 'rounding-noise')).toBe(false);
+  });
+});
+
+describe('after the re-check of 12 November 2026: what the circuit makes exactly 0 is 0, and nothing else (C9m-C9r; decision 0015)', () => {
+  /** Exactly, bit for bit, as in the block above. */
+  const exactly = (code: string): void => {
+    const f = fact(code);
+    const r = runs.get(f.id)!;
+    for (const [name, want] of Object.entries(f.vectors ?? {})) expect(vectorValues(r.plots, name), `${code} ${name}`).toEqual(Array.isArray(want) ? want : [want]);
+  };
+  /** The parts and nodes said as 0 because ngspice gave rounding noise of a 0. */
+  const noise = (d: Described): string[] => [...d.words.currents.filter((c) => c.noise !== undefined).map((c) => c.name), ...d.words.nodes.filter((n) => n.noise !== undefined).map((n) => `node ${n.node}`)];
+  const note = (d: Described): string => plain(d.words.warnings.find((m) => m.code === 'rounding-noise')?.why) ?? '';
+  const lostNote = (d: Described): string => plain(d.words.warnings.find((m) => m.code === 'rounded-to-0')?.why) ?? '';
+  /** The warning that ngspice's answers are off (opCheck 'imprecise'). */
+  const offNote = (d: Described): string => plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')?.why) ?? '';
+  const node = (d: Described, name: string): string | undefined => plain(d.words.nodes.find((n) => n.node === name)?.text);
+
+  it('C9m-C9v.8: our engine gives these values as native ngspice 47 does, to the last bit', () => {
+    for (const code of ['C9m', 'C9m.2', 'C9n', 'C9n.2', 'C9n.3', 'C9n.4', 'C9n.5', 'C9o', 'C9o.2', 'C9o.3', 'C9o.4', 'C9o.5', 'C9p', 'C9p.2', 'C9p.3', 'C9p.4', 'C9p.5', 'C9p.6', 'C9q', 'C9r', 'C9r.2', 'C9s', 'C9s.2', 'C9s.3', 'C9s.4', 'C9s.5', 'C9t', 'C9t.2', 'C9t.3', 'C9t.4', 'C9n.6', 'C9r.3', 'C9t.5', 'C9t.6', 'C9t.7', 'C9t.8', 'C9t.9', 'C9t.10', 'C9t.11', 'C9u', 'C9u.2', 'C9u.3', 'C9u.4', 'C9u.5', 'C9u.6', 'C9u.7', 'C9u.8', 'C9v', 'C9v.2', 'C9v.3', 'C9v.4', 'C9v.5', 'C9v.6', 'C9v.7', 'C9v.8']) exactly(code);
+  });
+
+  it('C9m: two equal arms and a link: the link carries 0 A, though ngspice leaves its ends 7 and 9 steps of a double apart (spice S1)', () => {
+    for (const [code, given] of [['C9m', 6.217248937900877e-20], ['C9m.2', -4.8446095620006835e-18]] as const) {
+      const d = ofFact(code);
+      expect(noise(d), code).toEqual(['R7']);
+      expect(d.words.currents.find((c) => c.name === 'R7'), code).toMatchObject({ value: 0, noise: given, text: 'no current through R7' });
+      expect(note(d), code).toContain('the two ends of R7, node n3 and node n5, are at the same voltage');
+    }
+  });
+
+  it('C9n: a real voltage below 1 µV and the currents beside it are shown as ngspice gives them, with no noise note (noise N1); the wire\'s current ngspice gives as exactly 0 is the exact one, never "no current" (the critic of the re-check\'s fixes)', () => {
+    const ladder = ofFact('C9n');
+    expect(noise(ladder)).toEqual([]);
+    expect([node(ladder, 'n3'), node(ladder, 'p'), node(ladder, 'n4')]).toEqual(['732.4 nV', '732.4 nV', '5.813 nV']);
+    expect(plain(currentText(ladder, 'R6'))).toBe('61.04 nA from node n3 to ground through R6');
+    expect(plain(currentText(ladder, 'Rvm'))).toBe('7.324e-19 A from node p to ground through Rvm');
+    expect(note(ladder)).toBe('');
+    expect(plain(currentText(ladder, 'Rw'))).toBe('7.324e-19 A from node n3 to node p through Rw');
+    expect(ladder.words.currents.find((c) => c.name === 'Rw')!.given).toBe(0);
+    expect(lostNote(ladder)).toContain('ngspice gave Rw exactly 0 A.');
+    const divider = ofFact('C9n.2');
+    expect([noise(divider), node(divider, 'mid'), node(divider, 'p'), plain(currentText(divider, 'Rp'))]).toEqual([[], '240 nV', '240 nV', '2.4e-27 A from node mid to node p through Rp']);
+    const source = ofFact('C9n.3');
+    expect([noise(source), node(source, 'top'), plain(currentText(source, 'R3')), plain(currentText(source, 'R1'))]).toEqual([[], '1 nV', '37.04 fA from node v to ground through R3', '1e-29 A from node top to node s through R1']);
+  });
+
+  it('C9n.4: a 1 nΩ wire in series with 10 MΩ carries 454.1 pA, which ngspice gives as exactly 0: PlainSpice shows the exact 454.1 pA, as R4 in series, with a note, never "no current"', () => {
+    const d = ofFact('C9n.4');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect(plain(currentText(d, 'R3'))).toBe('454.1 pA from node d2 to node p3 through R3');
+    expect(plain(currentText(d, 'R4'))).toBe('454.1 pA from node p3 to ground through R4');
+    expect(d.words.currents.find((c) => c.name === 'R3')).toMatchObject({ given: 0, across: 4.541390789483498e-19 });
+    expect(note(d)).toBe('');
+    expect(lostNote(d)).toBe(
+      "ngspice gave R3 exactly 0 A. But a current flows through R3: the 4.541e-19 V across it is too small beside the 4.541 mV at its ends, node d2 and node p3, for ngspice's arithmetic (about 16 significant digits), so both ends come out as the same number. Solved exactly, with fractions, from the netlist's values, R3 carries 454.1 pA, so PlainSpice shows 454.1 pA.",
+    );
+  });
+
+  it('C9o: noise of a 0 that a gain of 1e9 lifts to 193.5 pA is 0, with every part it drives; a real 5 mA at 0 V is kept, with no power (noise N2)', () => {
+    const h = ofFact('C9o');
+    expect(noise(h)).toEqual(['R5', 'Vm', 'H1', 'Rl', 'node out']);
+    expect(note(h)).toContain('Rl -1.935098e-10 A and node out -1.935098e-07 V.');
+    expect(note(h)).not.toContain('below 1 pA');
+    expect(noise(ofFact('C9o.2'))).toEqual(['R5', 'E1', 'Rl', 'node out']);
+    const fed = ofFact('C9o.3');
+    expect(noise(fed)).toEqual(['R5', 'node out']);
+    const e1 = fed.words.currents.find((c) => c.name === 'E1')!;
+    expect([e1.value, e1.power]).toEqual([0.005000000000931323, undefined]);
+  });
+
+  it('C9p: the .tf ratio and the .dc points of the balanced bridge are 0, with ngspice\'s numbers in the note; a real 1e-18 V/V is kept (spice S8)', () => {
+    expect(ofFact('C9p').words.tf!.transferFunction).toMatchObject({ value: 0, noise: -5.551115123125783e-17, text: 'v(a,b)/V1 = 0 (V/V)' });
+    expect(ofFact('C9p.2').words.tf!.transferFunction).toMatchObject({ value: 0, noise: -2.710505431213761e-20 });
+    const dc = ofFact('C9p.3');
+    expect(dc.words.sweeps[0]!.final.find((f) => f.name === 'i(vm)')).toMatchObject({ value: 0, noise: -2.168404344971009e-19 });
+    expect(Array.from(shownSweep(dc.netlist, dc.results)!.series.find((s) => s.name === 'i(vm)')!.values)).toEqual([0, 0, 0, 0]);
+    expect(note(dc)).toContain('ngspice gave i(vm) -5.421011e-20 A at V1 = 3 V');
+    const tiny = ofFact('C9p.4').words.tf!.transferFunction!;
+    expect([tiny.value, tiny.noise]).toEqual([9.999999999999999e-19, undefined]);
+  });
+
+  it('C9q: the bridge fed by 2 aA: R5 is 0 A, the source and the arms keep their attoamps (noise N3)', () => {
+    const d = ofFact('C9q');
+    expect(noise(d)).toEqual(['R5']);
+    expect(d.words.currents.find((c) => c.name === 'R5')!.noise).toBe(-7.888609052210118e-34);
+    expect(plain(currentText(d, 'I1'))).toBe('2 aA from ground to node top through I1');
+  });
+
+  it('C9r: an F or a G that copies or reads a 0 into two loads side by side: every load is 0 A and node out 0 V (spice S3)', () => {
+    expect(noise(ofFact('C9r'))).toEqual(['Vm', 'F1', 'R6', 'R7', 'node out']);
+    expect(noise(ofFact('C9r.2'))).toEqual(['R5', 'G1', 'R6', 'R7', 'node out']);
+    for (const code of ['C9r', 'C9r.2']) expect(roundingNoise(ofFact(code).netlist, ofFact(code).results).by, code).toBe('exact');
+  });
+
+  it('C9o.4: with a diode, whose current the exact solution leaves free, the H of 1 GΩ still makes exactly 0: out is 0 V and Rl carries 0 A, whatever current the diode carries (the critic of round 2)', () => {
+    const d = ofFact('C9o.4');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect(noise(d)).toEqual(['R5', 'Vm', 'H1', 'Rl', 'node out']);
+    expect([node(d, 'out'), plain(currentText(d, 'Rl'))]).toEqual(['0 V', 'no current through Rl']);
+    expect(d.words.nodes.find((n) => n.node === 'out')!.level).toBe(0);
+    expect(note(d)).toContain("from the netlist's values, the circuit makes each of them exactly 0, whatever current its diodes carry, so PlainSpice shows 0 A and 0 V.");
+  });
+
+  it('C9o.5: with a .temp line the rule decides: out keeps ngspice\'s −931.3 pV, which E1 makes from the voltage between a and b, so R5 between them keeps ngspice\'s 8.882e-19 A, not 0 A with "its two ends at the same voltage" (the critic of round 2)', () => {
+    const d = ofFact('C9o.5');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('rule');
+    expect(noise(d)).toEqual([]);
+    expect([node(d, 'out'), plain(currentText(d, 'R5')), plain(currentText(d, 'E1')), plain(currentText(d, 'Rl'))]).toEqual(['−931.3 pV', '8.882e-19 A from node b to node a through R5', '9.313 pA from node out to ground through E1', '9.313 pA from ground to node out through Rl']);
+    expect(note(d)).toBe('');
+  });
+
+  it('C9p.5: a .dc point is judged at the value ngspice swept the source to: -1 1 0.1 reaches −1.39e-16 V, where v(a) is real; no noise, no note', () => {
+    const d = ofFact('C9p.5');
+    expect(d.results.dc!.scale.values[10]).toBe(-1.3877787807814457e-16);
+    expect(shownSweep(d.netlist, d.results)).toBe(d.results.dc);
+    expect(note(d)).toBe('');
+  });
+
+  it('C9s: ngspice\'s answers 4 % from the exact ones (a 1e-12 Ω wire), and 16.61 V for an exact 0 (a G of 1000 through a 1 nΩ wire): shown as ngspice gives them, by the rule, no noise, with a warning that gives the exact values', () => {
+    const wire = ofFact('C9s');
+    expect(roundingNoise(wire.netlist, wire.results).by).toBe('rule');
+    expect([node(wire, 'a'), node(wire, 'm'), node(wire, 'b'), plain(currentText(wire, 'R5'))]).toEqual(['4.321 V', '4.321 V', '4.374 V', '53.56 µA from node b to node m through R5']);
+    expect([noise(wire), note(wire)]).toEqual([[], '']);
+    expect(offNote(wire)).toContain('R5 carries no current, where ngspice gives 53.56 µA;');
+    const g = ofFact('C9s.2');
+    expect(roundingNoise(g.netlist, g.results).by).toBe('rule');
+    expect([node(g, 'g6'), plain(currentText(g, 'G1')), noise(g), note(g)]).toEqual(['16.61 V', '13.84 mA from ground to node g6 through G1', [], '']);
+    expect(offNote(g)).toContain('node g6 is at 0 V, where ngspice gives 16.61 V;');
+  });
+
+  // After the critic of round 2 of the re-check's fixes (13 November 2026): every answer compared, .tf and .dc as the .op, and diodes.
+  it('C9s.3 and C9s.4: a bridge at a few millivolts beside a 15 or 12 V source, where ngspice is off, is compared too: its 2.097 V and −82.78 mV are shown as ngspice gives them, never called rounding noise, with a warning', () => {
+    const g = ofFact('C9s.3');
+    expect(roundingNoise(g.netlist, g.results).by).toBe('rule');
+    expect([node(g, 'g6'), plain(currentText(g, 'G1')), plain(currentText(g, 'R9')), noise(g), note(g)]).toEqual(['2.097 V', '1.747 mA from ground to node g6 through G1', '1.747 mA from node g6 to ground through R9', [], '']);
+    expect(offNote(g)).toContain('node g6 is at 0 V, where ngspice gives 2.097 V; G1 carries no current, where ngspice gives 1.747 mA;');
+    const e = ofFact('C9s.4');
+    expect(roundingNoise(e.netlist, e.results).by).toBe('rule');
+    expect([node(e, 'a'), node(e, 'out'), plain(currentText(e, 'E1')), noise(e), note(e)]).toEqual(['4.882 mV', '−82.78 mV', '8.278 µA from node out to ground through E1', [], '']);
+    expect(offNote(e)).toContain('node out is at 0 V, where ngspice gives −82.78 mV; E1 carries no current, where ngspice gives 8.278 µA;');
+  });
+
+  it('C9s.5: the unbalanced bridge with a 1e-12 Ω wire: ngspice\'s Rw 0 A and R5 53.56 µA the other way are shown as it gives them, and the warning says both carry 46.46 µA', () => {
+    const d = ofFact('C9s.5');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('rule');
+    expect([plain(currentText(d, 'Rw')), plain(currentText(d, 'R5')), node(d, 'a')]).toEqual(['no current through Rw', '53.56 µA from node b to node m through R5', '4.321 V']);
+    expect(d.words.currents.filter((c) => c.given !== undefined || c.noise !== undefined)).toEqual([]);
+    expect(offNote(d)).toContain('R5 carries 46.46 µA, where ngspice gives 53.56 µA the other way; Rw carries 46.46 µA, where ngspice gives 0 A;');
+  });
+
+  it('C9p.6: the .tf of the bridge an H of 1 GΩ reads is 0 V/V beside its .op\'s 0 V at out: ngspice\'s −2.15e-8 is its rounding lifted by the gain', () => {
+    const d = ofFact('C9p.6');
+    expect(d.words.tf!.transferFunction).toMatchObject({ value: 0, noise: -2.1500237300155906e-8, text: 'v(out)/V1 = 0 (V/V)' });
+    expect(node(d, 'out')).toBe('0 V');
+  });
+
+  it('C9n.5: at V1 = 1.5 V the sweep\'s words say R3\'s exact 454.1 pA, as the .op beside it, though ngspice gives 0 at every point', () => {
+    const d = ofFact('C9n.5');
+    expect(plain(currentText(d, 'R3'))).toBe('454.1 pA from node d2 to node p3 through R3');
+    expect(d.words.sweeps[0]!.final.find((f) => f.name === 'i(@r3[i])')).toMatchObject({ value: 4.5413907894834974e-10, given: 0 });
+    expect(Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === 'i(@r3[i])')!.values)).toEqual([0, 1.5137969298278324e-10, 3.027593859655665e-10, 4.5413907894834974e-10]);
+  });
+
+  it('C9t: with a diode, whose current is left free, the E reading the balanced bridge still carries its real 5 mA at exactly 0 V: out 0 V, no power', () => {
+    const d = ofFact('C9t');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect([node(d, 'out'), plain(currentText(d, 'E1')), d.words.currents.find((c) => c.name === 'E1')!.power]).toEqual(['0 V', '5 mA from node out to ground through E1', undefined]);
+    expect(noise(d)).toEqual(['R5', 'node out']);
+  });
+
+  it('C9t.2: a diode with exactly 0 V across it carries 0 A: the G reading the balanced bridge drives its resistors and the diode at 0 V, all exactly 0', () => {
+    const d = ofFact('C9t.2');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect(noise(d)).toEqual(['R5', 'G1', 'R6', 'R7', 'node out', 'node x']);
+    // ngspice leaves the diode −1.23e-27 A (its gmin across ngspice's rounding of its 0 V).
+    expect(d.results.op!.currents.find((c) => c.element === '@d1[id]')!.value).toBe(-1.2312373330778934e-27);
+  });
+
+  it('C9t.3: with a diode, a bridge 1e-13 off balance read by an H of 1 MΩ: h5\'s real −433.7 fV is shown as ngspice gives it, never 0 V', () => {
+    const d = ofFact('C9t.3');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect([node(d, 'h5'), noise(d)]).toEqual(['−433.7 fV', []]);
+  });
+
+  it('C9t.4: ngspice gives a diode\'s current as its last iteration\'s: with a 10 Ω series resistance, @d1[id] is 1.4e-4 off the 4.2647 mA that flows through R1 into it; the exact solution takes the current Kirchhoff\'s law gives it', () => {
+    const d = ofFact('C9t.4');
+    const id = d.results.op!.currents.find((c) => c.element === '@d1[id]')!.value;
+    const r1 = d.results.op!.currents.find((c) => c.element === 'r1')!.value;
+    expect(Math.abs(id - r1) / r1).toBeGreaterThan(1e-4);
+    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+  });
+
+  it('C9n.6: with a diode across V1, which changes nothing in the divider, R3\'s real 454.1 pA, which ngspice gives as 0, is shown exactly in the .op and at each point of the sweep', () => {
+    const d = ofFact('C9n.6');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R3')), d.words.currents.find((c) => c.name === 'R3')!.given]).toEqual(['exact', '454.1 pA from node d2 to node p3 through R3', 0]);
+    expect(d.words.sweeps[0]!.final.find((f) => f.name === 'i(@r3[i])')).toMatchObject({ value: 4.5413907894834974e-10, given: 0 });
+    expect(Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === 'i(@r3[i])')!.values)).toEqual([0, 1.5137969298278324e-10, 3.027593859655665e-10, 4.5413907894834974e-10]);
+  });
+
+  it('C9r.3: the rule gives an F its number back with the current it copies: F2 of 1 reading the Vm that F1\'s loads gave back shows 193.5 aA, not "copies a current that is 0"', () => {
+    const d = ofFact('C9r.3');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'F2')), plain(currentText(d, 'Vx')), noise(d)]).toEqual([
+      'rule',
+      'Vm measures 193.5 aA flowing from node b to node m',
+      '193.5 aA from node y to ground through F2',
+      'Vx measures 193.5 aA flowing from ground to node y',
+      [],
+    ]);
+  });
+
+  it('C9t.5: with a diode, the sweep is decided as the .op is, each diode\'s current free at each point: out is 0 V in the .op and at V1 = 9 V in the sweep, where ngspice gives −193.5 nV; the diode\'s own −9.01 pA stays', () => {
+    const d = ofFact('C9t.5');
+    const last = (name: string) => d.words.sweeps[0]!.final.find((f) => f.name === name)!;
+    expect([node(d, 'out'), plain(last('v(out)').text), last('v(out)').noise, plain(last('i(@rl[i])').text), plain(last('i(@d1[id])').text)]).toEqual(['0 V', 'v(out) = 0 V', -1.9350975899792844e-7, 'i(@rl[i]) = 0 A', 'i(@d1[id]) = −9.01 pA']);
+    expect(Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === 'v(out)')!.values)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('C9t.6: a diode with 0 V across it at one point of the sweep carries 0 A there only: at V2 = 0 V, the .op\'s point, R7 and x are 0, as in the .op; at 1 and 2 V they keep ngspice\'s real 1.387 and 2.01 pA', () => {
+    const d = ofFact('C9t.6');
+    expect([plain(currentText(d, 'R7')), node(d, 'x')]).toEqual(['no current through R7', '0 V']);
+    const shown = (name: string): number[] => Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === name)!.values);
+    expect([shown('i(@r7[i])'), shown('v(x)'), shown('i(@r6[i])')]).toEqual([
+      [0, 1.3866232302623201e-12, 2.009998735343814e-12],
+      [0, 1.38662323026232e-9, 2.009998735343814e-9],
+      [0, 0, 0],
+    ]);
+  });
+
+  it('C9t.7: a diode\'s current is taken at the node whose law ngspice\'s rounding leaves nearest 0 (here ground, not the 1 nΩ wire\'s node): the circuit is decided exactly, with no warning claiming d2 is at 4.542 mV', () => {
+    const d = ofFact('C9t.7');
+    expect([roundingNoise(d.netlist, d.results).by, offNote(d), node(d, 'd2'), plain(currentText(d, 'R3'))]).toEqual(['exact', '', '4.541 mV', '867.4 pA from node d2 to node p3 through R3']);
+  });
+
+  it('C9t.8: with a diode, the warning that ngspice\'s answers are off names only the values no diode\'s current changes: Rw and R5, which the balanced bridge makes 0 whatever top is', () => {
+    const d = ofFact('C9t.8');
+    expect(offNote(d)).toBe("Solved exactly, with fractions, from the netlist's values, Rw carries no current, where ngspice gives 55.51 µA; and R5 carries no current, where ngspice gives 2.404 µA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.");
+  });
+
+  it('C9t.9: at V1 = 0 V, where the circuit makes every value 0, ngspice\'s Newton leftovers (−7.4e-25 V at a and b) are shown as 0; R5, 0 because the two diodes, placed alike, carry the same current, is 0 at every point, ngspice\'s 4.441e-19 A at 3 V too (the critic of round 3)', () => {
+    const d = ofFact('C9t.9');
+    const shown = (name: string): number[] => Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === name)!.values);
+    expect([shown('v(a)')[0], shown('v(b)')[0], shown('i(@r5[i])')]).toEqual([0, 0, [0, 0, 0, 0]]);
+    expect(d.results.dc!.series.find((s) => s.name === 'i(@r5[i])')!.values[1]).toBe(4.440892098500626e-19);
+  });
+
+  it('C9t.10: ngspice settles on a current around a loop of a diode and 2.2 MΩ that nothing drives; a diode taken as carrying 0 A must carry less than 1 pA by ngspice\'s numbers, so the rule decides: R21 shows ngspice\'s 308.4 nA, not "rounding noise" beside d20 at 100.7 V', () => {
+    const d = ofFact('C9t.10');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R21')), node(d, 'd20'), noise(d)]).toEqual(['rule', '308.4 nA from node d20 to node top1 through R21', '100.7 V', []]);
+  });
+
+  it('C9t.11: a .tf of a circuit with a diode is left as ngspice gives it: the diode\'s conductance unbalances the bridge for a change of V1, so v(a,b)/V1 = 2.994e-10 V/V is real, though the circuit with the diode at 0 A makes it exactly 0', () => {
+    const d = ofFact('C9t.11');
+    expect([roundingNoise(d.netlist, d.results).by, d.words.tf!.transferFunction!.value, d.words.tf!.transferFunction!.noise, plain(d.words.tf!.transferFunction!.text)]).toEqual(['exact', 2.994011705226285e-10, undefined, 'v(a,b)/V1 = 2.994e-10 (V/V)']);
+  });
+  it('C9u: a diode\'s I-V sweep from 0 V: the .op, at rest, and the sweep\'s 0 V point show ngspice\'s Newton leftovers as 0, both notes saying D1 has 0 V across it, so it carries no current (the critic of round 3)', () => {
+    const d = ofFact('C9u');
+    expect([roundingNoise(d.netlist, d.results).by, node(d, 'a'), plain(currentText(d, 'R1')), noise(d)]).toEqual(['exact', '0 V', 'no current through R1', ['V1', 'R1', 'node a']]);
+    expect(note(d)).toContain('the circuit makes each of them exactly 0 (D1 has 0 V across it, so it carries no current), so PlainSpice shows 0 A and 0 V.');
+    expect(Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === 'v(a)')!.values)[0]).toBe(0);
+  });
+
+  it('C9u.2: an open-loop E making 1.2 MV beside the bridge of C9s.4 no longer hides ngspice\'s 4.882 mV for 5.189 mV: ngspice\'s numbers with the warning, not R5 as 0 A at "the same voltage, 5.189 mV"', () => {
+    const d = ofFact('C9u.2');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R5')), note(d)]).toEqual(['rule', '82.78 nA from node b to node m through R5', '']);
+    expect(plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')!.why)).toContain('node a is at 5.189 mV, where ngspice gives 4.882 mV');
+  });
+
+  it('C9u.3: two equal diode arms: the diodes, placed alike, carry the same current, so the link and its ammeter carry exactly 0, with a note that says so', () => {
+    const d = ofFact('C9u.3');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R5')), noise(d)]).toEqual(['exact', 'no current through R5', ['R5', 'Vm']]);
+    expect(note(d)).toContain('the circuit makes each of them exactly 0 (D1 and D2, placed alike in the circuit, carry the same current), so PlainSpice shows 0 A.');
+  });
+
+  it('C9u.4 and C9u.5: beside a sweep of the temperature both the .op and the sweep are decided exactly, R5 0 at every point; beside a sweep of a resistor the .op is decided exactly and the sweep at its point at the .op\'s own state, R5 = 1 kΩ, the other points left as ngspice gives them (the critic of round 4)', () => {
+    const t = ofFact('C9u.4');
+    expect([roundingNoise(t.netlist, t.results).by, Array.from(shownSweep(t.netlist, t.results)!.series.find((s) => s.name === 'i(@r5[i])')!.values)]).toEqual(['exact', [0, 0, 0]]);
+    const r = ofFact('C9u.5');
+    expect([roundingNoise(r.netlist, r.results).by, Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r5[i])')!.values), plain(currentText(r, 'R5'))]).toEqual(['exact', [0, -5.921189464667501e-19, -4.440892098500626e-19], 'no current through R5']);
+    expect(note(r)).toContain('Solved exactly, with fractions, from the netlist\'s values, the circuit makes it exactly 0, so PlainSpice shows 0 A.');
+    expect(plain(r.words.warnings.filter((m) => m.code === 'rounding-noise')[1]!.why)).toContain('ngspice gave i(@r5[i]) -8.881784e-19 A at R5 = 1 kΩ.');
+  });
+
+  it('C9u.6: ngspice gives the 1 aA of a loop as exactly 0 in V1 and R1, every other value exact: decided exactly, both shown at their exact 1 aA with the rounded-to-0 note, no warning', () => {
+    const d = ofFact('C9u.6');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'V1')), plain(currentText(d, 'R1')), plain(currentText(d, 'I1'))]).toEqual(['exact', '1 aA from node top1 to ground through V1', '1 aA from node i2 to node top1 through R1', '1 aA from ground to node i2 through I1']);
+    expect(d.words.warnings.map((m) => m.code)).toEqual(['rounded-to-0']);
+  });
+
+  it('C9u.7 and C9u.8: the warning names a2, which the diode moves by 5 nV where ngspice is 0.26 mV off; and a 1 nΩ probe wire on a ladder is caught, ngspice\'s 43.55 fV for 43.56 fV', () => {
+    const d = ofFact('C9u.7');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('rule');
+    expect(plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')!.why)).toContain('node a2 is at 62.75 mV, where ngspice gives 63.01 mV');
+    const p = ofFact('C9u.8');
+    expect(roundingNoise(p.netlist, p.results).by).toBe('rule');
+    expect(plain(p.words.warnings.find((m) => m.code === 'imprecise-answers')!.why)).toContain('node p22 is at 43.56 fV, where ngspice gives 43.55 fV');
+  });
+
+  const warning = (d: Described): string | undefined => plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')?.why);
+  const shownSeries = (d: Described, name: string): number[] => Array.from(shownSweep(d.netlist, d.results)!.series.find((s) => s.name === name)!.values);
+  const givenSeries = (d: Described, name: string): number[] => Array.from(d.results.dc!.series.find((s) => s.name === name)!.values);
+
+  it('C9v: a comparator pulled up to the bridge\'s rail moves the rail\'s current, not the bridge: ngspice\'s 4.961 mV for 5.189 mV is shown with the warning, R5 its 61.5 nA, and no noise note (the critic of round 4)', () => {
+    const d = ofFact('C9v');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R5')), note(d)]).toEqual(['rule', '61.5 nA from node b to node m through R5', '']);
+    expect(warning(d)).toContain('R5 carries no current, where ngspice gives 61.5 nA; R2 carries 518.9 nA, where ngspice gives 496.1 nA; node a is at 5.189 mV, where ngspice gives 4.961 mV');
+  });
+
+  it('C9v.2: a diode\'s I-V curve fed by a current source swept from 0: the .op and the sweep\'s first point, at rest, show ngspice\'s leftovers as 0, each point\'s diode current worked out with I1 at that point', () => {
+    const d = ofFact('C9v.2');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R1')), shownSeries(d, 'v(a)')[0]]).toEqual(['exact', 'no current through R1', 0]);
+    expect(note(d)).toContain('(D1 has 0 V across it, so it carries no current)');
+  });
+
+  it('C9v.3 to C9v.5: an answer is off where the page draws it with other digits: V1\'s 372.4098 µA for 372.4395 µA is drawn alike, so R7 is 0 with the note; a2 and m4 drawn 64.62 mV beside b3\'s 64.63 mV, all three at one voltage, get the warning; at exactly 343.75 mV, a rounding boundary, ngspice\'s numbers a step apart get none', () => {
+    const digits = ofFact('C9v.3');
+    expect([roundingNoise(digits.netlist, digits.results).by, plain(currentText(digits, 'R7')), warning(digits)]).toEqual(['exact', 'no current through R7', undefined]);
+    const split = ofFact('C9v.4');
+    expect([roundingNoise(split.netlist, split.results).by, plain(currentText(split, 'R6'))]).toEqual(['rule', '210.2 pA from node b3 to node m4 through R6']);
+    expect(warning(split)).toContain('R6 carries no current, where ngspice gives 210.2 pA; node a2 is at 64.63 mV, where ngspice gives 64.62 mV; and node m4 is at 64.63 mV, where ngspice gives 64.62 mV.');
+    const boundary = ofFact('C9v.5');
+    expect([roundingNoise(boundary.netlist, boundary.results).by, warning(boundary), plain(currentText(boundary, 'R6'))]).toEqual(['exact', undefined, 'no current through R6']);
+  });
+
+  it('C9v.6: a diode at rest beside a 5 V source charging only a capacitor is a circuit at rest: ngspice\'s leftovers are 0, x keeps its 5 V', () => {
+    const d = ofFact('C9v.6');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R1')), plain(currentText(d, 'V1'))]).toEqual(['exact', 'no current through R1', 'V1 measures no current']);
+    expect(plain(d.words.nodes.find((n) => n.node === 'x')!.text)).toBe('5 V');
+    expect(note(d)).toContain('(D1 has 0 V across it, so it carries no current)');
+  });
+
+  it('C9v.7 and C9v.8: beside a sweep of a resistor or of two sources, the .op is decided exactly, and so is the sweep\'s point at the .op\'s own state (R1 = 15 kΩ; V1 = 9 V, V2 = 1 V), the others left as ngspice gives them', () => {
+    const r = ofFact('C9v.7');
+    expect([roundingNoise(r.netlist, r.results).by, plain(currentText(r, 'R7'))]).toEqual(['exact', 'no current through R7']);
+    const r7 = givenSeries(r, 'i(@r7[i])');
+    expect(shownSeries(r, 'i(@r7[i])')).toEqual([r7[0], 0, r7[2]]);
+    expect(plain(r.words.warnings.filter((m) => m.code === 'rounding-noise')[1]!.why)).toContain('ngspice gave i(@r7[i]) 6.217249e-20 A at R1 = 15 kΩ.');
+    const two = ofFact('C9v.8');
+    expect([roundingNoise(two.netlist, two.results).by, plain(currentText(two, 'R5'))]).toEqual(['exact', 'no current through R5']);
+    const r5 = givenSeries(two, 'i(@r5[i])');
+    expect(shownSeries(two, 'i(@r5[i])')).toEqual([r5[0], r5[1], r5[2], 0]);
+    expect(plain(two.words.warnings.filter((m) => m.code === 'rounding-noise')[1]!.why)).toContain('at V1 = 9 V, V2 = 1 V.');
   });
 });

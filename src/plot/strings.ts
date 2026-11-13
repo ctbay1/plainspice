@@ -54,6 +54,8 @@ export const PLOT_STRINGS = {
   tableCaption: (shown: string, total: string, everyPoint: boolean): string =>
     everyPoint ? `All ${total} points.` : `${shown} of the ${total} points, evenly spaced. The CSV file has every point.`,
   downloadCsv: (total: string): string => `Download CSV (all ${total} points)`,
+  /** The column of a series' values as ngspice gave them, next to PlainSpice's (rounding noise shown as 0). */
+  givenColumn: (label: string): string => `${label} as ngspice gave it`,
   /** Start of the CSV file name, e.g. "plot-transient-analysis.csv". */
   csvFilePrefix: 'plot',
 
