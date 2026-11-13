@@ -212,3 +212,9 @@ and in a `.control` block, but not after a line starting with `@`, and the comma
 savecurrents` save no current; the note and Explain's `.op` note say nothing of missing currents where the
 student's own line saves every current.
 
+After the round-2 critic (the same day, the same versions and modes): A2e is new. ngspice reads such a line
+as it reads every line: after a line that ends in two backslashes, the next line is a `+` line (past blank
+lines, and the `.hdl` and `.biaschk` lines ngspice 47 drops; not after a `*`, `$`, `.title` or `.end` line),
+and in a `.control` block a `$` starts a comment only before a blank (on every line when the `.control` and
+`.endc` lines are not as many). The note and Explain's `.op` note follow these rules too.
+
