@@ -810,8 +810,11 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     const text = '* t\nV1 in 0 12\nR1 in a 1k\nR3 a b 3k\nF1 0 b V1 2\nD1 0 dd dmod\nRd dd 0 1k\n.model dmod d\n.op\n.end\n';
     const r = op({ in: 12, a: 11.999999999999998, b: 11.999999999999995, dd: -2.5e-13 }, [['v1', -1.734723475976807e-18, 'branch'], ['r1', 1.7763568394002505e-18, 'device'], ['r3', 1.1842378929335003e-18, 'device'], ['f1', -3.469446951953614e-18, 'device'], ['rd', -2.5e-16, 'device']]);
     const w = describeResults(parseNetlist(text), r, run());
-    expect(w.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1']);
-    expect(w.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain('the circuit makes each of them exactly 0, whatever current its diodes carry, so PlainSpice shows 0 A.');
+    // D1 and Rd make a loop with nothing to drive it: with every diode at 0 A, D1 has exactly 0 V across it, so it
+    // carries 0 A (0 V across a diode makes 0 A), and Rd and dd are exactly 0 too, whatever these numbers say.
+    expect(w.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1', 'Rd']);
+    expect(w.nodes.filter((n) => n.noise !== undefined).map((n) => n.node)).toEqual(['dd']);
+    expect(w.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain("from the netlist's values and its diodes' currents, the circuit makes each of them exactly 0, so PlainSpice shows 0 A and 0 V.");
     // A line PlainSpice does not model exactly leaves it to the rule, which says so only below ngspice's tolerances.
     const rule = describeResults(parseNetlist(text.replace('.op', '.temp 27\n.op')), r, run());
     expect(rule.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1']);

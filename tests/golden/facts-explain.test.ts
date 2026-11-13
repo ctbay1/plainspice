@@ -955,7 +955,7 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     expect(noise(d)).toEqual(['R5', 'Vm', 'H1', 'Rl', 'node out']);
     expect([node(d, 'out'), plain(currentText(d, 'Rl'))]).toEqual(['0 V', 'no current through Rl']);
     expect(d.words.nodes.find((n) => n.node === 'out')!.level).toBe(0);
-    expect(note(d)).toContain('the circuit makes each of them exactly 0, whatever current its diodes carry, so PlainSpice shows 0 A and 0 V.');
+    expect(note(d)).toContain("from the netlist's values and its diodes' currents, the circuit makes each of them exactly 0, so PlainSpice shows 0 A and 0 V.");
   });
 
   it('C9p.5: a .dc point is judged at the value ngspice swept the source to: -1 1 0.1 reaches −1.39e-16 V, where v(a) is real; no noise, no note', () => {

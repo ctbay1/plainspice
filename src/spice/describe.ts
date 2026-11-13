@@ -556,7 +556,7 @@ export const DESCRIBE_STRINGS = {
     const what = !voltages ? (one ? 'a current' : 'currents') : !currents ? (one ? 'a voltage' : 'voltages') : 'currents and voltages';
     const shows = !voltages ? '0 A' : !currents ? '0 V' : '0 A and 0 V';
     const head = `ngspice gave ${gave}. ${one ? 'That is' : 'Those are'} rounding noise, what its arithmetic leaves of ${what} that ${one ? 'is' : 'are'} 0${reason ? `: ${reason}` : ''}.`;
-    if (exact) return `${head} Solved exactly, with fractions, from the netlist's values, the circuit makes ${one ? 'it' : 'each of them'} exactly 0${diodes ? ', whatever current its diodes carry' : ''}, so PlainSpice shows ${shows}.`;
+    if (exact) return `${head} Solved exactly, with fractions, from the netlist's values${diodes ? ' and its diodes\' currents' : ''}, the circuit makes ${one ? 'it' : 'each of them'} exactly 0, so PlainSpice shows ${shows}.`;
     const below = !voltages
       ? "below 1 pA, ngspice's current tolerance (its abstol option)"
       : !currents
@@ -928,7 +928,10 @@ export interface RoundingNoise {
    * those answers, worst first, with the netlist's names: the note says ngspice's numbers are off there.
    */
   off?: Answer[];
-  /** True when the circuit has diodes, whose currents the exact solution leaves free (its 0s are 0 whatever they carry). */
+  /**
+   * True when the circuit has diodes: the exact solution leaves their currents free, and a 0 is 0 whatever
+   * current they carry, or because a diode with no voltage across it carries none (opCheck).
+   */
   diodes?: boolean;
 }
 
@@ -1036,6 +1039,8 @@ interface View {
   all: Fraction[][];
   /** Each current source's and diode's current in `x`. */
   level: (p: ExactPart) => Fraction;
+  /** The diodes whose unit-current solutions follow the operating point in `all`, in order (the others carry 0 A). */
+  live?: number[];
 }
 
 const exactCache = new WeakMap<Netlist, Exact | null>();
@@ -1151,11 +1156,29 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
   const ng = ngspiceValues(nodes, branch, device);
   let view: View = { x: ex.op, all: [ex.op], level: (p) => p.value };
   if (ex.diodes) {
+    const { model } = ex;
     const { tree, slopes } = ex.diodes;
-    const currents = treeCurrents(ex.model, tree, ng);
+    const currents = treeCurrents(model, tree, ng);
     if (!currents) return { check: 'other' };
-    const byPart = new Map(tree.map((k) => [ex.model.parts[k]!, currents.get(k) ?? ZERO]));
-    view = { x: withCurrents(ex.op, slopes, tree, currents), all: [ex.op, ...slopes], level: (p) => (p.kind === 'D' ? (byPart.get(p) ?? ZERO) : p.value) };
+    // A diode with exactly 0 V across it when every diode carries 0 A, whose voltage no other diode's current
+    // changes, carries 0 A: 0 V across a diode makes 0 A through it, which leaves its 0 V (a G that reads a
+    // balanced bridge into a load with a diode). Its current from Kirchhoff's law is ngspice's rounding.
+    const at = (x: readonly Fraction[], n: number): Fraction => (n < 0 ? ZERO : x[n]!);
+    const across0 = (x: readonly Fraction[], k: number): boolean => equal(at(x, model.parts[k]!.a), at(x, model.parts[k]!.b));
+    const quiet = new Set(tree.filter((k) => across0(ex.op, k)));
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const i of quiet) {
+        if (tree.some((j, s) => !quiet.has(j) && !across0(slopes[s]!, i))) {
+          quiet.delete(i);
+          changed = true;
+        }
+      }
+    }
+    const live = tree.filter((k) => !quiet.has(k));
+    const liveSlopes = tree.map((k, s) => (quiet.has(k) ? undefined : slopes[s]!)).filter((x): x is Fraction[] => x !== undefined);
+    const byPart = new Map(live.map((k) => [model.parts[k]!, currents.get(k) ?? ZERO]));
+    view = { x: withCurrents(ex.op, liveSlopes, live, currents), all: [ex.op, ...liveSlopes], level: (p) => (p.kind === 'D' ? (byPart.get(p) ?? ZERO) : p.value), live };
   }
   if (!agrees(ex.model, ng, view.level, ex.budget)) return { check: 'other' };
   const list = answers(ex.model, view.x, ng, view.level);
@@ -1173,7 +1196,7 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
 function exactly(ex: Exact, view: View): { zero: boolean[]; nodeZero: (k: number) => boolean; same: (a: number, b: number) => boolean; key: (k: number) => string } {
   const { model } = ex;
   const { all } = view;
-  const tree = ex.diodes?.tree ?? [];
+  const tree = view.live ?? [];
   // A current source's or diode's current in solution s: its level in the operating point, a unit diode's in its own slope.
   const levelIn = (s: number, p: ExactPart): Fraction => (s === 0 ? (p.kind === 'D' ? ZERO : p.value) : p === model.parts[tree[s - 1]!] ? ONE : ZERO);
   const zero = model.parts.map((p, k) => p.kind !== 'D' && all.every((x, s) => currentIsZero(model, x, k, p.kind === 'I' ? levelIn(s, p) : undefined)));
@@ -1190,9 +1213,13 @@ function exactly(ex: Exact, view: View): { zero: boolean[]; nodeZero: (k: number
 /**
  * The real currents and node voltages ngspice gave as exactly 0 (C9n): its arithmetic rounds a value
  * that is tiny beside the numbers it is worked out from to 0, where the exact solution has it. A value
- * below the smallest double (about 4.9e-324) has no number to show: it stays as ngspice gave it.
+ * below the smallest double (about 4.9e-324) has no number to show: it stays as ngspice gave it. Not with
+ * diodes: there a tiny value depends on the diodes' currents, which ngspice's numbers give only to their
+ * rounding (a diode across a null of 0 V carries exactly 0, but Kirchhoff's law with ngspice's numbers
+ * leaves it 4.4e-19 A, and that made a node ngspice rightly gives as 0 V read 2.4e-16 V).
  */
 function lostValues(netlist: Netlist, ex: Exact, view: View, op: NonNullable<AnalysisResults['op']>, out: RoundingNoise): void {
+  if (ex.diodes) return;
   const { model } = ex;
   const { x } = view;
   const { zero, nodeZero } = exactly(ex, view);
