@@ -65,6 +65,46 @@ export function partsInGroups(n: number, groups: number): string {
 }
 
 /**
+ * V1 and R2 … Rn all between node 1 and ground, every resistor turned round (its node 1 pin where V1's
+ * ground pin is), all at one point: once the resistors are moved, each node has n pins apart, so the
+ * repairs route n − 1 wires for each.
+ */
+export function starAtOnePoint(n: number, extra: readonly string[] = []): string {
+  const out = ['*', 'V1 1 0 1'];
+  for (let i = 2; i <= n; i++) out.push(`R${i} 0 1 1`);
+  out.push('.op', '*@ V1 0 0 0');
+  for (let i = 2; i <= n; i++) out.push(`*@ R${i} 0 0 0`);
+  return `${[...out, ...extra].join('\n')}\n`;
+}
+
+/**
+ * A k × k grid of straight wire with every point joined (each row and column passes through every
+ * point of it: 2k(k − 1) one-unit pieces), its corner at (x0, y0) and named `node` there: it stays,
+ * away from everything.
+ */
+export function namedGrid(k: number, node: string, x0 = 300, y0 = 300): string[] {
+  const line = (points: string[]): string => `*@ wire ${points.join(' ')}`;
+  const lines: string[] = [];
+  for (let j = 0; j < k; j++) lines.push(line(Array.from({ length: k }, (_, i) => `${x0 + i},${y0 + j}`)));
+  for (let i = 0; i < k; i++) lines.push(line(Array.from({ length: k }, (_, j) => `${x0 + i},${y0 + j}`)));
+  return [...lines, `*@ label ${node} ${x0} ${y0}`];
+}
+
+/**
+ * A slanted lattice of k × k points centred on (0, 0) through the pins of a part standing there (both
+ * of V1's pins, at (0, ±2), are lattice points): one island of slanted copper holding a pin of each of
+ * V1's nodes, which a cut cannot free, so every route of those nodes starts from the whole lattice.
+ */
+export function latticeThroughOrigin(k: number): string[] {
+  const h = Math.floor(k / 2);
+  const P = (a: number, b: number): string => `${a + b - h},${b - a + 1}`;
+  const lines: string[] = [];
+  for (let a = 0; a < k; a++) lines.push(`*@ wire ${Array.from({ length: k }, (_, b) => P(a, b)).join(' ')}`);
+  for (let b = 0; b < k; b++) lines.push(`*@ wire ${Array.from({ length: k }, (_, a) => P(a, b)).join(' ')}`);
+  return lines;
+}
+
+/**
  * `count` drawing lines piled where the parts of partsAtOnePoint(60) are: names of its nodes 1 … 59 in
  * turn (or of node 1 only, `oneNode`), or ground symbols; at the point (0, 0), or spread over the 16
  * points of one 4 × 4 square (`spread`, ground symbols turned every way there too).

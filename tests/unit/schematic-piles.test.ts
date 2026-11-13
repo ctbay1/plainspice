@@ -16,9 +16,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { applyEdit, buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
-import { longSlantedFar, partsAtOnePoint, partsInGroups, piled, slantedLattice } from './schematic-hostile.ts';
+import { latticeThroughOrigin, longSlantedFar, namedGrid, partsAtOnePoint, partsInGroups, piled, slantedLattice, starAtOnePoint } from './schematic-hostile.ts';
 
-const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0, indexed: 0 }));
+const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0, indexed: 0, routes: 0, foreign: 0, ends: 0 }));
 
 vi.mock('../../src/schematic/geometry.ts', async (importOriginal) => {
   const g = await importOriginal<typeof import('../../src/schematic/geometry.ts')>();
@@ -69,6 +69,21 @@ vi.mock('../../src/schematic/connectivity.ts', async (importOriginal) => {
   return { ...m, SegmentIndex: CountedIndex };
 });
 
+vi.mock('../../src/schematic/route.ts', async (importOriginal) => {
+  const m = await importOriginal<typeof import('../../src/schematic/route.ts')>();
+  return {
+    ...m,
+    // Each route searched, the other nodes' wires it is handed, and its ends.
+    findRoute: (...args: Parameters<typeof m.findRoute>): ReturnType<typeof m.findRoute> => {
+      const [world, sources, targets] = args;
+      work.routes++;
+      work.foreign += world.foreignWires.length;
+      work.ends += sources.length + targets.length;
+      return m.findRoute(...args);
+    },
+  };
+});
+
 vi.mock('../../src/schematic/wires.ts', async (importOriginal) => {
   const m = await importOriginal<typeof import('../../src/schematic/wires.ts')>();
   return {
@@ -85,12 +100,15 @@ afterEach(() => {
 });
 
 /** What a piece of work counts (see the top of the file), from zero. */
-function counted<T>(f: () => T): { result: T; scenes: number; checks: number; geometries: number; prunes: number; indexed: number } {
+function counted<T>(f: () => T): { result: T; scenes: number; checks: number; geometries: number; prunes: number; indexed: number; routes: number; foreign: number; ends: number } {
   work.scenes = 0;
   work.checks = 0;
   work.geometries = 0;
   work.prunes = 0;
   work.indexed = 0;
+  work.routes = 0;
+  work.foreign = 0;
+  work.ends = 0;
   const result = f();
   return { result, ...work };
 }
@@ -138,6 +156,37 @@ describe('parts piled on one point move from one scene (second re-check, P3)', (
     // place tried was 198,000 for this drawing.
     const sixty = counted(() => build(partsAtOnePoint(60)));
     expect(sixty.geometries).toBeLessThan(20_000);
+  });
+});
+
+describe('the routes the repairs add look near themselves, and keep the islands up to date (the second re-check’s critic)', () => {
+  // 60 parts at one point, every resistor between node 1 and ground: once they are moved apart, each
+  // node has 60 pins apart, so the repairs route 115 wires. With a 99 × 99 grid named 1 far away (19,404
+  // pieces of wire), each route found the islands of every piece again (the build indexed 1.2 million
+  // pieces more than without the grid) and handed the router every piece of the grid (1.1 million in
+  // all): 2 s of routing on a computer. Now the grid is indexed five times (105,000 more) and handed to
+  // no route.
+  it('115 routes beside a large grid: the islands are found once, and each route is handed the wire near it', { timeout: 120_000 }, () => {
+    const grid = namedGrid(99, '1');
+    const pieces = 2 * 99 * 98;
+    const alone = counted(() => build(starAtOnePoint(60)));
+    const built = counted(() => build(starAtOnePoint(60, grid)));
+    expect(schematicConnectivity(built.result)).toEqual([]);
+    expect(built.routes).toBe(alone.routes);
+    expect(built.routes).toBeGreaterThan(100);
+    // The grid is indexed a few times (the repairs, the scenes), not once for each route.
+    expect(built.indexed - alone.indexed).toBeLessThan(15 * pieces);
+    // No route comes near the grid: each is handed the wire near it, none of the grid's pieces.
+    expect(built.foreign - alone.foreign).toBeLessThan(pieces);
+  });
+
+  it('a pin on a slanted lattice at the format’s limits: the routes from it go through its ends a bounded number of times', { timeout: 120_000 }, () => {
+    // The lattice holds a pin of each of V1's nodes, so each route of node 1 or of ground starts from
+    // its 9,800 points: 622,000 ends for 32 routes. Each end counts as a step of the routing budget
+    // (250,000 steps), as the area a route searches does; the pieces left are joined by name.
+    const built = counted(() => build(starAtOnePoint(60, latticeThroughOrigin(70))));
+    expect(built.ends).toBeLessThan(260_000);
+    expect(built.result.problems.some((p) => p.kind === 'connected-by-name')).toBe(true);
   });
 });
 
