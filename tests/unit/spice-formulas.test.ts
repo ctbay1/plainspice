@@ -628,6 +628,8 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
     ]);
     expect(found[0]!.ngspice).toBe("ngspice stops with a fatal error: 'mal formed E source instance' (ngspice 42: 'mal formed E line'). [fatal-syntax-17]");
     expect(found[0]!.fixes.map((f) => f.label)).toEqual(['Rename the node value to val']);
+    // One fix for every such line, made once: thousands of them stay fast.
+    expect(found[1]!.fixes[0]).toBe(found[0]!.fixes[0]);
     const fixed = applyFix(text, found[0]!.fixes[0]!);
     expect(fixed).toContain('E1 e 0 val 0 2\nG1 0 g val 0 2m');
     expect(traps(fixed)).toEqual([]);

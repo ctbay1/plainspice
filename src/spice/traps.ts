@@ -188,6 +188,8 @@ interface Ctx {
   spellings?: { connected: Map<string, string[]>; named: Map<string, string[]> };
   /** The nodes .save and .global lines name bare, and a .global node's words inside subcircuits, by node, read on the first use (savedNodes). */
   savedNodes?: Map<string, Token[]>;
+  /** The fix that renames a node called value, on every E or G line that reads it as VALUE (valueAsNode), made once; null with no such node. */
+  valueRename?: { to: string; fix: Fix | null };
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
@@ -2271,13 +2273,18 @@ function checkFormulaForm(c: Ctx, i: number): void {
   const words = /[\w.)}'"][ \t]+[\w.{'"]/.test(formula.text);
   const node = c.n.nodes.get('value');
   if (valueAsNode(c, e)) {
-    // The fix renames the node, and the word value on every line that reads it as VALUE so.
-    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
-    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => valueAsNode(c, x)).map((x) => replace(x.form!.keyword, to));
+    // The fix renames the node, and the word value on every line that reads it as VALUE so: one fix for them
+    // all, made once (thousands of such lines stay fast).
+    if (!c.valueRename) {
+      const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
+      const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => valueAsNode(c, x)).map((x) => replace(x.form!.keyword, to));
+      c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
+    }
+    const { to, fix: rename } = c.valueRename;
     add(c, 'fatal-syntax', 'error', form.keyword, `ngspice reads ${kw} on ${name}'s line as the start of a formula`,
-      `ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so it takes ${shownWord(formula.text)} for ${name}'s formula, which it can't read. A node can't be called value here: give it another name${node?.connections.length ? `, such as ${to}` : ''}.`,
+      `ngspice reads the word value as VALUE, the start of a formula, wherever it stands on an E or G line, so it takes ${shownWord(formula.text)} for ${name}'s formula, which it can't read. A node can't be called value here: give it another name${rename ? `, such as ${to}` : ''}.`,
       `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-17]`,
-      node?.connections.length ? [fix(`Rename the node ${kw} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to))] : []);
+      rename ? [rename] : []);
     return;
   }
   add(c, 'fatal-syntax', 'error', formula, `ngspice can't read ${name}'s formula without braces`,
