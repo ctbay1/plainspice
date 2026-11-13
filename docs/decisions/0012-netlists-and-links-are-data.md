@@ -754,4 +754,14 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   `tests/unit/app-words.test.ts` and `tests/unit/app-run-copy.test.tsx` (the headline, and an engine that
   stops keeping its own), `tests/unit/app-live.test.ts` (the outcome), `tests/e2e/run-copy.spec.ts` (the
   five refused links say the new headline and not "ngspice could not run").
+- **A node's card and the ngspice output panel give the reason too** (the last pass, a11y-phone-2). A
+  refused netlist has no run record, so a node's card fell back to "No voltage yet: ngspice runs the
+  circuit in a moment." and the output panel to "Nothing yet: ngspice has not run this circuit.", while
+  nothing would run until the netlist changed. A node's card now follows a part's card (decision 0016):
+  the check that stopped the numbers, or, when nothing runs without Run, the status line's words (here
+  the reason; for no analysis line, a link opened without running, Stop or a time-out, what to do, which
+  was "in a moment" on fix-base too), and "in a moment" only while a run is on its way. The output panel
+  says "The simulation could not run:" and why, as the Numbers panel and the alert do, for the netlist as
+  it is now. Tests: `tests/unit/app-run-copy.test.tsx` (the refused netlist's node card and output
+  panel; a node's card with no analysis line and on a link not run; both fail on c520a49).
 

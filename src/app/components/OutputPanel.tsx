@@ -19,7 +19,18 @@ function Printed({ id, title, text }: { id: string; title: string; text: string 
   );
 }
 
-export function OutputPanel({ result, added, notes = [] }: { result: RunResult | undefined; added: readonly string[]; notes?: readonly string[] }): ReactNode {
+export function OutputPanel({
+  result,
+  added,
+  notes = [],
+  failed,
+}: {
+  result: RunResult | undefined;
+  added: readonly string[];
+  notes?: readonly string[];
+  /** The netlist as it is now could not run, and why (a netlist PlainSpice does not run, an engine that stopped): said, not "Nothing yet". */
+  failed?: string | undefined;
+}): ReactNode {
   return (
     <div className="output">
       <p>{t('outputIntro')}</p>
@@ -43,6 +54,8 @@ export function OutputPanel({ result, added, notes = [] }: { result: RunResult |
           <Printed id="ngspice-stdout" title={t('outputStdout')} text={result.stdout} />
           <Printed id="ngspice-stderr" title={t('outputStderr')} text={result.stderr} />
         </>
+      ) : failed ? (
+        <p>{t('statusFailedText', { reason: failed })}</p>
       ) : (
         <p className="muted">{t('outputNone')}</p>
       )}

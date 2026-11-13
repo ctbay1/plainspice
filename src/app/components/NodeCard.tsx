@@ -28,7 +28,10 @@ export interface NodeCardProps {
   groundName?: string;
   /** Its voltage as the drawing writes it, and in words; pending: from before the last change. */
   voltage?: { text: string; speech: string; pending: boolean } | undefined;
-  /** Why there is no voltage, when the last run of this netlist gave none (a check found an error). */
+  /**
+   * Why there is no voltage: the last run of this netlist gave none (a check found an error), or nothing
+   * runs without Run (the status line's words). Without it, a run is on its way ("in a moment").
+   */
   noVoltage?: string;
   /** What the parts on it are (the model's sentence). */
   sentence: string;

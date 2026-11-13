@@ -66,8 +66,8 @@ the circuit is, one undo, and runs that keep up without piling up.
   is never sent to ngspice; the status line and the Checks panel say what to add, and an empty paper
   says where to start. While ngspice has not answered the newest text, the drawing and the card keep
   the last numbers in pencil, and screen readers hear "Before your last change"; when nothing will
-  run without Run, the card says so in the status line's words. One verb for it all: ngspice runs
-  ("Running…", "Finished in 5 ms").
+  run without Run, a part's card and a node's card say so in the status line's words. One verb for
+  it all: ngspice runs ("Running…", "Finished in 5 ms").
 - **The paper first, panels when you want them.** The drawing fills the screen. Around it: the top
   bar (the circuit's title, Examples, undo and redo, Ctrl+K, Share, Export, Help, Settings, Run), the
   parts toolbar with names in the page's margin, the hint line (what to do next) and the status line

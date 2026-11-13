@@ -2488,8 +2488,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       ...(nodeCard.refused ? { refused: nodeCard.refused } : {}),
       groundName: EDIT_STRINGS.groundName,
       voltage,
-      // No voltage from a run that found an error: why (the check), not "in a moment".
-      ...(!voltage && current && record ? { noVoltage: noNumbersReason(record) } : {}),
+      // No voltage: why, not "in a moment". From a run that found an error, the check; when nothing will run
+      // without Run (a netlist PlainSpice does not run, no analysis line, a link not run, Stop, a time-out),
+      // the status line's words, as a part's card says them (cardRun); "in a moment" only while a run comes.
+      ...(voltage ? {} : current && record ? { noVoltage: noNumbersReason(record) } : cardRun.stalled ? { noVoltage: cardRun.stalled } : {}),
       sentence: describeNode(schematic, nodeCard.node),
       session: nodeCard.session,
       takeFocus: nodeCard.focus,
@@ -3692,7 +3694,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         return <p className="muted">{[t('plotWaiting'), status.tone === 'paused' ? status.detail : undefined].filter(Boolean).join(' ')}</p>;
       }
       case 'output':
-        return <OutputPanel result={record?.run} added={record?.added ?? []} notes={record?.notes ?? []} />;
+        return <OutputPanel result={record?.run} added={record?.added ?? []} notes={record?.notes ?? []} failed={liveState.outcome.kind === 'failed' && liveState.outcome.text === text ? liveState.outcome.reason : undefined} />;
     }
   };
 

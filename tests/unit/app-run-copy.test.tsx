@@ -169,3 +169,39 @@ describe('a run Run asks for that fails is said each time, as one that finishes 
     said.stop();
   }, 30_000);
 });
+
+describe('a node card and the ngspice output panel say why there are no numbers, as a part card does (the last pass: a11y-phone-2)', () => {
+  const noVoltage = (): string => document.querySelector('.node-card__none')?.textContent ?? '';
+  const realEngine = (): Engine => ({ warmUp: async () => (await ngspice, 1), run: async (netlist) => (await ngspice).run(netlist), cancel: () => undefined });
+  const panels = (): HTMLElement => screen.getByRole('navigation', { name: 'Panels' });
+
+  // c520a49: "No voltage yet: ngspice runs the circuit in a moment." and "Nothing yet: ngspice has not run
+  // this circuit.", while nothing would run until the ) was added.
+  it('a netlist PlainSpice does not run: the node card gives the reason, as R1’s card does, and the output panel says the simulation could not run and why', async () => {
+    render(<App startup={{ source: 'saved', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n' }} engine={realEngine()} serviceWorker={false} />);
+    const why = RUN_COPY_WORDS.noClose(4, 'v(');
+    await waitFor(() => expect(statusLine()).toContain(why), { timeout: 15000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Node a' }));
+    await waitFor(() => expect(noVoltage()).toBe(why));
+    expect(noVoltage()).not.toContain('in a moment');
+    fireEvent.click(within(panels()).getByRole('button', { name: /^ngspice output/ }));
+    const output = await screen.findByRole('region', { name: 'ngspice output' });
+    expect(output.textContent).toContain(`The simulation could not run: ${why}`);
+    expect(output.textContent).not.toContain('Nothing yet');
+  }, 30_000);
+
+  // The same sentence came for every netlist that does not run without Run (fix-base too): the node card
+  // now says what the status line and a part's card say.
+  it('no analysis line, and a link opened without running: the node card says what to do, not "in a moment"', async () => {
+    render(<App startup={{ source: 'saved', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.end\n' }} engine={realEngine()} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Nothing to run yet'), { timeout: 15000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Node b' }));
+    await waitFor(() => expect(noVoltage()).toBe('Add an analysis line, such as .op: the Checks panel offers one.'));
+    cleanup();
+    render(<App startup={{ source: 'share', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n', run: false }} engine={realEngine()} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Not run yet'), { timeout: 15000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Node b' }));
+    await waitFor(() => expect(noVoltage()).toBe('This link opens without running: press Run (Ctrl+Enter) to run it.'));
+  }, 30_000);
+});
+
