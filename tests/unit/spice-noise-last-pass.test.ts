@@ -196,13 +196,13 @@ describe('an attoamp is never drawn as an answer with nothing said: lines that l
     }
   });
 
-  it('by the rule (a line it does not model exactly), an ammeter whose only partner at a node is a resistor ngspice gives exactly 0 A carries 0 too; a real 0.73 aA after a 1 µΩ wire is given back at the next node, with the note', async () => {
+  it('by the rule (a line it does not model exactly), an ammeter whose only partner at a node is a resistor ngspice gives exactly 0 A carries 0 too; a real 0.73 aA after a 1 µΩ wire is given back at the next node, proven real with no note: node q, the very double of n3, is real, so Rvm\'s q / 1 TΩ is, and Vm in series with it (the note called them maybe noise beside q\'s real 732.4 nV: the critic of the last pass\'s fixes)', async () => {
     const rule = await solveText(netlist(...bridge, '.options gmin=1e-12', '.op'), ngspice);
     expect([by(rule), text(rule.words, 'Vm')]).toEqual(['rule', 'Vm measures no current']);
     const ladder = ['V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'Rw n3 p 1u', 'Vm p q 0', 'Rvm q 0 1t', '.options savecurrents'];
     const wire = await solveText(netlist(...ladder, '.options gmin=1e-12', '.op'), ngspice);
-    expect([by(wire), text(wire.words, 'Vm')]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q']);
-    expect(sp(wire.words.warnings.find((m) => m.code === 'maybe-noise')?.title)).toBe('2 currents may be rounding noise');
+    expect([by(wire), text(wire.words, 'Vm'), text(wire.words, 'Rvm'), sp(wire.words.nodes.find((n) => n.node === 'q')!.text)]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q', '7.324e-19 A from node q to ground through Rvm', '732.4 nV']);
+    expect(wire.words.warnings.filter((m) => m.code === 'maybe-noise').map((m) => m.title)).toEqual([]);
     // Solved exactly, the same circuit has every one of them real, and the wire's 7.324e-19 A is shown exactly (C9n).
     const exact = await solveText(netlist(...ladder, '.op'), ngspice);
     expect([by(exact), text(exact.words, 'Rw'), exact.words.warnings.some((m) => m.code === 'maybe-noise')]).toEqual(['exact', '7.324e-19 A from node n3 to node p through Rw', false]);

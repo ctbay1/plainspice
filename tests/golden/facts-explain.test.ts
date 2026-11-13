@@ -1513,12 +1513,10 @@ describe('after the last pass (13 November 2026)', () => {
     expect(d.words.warnings.some((m) => m.code === 'maybe-noise')).toBe(false);
   });
 
-  it('C9w.3: by the rule, Vm\'s real 7.324e-19 A after a 1 µΩ wire ngspice gives 0 A is given back at the meter\'s node, and a note says that the attoamps it cannot tell from noise may be either', () => {
+  it('C9w.3: by the rule, Vm\'s real 7.324e-19 A after a 1 µΩ wire ngspice gives 0 A is given back at the meter\'s node; node q, the very double of n3, is real, so Rvm\'s q / 1 TΩ is proven real, and Vm in series with it: no note calls them maybe noise (it did, beside q\'s real 732.4 nV)', () => {
     const d = ofFact('C9w.3');
-    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'Rw'))]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q', 'no current through Rw']);
-    const maybe = d.words.warnings.find((m) => m.code === 'maybe-noise')!;
-    expect(plain(maybe.title)).toBe('2 currents may be rounding noise');
-    expect(plain(maybe.why)).toBe("ngspice gave Vm 7.324215e-19 A and Rvm 7.324215e-19 A. Each is below 1 pA, ngspice's current tolerance (its abstol option), so each may be rounding noise, what its arithmetic leaves of a value that is exactly 0, or a real value that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows each as ngspice gives it.");
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'Rvm')), plain(currentText(d, 'Rw'))]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q', '7.324e-19 A from node q to ground through Rvm', 'no current through Rw']);
+    expect(d.words.warnings.some((m) => m.code === 'maybe-noise')).toBe(false);
   });
 
   it('C8b: a sweep\'s words name a transistor\'s currents by their terminals, as ngspice\'s devhelp describes them, never "the current in Q1" four times', () => {

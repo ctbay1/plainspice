@@ -176,3 +176,11 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
     expect([ratio.maybe, far.words.warnings.some((m) => m.code === 'maybe-noise' && m.title.startsWith('The transfer function'))]).toEqual([undefined, false]);
   });
 });
+
+describe('by the rule, a node proven real proves the current of a resistor from it to ground, and Kirchhoff\'s law spreads it (C7)', () => {
+  it('a .param ladder read through a 1 µΩ wire, a 0 V ammeter and a 1 TΩ meter, with a dangling 1e20 Ω resistor: node4 has node3\'s very double, so Rvm\'s node4 / 1 TΩ is real, and Vm in series: no note calls them maybe noise beside node4\'s real 738.2 nV', async () => {
+    const r = await solveText(netlist('.param x=1', 'V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 node3 1.5k', 'R6 node3 0 12', 'Rw node3 p 1u', 'Vm p node4 0', 'Rvm node4 0 1t', 'R9 node3 nodeq 1e20', '.op'), ngspice);
+    expect([by(r), node(r.words, 'node4'), sp(current(r.words, 'Rvm')?.text), sp(current(r.words, 'Vm')?.text)]).toEqual(['rule', '738.2 nV', '7.382e-19 A from node4 to ground through Rvm', 'Vm measures 7.382e-19 A flowing from node p to node4']);
+    expect(message(r.words, 'maybe-noise')).toBeUndefined();
+  });
+});

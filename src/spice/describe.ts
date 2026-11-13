@@ -3447,19 +3447,60 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   // At each node: the proven currents' sum, the largest of them, and how many currents there are not proven and not 0.
   const proven = new Map<string, { sum: number; largest: number; open: number }>();
   for (const [node, list] of at) if (counted(node)) proven.set(node, { sum: 0, largest: 0, open: list.filter((el) => amps.get(el.key)).length });
-  for (let k = 0; k < sureQueue.length; k++) {
-    const el = sureQueue[k]!;
-    for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) markSure(r);
-    const amp = amps.get(el.key) ?? 0;
-    for (const node of ends.get(el.key) ?? []) {
-      const b = proven.get(node);
-      if (!b) continue;
-      b.sum += node === ends.get(el.key)![0] ? amp : -amp;
-      b.largest = Math.max(b.largest, Math.abs(amp));
-      b.open -= 1;
-      if (b.open !== 1 || !clearlyNot0(b.sum, b.largest)) continue;
-      const last = at.get(node)!.find((x) => amps.get(x.key) && !sure.has(x.key));
-      if (last) markSure(last);
+  // The parts between a node and ground, by that node; the nodes by the double ngspice gives them.
+  const toGround = new Map<string, Element[]>();
+  for (const el of parts) {
+    const [p, n] = el.nodes;
+    if (!p || !n || (nodeName(p) === '0') === (nodeName(n) === '0')) continue;
+    const node = nodeName(p) === '0' ? nodeName(n) : nodeName(p);
+    const list = toGround.get(node);
+    if (list) list.push(el);
+    else toGround.set(node, [el]);
+  }
+  const byValue = new Map<number, string[]>();
+  for (const [node, v] of volts) {
+    if (node === '0' || v === 0 || !Number.isFinite(v)) continue;
+    const list = byValue.get(v);
+    if (list) list.push(node);
+    else byValue.set(v, [node]);
+  }
+  // A node voltage proven real, with every node ngspice gives its very double; and a resistor between such a node and
+  // ground carries a current proven real, its voltage over its resistance (the critic of the last pass's fixes: node q
+  // was shown real at 732.4 nV beside a note that Rvm's q/1 TΩ may be noise of an exact 0).
+  const realNode = new Set<string>();
+  const nodeQueue: string[] = [];
+  const markRealNode = (node: string): void => {
+    const v = volts.get(node);
+    for (const m of v === undefined ? [node] : (byValue.get(v) ?? [node])) {
+      if (realNode.has(m)) continue;
+      realNode.add(m);
+      nodeQueue.push(m);
+    }
+  };
+  for (const [node, list] of toGround) if (list.some((el) => el.letter === 'V' && el.value?.number?.value)) markRealNode(node);
+  for (let k = 0, j = 0; k < sureQueue.length || j < nodeQueue.length; ) {
+    if (k < sureQueue.length) {
+      const el = sureQueue[k++]!;
+      for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) markSure(r);
+      const amp = amps.get(el.key) ?? 0;
+      const pair = ends.get(el.key);
+      if (el.letter === 'R' && pair && (pair[0] === '0') !== (pair[1] === '0')) markRealNode(pair[0] === '0' ? pair[1] : pair[0]);
+      for (const node of pair ?? []) {
+        const b = proven.get(node);
+        if (!b) continue;
+        b.sum += node === pair![0] ? amp : -amp;
+        b.largest = Math.max(b.largest, Math.abs(amp));
+        b.open -= 1;
+        if (b.open !== 1 || !clearlyNot0(b.sum, b.largest)) continue;
+        const last = at.get(node)!.find((x) => amps.get(x.key) && !sure.has(x.key));
+        if (last) markSure(last);
+      }
+      continue;
+    }
+    const node = nodeQueue[j++]!;
+    for (const el of toGround.get(node) ?? []) {
+      const amp = amps.get(el.key);
+      if (el.letter === 'R' && amp && Number.isFinite(amp)) markSure(el);
     }
   }
   const unproven = { currents: new Set<string>(), nodes: new Set<string>() };
@@ -3467,20 +3508,8 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     const amp = amps.get(el.key);
     if (amp !== undefined && amp !== 0 && Number.isFinite(amp) && Math.abs(amp) < ABSTOL && !sure.has(el.key) && !out.currents.has(el.key)) unproven.currents.add(el.key);
   }
-  const realNode = new Set<string>();
-  for (const el of parts) {
-    const [p, n] = el.nodes;
-    if (!p || !n || (nodeName(p) === '0') === (nodeName(n) === '0')) continue;
-    const node = nodeName(p) === '0' ? nodeName(n) : nodeName(p);
-    if ((el.letter === 'R' && sure.has(el.key)) || (el.letter === 'V' && el.value?.number?.value)) realNode.add(node);
-  }
-  const realValues = new Set<number>();
-  for (const node of realNode) {
-    const v = volts.get(node);
-    if (v) realValues.add(v);
-  }
   for (const [node, v] of volts) {
-    if (node !== '0' && v !== 0 && Number.isFinite(v) && Math.abs(v) < VNTOL && !realNode.has(node) && !realValues.has(v)) unproven.nodes.add(node);
+    if (node !== '0' && v !== 0 && Number.isFinite(v) && Math.abs(v) < VNTOL && !realNode.has(node)) unproven.nodes.add(node);
   }
   if (unproven.currents.size || unproven.nodes.size) out.unproven = unproven;
   return out;
