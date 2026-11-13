@@ -713,6 +713,11 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect(noise(words)).toEqual([]);
   });
 
+  it('a node whose only DC path goes through a diode has no single answer with the diode\'s current left free: the circuit is left to the rule (a G drives R6 and D1 in series to ground)', async () => {
+    const { by } = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'G1 0 out a b 1m', 'R6 out x 1k', 'D1 x 0 dmod', '.model dmod d'));
+    expect(by).toBe('rule');
+  });
+
   it('diodes side by side make a loop of diodes: one of them stands for both (their currents reach the rest of the circuit only as one), so the circuit is still solved exactly', async () => {
     const { words, by } = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k', 'D1 top x dmod', 'D2 top x dmod', 'Rx x 0 1k', '.model dmod d'));
     expect([by, node(words, 'out'), current(words, 'Rl')]).toEqual(['exact', '0 V', 'no current through Rl']);
