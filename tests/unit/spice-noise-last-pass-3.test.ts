@@ -123,6 +123,18 @@ describe('a sweep point is named by ngspice\'s own x where a value there reads o
 
 const by = (r: Awaited<ReturnType<typeof solveText>>): string => roundingNoise(r.netlist, r.results).by;
 
+describe('by the rule, the point nearest the .op\'s state is held to what the .op\'s words show', () => {
+  it('C9\'s bridge with a .param line beside an isolated transistor, swept in 0.9 V steps to 8.999… or 9.000000000000002 V: its floating nodes\' leftovers differ from the .op\'s (1.762e-66 V for −1.629e-26 V), but the .op\'s note calls those maybe noise, and a transistor\'s currents are not in its words, so the point still stands for the .op\'s state, "V1 = 9 V", with R5\'s 0 (r9731-82 was named by its x)', async () => {
+    const r = await solveText(netlist('.param rtop=10k', 'V1 top 0 9', 'R1 top a {rtop}', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'Qx qc qb 0 qmod', 'Rqb qb 0 1meg', 'Rqc qc 0 1meg', '.model qmod npn', '.options savecurrents', '.op', '.dc V1 0 9 0.9'), ngspice);
+    const dc = r.results.dc!;
+    expect(dc.scale.values[dc.scale.values.length - 1]).not.toBe(9);
+    expect([by(r), message(r.words, 'maybe-noise')?.includes('node qc -1.629076e-26 V')]).toEqual(['rule', true]);
+    expect(sweepText(r)).toContain('At V1 = 9 V: v(top) = 9 V, v(a) = 4.5 V, v(b) = 4.5 V, v(qc) = 1.762e-66 V');
+    expect(sweepText(r)).toContain('i(@r5[i]) = 0 A');
+    expect(message(r.words, 'sweep-point')).toBeUndefined();
+  });
+});
+
 describe('a point found within the step\'s rounding of the .op\'s value stands for the .op\'s state only where it shows what the .op shows, and the notes say what it is (N2)', () => {
   it('idle3 swept in 10 µV steps, past SWEEP_VALUES: its last point, 8.999999999828448 V, shows V2\'s 38.12 fA beside the .op\'s 0, so the size note names no point as the .op\'s state ("where the sweep shows what the operating point shows" was false), and the point is named by its x', async () => {
     const r = await solveText(idle3('.dc V1 0 9 0.00001'), ngspice);

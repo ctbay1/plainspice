@@ -1351,7 +1351,13 @@ interface Otherwise {
 /** By run: the points ruleStateSweep found within the step's rounding of the .op's state that do not show what the .op shows. */
 const otherwiseCache = new WeakMap<AnalysisResults, { netlist: Netlist; failed: Map<number, Otherwise> }>();
 
-/** What the .op shows of each vector, by its name in lower case ("v(a)", "i(v1)", "i(@r1[i])"): 0 for rounding noise, the exact value for a lost one. */
+/**
+ * What the .op shows of each vector, by its name in lower case ("v(a)", "i(v1)", "i(@r1[i])"): 0 for rounding noise, the
+ * exact value for a lost one; only what its words show (a transistor's currents are not shown, and its isolated nodes'
+ * leftovers differ from run to run). A value the .op's own note says may be rounding noise (RoundingNoise.unproven) is left out:
+ * the .op claims nothing for it, and two leftovers of a floating transistor node (−1.628e-26 V and 1.761e-66 V, r9731-82)
+ * contradict nothing.
+ */
 function opShown(netlist: Netlist, results: AnalysisResults): Map<string, number> {
   const out = new Map<string, number>();
   const op = results.op;
@@ -1359,12 +1365,11 @@ function opShown(netlist: Netlist, results: AnalysisResults): Map<string, number
   const noise = noiseOf(netlist, results);
   for (const n of op.nodes) {
     const name = netlistNode(netlist, n.node);
+    if (noise.unproven?.nodes.has(name)) continue;
     out.set(`v(${lowerAscii(n.node)})`, noise.nodes.has(name) ? 0 : n.value === 0 ? (noise.lostNodes.get(name) ?? 0) : n.value);
   }
-  for (const c of op.currents) {
-    const key = netlistPart(netlist, c.element);
-    out.set(lowerAscii(c.vector), c.value !== 0 && noise.currents.has(key) ? 0 : c.value === 0 ? (noise.lostCurrents.get(key)?.value ?? 0) : c.value);
-  }
+  // The currents its words show, as they show them (a transistor's are not among them).
+  for (const c of currentsOf(netlist, results)) if (c.vector && !noise.unproven?.currents.has(c.element)) out.set(lowerAscii(c.vector), c.value);
   return out;
 }
 
