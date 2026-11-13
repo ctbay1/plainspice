@@ -166,25 +166,34 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - **Never a netlist that ngspice would write past the end of a fixed space** (second re-check, P1). A
   title of more than 504 bytes stops `ngspice -b -r` ("buffer overflow detected": it writes
   `Title: ` and the title into 513 bytes), and in a few other places ngspice copies a name into 100
-  or 512 bytes without checking (limit-1 to limit-12 in [`../spice-facts/limits.md`](../spice-facts/limits.md)).
+  or 512 bytes without checking (limit-1 to limit-17 in [`../spice-facts/limits.md`](../spice-facts/limits.md)).
   Our engine has no such check: a title of 505 to 523 bytes ran on overwritten memory, a longer one
   crashed it, which Playwright's browser shows as a crashed page; a real Chromium said "the simulation
   engine crashed", and saved work with such a title did that on every visit. The copy ngspice runs
   (`src/spice/run-netlist.ts`) now:
-  - cuts line 1 and every `.title` line's title (a `.title` line counts anywhere, even after `.end`)
-    to its first 504 bytes, between two characters; the student's text keeps it, and the ngspice
+  - cuts line 1, whole (native ngspice reads ` .title …` there as written), and every `.title` line's
+    title (a `.title` line counts anywhere, even after `.end`) to its first 504 bytes, between two
+    characters; the student's text keeps it, and the ngspice
     output panel says what was cut and why. The numbers are those of a short title (limit-2). A title
     is the one thing a student pastes long: a problem statement.
   - is not run at all when ngspice would write past a space: a word of more than 250 bytes (anything
     between blanks, brackets, commas, `=`, `{ }`, quotes and operators; a part line's first words and
     a `.save` line's words as ngspice takes them whole), a name ngspice makes inside subcircuits of
     more than 250 bytes (a part's `r.x1.x2.r1`, a node's `x1.x2.n1`: it saves currents under them and
-    a `.control` block prints them), a formula's `v(…)` or `i(…)` of more than 500 bytes, a `.control`
-    command of more than 500 bytes (every line of an `*ng_script` file is one), or a `.model` line's
-    version of more than 90 bytes (ngspice copies it into 100, limit-9). A line's comment is cut
-    exactly where ngspice cuts it, before these checks: a `$` glued to a word starts none, so
+    a `.control` block prints them), a formula's `v(…)` or `i(…)` of more than 500 bytes, an analysis
+    command of a `.control` block of more than 500 bytes as ngspice writes it (`.op` and its words with
+    one blank each; every line of an `*ng_script` file is a command), or a `.model` line's version of
+    more than 90 bytes (ngspice copies it into 100, limit-9). The words are measured as ngspice makes
+    them: without the blanks inside brackets where it takes them out (`.save i( a b c )` is one name,
+    limit-13), with the text a string parameter stands for where `{…}` puts it (limit-14), the names a
+    `.probe` line makes and the formula it writes for `p(…)` (limit-15), and the name `print` and `write`
+    give a formula, its text (limit-17); a `meas` command's words keep to 50 bytes, as ngspice writes a
+    wrong one with its message into 100 (limit-17). A line's comment is cut exactly where ngspice cuts
+    it, before these checks, and its words are never read: a `$` glued to a word starts none, so
     `B1 c 0 V=1$+v(b` is a formula with a `v(` and no `)`. The lines of `circbyline` commands, which
-    ngspice reads as a netlist, are checked as one (limit-12). The run fails with the reason, the line and
+    ngspice reads as a netlist, are checked as one, a circuit at each `.end`, once: its title (its first
+    line) keeps to 504 bytes, and a `circbyline` command inside it is refused, as ngspice crashes on it
+    (limit-12, limit-16). The run fails with the reason, the line and
     what to do: the status line says "ngspice could not run" and why, the Numbers panel and the live
     region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
     checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
@@ -192,17 +201,27 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     until it changes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
     formula into a B source (`v(n1, n2)`), and a `.control` block's `display` writes about 40 more
     bytes around a name (limit-10); one number for every name, written or made inside subcircuits, is
-    simpler to say than one per place. With every name that short, `.options savecurrents` is added
+    simpler to say than one per place. Where ngspice joins more than two (a `.probe` line's formula: a
+    part's, a terminal's and a node's name; words in brackets), the word it makes is measured, not the
+    names in it. With every name that short, `.options savecurrents` is added
     for every `.op` that runs (decision 0011). No netlist we have comes near: all 147 in the repository
     give the same copy as before.
   - Checked with ngspice 47 built with AddressSanitizer, configured like the engine: every kind of
-    word at 600, 5,000 and 20,000 bytes, at the limits and one byte over, and each place found by
-    reading every fixed-size array of the source that a netlist reaches (414 netlists). Of the 137
-    copies PlainSpice runs, 133 give no report; two are limit-11 (below), and two are lines starting
-    with a vertical tab, or a byte order mark and a blank, before `.title`, which ngspice refuses and
-    which the sanitized build reports as an overlapping `memcpy` at any length: no write past a space.
-    None of the 137 crashes our engine. The limits are below ngspice's own (100 and 504 to 511 bytes),
-    so a little room is left for what the search did not try.
+    word at 600, 5,000 and 20,000 bytes, at the limits and one byte over, each place found by reading
+    every fixed-size array of the source that a netlist reaches, and, after a review of the first fix,
+    what ngspice does to a line before it copies it (1,154 netlists). Of the 301 copies PlainSpice runs,
+    291 give no report and no stop; three are limit-11 (below), five are lines starting with a vertical
+    tab, or a byte order mark and a blank, before `.title`, which ngspice refuses and which the
+    sanitized build reports as an overlapping `memcpy` at any length (no write past a space), and two
+    include a file that crashes native ngspice for no length (`/proc/meminfo`, the netlist itself). Our
+    engine crashes on one, again no length: a netlist that includes itself. The limits are below
+    ngspice's own (100 and 504 to 511 bytes), so a little room is left for what the search did not try.
+  - **Only analysis commands keep to 500 bytes** in a `.control` block, as only they are copied into 512
+    (limit-6). The first version of this fix refused every `.control` line over 500 bytes, though
+    ngspice runs a long `print`, `echo` or `let` line, and said a reason that was not true; such
+    netlists, which ran on b060bc8, run again. The checks of a circuit built with `circbyline` went
+    one level deeper for each circuit built inside it, so a 2 kB link took a second of processor time
+    at every pause; such a circuit is now checked once, and one inside it refused.
   - **A typo found on the way**: a B source, an E or G source with a formula, or a `.model` line with
     `temper`, whose `v(` or `i(` has no `)` (`B1 c 0 V=v(b`) makes ngspice look for the `)` past the
     end of the line. Native ngspice 47
@@ -219,10 +238,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   - Not taken: making the engine itself check (a patch to ngspice's C code). It would need the engine
     rebuilt, and native ngspice, which PlainSpice runs like, stops the same way; it is the better fix
     for later, sent upstream.
-  - **Still open: a name a `.control` block makes while it runs** (limit-11). A `.control` block is a
+  - **Still open: what a `.control` block computes while it runs** (limit-11). A `.control` block is a
     small program: `set t = $s$s$s$s$s$s` joins short words into a 600-byte name, and `display` then
-    writes it past 512 bytes. Native ngspice stops; our engine runs on with its memory overwritten.
-    PlainSpice cannot see such a name in the text, so it gives ngspice the block as written. The block
+    writes it past 512 bytes; `alias xx op` makes `xx` and long words an analysis command of more than
+    512 bytes. Native ngspice stops; our engine runs on with its memory overwritten. PlainSpice does
+    not run the block's program before ngspice does, so it gives ngspice the block as written. The block
     writes nothing to the results file (A36): PlainSpice shows its words in the ngspice output panel
     only. Not running `.control` blocks at all would close this, but it would change what this record
     allows above ("Never a program": the blocks run, `system()` refuses), so it is Tarık's choice.
