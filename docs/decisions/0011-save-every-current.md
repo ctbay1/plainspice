@@ -92,7 +92,7 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
     be false with a T line, whose port currents ngspice saves (as v(t1#i1) and v(t1#i2)), and with a `.save`
     line (`.save @r1[i] v(n1)` keeps R1's current), native 47 and 42 both. So the note now says what the
     line does, in Explain's words ("…, and ngspice saves the current through every part only with that
-    line."), and the Numbers panel shows which currents the run has.
+    line."), and names no current.
   - Where the student's own `.options savecurrents` line comes after `.end`, which ngspice reads there too:
     the Numbers panel showed the currents beside a note that said they were missing. ngspice takes every
     line that starts with `.opt` out of the netlist before it reads the circuit (fact A2d, native 47 and 42,
