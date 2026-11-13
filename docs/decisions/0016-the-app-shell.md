@@ -509,9 +509,14 @@ Ctrl+K stay as they are.
   measured from ground, is given by the formula {v(out)*2}"), which nodes the formula reads, and that
   ngspice makes the line a B source, or that PlainSpice's engine cannot run a POLY or a TABLE; the
   overview says "a voltage source given by a formula", and Explain's heading says the same. The
-  skeptic's additions: two words between an E's or G's output nodes and its formula (`E1 e 0 out 0
-  VALUE={2}`) are dropped, as ngspice drops them, so they are no nodes and Explain says so
-  (unknown-word-54); HSPICE's words `vcvs`, `vccs`, `cccs` and `ccvs` after the output nodes are taken
+  skeptic's additions: words between an E's or G's output nodes and its formula (`E1 e 0 out 0
+  VALUE={2}`, or a gain left on the line) are dropped, as ngspice drops them, so they are no nodes and
+  Explain says so (unknown-word-54, -55); exactly one such word stops native ngspice, whose XSPICE first
+  reads the line as a polynomial, but not our engine, so it gets a warning whose fix takes the word out
+  (missing-fields-9); a formula ngspice cannot read, without braces and starting with a number
+  (`VALUE=3`, `VALUE=2*v(out)`), after VALUE without `=`, or empty, gets an error ("mal formed E source
+  instance") whose fix puts it in braces (fatal-syntax-12 to -15), while one that starts with a letter
+  or a bracket gets its braces from ngspice and no trap (fatal-syntax-16); HSPICE's words `vcvs`, `vccs`, `cccs` and `ccvs` after the output nodes are taken
   out on a line of exactly seven words (E, G) or six (F, H), and kept as a node with one word more, as
   ngspice's replace_token does (unknown-word-53); the Numbers panel says "PlainSpice's engine can't run
   E1's TABLE" (or POLY) where it said "A line starts with E"; and the editor's colours read every one of
