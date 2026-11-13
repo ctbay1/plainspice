@@ -23,6 +23,7 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 | [traps.md](traps.md) | What ngspice does with each beginner trap PlainSpice checks for (the scale letters, ground, floating nodes, current sources with no path, loops of voltage sources, duplicate names, unknown first letters, missing values, `.tf`/`.dc` on names that don't exist, words and dot commands ngspice doesn't know, invisible characters and look-alike letters, characters that look like a space, node names ngspice spells with underscores …), so each check says what really happens and its fix changes only what it should | `src/spice/traps.ts`, `src/spice/graph.ts` | `tests/golden/facts-traps.test.ts` (and `tests/unit/spice-traps.test.ts`) |
 | [explanations.md](explanations.md) | What each kind of line means (parts, sources and their waveforms, dot commands), what each analysis computes and saves, which way currents and powers are counted, and what ngspice's messages mean | `src/spice/explain.ts`, `src/spice/describe.ts` | `tests/golden/facts-explain.test.ts` (and `tests/unit/spice-explain.test.ts`, `tests/unit/spice-describe.test.ts`) |
 | [drawing.md](drawing.md) | That ngspice ignores the drawing lines PlainSpice keeps in a netlist (`* plainspice-drawing v1` and the `*@` lines, with their `side=` fields, fields PlainSpice does not know, and another version's block): same printout, same results file byte for byte, no warning | `src/schematic/format.ts`, and `src/spice/explain.ts` (Explain's one entry for the drawing lines) | `tests/golden/facts-drawing.test.ts`, the drawing case in `tests/golden/facts-explain.test.ts` (and `tests/unit/schematic-format.test.ts`) |
+| [limits.md](limits.md) | Where ngspice copies a title or a name into a space of fixed size without checking its length (the title in 513 bytes, a saved part's full name, `i(…)` and `@…[…]` on a `.save` line, a formula's names and `v(…)`, a `.control` command, `.save alli`), what native ngspice and our engine do past the end, and what reaches no such space | `src/spice/run-netlist.ts` (the copy ngspice runs) | `tests/golden/facts-limits.test.ts` (and `tests/unit/spice-run-netlist.test.ts`) |
 
 ## Adding a fact
 
@@ -82,3 +83,10 @@ research runs of the same day, which are not in the repository, so their results
 the 48 value spellings (each put on a current source, a resistor and a capacitor, in ngspice 42 and 47;
 the table is in `tests/unit/spice-numbers.test.ts`) and the first-character sweep (57 first characters;
 the 26 letters were run again for section 5 of `numbers-and-syntax.md`).
+
+## The second re-check of 13 November 2026
+
+limit-1 to limit-8 in [limits.md](limits.md), run on 13 November 2026 with native ngspice 47 and 42,
+an AddressSanitizer build of ngspice 47 configured like our engine, and our engine: a title of more
+than 504 bytes stops `ngspice -b -r` (fileInit's 513 bytes), and the other places where ngspice
+copies a name into 512 bytes without checking. The copy PlainSpice runs keeps inside all of them.
