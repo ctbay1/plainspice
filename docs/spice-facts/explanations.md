@@ -1602,7 +1602,7 @@ R1 in 0 1k
 ```text
 ngspice 47, ngspice -b -r (exit 0):
     No. of Data Rows : 0
-  rawfile: (no data: header without a Binary: or Values: section)
+  rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42: the same output, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     No. of Data Rows : 0
@@ -5900,7 +5900,7 @@ ngspice 47, ngspice -b (exit 1):
         Any of the following steps may fail.!
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
-  rawfile from ngspice -b -r (exit 1): (no data: header without a Binary: or Values: section)
+  rawfile from ngspice -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     DC solution failed -
@@ -5974,7 +5974,7 @@ ngspice 47, ngspice -b (exit 1):
         Any of the following steps may fail.!
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
-  rawfile from ngspice -b -r (exit 1): (no data: header without a Binary: or Values: section)
+  rawfile from ngspice -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     DC solution failed -

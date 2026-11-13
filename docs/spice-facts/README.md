@@ -199,11 +199,13 @@ before a built circuit, a built circuit's `.title` line, a formula's name with i
 New facts, run the same way: zero-ohm-7 and zero-ohm-8 in traps.md (a resistance below 1e-12 Ω that is
 not 0: ngspice 47 raises it to 1e-12 Ω, or −1e-12 Ω for a negative value, with a warning; ngspice 42
 keeps it as written, silently; 3a in series and across a source), with rows in
-`tests/golden/facts-traps.test.ts`; the capacitor and inductor runs recorded beside space-before-suffix-12
-and unknown-word-6 (47's "no such parameter on this device or parameter is missing", 42's "no such
-parameter on this device") and the header-only results files our engine reports, in
-`tests/golden/facts-traps-last-pass.test.ts`. Records corrected after native re-runs: limit-9 (native 47
+`tests/golden/facts-traps.test.ts`; the capacitor, inductor and source runs recorded beside
+space-before-suffix-12 and unknown-word-6 (47's "no such parameter on this device or parameter is
+missing", 42's "no such parameter on this device") and the header-only results files our engine reports,
+in `tests/golden/facts-traps-last-pass.test.ts`. Records corrected after native re-runs: limit-9 (native 47
 and 42 stop from a 105-byte version, not 150, and level 73 copies it too), the results file of 16 traps.md
 facts (15 hold a plot's header with 0 points where they said no file or no data; unknown-dot-command-2's
-ngspice 42 file holds the .op point), and the ngspice 42 lines of P18, P19, P19b, P19c, P20b, A17, A18 and
-non-ascii-node-12 (the same output and summary, but their time points differ, said where).
+ngspice 42 file holds the .op point), in the words A11, M3 and M3b in explanations.md now use for such a
+file too ("a … plot with 0 points, its header only"), and the ngspice 42 lines of P18, P19, P19b, P19c,
+P20b, A17, A18 and non-ascii-node-12 (the same output and summary, but their time points differ, said
+where).
