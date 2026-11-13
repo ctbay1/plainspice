@@ -4,6 +4,7 @@
  * rename fix for a node a formula reads keeps the circuit running, with the same numbers.
  */
 import { expect, test } from '@playwright/test';
+import { encodeShare } from '../../src/share/link.ts';
 import {
   checksCount,
   expectFinished,
@@ -66,8 +67,8 @@ test('a formula that writes the node with a capital letter (v(Çıkış)) gets n
 });
 
 test('an emoji before a thin space in the title stops no check: the error for x shows, not "No traps found" (round-1 critic CR1-5)', async ({ page }) => {
-  await openApp(page);
-  await setNetlist(page, '* t\n.title \u{1F600} devre\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nC1 out x 1u\n.op\n.end\n');
+  // Opened from a link: the netlist editor shows the thin space as a mark, which the text typed in would not match.
+  await openApp(page, `./#${await encodeShare('* t\n.title \u{1F600}\u2009devre\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nC1 out x 1u\n.op\n.end\n', { run: true })}`);
   await expect.poll(() => checksCount(page)).toBe(2);
   const panel = await openPanel(page, 'checks');
   await expect(panel).toContainText('x has no DC path to ground');
