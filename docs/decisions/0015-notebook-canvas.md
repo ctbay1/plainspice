@@ -763,3 +763,9 @@ that a phone left no room to watch the numbers move; this record says what the c
   (v(a,b)/V1 = −5.551e−17 V/V beside R5's 0): the ratio is a slope, which the rule cannot decide from the .op's
   numbers (with a transistor it depends on its small-signal model), and it says how the voltage changes, not
   what it is.
+- **Our own netlists after the last pass.** Of the 366 netlists of the repository and the facts' golden tests, 23
+  give other words than c520a49's code: the new facts (C8b, C9w to C9w.14) and the meant changes to older ones. C9l's
+  2.696 fA through R5 and C9u.7's R7 now carry the warning (each drawn with other digits than the exact value);
+  C9t.3's h5 and C9t.7's R3 too (their texts say so); C9o.5, C9r.3 and C9u.7 add the note for tiny values the rule
+  cannot tell from noise; C9n.3's 1e−29 A "flow"; A24, with a .save line, is decided exactly, so its node's level
+  is counted with the node .save leaves out (the same words).
