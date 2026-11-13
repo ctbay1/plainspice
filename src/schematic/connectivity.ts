@@ -15,7 +15,7 @@ import { UnionFind } from '../spice/graph.ts';
 import type { Circuit } from './circuit.ts';
 import { GROUND } from './circuit.ts';
 import { groundGeometry, partGeometry, type Drawing } from './drawing.ts';
-import { pointKey, pointOnSegment, samePoint, segmentCrossesBox, type Box, type Point } from './geometry.ts';
+import { pointKey, pointOnSegment, samePoint, segmentCrossesBox, squaresAlong, type Box, type Point } from './geometry.ts';
 
 interface Seg {
   wire: number;
@@ -156,7 +156,7 @@ export class SegmentIndex {
   /** Slanted segments with an end off the grid (none that PlainSpice draws): checked one by one. */
   private readonly loose: Seg[] = [];
   readonly segments: Seg[] = [];
-  /** For `crosses`, made when first asked: the slanted segments by square, and those too long to file. */
+  /** For `crosses`, made when first asked: the slanted segments by the squares they run through (squaresAlong). */
   private byArea?: { squares: Map<number, Seg[]>; wide: Seg[] };
 
   constructor(wires: readonly (readonly Point[])[]) {
@@ -221,7 +221,9 @@ export class SegmentIndex {
       for (const t of list) {
         if (filed.has(t)) continue;
         filed.add(t);
-        const cells = squaresOf({ x0: Math.min(t.a.x, t.b.x), y0: Math.min(t.a.y, t.b.y), x1: Math.max(t.a.x, t.b.x), y1: Math.max(t.a.y, t.b.y) });
+        // Where it runs, not every square of its box: a long slanted piece's box covers hundreds of
+        // squares it never touches (second re-check, P3).
+        const cells = squaresAlong(t.a, t.b, SQUARE);
         if (!cells) wide.push(t);
         else for (const k of cells) push(squares, k, t);
       }

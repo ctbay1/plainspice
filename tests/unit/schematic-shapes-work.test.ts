@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { SegmentIndex } from '../../src/schematic/connectivity.ts';
 import { applyEdit, buildSchematic, schematicConnectivity, type EditOp, type Schematic } from '../../src/schematic/index.ts';
-import { groundRowsAndWave, partsAtOnePoint, piled, slantedLattice } from './schematic-hostile.ts';
+import { block, groundRowsAndWave, longSlantedFar, partsAtOnePoint, piled, slantedLattice, slantedOverParts } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ checks: 0 }));
 
@@ -146,6 +146,12 @@ const SHAPES: [string, () => string][] = [
   ['1900 names on a joined mesh', () => meshWith('names', 1900)],
   ['a frame at ±2000', bigFrame],
   ['ground rows and a 9,900-piece wave (the first critic’s 31 kB link)', () => groundRowsAndWave(25, 199, 9900)],
+  // The second re-check's critic: long slanted pieces far from the parts were checked by every look
+  // (28 million checks with the 60 parts at one point, 65 million with 1650 names in a block too).
+  ['60 parts at one point, 159 long slanted pieces far away', () => partsAtOnePoint(60, longSlantedFar())],
+  ['60 parts at one point, 1650 ground symbols in a block round them, 159 long slanted pieces', () => partsAtOnePoint(60, [...block('grounds', 1650), ...longSlantedFar()])],
+  ['60 parts at one point, 1650 names in a block round them, 159 long slanted pieces', () => partsAtOnePoint(60, [...block('names', 1650), ...longSlantedFar()])],
+  ['60 parts at one point, 170 long slanted pieces whose boxes cover where the parts go', () => partsAtOnePoint(60, slantedOverParts())],
 ];
 
 /** What the drawing holds: its drawing lines, and what the scene draws (pieces of wire, dots, hops, names, symbols). */

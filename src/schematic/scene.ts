@@ -29,6 +29,7 @@ import {
   samePoint,
   segmentCrossesBox,
   segmentsOf,
+  squaresAlong,
   transform,
   unionBoxes,
   type Box,
@@ -231,7 +232,10 @@ const boxOfLines = (lines: readonly TextLine[]): Box => unionBoxes(lines.map((l)
 
 /** The side of the squares obstacles are filed in, in grid units. */
 const CELL = 4;
-/** A box covering more squares than this (a very long word, say) is checked by every look instead. */
+/**
+ * A box covering more squares than this (a very long word, say) is checked by every look instead. A
+ * piece of wire is filed in the squares it runs through, however long (squaresAlong).
+ */
 const MAX_CELLS = 256;
 
 const NO_IDS: readonly number[] = [];
@@ -290,8 +294,8 @@ class Obstacles {
   private segmentSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
   private looks = 0;
 
-  private file(b: Box, id: number): void {
-    const keys = cellsOf(b);
+  private file(b: Box, id: number, along?: readonly [Point, Point]): void {
+    const keys = along ? squaresAlong(along[0], along[1], CELL) : cellsOf(b);
     if (!keys) {
       this.big.push(id);
       return;
@@ -313,7 +317,7 @@ class Obstacles {
   addWire(points: readonly Point[]): void {
     for (const [a, b] of segmentsOf(points)) {
       const i = this.segments.push([a, b]) - 1;
-      this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i);
+      this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i, [a, b]);
     }
   }
 
@@ -944,9 +948,10 @@ export function findOverlaps(scene: Scene): Overlap[] {
     ...scene.nodeLabels.map((l, i) => ({ item: { kind: 'node-label' as const, id: `${l.node}#${i}` }, box: l.box })),
   ];
   const segments = scene.wires.flatMap((w, i) => segmentsOf(w.points).map((s) => ({ item: { kind: 'wire' as const, id: String(i) }, s })));
-  const symbolsNear = new Grid(symbols.map((t) => t.box));
-  const wordsNear = new Grid(words.map((t) => t.box));
-  const segmentsNear = new Grid(segments.map(({ s: [a, b] }) => ({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) })));
+  const symbolsNear = new Grid(symbols.map((t) => cellsOf(t.box)));
+  const wordsNear = new Grid(words.map((t) => cellsOf(t.box)));
+  // A piece of wire is filed where it runs, not in the squares of its box (squaresAlong).
+  const segmentsNear = new Grid(segments.map(({ s: [a, b] }) => squaresAlong(a, b, CELL)));
   for (let i = 0; i < symbols.length; i++) {
     const box = symbols[i]!.box;
     for (const j of symbolsNear.near(box)) if (j > i && boxesOverlap(box, symbols[j]!.box)) out.push({ a: symbols[i]!.item, b: symbols[j]!.item });
@@ -962,8 +967,9 @@ export function findOverlaps(scene: Scene): Overlap[] {
 }
 
 /**
- * Boxes filed by the squares of the grid they cover (as the obstacles words avoid are): `near` gives,
- * in order, every box that shares a square with a given box (every box that can overlap it), each once.
+ * Things filed by the squares of the grid they cover (as the obstacles words avoid are; `squares`: each
+ * thing's, undefined for one that covers too many to file): `near` gives, in order, every thing that
+ * shares a square with a given box (every thing that can overlap it), each once.
  */
 class Grid {
   private readonly cells = new Map<number, number[]>();
@@ -973,11 +979,10 @@ class Grid {
   private looks = 0;
   private readonly count: number;
 
-  constructor(boxes: readonly Box[]) {
-    this.count = boxes.length;
-    this.seen = new Uint32Array(boxes.length);
-    boxes.forEach((b, i) => {
-      const keys = cellsOf(b);
+  constructor(squares: readonly (readonly number[] | undefined)[]) {
+    this.count = squares.length;
+    this.seen = new Uint32Array(squares.length);
+    squares.forEach((keys, i) => {
       if (!keys) this.big.push(i);
       else for (const k of keys) (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push(i);
     });

@@ -75,6 +75,30 @@ export function piled(kind: 'names' | 'grounds', count: number, { spread = false
 }
 
 /**
+ * Long slanted pieces of wire, 62 × 62 each (17 × 17 squares of the grid the drawing files things in),
+ * side by side far from everything, as many as the format's 20,000 grid units of wire allow less
+ * `reserve` (159 at 200): the second re-check's critic. Each was filed in no square, so every look
+ * near the parts checked all of them (167,000 looks, 26.6 million checks).
+ */
+export function longSlantedFar(reserve = 200): string[] {
+  return Array.from({ length: Math.floor((20_000 - reserve) / 124) }, (_, k) => `*@ wire ${-1989 + 4 * k},-1989 ${-1989 + 4 * k + 62},-1927`);
+}
+
+/**
+ * Long slanted pieces of wire, 56 × 56 each (just under the size that was filed in no square), whose
+ * boxes all cover where the parts of partsAtOnePoint go, though the pieces run clear of them: each was
+ * filed in every square of its box, so every look there checked every piece.
+ */
+export function slantedOverParts(count = 170): string[] {
+  return Array.from({ length: count }, (_, k) => `*@ wire ${-60 + (k % 8)},${-40 + Math.floor(k / 8)} ${-4 + (k % 8)},${16 + Math.floor(k / 8)}`);
+}
+
+/** Ground symbols (or names of nodes 1 … 59 in turn) at distinct points of a 44 × 44 block round (0, 0): the critic's. */
+export function block(kind: 'names' | 'grounds', count: number): string[] {
+  return Array.from({ length: count }, (_, k) => (kind === 'names' ? `*@ label ${1 + (k % 59)} ${(k % 44) - 22} ${Math.floor(k / 44) - 22}` : `*@ ground ${(k % 44) - 22} ${Math.floor(k / 44) - 22} ${[0, 90, 180, 270][k % 4]}`));
+}
+
+/**
  * A slanted lattice of k × k points (the security reviewer's lat70 at k = 70: 9,666 pieces and 4,898
  * junctions, a 30 kB link), every point joined, hanging on R2's upper pin (node out) or, `onGround`,
  * on its lower pin (ground), under a divider.

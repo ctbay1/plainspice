@@ -26,7 +26,7 @@ import type { Circuit, CircuitPart } from './circuit.ts';
 import { GROUND } from './circuit.ts';
 import { SegmentIndex, pointId } from './connectivity.ts';
 import { emptyDrawing, symbolGeometry, type Drawing, type LabelSide } from './drawing.ts';
-import { DIRECTION_VECTORS, boxContains, boxesOverlap, inflate, pt, segmentCrossesBox, segmentsOf, type Box, type Point, type Rotation } from './geometry.ts';
+import { DIRECTION_VECTORS, boxContains, boxesOverlap, inflate, pt, segmentCrossesBox, segmentsOf, squaresAlong, type Box, type Point, type Rotation } from './geometry.ts';
 import { buildScene, defaultSide, findOverlaps, partLabelLines, partLabelSpecs, resultRoomOf, type Scene, type SceneItem, type SceneOptions } from './scene.ts';
 import { isIndependentSource } from './symbols.ts';
 import { TEXT, defaultMeasure, type Measure } from './text.ts';
@@ -810,9 +810,11 @@ function copperPoints(scene: Scene): Map<string, Point[]> {
 /**
  * Boxes and segments found by the grid cells they cover, so a check looks only near the candidate.
  * Cells are numbered, and each check marks what it has looked at with its own number, so a check
- * makes no Set and no text keys (a part is tried at a few thousand places; second re-check, P3). What
- * covers more than MAX_BUCKET_CELLS cells (a long slanted wire) is filed in none and checked by every
- * look instead.
+ * makes no Set and no text keys (a part is tried at a few thousand places; second re-check, P3). A
+ * segment is filed in the cells it runs through (squaresAlong): a long slanted one is not filed in
+ * every cell of its box, nor checked by every look (159 of them far from the parts were checked
+ * 167,000 times each: the second re-check's critic). A box covering more than MAX_BUCKET_CELLS cells
+ * is filed in none and checked by every look instead.
  */
 class Buckets {
   private readonly cells = new Map<number, number[]>();
@@ -860,7 +862,16 @@ class Buckets {
 
   addSegment(a: Point, c: Point): void {
     const i = this.segments.push([a, c]) - 1;
-    this.file({ x0: Math.min(a.x, c.x), y0: Math.min(a.y, c.y), x1: Math.max(a.x, c.x), y1: Math.max(a.y, c.y) }, -1 - i);
+    const keys = squaresAlong(a, c, Buckets.SIZE);
+    if (!keys) {
+      this.big.push(-1 - i);
+      return;
+    }
+    for (const k of keys) {
+      const list = this.cells.get(k);
+      if (list) list.push(-1 - i);
+      else this.cells.set(k, [-1 - i]);
+    }
   }
 
   /** True when one of the ids hits the box (and has not been looked at in this look). */
@@ -917,7 +928,7 @@ const WORD_SIDES: Readonly<Record<LabelSide, readonly LabelSide[]>> = {
   below: ['below', 'above', 'right', 'left'],
 };
 
-/** A box or segment covering more cells than this is filed in none: every look checks it. */
+/** A box covering more cells than this is filed in none: every look checks it. */
 const MAX_BUCKET_CELLS = 256;
 
 const NO_IDS: readonly number[] = [];
