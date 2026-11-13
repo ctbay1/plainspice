@@ -150,4 +150,17 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
     expect(shownSweep(r.netlist, r.results)).toBe(r.results.dc);
   });
 
+  it('the .tf beside an .op the rule decides, a slope it cannot decide, gets the note that it may be rounding noise when it is less than a billionth of its output per volt of its input: v(a,b)/V1 = −5.551e-17 V/V beside R5\'s two ends at one voltage (it was drawn with nothing said); a ratio of 0.5 gets none', async () => {
+    const r = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.options savecurrents', '.op', '.tf v(a,b) V1'), ngspice);
+    const tf = r.words.tf!.transferFunction!;
+    expect([by(r), sp(tf.text), tf.maybe, tf.noise]).toEqual(['rule', 'v(a,b)/V1 = −5.551e-17 (V/V)', true, undefined]);
+    const note = r.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')!;
+    expect([note.code, note.severity, sp(note.why)]).toEqual([
+      'maybe-noise',
+      'note',
+      "ngspice gave v(a,b)/V1 = -5.551115e-17. That is less than a billionth of the voltages at node a and node b for each volt of V1 in the operating point, so it may be rounding noise, what ngspice's arithmetic leaves of a ratio that is exactly 0, or a real ratio that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows it as ngspice gives it.",
+    ]);
+    const half = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.op', '.tf v(a) V1'), ngspice);
+    expect([sp(half.words.tf!.transferFunction!.text), half.words.tf!.transferFunction!.maybe, half.words.warnings.some((m) => m.code === 'maybe-noise')]).toEqual(['v(a)/V1 = 0.5 (V/V)', undefined, false]);
+  });
 });
