@@ -222,9 +222,10 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     include a file that crashes native ngspice for no length (`/proc/meminfo`, the netlist itself). Our
     engine crashes on one, again no length: a netlist that includes itself. After a review of the second
     fix, which found commands where no check looked (`*#` lines, after `.end`) and words longer than they
-    are written (braces, quotes, `~`), 344 more netlists: of the 167 copies PlainSpice runs, none stops
-    native 47 or the sanitized build for a length (nine stop them for something else, such as a `compose`
-    of a formula at any length), and none crashes our engine; no copy it ran before changed. The limits
+    are written (braces, quotes, `~`), 367 more netlists: of the 184 copies PlainSpice runs, two stop
+    native 47 and the sanitized build for a length, both what this record leaves open (limit-11, below),
+    eleven for something else (a `compose` of a formula, `.param=` at any length), and none crashes our
+    engine; no copy it ran before changed. The limits
     are below ngspice's own (100 and 504 to 511 bytes), so a little room is left for what the search did
     not try.
   - **Only analysis commands keep to 500 bytes** in a `.control` block, as only they are copied into 512

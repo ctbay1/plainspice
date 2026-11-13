@@ -1028,16 +1028,17 @@ ngspice for no length: `.include /proc/meminfo` (native 47 ends with a crash, ex
 build reports a SEGV in `ciprefix`) and a netlist that includes itself (native 47 and 42, exit 139). Our
 engine crashes on one of the 301, for no length either: a netlist that includes itself (`.include
 /circuit.cir`, "Maximum call stack size exceeded"). Then, after a review of the second fix: of the 1,155
-netlists and 344 more (the review's, every case of limit-16 to limit-19 at the limits and one byte over,
-every first character before `#`, every command that reads a formula at 999 bytes after `op` and after
-`tran`), PlainSpice runs 300 of the first and 167 of the others, and no copy it ran before changed. Of the 167
-copies, native 47 and the sanitized build stop on none for a length; they stop on nine for something else:
-two `compose` lines with a formula (any length: a crash in native 47 and 42, `heap-buffer-overflow … READ …
-in dimxpand` in the sanitized build), one `.param=1` (`READ … in inp_fix_macro_param_func_paren_io` at any
-length), and six on which native 47 `-b -r` crashes (exit 139) and our engine runs: two X lines whose
-subcircuit does not exist, and four netlists that give it no circuit (`*ng_script` files with none, and line
-1 ` *ng_script` after a blank or a tab, which native 47 reads as a title). Our engine crashes on none of the
-167.
+netlists and 367 more (the review's, every case of limit-12 and limit-16 to limit-19 at the limits and one
+byte over, every first character before `#`, every command that reads a formula at 999 bytes after `op`
+and after `tran`), PlainSpice runs 298 of the first (the two it no longer runs set `ngbehavior` and build a
+circuit) and 184 of the others, and no copy it ran before changed. Of the 184 copies, native 47 and the
+sanitized build stop on two for a length, both limit-11 (`$curplottitle` twice in an analysis command),
+and on eleven for something else: two `compose` lines with a formula (any length: a crash in native 47 and
+42, `heap-buffer-overflow … READ … in dimxpand` in the sanitized build), three `.param=` lines (`READ … in
+inp_fix_macro_param_func_paren_io` at any length, `.param=1` too), and six on which native 47 `-b -r`
+crashes (exit 139) and our engine runs: two X lines whose subcircuit does not exist, and four netlists that
+give it no circuit (`*ng_script` files with none, and line 1 ` *ng_script` after a blank or a tab, which
+native 47 reads as a title). Our engine crashes on none of the 184.
 Every netlist in the repository (147) gets the same copy as on b060bc8.
 
 What ngspice's commands compute while they run can still go past the checks (limit-11); a `.control`
