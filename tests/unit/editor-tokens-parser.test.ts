@@ -179,6 +179,10 @@ describe('the editor highlighter reads netlists as the verified parser does', ()
       'E1 e 0 TABLE {v(out)} = (0,0) (5,10)', 'E1 e 0 out 0 table=(0,0,5,10)',
       'E1 e 0 vcvs out 0 2', 'G1 0 e vccs out 0 2m', 'F1 0 e cccs Vx 2', 'H1 e 0 ccvs Vx 1k', 'E1 e 0 vcvs out 2', 'E1 e 0 POLY(1) value 0 0 2',
       'E1 e 0 x VALUE={2}', 'E1 e 0 out 0 2 VALUE={v(out)*2}', 'E1 e 0 a b c d VALUE={2}', 'E1 e 0 VALUE=3', 'E1 e 0 VALUE v(out)*2',
+      // The round-2 critic (CR2-1, CR2-6): a sign or a bracket first; what ngspice drops between VALUE (no =) and its {.
+      'E1 e 0 VALUE=-v(out)*2', 'E1 e 0 VALUE=(1+v(out))*2', 'G1 0 e cur=(2m)', 'E1 e 0 x VALUE=(2)', 'E1 e 0 VALUE x {v(out)*2}', 'E1 e 0 VALUE v(out) {2}',
+      'E1 e 0 VALUE \u00a0{v(out)*2}', 'E1 e 0 VALUE\u00a0{v(out)*2}', 'E1 e 0 VALUE\u2009{v(out)*2}', 'E1 e 0 VALUE\u00a0=v(out)*2', 'E1 e 0 VALUE\u00a0=\u00a0{v(out)*2}',
+      'E1 e 0 VALUE\u00a0v(out)*2', 'G1 0 e VALUE\u200b{v(out)*2m}',
     ]) {
       expect(compare(`${divider}${line}\nRe e 0 1k\n.op\n.end\n`), line).toEqual([]);
     }

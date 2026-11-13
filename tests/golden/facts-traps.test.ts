@@ -539,6 +539,9 @@ const FACTS: Fact[] = [
   // and a number stops ngspice, one that starts with a sign before a letter or with a bracket runs (CR2-1).
   { code: 'fatal-syntax-18', netlist: "* VALUE=-2*v(out) without braces\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE=-2*v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
   { code: 'fatal-syntax-19', netlist: "* formulas without braces that start with a sign or a bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE=-v(out)*2\nR1e e1 0 1k\nE2 e2 0 VALUE=(1+v(out))*2\nR2e e2 0 1k\nG1 0 g cur=-v(out)/1k\nRg g 0 1k\nE3 e3 0 VALUE=(2)*v(out)\nR3e e3 0 1k\n.op\n.end\n", vectors: { "v(e1)": -5, "v(e2)": 7, "v(g)": -2.5, "v(e3)": 5 }, traps: [] },
+  // After VALUE without =, ngspice drops what stands before the formula's {: a no-break space or words (CR2-6).
+  { code: 'nbsp-7', netlist: "* a no-break space between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE \u00a0{v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE\u00a0{v(out)*3}\nR2e e2 0 1k\nE3 e3 0 VALUE\u00a0=v(out)*4\nR3e e3 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 7.5, "v(e3)": 10 }, traps: [] },
+  { code: 'missing-fields-11', netlist: "* words between VALUE and its brace\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE x {v(out)*2}\nR1e e1 0 1k\nE2 e2 0 VALUE v(out) {2}\nR2e e2 0 1k\n.op\n.end\n", vectors: { "v(e1)": 5, "v(e2)": 2 }, traps: [] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');

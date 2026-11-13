@@ -20,7 +20,7 @@ import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, wordNativeStopsAt } from './parse.ts';
 import type {
   Element,
   ElementLetter,
@@ -339,10 +339,12 @@ export const EXPLAIN_STRINGS = {
   /** The heading's words for E, F, G and H written as a formula, a polynomial or a table, as the overview says them (C3-5). */
   formWhat: (current: boolean, kind: 'formula' | 'poly' | 'table'): string =>
     kind === 'formula' ? `${current ? 'current' : 'voltage'} source given by a formula` : `dependent source written as ${kind === 'poly' ? 'a polynomial (POLY)' : 'a table (TABLE)'}`,
-  droppedNote: (words: string[]): string =>
-    words.length === 1
+  droppedNote: (words: string[], nativeStops: boolean): string =>
+    nativeStops
       ? `PlainSpice's engine drops the word before the formula (${words[0]}), so it changes nothing here: the output is the formula alone. Native ngspice stops at it (see the checks).`
-      : `ngspice drops the ${words.length === 2 ? 'two' : words.length === 3 ? 'three' : words.length} words before the formula (${words.join(' ')}), so they change nothing: the output is the formula alone.`,
+      : words.length === 1
+        ? `ngspice drops the word before the formula (${words[0]}), so it changes nothing: the output is the formula alone.`
+        : `ngspice drops the ${words.length === 2 ? 'two' : words.length === 3 ? 'three' : words.length} words before the formula (${words.join(' ')}), so they change nothing: the output is the formula alone.`,
   kindWord: (word: string): string => `${word}: HSPICE's word for this kind of part, which ngspice takes out`,
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
   noGainNote: (word: string): string =>
@@ -1706,7 +1708,8 @@ function otherWordMeaning(letter: ElementLetter | undefined, word: string): stri
 function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
   const form = p.el.form!;
   const at = p.formAt ?? p.el.fields.findIndex((g) => g.token === form.keyword);
-  if (k < at) return fieldOf('dropped word', f.token, S.droppedWord);
+  // Before the keyword, or after VALUE without '=' and before its '{' (CR2-6): words ngspice drops.
+  if (k < at || (form.formula && k > at && f.token.to <= form.formula.from)) return fieldOf('dropped word', f.token, S.droppedWord);
   if (k === at) {
     if (form.kind === 'poly') return fieldOf('polynomial', f.token, S.polyKeyword);
     if (form.kind === 'table') return fieldOf('table', f.token, S.tableKeyword);
@@ -1744,7 +1747,7 @@ function explainForm(p: PartContext, sentences: string[]): void {
     const read = [...new Map((el.reads ?? []).map((r) => [r.name, r])).values()];
     if (read.length) sentences.push(S.formulaReads(S.listJoin(read.map((r) => nodeProse(r)))));
     addNote(p.notes, S.formulaNote);
-    if (form.dropped) addNote(p.notes, S.droppedNote(form.dropped.map((t) => t.text)));
+    if (form.dropped) addNote(p.notes, S.droppedNote(form.dropped.map((t) => t.text), wordNativeStopsAt(form) !== undefined));
     return;
   }
   if (form.kind === 'poly') {

@@ -50,6 +50,7 @@
  * The tokenizer only colours and marks text. Deciding whether something is a mistake is the
  * trap checks' job (src/spice/traps.ts).
  */
+import { INVISIBLE, SPACE_LIKE } from '../spice/characters.ts';
 import { numberWordEnd, readNumber } from '../spice/numbers.ts';
 import { ngspiceName } from '../spice/parse.ts';
 
@@ -559,12 +560,15 @@ function lexPart(text: string, from: number, to: number, head: string, before: r
   let i = from;
   // B1 n+ n- V=expression: after the nodes comes an expression (B's own evaluator), not number words.
   const plainAfterNodes = head === 'B';
+  // Right after an E's or G's VALUE: characters that look like a space, which ngspice drops there (CR2-6, nbsp-7).
+  let afterValue = false;
   while (i < to) {
     const ch = text[i]!;
-    if (SPACE.test(ch)) {
+    if (SPACE.test(ch) || (afterValue && (SPACE_LIKE.test(ch) || INVISIBLE.test(ch)))) {
       i++;
       continue;
     }
+    afterValue = false;
     if (ch === '(' || ch === ')' || ch === ',' || ch === '=') {
       push(ch === '(' ? 'open' : ch === ')' ? 'close' : ch === ',' ? 'comma' : 'equals', i, i + 1);
       // After '=' the words are values of parameters: no more nodes on X lines.
@@ -602,6 +606,14 @@ function lexPart(text: string, from: number, to: number, head: string, before: r
         continue;
       }
       netDone = true; // this word and the rest are read by the number reader
+      // VALUE, even written right before such a character (VALUE<no-break space>{...}), as the parser reads it.
+      if (startsForm && /^value(?![a-z0-9_])/i.test(word) && (head === 'E' || head === 'G')) {
+        push('word', i, i + 5);
+        i += 5;
+        words++;
+        afterValue = true;
+        continue;
+      }
     }
     if (plainAfterNodes) {
       for (const p of lex(text, i, to)) out.push(p);

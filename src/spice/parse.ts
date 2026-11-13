@@ -61,6 +61,7 @@
  *
  * The parser never throws, whatever the input.
  */
+import { INVISIBLE, SPACE_LIKE } from './characters.ts';
 import { isSpaceCode, numberWordEnd, readNumber } from './numbers.ts';
 import type {
   Connection,
@@ -743,19 +744,35 @@ function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | '
   if (letter === 'F' || letter === 'H') return undefined;
   const formula = isFormulaWord(r, w, letter);
   if (!formula && lowerAscii(w.clean) !== 'table') return undefined;
-  const form: ControlledForm = { kind: formula ? 'formula' : 'table', keyword: b.field(r.take(w), 'parameter') };
-  b.formula(w.b, s.length);
+  const kw = gluedValue(w) ?? w;
+  const form: ControlledForm = { kind: formula ? 'formula' : 'table', keyword: b.field(r.take(kw), 'parameter') };
+  // Where the formula starts. After '=' (VALUE=, vol=, cur=, with blanks or characters that look like a space
+  // before it): its first character, a sign or a bracket too, which the words leave out (-v(in)*2,
+  // (1+v(out))*2; CR2-1). After VALUE without '=': ngspice takes the formula from its first '{' (a quote is
+  // one too: ngspice makes it a brace) and drops what stands before it, words and characters that look like a
+  // space alike (inp_compat; CR2-6); with no '{', the rest of the line, which it can't read (fatal-syntax-14).
+  let at = kw.b;
+  if (formula) {
+    while (at < s.length && (isSpaceCode(s.charCodeAt(at)) || looksBlank(s[at]!))) at += 1;
+    if (s.charCodeAt(at) === EQUALS) {
+      form.equals = true;
+      at += 1;
+      while (at < s.length && isSpaceCode(s.charCodeAt(at))) at += 1;
+    } else {
+      const open = firstOpening(s, at);
+      if (open > at) {
+        const dropped = blankRuns(s, at, open).map(([a, z]) => b.field({ a, b: z, clean: s.slice(a, z) }, 'parameter'));
+        if (dropped.length) form.dropped = dropped;
+        at = open;
+      }
+    }
+    r.take({ a: at, b: at, clean: '' });
+  }
+  b.formula(at, s.length);
   const first = r.peek('word');
   for (let c = r.next('word'); c; c = r.next('word')) b.field(c, 'parameter');
   // The formula: a group in braces or quotes; for VALUE=, vol= and cur= without one, the rest of the line
-  // (with its last bracket: v(out)*(1+2)), from its first character after the '=': a sign or a bracket too,
-  // which the words leave out (-v(in)*2, (1+v(out))*2; CR2-1).
-  let at = w.b;
-  if (formula) {
-    while (at < s.length && isSpaceCode(s.charCodeAt(at))) at += 1;
-    if (s.charCodeAt(at) === EQUALS) at += 1;
-    while (at < s.length && isSpaceCode(s.charCodeAt(at))) at += 1;
-  }
+  // (with its last bracket: v(out)*(1+2)).
   if (first && isGroupStart(first.clean.charCodeAt(0)) && (!formula || first.a === at)) form.formula = b.token(first);
   else if (first && formula) {
     let end = s.length;
@@ -765,10 +782,59 @@ function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | '
   return form;
 }
 
+/**
+ * The one word between an E's or G's output nodes and its VALUE=, vol= or cur= that stops native ngspice: its XSPICE
+ * step (inp_poly_2g6_compat) first reads the line as a polynomial and finds no bracket after the word to stop at
+ * (VALUE={2}, VALUE=3, cur={2m}): 'not enough parameters in line' (missing-fields-9). With a bracket in the formula
+ * (v(out), (2)), or after VALUE without '=', native ngspice drops the word as PlainSpice's engine does (missing-fields-10).
+ */
+export function wordNativeStopsAt(form: ControlledForm): Token | undefined {
+  const word = form.dropped?.length === 1 ? form.dropped[0]! : undefined;
+  return word && form.equals && word.to <= form.keyword.from && !(form.formula?.text ?? '').includes('(') ? word : undefined;
+}
+
 /** The word that names a formula on an E or G line: VALUE, then '=' or not, or vol= (E) or cur= (G). */
 function isFormulaWord(r: Reader, w: Word, letter: 'E' | 'G'): boolean {
   const kw = lowerAscii(w.clean);
-  return kw === 'value' || (kw === (letter === 'E' ? 'vol' : 'cur') && r.equalsAfter(w.b));
+  return kw === 'value' || gluedValue(w) !== undefined || (kw === (letter === 'E' ? 'vol' : 'cur') && r.equalsAfter(w.b));
+}
+
+/** A character that looks like a space or hides, which no blank of SPICE's is (characters.ts). */
+const looksBlank = (ch: string): boolean => SPACE_LIKE.test(ch) || INVISIBLE.test(ch);
+
+/**
+ * VALUE written right before such a character, in one word (VALUE<no-break space>{v(out)*2}): ngspice still reads
+ * the word value there, as no letter, digit or '_' comes after it (search_plain_identifier in its inpcom.c; CR2-6).
+ * The keyword's five letters, or undefined.
+ */
+function gluedValue(w: Word): Word | undefined {
+  return w.clean.length > 5 && lowerAscii(w.clean.slice(0, 5)) === 'value' && looksBlank(w.clean[5]!) ? { a: w.a, b: w.a + 5, clean: w.clean.slice(0, 5) } : undefined;
+}
+
+/** Where the first '{' or quote at or after `from` is, or -1: what ngspice takes a formula after VALUE without '=' from. */
+function firstOpening(s: string, from: number): number {
+  for (let i = from; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === LBRACE || c === QUOTE) return i;
+  }
+  return -1;
+}
+
+/** The words of [from, to) between blanks, but for runs of characters that only look like a space or hide. */
+function blankRuns(s: string, from: number, to: number): [number, number][] {
+  const out: [number, number][] = [];
+  let i = from;
+  while (i < to) {
+    while (i < to && isSpaceCode(s.charCodeAt(i))) i += 1;
+    const a = i;
+    let blank = true;
+    while (i < to && !isSpaceCode(s.charCodeAt(i))) {
+      blank &&= looksBlank(s[i]!);
+      i += 1;
+    }
+    if (i > a && !blank) out.push([a, i]);
+  }
+  return out;
 }
 
 /**
@@ -880,7 +946,7 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       if (at && between.length && isFormulaWord(r, at, letter)) {
         const dropped = between.map((w) => b.field(r.take(w), 'parameter'));
         form = controlledForm(r, b, src.text, letter);
-        if (form) form.dropped = dropped;
+        if (form) form.dropped = [...dropped, ...(form.dropped ?? [])];
         break;
       }
       if (b.nodes.length === 2) kindWord(r, b, src.text, letter);

@@ -136,8 +136,13 @@ export interface ControlledForm {
   formula?: Token;
   /** 'poly': the n of POLY(n), when it is a whole number above 0. */
   dimension?: number;
-  /** 'formula': the words between the output nodes and VALUE= that ngspice drops (E1 e 0 in 0 VALUE={...}). */
+  /**
+   * 'formula': the words ngspice drops, between the output nodes and VALUE= (E1 e 0 in 0 VALUE={...}), and after
+   * VALUE without '=' before the formula's '{' (E1 e 0 VALUE x {...}).
+   */
   dropped?: Token[];
+  /** 'formula': an '=' comes between the keyword and the formula (VALUE=, vol=, cur=): ngspice adds braces there. */
+  equals?: true;
 }
 
 /** A dot command. */

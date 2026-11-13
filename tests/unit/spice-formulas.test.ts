@@ -704,4 +704,37 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     // A '.' with no digit after it is no number, in braces or not: no fix.
     expect(traps(formula('E1 e 0 VALUE=.v(out)'))[0]!.fixes).toEqual([]);
   });
+  it('CR2-6: after VALUE without =, ngspice takes the formula from its { and drops what stands before it: a no-break space, a thin space, words (nbsp-7, missing-fields-11)', () => {
+    const line5 = (line: string): Element => parseNetlist(formula(line)).lines[5]!.element!;
+    for (const line of [
+      `E1 e 0 VALUE ${NBSP}{v(out)*2}`, `E1 e 0 VALUE${NBSP}{v(out)*2}`, `E1 e 0 VALUE${THIN}{v(out)*2}`, `E1 e 0 VALUE${ZW}{v(out)*2}`, `E1 e 0 VALUE ${NBSP} {v(out)*2}`,
+      `G1 0 e VALUE${NBSP}{v(out)*2m}`, `E1 e 0 VALUE${NBSP}=v(out)*2`, `E1 e 0 VALUE${NBSP}= {v(out)*2}`, 'E1 e 0 VALUE x {v(out)*2}', "E1 e 0 VALUE x 'v(out)*2'",
+      `E1 e 0 x VALUE${NBSP}{v(out)*2}`,
+    ]) {
+      expect(ids(formula(line)), line).toEqual([]);
+      const e = line5(line);
+      expect(e.form?.keyword.text, line).toBe('VALUE');
+      expect(e.nodes.length, line).toBe(2);
+      expect(e.reads?.map((r) => r.name), line).toEqual(['out']);
+      // The characters that look like a space are in no word, so no check reads them.
+      expect(e.fields.some((f) => /[  ​]/.test(f.token.text)), line).toBe(false);
+    }
+    expect(line5(`E1 e 0 VALUE${NBSP}{v(out)*2}`).form?.formula?.text).toBe('{v(out)*2}');
+    expect(line5('E1 e 0 VALUE x {v(out)*2}').form?.dropped?.map((t) => t.text)).toEqual(['x']);
+    // A v(out) before the brace is dropped too: the formula reads no node, and gives 2 V (missing-fields-11).
+    expect(line5('E1 e 0 VALUE v(out) {2}').reads).toBeUndefined();
+    // Right after =, the character stops ngspice, as at the start of any formula (space-character-25); taken out, the line runs.
+    const nbsp = traps(formula(`E1 e 0 VALUE=${NBSP}{v(out)*2}`));
+    expect(nbsp.map((x) => [x.id, x.ngspice])).toEqual([['nbsp', "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"]]);
+    expect(applyFix(formula(`E1 e 0 VALUE=${NBSP}{v(out)*2}`), nbsp[0]!.fixes[0]!)).toBe(formula('E1 e 0 VALUE={v(out)*2}'));
+    // With no { at all, VALUE<no-break space>v(out)*2 stops ngspice, and braces mend it (fatal-syntax-14).
+    expect(said(`E1 e 0 VALUE${NBSP}v(out)*2`)).toEqual([`fatal-syntax: ngspice can't read E1's formula without braces -> E1 e 0 VALUE${NBSP}{v(out)*2}`]);
+    // Explain names the dropped words, and says native ngspice stops at one only where it does (missing-fields-9, -10).
+    const n = parseNetlist(formula('E1 e 0 VALUE x {v(out)*2}'));
+    expect(explainLine(n, 5)!.fields.map((f) => `${f.label}: ${f.text}`)).toEqual(['name: E1', '+ node: e', '− node: 0', 'formula: VALUE', 'dropped word: x', 'formula: {v(out)*2}']);
+    const runs = 'ngspice drops the word before the formula (x), so it changes nothing: the output is the formula alone.';
+    expect(explainLine(n, 5)!.notes).toContain(runs);
+    expect(explainLine(parseNetlist(formula('E1 e 0 x VALUE={v(out)*2}')), 5)!.notes).toContain(runs);
+    expect(explainLine(parseNetlist(formula('E1 e 0 x VALUE={2}')), 5)!.notes.join(' ')).toContain('Native ngspice stops at it (see the checks).');
+  });
 });

@@ -39,7 +39,7 @@ import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfte
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist } from './parse.ts';
+import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, wordNativeStopsAt } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
 import type {
   Element,
@@ -1946,7 +1946,8 @@ function formulaOf(c: Ctx, e: Element | undefined): { from: number; body: number
     const equals = key && /^[vViI]$/.test(key.token.text) ? /^[ \t]*=/.exec(c.text.slice(key.token.to, key.token.to + 200)) : null;
     return { from, body: key && equals ? key.token.to + equals[0].length : undefined };
   }
-  if (e?.form?.kind === 'formula') return { from: e.form.keyword.to, body: e.form.formula?.from };
+  // From the formula itself: what ngspice drops before it after VALUE without '=' is no formula's (CR2-6).
+  if (e?.form?.kind === 'formula') return { from: e.form.formula?.from ?? e.form.keyword.to, body: e.form.formula?.from };
   return undefined;
 }
 
@@ -2250,11 +2251,11 @@ function checkFormulaForm(c: Ctx, i: number): void {
   const form = e.form!;
   const name = nameOf(e);
   const kw = form.keyword.text;
-  const equals = /^[ \t]*=/.test(c.text.slice(form.keyword.to, form.keyword.to + 200));
+  const equals = form.equals === true;
   // One word before the formula stops native ngspice only where its XSPICE step (inp_poly_2g6_compat) finds no
   // bracket after it to stop at: VALUE={2}, VALUE=3, vol='2', cur={2m}; with a v(...) in the formula, or VALUE {2},
   // it runs the line as our engine does (missing-fields-9, -10).
-  const word = form.dropped?.length === 1 && equals && !(form.formula?.text ?? '').includes('(') ? form.dropped[0]! : undefined;
+  const word = wordNativeStopsAt(form);
   if (word) {
     add(c, 'missing-fields', 'warning', word, `Native ngspice stops at ${name}'s word ${word.text}`,
       `ngspice drops the words between ${name}'s output nodes and ${kw}, so ${word.text} changes nothing in PlainSpice. With exactly one word there, native ngspice first reads the line as a polynomial (an XSPICE step that PlainSpice's engine leaves out) and stops.`,
@@ -2308,7 +2309,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
 /** An E or G line where value, with no = after it, comes before two words or more: a node called value, read as VALUE (CR1-10). */
 function valueAsNode(c: Ctx, e: Element): boolean {
   const form = e.form;
-  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || /^[ \t]*=/.test(c.text.slice(form.keyword.to, form.keyword.to + 200))) return false;
+  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || form.equals) return false;
   return !/^[{'"]/.test(form.formula.text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(form.formula.text);
 }
 
