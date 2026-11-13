@@ -713,6 +713,23 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect(noise(words)).toEqual([]);
   });
 
+  it('the critic of round 2\'s four circuits with a diode are decided exactly: what the F of 1e6, the H of 1 GΩ and the E of 1e6 make of a balanced bridge is exactly 0, and the fed E carries its 5 mA at 0 V with no power; with a .temp line instead, the rule shows ngspice\'s numbers, which agree with each other', async () => {
+    const tia = ['V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0'];
+    const c9 = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k'];
+    const diode = ['D1 0 top dmod', '.model dmod d'];
+    const f = await solved(lines(...tia, 'F1 0 out Vm 1e6', 'Rl out 0 1k', ...diode));
+    expect([f.by, current(f.words, 'Vm'), current(f.words, 'F1'), node(f.words, 'out'), noise(f.words)]).toEqual(['exact', 'Vm measures no current', 'no current through F1', '0 V', ['R5', 'Vm', 'F1', 'Rl', 'node out']]);
+    const h = await solved(lines(...tia, 'H1 out 0 Vm 1g', 'Rl out 0 1k', ...diode));
+    expect([h.by, node(h.words, 'out'), noise(h.words)]).toEqual(['exact', '0 V', ['R5', 'Vm', 'H1', 'Rl', 'node out']]);
+    const fed = await solved(lines(...c9, 'E1 out 0 a b 1e6', 'V2 x 0 5', 'Rx x out 1k', ...diode));
+    expect([fed.by, node(fed.words, 'out'), current(fed.words, 'E1'), fed.words.currents.find((c) => c.name === 'E1')!.power]).toEqual(['exact', '0 V', '5 mA from node out to ground through E1', undefined]);
+    const e = await solved(lines(...c9, 'E1 out 0 a b 1e6', 'Rl out 0 100', ...diode));
+    expect([e.by, node(e.words, 'out'), noise(e.words)]).toEqual(['exact', '0 V', ['R5', 'E1', 'Rl', 'node out']]);
+    // The rule: E1 into 100 Ω shows ngspice's 9.313 pA beside out's −931.3 pV, as Ohm's law on the page wants.
+    const rule = await solved(lines(...c9, 'E1 out 0 a b 1e6', 'Rl out 0 100', RULE));
+    expect([rule.by, node(rule.words, 'out'), current(rule.words, 'E1'), current(rule.words, 'Rl'), noise(rule.words)]).toEqual(['rule', '−931.3 pV', '9.313 pA from node out to ground through E1', '9.313 pA from ground to node out through Rl', ['R5']]);
+  });
+
   it('a node whose only DC path goes through a diode has no single answer with the diode\'s current left free: the circuit is left to the rule (a G drives R6 and D1 in series to ground)', async () => {
     const { by } = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'G1 0 out a b 1m', 'R6 out x 1k', 'D1 x 0 dmod', '.model dmod d'));
     expect(by).toBe('rule');
