@@ -998,7 +998,9 @@ export function roundingNoise(netlist: Netlist, results: AnalysisResults): Round
   const op = results.op;
   if (!op) return noNoise('rule');
   const ex = exactOf(netlist);
-  const seen = ex ? opCheck(ex, op) : undefined;
+  // A sweep the exact solution decides is checked at up to SWEEP_CHECKS points (checkPoints): its share of the
+  // run's budget is kept for it, so the .op and the .dc of one run are decided together, both exactly or neither.
+  const seen = ex ? opCheck(ex, op, ex.sweep && results.dc ? checkPoints(results.dc.scale.values.length).length * checkWork(ex.model) : 0) : undefined;
   if (ex && seen?.check === 'same') return exactNoise(netlist, ex, seen.view, op);
   const rule = ruleNoise(netlist, results);
   return ex && seen?.check === 'imprecise' ? withExact(netlist, ex, seen.view, rule, seen.off) : rule;
@@ -1117,8 +1119,11 @@ function exactOf(netlist: Netlist): Exact | undefined {
 
 /**
  * A budget for one run's checks of ngspice's values against the exact solution: what the solve left of
- * MAX_WORK, less `reserved` (the operating point's check, which a run's sweep leaves to it). The same for
- * every run of the netlist, so its decisions are too, and one run's work stays within MAX_WORK.
+ * MAX_WORK, less `reserved` (the other analysis's checks in the same run: the operating point's for its
+ * sweep, the sweep's for its operating point). The same for every run of the netlist, so its decisions are
+ * too; one run's work stays within MAX_WORK; and its .op and .dc are decided exactly together or not at all
+ * (an .op decided exactly beside a sweep left as ngspice gives it said 0 V where the sweep's words, at the
+ * same point, said ngspice's noise).
  */
 function checkBudget(ex: Exact, reserved = 0): Budget {
   return { left: Math.max(0, MAX_WORK - ex.solveWork - reserved) };
@@ -1145,9 +1150,10 @@ function ngspiceValues(nodes: Map<string, number>, branch: Map<string, number>, 
  * 4.321 V for 4.5 V); `off` lists them. 'other': not this circuit's, as far as its values show, or more
  * work to check than the run's budget has. With diodes, each diode's current is the one
  * Kirchhoff's law gives it from ngspice's other values (exact.ts treeCurrents), and the rest is checked
- * against that. The checks get the budget `checkBudget` gives every run of the netlist.
+ * against that. The checks get the budget `checkBudget` gives every run of the netlist, less `reserved`
+ * (the run's sweep checks, which come after).
  */
-function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 'same' | 'imprecise'; view: View; off: Answer[] } | { check: 'other' } {
+function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0): { check: 'same' | 'imprecise'; view: View; off: Answer[] } | { check: 'other' } {
   const nodes = new Map<string, number>();
   const branch = new Map<string, number>();
   const device = new Map<string, number>();
@@ -1168,7 +1174,7 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>): { check: 's
     } else if (p.kind !== 'V' && p.kind !== 'E' && p.kind !== 'H') device.set(c.element, c.value);
   }
   const ng = ngspiceValues(nodes, branch, device);
-  const budget = checkBudget(ex);
+  const budget = checkBudget(ex, reserved);
   let view: View = { x: ex.op, all: [ex.op], level: (p) => p.value };
   if (ex.diodes) {
     const { model } = ex;
@@ -1457,6 +1463,12 @@ const sweepCache = new WeakMap<AnalysisResults, { netlist: Netlist; noise: Sweep
 /** At most this many points of a sweep are checked against the exact equations: its first, its last and some between. */
 const SWEEP_CHECKS = 5;
 
+/** The points of a sweep of `n` points that are checked against the exact equations (SWEEP_CHECKS of them, or all of a shorter one). */
+function checkPoints(n: number): number[] {
+  if (n <= 0) return [];
+  return [...new Set([0, n - 1, ...Array.from({ length: SWEEP_CHECKS - 2 }, (_, i) => Math.round(((i + 1) * (n - 1)) / (SWEEP_CHECKS - 1)))])];
+}
+
 /**
  * The points of a .dc sweep where ngspice gave rounding noise of a value the circuit makes exactly 0
  * (decision 0015, C9p), once per run. In a circuit PlainSpice solves exactly every value is a + b·s in
@@ -1547,9 +1559,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   // ngspice's values at a few points solve the exact equations as closely as its rounding can, and are the exact answers to the page's digits.
   // Their budget is the run's, less the operating point's check when the run has one (it comes first).
   const budget = checkBudget(ex, results.op ? checkWork(model) : 0);
-  const checks = new Set([0, n - 1, ...Array.from({ length: SWEEP_CHECKS - 2 }, (_, i) => Math.round(((i + 1) * (n - 1)) / (SWEEP_CHECKS - 1)))]);
-  for (const k of checks) {
-    if (k < 0 || k >= n) continue;
+  for (const k of checkPoints(n)) {
     const nodes = new Map<string, number>();
     const branch = new Map<string, number>();
     const device = new Map<string, number>();
