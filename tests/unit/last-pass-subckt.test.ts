@@ -135,6 +135,9 @@ describe('regress-2: a gnd in a .tf inside a subcircuit an X line uses is ground
     expect(every(text, s.words)).not.toMatch(/"gnd"|node gnd/);
     // v(gnd) alone there is v(0), ground's own voltage, as at the top level (A3b).
     expect((await solve(SUB('v(gnd)'), await engine)).words.tf?.at).toBe('at ground');
+    // The gnd on a + line, after a comment line: the parser's own reading of the whole line (native: v(out,0), 1/3).
+    const continued = await solve(SUB('v(out,\n* a comment between\n+ gnd)'), await engine);
+    expect([continued.words.tf?.at, continued.words.warnings]).toEqual(['between node out and ground', []]);
   }, 30000);
 
   it('v(a,gnd) there: one warning, for a, which ngspice makes a new node with nothing on it; gnd is ground', async () => {
