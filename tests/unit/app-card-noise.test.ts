@@ -55,6 +55,12 @@ describe('the card says 0 V across a part whose ends are at the same voltage (wo
     expect([f1.through, f1.across.value, f1.across.sub[0]]).toEqual(['0 A', '12 V', 'node b is higher']);
   });
 
+  it('fh3: beside a comparator pulled up to the bridge\'s rail, ngspice\'s numbers are off and shown as it gives them, so R5\'s card gives its 61.5 nA and the 61.5 µV across it, as the tags 4.961 mV and 5.023 mV show (it said 0 A and 0 V, the critic of round 4)', async () => {
+    const fh3 = '* fh3\nV1 top 0 12\nRd1 top s 999k\nRd2 s 0 1k\nR1 s a 10k\nR2 a 0 10k\nR3 s b 4.7k\nR4 b 0 4.7k\nRw a m 10p\nR5 m b 1k\nV2 x 0 12\nE1 out 0 x 0 100k\nRp top out 10k\n.op\n.end\n';
+    const r5 = await card(fh3, 'R5');
+    expect([r5.through, r5.across.value, r5.across.sub[0]]).toEqual(['61.5 nA', '61.5 µV', 'node b is higher']);
+  });
+
   it('C9l: a real 2.696 fA keeps its real 2.696 pV across R5', async () => {
     const r5 = await card(C9.replace('.op', 'Rvm a 0 1e15\n.op'), 'R5');
     expect([r5.through, r5.across.value, r5.across.sub[0]]).toEqual(['2.696 fA', '2.696 pV', 'node b is higher']);

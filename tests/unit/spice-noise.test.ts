@@ -1186,4 +1186,39 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     expect(series(r, 'v(out)')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(series(r, 'i(h1)')).toEqual([0, 0, 0, 0, 0, 0]);
   });
+
+  const fh3 = ['V1 top 0 12', 'Rd1 top s 999k', 'Rd2 s 0 1k', 'R1 s a 10k', 'R2 a 0 10k', 'R3 s b 4.7k', 'R4 b 0 4.7k', 'Rw a m 10p', 'R5 m b 1k', 'V2 x 0 12', 'E1 out 0 x 0 100k', 'Rp top out 10k'];
+
+  it('a controlled source carries its floor only to the answers its output moves, by how much it moves them: an open-loop comparator pulled up to the bridge\'s 12 V rail moves the rail\'s current, not the bridge, which V1 holds, so ngspice\'s 4.961 mV for 5.189 mV is shown with the warning, not R5 as 0 A "at the same voltage, 5.189 mV" between tags of 4.961 and 5.023 mV (fh3, the critic of round 4)', async () => {
+    const { words, by } = await solved(lines(...fh3));
+    expect(by).toBe('rule');
+    expect([node(words, 'a'), node(words, 'b'), current(words, 'R5')]).toEqual(['4.961 mV', '5.023 mV', '61.5 nA from node b to node m through R5']);
+    expect(note(words)).toBeUndefined();
+    expect(off(words)!.why).toContain('R5 carries no current, where ngspice gives 61.5 nA; R2 carries 518.9 nA, where ngspice gives 496.1 nA; node a is at 5.189 mV, where ngspice gives 4.961 mV');
+    // The same with the comparator reading a 1 V sensor with a gain of 1e6 (fh3b).
+    const b = await solved(lines(...fh3.map((l) => (l === 'V2 x 0 12' ? 'V2 x 0 1' : l === 'E1 out 0 x 0 100k' ? 'E1 out 0 x 0 1meg' : l))));
+    expect([b.by, off(b.words)!.why]).toEqual(['rule', expect.stringContaining('node a is at 5.189 mV, where ngspice gives 4.961 mV')]);
+    // An H of 1 GΩ reading a bridge 1e-14 off balance still moves its own output by all it makes of the ammeter's rounding.
+    const h = await solved(lines('V1 top1 0 5', 'R1 top1 a2 330', 'R2 a2 0 330', 'R3 top1 b3 1650', 'R4 b3 0 1650.00000000002', 'R5 a2 m4 68k', 'V2 m4 b3 0', 'H1 h5 0 V2 1e9', 'R6 h5 0 120k'));
+    expect([h.by, node(h.words, 'h5'), off(h.words)]).toEqual(['exact', '−223.6 pV', undefined]);
+  });
+
+  it('a G of 10 S into the 3.3 V rail moves only the rail\'s current: the bridge beside it, with a 0.1 nΩ wire, is weighed on its own, so the warning names R3\'s 2.829 µA for 2.828 µA and R8\'s exact 0, which ngspice gives as 843.4 pA (k9401-89; the floor of the whole part hid R3, and the warning was empty)', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 3.3', 'R1 top1 s2 99k', 'R2 s2 0 1k', 'R3 s2 a3 100', 'R4 a3 0 680', 'R5 s2 b4 10', 'R6 b4 0 68', 'R7 a3 m5 1e-10', 'R8 m5 b4 100', 'V2 x6 0 1', 'G1 0 top1 x6 0 10'));
+    expect(by).toBe('rule');
+    expect(current(words, 'R8')).toBe('843.4 pA from node b4 to node m5 through R8');
+    expect(off(words)!.why).toContain('R8 carries no current, where ngspice gives 843.4 pA; R3 carries 2.828 µA, where ngspice gives 2.829 µA; and R4 carries 2.828 µA, where ngspice gives 2.827 µA.');
+  });
+
+  it('an answer is off only where the page draws it with other digits than its exact value: C9m fed through a 30 nΩ wire gives V1 372.4098 µA for 372.4395 µA, both drawn "372.4 µA", so the run is decided exactly and R7 is 0 A with the note, not 6.217e-20 A with an arrow and nothing said (the critic of round 4)', async () => {
+    const { words, by } = await solved(lines('V1 n0 0 9', 'Rs n0 n1 30n', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k'));
+    expect([by, current(words, 'R7'), current(words, 'V1'), off(words)]).toEqual(['exact', 'no current through R7', '372.4 µA from ground to node n0 through V1', undefined]);
+    expect(sp(note(words)!)).toContain('the two ends of R7, node n3 and node n5, are at the same voltage, 6.145 V');
+  });
+
+  it('two nodes at exactly one voltage whose numbers ngspice gives are drawn differently are off on the page, each within 5e-5 of the exact voltage: R6 is not drawn as 0 A "at the same voltage" between tags of 64.62 mV and 64.63 mV beside a 1 nΩ wire; the warning names the nodes drawn off (k9401-112)', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 24', 'R1 top1 a2 100k', 'R2 a2 0 270', 'R3 top1 b3 10k', 'R4 b3 0 27', 'R5 a2 m4 1n', 'R6 m4 b3 2.7k'));
+    expect([by, node(words, 'a2'), node(words, 'b3'), current(words, 'R6')]).toEqual(['rule', '64.62 mV', '64.63 mV', '210.2 pA from node b3 to node m4 through R6']);
+    expect(off(words)!.why).toContain('node a2 is at 64.63 mV, where ngspice gives 64.62 mV; and node m4 is at 64.63 mV, where ngspice gives 64.62 mV.');
+  });
 });

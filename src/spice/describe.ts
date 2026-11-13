@@ -19,7 +19,7 @@ import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si
 import { elementInfo } from './elements.ts';
 import { articleBefore, isKnownDotCommand, leftOutModel, readAfterEnd, readAnalysis, sweptBy, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
-import { add, agrees, ANSWER_FLOOR, ANSWER_GAP, answers, checkWork, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, RESIDUAL_SHARE, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
+import { add, agrees, ANSWER_FLOOR, ANSWER_GAP, answers, carried, carrierSides, checkWork, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, RESIDUAL_SHARE, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Answer, type Budget, type Carried, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
@@ -1088,6 +1088,12 @@ interface Exact {
    */
   solveWork: number;
   /**
+   * The controlled sources that read another part of the circuit than their output's, and how much each
+   * unknown changes for a unit change of what each makes, solved with the operating point (exact.ts
+   * carrierSides): the floor of the answers they move (answerScales).
+   */
+  carried: Carried[];
+  /**
    * The diodes, whose currents are left free: one diode for each branch of a forest of the diodes' graph
    * (the currents of these span every current the diodes can carry into the rest of the circuit), each
    * with the change a unit current through it makes in every unknown. `own`: true for a diode whose current
@@ -1192,10 +1198,14 @@ function exactOf(netlist: Netlist): Exact | undefined {
         }
       }
     }
+    // The controlled sources that read another part: a unit change of what each makes (answerScales).
+    const carriers = carrierSides(model);
+    const carriersAt = sides.length;
+    for (const c of carriers) sides.push(c.side);
     const budget = newBudget();
     const x = solveExact(model, sides, budget);
     if (x) {
-      ex = { model, op: x[0]!, part, node, solveWork: MAX_WORK - budget.left };
+      ex = { model, op: x[0]!, part, node, solveWork: MAX_WORK - budget.left, carried: carried(carriers, x.slice(carriersAt)) };
       if (diodes) ex.diodes = { tree, slopes: x.slice(1, 1 + tree.length), own: ownCurrent, line: tree.map(lineOf) };
       if (sweep) ex.sweep = { part: sweep.part, slope: sweep.at < 0 ? x[0]!.map(() => ZERO) : x[sweep.at]! };
       if (tf) {
@@ -1306,7 +1316,7 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
   const judged = judgeAnswers(ex, view, ng);
   if (!judged) return { check: 'other' };
   if (judged.same) return { check: 'same', view, off: [] };
-  const { all, free, indexOf } = judged;
+  const { all, free, indexOf, pageOff } = judged;
   // With diodes, the warning names a value only where its exact value is known to the page's digits: no diode's
   // current changes it, or what the diodes' currents (worked out from ngspice's off numbers) add to it is below
   // ANSWER_GAP of it and far below its gap from ngspice's (a 167 fA diode moves a bridge's node by 5 nV, where
@@ -1325,27 +1335,41 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
     const t = diodeTerm(a);
     return t !== undefined && t <= ANSWER_GAP * Math.abs(a.exact) && t <= DIODE_SHARE * Math.abs(a.given - a.exact);
   };
-  return { check: 'imprecise', view, off: all.filter((a) => a.gap > ANSWER_GAP && known(a)) };
+  return { check: 'imprecise', view, off: all.filter((a) => (a.gap > ANSWER_GAP || pageOff(a)) && known(a)) };
 }
 
 /**
  * Whether ngspice's answers of one solution are this circuit's, to the page's digits (opCheck, and each checked
- * point of a sweep): `same` when each answer whose exact value is not 0 is within ANSWER_GAP of it beyond what
- * rounding leaves (exact.ts `answers`), or when the only ones that are off are values ngspice gives as exactly 0
- * that no diode's current changes, every other value (the currents of the R, G and F too) agreeing: the exact
- * values stand in for those 0s (lostValues), and Kirchhoff's law holds on the page (V1 of 1.5 V through 47 Ω
- * and a source of 1 aA: ngspice gives V1 and R1 exactly 0 A, and the warning sat beside "V1: no current", "R1:
- * no current" and "I1: 1 aA", the critic of round 3). Where another current ngspice works out is off too (R1 of
- * 150 Ω at 5 V, which ngspice gives 5.921 aA the other way for 3 aA), an exact value beside it would break that
- * law, and the answers are off: `all` lists every value with its gap, devices too. Undefined when ngspice gave
- * no value for one of them.
+ * point of a sweep): `same` when no answer whose exact value is not 0 is off on the page (`pageOff`), or when the
+ * only ones that are off are values ngspice gives as exactly 0 that no diode's current changes, every other value
+ * (the currents of the R, G and F too) agreeing: the exact values stand in for those 0s (lostValues), and
+ * Kirchhoff's law holds on the page (V1 of 1.5 V through 47 Ω and a source of 1 aA: ngspice gives V1 and R1
+ * exactly 0 A, and the warning sat beside "V1: no current", "R1: no current" and "I1: 1 aA", the critic of round
+ * 3). Where another current ngspice works out is off too (R1 of 150 Ω at 5 V, which ngspice gives 5.921 aA the
+ * other way for 3 aA), an exact value beside it would break that law, and the answers are off: `all` lists every
+ * value with its gap, devices too.
+ *
+ * An answer is off on the page when it is drawn with other digits than its exact value (formatSI, as the words
+ * draw it; the currents of the R, G and F that ngspice reports are answers here too, beyond what rounding leaves of
+ * the numbers ngspice works each out from, exact.ts `ownGap`) and either is more than ANSWER_GAP from it beyond
+ * what rounding leaves (exact.ts `answers`), or is a
+ * node at exactly the voltage of another whose numbers ngspice gives are drawn differently: a 0 between them
+ * would claim one voltage for two tags that differ (64.62 mV and 64.63 mV beside a 1e-10 Ω wire, each within
+ * ANSWER_GAP of the exact 64.62 mV, the critic of round 4). An answer drawn with the exact value's digits is not
+ * off, however far: V1's 372.4098 µA for 372.4395 µA is drawn "372.4 µA" either way, and a warning named it as
+ * "372.4 µA, where ngspice gives 372.4 µA" until it was left out, which left the rule deciding with nothing said
+ * (C9m fed through a 30 nΩ wire drew R7's exact 0 as 6.217e-20 A, the critic of round 4). Undefined when ngspice
+ * gave no value for one of them.
  */
-function judgeAnswers(ex: Exact, view: View, ng: NgspiceValues): { same: true } | { same: false; all: Answer[]; free: (a: Answer) => boolean; indexOf: (a: Answer) => number | undefined } | undefined {
-  const list = answers(ex.model, view.x, ng, view.level);
-  if (!list) return undefined;
-  const off = (a: Answer): boolean => a.exact !== 0 && a.gap > ANSWER_GAP;
-  if (!list.some(off)) return { same: true };
-  const all = answers(ex.model, view.x, ng, view.level, true) ?? list;
+function judgeAnswers(ex: Exact, view: View, ng: NgspiceValues): { same: true } | { same: false; all: Answer[]; free: (a: Answer) => boolean; indexOf: (a: Answer) => number | undefined; pageOff: (a: Answer) => boolean } | undefined {
+  // Every number the page draws from ngspice's answers: the node voltages, the currents of the V, E, H and L, and
+  // those of the R, G and F that ngspice reports (a resistor's, worked out from two node voltages each drawn
+  // with the exact value's digits, can be drawn off: 2.829 µA beside 2.827 µA where both are 2.828 µA).
+  const all = answers(ex.model, view.x, ng, view.level, true, ex.carried);
+  if (!all) return undefined;
+  const drawnOff = offOnPage(ex, view, all);
+  const pageOff = (a: Answer): boolean => drawnOff(a, a.ownGap ?? a.gap);
+  if (!all.some(pageOff)) return { same: true };
   const slopes = view.all.slice(1);
   const indexOf = (a: Answer): number | undefined => (a.kind === 'voltage' ? ex.node.get(a.name) : ex.part.get(a.name));
   /** No diode's current changes it: its exact value is the circuit's, whatever current the diodes carry. */
@@ -1357,8 +1381,34 @@ function judgeAnswers(ex: Exact, view: View, ng: NgspiceValues): { same: true } 
     const p = ex.model.parts[k]!;
     return p.branch >= 0 ? slopes.every((x) => isZero(x[p.branch]!)) : slopes.every((x) => currentIsZero(ex.model, x, k, ZERO));
   };
-  if (all.every((a) => !off(a) || (a.given === 0 && free(a)))) return { same: true };
-  return { same: false, all, free, indexOf };
+  // An exact value put in for ngspice's 0 must agree with the currents beside it as ngspice gives them: each R, G
+  // and F current is held here to the currents at its nodes, not to the voltages it is worked out from.
+  if (all.every((a) => !drawnOff(a, a.gap) || (a.given === 0 && free(a)))) return { same: true };
+  return { same: false, all, free, indexOf, pageOff };
+}
+
+/**
+ * Which answers of one solution are off on the page (judgeAnswers): drawn with other digits than the exact value,
+ * and `gap` more than ANSWER_GAP (its gap beyond rounding, exact.ts `answers`), or a node whose exact voltage
+ * another node shares (in every solution of the view, as its level on the page) while the numbers ngspice gives
+ * the two are drawn differently.
+ */
+function offOnPage(ex: Exact, view: View, list: readonly Answer[]): (a: Answer, gap: number) => boolean {
+  const drawn = (a: Answer, v: number): string => formatSI(v, a.kind === 'voltage' ? 'V' : 'A');
+  const misdrawn = (a: Answer): boolean => drawn(a, a.exact) !== drawn(a, a.given);
+  // Nodes at one exact voltage, by the same key as their level (exactly): 0 is "0" over any denominator.
+  const groups = new Map<string, Answer[]>();
+  for (const a of list) {
+    const k = a.kind === 'voltage' && a.exact !== 0 ? ex.node.get(a.name) : undefined;
+    if (k === undefined) continue;
+    const key = view.all.map((x) => (isZero(x[k]!) ? '0' : `${x[k]!.n.toString(16)}/${x[k]!.d.toString(16)}`)).join('|');
+    const g = groups.get(key);
+    if (g) g.push(a);
+    else groups.set(key, [a]);
+  }
+  const split = new Set<string>();
+  for (const g of groups.values()) if (g.length > 1 && g.some((a) => drawn(a, a.given) !== drawn(g[0]!, g[0]!.given))) for (const a of g) split.add(a.name);
+  return (a, gap) => a.exact !== 0 && misdrawn(a) && (gap > ANSWER_GAP || (a.kind === 'voltage' && split.has(a.name)));
 }
 
 /** With diodes, the warning names an off value whose diode terms are at most this share of its gap from ngspice's (opCheck). */

@@ -1408,32 +1408,27 @@ export const ANSWER_FLOOR = 2 ** -30;
  *   with no correct digit beyond the first, and the warning says so (C9h).
  * The parts of the circuit that conduct to each other (ground taken out) are weighed on their own: an E
  * making 1.2 MV from the 12 V it reads, into a load of its own, leaves the 12 V's floor alone, since
- * ngspice's rounding of what a source makes does not reach what it reads. What a controlled source makes
- * in another such part carries its gain times the scale of what it reads there: ngspice's rounding of a
- * 0 V ammeter's current beside milliamps reaches what an H of 1 GΩ makes of it, 1e9 times larger (an H
- * reading a bridge 1e-14 off balance makes −219.6 pV, which ngspice gives as −223.6 pV, since the
- * ammeter's 1.83 fA comes out as 1.86 fA beside the bridge's milliamps), so a floor from the H's own values
- * would call the ammeter fine and the H's output off. Within one part a source reading its own part (an
- * amplifier with feedback) is solved with it, and the margin of 2^-30 covers it. Where there is nothing to
- * weigh by, the largest value of its kind stands in.
+ * ngspice's rounding of what a source makes does not reach what it reads. A controlled source that reads
+ * another such part (`carrierSides`) carries its gain times the scale of what it reads there into the
+ * answers its output moves, by how much it moves each (`carried`: each unknown's change for a unit change of
+ * what the source makes, solved exactly). ngspice's rounding of a 0 V ammeter's current beside milliamps
+ * reaches what an H of 1 GΩ makes of it, 1e9 times larger (an H reading a bridge 1e-14 off balance makes
+ * −219.6 pV, which ngspice gives as −223.6 pV, since the ammeter's 1.83 fA comes out as 1.86 fA beside the
+ * bridge's milliamps), so a floor from the H's own values would call the ammeter fine and the H's output
+ * off. Only by how much it moves them: an open-loop E of 1e5 making 1.2 MV, pulled up by 10 kΩ to the
+ * 12 V rail that feeds a bridge, moves the rail's current but no node of the bridge, which V1 holds; a floor
+ * for the whole part it reaches made every bridge node's 2.2 mV, and hid ngspice's 4.961 mV for 5.189 mV
+ * there beside a 0 that claimed one voltage for both ends of R5 (the critic of round 4). Within one part a
+ * source reading its own part (an amplifier with feedback) is solved with it, and the margin of 2^-30 covers
+ * it. Where there is nothing to weigh by, the largest value of its kind stands in.
  */
-export function answerScales(model: ExactModel, v: readonly number[], branchI: (p: ExactPart) => number, level: (p: ExactPart) => number): { volts: number[]; amps: (p: ExactPart) => number } {
+export function answerScales(model: ExactModel, v: readonly number[], branchI: (p: ExactPart) => number, level: (p: ExactPart) => number, carried: readonly Carried[] = []): { volts: number[]; amps: (p: ExactPart) => number } {
   const n = model.nodes.length;
   const at = (k: number): number => (k < 0 ? 0 : Math.abs(v[k]!));
   const signed = (k: number): number => (k < 0 ? 0 : v[k]!);
   const largestV = v.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
-  /** Union-find over the nodes (ground, -1, is never joined). */
-  const groups = (): { find: (k: number) => number; join: (a: number, b: number) => void } => {
-    const up = Int32Array.from({ length: n }, (_, k) => k);
-    const find = (k: number): number => {
-      while (up[k] !== k) k = up[k] = up[up[k]!]!;
-      return k;
-    };
-    return { find, join: (a, b) => (a >= 0 && b >= 0 ? void (up[find(a)] = find(b)) : undefined) };
-  };
-  // The parts that conduct to each other, and the nodes the V, E, H and L join.
-  const part = groups();
-  const joined = groups();
+  // The nodes the V, E, H and L join.
+  const joined = unionFind(n);
   /** Per node: the sizes of the terms of Kirchhoff's law (amps), its conductance, the largest own equation of a branch there (volts), and the largest current that flows there. */
   const terms = new Float64Array(n);
   const conductance = new Float64Array(n);
@@ -1451,7 +1446,6 @@ export function answerScales(model: ExactModel, v: readonly number[], branchI: (
   };
   for (const p of model.parts) {
     if (p.kind === 'C') continue;
-    part.join(p.a, p.b);
     const gain = Math.abs(toDouble(p.value));
     if (p.kind === 'R') {
       const g = 1 / gain;
@@ -1480,46 +1474,109 @@ export function answerScales(model: ExactModel, v: readonly number[], branchI: (
     const r = joined.find(k);
     if (flow[k]! > flowJoined[r]!) flowJoined[r] = flow[k]!;
   }
-  // What controlled sources carry into another part of the circuit: a voltage scale (E, H) and a current
-  // scale (G, F) for each part, worked through chains of them as many times as there are controlled sources.
-  const carriedV = new Float64Array(n);
-  const carriedI = new Float64Array(n);
-  const scaleV = (k: number): number => {
-    if (k < 0) return 0;
-    const r = part.find(k);
-    return Math.max(volts0[k]!, carriedV[r]!, conductance[k]! > 0 ? carriedI[r]! / conductance[k]! : 0);
-  };
-  const amps = (p: ExactPart): number => {
+  /** A current's own scale: the largest current at its nodes (for a V, E, H or L, at every node a chain of them joins). */
+  const amps0 = (p: ExactPart): number => {
     let s = 0;
-    for (const k of [p.a, p.b]) {
-      if (k < 0) continue;
-      const r = part.find(k);
-      s = Math.max(s, p.branch >= 0 ? flowJoined[joined.find(k)]! : flow[k]!, carriedI[r]!, carriedV[r]! * conductance[k]!);
+    for (const k of [p.a, p.b]) if (k >= 0) s = Math.max(s, p.branch >= 0 ? flowJoined[joined.find(k)]! : flow[k]!);
+    return s;
+  };
+  // What each carrier makes is off by its gain times the rounding of what it reads, at that part's own scale;
+  // each unknown moves by that times its change for a unit change of what the carrier makes. Chains of carriers
+  // are in those changes, which the whole circuit's equations give.
+  const delta = carried.map(({ part: j }) => {
+    const p = model.parts[j]!;
+    const read = p.kind === 'F' || p.kind === 'H' ? amps0(model.parts[p.control]!) : (p.c >= 0 ? volts0[p.c]! : 0) + (p.d >= 0 ? volts0[p.d]! : 0);
+    const d = Math.abs(toDouble(p.value)) * read;
+    return Number.isFinite(d) ? d : 0;
+  });
+  /** What the carriers add to the scale of a linear form of the unknowns (`change` of a carrier's sensitivities). */
+  const moved = (change: (s: Float64Array) => number): number => {
+    let total = 0;
+    carried.forEach((c, j) => {
+      if (delta[j]) total += Math.abs(change(c.s)) * delta[j]!;
+    });
+    return Number.isFinite(total) ? total : 0;
+  };
+  const of = (s: Float64Array, k: number): number => (k < 0 ? 0 : s[k]!);
+  const volts = Array.from({ length: n }, (_, k) => (carried.length ? Math.max(volts0[k]!, moved((s) => s[k]!)) : volts0[k]!));
+  const amps = (p: ExactPart): number => {
+    let s = amps0(p);
+    if (carried.length) {
+      const gain = Math.abs(toDouble(p.value));
+      if (p.branch >= 0) s = Math.max(s, moved((x) => x[p.branch]!));
+      else if (p.kind === 'R') s = Math.max(s, moved((x) => of(x, p.a) - of(x, p.b)) / gain);
+      else if (p.kind === 'G') s = Math.max(s, gain * moved((x) => of(x, p.c) - of(x, p.d)));
+      else if (p.kind === 'F') s = Math.max(s, gain * moved((x) => x[model.parts[p.control]!.branch]!));
     }
     return ok(s, largestI);
   };
-  const controlled = model.parts.filter((p) => p.kind === 'E' || p.kind === 'G' || p.kind === 'F' || p.kind === 'H');
-  for (let pass = 0; pass < controlled.length; pass++) {
-    let changed = false;
-    for (const p of controlled) {
-      const out = p.a >= 0 ? p.a : p.b;
-      if (out < 0) continue;
-      const r = part.find(out);
-      const control = p.kind === 'F' || p.kind === 'H' ? model.parts[p.control]! : undefined;
-      const reads = control ? [control.a, control.b] : [p.c, p.d];
-      if (reads.some((k) => k >= 0 && part.find(k) === r)) continue;
-      const gain = Math.abs(toDouble(p.value));
-      const size = gain * (control ? amps(control) : scaleV(p.c) + scaleV(p.d));
-      const into = p.kind === 'E' || p.kind === 'H' ? carriedV : carriedI;
-      if (Number.isFinite(size) && size > into[r]!) {
-        into[r] = size;
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-  const volts = Array.from({ length: n }, (_, k) => scaleV(k));
   return { volts, amps };
+}
+
+/** Union-find over n nodes (ground, -1, is never joined). */
+function unionFind(n: number): { find: (k: number) => number; join: (a: number, b: number) => void } {
+  const up = Int32Array.from({ length: n }, (_, k) => k);
+  const find = (k: number): number => {
+    while (up[k] !== k) k = up[k] = up[up[k]!]!;
+    return k;
+  };
+  return { find, join: (a, b) => (a >= 0 && b >= 0 ? void (up[find(a)] = find(b)) : undefined) };
+}
+
+/**
+ * A controlled source whose output carries its rounding into a part of the circuit it does not read
+ * (`carrierSides`), and how much each unknown changes for a unit change of what it makes (1 V for an E or H,
+ * 1 A for a G or F), in doubles: a scale only (`answerScales`).
+ */
+export interface Carried {
+  /** The source, by index in ExactModel.parts. */
+  part: number;
+  /** Each unknown's change (the node voltages, then the branch currents). */
+  s: Float64Array;
+}
+
+/**
+ * The controlled sources that read a part of the circuit other than their output's (the parts that conduct to
+ * each other, ground taken out: an E, G, F or H whose output's part holds none of the nodes it reads, for an F
+ * or H those of the source whose current it reads), each with the right-hand side of a unit change of what it
+ * makes: 1 in its own equation (an E or H), or 1 A from its first node to its second (a G or F). solveExact
+ * gives the change of every unknown (`carried`).
+ */
+export function carrierSides(model: ExactModel): { part: number; side: Fraction[] }[] {
+  const part = unionFind(model.nodes.length);
+  for (const p of model.parts) if (p.kind !== 'C') part.join(p.a, p.b);
+  const out: { part: number; side: Fraction[] }[] = [];
+  model.parts.forEach((p, j) => {
+    if (p.kind !== 'E' && p.kind !== 'G' && p.kind !== 'F' && p.kind !== 'H') return;
+    const at = p.a >= 0 ? p.a : p.b;
+    if (at < 0) return;
+    const r = part.find(at);
+    const control = p.kind === 'F' || p.kind === 'H' ? model.parts[p.control]! : undefined;
+    const reads = control ? [control.a, control.b] : [p.c, p.d];
+    if (reads.some((k) => k >= 0 && part.find(k) === r)) return;
+    const side: Fraction[] = Array.from({ length: model.size }, () => ZERO);
+    if (p.branch >= 0) side[p.branch] = ONE;
+    else {
+      // As a current source of 1 A from a to b (rightHandSide): it leaves a.
+      if (p.a >= 0) side[p.a] = neg(ONE);
+      if (p.b >= 0) side[p.b] = ONE;
+    }
+    out.push({ part: j, side });
+  });
+  return out;
+}
+
+/** The carriers' changes (`carrierSides`) from their solutions, in doubles. */
+export function carried(sides: readonly { part: number }[], solutions: readonly (readonly Fraction[])[]): Carried[] {
+  return sides.map(({ part }, i) => ({ part, s: Float64Array.from(solutions[i]!, (x) => (isZero(x) ? 0 : toDouble(x))) }));
+}
+
+/** The carriers of a model and their changes, solved on their own (for `answers` called without them); none when the solve does not fit in a new budget. */
+export function carriedOf(model: ExactModel): Carried[] {
+  const sides = carrierSides(model);
+  if (!sides.length) return [];
+  const x = solveExact(model, sides.map((c) => c.side));
+  return x ? carried(sides, x) : [];
 }
 
 /** One of ngspice's answers beside the exact one: a node voltage, or the current of a V, E, H or L. */
@@ -1534,6 +1591,14 @@ export interface Answer {
    * the exact value; for an exact value of 0, 0 within what rounding leaves and Infinity beyond it.
    */
   gap: number;
+  /**
+   * For the current of an R, G or F: the same gap beyond what rounding leaves of the numbers ngspice works it out
+   * from as well (a resistor's |v(a)| + |v(b)| over its resistance, a G's gain times |v(c)| + |v(d)|, an F's gain
+   * times the scale of the current it copies). A 1 nΩ wire's current, worked out from two node voltages a step
+   * of a double apart, has no digit ngspice can give, however well it solved the circuit: describe.ts judges
+   * the page by this one, and names off currents by `gap`.
+   */
+  ownGap?: number;
 }
 
 /**
@@ -1546,13 +1611,15 @@ export interface Answer {
  * exact values (each rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
  * Each answer is held to ANSWER_FLOOR of its own scale (`answerScales`): a 0 V ammeter beside milliamps
  * is weighed against the milliamps that flow at its nodes, a node against the terms of its own equations.
+ * `carried`: the changes the controlled sources that read another part make (`carrierSides`), solved with the
+ * circuit (describe.ts does it once per netlist); worked out here when not given.
  */
-export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value, devices = false): Answer[] | undefined {
+export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value, devices = false, carried: readonly Carried[] = carriedOf(model)): Answer[] | undefined {
   const exactV = model.nodes.map((_, k) => (isZero(x[k]!) ? 0 : toDouble(x[k]!)));
   const branches = model.parts.filter((p) => p.branch >= 0);
   const exactI = branches.map((p) => (isZero(x[p.branch]!) ? 0 : toDouble(x[p.branch]!)));
   const branchOf = new Map(branches.map((p, k) => [p.branch, exactI[k]!]));
-  const { volts, amps } = answerScales(model, exactV, (p) => branchOf.get(p.branch) ?? 0, (p) => toDouble(level(p)));
+  const { volts, amps } = answerScales(model, exactV, (p) => branchOf.get(p.branch) ?? 0, (p) => toDouble(level(p)), carried);
   const out: Answer[] = [];
   const one = (kind: Answer['kind'], name: string, exact: number, given: number | undefined, scale: number): boolean => {
     if (given === undefined || !Number.isFinite(given)) return false;
@@ -1563,12 +1630,19 @@ export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceVa
   for (let k = 0; k < model.nodes.length; k++) if (!one('voltage', model.nodes[k]!, exactV[k]!, ng.voltage(model.nodes[k]!), volts[k]!)) return undefined;
   for (let k = 0; k < branches.length; k++) if (!one('current', branches[k]!.key, exactI[k]!, ng.branch(branches[k]!.key), amps(branches[k]!))) return undefined;
   if (devices) {
-    // For the note only, never for the decision: each R, G and F whose current ngspice reports, exact from the
-    // unknowns over one denominator (a resistor's ends can be nearly the same voltage).
+    // Each R, G and F whose current ngspice reports, exact from the unknowns over one denominator (a resistor's
+    // ends can be nearly the same voltage), with its own gap too (ownGap).
     const whole = overCommon(x);
+    const at = (k: number): number => (k < 0 ? 0 : Math.abs(exactV[k]!));
     model.parts.forEach((p, k) => {
       if (p.kind !== 'R' && p.kind !== 'G' && p.kind !== 'F') return;
-      one('current', p.key, currentDouble(model, whole.num, whole.den, k), ng.device(p.key), amps(p));
+      const exact = currentDouble(model, whole.num, whole.den, k);
+      if (!one('current', p.key, exact, ng.device(p.key), amps(p))) return;
+      const gain = Math.abs(toDouble(p.value));
+      const worked = p.kind === 'R' ? (at(p.a) + at(p.b)) / gain : p.kind === 'G' ? gain * (at(p.c) + at(p.d)) : gain * amps(model.parts[p.control]!);
+      const a = out[out.length - 1]!;
+      const beyond = Math.max(0, Math.abs(a.given - exact) - ANSWER_FLOOR * Math.max(amps(p), Number.isFinite(worked) ? worked : 0));
+      a.ownGap = exact !== 0 ? beyond / Math.abs(exact) : beyond > 0 ? Number.POSITIVE_INFINITY : 0;
     });
   }
   return out;
