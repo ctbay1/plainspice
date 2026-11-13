@@ -890,8 +890,8 @@ the command written `## op …` (47), `;# op …` and `=# op …` (and after eac
 `   *# op …`, `*# echo first ; op …`, `pre_op …` after four `pre_circbyline` lines in a `.control` block,
 `op …` in a `.control` block after `.end`, `*# op …` after `.end`, `;op …` in an `*ng_script` file, `;# op
 …` in a `.control` block, and `;# op` followed by a `+` line with the words. **Our engine** runs on (exit
-0) with each. Not commands, and run in native 47 and 42 (exit 0): `;op …` in a `.control` block, `;; op …`
-in an `*ng_script` file, and `*# op` followed by the `+` line (which continues `.op` before it).
+0) with each. Not commands, and no stop in native 47 and 42: `;op …` in a `.control` block, `;; op …` in
+an `*ng_script` file, and `*# op` followed by the `+` line (which continues `.op` before it).
 
 ```
 * t
