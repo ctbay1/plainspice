@@ -51,3 +51,11 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   Not taken: leaving the line out when a name is too long to save, which an earlier version of this
   fix did. It saved fewer currents with only a note in the ngspice output tab, and the names it let
   through reach other spaces as well: a `.control` block's `print` and `display` (limit-10).
+- **Not added when a `+` line just after `.end` continues the line before it** (round-2 critic of the
+  second re-check). ngspice makes `.end` a comment and reads on, so such a `+` line continues the last
+  line before `.end` (limit-18 in [`../spice-facts/limits.md`](../spice-facts/limits.md)); with
+  `.options savecurrents` added just before `.end` it would continue that line instead: `B1 c 0 V=1+`,
+  `.end`, `+ v(b)` runs natively with v(c) = 7 V, and with the line added stops with "YYparse error". The
+  copy then runs as written, every voltage the same (A2), without the extra currents. Not taken: adding the
+  line after the `+` lines, at the end of the text, where a `.control` block left open would take it as a
+  command; the case is a `+` line after `.end`, which no netlist we have comes near.
