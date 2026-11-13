@@ -777,8 +777,12 @@ quotes). `print` and `write` copy that name into 512 bytes (`vec_basename()`, li
 `psd` and `spec` for the vectors they make (`src/frontend/com_fft.c`, `spec.c`), and `asciiplot` after an
 operating point, where it compares the formula's name with the scale's (`vec_eq()`,
 `src/frontend/plotting/agraf.c`; after `tran` it runs): a name of 509 bytes prints, 514 stops native 47
-and 42. `let`, `wrdata`, `plot`, `fourier`, `if`, `display`, `linearize` and the other commands that read
-formulas, with a formula of 999 bytes, run after `op` and after `tran`. A `meas` command writes a word it
+and 42. Every other command we ran with a formula of 999 bytes, after `op` and after `tran`, runs (`let`,
+`wrdata`, `plot`, `bltplot`, `gnuplot`, `hardcopy`, `wrs2p`, `sndprint`, `sndparam`, `eprint`, `eprvcd`,
+`cross`, `fourier`, `linearize`, `display`, `setscale`, `transpose`, `settype`, `destroy`, `unlet`,
+`reshape`, `if`, `echo`, `show`, `alter`, `define`, `set`), but `meas` (below) and `compose`, which
+crashes native 47 and 42 with a formula of any length, `v(b)+v(b)` too (the sanitized build:
+`heap-buffer-overflow … READ of size 8 … in dimxpand`). A `meas` command writes a word it
 cannot use, with its message, into a space of 100 bytes (`char errbuf[100]` of `get_measure2()`,
 `src/frontend/com_measure2.c`: `sprintf(errbuf, "no such vector as '%s'\n", meas->m_vec)`, and "bad syntax,
 cannot evaluate right hand side of %s=%s"): a vector of 78 bytes that does not exist gives the message, 79
