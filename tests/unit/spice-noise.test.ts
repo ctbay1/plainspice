@@ -1134,6 +1134,16 @@ describe('after the critic of round 3 of the re-check\'s fixes: circuits at rest
     expect([ib.by, current(ib.words, 'Vm'), off(ib.words)]).toEqual(['exact', 'Vm measures 133.4 aA flowing from node m to node a', undefined]);
   });
 
+  it('where ngspice\'s answers are off, an exact 0 the rule shows as 0 is not named in the warning (the page shows it as the circuit makes it): R10 of a balanced bridge beside the bridge of C9s, given 950 fA (doctored: beyond 2^-30 of the 957 µA at its nodes, below the rule\'s 1 pA; its ends one step apart, so no product check applies) is "no current", and the warning does not name it', async () => {
+    const text = lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'Rw a m 1e-12', 'R5 m b 1k', 'R6 top c 10k', 'R7 c 0 10k', 'R8 top d 4.7k', 'R9 d 0 4.7k', 'R10 c d 1k', '.options savecurrents').replace('.op\n', '.op\n');
+    const r = await solveText(text, ngspice);
+    const doctored = structuredClone(r.results);
+    doctored.op!.currents.find((c) => c.element === 'r10')!.value = 9.5e-13;
+    const w = describeResults(parseNetlist(text), doctored, r.run);
+    expect([roundingNoise(parseNetlist(text), doctored).by, sp(w.currents.find((c) => c.name === 'R10')!.text)]).toEqual(['rule', 'no current through R10']);
+    expect(sp(w.warnings.find((m) => m.code === 'imprecise-answers')!.why ?? '')).not.toContain('R10');
+  });
+
   it('a 60-part bridge with 53 ammeters, and 16 diodes swept from 0 V, each with a 99,999-point sweep and every current saved: describeResults stays quick, a series that is noise at every point marked once (the critic of round 3: 142 to 191 ms and 98 to 174 ms)', async () => {
     const amm = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m0 1k'];
     for (let k = 0; k < 53; k++) amm.push(`Vm${k} m${k} ${k === 52 ? 'b' : `m${k + 1}`} 0`);

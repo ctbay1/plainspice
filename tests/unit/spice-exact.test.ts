@@ -281,6 +281,14 @@ describe('agrees: ngspice simulated this same circuit, and its rounding explains
   });
 });
 
+describe('the lines after a plain .end that ngspice still reads (the critic of round 3: no test held this check)', () => {
+  it('an analysis line there changes nothing in an operating point; any other dot line (.temp, .options) leaves the netlist to the other rule', () => {
+    expect(typeof model('* t\nV1 a 0 1\nR1 a 0 1k\n.end\n.op\n')).not.toBe('string');
+    expect(model('* t\nV1 a 0 1\nR1 a 0 1k\n.op\n.end\n.temp 50\n')).toBe('directive');
+    expect(model('* t\nV1 a 0 1\nR1 a 0 1k\n.op\n.end\n.options gmin=1e-6\n')).toBe('directive');
+  });
+});
+
 describe('answersAgree: ngspice\'s answers are the exact ones to the page\'s digits (the critic of the re-check\'s fixes)', () => {
   const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nV2 s 0 1n\nRs s 0 1k\n.op\n.end\n';
   const ng = (nodes: Record<string, number>, branch: Record<string, number>, device: Record<string, number> = {}) => ({ voltage: (n: string) => nodes[n], branch: (k: string) => branch[k], device: (k: string) => device[k] });
