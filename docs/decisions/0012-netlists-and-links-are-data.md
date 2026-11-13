@@ -148,7 +148,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   - the 60 parts with their own nodes among the ground symbols and the long wire: 0.68 s (2.78 s),
     keys 0.09 and 0.05 s (3.01 and 2.84 s); phone 2.11 s, keys 0.39 s;
   - turning, moving and deleting a part with the keys on these piles and the lattices: 0.06 to
-    0.34 s each on a computer, each undo no long task;
+    0.34 s each on a computer, each undo no long task; on the phone 0.12 to 0.95 s, measured at a
+    load of 13 to 14;
   - this lane's own: 115 routes beside a 70 × 70 grid (29,137 characters): 0.59 s (2.73 s), keys
     0.09 s (2.28 and 1.95 s); beside a 99 × 99 grid kept as saved work (160 kB): 0.74 s (3.57 s), keys
     0.12 s (3.27 and 3.28 s), an undo 0.42 s (the editor taking back the whole drawing block); the
