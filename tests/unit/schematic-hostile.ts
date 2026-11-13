@@ -91,17 +91,50 @@ export function namedGrid(k: number, node: string, x0 = 300, y0 = 300): string[]
 }
 
 /**
- * A slanted lattice of k × k points centred on (0, 0) through the pins of a part standing there (both
- * of V1's pins, at (0, ±2), are lattice points): one island of slanted copper holding a pin of each of
- * V1's nodes, which a cut cannot free, so every route of those nodes starts from the whole lattice.
+ * A slanted lattice of k × k points hanging up from (0, −2), where V1's pin of node 1 is in the
+ * parts of starAtOnePoint (and each resistor's ground pin until the resistors move): once they have
+ * moved, node 1's first piece is the whole lattice, so every route of node 1 starts from all its points.
  */
-export function latticeThroughOrigin(k: number): string[] {
-  const h = Math.floor(k / 2);
-  const P = (a: number, b: number): string => `${a + b - h},${b - a + 1}`;
+export function latticeAbove(k: number): string[] {
+  const P = (a: number, b: number): string => `${a - b},${-2 - a - b}`;
   const lines: string[] = [];
   for (let a = 0; a < k; a++) lines.push(`*@ wire ${Array.from({ length: k }, (_, b) => P(a, b)).join(' ')}`);
   for (let b = 0; b < k; b++) lines.push(`*@ wire ${Array.from({ length: k }, (_, a) => P(a, b)).join(' ')}`);
   return lines;
+}
+
+/**
+ * A slanted lattice of k × k points round (0, 0) whose points all have x + y odd, so no pin of the parts
+ * of partsAtOnePoint (at (0, ±2)) is on it: it touches nothing, and every place round the parts is in
+ * its way until the repairs drop it.
+ */
+export function latticeAround(k: number): string[] {
+  const h = Math.floor(k / 2);
+  const P = (a: number, b: number): string => `${a + b - h},${b - a + 1 + (h % 2)}`;
+  const lines: string[] = [];
+  for (let a = 0; a < k; a++) lines.push(`*@ wire ${Array.from({ length: k }, (_, b) => P(a, b)).join(' ')}`);
+  for (let b = 0; b < k; b++) lines.push(`*@ wire ${Array.from({ length: k }, (_, a) => P(a, b)).join(' ')}`);
+  return lines;
+}
+
+/** `count` one-unit pieces of wire far away, each named with a node of partsAtOnePoint(60) (1 … 59 in turn): every name stays. */
+export function namedStubs(count: number, x0 = 200, y0 = 200): string[] {
+  const out: string[] = [];
+  for (let k = 0; k < count; k++) {
+    const x = x0 + 3 * (k % 30);
+    const y = y0 + 2 * Math.floor(k / 30);
+    out.push(`*@ wire ${x},${y} ${x + 1},${y}`, `*@ label ${1 + (k % 59)} ${x} ${y}`);
+  }
+  return out;
+}
+
+/** V1 and R2 … Rn, each part with two nodes of its own, all at one point: the critic's. */
+export function ownNodesAtPoint(n: number, extra: readonly string[] = []): string {
+  const out = ['*', 'V1 a1 0 1'];
+  for (let i = 2; i <= n; i++) out.push(`R${i} a${i} b${i} 1`);
+  out.push('.op', '*@ V1 0 0 0');
+  for (let i = 2; i <= n; i++) out.push(`*@ R${i} 0 0 0`);
+  return `${[...out, ...extra].join('\n')}\n`;
 }
 
 /**

@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { SegmentIndex } from '../../src/schematic/connectivity.ts';
 import { applyEdit, buildSchematic, schematicConnectivity, type EditOp, type Schematic } from '../../src/schematic/index.ts';
-import { block, groundRowsAndWave, longSlantedFar, partsAtOnePoint, piled, slantedLattice, slantedOverParts } from './schematic-hostile.ts';
+import { block, groundRowsAndWave, latticeAround, latticeAbove, longSlantedFar, namedGrid, namedStubs, ownNodesAtPoint, partsAtOnePoint, piled, slantedLattice, slantedOverParts, starAtOnePoint } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ checks: 0 }));
 
@@ -152,13 +152,27 @@ const SHAPES: [string, () => string][] = [
   ['60 parts at one point, 1650 ground symbols in a block round them, 159 long slanted pieces', () => partsAtOnePoint(60, [...block('grounds', 1650), ...longSlantedFar()])],
   ['60 parts at one point, 1650 names in a block round them, 159 long slanted pieces', () => partsAtOnePoint(60, [...block('names', 1650), ...longSlantedFar()])],
   ['60 parts at one point, 170 long slanted pieces whose boxes cover where the parts go', () => partsAtOnePoint(60, slantedOverParts())],
+  ['60 parts with their own nodes at one point, 1650 ground symbols in a block, 159 long slanted pieces', () => ownNodesAtPoint(60, [...block('grounds', 1650), ...longSlantedFar()])],
+  // More of the same kind, built to find what the critic's did not: 115 routes beside a 99 × 99 grid
+  // (each route found every island again), a slanted lattice round the parts that touches nothing (no
+  // place near them is free), a lattice hanging from V1's pin (each route of node 1 started from the
+  // whole lattice), and 900 names that stay, each on a piece of wire of its own.
+  ['60 parts between node 1 and ground at one point, a 99 × 99 grid named 1 far away', () => starAtOnePoint(60, namedGrid(99, '1'))],
+  ['60 parts at one point inside a slanted lattice that touches none of them', () => partsAtOnePoint(60, latticeAround(70))],
+  ['60 parts between node 1 and ground at one point, a slanted lattice hanging from V1’s pin', () => starAtOnePoint(60, latticeAbove(70))],
+  ['60 parts at one point, 900 names each on its own piece of wire far away', () => partsAtOnePoint(60, namedStubs(900))],
 ];
 
-/** What the drawing holds: its drawing lines, and what the scene draws (pieces of wire, dots, hops, names, symbols). */
+/**
+ * What the drawing holds: its drawing lines and the pieces of wire they draw (the repairs may drop
+ * some, a lattice touching nothing, say, but every build reads them and keeps clear of them until
+ * then), and what the scene draws (pieces of wire, dots, hops, names, symbols).
+ */
 function size(text: string, s: Schematic): number {
   const sc = s.scene;
-  const lines = text.split('\n').filter((l) => l.startsWith('*@')).length;
-  return lines + sc.wires.reduce((n, w) => n + w.points.length - 1, 0) + sc.junctions.length + sc.crossings.length + sc.nodeLabels.length + sc.parts.length + sc.grounds.length;
+  const lines = text.split('\n').filter((l) => l.startsWith('*@'));
+  const drawn = lines.reduce((n, l) => n + (/^\*@ wire /.test(l) ? l.trim().split(/\s+/).length - 3 : 0), 0);
+  return lines.length + drawn + sc.wires.reduce((n, w) => n + w.points.length - 1, 0) + sc.junctions.length + sc.crossings.length + sc.nodeLabels.length + sc.parts.length + sc.grounds.length;
 }
 
 /** Checks and point lookups a piece of work makes. */

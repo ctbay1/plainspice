@@ -16,7 +16,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { applyEdit, buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
-import { latticeThroughOrigin, longSlantedFar, namedGrid, partsAtOnePoint, partsInGroups, piled, slantedLattice, starAtOnePoint } from './schematic-hostile.ts';
+import { latticeAbove, longSlantedFar, namedGrid, partsAtOnePoint, partsInGroups, piled, slantedLattice, starAtOnePoint } from './schematic-hostile.ts';
 
 const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0, indexed: 0, routes: 0, foreign: 0, ends: 0 }));
 
@@ -181,10 +181,9 @@ describe('the routes the repairs add look near themselves, and keep the islands 
   });
 
   it('a pin on a slanted lattice at the format’s limits: the routes from it go through its ends a bounded number of times', { timeout: 120_000 }, () => {
-    // The lattice holds a pin of each of V1's nodes, so each route of node 1 or of ground starts from
-    // its 9,800 points: 622,000 ends for 32 routes. Each end counts as a step of the routing budget
+    // The lattice holds V1's pin of node 1, so each route of node 1 starts from its 9,800 points. Each end counts as a step of the routing budget
     // (250,000 steps), as the area a route searches does; the pieces left are joined by name.
-    const built = counted(() => build(starAtOnePoint(60, latticeThroughOrigin(70))));
+    const built = counted(() => build(starAtOnePoint(60, latticeAbove(70))));
     expect(built.ends).toBeLessThan(260_000);
     expect(built.result.problems.some((p) => p.kind === 'connected-by-name')).toBe(true);
   });
