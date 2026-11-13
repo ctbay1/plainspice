@@ -69,11 +69,11 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   output panel where the added line is shown otherwise) name the `+` line and the line ngspice continues
   with it, the last line of its own before `.end` (past blank and comment lines, `+` lines before `.end`, a
   `.title` line and `*#` lines, which are comments to ngspice by then): "PlainSpice did not add .options
-  savecurrents to the copy ngspice ran. Line 6, after .end, starts with +: ngspice does not stop reading at
-  .end, so line 6 continues line 4, and with the line added just before .end it would continue that line
-  instead. So ngspice saved the current only through voltage sources, E and H sources and inductors, not
-  through every part. Move .end to the bottom (the Checks panel offers it) to see the current through every
-  part." The way out is the after-end check's own fix, in its words. Explain's `.op` note says PlainSpice
+  savecurrents to the copy ngspice ran, and ngspice saves the current through every part only with that line.
+  Line 6, after .end, starts with +: ngspice does not stop reading at .end, so line 6 continues line 4, and
+  with the line added just before .end it would continue that line instead. Move .end to the bottom (the
+  Checks panel offers it) to see the current through every part." (as corrected after the round-1 critic,
+  below). The way out is the after-end check's own fix, in its words. Explain's `.op` note says PlainSpice
   adds the line only where the copy does (`plusLineAfterEnd`, found once per netlist), and otherwise "…
   PlainSpice does not add that line to the copy it runs here, because of the + line after .end (line 6)."
   Fact A2c (native ngspice 47 and 42, and our engine): as written v(n1) = 3 V and no current saved; with
@@ -84,15 +84,39 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   `tests/golden/facts-explain.test.ts` (A2c, the fix's copy and Explain), `tests/e2e/run-copy.spec.ts` (the
   S28 link's output panel). Not taken: a note in the Numbers panel, which would need a new place there and
   already sends the student to the Checks panel.
+- **The note says what the line does, and comes only where the currents are missing** (the round-1 critic
+  of these fixes, CR1-2). The note said "So ngspice saved the current only through voltage sources, E and H
+  sources and inductors, not through every part.", which was false twice:
+  - For a B line with V=, whose current ngspice saves too: this record's own netlist above gives i(b1) =
+    −7 mA beside i(v1) (native 47 and 42, and our engine; a new row of fact A2c). A longer list would still
+    be false with a T line, whose port currents ngspice saves (as v(t1#i1) and v(t1#i2)), and with a `.save`
+    line (`.save @r1[i] v(n1)` keeps R1's current), native 47 and 42 both. So the note now says what the
+    line does, in Explain's words ("…, and ngspice saves the current through every part only with that
+    line."), and the Numbers panel shows which currents the run has.
+  - Where the student's own `.options savecurrents` line comes after `.end`, which ngspice reads there too:
+    the Numbers panel showed the currents beside a note that said they were missing. ngspice takes every
+    line that starts with `.opt` out of the netlist before it reads the circuit (fact A2d, native 47 and 42,
+    and our engine): after `.end`, after a `.end` with a comment glued on (though it reads no more parts
+    there), in a `.control` block, and with `savecurrents` on a `+` line after `.end`; not after a line
+    starting with `@`, and the commands `option` and `set savecurrents` save nothing. `saveCurrentsLeftOut`
+    (`run-netlist.ts`, found once per netlist) reads the netlist so, and the note comes only where no such
+    line saves every current; Explain's `.op` line then has no note, as with the line before `.end`. Not
+    taken: the critic's rule to count no line after a glued `.end`, which A2d's run contradicts (both
+    currents saved, in 47 and 42).
+  Tests: `tests/unit/spice-run-netlist.test.ts` (the note's words; no note for seven netlists where native
+  ngspice saves every current, the note for five where it saves none), `tests/unit/spice-explain.test.ts`,
+  `tests/golden/facts-explain.test.ts` (A2c's B row, A2d's twelve rows, and the note and Explain's "does
+  not add" exactly where our engine's run has no part's own current); all fail on a0fcb61.
 - **Still open, for after the release** (left as they are, as what runs does not change now):
   - The parser does not join a `+` line after `.end` to the line it continues (it stops reading at `.end`),
     so the drawing, the overview, R1's card ("SPICE reads it as 2 Ω") and Explain call R1 2 Ω where ngspice
     uses 3 Ω (S28). This is older, pinned by the S28 golden row; the results are ngspice's (3 V), and the
     after-end check's fix makes both agree.
-  - After a `.end` with a comment glued to it (`.end;x`), ngspice stops reading (S27): a `+` line after it
-    continues no line before it, yet the copy still leaves the line out, so the currents are gone with no
-    note (none could say the `+` line continues a line, as it does not). Adding the line there changes
-    nothing: native 47 and 42 give v(n1) = 2 V with it or without, and 1 A through R1 and from I1 with it.
+  - After a `.end` with a comment glued to it (`.end;x`), ngspice reads no more parts (S27; its `.options`
+    lines it still reads, A2d): a `+` line after it continues no line before it, yet the copy still leaves
+    the line out, so the currents are gone with no note (none could say the `+` line continues a line, as it
+    does not). Adding the line there changes nothing: native 47 and 42 give v(n1) = 2 V with it or without,
+    and 1 A through R1 and from I1 with it.
   - A `+` line that brings no words (`+`, or `+ ; a note`) changes nothing either way (native 47 and 42:
     2 V, and both currents with the line), but keeps the line out; the note's words hold for it (line 6
     continues line 4, adding nothing).

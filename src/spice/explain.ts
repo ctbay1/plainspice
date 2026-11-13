@@ -21,7 +21,7 @@ import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist } from './parse.ts';
-import { plusLineAfterEnd } from './run-netlist.ts';
+import { plusLineAfterEnd, saveCurrentsLeftOut } from './run-netlist.ts';
 import type {
   Element,
   ElementLetter,
@@ -1960,9 +1960,12 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
   const ctx = contextOf(netlist);
   switch (name) {
     case '.op': {
-      // "PlainSpice adds that line" only where the copy does: not with a + line after .end (A2c, decision 0011).
+      // "PlainSpice adds that line" only where the copy does: not with a + line after .end (A2c, decision 0011), which
+      // is said, unless a .options savecurrents line of the student's that ngspice reads (after .end too, A2d) saves
+      // every current: no note then, as with one before .end.
       const plus = ctx.hasSaveCurrents ? undefined : plusLineAfterEnd(netlist);
-      const notes = ctx.hasSaveCurrents ? [] : [plus ? S.opSaveCurrentsLeftOut(plus.plus) : S.opSaveCurrents]; // A2, A2b, C7
+      const left = plus ? saveCurrentsLeftOut(netlist) : undefined;
+      const notes = ctx.hasSaveCurrents || (plus && !left) ? [] : [left ? S.opSaveCurrentsLeftOut(left.plus) : S.opSaveCurrents]; // A2, A2b, C7
       return out(S.opWhat, S.op, [], notes); // A1, P11, P12
     }
     case '.tf':

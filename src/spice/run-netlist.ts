@@ -107,9 +107,13 @@ const S = {
   nestedCircuit: (line: number): string =>
     `Line ${line}: the circuit built with circbyline has a circbyline command of its own. ngspice cannot build a circuit while it is reading one it built (it crashes), so PlainSpice did not run it. Build the circuits one after the other.`,
   failed: 'PlainSpice could not prepare this netlist for ngspice (a bug in PlainSpice), so it did not run it.',
-  /** The copy has no .options savecurrents for a + line after .end (A2c): why, and the after-end check's own fix. */
+  /**
+   * The copy has no .options savecurrents for a + line after .end (A2c): what the line does, in Explain's words (not
+   * which currents ngspice saved without it: that depends on the parts and on .save lines), why, and the after-end
+   * check's own fix.
+   */
   plusAfterEnd: (plus: number, joins: number): string =>
-    `PlainSpice did not add .options savecurrents to the copy ngspice ran. Line ${plus}, after .end, starts with +: ngspice does not stop reading at .end, so line ${plus} continues line ${joins}, and with the line added just before .end it would continue that line instead. So ngspice saved the current only through voltage sources, E and H sources and inductors, not through every part. Move .end to the bottom (the Checks panel offers it) to see the current through every part.`,
+    `PlainSpice did not add .options savecurrents to the copy ngspice ran, and ngspice saves the current through every part only with that line. Line ${plus}, after .end, starts with +: ngspice does not stop reading at .end, so line ${plus} continues line ${joins}, and with the line added just before .end it would continue that line instead. Move .end to the bottom (the Checks panel offers it) to see the current through every part.`,
 };
 
 /** A long word, as the words above show it: its first characters. */
@@ -1574,16 +1578,61 @@ export function plusLineAfterEnd(netlist: Netlist): { plus: number; joins?: numb
   return found ?? undefined;
 }
 
+/**
+ * ngspice reads an .options line with savecurrents in this netlist (A2d). It takes every line that starts with .opt
+ * out of the netlist before it reads the circuit, wherever the line is: after .end too, even after a .end with a
+ * comment glued on, where it reads no more parts (S27), and in a .control block; not line 1, the title, nor a line
+ * after one that starts with @, where it stops reading (S29, S30). It finds the option as inp_savecurrents does:
+ * savecurrents anywhere in the line (which ngspice reads in lower case), with its + lines joined (past comments,
+ * blank lines and a plain .end, limit-18) and its comment cut. A command (option or set savecurrents) does not count.
+ */
+function readsSaveCurrents(netlist: Netlist): boolean {
+  /** The .opt line being read, with its + lines so far ('' while the line of its own is not one). */
+  let options = '';
+  for (let i = 1; i < netlist.lines.length; i++) {
+    const read = asRead(netlist.lines[i]!.text);
+    if (read.startsWith('@')) break;
+    if (read.startsWith('+')) {
+      if (options) options += ` ${withoutComment(read, false).slice(1)}`;
+      continue;
+    }
+    if (!ownLine(read)) continue;
+    if (/savecurrents/i.test(options)) return true;
+    options = /^\.opt/i.test(read) ? withoutComment(read, false) : '';
+  }
+  return /savecurrents/i.test(options);
+}
+
+const leftOut = new WeakMap<Netlist, { plus: number; joins?: number } | null>();
+
+/**
+ * The + line after .end that keeps .options savecurrents out of the copy of a netlist that does not save every current
+ * itself (decision 0011, A2c), and the line ngspice continues with it (none after a .end with a comment glued on, S27);
+ * undefined when nothing is left out that way, or when an .options savecurrents line of the student's, which ngspice
+ * reads after .end too (A2d), saves every current. Found once per netlist, as plusLineAfterEnd is.
+ */
+export function saveCurrentsLeftOut(netlist: Netlist): { plus: number; joins?: number } | undefined {
+  let found = leftOut.get(netlist);
+  if (found === undefined) {
+    const plus = hasSaveCurrents(netlist) ? undefined : plusLineAfterEnd(netlist);
+    found = plus && !readsSaveCurrents(netlist) ? plus : null;
+    leftOut.set(netlist, found);
+  }
+  return found ?? undefined;
+}
+
 export function netlistToRun(netlist: Netlist): NetlistToRun {
   const notRun = whyNotRun(netlist);
   const { text, notes } = cutTitles(netlist.text);
   const done = (added: string[], copy: string): NetlistToRun => (notRun ? { text: copy, added, notes, notRun } : { text: copy, added, notes });
   const hasOp = netlist.analyses.some((i) => netlist.lines[i]?.directive?.name === '.op');
   // With a + line right after .end, the line would change what ngspice reads: it runs without it (every
-  // voltage is the same, A2), as the student wrote it, and the ngspice output panel says why (A2c).
+  // voltage is the same, A2), as the student wrote it, and the ngspice output panel says why (A2c), unless the
+  // student's own .options savecurrents line, after .end, saves every current (A2d).
   const plus = plusLineAfterEnd(netlist);
   if (!hasOp || hasSaveCurrents(netlist) || plus) {
-    if (hasOp && plus?.joins !== undefined && !hasSaveCurrents(netlist)) notes.push(S.plusAfterEnd(plus.plus, plus.joins));
+    const left = hasOp ? saveCurrentsLeftOut(netlist) : undefined;
+    if (left?.joins !== undefined) notes.push(S.plusAfterEnd(left.plus, left.joins));
     return done([], text);
   }
   const end = netlist.end === undefined ? undefined : netlist.lines[netlist.end];

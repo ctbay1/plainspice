@@ -198,8 +198,17 @@ before a built circuit, a built circuit's `.title` line, a formula's name with i
 
 A2c in [explanations.md](explanations.md), run the same way on 13 November 2026 (native ngspice 47 and 42,
 and our engine): a `+` line after `.end` continues the last line before `.end`, so `.options savecurrents`
-added just before `.end` would take that line's place (v(n1) 2 V instead of 3 V); as written, ngspice saves
-the current only in voltage sources, and with `.end` moved to the bottom, the line goes in before it and the
-run has the same 3 V and every current. The run copy's note in the ngspice output panel and Explain's `.op`
-note rely on it.
+added just before `.end` would take that line's place (v(n1) 2 V instead of 3 V); as written, ngspice saves no
+current through the resistors or from a current source, and with `.end` moved to the bottom, the line goes in
+before it and the run has the same 3 V and every current. The run copy's note in the ngspice output panel and
+Explain's `.op` note rely on it.
+
+After the round-1 critic of those fixes (the same day, the same versions and modes): A2c says which currents
+such a run keeps only for its own netlists (a voltage source's; and a B line's with V=, decision 0011's netlist,
+a new run), where it said ngspice saves the current only in voltage sources, E and H sources and inductors
+(false for a B line with V=; the note in the ngspice output panel now says what the line does instead). A2d is
+new: ngspice reads an `.options savecurrents` line after `.end` too, even after a `.end` with a comment glued on,
+and in a `.control` block, but not after a line starting with `@`, and the commands `option` and `set
+savecurrents` save no current; the note and Explain's `.op` note say nothing of missing currents where the
+student's own line saves every current.
 

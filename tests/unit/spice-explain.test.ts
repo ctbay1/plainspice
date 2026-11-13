@@ -618,6 +618,14 @@ describe('dot commands', () => {
     // .end moved to the bottom (the after-end check's fix): the copy adds it, and Explain says so.
     expect(notes(line('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n+ 3\n.end\n', 3))).toBe(EXPLAIN_STRINGS.opSaveCurrents);
   });
+
+  it('.op has no note where the student’s own .options savecurrents line, which ngspice reads after .end too, saves every current (the round-1 critic’s CR1-2; A2d)', () => {
+    // Native 47 and 42 save @r1[i] and @i1[current] for both: neither "adds" nor "does not add", as with the line before .end.
+    expect(notes(line('* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options savecurrents\n', 3))).toBe('');
+    expect(notes(line('* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end;x\n+ 3\n.options savecurrents\n', 3))).toBe('');
+    // After a line starting with @, ngspice reads no more (S29): no current is saved, and Explain says why.
+    expect(notes(line('* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n@ x\n.options savecurrents\n', 3))).toBe(EXPLAIN_STRINGS.opSaveCurrentsLeftOut(6));
+  });
 });
 
 describe('point counts and analysis readings', () => {

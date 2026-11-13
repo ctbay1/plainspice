@@ -96,6 +96,19 @@ const FACTS: Fact[] = [
   { code: 'A2c', id: 'an-plus-after-end-added', netlist: "* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.options savecurrents\n.end\n+ 3\n", vectors: { "v(n1)": 2, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
   { code: 'A2c', id: 'an-plus-after-end-moved', netlist: "* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n+ 3\n.options savecurrents\n.end\n", vectors: { "v(n1)": 3, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
   { code: 'A2c', id: 'an-plus-after-end-vsource', netlist: "* a + line after .end, with a voltage source\nV1 a 0 6\nR1 a b 1\n.op\nR2 b 0 2\n.end\n+ 3\n", vectors: { "v(a)": 6, "v(b)": 4.5, "i(v1)": -1.5 } },
+  { code: 'A2c', id: 'an-plus-after-end-b', netlist: "* a + line after .end, with a B source\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\nR3 c 0 1k\nB1 c 0 V=1+\n.end\n+ v(b)\n", vectors: { "v(a)": 9, "v(b)": 6, "v(c)": 7, "i(b1)": -0.007, "i(v1)": -0.003000000000000001 } },
+  { code: 'A2d', id: 'an-savecurrents-after-end', netlist: "* .options savecurrents after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options savecurrents\n", vectors: { "v(n1)": 3, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-after-glued-end', netlist: "* .options savecurrents after .end with a comment glued on\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end;x\n+ 3\n.options savecurrents\n", vectors: { "v(n1)": 2, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-after-at', netlist: "* .options savecurrents after a line starting with @\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n@ x\n.options savecurrents\n", vectors: { "v(n1)": 3 } },
+  { code: 'A2d', id: 'an-savecurrents-in-control', netlist: "* .options savecurrents in a .control block\nI1 0 n1 1\n.op\nR1 n1 0 2\n.control\n.options savecurrents\n.endc\n.end\n+ 3\n", vectors: { "v(n1)": 2, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-plus-after-end', netlist: "* .options before .end, savecurrents on a + line after it\nI1 0 n1 1\nR1 n1 0 2\n.op\n.options\n.end\n+ savecurrents\n", vectors: { "v(n1)": 2, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-command', netlist: "* the command option savecurrents\nI1 0 n1 1\n.op\nR1 n1 0 2\n.control\noption savecurrents\n.endc\n.end\n+ 3\n", vectors: { "v(n1)": 2 } },
+  { code: 'A2d', id: 'an-savecurrents-in-control-after-end', netlist: "* .options savecurrents in a .control block after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.control\n.options savecurrents\n.endc\n", vectors: { "v(n1)": 3, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-opt-in-capitals', netlist: "* .OPT SaveCurrents, indented, with a comment\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n  .OPT SaveCurrents ; a note\n", vectors: { "v(n1)": 3, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-optfoo', netlist: "* .optfoo savecurrents_mos1\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.optfoo savecurrents_mos1\n", vectors: { "v(n1)": 3, "i(@i1[current])": 1, "i(@r1[i])": 1 } },
+  { code: 'A2d', id: 'an-savecurrents-in-a-comment', netlist: "* savecurrents in a comment only\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options temp=27 ; savecurrents\n* .options savecurrents\n", vectors: { "v(n1)": 3 } },
+  { code: 'A2d', id: 'an-savecurrents-starhash-command', netlist: "* the command option savecurrents on a *# line\nI1 0 n1 1\n.op\nR1 n1 0 2\n*# option savecurrents\n.end\n+ 3\n", vectors: { "v(n1)": 3 } },
+  { code: 'A2d', id: 'an-savecurrents-set-command', netlist: "* the command set savecurrents\nI1 0 n1 1\n.op\nR1 n1 0 2\n.control\nset savecurrents\n.endc\n.end\n+ 3\n", vectors: { "v(n1)": 2 } },
   { code: 'A3', id: 'an-tf', netlist: "* F4: output impedance at v(a) with .tf\nV1 s 0 24\nR1 s n1 6\nR2 n1 0 3\nR3 n1 a 2\n.tf v(a) V1\n.end\n", vectors: { "v(Transfer_function)": 0.33333333333333337, "v(v1#Input_impedance)": 9, "v(output_impedance_at_V(a))": 4 } },
   { code: 'A3b', id: 'an-tf-gnd', netlist: "* .tf: gnd in v( ) is ground, even beside an ordinary node called gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.tf v(out,gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0.5, "v(v1#Input_impedance)": 1000, "v(output_impedance_at_V(out,0))": 500 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'A3b-op', id: 'an-tf-gnd-op', netlist: "* .op beside the .tf of a3b: the ordinary node gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "v(x)": 2.5, "v(gnd)": 2.5, "i(vx)": 0, "i(v1)": -0.004999999999999999 }, prints: ["vx: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
@@ -775,6 +788,25 @@ describe('results in words: currents and power (C1–C8, A5)', () => {
     const op = (text: string): string => explainLine(parseNetlist(text), 2)!.notes.join(' ');
     expect(op(s28)).not.toContain('adds that line');
     expect(op(applyFix(s28, trap.fixes[0]!))).toContain('PlainSpice adds that line to the copy it runs');
+  });
+
+  it('A2c, A2d: the copy says why the parts’ currents are missing exactly where the run saves none, and Explain’s .op line says "does not add" only there (the round-1 critic’s CR1-2)', () => {
+    const rows = FACTS.filter((f) => f.code === 'A2c' || f.code === 'A2d');
+    expect(rows.length).toBe(17);
+    for (const f of rows) {
+      const n = parseNetlist(f.netlist);
+      const names = runs.get(f.id)!.plots.flatMap((p) => p.variables.map((v) => v.name));
+      // A part's own current (i(@r1[i]), i(@i1[current])) comes only with .options savecurrents (A1, A2).
+      const saved = names.some((name) => name.startsWith('i(@'));
+      const { added, notes } = netlistToRun(n);
+      expect(added, f.id).toEqual([]);
+      expect(notes.length === 1 && notes[0]!.startsWith('PlainSpice did not add .options savecurrents'), f.id).toBe(!saved);
+      const op = explainLine(n, n.analyses.find((i) => n.lines[i]!.directive!.name === '.op')!)!.notes.join(' ');
+      expect(op.includes('does not add that line'), f.id).toBe(!saved);
+      expect(op.includes('adds that line'), f.id).toBe(false);
+    }
+    // Which currents a run saves without the line depends on the parts: a B line with V= keeps its own (decision 0011's netlist).
+    expect(runs.get('an-plus-after-end-b')!.plots.flatMap((p) => p.variables.map((v) => v.name)).sort()).toEqual(['i(b1)', 'i(v1)', 'v(a)', 'v(b)', 'v(c)']);
   });
 
   it('A1, A2: an inductor appears once, with its branch current', () => {

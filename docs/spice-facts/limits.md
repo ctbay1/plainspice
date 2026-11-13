@@ -1007,7 +1007,7 @@ One choice, `{abc}`, is the word without its braces, and a line whose first word
 | What | The copy ngspice runs | Relies on |
 |---|---|---|
 | Line 1, whole, and each `.title` line's title over 504 bytes | cut to its first 504 bytes, between two characters; the ngspice output panel says so | limit-1, limit-2 |
-| `.op` without `.options savecurrents` | the line is added before `.end`, unless a `+` line just after `.end` continues the line before it; then the ngspice output panel says why, naming both lines | limit-3 (with the rows below, every name it saves fits), limit-18, A2c |
+| `.op` without `.options savecurrents` | the line is added before `.end`, unless a `+` line just after `.end` continues the line before it; then the ngspice output panel says why, naming both lines, unless the student's own `.options savecurrents` line, which ngspice reads after `.end` too, saves every current | limit-3 (with the rows below, every name it saves fits), limit-18, A2c, A2d |
 | A word over 250 bytes (between blanks, brackets, `,` `=` `{ }`, quotes and operators), a part line's first words or a `.save` line's word as ngspice takes them whole | not run: the status line says which line and why | limit-3 to limit-7 |
 | A name ngspice makes inside subcircuits (`r.x1.x2.r1`, `x1.x2.n1`) over 250 bytes | not run | limit-3, limit-7, limit-10 |
 | A `v(…)` or `i(…)` over 500 bytes in a formula, or a `v(` with no `)` in a B, E or G formula or a `.model` with `temper` | not run | limit-5 |
