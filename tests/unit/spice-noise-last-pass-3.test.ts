@@ -213,3 +213,29 @@ describe('the paths of round 2 that no test held (N5)', () => {
     expect(sp(r.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')?.why)).toContain("ngspice gave i(Vm)/V1 = -2.150024e-17. In the operating point Vm's current may itself be rounding noise, and this ratio is less than a billionth of the current through V1 for each of its volts (2.696 µA)");
   });
 });
+
+describe('a point is named by its x only where moving the source from the value it was meant to have to ngspice\'s x changes a value on the page, and the note says that value with all its digits', () => {
+  it('a sweep that ends at 9.123449999999998 V, meant to be at 9.12345 V, where V2 is idle: the note says "not 9.12345 V", the value the point was checked against, never its 4 digits "not 9.123 V" (at 9.123 V the circuit does not make 0 A)', async () => {
+    const r = await solveText(netlist('V1 a 0 9.12345', 'R1 a b 3k', 'R2 b 0 6k', 'V2 c 0 6.0823', 'R3 b c 1k', '.options savecurrents', '.op', '.dc V1 9.12245 9.12345 0.0001'), ngspice);
+    expect(r.results.dc!.scale.values[10]).toBe(9.123449999999998);
+    expect(message(r.words, 'sweep-point')).toBe(
+      "The DC sweep's last point is V1 = 9.123449999999998 V, not 9.12345 V: ngspice adds the step, 100 µV, to V1 once a point, in doubles (about 16 significant digits), so its points drift from the values the steps say: its last point is 9.123449999999998 V, 1.717 fV short of 9.12345 V. There the circuit makes i(v2) −3.815e-19 A, where at 9.12345 V it makes 0 A. So PlainSpice names that point by ngspice's own value.",
+    );
+  });
+
+  it('a value only crossing a rounding boundary of the page\'s 4 digits is no sign the point is elsewhere (a9761-1102): at 9.000000000000002 V the circuit makes v(a2) 5.287500000000001 V, "5.288 V", and at 9 V 5.2875 V, "5.287 V", so the point keeps "V1 = 9 V", with no note (ngspice gives 5.287500000000817 V there)', async () => {
+    const r = await solveText(netlist('V1 top1 0 9', 'R1 top1 a2 330k', 'R2 a2 0 470k', 'R3 top1 b3 33meg', 'R4 b3 0 47meg', 'R5 a2 m4 68', 'V2 m4 b3 0', 'F1 0 o5 V2 2', 'R6 o5 0 270', '.options savecurrents', '.op', '.dc V1 0 9 0.9'), ngspice);
+    expect([r.results.dc!.scale.values[10], by(r)]).toEqual([9.000000000000002, 'exact']);
+    expect(sweepText(r)).toContain('At V1 = 9 V: v(top1) = 9 V, v(a2) = 5.288 V');
+    expect(message(r.words, 'sweep-point')).toBeUndefined();
+  });
+
+  it('beside an .op whose answers are off, ngspice\'s own rounding at the point is not the drift\'s doing (a9761-156): V1 carries −499.6 aA at 500.0000000000001 mV and −506.5 aA in the .op, where the circuit makes 500 aA at both, so the point keeps "V1 = 500 mV", with no note, and the warning names the answers that are off', async () => {
+    const r = await solveText(netlist('V1 top1 0 0.5', 'R1 top1 s2 10', 'R2 s2 0 1e15', '.options savecurrents', '.op', '.dc V1 0 0.5 0.08333333333333333'), ngspice);
+    const dc = r.results.dc!;
+    expect([dc.scale.values[6], dc.series.find((s) => s.name === 'i(v1)')!.values[6], r.results.op!.currents.find((c) => c.element === 'v1')!.value]).toEqual([0.5000000000000001, -4.996003610813204e-16, -5.065392549852277e-16]);
+    expect(message(r.words, 'imprecise-answers')).toContain('V1 carries 500 aA, where ngspice gives 506.5 aA');
+    expect(sweepText(r)).toContain('At V1 = 500 mV: v(top1) = 500 mV');
+    expect(message(r.words, 'sweep-point')).toBeUndefined();
+  });
+});

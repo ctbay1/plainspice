@@ -1373,17 +1373,29 @@ function opShown(netlist: Netlist, results: AnalysisResults): Map<string, number
   return out;
 }
 
-/** The first value point k of a sweep shows (0 where `marked`) that the .op shows otherwise, as the page draws them; undefined when none does. */
+/**
+ * The first value point k of a sweep shows (0 where `marked`) that the .op shows otherwise (`differ`), as the page draws
+ * them; undefined when none does. Whatever made the difference: by the rule, with no exact solution, the page cannot tell
+ * the drift of ngspice's x from ngspice's own rounding or its Newton tolerances (r9731-1119: R5's 0 A at the point, −2 aA
+ * in the .op), and either way the point does not show what the .op shows.
+ */
 function readsOtherwise(netlist: Netlist, dc: Sweep, k: number, op: ReadonlyMap<string, number>, marked: (j: number) => boolean): Otherwise | undefined {
   for (const [j, s] of dc.series.entries()) {
     const there = op.get(lowerAscii(s.name));
     const value = s.values[k];
     if (there === undefined || value === undefined || !Number.isFinite(value)) continue;
-    const [a, b] = [formatSI(marked(j) ? 0 : value, s.unit), formatSI(there, s.unit)];
-    if (a !== b) return { series: netlistVector(netlist, s.name), here: a, there: b, op: true };
+    const here = marked(j) ? 0 : value;
+    if (differ(here, there, s.unit)) return { series: netlistVector(netlist, s.name), here: formatSI(here, s.unit), there: formatSI(there, s.unit), op: true };
   }
   return undefined;
 }
+
+/**
+ * Two values the page draws as two answers (readsOtherwise, exactOtherwise): with other digits, and more than ANSWER_GAP
+ * apart, as an answer is off (offOnPage). At a rounding boundary of the 4 digits a step of a double turns 5.2875 V into
+ * "5.288 V" from "5.287 V" (a9761-1102), which says nothing of where the point is.
+ */
+const differ = (a: number, b: number, unit: string): boolean => formatSI(a, unit) !== formatSI(b, unit) && Math.abs(a - b) > ANSWER_GAP * Math.max(Math.abs(a), Math.abs(b));
 
 // ---- the exact solution (exact.ts)
 
@@ -2696,9 +2708,8 @@ function exactOtherwise(netlist: Netlist, results: AnalysisResults, k: number, a
   for (const [j, s] of dc.series.entries()) {
     const here = plan.seriesAt(j, x);
     const there = plan.seriesAt(j, at);
-    if (here === undefined || there === undefined) continue;
-    const [a, b] = [formatSI(here, s.unit), formatSI(there, s.unit)];
-    if (a !== b) return { series: netlistVector(netlist, s.name), here: a, there: b, op: false };
+    if (here === undefined || there === undefined || !differ(here, there, s.unit)) continue;
+    return { series: netlistVector(netlist, s.name), here: formatSI(here, s.unit), there: formatSI(there, s.unit), op: false };
   }
   return undefined;
 }
@@ -4571,9 +4582,10 @@ function tfExactNote(netlist: Netlist, words: SummaryInput): MessageWords | unde
  * steps say (start + k·step): then by ngspice's own x, "V1 = 8.999999999999853 V", and a note says why (sweepPointNote).
  * ngspice adds the step once a point, in doubles, so ".dc V1 0 9 0.01" ends at 8.999999999999853 V; V2, idle at 9 V, carries
  * 32.76 aA there, and "At V1 = 9 V: … i(v2) = −32.96 aA" beside the .op's "V2: no current" was false (the critic of round 2).
- * Whether a value reads otherwise is known from the exact solution (exactOtherwise), and, by the rule, at a point that
- * stands for the .op's state only where it shows what the .op shows (ruleStateSweep). A point of a sweep of two sources is
- * named by both of its values, as before.
+ * Whether a value reads otherwise (other digits, more than ANSWER_GAP apart: `differ`) is known from the exact solution
+ * where it is this run's circuit (exactRun, exactOtherwise), else, by the rule, at the point nearest the .op's state, which
+ * stands for it only where it shows what the .op shows (ruleStateSweep). The note says the value the point was meant to be
+ * at with all its digits. A point of a sweep of two sources is named by both of its values, as before.
  */
 interface PointNames {
   text: (k: number) => string;
@@ -4581,13 +4593,36 @@ interface PointNames {
   /** A point at the .op's own state, in the notes: "V1 = 9 V, the operating point's own state", or the nearest point by its own x. */
   state: (k: number) => string;
   /** The points named by ngspice's own x so far, each with the value that reads otherwise there (sweepPointNote). */
-  used: Map<number, Otherwise>;
-  /** The value point k's steps say (start + k·step), exactly, and as the page writes it ("9 V"). */
-  intendedAt: (k: number) => Fraction | undefined;
-  intended: (k: number) => string | undefined;
+  used: Map<number, Renamed>;
   /** The step and the swept source, as the sweep's words say them. */
   step: string;
   source: string;
+}
+
+/**
+ * Whether the exact solution is the circuit ngspice solved in this run, so that what it makes at a sweep's point can be said
+ * beside ngspice's numbers (sweepNames): the .op checked as this circuit's, decided exactly or by the rule held to it
+ * (withExact: its answers off, or the sweep beside it not decided); with no .op, the sweep checked as this circuit's (decided
+ * exactly, or its answers off at a checked point). Not where ngspice's numbers do not fit this circuit (uncheckedNote), or
+ * could not be checked.
+ */
+function exactRun(netlist: Netlist, results: AnalysisResults): boolean {
+  if (!exactOf(netlist)) return false;
+  if (results.op) {
+    const noise = noiseOf(netlist, results);
+    return noise.by === 'exact' || noise.off !== undefined;
+  }
+  return sweepNoise(netlist, results) !== undefined || sweepOffCache.get(results)?.netlist === netlist;
+}
+
+/**
+ * A point named by ngspice's own x (sweepNames): the value that reads otherwise there, the value the point was meant to be
+ * at, the very double it was checked against (the .op's own value of the source, for a point found near the .op's state;
+ * else start + k·step, the double nearest it), and how far ngspice's x is from that value, exactly (meant − x).
+ */
+interface Renamed extends Otherwise {
+  meant: number;
+  gap: number;
 }
 
 const namesCache = new WeakMap<AnalysisResults, { netlist: Netlist; names: PointNames }>();
@@ -4608,29 +4643,40 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
   const start = sw?.start ? readExact(sw.start.text) : undefined;
   const step = sw?.step ? readExact(sw.step.text) : undefined;
   const intended = (k: number): Fraction | undefined => (start && step ? add(start, mul(fraction(BigInt(k)), step)) : undefined);
-  const otherwise = new Map<number, Otherwise | null>();
+  const otherwise = new Map<number, Renamed | null>();
   const states = dc ? opStatePoints(netlist, results) : undefined;
-  const why = (k: number): Otherwise | undefined => {
+  let known: boolean | undefined;
+  const why = (k: number): Renamed | undefined => {
     let w = otherwise.get(k);
     if (w === undefined) {
-      // The rule's state points are decided first (decidedSweep); the exact solution tells for any point.
+      // The rule's state points are decided first (decidedSweep).
       if (results.op) decidedSweep(netlist, results);
       const cached = otherwiseCache.get(results);
       const failed = cached?.netlist === netlist ? cached.failed.get(k) : undefined;
       const at = intended(k);
-      // The value the point's label stands for: the .op's, for a point found near its state; else the steps'. Only where
-      // ngspice's x drifted from it (adding up the step: at that very double the point is where the steps say, as any
-      // value of the netlist is, exact.ts READ_ULPS), and the label still reads as it ("9 V" for 8.999999999999853 V;
-      // "−55.51 aV" for a point meant to be 0 V already says where it is).
-      const meant = failed ? states?.target : at ? toDouble(at) : undefined;
+      // The value the point's label stands for: the .op's, for a point found near its state (the very double the check
+      // compared it with: "3.3" is 3.3000000000000003 V in ngspice's .op, a9761-1361); else the steps'. Only where ngspice's
+      // x drifted from it (adding up the step: at that very double the point is where the steps say, as any value of the
+      // netlist is, exact.ts READ_ULPS), and the label still reads as it ("9 V" for 8.999999999999853 V; "−55.51 aV" for a
+      // point meant to be 0 V already says where it is).
+      const exact = failed ? (states?.target === undefined ? undefined : fromDouble(states.target)) : at;
+      const meant = exact && toDouble(exact);
       const x = xs[k]!;
-      if (meant !== undefined && meant !== x && formatSI(x, unit) === formatSI(meant, unit))
-        w = failed ?? (at && exactOf(netlist)?.sweep ? exactOtherwise(netlist, results, k, at) : undefined);
-      otherwise.set(k, w ?? null);
+      let found: Otherwise | undefined;
+      if (exact && meant !== x && formatSI(x, unit) === formatSI(meant!, unit)) {
+        // Where the exact solution is this run's circuit (exactRun) and follows the sweep, it tells whether the drift changes
+        // a value to the page's digits; a point that shows otherwise than the .op for another reason shows ngspice's own
+        // rounding, which the warning that its answers are off names (a9761-156: V1's −499.6 aA there, −506.5 aA in the .op,
+        // where the circuit makes 500 aA at both). Elsewhere ngspice's numbers there tell, against the .op's (ruleStateSweep).
+        known ??= exactRun(netlist, results);
+        found = known && sweepPlan(netlist, results) ? exactOtherwise(netlist, results, k, exact) : failed;
+      }
+      w = found && exact ? { ...found, meant: meant!, gap: toDouble(sub(exact, fromDouble(x))) } : null;
+      otherwise.set(k, w);
     }
     return w ?? undefined;
   };
-  const used = new Map<number, Otherwise>();
+  const used = new Map<number, Renamed>();
   const value = (k: number, speech: boolean): string => {
     const x = xs[k]!;
     const w = sw ? why(k) : undefined;
@@ -4648,11 +4694,6 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
       return S.opStateNearest(formatSI(states.target, unit), sw ? formatSI(xs[k]!, unit, digitsOf(xs[k]!)) : names.text(k), sweepValue(first, first.stepValue, first.step?.text));
     },
     used,
-    intendedAt: intended,
-    intended: (k) => {
-      const at = intended(k);
-      return at ? formatSI(toDouble(at), unit) : undefined;
-    },
     step: sw ? sweepValue(sw, sw.stepValue, sw.step?.text) : '',
     source: sw ? sweepName(sw) : '',
   };
@@ -4769,21 +4810,19 @@ function sweepPointNote(netlist: Netlist, results: AnalysisResults): MessageWord
   if (!used.length || !names.step) return undefined;
   const last = dc.scale.values.length - 1;
   const unit = dc.scale.unit;
-  // "its last point is 8.999999999999853 V, 147.4 fV short of 9 V": how far ngspice's x is from the value its steps say, exactly.
-  const words = used.slice(0, NOTE_LIST).map(([k]) => {
-    const x = dc.scale.values[k]!;
-    const at = names.intendedAt(k);
-    const gap = at ? toDouble(sub(at, fromDouble(x))) : 0;
-    return S.pointItem(k === last, k, formatSI(x, unit, digitsOf(x)), formatSI(Math.abs(gap), unit), gap > 0, names.intended(k) ?? '?');
-  });
+  // Each value by its shortest decimal, the very double: "is 3.3 V, not 3.3000000000000003 V" (the .op's own V1), never
+  // "is V1 = 3.3 V, not 3.3 V".
+  const shortest = (v: number): string => formatSI(v, unit, digitsOf(v));
+  // "its last point is 8.999999999999853 V, 147.4 fV short of 9 V": how far ngspice's x is from the value it was meant to be at, exactly.
+  const words = used.slice(0, NOTE_LIST).map(([k, w]) => S.pointItem(k === last, k, shortest(dc.scale.values[k]!), formatSI(Math.abs(w.gap), unit), w.gap > 0, shortest(w.meant)));
   const [k0, why] = used[0]!;
-  const reason = S.pointReason(why.series, why.here, why.there, names.intended(k0) ?? '?', why.op);
+  const reason = S.pointReason(why.series, why.here, why.there, shortest(why.meant), why.op);
   const one = used.length === 1;
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.dc');
   const m: MessageWords = {
     code: 'sweep-point',
     severity: 'note',
-    title: S.pointTitle(k0 === last, k0, names.text(k0), names.intended(k0) ?? '?', used.length, 'DC sweep'),
+    title: S.pointTitle(k0 === last, k0, names.text(k0), shortest(why.meant), used.length, 'DC sweep'),
     why: S.pointWhy(names.step, names.source, used.length <= NOTE_LIST + 1 ? listWords(words) : `${words.join('; ')}; and ${used.length - NOTE_LIST} more`, reason, one),
   };
   if (line !== undefined) m.line = line + 1;

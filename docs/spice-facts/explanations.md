@@ -6867,6 +6867,96 @@ our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47, bo
   words (describe.ts): node n1: 3 V; the note "PlainSpice could not check ngspice's numbers: …"; no warning
 ```
 
+Added after the critic of round 2 of the last pass's fixes (13 November 2026) (C9y.6): which points are named by
+ngspice's own value, and what their note says. (1) V2 is idle when V1 is at 9.12345 V, and ".dc V1 9.12245 9.12345
+0.0001" ends at 9.123449999999998 V, 1.717 fV short of it, where V2 carries a real −3.815e-19 A (ngspice gives exactly
+0 there, so the page draws the exact value with its note). The point is named by its own value, and the note says the
+value it was meant to be at, and was checked against, with all its digits: "not 9.12345 V" (it said "not 9.123 V", and
+"where at 9.123 V it makes 0 A", false at 9.123 V). For a point found near the .op's state by the rule, that value is
+the .op's own double, so "3.3" in ngspice's .op, 3.3000000000000003 V (N15), is never written "3.3 V" beside a last
+point of 3.3 V. (2) In a bridge whose node a2 is at 5.2875 V when V1 is 9 V, ".dc V1 0 9 0.9" ends at
+9.000000000000002 V, where the circuit makes v(a2) 5.287500000000001 V: "5.288 V" against "5.287 V" at 9 V only because
+the value sits on a rounding boundary of the page's 4 digits, as ngspice's own 5.287500000000817 V there does. Two
+values are told apart only when they also differ by more than ANSWER_GAP, as an answer is off, so the point keeps
+"V1 = 9 V" (it was named "V1 = 9.000000000000002 V", "There the circuit makes v(a2) 5.288 V, where at 9 V it makes
+5.287 V"). (3) 10 Ω in series with 1e15 Ω: solving it loses most of ngspice's digits, and the .op's answers are off (V1
+carries 500 aA, which ngspice gives as 506.5 aA). The sweep's last point, 500.0000000000001 mV, shows V1's −499.6 aA,
+another rounding of the same 500 aA. Where the exact solution is this run's circuit (its .op checked as this circuit's,
+answers off or not), it decides whether moving the source to ngspice's x changes a value on the page; here it does not,
+so the point keeps "V1 = 500 mV" (it was named by its own value, with "There ngspice gives i(v1) −499.6 aA, where the
+operating point, at 500 mV, shows −506.5 aA", as if the 111 aV had made the difference). Where there is no such exact
+solution (C9y.3's .param line, a transistor), ngspice's numbers at the point against the .op's decide, whatever made them
+differ: the page cannot tell the drift from ngspice's own rounding or its Newton tolerances there, and either way the
+point does not show what the .op shows.
+
+```spice
+* V2 idle at 9.12345 V, swept up to it in 100 uV steps
+V1 a 0 9.12345
+R1 a b 3k
+R2 b 0 6k
+V2 c 0 6.0823
+R3 b c 1k
+.options savecurrents
+.op
+.dc V1 9.12245 9.12345 0.0001
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the .op: a 9.123450e+00, b 6.082300e+00, c 6.082300e+00, @r3[i] 0.000000e+00, v2#branch 0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last point: v(v-sweep) = 9.123449999999998, v(b) = 6.0823, i(v2) = 0.0, i(@r3[i]) = 0.0, i(v1) = -0.0010137166666666663; the .op: v(a) = 9.12345, i(v2) = 0.0
+ngspice 42: the same .op printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "The DC sweep's last point is V1 = 9.123449999999998 V, not 9.12345 V: … its last point is
+  9.123449999999998 V, 1.717 fV short of 9.12345 V. There the circuit makes i(v2) −3.815e-19 A, where at 9.12345 V it
+  makes 0 A. …"
+```
+
+```spice
+* a bridge with an ammeter and a CCCS, node a2 at 5.2875 V when V1 is 9 V
+V1 top1 0 9
+R1 top1 a2 330k
+R2 a2 0 470k
+R3 top1 b3 33meg
+R4 b3 0 47meg
+R5 a2 m4 68
+V2 m4 b3 0
+F1 0 o5 V2 2
+R6 o5 0 270
+.options savecurrents
+.op
+.dc V1 0 9 0.9
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the .op: a2 5.287500e+00, top1 9.000000e+00, v2#branch 3.726945e-20
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last point: v(v-sweep) = 9.000000000000002, v(a2) = 5.287500000000817; the .op: v(top1) = 9.0, v(a2) = 5.287500000000816
+ngspice 42: the same .op printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "At V1 = 9 V: v(top1) = 9 V, v(a2) = 5.288 V, …"; no note about the point
+```
+
+```spice
+* 1e15 ohms in series with 10 ohms
+V1 top1 0 0.5
+R1 top1 s2 10
+R2 s2 0 1e15
+.options savecurrents
+.op
+.dc V1 0 0.5 0.08333333333333333
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the .op: s2 5.000000e-01, top1 5.000000e-01, @r2[i] 5.000000e-16, @r1[i] 5.051515e-16, v1#branch -5.06539e-16
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last point: v(v-sweep) = 0.5000000000000001, i(v1) = -4.996003610813204e-16, i(@r1[i]) = 4.996003610813204e-16; the .op: i(v1) = -5.065392549852277e-16
+ngspice 42: the same .op printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): the warning "Some of ngspice's answers here are off: … V1 carries 500 aA, where ngspice gives
+  506.5 aA; …"; "At V1 = 500 mV: v(top1) = 500 mV, …"; no note about the point
+```
+
 ## 4. Messages
 
 Each message explainDiagnostic puts into plain words, with the netlist that makes ngspice print it and the codes `src/engine/diagnostics.ts` gives it in our engine.
