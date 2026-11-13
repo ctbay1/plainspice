@@ -190,6 +190,8 @@ interface Ctx {
   savedNodes?: Map<string, Token[]>;
   /** The fix that renames a node called value, on every E or G line that reads it as VALUE (valueAsNodeWord), made once; null with no such node. */
   valueRename?: { to: string; fix: Fix | null };
+  /** Names parts connect to that differ only in letter case and that ngspice spells alike (Çıkış, çıkış), each to the first of them (caseAliases, CR2-3). */
+  alias: Map<string, string>;
   /** The part whose formula reads a node's name, by where the name stands, read on the first use (formulaReader). */
   formulaReaders?: Map<number, number>;
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
@@ -397,11 +399,35 @@ function modelLevel(rest: string): number {
   return level < 0 || level > 99 ? 1 : level;
 }
 
+/**
+ * Names parts connect to that differ only in letter case, and that ngspice spells alike, are one node for ngspice
+ * (Çıkış and çıkış are both ____k____; CR2-3), while the parser keys them apart, as it lower-cases ASCII letters only
+ * (W6). Each such name maps to the first of them; a name with other letters that ngspice spells alike (çıkıç) is
+ * another node for the student, and stays the non-ascii-node error's.
+ */
+function caseAliases(n: Netlist): Map<string, string> {
+  const first = new Map<string, string>();
+  const alias = new Map<string, string>();
+  for (const [key, info] of n.nodes) {
+    if (info.ground || info.connections.length === 0 || !/[^\x00-\x7f]/.test(key)) continue;
+    const group = `${key.toLowerCase()}\n${ngspiceSpelling(key)}`;
+    const head = first.get(group);
+    if (head === undefined) first.set(group, key);
+    else alias.set(key, head);
+  }
+  return alias;
+}
+
+/** The first of the names that are one node for ngspice (caseAliases), or the name itself. */
+const aliasOf = (c: Ctx, key: string): string => c.alias.get(key) ?? key;
+
 function context(n: Netlist): Ctx {
-  const graph = buildGraph(n);
+  const alias = caseAliases(n);
+  const graph = buildGraph(n, [...alias]);
   const c: Ctx = {
     n,
     text: n.text,
+    alias,
     graph,
     traps: [],
     top: n.elements.filter((i) => !graph.inSubcircuit.has(i)),
@@ -2543,8 +2569,12 @@ function checkDangling(c: Ctx): void {
   const connected = nodes.filter((y) => y.connections.length > 0 && !odd(y));
   let index: TypoIndex | undefined;
   let sourcePairs: Set<string> | undefined;
+  // Names that differ only in letter case are one node for ngspice (caseAliases, CR2-3): their connections count together.
+  const together = new Map<string, number>();
+  for (const [member, head] of c.alias) together.set(head, (together.get(head) ?? c.n.nodes.get(head)!.connections.length) + c.n.nodes.get(member)!.connections.length);
   for (const x of nodes) {
     if (x.ground || x.connections.length !== 1 || x.refs.length !== 1) continue;
+    if ((together.get(aliasOf(c, x.name)) ?? 1) > 1) continue;
     if (odd(x) || hidden.has(x.name)) continue;
     const conn = x.connections[0]!;
     const e = el(c, conn.line);
@@ -3290,6 +3320,13 @@ function referencesOf(c: Ctx): Map<string, Token[]> {
       for (const t of tokens) put(ownerOf(c, key), { from: t.from + shift, to: t.to + shift, text: t.text });
     }
   }
+  // Names that differ only in letter case are one node (caseAliases, CR2-3): a rename of either takes all of them.
+  for (const [member, head] of c.alias) {
+    let into = found.get(head);
+    if (!into) found.set(head, (into = new Map()));
+    for (const [at, t] of found.get(member) ?? []) into.set(at, t);
+  }
+  for (const [member, head] of c.alias) found.set(member, found.get(head)!);
   c.references = new Map([...found].map(([key, same]) => [key, [...same.values()].sort((a, b) => a.from - b.from)]));
   return c.references;
 }
@@ -3441,7 +3478,7 @@ function namedElsewhere(c: Ctx, key: string, found: readonly Token[], form?: str
       for (const w of code.matchAll(command ? /[^ \t\r\n\v\f,()=+\-*/^%<>&|!{}[\]"';]+/g : /[^ \t\r\n\v\f,()=]+/g)) {
         if (/^[\x20-\x7e]*$/.test(w[0])) continue;
         // By the node ngspice reads it as: Çıkış is çıkış's (ownerOf, CR1-1).
-        const name = ownerOf(c, ngspiceName(w[0]));
+        const name = aliasOf(c, ownerOf(c, ngspiceName(w[0])));
         const same = words.get(name) ?? [];
         same.push({ from: from + w.index, to: from + w.index + w[0].length, text: w[0] });
         words.set(name, same);
@@ -3450,7 +3487,7 @@ function namedElsewhere(c: Ctx, key: string, found: readonly Token[], form?: str
     c.oddWords = words;
   }
   const known = new Set(found.map((t) => t.from));
-  return (c.oddWords.get(key) ?? []).filter((t) => !known.has(t.from) && (form === undefined || lowerAscii(t.text) === form));
+  return (c.oddWords.get(aliasOf(c, key)) ?? []).filter((t) => !known.has(t.from) && (form === undefined || lowerAscii(t.text) === form));
 }
 
 /**
@@ -3529,20 +3566,40 @@ function checkNodeNames(c: Ctx): void {
   const plainFor = (info: NodeInfo): string => freeName(plainLetters(info.refs[0]!.text, true) || 'n1');
   const renaming = (info: NodeInfo, to: string): TextChange[] => [...renamesOf(c, info.name, to), ...labelChanges(c, info.name, to)];
   for (const [spelled, infos] of groups) {
+    // Names that differ only in letter case are one node written two ways (caseAliases, CR2-3): the student wrote one
+    // node, and ngspice simulates it as written. Their words are renamed together (referencesOf), labels each.
+    const cases = new Map<string, NodeInfo[]>();
+    for (const i of infos) cases.set(aliasOf(c, i.name), [...(cases.get(aliasOf(c, i.name)) ?? []), i]);
+    const together = (i: NodeInfo, to: string): TextChange[] => [...renamesOf(c, i.name, to), ...(cases.get(aliasOf(c, i.name)) ?? [i]).flatMap((x) => labelChanges(c, x.name, to))];
+    if (cases.size === 1 && infos.length > 1) {
+      const names = infos.map((i) => i.refs[0]!.text);
+      const to = plainFor(infos[0]!);
+      const { said, print, command } = asWritten(c, infos, true);
+      // Cites [non-ascii-node-27, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
+      const facts = ['non-ascii-node-27', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
+      add(c, 'non-ascii-node', 'warning', infos[infos.length - 1]!.refs[0]!, `ngspice spells ${list(names)} as ${spelled}: one node`,
+        `${list(names)} differ only in capital letters, and ngspice ${lettersRule(names, 'a node name')}, so they are one node for it, ${spelled}, as this netlist means. Its printout and results call the node ${spelled}: one name in plain letters avoids that.`,
+        [`ngspice makes ${list(names)} one node${said.length ? '' : ', without a message'}: in one test a divider written with both spellings gave 5 V at ${spelled}, as written.`, ...said, `[${facts.join(', ')}]`].join(' '),
+        [fix(`Rename ${list(names)} to ${to}`, ...together(infos[0]!, to))]);
+      continue;
+    }
     if (infos.length > 1) {
-      const odd = infos.filter((i) => !isPlainName(i.name));
+      // One name for each node the student wrote: the spellings of one case group go together.
+      const heads = [...cases.values()].map((members) => members[0]!);
+      const odd = heads.filter((i) => !isPlainName(i.name));
       const names = infos.map((i) => i.refs[0]!.text);
       const to = odd.map((i) => [i, plainFor(i)] as const);
       const at = (odd[odd.length - 1] ?? infos[infos.length - 1]!).refs[0]!;
+      const spellings = (i: NodeInfo): string => list((cases.get(aliasOf(c, i.name)) ?? [i]).map((x) => x.refs[0]!.text));
       // The names with such letters, where a line names them that ngspice reads as written (S10), one
       // sentence for them all (names lane critic 2, 7). Cites [non-ascii-node-2, non-ascii-node-3,
       // non-ascii-node-4], the last two for their sentences.
-      const { said, print, command } = asWritten(c, odd, true);
+      const { said, print, command } = asWritten(c, infos.filter((i) => !isPlainName(i.name)), true);
       const facts = ['non-ascii-node-2', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
       add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
         `ngspice ${lettersRule(names, 'a node name')}, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
         [`ngspice spells ${list(names)} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-        to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${i.refs[0]!.text}`))}`, ...to.flatMap(([i, n]) => renaming(i, n)))] : []);
+        to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${spellings(i)}`))}`, ...to.flatMap(([i, n]) => together(i, n)))] : []);
       continue;
     }
     const info = infos[0]!;

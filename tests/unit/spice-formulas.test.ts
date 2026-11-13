@@ -823,4 +823,35 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     // A part on the name: the words for a node the parts are on, as before (space-character-10).
     expect(traps(`* t\nV1 in 0 5\nR1 in o${THIN}ut 1k\nR2 o${THIN}ut 0 1k\n.op\n.end\n`)[0]!.ngspice).toContain('[space-character-10]');
   });
+  it('CR2-3: two spellings that differ only in capital letters on part lines are one node, as written: a warning, one name for both, and no dangling or floating words (non-ascii-node-27)', () => {
+    const TC = 'Çıkış'; // Çıkış
+    const divider = `* t\nV1 giris 0 10\nR1 giris ${TC} 1k\nR2 ${T} 0 1k\n.op\n.end\n`;
+    const found = traps(divider);
+    expect(found.map((t) => [t.id, t.severity, t.title])).toEqual([['non-ascii-node', 'warning', `ngspice spells ${TC} and ${T} as ____k____: one node`]]);
+    expect(found[0]!.ngspice).toBe(`ngspice makes ${TC} and ${T} one node, without a message: in one test a divider written with both spellings gave 5 V at ____k____, as written. [non-ascii-node-27]`);
+    expect(found[0]!.fixes.map((f) => f.label)).toEqual([`Rename ${TC} and ${T} to Cikis`]);
+    expect(applyFix(divider, found[0]!.fixes[0]!)).toBe('* t\nV1 giris 0 10\nR1 giris Cikis 1k\nR2 Cikis 0 1k\n.op\n.end\n');
+    // A linear E's control node written with the capital: no "no DC path to ground" (the critic's ecap-ctl).
+    const ecap = `* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\nE1 e 0 ${TC} 0 2\nRe e 0 1k\n.op\n.end\n`;
+    expect(traps(ecap).map((t) => [t.id, t.severity])).toEqual([['non-ascii-node', 'warning']]);
+    expect(applyFix(ecap, traps(ecap)[0]!.fixes[0]!)).toContain('E1 e 0 cikis 0 2');
+    // A part after .end that writes the capital: "Rename" and "Move .end to the bottom" give one circuit in either order.
+    const after = `* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\n.op\n.end\nR3 ${TC} 0 1k\n`;
+    const step = (text: string, id: string): string => applyFix(text, traps(text).find((t) => t.id === id)!.fixes[0]!);
+    const renameFirst = step(step(after, 'non-ascii-node'), 'after-end');
+    const moveFirst = step(step(after, 'after-end'), 'non-ascii-node');
+    expect(moveFirst).toBe(renameFirst);
+    expect(moveFirst).toBe('* t\nV1 giris 0 10\nR1 giris cikis 1k\nR2 cikis 0 1k\n.op\nR3 cikis 0 1k\n.end\n');
+    expect(traps(moveFirst)).toEqual([]);
+    // Different letters ngspice spells alike stay the error; the spellings of one node keep one name.
+    const mixed = `* t\nV1 giris 0 10\nR1 giris ${TC} 1k\nR2 ${T} 0 1k\nR3 çıkıç 0 1k\n.op\n.end\n`;
+    const error = traps(mixed).find((t) => t.severity === 'error')!;
+    expect(error.title).toBe(`${TC}, ${T} and çıkıç are one node for ngspice`);
+    expect(applyFix(mixed, error.fixes[0]!)).toBe('* t\nV1 giris 0 10\nR1 giris Cikis 1k\nR2 Cikis 0 1k\nR3 cikic 0 1k\n.op\n.end\n');
+    // The drawing editor's rename of either spelling renames both: the circuit stays the one ngspice simulated.
+    for (const node of [T, TC]) {
+      const edited = applyEdit(buildSchematic(parseNetlist(divider)), { kind: 'rename-node', node, name: 'vout' });
+      expect(edited.text, node).toContain('R1 giris vout 1k\nR2 vout 0 1k');
+    }
+  });
 });

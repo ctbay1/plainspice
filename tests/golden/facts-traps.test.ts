@@ -552,6 +552,8 @@ const FACTS: Fact[] = [
   { code: 'invisible-character-68', netlist: "* a zero-width space in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out\u200b)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node out___", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['invisible-character'] },
   { code: 'look-alike-letter-19', netlist: "* a Cyrillic o in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u043eut)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node __ut", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['look-alike-letter'] },
   { code: 'non-ascii-node-26', netlist: "* Turkish letters in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node ____k____", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['non-ascii-node'] },
+  // Two spellings that differ only in capital letters on part lines are one node, as written: a warning, and one name for both (CR2-3).
+  { code: 'non-ascii-node-27', netlist: "* two spellings of one node\nV1 giris 0 10\nR1 giris \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -763,6 +765,38 @@ it('CR1-3: the drawing editor\'s rename reaches .save, .global and a .func\'s fo
       expect(vector(before, name), `${form} before: ${name}`).toEqual([v]);
       expect(vector(after, name.replace('(out)', '(vout)')), `${form} after: ${name}\n${r.text}`).toEqual([v]);
     }
+  }
+});
+
+it('CR2-3: two spellings that differ only in capital letters are renamed together, by the fix and by the drawing editor, in either order with .end: the numbers native ngspice gave (non-ascii-node-27)', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const T = '\u00e7\u0131k\u0131\u015f';
+  const TC = '\u00c7\u0131k\u0131\u015f';
+  const step = (netlist: string, id: string): string => applyFix(netlist, checkTraps(parseNetlist(netlist)).find((t) => t.id === id)!.fixes[0]!);
+  // [netlist, its fixed form, the numbers native 47 and 42 gave for both (non-ascii-node-27)]
+  const after = `* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\n.op\n.end\nR3 ${TC} 0 1k\n`;
+  const cases: [string, string, Record<string, number>][] = [
+    [FACTS.find((f) => f.code === 'non-ascii-node-27')!.netlist, '', { 'i(v1)': -0.005, node: 5 }],
+    [`* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\nE1 e 0 ${TC} 0 2\nRe e 0 1k\n.op\n.end\n`, '', { 'v(e)': 10, node: 5 }],
+    [after, step(step(after, 'non-ascii-node'), 'after-end'), { 'i(v1)': -0.006666666666666667, node: 3.333333333333333 }],
+    [after, step(step(after, 'after-end'), 'non-ascii-node'), { 'i(v1)': -0.006666666666666667, node: 3.333333333333333 }],
+  ];
+  for (const [text, given, want] of cases) {
+    const fixed = given || step(text, 'non-ascii-node');
+    const before = await engine.run(text);
+    const run = await engine.run(fixed);
+    const plain = /(Cikis|cikis)/.exec(fixed)![1]!.toLowerCase();
+    for (const [name, v] of Object.entries(want)) {
+      expect(vector(before, name === 'node' ? 'v(____k____)' : name), `${name} before:\n${text}`).toEqual([v]);
+      expect(vector(run, name === 'node' ? `v(${plain})` : name), `${name} after:\n${fixed}`).toEqual([v]);
+    }
+  }
+  // The drawing editor's rename of either spelling: the same 5 V.
+  const divider = FACTS.find((f) => f.code === 'non-ascii-node-27')!.netlist;
+  for (const node of [T, TC]) {
+    const r = applyEdit(buildSchematic(divider), { kind: 'rename-node', node, name: 'vout' }, { drawingInText: true });
+    expect(r.ok, node).toBe(true);
+    expect(vector(await engine.run(r.text), 'v(vout)'), node).toEqual([5]);
   }
 });
 

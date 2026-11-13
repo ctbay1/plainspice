@@ -12597,7 +12597,8 @@ numbers-and-syntax.md), so its printout and results call `giriş` `giri__`. Warn
 nearest plain letters (`giris`; the letters that have no plain form are left out, and a name another
 node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
 ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
-letters. The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
+letters; but two that differ only in capital letters (`Çıkış` and `çıkış`) are the one node the netlist
+means: a warning, whose fix gives them one plain name (non-ascii-node-27). The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
 never give a name another node has (that would join two nodes), nor one of ground's (0 and gnd, which
 would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
 ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6); they also rename
@@ -12618,7 +12619,13 @@ same, so `v(Çıkış)` reads the node `çıkış` (both are `____k____`): no se
 names ngspice makes one, and the rename changes it with the node (non-ascii-node-20 to -22); the words of a
 title and of `echo` are text, never renamed. The rename also reaches a name bare on `.save` (-23), the names
 on `.global` and the lines inside a subcircuit that name such a node (-24), and the `v(...)` of a `.func`'s
-formula (-25). What ngspice does is said only as far
+formula (-25). After the round-2 critic of those fixes (13 November 2026, CR2-2, CR2-3): names that differ only in
+capital letters on part lines are one node for the dangling-node and floating-dc checks too, and the rename
+of either, the checks' and the drawing editor's, changes all of them, so "Rename" and "Move .end to the
+bottom" give the same circuit in either order (non-ascii-node-27); a name only a formula reads, when no part
+is on a node ngspice spells that way, is a node nothing connects to: an error, as ngspice warns "singular
+matrix" and gives no results, and no rename is offered unless a node the parts are on has its plain letters
+(non-ascii-node-26). What ngspice does is said only as far
 as it holds in every run, with a sentence more when a .print or .plot line (non-ascii-node-3) or a
 command for ngspice (non-ascii-node-4) names the node; that a save there leaves PlainSpice's run no
 results is said only when it leaves ngspice nothing else to save (non-ascii-node-7 to -9), that ngspice
@@ -13963,6 +13970,50 @@ with the parts on cikis, V1 giris 0 10 / R1 giris cikis 1k / R2 cikis 0 1k and B
 after that fix, B1 e 0 V=v(cikis)*2:
     ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(b1) = -0.01, i(v1) = -0.005
     our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-27. Two spellings that differ only in capital letters (Çıkış and çıkış) on part lines are one node for ngspice, as written: the rename of both gives the same numbers
+
+Added after the round-2 critic of the formulas lane (13 November 2026, CR2-3). ngspice writes each letter outside a to z as underscores, so Çıkış and çıkış are both ____k____: one node, which is what a netlist that writes one name with and without a capital means (as N1 and n1 are one node, W6). The divider gives 5 V there, in native 47 and 42 and our engine; renamed to one plain name (Cikis, as the fix writes), the same 5 V. The same for an E whose control node is written Çıkış (e = 10 V before and after), and for a part after .end that writes Çıkış: 3.333 V and i(v1) = -6.667 mA, whether .end is moved first or the node is renamed first. Different letters ngspice spells alike (ş and ç) stay two nodes for the student: non-ascii-node-2.
+
+```spice
+* two spellings of one node
+V1 giris 0 10
+R1 giris Çıkış 1k
+R2 çıkış 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, i(v1) = -0.005
+after the fix "Rename Çıkış and çıkış to Cikis" (non-ascii-node), which writes `R1 giris Cikis 1k`, `R2 Cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, i(v1) = -0.005
+an E whose control node is written with the capital, E1 e 0 Çıkış 0 2 (R1 and R2 on çıkış), which PlainSpice's checks say the same way:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(____k____) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(____k____) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+after its fix, E1 e 0 cikis 0 2 (R1 and R2 on cikis):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(e) = 10, i(e1) = -0.01, i(v1) = -0.005
+R3 Çıkış after .end, with R1 and R2 on çıkış (non-ascii-node-22):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+    our engine (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+the same with .end moved to the bottom first (R3 Çıkış a part line), which PlainSpice's checks say the same way:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+    our engine (exit 0): v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+after both fixes, in either order (R1, R2 and R3 on cikis):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
+    our engine (exit 0): v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
 ```
 
 PlainSpice's checks: `non-ascii-node`.

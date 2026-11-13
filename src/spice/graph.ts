@@ -249,11 +249,15 @@ function pathBetween(adjacent: Map<string, [string, number][]>, from: string, to
   return path.reverse();
 }
 
-/** Builds the graph of the parts outside subcircuits. */
-export function buildGraph(netlist: Netlist): CircuitGraph {
+/**
+ * Builds the graph of the parts outside subcircuits. `joined`: names the parser keys apart that ngspice reads as one
+ * node (Çıkış and çıkış: ____k____), one node at DC (CR2-3).
+ */
+export function buildGraph(netlist: Netlist, joined: readonly (readonly [string, string])[] = []): CircuitGraph {
   const inSubcircuit = subcircuitLines(netlist);
   const elements = netlist.elements.filter((i) => !inSubcircuit.has(i) && isBuilt(netlist.lines[i]!.element!));
   const dc = new UnionFind();
+  for (const [a, b] of joined) dc.union(a, b);
   const voltagePaths = new UnionFind();
   const adjacent = new Map<string, [string, number][]>();
   const roles = new Map<number, DcRole>();
