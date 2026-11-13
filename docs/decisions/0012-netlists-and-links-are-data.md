@@ -166,7 +166,7 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
 - **Never a netlist that ngspice would write past the end of a fixed space** (second re-check, P1). A
   title of more than 504 bytes stops `ngspice -b -r` ("buffer overflow detected": it writes
   `Title: ` and the title into 513 bytes), and in a few other places ngspice copies a name into 100
-  or 512 bytes without checking (limit-1 to limit-11 in [`../spice-facts/limits.md`](../spice-facts/limits.md)).
+  or 512 bytes without checking (limit-1 to limit-12 in [`../spice-facts/limits.md`](../spice-facts/limits.md)).
   Our engine has no such check: a title of 505 to 523 bytes ran on overwritten memory, a longer one
   crashed it, which Playwright's browser shows as a crashed page; a real Chromium said "the simulation
   engine crashed", and saved work with such a title did that on every visit. The copy ngspice runs
@@ -183,7 +183,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     command of more than 500 bytes (every line of an `*ng_script` file is one), or a `.model` line's
     version of more than 90 bytes (ngspice copies it into 100, limit-9). A line's comment is cut
     exactly where ngspice cuts it, before these checks: a `$` glued to a word starts none, so
-    `B1 c 0 V=1$+v(b` is a formula with a `v(` and no `)`. The run fails with the reason, the line and
+    `B1 c 0 V=1$+v(b` is a formula with a `v(` and no `)`. The lines of `circbyline` commands, which
+    ngspice reads as a netlist, are checked as one (limit-12). The run fails with the reason, the line and
     what to do: the status line says "ngspice could not run" and why, the Numbers panel and the live
     region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
     checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
@@ -196,11 +197,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     give the same copy as before.
   - Checked with ngspice 47 built with AddressSanitizer, configured like the engine: every kind of
     word at 600, 5,000 and 20,000 bytes, at the limits and one byte over, and each place found by
-    reading every fixed-size array of the source that a netlist reaches (409 netlists). Of the 135
-    copies PlainSpice runs, 131 give no report; two are limit-11 (below), and two are lines starting
+    reading every fixed-size array of the source that a netlist reaches (414 netlists). Of the 137
+    copies PlainSpice runs, 133 give no report; two are limit-11 (below), and two are lines starting
     with a vertical tab, or a byte order mark and a blank, before `.title`, which ngspice refuses and
     which the sanitized build reports as an overlapping `memcpy` at any length: no write past a space.
-    None of the 135 crashes our engine. The limits are below ngspice's own (100 and 504 to 511 bytes),
+    None of the 137 crashes our engine. The limits are below ngspice's own (100 and 504 to 511 bytes),
     so a little room is left for what the search did not try.
   - **A typo found on the way**: a B source, an E or G source with a formula, or a `.model` line with
     `temper`, whose `v(` or `i(` has no `)` (`B1 c 0 V=v(b`) makes ngspice look for the `)` past the

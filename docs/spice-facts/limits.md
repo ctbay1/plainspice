@@ -438,6 +438,44 @@ The sanitized build: `stack-buffer-overflow … WRITE of size 627 … in pvec` (
 engine** runs on (exit 0, with the results of `.op`), its memory overwritten. PlainSpice gives
 ngspice such a block as written: this is the one way past the checks below that we know of.
 
+## limit-12: ngspice reads the lines of `circbyline` commands as a netlist, with the same spaces
+
+**Claim.** A `.control` block or an `*ng_script` file can build a circuit line by line with
+`circbyline`: ngspice keeps each line and, at `circbyline .end`, reads them as a netlist, the way it
+reads a file. That netlist meets every space above: a B source without its `)` (limit-5) and a node
+made inside subcircuits, printed (limit-10), stop native ngspice and crash our engine as they do in a
+netlist written out.
+
+```
+*ng_script
+circbyline * t
+circbyline V1 a 0 9
+circbyline R1 a b 1k
+circbyline R2 b 0 2k
+circbyline B1 c 0 V=v(b
+circbyline R3 c 0 1k
+circbyline .end
+op
+print all
+```
+
+Native ngspice 47 and 42, `-b -r` and `-b`: they stop, with exit 134 (`*** stack smashing detected
+***: terminated`) or 139 (a crash), from run to run; so does the same circuit built by `circbyline`
+lines in a `.control` block of an ordinary netlist. With `X` names of 250 bytes and a node of 18
+inside (`xa…a.xb…b.n…n`, 520 bytes), `print all` stops native 47 and 42, `-b -r` and `-b` (exit 134):
+
+```
+*** buffer overflow detected ***: terminated
+```
+
+**Our engine** crashes on all three (`RuntimeError: memory access out of bounds`). At PlainSpice's
+limit, `X` names of 100 bytes and a node of 48 (250 bytes), native 47 and 42 and our engine run it
+(exit 0) and print the same line:
+
+```
+xa…a.xb…b.n…n = 3.000000e+00
+```
+
 ## PlainSpice's copy (`src/spice/run-netlist.ts`)
 
 | What | The copy ngspice runs | Relies on |
@@ -449,15 +487,16 @@ ngspice such a block as written: this is the one way past the checks below that 
 | A `v(…)` or `i(…)` over 500 bytes in a formula, or a `v(` with no `)` in a B, E or G formula or a `.model` with `temper`, the comment cut where ngspice cuts it | not run | limit-5 |
 | A `.control` command (or a line of an `*ng_script` file) over 500 bytes | not run | limit-6 |
 | A `.model` line's version over 90 bytes | not run | limit-9 |
+| The lines of `circbyline` commands (in a `.control` block or an `*ng_script` file) | checked as the netlist ngspice reads from them, by every row above; a problem is said at the command's line | limit-12 |
 
-Checked with the sanitized build on 13 November 2026: of 409 netlists (every case above at 600,
-5,000 and 20,000 bytes, at the limits and one byte over, and the fact netlists), PlainSpice runs 135
-and refuses 274. Of the 135 copies it runs, at the limits too (words and full names of 250 bytes,
-printed and saved, a `v(…)` and a `.control` line of 500, a version of 90), 131 give no
-AddressSanitizer report and no stop; two are limit-11, and two are lines that start with a vertical
+Checked with the sanitized build on 13 November 2026: of 414 netlists (every case above at 600,
+5,000 and 20,000 bytes, at the limits and one byte over, and the fact netlists), PlainSpice runs 137
+and refuses 277. Of the 137 copies it runs, at the limits too (words and full names of 250 bytes,
+printed and saved, a `v(…)` and a `.control` line of 500, a version of 90, a `circbyline` circuit),
+133 give no AddressSanitizer report and no stop; two are limit-11, and two are lines that start with a vertical
 tab, or a byte order mark and a blank, before `.title`, which ngspice 47 and 42 refuse ("unimplemented
 dot command '.title'") and on which the sanitized build reports `memcpy-param-overlap` at any length
-(`.title x` too): no write past a space. None of the 135 crashes our engine. Every netlist in the
+(`.title x` too): no write past a space. None of the 137 crashes our engine. Every netlist in the
 repository (147) gets the same copy as before.
 
 A `.control` block can still go past the checks while it runs (limit-11); it writes nothing to the
