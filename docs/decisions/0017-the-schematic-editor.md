@@ -589,3 +589,10 @@ page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
   `src/spice/traps.ts`; decision 0016, after the last pass). A node's names in plain letters are renamed
   only where that list finds them: a word in a command that names the node bare outside `save`
   (`print out`) may as well be a vector the command made, so it stays.
+- **The rename reaches `.save`, `.global` and `.func`, and every spelling ngspice reads as the node** (round-1
+  critic of these fixes, CR1-3, CR1-1). The list the editor's rename takes its words from now also holds a
+  name bare on `.save` (left there, `.save out` saved nothing after "Rename out to vout", and the node
+  voltages were gone with no check), the names on `.global` and the words of a subcircuit's lines that name
+  a `.global` node, and the `v(...)` of a `.func`'s formula, before and after a plain `.end`
+  (non-ascii-node-23 to -25); and a name only read that ngspice spells as the node (`v(Çıkış)` for the node
+  `çıkış`, decision 0016). A bare name on `.probe` stays: ngspice reads no node there.

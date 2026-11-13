@@ -210,3 +210,13 @@ and drops the words between an E's or G's output nodes and its formula), missing
 stops native ngspice, not our engine) and fatal-syntax-12 to -16 (a formula without braces that starts
 with a number, or after VALUE without `=`, or an empty one, stops ngspice; one that starts with a letter
 or a bracket runs).
+
+After the round-1 critic of those fixes (13 November 2026), run the same way: non-ascii-node-20 to -22 (a
+formula, a `.pz` line or a part after `.end` that writes the node with a capital letter, `Çıkış` for
+`çıkış`, is that node for ngspice; the rename gives the same numbers), non-ascii-node-23 to -25 (a bare name
+on `.save`, `.global` with a subcircuit and a `.func`'s formula name the node too; a bare name on `.probe`
+does not), space-character-25 to -30 and nbsp-5, -6 (what ngspice says of a character that looks like a
+space in a formula, by what stands before it: at the start, after an operator, after a number or the
+formula's brace, after a bracket or a comma, elsewhere; before B's own `tc1=` a normal space must stay),
+fatal-syntax-17 (a node called `value` on an E or G line), missing-fields-10 (one word before a formula with
+a bracket in it: native ngspice runs it too), and unknown-word-53 gained the G line of eight words.

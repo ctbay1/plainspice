@@ -531,4 +531,53 @@ Ctrl+K stay as they are.
   as on the part lines; anywhere else in a B source's formula (a B line's, an E or G line's given by
   VALUE=, vol= or cur=) ngspice stops ("unknown parameter (_)", or "Undefined
   parameter [v]" right after a `v`), so the check is an error whose fix takes the character out
-  (space-character-22, -23, nbsp-4): a normal space between a `v` and its bracket stops ngspice too.
+  (space-character-22, -23, nbsp-4): outside braces, a normal space between a `v` and its bracket stops
+  ngspice too (inside braces ngspice reads `v (out)` as `v(out)`).
+- **Names ngspice spells the same are one node, wherever they are read** (round-1 critic of these fixes,
+  CR1-1). ngspice writes every byte of a letter outside a to z as `_` wherever it reads a node's name, so
+  `Çıkış` and `çıkış` are one node for it (`____k____`), while the parser keys them as two. Once formulas
+  and `.pz` counted among a node's references, a formula that wrote the name with a capital letter
+  (`B1 b 0 V=v(Çıkış)*2`) made a second node: the check for names ngspice makes one said "çıkış and Çıkış
+  are one node for ngspice", an error that hid the numbers, and its fix wrote `Cikis2` into the formula, a
+  node with nothing on it; a part after `.end` that wrote `Çıkış` was left out of the rename and cut off.
+  Now a name that is only read (a formula, a dot command, a .print line, a command for ngspice) or that a
+  part after `.end` names belongs to the node parts connect to that ngspice spells the same (`ownerOf` in
+  `src/spice/traps.ts`): the one with the same letters but for their case when several are, else the
+  first; with none, the first name read so spelled. Such a name is no node of its own for any check, and
+  every rename changes it with its node; the guard for words no reader finds matches by ngspice's spelling
+  too (non-ascii-node-20 to -22). Chosen over keeping them as two nodes with the same new name: the
+  circuit is the one ngspice simulates, and the student wrote one node. Not changed for this: two names
+  that parts connect to are still the error, whose fix gives each its own plain name, as the drawing shows
+  two nodes (non-ascii-node-2); a `.tf` that writes the capital is still called "not in the circuit" by
+  the .tf check (another lane's), though its rename now reaches it. The words of a `.title` line and of
+  `echo` are text: the guard leaves them as written (CR1-11).
+- **The renames reach `.save`, `.global` and a `.func`'s formula** (CR1-3). ngspice saves a node named bare
+  on `.save` as `v(name)`, so a rename that left `.save out` saved nothing of the node ("no data saved …
+  analysis not run" in a run like PlainSpice's, non-ascii-node-23); `.global` makes a node one node in
+  every subcircuit, so the rename changes the `.global` line and the words of a subcircuit's lines that
+  name the node, other than the subcircuit's own ends (-24); and ngspice reads every name inside `v(...)` of
+  a `.func`'s formula as a node, even one of the function's own (`.func vd(a,b) {v(a)-v(b)}` reads the
+  nodes a and b), so the parser lists them among the node's references (-25). A bare name on `.probe` is no
+  node (ngspice warns "Strange parameter" and ignores it), so it stays.
+- **A character that looks like a space anywhere in a formula** (CR1-2, CR1-4, CR1-5, CR1-6). The check
+  read only the formula's words that no value check had read first, so `V=2<NBSP>*<NBSP>v(out)` and
+  `V=v(out)*2<NBSP>` kept a character ngspice stops at, with "No traps found" after the fix. Now it reads the
+  formula from its start to the end of its last line, the value checks leave its words alone, and its one
+  error takes every such character out (one that keeps B's own `tc1=`, `temp=` … apart from the formula
+  becomes a normal space, space-character-30). What ngspice says is quoted by what stands before the first
+  such character, each from its own fact, run in native 47 and 42 and our engine (space-character-25 to
+  -29, nbsp-5, -6): where no run shows the words, the check says only that ngspice stops. Character indexes
+  are UTF-16 ones, as the text's: an emoji or a math letter before such a character made the check throw,
+  and the Checks panel said "No traps found".
+- **E and G lines** (CR1-8, CR1-10). On a line of more than seven words ngspice keeps `vcvs` (`vccs`) as a
+  node and stops at the word after the gain, natively too, before it simulates anything: unknown-word says
+  so, and the no-DC-path error for that node, whose singular matrix never comes, is left out
+  (unknown-word-53). A node called `value` is read as VALUE wherever it stands: braces do not mend the
+  words after it, so none are offered for two words or more, and the fix renames the node, on every such
+  line (fatal-syntax-17). Also found here: one word between the output nodes and the formula stops native
+  ngspice only where its XSPICE step finds no bracket after it (`VALUE={2}`, `cur={2m}`); with a `v(...)` in
+  the formula, or `VALUE {2}` without `=`, native ngspice runs the line as our engine does, so the warning
+  is given only for the first (missing-fields-10).
+- **Explain** (CR1-9, CR1-12). The keyword of an E or G line given by a formula is found once for the line,
+  not once for each word (a line of 8000 words took 0.4 s); a line with no formula yet (`VALUE=`, `{}`), a
+  POLY with no controls or a TABLE with nothing to look up is said so, never "the formula ?".
