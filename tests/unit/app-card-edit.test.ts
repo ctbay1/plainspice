@@ -223,4 +223,12 @@ describe('where the parts are drawn', () => {
     }
   }, 120_000);
 
+  it('Put back where the lines pile parts gives the text the card opened on, exactly (its critic, D6)', () => {
+    const text = partsAtOnePoint(10);
+    const drawn = drawnOf(text);
+    const spot = valueSpot(text, 'r2')!;
+    const typed = withValue(spot, '47');
+    expect(keepDrawing(drawn, typed)).not.toBe(typed);
+    expect(keepDrawing(drawn, withValue(spot, spotValue(spot)))).toBe(text);
+  });
 });

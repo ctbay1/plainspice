@@ -235,12 +235,13 @@ const shownLines = new WeakMap<Schematic, string[] | null>();
  * text, which the page then draws. Otherwise (D5 of its critic: the first value made most of a joined
  * grid vanish, and wrote 4,900 lines) each value changes only the value and is built as the general
  * case is. Lines of parts and nodes the netlist does not have yet are kept as written (decision 0013:
- * only a change made in the drawing drops them).
+ * only a change made in the drawing drops them). The value as the card opened (Put back) gives the
+ * text it opened on, exactly (D6).
  */
 export function keepDrawing(drawn: Schematic, next: string): string {
   // The text the card opened on stays among the last built while the card types: an undo goes back to it.
   remember(drawn);
-  if (drawn.foreign.length) return next;
+  if (next === drawn.netlist.text || drawn.foreign.length) return next;
   const lines = (): string[] => serializeDrawing(drawn.circuit, drawn.drawing, [...drawn.kept, ...drawn.orphans]);
   if (drawn.problems.some((p) => p.kind === 'moved-part')) {
     const known = shownLines.get(drawn);
