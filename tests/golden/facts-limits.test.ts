@@ -52,6 +52,10 @@ describe('limit-1: ngspice -b -r writes the title into a space of 513 bytes, so 
   it('our engine has no check: past 504 bytes it runs on with its memory overwritten, and a longer title crashes it', async () => {
     const at505 = await engine.run(`* ${w(503)}\n${ANALYSES.op}.end\n`);
     expect(at505.ok).toBe(true); // native 47 and 42 stop here: "*** buffer overflow detected ***: terminated"
+    expect((await engine.run(`* ${w(521)}\n${ANALYSES.op}.end\n`)).ok).toBe(true);
+    // 524 bytes: a results file without its Binary: part; 526: a crash.
+    expect((await engine.run(`* ${w(522)}\n${ANALYSES.op}.end\n`)).diagnostics.map((d) => d.text)).toContainEqual(expect.stringMatching(/header without a Binary: or Values: section/));
+    expect(crashed(await engine.run(`* ${w(524)}\n${ANALYSES.op}.end\n`))).toBe(true);
     expect(crashed(await engine.run(`* ${w(598)}\n${ANALYSES.op}.end\n`))).toBe(true);
     expect(crashed(await engine.run(`* t\n${ANALYSES.op}.end\n.title ${w(800)}\n`))).toBe(true);
   });
@@ -149,7 +153,8 @@ describe('limit-4 to limit-7: words ngspice copies whole into 512 bytes are not 
     expect(got.get(`v(${node})`)?.[0]).toBeCloseTo(4.5, 12);
     expect(got.get('v(c)')?.[0]).toBeCloseTo(9, 12);
     expect(got.get(`i(@r${w(249, 'w')}[i])`)?.[0]).toBeCloseTo(0.00225, 15);
-    const command = `op ${'1 '.repeat(300)}`.slice(0, 500);
+    // An analysis command of 500 bytes as ngspice writes it: ".op 1 1 … 11".
+    const command = `op ${'1 '.repeat(247)}11`;
     const control = await engine.run(runCopy(`* t\n${DIVIDER}.control\n${command}\nprint v(b)\n.endc\n.op\n.end\n`)!);
     expect(control.exitCode).toBe(0);
     expect(control.stdout).toMatch(/v\(b\) = 6\.000000e\+00/);
@@ -260,5 +265,164 @@ describe('limit-12: ngspice reads the lines of circbyline commands as a netlist,
     const run = await engine.run(copy!);
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toContain(`x${w(99, 'a')}.x${w(99, 'b')}.${w(48, 'n')} = 3.000000e+00`);
+  });
+});
+
+describe('limit-6: only analysis commands are written into 512 bytes; other .control lines run however long', () => {
+  it('a print line of 525 bytes runs in our engine and prints what native 47 and 42 print; an op line of 508 bytes is not run', async () => {
+    const text = `* t\n${DIVIDER}.op\n.control\nop\nprint${' v(b)'.repeat(104)}\n.endc\n.end\n`;
+    const copy = runCopy(text);
+    expect(copy).toBeDefined();
+    const run = await engine.run(copy!);
+    expect(run.exitCode).toBe(0);
+    // Native 47 and 42 (-b -r and -b, exit 0): "v(b) = 6.000000e+00", once for each v(b).
+    expect(run.stdout.match(/v\(b\) = 6\.000000e\+00/g)).toHaveLength(104);
+    expect(runCopy(`* t\n${DIVIDER}.op\n.control\nop ${w(250)} ${w(250)} ${w(3)}\n.endc\n.end\n`)).toBeUndefined();
+  });
+});
+
+describe('limit-5: ngspice cuts an end-of-line comment before it reads a name, so its words never reach a space', () => {
+  it('a comment of 20,000 bytes runs in our engine with native 47’s numbers, and PlainSpice runs it', async () => {
+    for (const comment of ['; ', '$ ', '// ']) {
+      const copy = runCopy(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k ${comment}${w(20000)}\n.op\n.end\n`);
+      expect(copy, comment).toBeDefined();
+      const got = vectors(await engine.run(copy!));
+      // Native 47 (-b -r): v(b) = 6, i(@r1[i]) = 0.003.
+      expect(agrees(got.get('v(b)')![0]!, 6), comment).toBe(true);
+      expect(agrees(got.get('i(@r1[i])')![0]!, 0.003), comment).toBe(true);
+    }
+  });
+});
+
+describe('limit-13: ngspice takes the blanks out of brackets on some lines, joining the words in them', () => {
+  const save = (words: string): string => `* t\n${DIVIDER}.save i( ${words} ) v(b)\n.op\n.end\n`;
+  it('a .save line’s i( … ) and a B source with an i( … ) of three 200-byte words crash our engine; PlainSpice does not run them', async () => {
+    const meas = `* t\n${DIVIDER}B1 c 0 V=i(R1)*1+( ${w(200)} ${w(200)} ${w(200)} )\nR3 c 0 1k\n.op\n.end\n`;
+    for (const text of [save(`${w(200)} ${w(200)} ${w(200)}`), save(`${w(200)}\t${w(200)}\t${w(200)}`), meas]) {
+      expect(crashed(await engine.run(text))).toBe(true); // native 47 and 42: "buffer overflow detected" or "stack smashing detected"
+      expect(runCopy(text)).toBeUndefined();
+    }
+  });
+
+  it('print v( … .x ): ngspice copies the joined name up to the dot into 512 bytes; PlainSpice does not run a joined name over 250 bytes', async () => {
+    const text = (last: number): string => `* t\n${DIVIDER}.op\n.control\nop\nprint v( ${w(200)} ${w(200)} ${w(last)} .x )\n.endc\n.end\n`;
+    // 512 bytes before the dot: native 47 and 42 run on, the sanitized build stops in vec_get; our engine runs on.
+    expect((await engine.run(text(112))).exitCode).toBe(0);
+    expect(runCopy(text(112))).toBeUndefined();
+    expect(runCopy(`* t\n${DIVIDER}.op\n.control\nop\nprint v( ${w(123)} ${w(123)} )\n.endc\n.end\n`)).toBeDefined();
+  });
+
+  it('at PlainSpice’s limit, a joined word of 250 bytes, the copy runs with native 47’s numbers', async () => {
+    const copy = runCopy(save(`${w(100)} ${w(100)} ${w(47)}`));
+    expect(copy).toBeDefined();
+    const got = vectors(await engine.run(copy!));
+    // Native 47 (-b -r) on the same copy: v(b) = 6, i(@r1[i]) = i(@r2[i]) = 0.003.
+    expect(agrees(got.get('v(b)')![0]!, 6)).toBe(true);
+    expect(agrees(got.get('i(@r2[i])')![0]!, 0.003)).toBe(true);
+  });
+});
+
+describe('limit-14: numparam joins quoted texts and string parameters, and puts the text in place of {…}', () => {
+  const t600 = `"${w(200)}""${w(200)}""${w(200)}"`;
+  const printed = (lines: string): string => `* t\nV1 a 0 9\nR1 a b 1k\n${lines}\n.op\n.control\nop\nprint all\n.endc\n.end\n`;
+  it('a 600-byte text in .save i({t}), in a version, or as a node printed (from .param, a .subckt default, an X line) crashes our engine; PlainSpice does not run it', async () => {
+    const texts = [
+      `* t\n${DIVIDER}.param t=${t600}\n.save i({t}) v(b)\n.op\n.end\n`,
+      `* t\nV1 a 0 9\nR1 a b 1k\nM1 b b 0 0 mm\nR2 b 0 2k\n.param t="4${w(74)}""${w(75)}"\n.model mm nmos level=8 version={t}\n.op\n.end\n`,
+      printed(`.param t=${t600}\nR2 b {t} 2k\nR3 {t} 0 1k`),
+      printed(`.subckt s p q params: t=${t600}\nRx p {t} 1k\nRy {t} q 1k\n.ends\nX1 b 0 s`),
+      printed(`.subckt s p q params: t="a"\nRx p {t} 1k\nRy {t} q 1k\n.ends\nX1 b 0 s t=${t600}`),
+    ];
+    for (const text of texts) {
+      expect(crashed(await engine.run(text)), text.slice(0, 60)).toBe(true); // native 47: "buffer overflow detected" or "stack smashing detected"
+      expect(runCopy(text), text.slice(0, 60)).toBeUndefined();
+    }
+  });
+
+  it('at PlainSpice’s limit, a text of 250 bytes as a node, printed, runs with native 47’s numbers', async () => {
+    const copy = runCopy(printed(`.param t="${w(125)}""${w(125)}"\nR2 b {t} 2k\nR3 {t} 0 1k`));
+    expect(copy).toBeDefined();
+    const run = await engine.run(copy!);
+    expect(run.exitCode).toBe(0);
+    const got = vectors(run);
+    // Native 47 (-b -r) on the same copy: v(b) = 6.75, the 250-byte node 2.25 (ngspice writes it in lower case).
+    expect(agrees(got.get('v(b)')![0]!, 6.75)).toBe(true);
+    expect(agrees(got.get(`v(${w(250, 'w')})`)![0]!, 2.25)).toBe(true);
+  });
+});
+
+describe('limit-15: a .probe line’s names, and the formula it writes for p(…)', () => {
+  const probed = (name: number): string => {
+    const part = `R${w(name - 1, 'r')}`;
+    return `* t\nV1 ${w(250, 'a')} 0 9\n${part} ${w(250, 'a')} ${w(250, 'b')} 1k\nR2 ${w(250, 'b')} 0 2k\n.probe p(${part})\n.op\n.end\n`;
+  };
+  it('p(…) of a 245-byte part writes a formula word of 520 bytes: our engine crashes (the sanitized build stops in inp_modify_exp); PlainSpice does not run it', async () => {
+    expect(crashed(await engine.run(probed(245)))).toBe(true);
+    expect(runCopy(probed(245))).toBeUndefined();
+    expect(runCopy(probed(226))).toBeUndefined();
+  });
+
+  it('at PlainSpice’s limit, a formula word of 500 bytes, the copy runs with native 47’s numbers: 9 mW in the part', async () => {
+    const copy = runCopy(probed(225));
+    expect(copy).toBeDefined();
+    const got = vectors(await engine.run(copy!));
+    // Native 47 (-b -r) on the same copy: r…:power = 0.009, v(b…) = 6.
+    expect(agrees(got.get(`r${w(224, 'r')}:power`)![0]!, 0.009)).toBe(true);
+    expect(agrees(got.get(`v(${w(250, 'b')})`)![0]!, 6)).toBe(true);
+  });
+});
+
+describe('limit-16: a circuit built with circbyline has a title, and builds no circuit itself', () => {
+  const script = (title: string): string => `*ng_script\ncircbyline ${title}\ncircbyline V1 a 0 9\ncircbyline R1 a b 1k\ncircbyline R2 b 0 2k\ncircbyline .op\ncircbyline .end\nop\nprint all\n`;
+  const title = (last: string): string => `* ${'ab '.repeat(166)}${last}`;
+  it('a title of 505 bytes made of short words: native 47 and 42 stop (-b -r), our engine runs on; PlainSpice does not run it', async () => {
+    expect((await engine.run(script(title('abcde')))).exitCode).toBe(0);
+    expect(runCopy(script(title('abcde')))).toBeUndefined();
+  });
+
+  it('a title of 504 bytes runs, and prints what native 47 and 42 print', async () => {
+    const copy = runCopy(script(title('abcd')));
+    expect(copy).toBeDefined();
+    const run = await engine.run(copy!);
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toContain('a = 9.000000e+00');
+    expect(run.stdout).toContain('b = 6.000000e+00');
+  });
+
+  it('a circbyline command inside a built circuit: native 47 and 42 crash (exit 139), our engine reads no circuit; PlainSpice does not run it', async () => {
+    const nested = `*ng_script\ncircbyline *ng_script\ncircbyline circbyline * inner\ncircbyline circbyline V1 a 0 1\ncircbyline circbyline R1 a 0 2\ncircbyline circbyline .end\ncircbyline op\ncircbyline print all\ncircbyline .end\necho outer-done\n`;
+    const run = await engine.run(nested);
+    expect(run.stderr).toMatch(/there aren't any circuits loaded/);
+    expect(runCopy(nested)).toBeUndefined();
+  });
+});
+
+describe('limit-17: print and write name a formula with its text, and meas writes a wrong word into 100 bytes', () => {
+  const control = (lines: string): string => `* t\n${DIVIDER}.op\n.control\nop\n${lines}\n.endc\n.end\n`;
+  const sum = (terms: number): string => `v(b)${'+v(b)'.repeat(terms - 1)}`;
+  it('write of a 999-byte formula crashes our engine, print runs on (native 47 and 42: "buffer overflow detected" from 514 bytes); PlainSpice does not run them', async () => {
+    expect(crashed(await engine.run(control(`write out.raw ${sum(200)}`)))).toBe(true);
+    expect((await engine.run(control(`print ${sum(200)}`))).exitCode).toBe(0);
+    expect(runCopy(control(`write out.raw ${sum(200)}`))).toBeUndefined();
+    expect(runCopy(control(`print ${sum(103)}`))).toBeUndefined();
+  });
+
+  it('at PlainSpice’s limit, a formula of 249 bytes, print gives what native 47 and 42 give', async () => {
+    const copy = runCopy(control(`print ${sum(50)}`));
+    expect(copy).toBeDefined();
+    const run = await engine.run(copy!);
+    expect(run.exitCode).toBe(0);
+    // Native 47 and 42 (-b -r): "v(b)+v(b)+… = 3.000000e+02" (50 times 6 V).
+    expect(run.stdout).toContain(`${sum(50)} = 3.000000e+02`);
+  });
+
+  it('meas with a vector of 79 bytes that does not exist: the sanitized build stops in measure_parse_trigtarg (100 bytes), our engine runs on; PlainSpice gives meas words of at most 50 bytes', async () => {
+    const meas = (word: string): string => `* t\nV1 a 0 sin(0 1 1k)\nR1 a b 1k\nR2 b 0 2k\n.tran 10u 2m\n.control\ntran 10u 2m\nmeas tran x max ${word}\n.endc\n.end\n`;
+    const run = await engine.run(meas(w(79)));
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr).toMatch(/no such vector as/);
+    expect(runCopy(meas(w(79)))).toBeUndefined();
+    expect(runCopy(meas(w(51)))).toBeUndefined();
+    expect(runCopy(meas('v(b)'))).toBeDefined();
   });
 });
