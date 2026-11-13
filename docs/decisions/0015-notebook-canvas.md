@@ -982,6 +982,9 @@ that a phone left no room to watch the numbers move; this record says what the c
   a .param line), the point nearest the .op's state is named by its x wherever ngspice's numbers there and in the .op
   read otherwise, whatever made them differ, so its note can read as if the drift had made a difference that ngspice's
   own rounding or Newton tolerances made (r9731-909: "There ngspice gives i(@r81[i]) 0 A, where the operating point, at
-  1 nA, shows 2.247 fA"), true in what it says but not in what it suggests; in a run ngspice could not solve (a singular
-  matrix, the numbers of its fallback), Kirchhoff's law still gives a wire's current back, where the page says those
-  numbers cannot be trusted and shows no note.
+  1 nA, shows 2.247 fA"), true in what it says but not in what it suggests; by the rule beside an exact solution that is
+  the run's circuit (an .op whose answers are off), that point is held to ngspice's numbers there and the .op's, not to
+  the exact solution at its own x, so a value the rule marks 0 there could be one the circuit makes real at that x (no
+  run of d9761, r9731, a9721, w9711, s9742 or the repository has such a point); in a run ngspice could not solve (a
+  singular matrix, the numbers of its fallback), Kirchhoff's law still gives a wire's current back, where the page says
+  those numbers cannot be trusted and shows no note.
