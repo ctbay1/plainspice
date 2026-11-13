@@ -125,6 +125,7 @@ const FACTS: Fact[] = [
   { code: 'A3f', id: 'an-skip-through-nested', netlist: "* inner defined inside outer, which no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt outer p q\nX2 p q inner\n.subckt inner a b\nR9 a b 1k\n.op\n.ends\n.ends\n.end\n", fails: true },
   { code: 'A3f', id: 'an-tf-subckt-through-used', netlist: "* the same chain, used: X1 uses outer, whose X2 uses inner\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 outer\n.subckt outer p q\nX2 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\n.tf v(out) V1\n.ends\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out))": 333.3333333333333 } },
   { code: 'A3f', id: 'an-skip-stopped', netlist: "* ngspice stops at .foo before it would skip the .op\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.foo bar\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.end\n", prints: ["unimplemented dot command '.foo'"], fails: true },
+  { code: 'A3f', id: 'an-skip-include', netlist: "* an .include inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.include nosuchfile.cir\n.ends\n.op\n.end\n", prints: ["Could not find include file nosuchfile.cir"], fails: true },
   { code: 'A3g', id: 'an-tf-subckt-gnd', netlist: "* a .tf inside a subcircuit an X line uses, measured from gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(out,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out,0))": 333.3333333333333 } },
   { code: 'A3g', id: 'an-tf-subckt-gnd-a', netlist: "* the same .tf from the subcircuit's own node a\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a,0))": 1 } },
   { code: 'A3g', id: 'an-tf-subckt-gnd-zz', netlist: "* the same .tf with a node no part connects to in place of gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,zz) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a,zz))": 2 } },
@@ -777,6 +778,8 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     // Used from the main circuit, through X1 and then X2, the .tf runs as the main circuit's: 1/3.
     const used = said('an-tf-subckt-through-used');
     expect([used.words.status, used.words.warnings, plain(used.words.tf?.transferFunction?.text)]).toEqual(['ok', [], 'v(out)/V1 = 0.3333 (V/V)']);
+    // ngspice reads an .include in a subcircuit no X line uses all the same: it stops there (critic1-8).
+    expect(said('an-skip-include').words.warnings[0]?.title).toBe('ngspice cannot find the file nosuchfile.cir');
   });
 
   it('a dot inside a name ngspice builds, and names that are no node or part of a subcircuit: x1.0, x1.gnd, i.x1.vs (A3h, last pass critic1-3, critic1-5)', () => {

@@ -3231,7 +3231,7 @@ function nodesOf(netlist: Netlist, results: AnalysisResults): NodeVoltageWords[]
 function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords | undefined {
   const tf = results.tf;
   if (!tf) return undefined;
-  // Not a .tf in a subcircuit no X line uses, which ngspice ignores (A3f: its words named v(out)'s numbers v(a,gnd)).
+  // Not a .tf in a subcircuit no X line uses, which ngspice skips (A3f: its words named v(out)'s numbers v(a,gnd)).
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf' && !unusedSubcircuit(netlist, i));
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const reading = r?.kind === 'tf' ? r : undefined;
@@ -3508,7 +3508,7 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
   if (results.tf) {
     for (const i of netlist.analyses) {
       const r = readAnalysis(netlist, i);
-      // A3f: ngspice ignores a .tf in a subcircuit no X line uses, so its nodes are no message's.
+      // A3f: ngspice skips a .tf in a subcircuit no X line uses, so its nodes are no message's.
       if (r?.kind !== 'tf' || r.outputKind !== 'voltage' || unusedSubcircuit(netlist, i)) continue;
       // The nodes as the parser reads them (a gnd ngspice makes 0 is ground: A3b), named as said.
       for (const n of r.outputNodes) {

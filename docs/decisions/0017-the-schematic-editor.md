@@ -640,10 +640,11 @@ check each, A3f to A3h in `docs/spice-facts/explanations.md`):
   never "gave no results: no results".
 - **"skips" for those lines** (facts F2, W11). Explain's note ("ngspice skips this line: it is inside the
   subcircuit s …") and the overview ("… where ngspice skips them, so ngspice will run nothing.") said
-  "ignores", the word for characters inside a line. ngspice reads none of such a subcircuit's lines: a
-  `.tran 0 -1` and a `.foo` it stops at elsewhere say nothing there, and stop it in a subcircuit an X line
-  uses (A3f). Not changed: Explain's `.print` and `.plot` sentence ("then ngspice leaves the .print line
-  out") and the node-name checks' "PlainSpice's run leaves .print and .plot lines out", which the
+  "ignores", the word for characters inside a line. ngspice runs none of such a subcircuit's analysis
+  lines, parts and dot commands: a `.tran 0 -1` and a `.foo` it stops at elsewhere say nothing there, and
+  stop it in a subcircuit an X line uses (A3f); it still reads an `.include` there, and a missing file
+  stops it (A3f). Not changed: Explain's `.print` and `.plot` sentence ("then ngspice leaves the .print
+  line out") and the node-name checks' "PlainSpice's run leaves .print and .plot lines out", which the
   reviewer also listed. ngspice reads such a line and answers ".print line ignored since rawfile was
   produced" (A25, A25b), so it is no line it skips: decision 0016 chose "leaves … out" for it (names lane,
   second critic, 6), and the skeptic of F2 showed it holds.

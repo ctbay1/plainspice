@@ -3970,8 +3970,8 @@ function oddTfPart(c: Ctx, t: Token, part: Element, role: 'output' | 'input'): v
 function checkAnalyses(c: Ctx): void {
   for (const l of c.n.lines) {
     const d = l.directive;
-    // ngspice ignores an analysis line in a subcircuit no X line uses (A3f); in one an X line uses, it
-    // runs the line as the main circuit's (graph.inSubcircuit holds part lines only).
+    // ngspice skips an analysis line in a subcircuit the main circuit does not use (A3f); in one it uses,
+    // it runs the line as the main circuit's (graph.inSubcircuit holds part lines only).
     if (!d || l.kind !== 'directive' || unusedSubcircuit(c.n, l.index)) continue;
     if (d.name === '.dc') checkDc(c, d);
     else if (d.name === '.tran') checkTran(c, d);

@@ -69,11 +69,13 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   node called gnd (A3b); a `.tf` written after `.end` runs too, and ngspice names its output in its
   own words, `v(out,mid)` (A3c); the input can be a current source (A4); for a current
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
-  0 without a message (A6). An analysis line in a subcircuit no X line uses is skipped, as is every
-  line of such a subcircuit; in one an X line uses, it runs as the main circuit's, once for each X
-  line (A3f), with gnd as ground there too (A3g). ngspice names a node inside a subcircuit by its X
-  lines and a dot, `x1.m`, and a part there after its first letter, `v.x1.vs`, and a `.tf` can use
-  either (A3h).
+  0 without a message (A6). An analysis line in a subcircuit the main circuit does not use (no X line
+  uses it, or only X lines of such subcircuits) is skipped, as are its parts and dot commands, though
+  ngspice still reads an `.include` there; in one the main circuit uses, it runs as the main circuit's,
+  once for each X line; `.subckt` and `.ends` lines that do not pair up stop ngspice first (A3f); gnd
+  is ground there too (A3g). ngspice names a node inside a subcircuit by its X lines, each followed by
+  a dot, and its own name, `x1.m`, `x1.m.1`, and a part there after its first letter, `v.x1.vs`, and a
+  `.tf` can use either (A3h).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -2753,10 +2755,13 @@ our engine (wasm), as ngspice -b -r:
   with v(a): 0 and 1; with X1 and X2: two Transfer Function plots
 ```
 
-"Skipped" is the word for a whole line ngspice does not read (W11), and it reads none of such a
-subcircuit's lines: a `.tran` and a dot command it stops at anywhere else say nothing there, and the
-`.op` after `.ends` runs; in a subcircuit an X line uses, the same lines stop it (13 November 2026,
-the last pass: F2; the netlists are golden rows an-skip-unused, an-skip-used-tran and an-skip-used-dot).
+"Skipped" is the word for a whole line ngspice does not read (W11), and it runs none of such a
+subcircuit's analysis lines, parts and dot commands: a `.tran` and a dot command it stops at anywhere
+else say nothing there, and the `.op` after `.ends` runs; in a subcircuit an X line uses, the same lines
+stop it (13 November 2026, the last pass: F2; the netlists are golden rows an-skip-unused,
+an-skip-used-tran and an-skip-used-dot). It still reads an `.include` there, as below, so the words use
+"skips" for its analysis lines, never for every line of the subcircuit (the round-1 critic of the last
+pass's fixes, critic1-8).
 
 ```spice
 * lines ngspice would stop at, in a subcircuit no X line uses
@@ -2901,7 +2906,11 @@ our engine (wasm), as ngspice -b -r: exit 1 and "Mismatch of .subckt ... .ends s
 When ngspice stops at another line first, that line's message is the run's reason, never this one
 beside it: with `.foo bar` in the main circuit and the `.op` in a subcircuit no X line uses, ngspice
 47 and 42 stop at the `.foo` (" unimplemented dot command '.foo'", exit 1, with -b and -b -r), and the
-words say only that (golden row an-skip-stopped).
+words say only that (golden row an-skip-stopped). And ngspice still reads an `.include` inside such a
+subcircuit: with `.include nosuchfile.cir` there and the `.op` after `.ends`, 47 and 42 stop with
+"Error: Could not find include file nosuchfile.cir" (exit 1, with -b and -b -r; 47 adds "ERROR: fatal
+error in ngspice, exit(1)", 42 "Error: there aren't any circuits loaded." with -r), as our engine does
+(golden row an-skip-include).
 
 ### A3g. In a subcircuit an X line uses, a gnd in a .tf's v( ) is ground too
 
