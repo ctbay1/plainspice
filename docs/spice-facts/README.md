@@ -75,6 +75,10 @@ spaces the groups are three words and ngspice stops; in a node name the characte
 digits not grouped in threes end the number too) and look-alike-letter-6 (a look-alike right after a
 sign: `-５` stops ngspice).
 
+After the re-check of 12 November 2026 and the fixes of the rounding-noise rule (12 and 13 November):
+C9m to C9t.10 in explanations.md (what the exact solution decides, ngspice's answers far off, .tf and
+.dc of balanced bridges, diodes left free, and a diode loop ngspice settles on a current around).
+
 ## Where the evidence came from
 
 The facts in all three files were run for them on 9 November 2026. Two parts come from the
