@@ -657,3 +657,51 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
     for (const line of ['E1 e 0 x VALUE={2}', 'E1 e 0 x VALUE = {2}', 'G1 0 e x cur={2m}', "E1 e 0 x vol='2'", 'E1 e 0 x VALUE={2} ; see (1)']) expect(ids(formula(line)), line).toEqual(['missing-fields']);
   });
 });
+
+describe('the round-2 critic of these fixes (13 November 2026)', () => {
+  const traps = (text: string) => checkTraps(parseNetlist(text));
+  const formula = (line: string): string => `* t\n.param truek=2\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`;
+  const said = (line: string): string[] => {
+    const text = formula(line);
+    return traps(text).map((t) => `${t.id}: ${t.title}${t.fixes[0] ? ` -> ${applyFix(text, t.fixes[0]).split('\n')[5]}` : ''}`);
+  };
+
+  it('CR2-1: a formula without braces that starts with a sign before a letter or a bracket, or with a bracket, runs: no trap, and the whole formula is shown (fatal-syntax-19)', () => {
+    // Native ngspice 47 and 42 (-b -r) and our engine run every one of these (e from -5 V to 7.5 V).
+    for (const line of [
+      'E1 e 0 VALUE=-v(out)*2', 'E1 e 0 VALUE=+v(out)*2', 'E1 e 0 VALUE=-(v(out))*2', 'E1 e 0 VALUE=-abs(v(out))', 'E1 e 0 vol=-v(out)',
+      'G1 0 e cur=-v(out)/1k', 'E1 e 0 VALUE=(1+v(out))*2', 'E1 e 0 VALUE=(1+2)*v(out)', 'E1 e 0 VALUE=(2)*v(out)', 'E1 e 0 VALUE=(2)',
+      'E1 e 0 VALUE=( 2 )', 'E1 e 0 vol=(2)', 'E1 e 0 VALUE=-(2)', 'G1 0 e cur=(2m)', 'E1 e 0 VALUE = -v(out)*2', 'E1 e 0 VALUE= (1+v(out))*2',
+      'E1 e 0 VALUE=(1+v(out)) * 2', 'E1 e 0 VALUE=-truek*v(out)', 'E1 e 0 VALUE=(-2)*v(out)', 'E1 e 0 x VALUE=-v(out)*2', 'E1 e 0 x VALUE=(2)',
+    ]) {
+      expect(said(line), line).toEqual([]);
+    }
+    const shown = (line: string): string | undefined => parseNetlist(formula(line)).lines[5]!.element!.form?.formula?.text;
+    expect(shown('E1 e 0 VALUE=(1+v(out))*2')).toBe('(1+v(out))*2');
+    expect(shown('E1 e 0 VALUE = (1+v(out))*2')).toBe('(1+v(out))*2');
+    expect(shown('E1 e 0 VALUE=-v(out)*2')).toBe('-v(out)*2');
+    expect(shown('G1 0 e cur=(2m)')).toBe('(2m)');
+    const n = parseNetlist(formula('E1 e 0 VALUE=(1+v(out))*2'));
+    expect(explainLine(n, 5)!.summary).toContain('is given by the formula (1+v(out))*2.');
+    expect(describeCircuit(n)).toContain('E1: a voltage source given by a formula: the voltage at node e, measured from ground, is (1+v(out))*2.');
+    expect(describeCircuit(parseNetlist(formula('G1 0 e cur=-v(out)/1k')))).toContain('G1: a current source given by a formula, pushing -v(out)/1k from ground into node e.');
+  });
+
+  it('CR2-1: a sign and a number, or a name that starts with true or false, gets no braces from ngspice: the error, and braces fix it (fatal-syntax-18)', () => {
+    for (const [line, fixed] of [
+      ['E1 e 0 VALUE=-2', 'E1 e 0 VALUE={-2}'], ['E1 e 0 VALUE=+2', 'E1 e 0 VALUE={+2}'], ['E1 e 0 VALUE=-.5', 'E1 e 0 VALUE={-.5}'],
+      ['E1 e 0 VALUE=-2*v(out)', 'E1 e 0 VALUE={-2*v(out)}'], ['E1 e 0 VALUE=-.5*v(out)', 'E1 e 0 VALUE={-.5*v(out)}'],
+      ['E1 e 0 VALUE=.5*v(out)*4', 'E1 e 0 VALUE={.5*v(out)*4}'], ['E1 e 0 VALUE=truek*v(out)', 'E1 e 0 VALUE={truek*v(out)}'],
+      ['G1 0 e cur=-2m*v(out)', 'G1 0 e cur={-2m*v(out)}'], ['E1 e 0 VALUE (1+v(out))*2', 'E1 e 0 VALUE {(1+v(out))*2}'],
+    ]) {
+      expect(said(line!), line).toEqual([`fatal-syntax: ngspice can't read ${line!.slice(0, 2)}'s formula without braces -> ${fixed}`]);
+    }
+    const t = traps(formula('E1 e 0 VALUE=-2*v(out)'))[0]!;
+    expect(t.why).toBe("ngspice takes E1's formula from its { to the end of the line. After VALUE= it adds the braces itself, as for VALUE=v(out)*2 or VALUE=-v(out)*2, but not before a number (with a sign or not), so write VALUE={-2*v(out)}.");
+    expect(t.ngspice).toBe("ngspice stops with a fatal error: 'mal formed E source instance' (ngspice 42: 'mal formed E line'). [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14, fatal-syntax-18]");
+    expect(traps(formula('E1 e 0 VALUE=truek*v(out)'))[0]!.why).toContain('but not before a number (with a sign or not), or a name that starts with true or false, so write VALUE={truek*v(out)}.');
+    expect(traps(formula('E1 e 0 VALUE (1+v(out))*2'))[0]!.why).toBe("ngspice takes E1's formula from its { to the end of the line, and adds the braces itself only after VALUE=, so write VALUE {(1+v(out))*2}.");
+    // A '.' with no digit after it is no number, in braces or not: no fix.
+    expect(traps(formula('E1 e 0 VALUE=.v(out)'))[0]!.fixes).toEqual([]);
+  });
+});

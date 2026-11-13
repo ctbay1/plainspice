@@ -2231,9 +2231,17 @@ function checkXspiceForm(c: Ctx, i: number): void {
 }
 
 /**
+ * Where ngspice puts no braces round a formula after '=' (inp_fix_param_values in its inpcom.c; CR2-1): one that
+ * starts with a digit or a '.', a sign and then a digit (or a '.' and a digit), or the letters true or false.
+ * Any other start gets its braces: a letter, a bracket, and a sign before a letter or a bracket (fatal-syntax-16, -18).
+ */
+const NO_BRACES = /^(?:[0-9.]|[+-]\.?[0-9]|true|false)/i;
+
+/**
  * An E or G given by a formula that ngspice cannot read (C3-5). ngspice takes the formula from its '{' to the
- * end of the line, and adds the braces itself only after '=' and before a letter or a bracket (v(out)*2, k*2,
- * (v(out)*2)): VALUE=3, VALUE=2*v(out) and VALUE v(out)*2 stop it (fatal-syntax-12 to -15). One word between
+ * end of the line, and adds the braces itself after '=' unless the formula starts with a number (NO_BRACES):
+ * VALUE=3, VALUE=2*v(out), VALUE=-2*v(out) and VALUE v(out)*2 stop it (fatal-syntax-12 to -15, -18), while
+ * VALUE=-v(out)*2 and VALUE=(1+v(out))*2 run. One word between
  * the output nodes and the formula stops native ngspice, whose XSPICE first reads the line as a polynomial;
  * PlainSpice's engine drops it, as ngspice drops two or more (missing-fields-9, unknown-word-54, -55).
  */
@@ -2264,7 +2272,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
     return;
   }
   if (/^[{'"]/.test(formula.text)) return;
-  if (equals && !/^[0-9.+-]/.test(formula.text)) return;
+  if (equals && !NO_BRACES.test(formula.text)) return;
   c.broken.add(i);
   const braced = `{${formula.text}}`;
   // Two words or more after VALUE without = (E1 e 0 value 0 2): ngspice reads the word value as VALUE wherever it
@@ -2287,10 +2295,14 @@ function checkFormulaForm(c: Ctx, i: number): void {
       rename ? [rename] : []);
     return;
   }
+  const named = /^(true|false)/i.test(formula.text) ? ', or a name that starts with true or false' : '';
   add(c, 'fatal-syntax', 'error', formula, `ngspice can't read ${name}'s formula without braces`,
-    `ngspice takes ${name}'s formula from its { to the end of the line. It adds the braces itself only after ${kw}= and before a letter or a bracket, as in ${kw}=v(out)*2, so write ${kw}=${braced}.`,
-    `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14]`,
-    formula.text.includes('=') || words ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
+    equals
+      ? `ngspice takes ${name}'s formula from its { to the end of the line. After ${kw}= it adds the braces itself, as for ${kw}=v(out)*2 or ${kw}=-v(out)*2, but not before a number (with a sign or not)${named}, so write ${kw}=${braced}.`
+      : `ngspice takes ${name}'s formula from its { to the end of the line, and adds the braces itself only after ${kw}=, so write ${kw} ${braced}.`,
+    `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-12, fatal-syntax-13, fatal-syntax-14${equals && !/^[0-9.]/.test(formula.text) ? ', fatal-syntax-18' : ''}]`,
+    // A '.' with no digit after it is no number in braces either (VALUE=.v(out): 'Undefined parameter [out]').
+    formula.text.includes('=') || words || /^\.(?![0-9])/.test(formula.text) ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
 }
 
 /** An E or G line where value, with no = after it, comes before two words or more: a node called value, read as VALUE (CR1-10). */

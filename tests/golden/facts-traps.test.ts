@@ -535,6 +535,10 @@ const FACTS: Fact[] = [
   { code: 'space-character-30', netlist: "* a thin space between a formula and tc1=\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*2\u2009tc1=0\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
   { code: 'nbsp-5', netlist: "* a no-break space between v and its bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v\u00a0(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["Undefined parameter [v]"], fails: true, traps: ['nbsp'] },
   { code: 'nbsp-6', netlist: "* two no-break spaces in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=2\u00a0*\u00a0v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },
+  // After the round-2 critic of the formulas lane (13 November 2026): a formula without braces that starts with a sign
+  // and a number stops ngspice, one that starts with a sign before a letter or with a bracket runs (CR2-1).
+  { code: 'fatal-syntax-18', netlist: "* VALUE=-2*v(out) without braces\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 VALUE=-2*v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'fatal-syntax-19', netlist: "* formulas without braces that start with a sign or a bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e1 0 VALUE=-v(out)*2\nR1e e1 0 1k\nE2 e2 0 VALUE=(1+v(out))*2\nR2e e2 0 1k\nG1 0 g cur=-v(out)/1k\nRg g 0 1k\nE3 e3 0 VALUE=(2)*v(out)\nR3e e3 0 1k\n.op\n.end\n", vectors: { "v(e1)": -5, "v(e2)": 7, "v(g)": -2.5, "v(e3)": 5 }, traps: [] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');

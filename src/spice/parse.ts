@@ -748,12 +748,19 @@ function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | '
   const first = r.peek('word');
   for (let c = r.next('word'); c; c = r.next('word')) b.field(c, 'parameter');
   // The formula: a group in braces or quotes; for VALUE=, vol= and cur= without one, the rest of the line
-  // (with its last bracket: v(out)*(1+2)).
-  if (first && isGroupStart(first.clean.charCodeAt(0))) form.formula = b.token(first);
+  // (with its last bracket: v(out)*(1+2)), from its first character after the '=': a sign or a bracket too,
+  // which the words leave out (-v(in)*2, (1+v(out))*2; CR2-1).
+  let at = w.b;
+  if (formula) {
+    while (at < s.length && isSpaceCode(s.charCodeAt(at))) at += 1;
+    if (s.charCodeAt(at) === EQUALS) at += 1;
+    while (at < s.length && isSpaceCode(s.charCodeAt(at))) at += 1;
+  }
+  if (first && isGroupStart(first.clean.charCodeAt(0)) && (!formula || first.a === at)) form.formula = b.token(first);
   else if (first && formula) {
     let end = s.length;
-    while (end > first.a && isSpaceCode(s.charCodeAt(end - 1))) end -= 1;
-    form.formula = b.token({ a: first.a, b: end, clean: '' });
+    while (end > at && isSpaceCode(s.charCodeAt(end - 1))) end -= 1;
+    form.formula = b.token({ a: at, b: end, clean: '' });
   }
   return form;
 }
