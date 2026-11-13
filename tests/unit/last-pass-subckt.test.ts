@@ -5,7 +5,7 @@
  * in docs/spice-facts/explanations.md).
  *
  * - regress-2: a gnd in the v( ) of a .tf inside a subcircuit an X line uses is ground, as at the top
- *   level (A3g).
+ *   level (A3g); and the summary names every warning it counts, four and how many more.
  * - facts F2: ngspice "skips" those lines, the word for a whole line it does not read (W11).
  */
 import { readFileSync } from 'node:fs';
@@ -70,6 +70,21 @@ describe('regress-2: a gnd in a .tf inside a subcircuit an X line uses is ground
     const text = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 in x 1k\nVx x gnd\nR4 x 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(out,gnd) V1\n.ends\nX1 out 0 s\n.end\n';
     const s = await solve(text, await engine);
     expect([s.words.tf?.at, sp(s.words.tf?.transferFunction?.text)]).toEqual(['between node out and ground', 'v(out,gnd)/V1 = 0.3333 (V/V)']);
+  }, 30000);
+
+  it('the summary names every warning it counts: the first four, then how many more', async () => {
+    const two = await solve('* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.tf v(zz,yy) V1\n.end\n', await engine);
+    expect(sp(two.words.summary)).toContain('. 2 warnings: zz is not a node of the circuit; yy is not a node of the circuit. Open the results for details.');
+    expect(two.words.summarySpeech).toContain('. 2 warnings: zz is not a node of the circuit; yy is not a node of the circuit. Open the results for details.');
+    // Five and six resistors of 0 Ω: ngspice 47 warns for each (P13).
+    const zeros = (k: number): string => `* t\nV1 in 0 5\nR0 in n0 1k\n${Array.from({ length: k }, (_, i) => `R${i + 1} n${i} ${i === k - 1 ? '0' : `n${i + 1}`} 0`).join('\n')}\nR9 n0 0 1k\n.op\n.end\n`;
+    const four = 'R1 is too small for ngspice; R2 is too small for ngspice; R3 is too small for ngspice; R4 is too small for ngspice';
+    const five = await solve(zeros(5), await engine);
+    expect(five.words.warnings.filter((m) => m.severity !== 'note')).toHaveLength(5);
+    expect(five.words.summary).toContain(`. 5 warnings: ${four}; and 1 more warning. Open the results for details.`);
+    const six = await solve(zeros(6), await engine);
+    expect(six.words.summary).toContain(`. 6 warnings: ${four}; and 2 more warnings. Open the results for details.`);
+    expect(six.words.summarySpeech).toContain(`. 6 warnings: ${four}; and 2 more warnings. Open the results for details.`);
   }, 30000);
 });
 

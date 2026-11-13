@@ -381,6 +381,12 @@ export const DESCRIBE_STRINGS = {
   valueIsSpeech: (name: string, value: string): string => `${name} is ${value}`,
   summaryOk: (parts: string, warnings: number, first: string): string =>
     `Simulation finished: ${parts}.${warnings ? ` ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}: ${first}.` : ''} Open the results for details.`,
+  /**
+   * The warnings summaryOk counts, by their titles: the first four, then how many more, as summaryNodes
+   * says the nodes (decision 0010), so the count and the names agree (last pass regress-2).
+   */
+  summaryWarnings: (titles: readonly string[], more: number): string =>
+    `${titles.join('; ')}${more ? `; and ${more} more ${more === 1 ? 'warning' : 'warnings'}` : ''}`,
   summaryUnreliable: (why: string): string => `Simulation finished, but its numbers can't be trusted: ${why}. Open the results for details.`,
   summaryFailed: (why: string): string => `ngspice stopped with an error: ${why}. Open the results for details.`,
   summaryEmpty: (why: string): string => `ngspice finished but gave no results: ${why}. Open the results for details.`,
@@ -3518,8 +3524,10 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
     }
   }
   if (results.other.length) parts.push(S.summaryOther(results.other.length));
+  // The warnings it counts, named as the nodes are: the first four, then how many more (last pass regress-2).
   const problems = words.warnings.filter((m) => m.severity !== 'note');
-  return S.summaryOk(parts.length ? parts.join('; ') : S.summaryNothing, problems.length, problems[0] ? lower(problems[0].title) : '');
+  const named = problems.slice(0, 4).map((m) => lower(m.title));
+  return S.summaryOk(parts.length ? parts.join('; ') : S.summaryNothing, problems.length, S.summaryWarnings(named, problems.length - named.length));
 }
 
 /** At most this many values are listed in a note; the rest are counted ("and 3991 more currents"), never "and 1 more" (N4). */
