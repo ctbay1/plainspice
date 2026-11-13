@@ -1203,6 +1203,10 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
         }
       }
     }
+    // A diode taken as carrying 0 A must carry less than ngspice's current tolerance by ngspice's numbers:
+    // ngspice can settle on a current that nothing drives (s5-137: a diode and 2.2 MΩ in a loop, 0.31 µA
+    // through the 2.2 MΩ at 0.68 V, the diode given 2.5 mA), and its numbers are then not this circuit's.
+    if (!quietAgrees(quiet, currents)) return { check: 'other' };
     const live = tree.filter((k) => !quiet.has(k));
     const liveSlopes = tree.map((k, s) => (quiet.has(k) ? undefined : slopes[s]!)).filter((x): x is Fraction[] => x !== undefined);
     const byPart = new Map(live.map((k) => [model.parts[k]!, currents.get(k) ?? ZERO]));
@@ -1228,6 +1232,12 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
     return p.branch >= 0 ? slopes.every((x) => isZero(x[p.branch]!)) : slopes.every((x) => currentIsZero(ex.model, x, k, ZERO));
   };
   return { check: 'imprecise', view, off: all.filter((a) => a.gap > ANSWER_GAP && free(a)) };
+}
+
+/** True when each diode in `quiet` carries less than ngspice's current tolerance (ABSTOL) by Kirchhoff's law with ngspice's values (exact.ts treeCurrents). */
+function quietAgrees(quiet: Iterable<number>, currents: ReadonlyMap<number, Fraction>): boolean {
+  for (const k of quiet) if (Math.abs(toDouble(currents.get(k) ?? ZERO)) >= ABSTOL) return false;
+  return true;
 }
 
 /**
@@ -1669,6 +1679,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       const currents = treeCurrents(model, tree, ng, budget);
       if (!currents) return undefined;
       const live = freeAtPoint(k);
+      if (!quietAgrees(tree.filter((_, t) => !live[t]), currents)) return undefined;
       const liveTree = tree.filter((_, t) => live[t]);
       const slopes = c.filter((_, t) => live[t]).map((cj) => cj.map((v) => ({ n: v * x.d, d: den * x.d })));
       unknowns = withCurrents(unknowns, slopes, liveTree, currents);

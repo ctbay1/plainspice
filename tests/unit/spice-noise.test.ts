@@ -986,6 +986,19 @@ describe('after the critic of round 2: with a diode, a run\'s .op and its .dc ar
 });
 
 describe('after the critic of round 2: a diode\'s current, worked out from ngspice\'s numbers, and the warning beside it', () => {
+  it('a diode taken as carrying 0 A must carry less than ngspice\'s 1 pA by ngspice\'s numbers: in s5-137 nothing drives the loop of D1 and 2.2 MΩ, but ngspice settles on 0.31 µA there, which the circuit\'s gigavolts and kiloamps hid from the checks; the rule decides, in the .op and in the sweep (C9t.10)', async () => {
+    const circuit = [
+      ...['V1 top1 0 100', 'R1 top1 a2 3.3k', 'R2 a2 0 12', 'R3 top1 b3 330', 'R4 b3 0 1.2', 'R5 a2 m4 560', 'V2 m4 b3 0', 'F1 0 o5 V2 1e9', 'R6 o5 0 22k', 'H1 h6 0 V2 1meg', 'R7 h6 0 270k'],
+      ...['V3 b3 v7 0', 'V4 v7 v8 0', 'V5 v8 v9 0', 'V6 v9 v10 0', 'R8 v10 0 12', 'R9 b3 a11 12', 'R10 a11 0 5.6', 'R11 b3 b12 12000', 'R12 b12 0 5605.6'],
+      ...['R13 a11 m13 1.2k', 'R14 m13 m14 100k', 'R15 m14 m15 2.2', 'R16 m15 m16 22k', 'R17 m16 m17 2.2', 'R18 m17 m18 220', 'R19 m18 m19 8.2k', 'R20 m19 b12 22k'],
+      ...['D1 d20 top1 dmod', 'R21 d20 top1 2.2meg', 'E1 e21 0 b3 0 1', 'R22 e21 0 27', '.model dmod D(is=1e-14)', '.options savecurrents'],
+    ];
+    const op = await solveText(`* t\n${circuit.join('\n')}\n.op\n.end\n`, ngspice);
+    expect([roundingNoise(op.netlist, op.results).by, current(op.words, 'R21'), node(op.words, 'd20'), noise(op.words)]).toEqual(['rule', '308.4 nA from node d20 to node top1 through R21', '100.7 V', []]);
+    const dc = await solveText(`* t\n${circuit.join('\n')}\n.dc V1 90 100 5\n.end\n`, ngspice);
+    expect(shownSweep(dc.netlist, dc.results)).toBe(dc.results.dc);
+  });
+
   it('a node whose exact value a diode\'s current changes keeps ngspice\'s exactly 0: two diode-fed rails of +9 V and −9 V, and the middle m of two equal resistors between them, which ngspice gives as 0 V; with V1\'s current a step off, the diodes\' currents Kirchhoff\'s law gives made m read 1.7e-15 V', async () => {
     const text = '* t\nV1 p0 0 9\nD1 p0 p dmod\nR1 p 0 1k\nV2 n0 0 -9\nD2 n n0 dmod\nR2 n 0 1k\nRa p m 1k\nRb m n 1k\n.model dmod d\n.options savecurrents\n.op\n.end\n';
     const r = await solveText(text, ngspice);
