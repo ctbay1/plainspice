@@ -183,6 +183,13 @@ const FACTS: Fact[] = [
   { code: 'C9x.5', id: 'cur-rule-tf-maybe', netlist: "* the balanced bridge of C9 beside a transistor, with .op and .tf v(a,b) V1\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.tf v(a,b) V1\n.end\n", vectors: {"v(a)": 4.499999999999999, "v(b)": 4.5, "v(Transfer_function)": -5.551115123125783e-17, "v(v1#Input_impedance)": 6394.5577413485535} },
   { code: 'C9x.6', id: 'cur-control-run', netlist: "* bridge control\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n.options savecurrents\n.op\n.dc V1 0 9 3\n.tf v(a,b) V1\n.control\nrun\n.endc\n.end\n", vectors: {"v(a)": [0, 1.4999999999999996, 2.999999999999999, 4.499999999999999], "i(vm)": [0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19], "i(@r5[i])": [0, 0, 0, 0]} },
   { code: 'C9x.6', id: 'cur-control-run-c9o', netlist: "* a balanced bridge whose ammeter an H of 1 G reads, run from a .control block\nV1 top 0 9\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\n.options savecurrents\n.op\n.control\nrun\n.endc\n.end\n", vectors: {"v(out)": -1.9350975899792844e-07, "i(h1)": 1.9350975899792844e-10, "i(vm)": -1.9350975899792844e-16, "i(@rl[i])": -1.9350975899792844e-10} },
+  { code: 'C9y', id: 'cur-sweep-idle-source', netlist: "* V2 holds node b's own 6 V, so R3 carries nothing when V1 is 9 V\nV1 a 0 9\nR1 a b 3k\nR2 b 0 6k\nV2 c 0 6\nR3 b c 1k\n.options savecurrents\n.op\n.dc V1 0 9 0.01\n.end\n", summaries: {"v(v-sweep)": { points: 901, first: 0, last: 8.999999999999853 }, "v(b)": { points: 901, first: 4.0, last: 5.999999999999967 }, "i(v2)": { points: 901, first: -0.002, last: -3.2959746043559335e-17 }} },
+  { code: 'C9y.2', id: 'cur-sweep-idle-source-12', netlist: "* V2 delivers no power when V1 is 12 V\nV1 a 0 12\nV2 c 0 6\nR1 a b 1k\nR2 b c 1k\nR3 b 0 1k\n.op\n.dc V1 0 12 0.1\n.end\n", summaries: {"v(v-sweep)": { points: 121, first: 0, last: 11.999999999999973 }, "v(b)": { points: 121, first: 2.0, last: 5.999999999999991 }, "i(v2)": { points: 121, first: -0.004, last: -8.673617379884035e-18 }} },
+  { code: 'C9y.2', id: 'cur-sweep-idle-source-12-half', netlist: "* V2 delivers no power when V1 is 12 V, swept in 0.5 V steps\nV1 a 0 12\nV2 c 0 6\nR1 a b 1k\nR2 b c 1k\nR3 b 0 1k\n.op\n.dc V1 0 12 0.5\n.end\n", summaries: {"v(v-sweep)": { points: 25, first: 0, last: 12 }, "i(v2)": { points: 25, first: -0.004, last: 0 }} },
+  { code: 'C9y.3', id: 'cur-sweep-idle-source-rule', netlist: "* V2 holds node b's own 6 V, so R3 carries nothing when V1 is 9 V; a .param line\n.param rb=6k\nV1 a 0 9\nR1 a b 3k\nR2 b 0 {rb}\nV2 c 0 6\nR3 b c 1k\n.options savecurrents\n.op\n.dc V1 0 9 0.01\n.end\n", summaries: {"v(v-sweep)": { points: 901, first: 0, last: 8.999999999999853 }, "i(v2)": { points: 901, first: -0.002, last: -3.2959746043559335e-17 }} },
+  { code: 'C9y.4', id: 'cur-sweep-idle-source-large', netlist: "* V2 holds node b's own 6 V, so R3 carries nothing when V1 is 9 V; a sweep too large to look through\nV1 a 0 9\nR1 a b 3k\nR2 b 0 6k\nV2 c 0 6\nR3 b c 1k\n.options savecurrents\n.op\n.dc V1 0 9 0.00001\n.end\n", summaries: {"v(v-sweep)": { points: 900001, first: 0, last: 8.999999999828448 }, "v(b)": { points: 900001, first: 4.0, last: 5.999999999961877 }} },
+  { code: 'C9y.5', id: 'cur-unchecked-beside-opamp', netlist: "* a + line after .end, beside an op-amp buffer modelled as an E of 1e6\nV2 x 0 1\nE1 y 0 x y 1e6\nR2 y 0 1k\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n", vectors: {"v(x)": 1.0, "v(y)": 0.9999990000010001, "v(n1)": 3.0, "i(e1)": -0.0009999990000010002} },
+  { code: 'C9y.5', id: 'cur-unchecked-beside-opamps', netlist: "* a + line after .end, beside three op-amp stages modelled as E of 1e5\nV2 x 0 1\nE1 y 0 x y 1e5\nE2 z 0 y z 1e5\nE3 w 0 z w 1e5\nR2 w 0 1k\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n", vectors: {"v(y)": 0.999990000099999, "v(z)": 0.9999800002999961, "v(w)": 0.9999700005999902, "v(n1)": 3.0, "i(e3)": -0.0009999700005999903} },
   { code: 'C9', id: 'cur-noise-bridge', netlist: "* a balanced bridge: no current through R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19 } },
   { code: 'C9b', id: 'cur-noise-everywhere', netlist: "* a 0 V ammeter whose last word is gnd: no current anywhere\nV1 in 0 12\nR1 in a 1k\nR2 a x 2k\nVm x gnd\nR3 a b 3k\nF1 0 b V1 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.999999999999998, "v(x)": 11.999999999999998, "v(gnd)": 11.999999999999998, "v(b)": 11.999999999999995, "i(v1)": -1.734723475976807e-18, "i(vm)": 0, "i(@r1[i])": 1.7763568394002505e-18, "i(@r2[i])": 0, "i(@r3[i])": 1.1842378929335003e-18, "i(@f1[i])": -3.469446951953614e-18 }, prints: ["vm: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'C9c', id: 'cur-abstol', netlist: "* ngspice's tolerances\nV1 a 0 1\nR1 a 0 1k\n.control\nop\noptions\n.endc\n.end\n", prints: ["abstol      (current) = 1e-12", "vntol       (voltage) = 1e-06", "reltol      (current) = 0.001"], fails: true },
@@ -1598,6 +1605,36 @@ describe('after the last pass (13 November 2026)', () => {
       expect(v('i(@q1[is])'), id).toBe(v('i(vs)'));
       expect(Math.abs(v('i(@q1[ie])') + v('i(@q1[ic])') + v('i(@q1[ib])') + v('i(@q1[is])')), id).toBeLessThan(1e-15 * Math.abs(v('i(@q1[ie])')));
       expect(Math.abs(v('i(@q1[ic])') - v('i(vc)')), id).toBeGreaterThan(1e-4 * Math.abs(v('i(vc)')));
+    }
+  });
+
+  it('C9y and C9y.2: a source idle at the netlist\'s value, swept up to it in 0.01 V or 0.1 V steps, ends a few steps of a double short of it, where it carries a real attoamp current: the page draws its exact digits, names the point by ngspice\'s own value, and says why, with no warning; a 0.5 V step lands on 12 V and nothing is said (the critic of round 2: "at V1 = 9 V, V2 carries 32.76 aA")', () => {
+    const d = ofId('cur-sweep-idle-source');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'V2')), why(d, 'imprecise-answers')]).toEqual(['exact', 'no current through V2', undefined]);
+    expect(plain(d.words.sweeps[0]!.text)).toContain('At V1 = 8.999999999999853 V: v(a) = 9 V, v(b) = 6 V, v(c) = 6 V, i(v2) = −32.76 aA,');
+    expect(why(d, 'sweep-point')).toContain('its last point is 8.999999999999853 V, 147.4 fV short of 9 V. There the circuit makes i(v2) −32.76 aA, where at 9 V it makes 0 A.');
+    expect(why(d, 'exact-digits')).toContain('ngspice gave i(v2) -3.295975e-17 A at V1 = 8.999999999999853 V and i(@r3[i]) -3.286260e-17 A at V1 = 8.999999999999853 V.');
+    const twelve = ofId('cur-sweep-idle-source-12');
+    expect([plain(twelve.words.sweeps[0]!.text)?.includes('At V1 = 11.999999999999973 V: v(a) = 12 V, v(c) = 6 V, v(b) = 6 V, i(v2) = −8.882 aA,'), why(twelve, 'imprecise-answers')]).toEqual([true, undefined]);
+    const half = ofId('cur-sweep-idle-source-12-half');
+    expect([plain(half.words.sweeps[0]!.text)?.includes('At V1 = 12 V: v(a) = 12 V, v(c) = 6 V, v(b) = 6 V, i(v2) = 0 A,'), half.words.warnings.length]).toEqual([true, 0]);
+  });
+
+  it('C9y.3 and C9y.4: a point found within the step\'s rounding of the .op\'s 9 V that does not show what the .op shows (V2\'s −32.96 aA, 38.12 fA) is not the .op\'s state: by the rule it keeps ngspice\'s numbers and is named by its own value; past SWEEP_VALUES the note names no point as the .op\'s state', () => {
+    const rule = ofId('cur-sweep-idle-source-rule');
+    expect([roundingNoise(rule.netlist, rule.results).by, plain(currentText(rule, 'V2'))]).toEqual(['rule', 'no current through V2']);
+    expect(plain(rule.words.sweeps[0]!.text)).toContain('At V1 = 8.999999999999853 V: v(a) = 9 V, v(b) = 6 V, v(c) = 6 V, i(v2) = −32.96 aA,');
+    expect(why(rule, 'sweep-point')).toContain('There ngspice gives i(v2) −32.96 aA, where the operating point, at 9 V, shows 0 A.');
+    const big = ofId('cur-sweep-idle-source-large');
+    expect(why(big, 'sweep-not-checked')).not.toContain('operating point');
+    expect(plain(big.words.sweeps[0]!.text)).toContain('At V1 = 8.999999999828448 V: v(a) = 9 V, v(b) = 6 V, v(c) = 6 V, i(v2) = −38.12 fA,');
+  });
+
+  it('C9y.5: S28\'s "+ 3" after .end beside op-amp buffers of 1e6 or three of 1e5, which nothing joins to n1: the note that ngspice\'s numbers could not be checked, never "node n1 is at 2 V, where ngspice gives 3 V"', () => {
+    for (const id of ['cur-unchecked-beside-opamp', 'cur-unchecked-beside-opamps']) {
+      const d = ofId(id);
+      expect([plain(d.words.nodes.find((n) => n.node === 'n1')?.text), why(d, 'imprecise-answers')], id).toEqual(['3 V', undefined]);
+      expect(why(d, 'unchecked-answers'), id).toContain("ngspice's numbers in the operating point do not fit the circuit PlainSpice reads from this netlist");
     }
   });
 });

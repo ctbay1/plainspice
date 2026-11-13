@@ -5961,7 +5961,9 @@ currents shown at a node add up to 0): Vm keeps its real 7.324e−19 A. Node q h
 current of a resistor from it to ground too, its voltage over its resistance, so Rvm's 7.324e−19 A is real, and Vm's
 with it (the only two currents at q). No note calls them maybe noise (one did, "2 currents may be rounding noise",
 beside q's real 732.4 nV). Solved exactly (without the gmin line) they are real too, and the wire's 7.324e−19 A is
-shown exactly (C9n).
+shown exactly (C9n). Since the critic of round 2 of the last pass's fixes, the rule gives the wire that current too: Vm,
+the only other part at node p, carries a current proven real, so by Kirchhoff's law the wire, which ngspice gives as
+exactly 0 A, carries it as well, and a note says why (it was drawn "no current" beside Vm's 7.324e−19 A).
 
 ```spice
 * the C9n ladder read through a 1 uohm wire, a 0 V ammeter and a 1 Tohm meter, with ngspice's own gmin written out
@@ -6011,8 +6013,10 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 ```text
-  words (describe.ts): Rw: no current; Vm measures 7.324e-19 A flowing from node p to node q; Rvm 7.324e-19 A; no
-  note that they may be rounding noise
+  words (describe.ts): Rw: 7.324e-19 A from node n3 to node p, with the note "Rw's current is not 0, though ngspice gave 0:
+  ngspice gave Rw exactly 0 A. But Vm, the only other part at node p, carries 7.324e-19 A, and the currents at a node add
+  up to 0, so Rw carries 7.324e-19 A too. Rw's two ends, node n3 and node p, come out as the same number: …"; Vm
+  measures 7.324e-19 A flowing from node p to node q; Rvm 7.324e-19 A; no note that they may be rounding noise
 ```
 
 Added after the last pass (13 November 2026) (C9w.4; carrier-zero-beside-own-noise): a G of 10⁶ S reads a 1e15 Ω
@@ -6163,8 +6167,11 @@ V1 = 1.125 V, a point the sweep checks, ngspice gives the wire's two ends a step
 that step over 1 nΩ, 433.7 pA, where 340.6 pA flows; at most points (V1 = 1.5 V among them) it gives exactly 0. No
 floor excuses other digits since the last pass, so the sweep is not decided exactly: it is shown as ngspice gives it,
 with a warning, "Solved exactly, with fractions, from the netlist's values, at V1 = 1.125 V, R3 carries 340.6 pA, where
-ngspice gives 433.7 pA. … PlainSpice shows the sweep as ngspice gives it, but at V1 = 1.5 V, the operating point's own
-state, where it shows what the operating point shows, so its numbers may not agree with each other." The .op beside it
+ngspice gives 433.7 pA. … PlainSpice shows the sweep as ngspice gives it, but at ngspice's point nearest the operating
+point's 1.5 V, 1.5000000000000846 V (its 250 µV step added up in doubles), where it shows what the operating point
+shows, so its numbers may not agree with each other." (It said "but at V1 = 1.5 V, the operating point's own state"
+until the critic of round 2 of the last pass's fixes: that point is not the .op's state bit for bit; every value there
+reads as the .op shows it, which is what makes it stand for that state, C9y.) The .op beside it
 is decided on its own, exactly, with R3's 454.1 pA. The sweep's last point is at 1.5000000000000846 V, a few steps of a
 double from the .op's own 1.5 V (ngspice adds its step once a point); since the critic of the last pass's fixes it is
 taken as the .op's state, judged at its own x, and shows R3's exact 454.1 pA with the note, where it showed ngspice's
@@ -6354,9 +6361,12 @@ line, and beside a transistor, each with its .op and ".dc V1 0 9 3". The rule de
 model a .param line or a transistor exactly) and shows R5's −8.882e−19 A as 0 A, "its two ends at the same voltage";
 at V1 = 9 V, the .op's own state, ngspice's sweep gives R5 the very same −8.881784197001253e−19 A, and the sweep's
 words and Plot panel showed it there beside the .op's 0. Now the sweep shows 0 at that point too, with a note: "ngspice
-gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. That is the operating point's own state, where ngspice gives the operating
-point's numbers, and the operating point shows it as 0, as its note says. So PlainSpice shows 0 there too, in these
-words and in the Plot panel; at the other points the sweep is as ngspice gives it." The other points keep ngspice's
+gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. At V1 = 9 V, the operating point's own state, ngspice gives it the very
+number the operating point shows as 0, as the operating point's note says. So PlainSpice shows 0 there too, in these
+words and in the Plot panel; at the other points the sweep is as ngspice gives it." (Since the critic of round 2 of
+the last pass's fixes the note says why each 0 is 0 there, ngspice's very number or the point's own numbers, and no
+longer that ngspice gives "the operating point's numbers" there, which beside a transistor it need not.) The other
+points keep ngspice's
 numbers (at 8.5 V, a step of 0.5 V, R5's −8.882e−19 A stays). Beside the transistor, the .tf of v(a,b) keeps ngspice's
 −5.551e−17 V/V: a slope, which the rule cannot decide.
 
@@ -6587,7 +6597,12 @@ transistor, a .control block), the sweep's point at the .op's own state was foun
 9 bit for bit, so the sweep said "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A" beside the .op's "R5: no current". It is now
 found within what that adding up can leave (a few steps of a double for each point, within a quarter of the step): R5 is
 0 A there too, with the note. On the exact path such a point is judged at its own x, as every other point of a sweep
-the exact solution decides: C9w.7's last point, 1.5000000000000846 V, shows R3's exact 454.1 pA.
+the exact solution decides: C9w.7's last point, 1.5000000000000846 V, shows R3's exact 454.1 pA. Since the critic of
+round 2 of these fixes, such a point stands for the .op's state only where every value it shows reads as the .op shows
+it (here: R5's 0, v(a) and v(b) 4.5 V, …, though only R5's double is the .op's: v(a) is 4.499999999999926 there, not
+4.499999999999999), and the note says what it is: "ngspice's point nearest the operating point's 9 V, 8.999999999999853 V
+(its 10 mV step added up in doubles)", no longer "the operating point's own state, where ngspice gives the operating
+point's numbers" (C9y).
 
 ```spice
 * the balanced bridge of C9 with a .param line, its .op and a sweep of V1 in 0.01 V steps
@@ -6613,7 +6628,8 @@ ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then th
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
   words (describe.ts): "At V1 = 9 V: … i(@r5[i]) = 0 A", with the note "ngspice gave i(@r5[i]) -8.881784e-19 A at
-  V1 = 9 V. That is the operating point's own state, …"
+  V1 = 9 V. At ngspice's point nearest the operating point's 9 V, 8.999999999999853 V (its 10 mV step added up in
+  doubles), ngspice gives it the very number the operating point shows as 0, as the operating point's note says. …"
 ```
 
 Added after the critic of the last pass's fixes (13 November 2026) (C9x.5): beside an .op the rule decides, the .tf of C9's
@@ -6691,6 +6707,164 @@ ngspice 42: the same exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): three plots, the same doubles as ngspice 47
   words (describe.ts), C9o run from such a block: node out: 0 V, H1 and Rl no current, with the note "4 currents are
   shown as 0 A, and node out as 0 V", as without the block
+```
+
+### C9y. After the critic of round 2 of the last pass's fixes: a sweep's point is named by ngspice's own value where a value there reads otherwise than at the value its steps say, near a series' own 0 the page draws the exact digits, and each part of the circuit gets its own allowance in the check that ngspice simulated it
+
+Added after the critic of round 2 of the last pass's fixes (13 November 2026). V2 holds node b at its own 6 V when V1 is
+9 V, so V2 and R3 carry no current there, a source idle at its design point. ngspice adds a sweep's step once a point, in
+doubles, so ".dc V1 0 9 0.01" ends at 8.999999999999853 V, 147.4 fV short of 9 V; there V2 and R3 carry a real
+(9 V − x) / 4.5 kΩ = 32.76 aA, which ngspice gives as 32.96 aA and 32.86 aA: worked out from node b's 6 V, a value that
+small has no 4th digit in ngspice's arithmetic. The page named that point "V1 = 9 V" and warned "at V1 = 9 V, V2 carries
+32.76 aA, where ngspice gives 32.96 aA", false at 9 V, where the circuit makes it 0, as the .op beside it shows ("V2: no
+current"); the whole sweep was then left as ngspice gives it. Now (1) near a series' own 0, within ANSWER_FLOOR of its
+largest size, ngspice's digits are no sign that its answers are off, and the page draws the exact ones, −32.76 aA for
+both, with a note, so the sweep is decided exactly; and (2) a value at that point reads otherwise than at 9 V, so the
+point is named by ngspice's own value, "At V1 = 8.999999999999853 V: …", with a note that says why. A value tiny along
+its whole series, C9h's loop of 2 aA or C9w.7's wire, is held to its own digits as before.
+
+```spice
+* V2 holds node b's own 6 V, so R3 carries nothing when V1 is 9 V
+V1 a 0 9
+R1 a b 3k
+R2 b 0 6k
+V2 c 0 6
+R3 b c 1k
+.options savecurrents
+.op
+.dc V1 0 9 0.01
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; plain -b runs no .dc without a .print line), the .op:
+          @r3[i]                           0.000000e+00
+          v2#branch                        0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: v(v-sweep) = [8.989999999999853, 8.999999999999853], v(b) = [5.9977777777777455, 5.999999999999967], v(c) = [6.0, 6.0], i(v2) = [-2.2222222222541277e-06, -3.2959746043559335e-17], i(@r3[i]) = [-2.222222222254544e-06, -3.286260152890463e-17]; the .op: v(a) = 9.0, v(b) = 6.0, v(c) = 6.0, i(v2) = 0.0, i(@r3[i]) = 0.0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): V2: no current through V2; "At V1 = 8.999999999999853 V: … i(v2) = −32.76 aA, … i(@r3[i]) =
+  −32.76 aA."; the notes "2 results are shown with their exact digits near 0 in the DC sweep: ngspice gave i(v2)
+  -3.295975e-17 A at V1 = 8.999999999999853 V and i(@r3[i]) -3.286260e-17 A at V1 = 8.999999999999853 V. Each is too
+  small beside the larger numbers ngspice works them out from for its arithmetic (about 16 significant digits) to give
+  their digits. …" and "The DC sweep's last point is V1 = 8.999999999999853 V, not 9 V: ngspice adds the step, 10 mV,
+  to V1 once a point, in doubles (about 16 significant digits), so its points drift from the values the steps say: its
+  last point is 8.999999999999853 V, 147.4 fV short of 9 V. There the circuit makes i(v2) −32.76 aA, where at 9 V it
+  makes 0 A. So PlainSpice names that point by ngspice's own value."; no warning
+```
+
+Added after the critic of round 2 of the last pass's fixes (13 November 2026) (C9y.2): the same with V2 idle at 12 V,
+swept in steps of 0.1 V and of 0.5 V. ".dc V1 0 12 0.1" ends at 11.999999999999973 V, where V2 carries the exact
+8.882 aA, which ngspice gives as 8.674 aA; the page draws 8.882 aA at "V1 = 11.999999999999973 V", with no warning (it
+warned "at V1 = 12 V, V2 carries 8.882 aA, where ngspice gives 8.674 aA"). In steps of 0.5 V, which doubles add up
+exactly, the sweep ends at 12 V, where ngspice gives V2 exactly 0, and nothing is said.
+
+```spice
+* V2 delivers no power when V1 is 12 V
+V1 a 0 12
+V2 c 0 6
+R1 a b 1k
+R2 b c 1k
+R3 b 0 1k
+.op
+.dc V1 0 12 0.1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1): "Error: no data saved for D.C. Transfer curve analysis; analysis not run"
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last point, then the .op: v(v-sweep) = 11.999999999999973, v(b) = 5.999999999999991, i(v2) = -8.673617379884035e-18; the .op: v(a) = 12.0, v(b) = 6.0, i(v2) = 0.0
+with ".dc V1 0 12 0.5": the last point v(v-sweep) = 12.0, v(b) = 6.0, i(v2) = 0.0
+ngspice 42: the same exit codes and rawfile values as ngspice 47, both ways
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47, both ways
+  words (describe.ts): "At V1 = 11.999999999999973 V: … i(v2) = −8.882 aA, …"; with a 0.5 V step, "At V1 = 12 V: …
+  i(v2) = 0 A, …" and no note
+```
+
+Added after the critic of round 2 of the last pass's fixes (13 November 2026) (C9y.3): the circuit of C9y with a
+.param line, so that the rule decides. The .op shows V2 and R3 carrying no current, ngspice's own exact 0s. Its sweep's
+point nearest 9 V, 8.999999999999853 V, shows V2's −32.96 aA where the .op shows 0, so it does not stand for the .op's
+state: it keeps ngspice's numbers, unmarked, and is named by its own value, with the note "… There ngspice gives i(v2)
+−32.96 aA, where the operating point, at 9 V, shows 0 A. So PlainSpice names that point by ngspice's own value." (It said
+"At V1 = 9 V: … i(v2) = −32.96 aA" beside the .op's "V2: no current", with nothing said.)
+
+```spice
+* V2 holds node b's own 6 V, so R3 carries nothing when V1 is 9 V; a .param line
+.param rb=6k
+V1 a 0 9
+R1 a b 3k
+R2 b 0 {rb}
+V2 c 0 6
+R3 b c 1k
+.options savecurrents
+.op
+.dc V1 0 9 0.01
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the .op: @r3[i] 0.000000e+00, v2#branch 0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0): the very doubles of C9y (the sweep's last point v(v-sweep) = 8.999999999999853, i(v2) = -3.2959746043559335e-17, i(@r3[i]) = -3.286260152890463e-17; the .op's i(v2) = 0.0, i(@r3[i]) = 0.0)
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+```
+
+Added after the critic of round 2 of the last pass's fixes (13 November 2026) (C9y.4): the circuit of C9y swept in steps
+of 10 µV, 900,001 points of 8 results, more than PlainSpice looks through (SWEEP_VALUES). Its last point is
+8.999999999828448 V, 171.6 pV short of 9 V, where V2 carries a real 38.12 fA. The note for such a sweep said "… except at
+V1 = 9 V, the operating point's own state, where the sweep shows what the operating point shows", beside "i(v2) =
+−38.12 fA" and the .op's "V2: no current". A point found within the step's rounding of the .op's value now stands for its
+state only where every value it shows reads as the .op shows it: this one does not, so the note names no such point,
+and the sweep's words name it by its own value, "At V1 = 8.999999999828448 V: … i(v2) = −38.12 fA".
+
+```spice
+* V2 holds node b's own 6 V, so R3 carries nothing when V1 is 9 V; a sweep too large to look through
+V1 a 0 9
+R1 a b 3k
+R2 b 0 6k
+V2 c 0 6
+R3 b c 1k
+.options savecurrents
+.op
+.dc V1 0 9 0.00001
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the .op: @r3[i] 0.000000e+00, v2#branch 0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's 900001st point, then the .op: v(v-sweep) = 8.999999999828448, v(b) = 5.999999999961877, i(v2) = -3.81231504698043e-14, i(@r3[i]) = -3.812328230878848e-14; the .op: i(v2) = 0.0, i(@r3[i]) = 0.0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+```
+
+Added after the critic of round 2 of the last pass's fixes (13 November 2026) (C9y.5): S28's "+ 3" after .end, which
+makes ngspice's R1 3 Ω (C9x.3), beside an op-amp buffer modelled as an E of 1e6, and beside three such buffers of 1e5.
+The check that ngspice simulated the circuit PlainSpice reads allowed every equation RESIDUAL_SHARE times the product of
+every gain in the circuit, 1e6 or 1e15, which let n1's leftover of a fifth pass as lost digits: "node n1 is at 2 V, where
+ngspice gives 3 V". A controlled source lifts only the leftovers of the part of the circuit it drives (and of the parts
+those drive), and nothing joins the op-amps to n1, so n1's equation keeps its own allowance, and the note says that
+ngspice's numbers could not be checked, as for S28 alone. Within the part an op-amp drives its gain still counts: C9x's
+amplifier of 1e15 keeps its warning beside a separate 1 A source and 2 Ω.
+
+```spice
+* a + line after .end, beside an op-amp buffer modelled as an E of 1e6
+V2 x 0 1
+E1 y 0 x y 1e6
+R2 y 0 1k
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0): n1 3.000000e+00, v2#branch 0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0): v(x) = 1.0, v(y) = 0.9999990000010001, v(n1) = 3.0, i(e1) = -0.0009999990000010002, i(v2) = 0.0
+with three buffers of 1e5 (E1 y 0 x y 1e5, E2 z 0 y z 1e5, E3 w 0 z w 1e5, R2 w 0 1k): v(y) = 0.999990000099999, v(z) = 0.9999800002999961, v(w) = 0.9999700005999902, v(n1) = 3.0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47, both
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47, both
+  words (describe.ts): node n1: 3 V; the note "PlainSpice could not check ngspice's numbers: …"; no warning
 ```
 
 ## 4. Messages
