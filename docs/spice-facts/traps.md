@@ -11785,7 +11785,9 @@ ngspice 47, ngspice -b (exit 1), as for any .tran with no .print line:
     i(@c1[i]) = 0 at every later point
     last point: time = 9.999999999999999e-06, v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@c1[i]) = 0, i(@r2[i]) = 0.004
 ngspice 42, ngspice -b (exit 1): Note: No ".plot", ".print", or ".fourier" lines; no simulations run
-  ngspice -b -r out.raw (exit 0): "Using transient initial conditions", the same 76 points and values
+  ngspice -b -r out.raw (exit 0): "Using transient initial conditions", and the same summary: 76 points, the same
+  first and last points, i(@c1[i]) = 0 at every later point; 2 of its time points differ slightly (9.306e-7 s
+  where 47 has 8.653e-7 s, 9.9e-6 s where 47 has 9.85e-6 s), with the same values
 our engine (wasm), as ngspice -b -r (exit 0): the same 76 points, i(@c1[i]) = -4999.999999999999 at the
   first point and 0 at every later one, v(au) = 8 and i(@r1[i]) = 0.004 throughout
 ```

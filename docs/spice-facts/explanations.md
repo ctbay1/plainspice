@@ -762,7 +762,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                   -1
     No. of Data Rows : 156
   rawfile: time: 156 points from 0 to 0.013000000000000001, largest step 0.0001, v(a) at time 0, 0.001, 0.002, 0.005, 0.006, 0.007, 0.011, 0.012 s: 1, 1, 3, 3, 2, 1, 1, 3
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47; 7 of its 156 time points differ slightly
+  (the first: 0.000928 s where 47 has 0.000914 s), with v(a) on the same pulse at each
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -796,7 +797,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                   -1
     No. of Data Rows : 2008
   rawfile: time: 2008 points from 0 to 0.002, largest step 0.000001, v(a) at time 0, 0.0005, 0.001, 0.00125, 0.0015, 0.00175, 0.002 s: 1, 1, 1.00253337901, 2.99999204116, 0.999999992666, -0.999992041161, 1
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47, and the same rawfile values except one
+  time point near the end (0.00199928 s where 47 has 0.00199914 s)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -830,7 +832,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                   -1
     No. of Data Rows : 1008
   rawfile: time: 1008 points from 0 to 0.001, largest step 0.000001, v(a) at time 0, 0.00025, 0.0005 s: 1, -3.66716992276e-9, -0.999996020581
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47, and the same rawfile values except one
+  time point near the end (0.00099928 s where 47 has 0.00099914 s)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -864,7 +867,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                    0
     No. of Data Rows : 1008
   rawfile: time: 1008 points from 0 to 0.001, largest step 0.000001, v(b) at time 0, 0.00025, 0.00075 s: 0, 0.778797761047, -0.472364719791
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47, and the same rawfile values except one
+  time point near the end (0.00099928 s where 47 has 0.00099914 s)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -940,7 +944,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                    0
     No. of Data Rows : 5008
   rawfile: time: 5008 points from 0 to 0.005, largest step 0.000001, v(a) at time 0, 0.001, 0.002, 0.003, 0.004 s: 0, 0.000201571778641, 0.632120521741, 0.864463131341, 0.318092404872
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47, and the same rawfile values except one
+  time point near the end (0.00499928 s where 47 has 0.00499914 s)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -1767,7 +1772,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                    0
     No. of Data Rows : 73
   rawfile: time: 73 points from 0 to 0.005, largest step 0.0001
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47; 60 of its 73 time points differ, and the
+  values with them; its last point is the same to 7 significant figures (v(out) = 4.966430 V)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
@@ -1804,7 +1810,8 @@ ngspice 47, ngspice -b -r (exit 0):
     v1#branch                                    0
     No. of Data Rows : 2517
   rawfile: time: 2517 points from 0 to 0.005, largest step 0.000002
-ngspice 42: the same output, exit code and rawfile values as ngspice 47
+ngspice 42: the same output, exit code and summary as ngspice 47; 2504 of its 2517 time points differ, and the
+  values with them; its last point is the same to 9 significant figures (v(out) = 4.96629347 V)
 our engine (wasm), as ngspice -b -r (exit 0):
     Initial Transient Solution
     --------------------------
