@@ -2031,8 +2031,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const sheet = sheetRoom ? document.querySelector<HTMLElement>('.phone-bottom > .sheet') : null;
     const body = sheet?.querySelector<HTMLElement>(':scope > .card-body') ?? null;
     let held = sheetHold.current;
-    // Its own rows changed (a check found, a netlist line added): laid out afresh, in the same frame.
-    if (held && (held.room !== sheetRoom || held.sheet !== sheet || held.body !== body || held.rows !== sheetRowsOf(held))) {
+    if (held && (held.room !== sheetRoom || held.sheet !== sheet || held.body !== body)) {
       held.release();
       held = sheetHold.current = undefined;
     }
@@ -2041,7 +2040,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       sheetHold.current = holdSheet(sheetRoom, sheet, body);
       return;
     }
-    if (held.fresh) {
+    // Not drawn yet (the steps above it may still settle), or its own rows changed (a check found, a
+    // netlist line added): laid out afresh, in the same frame, and held from there.
+    if (held.fresh || held.rows !== sheetRowsOf(held)) {
       measureSheet(held);
       return;
     }

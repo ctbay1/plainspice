@@ -1076,13 +1076,16 @@ async function sheetTopsIn(page: Page, step: string): Promise<[number, number]> 
 }
 
 /** Each row that moved on the screen while the log ran, with where it went (none: the rows stayed within a pixel). */
-async function rowsThatMoved(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
+async function rowsThatMoved(page: Page, from?: { step: string; onlyNew?: boolean }): Promise<string[]> {
+  return page.evaluate((from) => {
     const w = window as unknown as { sheetRows: { mark: string; rows: [number, string, number][] }[]; sheetStop?: boolean };
-    w.sheetStop = true;
+    // From a step on (a row the sheet already had then may have moved with its own rows changing in that step).
+    const start = from ? w.sheetRows.findIndex((f) => f.mark === from.step) : 0;
+    const before = new Set(from?.onlyNew ? w.sheetRows.slice(0, start).flatMap((f) => f.rows.map((r) => r[0])) : []);
     const seen = new Map<number, { name: string; tops: string[]; min: number; max: number }>();
-    for (const f of w.sheetRows)
+    for (const f of w.sheetRows.slice(Math.max(0, start)))
       for (const [id, name, top] of f.rows) {
+        if (before.has(id)) continue;
         const r = seen.get(id) ?? { name, tops: [], min: top, max: top };
         if (r.tops.at(-1)?.startsWith(`${Math.round(top)} `) !== true) r.tops.push(`${Math.round(top)} (${f.mark})`);
         r.min = Math.min(r.min, top);
@@ -1090,7 +1093,7 @@ async function rowsThatMoved(page: Page): Promise<string[]> {
         seen.set(id, r);
       }
     return [...seen.values()].filter((r) => r.max - r.min > 1).map((r) => `${r.name}: ${r.tops.join(' → ')}`);
-  });
+  }, from);
 }
 
 test('an open sheet keeps its rows where they are through each run, a new status and an undo (AP-2)', async ({ page }) => {
@@ -1100,11 +1103,14 @@ test('an open sheet keeps its rows where they are through each run, a new status
   // 404–450 when the error was undone): a quick second tap pressed the row below.
   const bar = page.getByRole('navigation', { name: t('barLabel') });
   for (const view of [
-    { width: 863, height: 360, sheet: 'Checks' },
-    { width: 640, height: 400, sheet: 'Checks' },
-    { width: 320, height: 568, sheet: 'More' },
+    { width: 863, height: 360, sheet: 'Checks', text: 'device' },
+    { width: 640, height: 400, sheet: 'Checks', text: 'device' },
+    { width: 320, height: 568, sheet: 'More', text: 'device' },
+    // The largest text: the lines change most as the error comes (an iPhone SE).
+    { width: 320, height: 568, sheet: 'Checks', text: 'x-large' },
   ] as const) {
-    const at = `${view.width} × ${view.height}, ${view.sheet} open`;
+    const at = `${view.width} × ${view.height}${view.text === 'device' ? '' : ' (largest text)'}, ${view.sheet} open`;
+    if (view.text !== 'device') await page.evaluate((size) => localStorage.setItem('plainspice:settings', JSON.stringify({ textSize: size, contrast: 'device', motion: 'device' })), view.text);
     await page.setViewportSize({ width: view.width, height: view.height });
     await openApp(page);
     await expectSolved(page);
@@ -1116,17 +1122,13 @@ test('an open sheet keeps its rows where they are through each run, a new status
     await settle(page);
     await logSheetRows(page);
     // The error: the ground deleted on the drawing with the keys. More keeps its rows where they are;
-    // Checks gets the error's row and its count (its own rows change: it is laid out afresh), so its rows
-    // are followed from the next step.
+    // Checks gets the error's row with the change (its own rows change: it is laid out afresh, before it is
+    // drawn), and from then on, through the run and the lines stepping aside for the error, its rows stay.
     await stepAndRun(page, 'the ground deleted', async () => {
       await partOnDrawing(page, 'Ground').focus();
       await page.keyboard.press('Delete');
     });
     await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
-    if (view.sheet === 'Checks') {
-      await rowsThatMoved(page);
-      await logSheetRows(page);
-    }
     await stepAndRun(page, 'T on R2', async () => {
       await partOnDrawing(page, 'R2').focus();
       await page.keyboard.press('t');
@@ -1146,7 +1148,9 @@ test('an open sheet keeps its rows where they are through each run, a new status
       await stepAndRun(page, 'the error undone', () => page.keyboard.press('Control+z'));
       await expect(statusLine(page)).toHaveAttribute('data-tone', 'ok');
     }
-    expect(await rowsThatMoved(page), `${at}: the sheet's rows that moved`).toEqual([]);
+    const moved = view.sheet === 'More' ? await rowsThatMoved(page) : [...(await rowsThatMoved(page, { step: 'the ground deleted', onlyNew: true })), ...(await rowsThatMoved(page, { step: 'T on R2' }))];
+    await page.evaluate(() => ((window as unknown as { sheetStop: boolean }).sheetStop = true));
+    expect(moved, `${at}: the sheet's rows that moved`).toEqual([]);
     // Start here as it was for the next view (the netlist is saved on this device).
     if (view.sheet === 'Checks') await page.keyboard.press('Control+z');
     await expectSolved(page);
