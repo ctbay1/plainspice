@@ -1,6 +1,6 @@
 /**
  * docs/spice-facts/limits.md, checked in our WebAssembly engine: where ngspice copies a title or a
- * name into a space of fixed size (limit-1 to limit-12), what the engine does past the end of it, and
+ * name into a space of fixed size (limit-1 to limit-19), what the engine does past the end of it, and
  * that the copy PlainSpice runs (src/spice/run-netlist.ts) stays inside: a title cut to 504 bytes gives
  * the numbers of a short title in every analysis, equal to native ngspice 47's (recorded 13 November
  * 2026, `ngspice -b -r`), and every netlist the engine would run past the end is not run at all.

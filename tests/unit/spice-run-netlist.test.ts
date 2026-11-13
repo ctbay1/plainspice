@@ -414,7 +414,7 @@ describe('names ngspice joins (limit-13: blanks out of brackets; limit-14: strin
   });
 });
 
-describe('the names print and write give a formula, and the words of meas (limit-17)', () => {
+describe('the names print, write, asciiplot, fft, psd and spec give a formula, and the words of meas (limit-17)', () => {
   const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
   const control = (line: string): string => `* t\n${BODY.replace('.op', `.control\nop\n${line}\n.endc\n.op`)}`;
 
