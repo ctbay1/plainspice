@@ -13,7 +13,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
-import { describeCircuit } from '../../src/spice/describe.ts';
+import { describeCircuit, explainDiagnostic } from '../../src/spice/describe.ts';
 import { explainLine } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps, nodeReferences } from '../../src/spice/traps.ts';
@@ -388,14 +388,29 @@ describe('words ngspice takes out of an E, F, G or H line before it reads it (C3
     expect(checkTraps(n)).toEqual([]);
   });
 
-  it('Explain shows them as words ngspice takes out or drops', () => {
+  it('Explain shows them as words ngspice takes out or drops, and names a form line as the overview does', () => {
     const n = parseNetlist(`${KINDS}E1 e 0 vcvs out 0 2\nH1 h 0 ccvs Vs 1k\nE2 e2 0 in 0 VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n`);
     const e = explainLine(n, 5)!;
     expect(e.fields.map((f) => `${f.label}: ${f.text}`)).toEqual(['name: E1', '+ node: e', '− node: 0', 'kind: vcvs', 'control + node: out', 'control − node: 0', 'gain: 2']);
     expect(e.fields[3]!.meaning).toBe("vcvs: HSPICE's word for this kind of part, which ngspice takes out");
     expect(explainLine(n, 6)!.fields.map((f) => f.label)).toEqual(['name', '+ node', '− node', 'kind', 'control source', 'volts per amp']);
     const e2 = explainLine(n, 7)!;
+    expect(e2.heading).toBe('E2: a voltage source given by a formula');
     expect(e2.fields.map((f) => `${f.label}: ${f.text}`)).toEqual(['name: E2', '+ node: e2', '− node: 0', 'dropped word: in', 'dropped word: 0', 'formula: VALUE', 'formula: {v(out)*2}']);
+    expect(e2.fields[0]!.meaning).toBe('the first letter, E, makes it a dependent voltage source');
     expect(e2.notes).toContain('ngspice drops the two words before the formula (in 0), so they change nothing: the output is the formula alone.');
+  });
+
+  it("the Numbers panel says PlainSpice's engine can't run a TABLE or a POLY, not that the line starts with an unknown letter", () => {
+    const table = parseNetlist(`* t\n${DIVIDER}E1 e 0 TABLE {v(out)} = (0,0) (5,10)\nRe e 0 1k\n.op\n.end\n`);
+    // What our engine prints for it (model-not-in-engine-8): "unknown device type", on line 5.
+    const t = explainDiagnostic({ severity: 'error', code: 'unknown-device', text: 'unknown device type - error', line: 5 }, table);
+    expect([t.title, t.line]).toEqual(["PlainSpice's engine can't run E1's TABLE", 5]);
+    expect(t.why).toContain('Native ngspice 47 runs it.');
+    const poly = parseNetlist('* t\nV1 in 0 5\nVx in out 0\nR2 out 0 1k\nF1 0 e POLY(1) Vx 0 2\nRe e 0 1k\n.op\n.end\n');
+    // model-not-in-engine-9: our engine's words for it.
+    const text = "Error: XSPICE is required to run the 'poly' option in instance f1 0 e poly(1) vx 0 2";
+    const p = explainDiagnostic({ severity: 'error', code: 'error', text }, poly);
+    expect([p.title, p.line]).toEqual(["PlainSpice's engine can't run F1's POLY", 5]);
   });
 });

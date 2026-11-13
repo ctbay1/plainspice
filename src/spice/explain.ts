@@ -332,6 +332,9 @@ export const EXPLAIN_STRINGS = {
   tablePoint: 'a number of one of the table\'s points',
   currentIn: (source: string): string => `the current in ${source}`,
   droppedWord: 'a word ngspice drops: with a formula, the output is the formula alone',
+  /** The heading's words for E, F, G and H written as a formula, a polynomial or a table, as the overview says them (C3-5). */
+  formWhat: (current: boolean, kind: 'formula' | 'poly' | 'table'): string =>
+    kind === 'formula' ? `${current ? 'current' : 'voltage'} source given by a formula` : `dependent source written as ${kind === 'poly' ? 'a polynomial (POLY)' : 'a table (TABLE)'}`,
   droppedNote: (words: string): string => `ngspice drops the two words before the formula (${words}), so they change nothing: the output is the formula alone.`,
   kindWord: (word: string): string => `${word}: HSPICE's word for this kind of part, which ngspice takes out`,
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
@@ -1497,9 +1500,12 @@ function partFields(p: PartContext): FieldExplanation[] {
       return;
     }
     switch (f.role) {
-      case 'name':
-        rows.push(fieldOf(label, f.token, S.nameMeaning(f.token.text[0] ?? '', partWhat(p.info))));
+      case 'name': {
+        // Given by a formula, a polynomial or a table, the first letter says only what the output is (C3-5).
+        const what = el.form ? `dependent ${el.letter === 'G' || el.letter === 'F' ? 'current' : 'voltage'} source` : partWhat(p.info);
+        rows.push(fieldOf(label, f.token, S.nameMeaning(f.token.text[0] ?? '', what)));
         return;
+      }
       case 'control-source': {
         const c = controlSourceInfo(netlist, f.token);
         addNote(p.notes, c.note);
@@ -1838,7 +1844,7 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
   const info = el.letter ? elementInfo(el.letter) : undefined;
   const p: PartContext = { netlist, line, el, info, notes: [] };
   const fields = partFields(p);
-  const heading = S.partHeading(el.name.text, partWhat(info), info?.code);
+  const heading = el.form ? S.partHeading(el.name.text, S.formWhat(el.letter === 'G' || el.letter === 'F', el.form.kind)) : S.partHeading(el.name.text, partWhat(info), info?.code);
   const [a, b, c, d] = el.nodes;
   const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : paramValue(netlist, el);
   const sentences: string[] = [];

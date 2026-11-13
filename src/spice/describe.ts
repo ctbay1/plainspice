@@ -472,6 +472,12 @@ export const DESCRIBE_STRINGS = {
   underscoresRule: 'writes each letter other than a to z (or A to Z) in a name as underscores',
   bothRules: 'reads the micro sign \u00b5 as u and writes the other letters outside a to z (or A to Z) in a name as underscores',
   unknownDeviceTitle: (c: string): string => `A line starts with ${c}`,
+  xspiceTableTitle: (name: string): string => `PlainSpice's engine can't run ${name}'s TABLE`,
+  xspiceTableWhy: (name: string): string =>
+    `TABLE makes ${name}'s output follow a table of points, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out, so it stops: "unknown device type". Native ngspice 47 runs it.`,
+  xspicePolyTitle: (name: string): string => `PlainSpice's engine can't run ${name}'s POLY`,
+  xspicePolyWhy: (name: string): string =>
+    `POLY makes ${name}'s output a polynomial of its controls, which ngspice builds from an XSPICE block. PlainSpice's engine leaves XSPICE out, so it stops: "XSPICE is required to run the 'poly' option". Native ngspice 47 runs it.`,
   unknownDeviceWhy: (c: string): string =>
     `A part's line starts with the letter that says what it is: R, C, L, V, I, E, F, G, H … This line starts with ${c}, so ngspice stops: "unknown device type".`,
   unknownDeviceGenericTitle: 'ngspice does not know this kind of part',
@@ -4029,6 +4035,9 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       return withLine({ title: S.duplicateTitle(name), why: S.duplicateWhy(earlier) });
     }
     case 'unknown-device': {
+      // A TABLE needs XSPICE's block, which our engine leaves out (model-not-in-engine-8): no unknown letter.
+      const table = d.line === undefined ? undefined : netlist.lines[d.line - 1]?.element;
+      if (table?.form?.kind === 'table') return withLine({ title: S.xspiceTableTitle(table.name.text), why: S.xspiceTableWhy(table.name.text) });
       const c = lineText(netlist, d.line).trimStart()[0];
       return withLine(c ? { title: S.unknownDeviceTitle(c), why: S.unknownDeviceWhy(c) } : { title: S.unknownDeviceGenericTitle, why: S.unknownDeviceGenericWhy }); // M5, M5b
     }
@@ -4163,6 +4172,10 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
       return { title: S.rawfileTitle, why: S.rawfileWhy };
     }
     case 'error': {
+      // POLY needs XSPICE's block, which our engine leaves out (model-not-in-engine-7, -9).
+      const poly = /XSPICE is required to run the 'poly' option in instance (\S+)/i.exec(d.text);
+      const polyLine = poly ? partsOf(netlist).byKey.get(poly[1]!.toLowerCase()) : undefined;
+      if (polyLine?.element) return withLine({ title: S.xspicePolyTitle(polyLine.element.name.text), why: S.xspicePolyWhy(polyLine.element.name.text) }, polyLine.number);
       const file = /Could not find (?:include|library) file\s+(\S+)/i.exec(d.text);
       if (file) return withLine({ title: S.includeTitle(file[1]!), why: S.includeWhy }, d.line ?? dotLine(netlist, '.include') ?? dotLine(netlist, '.lib')); // A26, A33
       return withLine({ title: S.errorTitle, why: S.saysWhy(d.text) });
