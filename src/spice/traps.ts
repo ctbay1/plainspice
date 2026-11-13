@@ -1644,16 +1644,6 @@ function checkSignInValue(c: Ctx, i: number): void {
 const SUFFIX = /^(meg|mil|[tgkmunpfa\u00b5])?(ohms?|\u03a9|volts?|v|amps?|a|f|h|hz|s)?$/i;
 
 /**
- * Values a voltage or a current source can only report, which the parser's tables leave out (they cover R, C, L
- * and E to H): written as a setting, they stop ngspice 47 with 'no such parameter on this device or parameter is
- * missing' (42: 'no such parameter on this device'), not 'unknown parameter': V's i and p, I's v and p, from
- * native runs (recorded beside space-before-suffix-12 and unknown-word-6; the skeptic of the last pass's F10).
- */
-const SOURCE_REPORTS: Partial<Record<ElementLetter, ReadonlySet<string>>> = { V: new Set(['i', 'p']), I: new Set(['v', 'p']) };
-const reportsOnly = (letter: ElementLetter | undefined, word: string): boolean =>
-  isReportOnlyParameter(letter, word) || (letter !== undefined && (SOURCE_REPORTS[letter]?.has(lowerAscii(word)) ?? false));
-
-/**
  * What ngspice does with "1 k" and the like, by part and word. Some words are names of the part's
  * own settings: m is the multiplier of R, C, L, I, G and F, so "1 m" runs with a multiplier of 0;
  * p (and v on an inductor) can only be read back, not set [space-before-suffix-1 ... -14].
@@ -1673,8 +1663,10 @@ function suffixVerdict(letter: ElementLetter, word: string, name: string): strin
     if (letter === 'L') return `ngspice takes m as ${name}'s multiplier, given no value, and says nothing; a .tran then stops: 'Timestep too small'. [space-before-suffix-9]`;
     if (letter === 'G' || letter === 'F') return `PlainSpice's engine takes m as ${name}'s multiplier, given no value, and says nothing: ${name} then gives no current. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops: 'MIF-ERROR ... Bad real value'. [space-before-suffix-11]`;
   }
-  if ((w === 'p' && 'RCL'.includes(letter)) || (w === 'v' && letter === 'L') || ((letter === 'V' || letter === 'I') && reportsOnly(letter, w))) {
-    return `ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'), as ${w} is a value ngspice can report for the part, not one you can set. [space-before-suffix-12]`;
+  // p on R, C, L, V and I, v on L and I, volt on L: values the part can only report (the parser's tables; V's and I's
+  // since the last pass's F10), each version's words (space-before-suffix-12, -19, -20; round-1 critic C4, C7).
+  if ('RCLVI'.includes(letter) && isReportOnlyParameter(letter, w)) {
+    return `ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'), as ${w} is a value ngspice can report for the part, not one you can set. [space-before-suffix-${letter === 'R' ? 12 : letter === 'V' || letter === 'I' ? 20 : 19}]`;
   }
   if ('EFGH'.includes(letter)) {
     // p, v (and i) name values E, F, G and H can only report: a different message (space-before-suffix-15).
@@ -1840,7 +1832,7 @@ function checkUnknownWord(c: Ctx, i: number): void {
   const prev = e.fields[k - 1];
   const glued = prev !== undefined && prev.token.to === f.token.from && /^[+-]/.test(word);
   const number = readNumber(word) !== undefined;
-  const report = reportsOnly(e.letter, word);
+  const report = isReportOnlyParameter(e.letter, word);
   // m= on an E or an H line (F and G take m, their multiplier): ngspice stops at it, natively too, with no
   // polynomial; another name=value there is read as part of a polynomial (unknown-word-40, -41; re-check critic CR2-8).
   const next = e.fields[k + 1];
@@ -1848,14 +1840,17 @@ function checkUnknownWord(c: Ctx, i: number): void {
   const why = glued
     ? `A + or ${MINUS} right after a digit or a letter starts a new word in SPICE, so ${prev.token.text}${word} is read as ${prev.token.text} and then ${word}, a word ${name} can't use. For an exponent, write e: 1e-3.`
     : report
-      ? `${word} is a value SPICE can report for ${kind} (such as its current or its power), not one a netlist can set, so SPICE stops there.`
+      ? `${word} is a value SPICE can report for ${kind} (such as its ${e.letter === 'I' ? 'voltage' : 'current'} or its power), not one a netlist can set, so SPICE stops there.`
       : number
         ? `${efgh ? "PlainSpice's engine" : 'SPICE'} reads ${word} as one number too many for ${name}, so it stops there.`
         : `SPICE reads the words after a part's value as its settings, written name=value${multiplier ? '' : ' (like m=2)'}, and ${word} is not a setting of ${kind}, so it stops there. To add a note at the end of a line, start it with a semicolon: ; like this.`;
   // ngspice quotes the word as it spells it: each byte of a letter outside ASCII is _ (unknown-word-12, W16).
   const message = report ? 'no such parameter on this device or parameter is missing' : `unknown parameter (${ngspiceSpelling(word)})`;
   const spelled = ngspiceSpelling(word) !== lowerAscii(word) ? ', unknown-word-12' : '';
-  const claims = report ? 'unknown-word-6' : glued ? 'unknown-word-9' : number ? 'unknown-word-8' : `unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7${spelled}`;
+  // A value the part can only report: a resistor's i and p (unknown-word-6), its sens_dc and the like, a capacitor's or an
+  // inductor's (unknown-word-56), a source's (unknown-word-57; round-1 critic C7).
+  const reportClaim = e.letter === 'V' || e.letter === 'I' ? 'unknown-word-57' : e.letter === 'R' && /^[ip]$/i.test(word) ? 'unknown-word-6' : 'unknown-word-56';
+  const claims = report ? reportClaim : glued ? 'unknown-word-9' : number ? 'unknown-word-8' : `unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7${spelled}`;
   const ngspice = multiplier
     ? `ngspice stops: '${message}'. Native ngspice 47 and 42 stop there too: they read no polynomial here. [unknown-word-${e.letter === 'E' ? 40 : 41}]`
     : efgh

@@ -532,10 +532,12 @@ export function partParameter(letter: ElementLetter | undefined, word: string): 
 }
 
 /**
- * True when `word` names a value an R, C, L, E, F, G or H part can only report (i, p, flux ...):
- * ngspice stops when a line sets it ("no such parameter on this device", space-before-suffix-12).
+ * True when `word` names a value a part can only report (i, p, flux ...): ngspice stops when a line sets it
+ * ("no such parameter on this device", space-before-suffix-12, -19, -20). R, C, L and E to H from their tables
+ * above; V and I from theirs (sourceParams), so the checks and Explain say the same (round-1 critic C4).
  */
 export function isReportOnlyParameter(letter: ElementLetter | undefined, word: string): boolean {
+  if (letter === 'V' || letter === 'I') return (letter === 'V' ? V_PARAMS : I_PARAMS).get(lowerAscii(word))?.reportOnly === true;
   return partParameter(letter, word) === 'report-only';
 }
 
@@ -556,6 +558,10 @@ function sourceParams(letter: 'V' | 'I'): ReadonlyMap<string, ParamSpec> {
     m.set('c', { kind: 'real', role: 'value' });
     m.set('m', { kind: 'real', role: 'parameter' });
   }
+  // The values a source can only report that a line may hold by mistake (V's i and p, I's v and p, as 1 p for 1 pA):
+  // ngspice stops there with "no such parameter on this device" (space-before-suffix-20, unknown-word-57), not
+  // "unknown parameter". Its other report-only names (pos_node, acreal ...) are not listed.
+  for (const k of letter === 'V' ? ['i', 'p'] : ['v', 'p']) m.set(k, { kind: 'flag', role: 'other', reportOnly: true });
   return m;
 }
 

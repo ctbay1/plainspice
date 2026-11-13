@@ -27,22 +27,37 @@ const vector = (r: RunResult, name: string): number[] | undefined => {
   return undefined;
 };
 
-describe('space-before-suffix-12 and unknown-word-6: a value a capacitor or an inductor can only report stops ngspice 47 with its longer message', () => {
-  // Native 47: "no such parameter on this device or parameter is missing"; native 42: "no such parameter on this device" (exit 1 in both).
+describe('a value the part can only report stops ngspice 47 with its longer message, and ngspice 42 with its shorter one (space-before-suffix-19, -20, unknown-word-56, -57; round-1 critic C7)', () => {
+  // The netlists of those records (docs/spice-facts/traps.md), run in native 47 and 42 (`-b` and `-b -r`): 47 prints
+  // "no such parameter on this device or parameter is missing", 42 "no such parameter on this device" (exit 1 in both).
+  // V's v and I's i are no such value: "unknown parameter" in both, as the checks say.
+  const NO_SUCH = "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')";
   it.each([
-    ['C1 out 0 1 p', 'space-before-suffix'],
-    ['L1 out 0 1 v', 'space-before-suffix'],
-    ['C1 out 0 1u i', 'unknown-word'],
-    ['L1 out 0 1m flux', 'unknown-word'],
-    ['R1 out 0 1k sens_dc', 'unknown-word'],
-  ])('%s', async (line, id) => {
-    const netlist = `* t\nV1 in 0 1\nR9 in out 1k\n${line}\n.op\n.end\n`;
+    ['space-before-suffix-19', '* a space before p on a capacitor: p is its power, which it can only report\nV1 in 0 1\nR9 in out 1k\nC1 out 0 1 p\n.op\n.end\n', 'space-before-suffix', `${NO_SUCH}, as p is a value ngspice can report for the part, not one you can set. [space-before-suffix-19]`],
+    ['space-before-suffix-19', '* a space before v on an inductor: v is its voltage, which it can only report\nV1 in 0 1\nR9 in out 1k\nL1 out 0 1 v\n.op\n.end\n', 'space-before-suffix', `${NO_SUCH}, as v is a value ngspice can report for the part, not one you can set. [space-before-suffix-19]`],
+    ['space-before-suffix-19', '* a space before volt on an inductor: volt is its voltage too\nV1 in 0 1\nR9 in out 1k\nL1 out 0 1 volt\n.op\n.end\n', 'space-before-suffix', `${NO_SUCH}, as volt is a value ngspice can report for the part, not one you can set. [space-before-suffix-19]`],
+    ['space-before-suffix-20', '* a space before p on a voltage source: p is its power, which it can only report\nV1 a 0 dc 5 p\nR1 a 0 1k\n.op\n.end\n', 'space-before-suffix', `${NO_SUCH}, as p is a value ngspice can report for the part, not one you can set. [space-before-suffix-20]`],
+    ['space-before-suffix-20', '* a space before p on a current source: 1 p meant as 1 pA\nI1 0 a 1 p\nR1 a 0 1k\n.op\n.end\n', 'space-before-suffix', `${NO_SUCH}, as p is a value ngspice can report for the part, not one you can set. [space-before-suffix-20]`],
+    ['space-before-suffix-20', '* a space before v on a current source: v is its voltage, which it can only report\nI1 0 a 1 v\nR1 a 0 1k\n.op\n.end\n', 'space-before-suffix', `${NO_SUCH}, as v is a value ngspice can report for the part, not one you can set. [space-before-suffix-20]`],
+    ['space-before-suffix-20', '* a space before v on a voltage source, which reports no v\nV1 a 0 5 v\nR1 a 0 1k\n.op\n.end\n', 'space-before-suffix', "ngspice stops: 'unknown parameter (v)'. [space-before-suffix-2, space-before-suffix-3, space-before-suffix-4, space-before-suffix-5]"],
+    ['unknown-word-56', '* the current of a capacitor, written after its value\nV1 in 0 1\nR9 in out 1k\nC1 out 0 1u i\n.op\n.end\n', 'unknown-word', `${NO_SUCH}. [unknown-word-56]`],
+    ['unknown-word-56', '* the flux of an inductor, written after its value\nV1 in 0 1\nR9 in out 1k\nL1 out 0 1m flux\n.op\n.end\n', 'unknown-word', `${NO_SUCH}. [unknown-word-56]`],
+    ['unknown-word-56', '* the dc sensitivity of a resistor, written after its value\nV1 in 0 1\nR9 in out 1k\nR1 out 0 1k sens_dc\n.op\n.end\n', 'unknown-word', `${NO_SUCH}. [unknown-word-56]`],
+    ['unknown-word-57', '* the current of a voltage source, written after its value\nV1 a 0 5 i\nR1 a 0 1k\n.op\n.end\n', 'unknown-word', `${NO_SUCH}. [unknown-word-57]`],
+    ['unknown-word-57', '* the voltage of a current source, written after its AC value\nI1 0 a 1 ac 1 v\nR1 a 0 1k\n.op\n.end\n', 'unknown-word', `${NO_SUCH}. [unknown-word-57]`],
+    ['unknown-word-57', '* a current source reports no i\nI1 0 a 1 i\nR1 a 0 1k\n.op\n.end\n', 'unknown-word', "ngspice stops: 'unknown parameter (i)'. [unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7]"],
+  ])('%s: %s', async (_, netlist, id, says) => {
     const run = await engine.run(netlist);
     expect(run.ok).toBe(false);
-    expect(`${run.stdout}\n${run.stderr}`).toContain('no such parameter on this device or parameter is missing');
+    const message = says.startsWith(NO_SUCH) ? 'no such parameter on this device or parameter is missing' : /'(unknown parameter \([a-z]+\))'/.exec(says)![1]!;
+    expect(`${run.stdout}\n${run.stderr}`).toContain(message);
     const traps = checkTraps(parseNetlist(netlist));
     expect(traps.map((t) => t.id)).toEqual([id]);
-    expect(traps[0]!.ngspice).toContain("ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')");
+    expect(traps[0]!.ngspice).toBe(says);
+    for (const fix of traps[0]!.fixes) {
+      const fixed = await engine.run(applyFix(netlist, fix));
+      expect([fixed.ok, fixed.unreliable], fix.label).toEqual([true, false]);
+    }
   });
 });
 
@@ -58,26 +73,6 @@ describe('a results file with its header only: where native ngspice 47 and 42 ex
     expect(run.exitCode).toBe(0);
     expect(run.ok).toBe(false);
     expect(run.diagnostics.map((d) => [d.code, d.text])).toEqual([['rawfile', expect.stringContaining('header without a Binary: or Values: section')]]);
-  });
-});
-
-describe('a value a voltage or current source can only report stops ngspice with "no such parameter", not "unknown parameter" (space-before-suffix-12, unknown-word-6)', () => {
-  // Native 47: "no such parameter on this device or parameter is missing"; 42: "no such parameter on this device" (exit 1).
-  // V's v and I's i are no such value: "unknown parameter" in both, as the checks say.
-  it.each([
-    ['V1 n2 0 dc 5 p', 'space-before-suffix', 'no such parameter on this device or parameter is missing'],
-    ['I2 0 n1 1 p', 'space-before-suffix', 'no such parameter on this device or parameter is missing'],
-    ['I2 0 n1 1 v', 'space-before-suffix', 'no such parameter on this device or parameter is missing'],
-    ['V1 n2 0 5 i', 'unknown-word', 'no such parameter on this device or parameter is missing'],
-    ['V1 n2 0 5 v', 'space-before-suffix', 'unknown parameter (v)'],
-    ['I2 0 n1 1 i', 'unknown-word', 'unknown parameter (i)'],
-  ])('%s', async (line, id, message) => {
-    const netlist = `* t\nR1 n1 0 1k\nR2 n2 0 1k\n${line}\n.op\n.end\n`;
-    const run = await engine.run(netlist);
-    expect(run.ok).toBe(false);
-    expect(`${run.stdout}\n${run.stderr}`).toContain(message);
-    const t = checkTraps(parseNetlist(netlist)).find((x) => x.id === id)!;
-    expect(t.ngspice).toContain(`'${message}'`);
   });
 });
 

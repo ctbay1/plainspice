@@ -4,7 +4,8 @@
  * the way every other sentence on the page does (src/spice/node-words.ts; F6). Each case failed on c520a49.
  */
 import { describe, expect, it } from 'vitest';
-import { parseNetlist } from '../../src/spice/parse.ts';
+import { EXPLAIN_STRINGS, explainNetlist } from '../../src/spice/explain.ts';
+import { isReportOnlyParameter, parseNetlist, partParameter } from '../../src/spice/parse.ts';
 import { checkTraps } from '../../src/spice/traps.ts';
 import type { Trap } from '../../src/spice/types.ts';
 
@@ -55,6 +56,34 @@ describe('F10: a message only ngspice 47 prints is said as ngspice 47’s, with 
     // V's v and I's i are no such value: ngspice says "unknown parameter" (native 47 and 42).
     expect(first(net('V1 n2 0 5 v'), 'space-before-suffix').ngspice).toMatch(/^ngspice stops: 'unknown parameter \(v\)'/);
     expect(first(net('I2 0 n1 1 i'), 'unknown-word').ngspice).toMatch(/^ngspice stops: 'unknown parameter \(i\)'/);
+  });
+
+  it('the checks and Explain read one table for a source: V’s i and p, I’s v and p are values it can only report (round-1 critic C4)', () => {
+    expect(['i', 'p', 'v', 'P'].map((w) => isReportOnlyParameter('V', w))).toEqual([true, true, false, true]);
+    expect(['v', 'p', 'i', 'V'].map((w) => isReportOnlyParameter('I', w))).toEqual([true, true, false, true]);
+    // The editor's table of R, C, L and E to H settings is as it was: none for V and I.
+    expect([partParameter('V', 'i'), partParameter('I', 'v')]).toEqual([undefined, undefined]);
+    // Explain says what the Checks panel says of these words, on the same page (native 47 and 42: unknown-word-57, space-before-suffix-20).
+    const rows = explainNetlist(parseNetlist('* t\nR1 n1 0 1k\nR2 n2 0 1k\nV1 n2 0 5 i\nI2 0 n1 1 p\nI3 0 n1 1 ac 1 v\nV4 n2 0 5 v\nI5 0 n1 1 i\n.op\n.end\n'));
+    const extra = (line: number): string | undefined => rows.find((r) => r.line === line)?.fields.find((f) => f.label === 'extra word')?.meaning;
+    expect([4, 5, 6].map(extra)).toEqual([EXPLAIN_STRINGS.reportOnlyWord, EXPLAIN_STRINGS.reportOnlyWord, EXPLAIN_STRINGS.reportOnlyWord]);
+    expect(EXPLAIN_STRINGS.reportOnlyWord).toContain('ngspice stops ("no such parameter on this device")');
+    expect([7, 8].map(extra)).toEqual([EXPLAIN_STRINGS.unknownWord, EXPLAIN_STRINGS.unknownWord]);
+  });
+
+  it('a current source’s report-only word: "such as its voltage or its power", as its current is what its line sets (round-1 critic C5)', () => {
+    const net = (line: string): string => `* t\n${line}\nR1 a 0 1k\n.op\n.end\n`;
+    for (const line of ['I1 0 a 1 ac 1 v', 'I1 0 a 1 v=1', 'I1 0 a 1 p=1']) {
+      expect(first(net(line), 'unknown-word').why, line).toMatch(/^[vp] is a value SPICE can report for a current source \(such as its voltage or its power\), not one a netlist can set, so SPICE stops there\.$/);
+    }
+    expect(first(net('V1 a 0 5 i'), 'unknown-word').why).toBe('i is a value SPICE can report for a voltage source (such as its current or its power), not one a netlist can set, so SPICE stops there.');
+    expect(first('* t\nV1 in 0 1\nR9 in out 1k\nL1 out 0 1m flux\n.op\n.end\n', 'unknown-word').why).toContain('for an inductor (such as its current or its power)');
+  });
+
+  it('volt on an inductor is a value it can only report, as v is: each version’s words, never "unknown parameter (volt)" (space-before-suffix-19)', () => {
+    expect(first('* t\nV1 in 0 1\nR9 in out 1k\nL1 out 0 1 volt\n.op\n.end\n', 'space-before-suffix').ngspice).toBe(
+      "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'), as volt is a value ngspice can report for the part, not one you can set. [space-before-suffix-19]",
+    );
   });
 
   it('a B line without V= or I=: 47’s "mal formed B source instance", 42’s "mal formed B line" (fatal-syntax-7)', () => {
