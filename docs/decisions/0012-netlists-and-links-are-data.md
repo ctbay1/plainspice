@@ -750,7 +750,13 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   "ngspice" and cites only unknown-dot-command-1. The fallback ngspice takes when its DC solution
   fails is quoted as it prints it, "Note: Transient op started", where five texts quoted a
   lower-case 'transient op'. A unit test (`tests/unit/traps-last-pass-words.test.ts`) checks, on the
-  parts that reach these texts, that none of these 47-only messages is put to plain "ngspice".
+  parts that reach these texts, that none of these 47-only messages is put to plain "ngspice". The
+  skeptic of the problem found the same message misquoted on sources: `V1 n2 0 dc 5 p`, `V1 n2 0 5 i`,
+  `I2 0 n1 1 p` and `I2 0 n1 1 v` got "unknown parameter (p)", where native 47 and 42 say "no such
+  parameter on this device…", as V's i and p and I's v and p are values the source can only report;
+  the checks now say so (`SOURCE_REPORTS` in `src/spice/traps.ts`: the parser's tables, which the
+  editor's highlighting shares, are left as they are), from runs recorded beside space-before-suffix-12
+  and unknown-word-6.
 - **A resistance below 1e-12 Ω that is not 0** (last pass F4). The words for a 0 (C1, CR1-1 above)
   covered a value of exactly 0 only: on `R1 n1 0 3a` the unit-letter card said "ngspice reads 3a as 3
   attoohms and says nothing", where native ngspice 47 warns "Value of resistor r1 is too small, set to

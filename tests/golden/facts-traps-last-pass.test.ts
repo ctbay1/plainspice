@@ -51,3 +51,23 @@ describe('a results file with its header only: where native ngspice 47 and 42 ex
     expect(run.diagnostics.map((d) => [d.code, d.text])).toEqual([['rawfile', expect.stringContaining('header without a Binary: or Values: section')]]);
   });
 });
+
+describe('a value a voltage or current source can only report stops ngspice with "no such parameter", not "unknown parameter" (space-before-suffix-12, unknown-word-6)', () => {
+  // Native 47: "no such parameter on this device or parameter is missing"; 42: "no such parameter on this device" (exit 1).
+  // V's v and I's i are no such value: "unknown parameter" in both, as the checks say.
+  it.each([
+    ['V1 n2 0 dc 5 p', 'space-before-suffix', 'no such parameter on this device or parameter is missing'],
+    ['I2 0 n1 1 p', 'space-before-suffix', 'no such parameter on this device or parameter is missing'],
+    ['I2 0 n1 1 v', 'space-before-suffix', 'no such parameter on this device or parameter is missing'],
+    ['V1 n2 0 5 i', 'unknown-word', 'no such parameter on this device or parameter is missing'],
+    ['V1 n2 0 5 v', 'space-before-suffix', 'unknown parameter (v)'],
+    ['I2 0 n1 1 i', 'unknown-word', 'unknown parameter (i)'],
+  ])('%s', async (line, id, message) => {
+    const netlist = `* t\nR1 n1 0 1k\nR2 n2 0 1k\n${line}\n.op\n.end\n`;
+    const run = await engine.run(netlist);
+    expect(run.ok).toBe(false);
+    expect(`${run.stdout}\n${run.stderr}`).toContain(message);
+    const t = checkTraps(parseNetlist(netlist)).find((x) => x.id === id)!;
+    expect(t.ngspice).toContain(`'${message}'`);
+  });
+});

@@ -44,6 +44,19 @@ describe('F10: a message only ngspice 47 prints is said as ngspice 47’s, with 
     }
   });
 
+  it('a voltage or current source with a value it can only report: the same two messages, never "unknown parameter" (the skeptic of F10)', () => {
+    const net = (line: string): string => `* t\nR1 n1 0 1k\nR2 n2 0 1k\n${line}\n.op\n.end\n`;
+    for (const [line, id] of [['V1 n2 0 dc 5 p', 'space-before-suffix'], ['I2 0 n1 1 p', 'space-before-suffix'], ['I2 0 n1 1 v', 'space-before-suffix'], ['V1 n2 0 5 i', 'unknown-word']] as const) {
+      const t = first(net(line), id);
+      expect(t.ngspice, line).toContain("ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')");
+      expect(t.ngspice, line).not.toContain('unknown parameter');
+    }
+    expect(first(net('V1 n2 0 5 i'), 'unknown-word').why).toBe('i is a value SPICE can report for a voltage source (such as its current or its power), not one a netlist can set, so SPICE stops there.');
+    // V's v and I's i are no such value: ngspice says "unknown parameter" (native 47 and 42).
+    expect(first(net('V1 n2 0 5 v'), 'space-before-suffix').ngspice).toMatch(/^ngspice stops: 'unknown parameter \(v\)'/);
+    expect(first(net('I2 0 n1 1 i'), 'unknown-word').ngspice).toMatch(/^ngspice stops: 'unknown parameter \(i\)'/);
+  });
+
   it('a B line without V= or I=: 47’s "mal formed B source instance", 42’s "mal formed B line" (fatal-syntax-7)', () => {
     expect(first('* a B line without V= or I=\nV1 a 0 1\nR1 a 0 1\nB1 b 0 5\nR2 b 0 1\n.op\n.end\n', 'fatal-syntax').ngspice).toBe(
       "ngspice 47 stops with a fatal error: 'mal formed B source instance' (ngspice 42: 'mal formed B line'). [fatal-syntax-7]",

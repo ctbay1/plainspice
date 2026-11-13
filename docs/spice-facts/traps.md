@@ -1268,7 +1268,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `space-before-suffix`.
 
-After the last pass (13 November 2026), with V1 in 0 1 and R9 in out 1k: `C1 out 0 1 p` and `L1 out 0 1 v` (v is another value an inductor can only report) give the same two messages, native 47's "no such parameter on this device or parameter is missing" and native 42's "no such parameter on this device" (exit 1 in both), so the check says each version's words.
+After the last pass (13 November 2026), with V1 in 0 1 and R9 in out 1k: `C1 out 0 1 p` and `L1 out 0 1 v` (v is another value an inductor can only report) give the same two messages, native 47's "no such parameter on this device or parameter is missing" and native 42's "no such parameter on this device" (exit 1 in both), so the check says each version's words. So do a voltage and a current source with a value they can only report (V's p and i, I's v and p), with R1 n1 0 1k and R2 n2 0 1k: `V1 n2 0 dc 5 p`, `I2 0 n1 1 p` and `I2 0 n1 1 v`, where the check quoted "unknown parameter" until then; `V1 n2 0 5 v` gives "unknown parameter (v)" in both versions, which the check says.
 
 ### space-before-suffix-13. G1 0 b a 0 2 k
 
@@ -9030,7 +9030,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `unknown-word`.
 
-After the last pass (13 November 2026), with V1 in 0 1 and R9 in out 1k: `C1 out 0 1u i`, `L1 out 0 1m flux` and `R1 out 0 1k sens_dc` give the same two messages, native 47's "no such parameter on this device or parameter is missing" and native 42's "no such parameter on this device" (exit 1 in both; on the resistor after "can't find model 'sens_dc'"), so the check says each version's words.
+After the last pass (13 November 2026), with V1 in 0 1 and R9 in out 1k: `C1 out 0 1u i`, `L1 out 0 1m flux` and `R1 out 0 1k sens_dc` give the same two messages, native 47's "no such parameter on this device or parameter is missing" and native 42's "no such parameter on this device" (exit 1 in both; on the resistor after "can't find model 'sens_dc'"), so the check says each version's words. So does `V1 n2 0 5 i` (with R1 n1 0 1k and R2 n2 0 1k): i is a value a voltage source can only report, where the check quoted "unknown parameter (i)" until then; `I2 0 n1 1 i` gives "unknown parameter (i)" in both versions, as a current source reports no i.
 
 ### unknown-word-7. The same after an inductor value
 
