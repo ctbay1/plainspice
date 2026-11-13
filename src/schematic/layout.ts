@@ -1017,8 +1017,8 @@ interface PlaceRoom {
   copper: Map<string, Point[]>;
   /** True when a pin of another node than `node` is at the point. */
   otherPin: (at: Point, node: string) => boolean;
-  /** The wires of every node but `node`, indexed. */
-  foreignWires: (node: string) => SegmentIndex;
+  /** True when a wire of another node than `node` (or of none) passes through or ends at the point. */
+  foreignWireAt: (at: Point, node: string) => boolean;
   taken: Buckets;
   bounds: Box;
   /** Nothing drawn yet. */
@@ -1030,15 +1030,11 @@ interface PlaceRoom {
 /** What a scene of the drawing gives placing a part (as placeParts has always looked at it). */
 function roomOf(scene: Scene): PlaceRoom {
   const copper = copperPoints(scene);
-  const foreignIndex = new Map<string, SegmentIndex>();
-  const foreignWires = (node: string): SegmentIndex => {
-    let idx = foreignIndex.get(node);
-    if (!idx) {
-      idx = new SegmentIndex(scene.wires.filter((w) => w.node !== node).map((w) => w.points));
-      foreignIndex.set(node, idx);
-    }
-    return idx;
-  };
+  // One index of every wire, asked for the wires of other nodes at a point, not one index of the other
+  // nodes' wires for each node (60 nodes each indexed every slanted point of the drawing again:
+  // the second re-check's critic).
+  const wires = new SegmentIndex(scene.wires.map((w) => w.points));
+  const foreignWireAt = (at: Point, node: string): boolean => wires.at(at).some((t) => scene.wires[t.wire]!.node !== node);
   const pinAt = new Map<number | string, string>();
   for (const p of scene.parts) for (const pin of p.pins) pinAt.set(pointId(pin.at), pin.node);
   for (const gr of scene.grounds) pinAt.set(pointId(gr.at), GROUND);
@@ -1052,7 +1048,7 @@ function roomOf(scene: Scene): PlaceRoom {
     const there = pinAt.get(pointId(at));
     return there !== undefined && there !== node;
   };
-  return { copper, otherPin, foreignWires, taken, bounds: scene.bounds, empty: scene.parts.length === 0 && scene.grounds.length === 0, boxesOf };
+  return { copper, otherPin, foreignWireAt, taken, bounds: scene.bounds, empty: scene.parts.length === 0 && scene.grounds.length === 0, boxesOf };
 }
 
 /**
@@ -1063,7 +1059,7 @@ function roomOf(scene: Scene): PlaceRoom {
 function placeOne(drawing: Drawing, part: CircuitPart, room: PlaceRoom, options: LayoutOptions): { at: Point; rot: Rotation }[] {
   const results = options.results ?? true;
   const measure = options.measure ?? defaultMeasure;
-  const { copper, otherPin, foreignWires, taken } = room;
+  const { copper, otherPin, foreignWireAt, taken } = room;
   const [a, b] = part.nodes;
   const groundPin = a === GROUND && b !== GROUND ? 0 : b === GROUND && a !== GROUND ? 1 : -1;
   const rots: Rotation[] =
@@ -1102,11 +1098,11 @@ function placeOne(drawing: Drawing, part: CircuitPart, room: PlaceRoom, options:
         for (let i = 0; i < local.pins.length && !bad; i++) {
           const pin = pt(at.x + local.pins[i]!.x, at.y + local.pins[i]!.y);
           const node = part.nodes[i]!;
-          if (otherPin(pin, node) || foreignWires(node).at(pin).length > 0) bad = true;
+          if (otherPin(pin, node) || foreignWireAt(pin, node)) bad = true;
           // Room to wire the pin: the grid point just outside it is free.
           const v = DIRECTION_VECTORS[local.outward[i]!];
           const exit = pt(pin.x + v.x, pin.y + v.y);
-          if (otherPin(exit, node) || foreignWires(node).at(exit).length > 0 || taken.contains(exit)) bad = true;
+          if (otherPin(exit, node) || foreignWireAt(exit, node) || taken.contains(exit)) bad = true;
           // A wire starts just outside the pin, along its lead: measure from there.
           const d = distance(node, exit);
           if (d !== undefined) cost += 1 + (node === GROUND && local.outward[i] === 'down' ? Math.min(d, LOCAL_GROUND) : d);

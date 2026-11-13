@@ -16,9 +16,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { applyEdit, buildSchematic, buildScene, findOverlaps, schematicConnectivity, type Schematic } from '../../src/schematic/index.ts';
-import { partsAtOnePoint, partsInGroups, piled, slantedLattice } from './schematic-hostile.ts';
+import { longSlantedFar, partsAtOnePoint, partsInGroups, piled, slantedLattice } from './schematic-hostile.ts';
 
-const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0 }));
+const work = vi.hoisted(() => ({ scenes: 0, checks: 0, geometries: 0, prunes: 0, indexed: 0 }));
 
 vi.mock('../../src/schematic/geometry.ts', async (importOriginal) => {
   const g = await importOriginal<typeof import('../../src/schematic/geometry.ts')>();
@@ -57,6 +57,18 @@ vi.mock('../../src/schematic/drawing.ts', async (importOriginal) => {
   };
 });
 
+vi.mock('../../src/schematic/connectivity.ts', async (importOriginal) => {
+  const m = await importOriginal<typeof import('../../src/schematic/connectivity.ts')>();
+  // Every index of the wires counts the pieces it files (connectivity.ts, SegmentIndex).
+  class CountedIndex extends m.SegmentIndex {
+    constructor(wires: ConstructorParameters<typeof m.SegmentIndex>[0]) {
+      super(wires);
+      work.indexed += this.segments.length;
+    }
+  }
+  return { ...m, SegmentIndex: CountedIndex };
+});
+
 vi.mock('../../src/schematic/wires.ts', async (importOriginal) => {
   const m = await importOriginal<typeof import('../../src/schematic/wires.ts')>();
   return {
@@ -73,11 +85,12 @@ afterEach(() => {
 });
 
 /** What a piece of work counts (see the top of the file), from zero. */
-function counted<T>(f: () => T): { result: T; scenes: number; checks: number; geometries: number; prunes: number } {
+function counted<T>(f: () => T): { result: T; scenes: number; checks: number; geometries: number; prunes: number; indexed: number } {
   work.scenes = 0;
   work.checks = 0;
   work.geometries = 0;
   work.prunes = 0;
+  work.indexed = 0;
   const result = f();
   return { result, ...work };
 }
@@ -103,6 +116,21 @@ describe('parts piled on one point move from one scene (second re-check, P3)', (
       const b = s.scene.bounds;
       expect(Math.max(b.x1 - b.x0, b.y1 - b.y0)).toBeLessThan(90);
     }
+  });
+
+  it('the room the parts are placed in indexes the wires once, not once for each node', { timeout: 60_000 }, () => {
+    // Placing a part asks whether another node's wire is at its pins: the room made one index of the
+    // other nodes' wires for each node, so with 159 long slanted pieces far away, each of the 59 nodes
+    // indexed all of them again (the second re-check's critic). One index of every wire now answers for
+    // every node. Counted: the pieces of wire every index of the build files, and the pieces drawn.
+    const lines = longSlantedFar();
+    const alone = counted(() => build(partsAtOnePoint(60)));
+    const built = counted(() => build(partsAtOnePoint(60, lines)));
+    expect(moved(built.result)).toBe(59);
+    // The far pieces are filed a few times over before the repairs drop them (the scene, the room, the
+    // repairs' islands): 477 more pieces filed than without them; one index for each node filed 9,858
+    // more.
+    expect(built.indexed - alone.indexed).toBeLessThan(20 * lines.length);
   });
 
   it('a place for a part is tried without making a symbol for each place tried', { timeout: 60_000 }, () => {
