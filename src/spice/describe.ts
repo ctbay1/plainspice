@@ -677,6 +677,18 @@ export const DESCRIBE_STRINGS = {
   /** `shows`: for one value, what it is ("R3 carries 454.1 pA") and its value; for several, the list of their exact values. */
   lostWhy: (gave: string, reason: string, shows: string, value: string | undefined): string =>
     `ngspice gave ${gave}. ${reason} Solved exactly, with fractions, from the netlist's values, ${value !== undefined ? `${shows}, so PlainSpice shows ${value}` : `none of them is 0, so PlainSpice shows each as the exact solution gives it: ${shows}`}.`,
+  // By the rule for other circuits, a current ngspice gave as exactly 0 that Kirchhoff's law gives back (C9w.3).
+  /** `node` as `said` gives it; `others`: the other parts at that node; `value`: what they add up to, the current's size. */
+  lostKcl: (name: string, node: string, others: readonly string[], value: string): string =>
+    others.length === 1
+      ? `But ${others[0]}, the only other part at ${nodeIn(node)}, carries ${value}, and the currents at a node add up to 0, so ${name} carries ${value} too.`
+      : `But the other currents at ${nodeIn(node)}, of ${listWords(others)}, add up to ${value} without ${name}'s, and the currents at a node add up to 0, so ${name} carries ${value}.`,
+  lostKclAny: 'But at one node of each, every other current is real and they do not add up to 0 without it, and the currents at a node add up to 0, so each carries what they leave.',
+  /** A resistor whose two ends ngspice gave as the same number: why its current came out as 0. */
+  lostKclEnds: (name: string, across: string, at: string, a: string, b: string): string =>
+    `${name}'s two ends, ${nodeIn(a)} and ${nodeIn(b)}, come out as the same number: the ${across} across it is too small beside the ${at} there for ngspice's arithmetic (about 16 significant digits).`,
+  lostKclWhy: (gave: string, reason: string, ends: string, shows: string, one: boolean): string =>
+    `ngspice gave ${gave}. ${reason}${ends ? ` ${ends}` : ''} So PlainSpice shows ${one ? 'it' : 'each'} as Kirchhoff's law gives it: ${shows}.`,
   // Where ngspice's answers are farther from the exact ones than the page's digits (opCheck 'imprecise'):
   // PlainSpice shows ngspice's numbers and says that they are off, and by how much.
   offTitle: 'Some of ngspice\'s answers here are off',
@@ -1091,11 +1103,12 @@ export interface RoundingNoise {
    */
   levels: Map<string, number>;
   /**
-   * Parts, by key, whose current ngspice gave as exactly 0 though the circuit makes it real (by the
-   * exact solution only): the exact current, which PlainSpice shows instead (decision 0015; C9n), and
-   * for a resistor the exact voltage across it, which ngspice's two equal end voltages do not show.
+   * Parts, by key, whose current ngspice gave as exactly 0 though the circuit makes it real: the exact current, which
+   * PlainSpice shows instead (decision 0015; C9n), and for a resistor the exact voltage across it, which ngspice's two
+   * equal end voltages do not show. By the rule for other circuits, only where Kirchhoff's law gives it back at `node`:
+   * every other current there (`others`, by key) proven real, and those not adding up to 0 (C9w.3).
    */
-  lostCurrents: Map<string, { value: number; across?: number }>;
+  lostCurrents: Map<string, { value: number; across?: number; node?: string; others?: string[] }>;
   /** Nodes whose voltage ngspice gave as exactly 0 though the circuit makes it real: the exact voltage. */
   lostNodes: Map<string, number>;
   /**
@@ -3507,6 +3520,42 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
       if (el.letter === 'R' && amp && Number.isFinite(amp)) markSure(el);
     }
   }
+
+  // ---- 6. A real current ngspice gives as exactly 0, given back by Kirchhoff's law. A resistor's or a G's current is a
+  // difference of two node voltages, which ngspice can give as one double, so its 0 can hide a real current (C9n). Where
+  // every other current at one of its nodes is proven real and those do not add up to 0, it carries what they leave, and
+  // the page shows that, as it shows the exact solution's lost values (lostCurrents; the note says why): C9w.3's 1 µΩ wire
+  // Rw, its two ends one double, alone in series with Vm's proven 7.324e-19 A at node p, was drawn "no current" beside it
+  // (the critic of round 2). Each value filled in can complete the next node of a chain.
+  const filled = new Map<string, number>();
+  const fill = (node: string): void => {
+    if (!counted(node)) return;
+    let gap: Element | undefined;
+    let sum = 0;
+    let largest = 0;
+    for (const el of at.get(node)!) {
+      const amp = filled.get(el.key) ?? amps.get(el.key) ?? 0;
+      if (amp === 0 && !filled.has(el.key) && differenceOf(el.key) && !sure.has(el.key)) {
+        if (gap) return;
+        gap = el;
+        continue;
+      }
+      if (!sure.has(el.key) || out.currents.has(el.key)) return;
+      sum += node === ends.get(el.key)![0] ? amp : -amp;
+      largest = Math.max(largest, Math.abs(amp));
+    }
+    if (!gap || !clearlyNot0(sum, largest)) return;
+    // What leaves the node through the gap makes the currents leaving it add up to 0; a part's current flows from its first node.
+    const [first, second] = ends.get(gap.key)!;
+    const value = node === first ? -sum : sum;
+    filled.set(gap.key, value);
+    sure.add(gap.key);
+    const ohms = gap.letter === 'R' ? gap.value?.number?.value : undefined;
+    const others = at.get(node)!.filter((el) => el !== gap).map((el) => el.key);
+    out.lostCurrents.set(gap.key, ohms !== undefined && Number.isFinite(ohms) ? { value, across: value * ohms, node, others } : { value, node, others });
+    fill(node === first ? second : first);
+  };
+  for (const node of at.keys()) fill(node);
   const unproven = { currents: new Set<string>(), nodes: new Set<string>() };
   for (const el of parts) {
     const amp = amps.get(el.key);
@@ -4162,6 +4211,21 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
   const gave = one
     ? currents.length ? S.lostGaveCurrent(currents[0]!.name) : S.lostGaveVoltage(said(nodes[0]!.name))
     : `exactly 0 for ${cappedList(items((name) => name))}`;
+  // By the rule, a current Kirchhoff's law gives back at one of its nodes (C9w.3): what the other currents there add up to.
+  const noise = noiseOf(netlist, results);
+  if (noise.by === 'rule') {
+    const kcl = currents.map((c) => ({ c, why: noise.lostCurrents.get(c.element)! }));
+    const first = kcl[0]!;
+    const partName = (key: string): string => partsOf(netlist).byKey.get(key)?.element?.name.text ?? key;
+    const reason = one
+      ? S.lostKcl(first.c.name, said(shownNode(netlist, first.why.node!)), (first.why.others ?? []).map(partName), formatSI(Math.abs(first.c.value), 'A'))
+      : S.lostKclAny;
+    const ends = one ? kclEnds(netlist, results, first.c) : '';
+    const shows = cappedList(items((name, v, unit) => S.lostShows(name, formatSI(unit === 'A' ? Math.abs(v) : v, unit))));
+    const m: MessageWords = { code: 'rounded-to-0', severity: 'note', title: S.lostTitle(currents.map((c) => c.name), []), why: S.lostKclWhy(gave, reason, ends, shows, one) };
+    if (one && currents[0]!.line !== undefined) m.line = currents[0]!.line;
+    return m;
+  }
   let reason = S.lostAny(one);
   const el = one && currents.length ? partsOf(netlist).byKey.get(currents[0]!.element)?.element : undefined;
   const [p, n] = el?.nodes ?? [];
@@ -4189,6 +4253,17 @@ function lostNote(netlist: Netlist, results: AnalysisResults, words: SummaryInpu
   };
   if (one && currents.length && currents[0]!.line !== undefined) note.line = currents[0]!.line;
   return note;
+}
+
+/** For a resistor Kirchhoff's law gives a current back (C9w.3) whose two ends ngspice gave as one number: why its current came out as 0. */
+function kclEnds(netlist: Netlist, results: AnalysisResults, c: CurrentWords): string {
+  const el = partsOf(netlist).byKey.get(c.element)?.element;
+  const [p, n] = el?.nodes ?? [];
+  if (!p || !n || el?.letter !== 'R' || c.across === undefined) return '';
+  const volts = voltages(netlist, results);
+  const [va, vb] = [volts.get(nodeName(p)), volts.get(nodeName(n))];
+  if (va === undefined || va !== vb) return '';
+  return S.lostKclEnds(c.name, formatSI(Math.abs(c.across), 'V'), formatSI(va, 'V'), said(shownNode(netlist, nodeName(p))), said(shownNode(netlist, nodeName(n))));
 }
 
 /**
