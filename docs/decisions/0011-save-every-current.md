@@ -112,6 +112,27 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   netlist, and the same after a `.end` with a comment glued on, show both currents with no note and no
   `.op` note in Explain; S28, the B source above and the line after a line starting with `@` show the note
   in its new words and Explain's "does not add".
+- **The student's `.options` line is read as ngspice reads every line** (the round-2 critic of these fixes,
+  CR2-1). `readsSaveCurrents` cut every comment by the rule for lines outside a `.control` block and
+  joined only lines that start with `+`. So with `.options \\` and then `savecurrents` after `.end`, or
+  `.options temp=27 $savecurrents` in a `.control` block, the output panel said the currents were missing
+  beside both of them in the Numbers panel; and with `.options temp=27$ savecurrents` in a `.control` block
+  (no current saved) nothing said why. It now reads the lines as inp_read, inp_stripcomments_deck and
+  inp_stitch_continuation_lines do (fact A2e, sixteen netlists, native 47 and 42, and our engine):
+  - after a line that ends in two backslashes, the next line is a `+` line, whatever it is, past blank
+    lines and the `.hdl` and `.biaschk` lines ngspice 47 drops; not after a line starting with `*` or
+    `$`, nor after a `.title` or `.end` line; the backslashes count inside a comment, and on the title;
+  - from a `.control` line to the line before `.endc`, a `$` starts a comment only before a blank; and on
+    every line when the `.control` lines and the `.endc` lines (the title's too) are not as many.
+  Of the 86 netlists with native runs from this pass on disk, the note and Explain's "does not add" now
+  come exactly where native 47 saved no part's own current, but for four, all as before: three keep R1's
+  current with `.save @r1[i]` (the note holds, as I1's is missing), and in one the title starts with
+  `.hdl`, which ngspice 47 drops, so its line 2 becomes the title, while PlainSpice reads line 2 as the
+  student's `.options savecurrents` and so adds no line and says nothing (left open: which line is the
+  title is the parser's, and such a title is no student's). Tests: `tests/unit/spice-run-netlist.test.ts`
+  (twelve netlists with no note, five with it) and `tests/golden/facts-explain.test.ts` (A2e's rows in the
+  check that the note and Explain's "does not add" come exactly where our engine's run has no part's own
+  current); both fail on 0104ec1, and each of 18 changes to the new reading makes both fail.
 - **Still open, for after the release** (left as they are, as what runs does not change now):
   - The parser does not join a `+` line after `.end` to the line it continues (it stops reading at `.end`),
     so the drawing, the overview, R1's card ("SPICE reads it as 2 Ω") and Explain call R1 2 Ω where ngspice
