@@ -3625,7 +3625,10 @@ function seriesSpeech(netlist: Netlist, s: SweepSeries): string {
   const inner = device?.[1] ?? /^@([^[\]]+)\[/.exec(m[2]!)?.[1] ?? m[2]!;
   const el = partsOf(netlist).byKey.get(netlistPart(netlist, inner))?.element;
   const name = el?.name.text ?? inner;
-  const terminal = device && el?.letter ? S.terminals[el.letter]?.[lowerAscii(device[2]!)] : undefined;
+  // A part inside a subcircuit has no line of its own: ngspice names it by its letter, then its instance's path,
+  // "q.x1.q1", "m.x2.x3.m1", so its letter is the name's first.
+  const letter = el?.letter ?? /^([a-z])\.x/i.exec(inner)?.[1]?.toUpperCase();
+  const terminal = device && letter ? S.terminals[letter]?.[lowerAscii(device[2]!)] : undefined;
   return terminal ? S.terminalCurrent(name, terminal) : S.currentIn(name);
 }
 
