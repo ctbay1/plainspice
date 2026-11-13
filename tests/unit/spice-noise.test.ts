@@ -1161,3 +1161,29 @@ describe('after the critic of round 3 of the re-check\'s fixes: circuits at rest
     }
   }, 120_000);
 });
+
+describe('after the critic of round 4 of the re-check\'s fixes', () => {
+  const notes = (w: ResultsInWords): string[] => w.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why ?? ''));
+  const series = (r: Awaited<ReturnType<typeof solveText>>, name: string): number[] => Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === name)!.values);
+
+  it('a sweep of a current source into a diode is decided exactly: each point\'s diode currents come from the source at that point, not at its netlist value, so a diode\'s I-V curve from 0 A shows 0 at rest in the .op and at I1 = 0 (it drew ngspice\'s 7.3e-32 A with an arrow)', async () => {
+    const r = await solveText('* t\nI1 0 a 0\nD1 a 0 dmod\nR1 a 0 1k\n.model dmod d\n.op\n.dc I1 0 1m 0.25m\n.end\n', ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
+    expect([node(r.words, 'a'), current(r.words, 'R1'), current(r.words, 'I1')]).toEqual(['0 V', 'no current through R1', 'no current through I1']);
+    expect(r.words.nodes.find((n) => n.node === 'a')!.noise).toBe(7.323378444748195e-29);
+    expect(notes(r.words)[0]).toContain('(D1 has 0 V across it, so it carries no current)');
+    expect(notes(r.words)[1]).toContain('ngspice gave v(a) 7.323378e-29 V at I1 = 0 A');
+    expect(series(r, 'v(a)')[0]).toBe(0);
+    expect(series(r, 'v(a)')[4]).toBe(r.results.dc!.series.find((s) => s.name === 'v(a)')!.values[4]);
+  });
+
+  it('the bridge of C9o fed by a current source swept from 0 to 50 µA, read by an H of 1 GΩ, with a diode from ground to top: out is 0 V, and H1 and Rl carry 0 A with no power, in the .op and at every point (they were drawn as 444.1 pA, with 197.2 aW)', async () => {
+    const r = await solveText('* t\nI1 0 top 50u\nR1 top a 180k\nR2 a 0 3.9meg\nR3 top b 18k\nR4 b 0 390k\nR5 a m 4.7\nVm m b 0\nH1 out 0 Vm 1g\nRl out 0 1k\nD1 0 top dmod\n.model dmod d\n.op\n.dc I1 0 50u 10u\n.end\n', ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
+    const h1 = r.words.currents.find((c) => c.name === 'H1')!;
+    expect([node(r.words, 'out'), current(r.words, 'H1'), current(r.words, 'Rl'), h1.power]).toEqual(['0 V', 'no current through H1', 'no current through Rl', undefined]);
+    expect(h1.noise).toBe(4.440892098500626e-10);
+    expect(series(r, 'v(out)')).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(series(r, 'i(h1)')).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+});

@@ -1042,10 +1042,13 @@ function signedSum(terms: readonly Dyadic[], limit: bigint): Fraction | undefine
  * loop of diodes) carries 0: its current adds nothing at a node that the tree's cannot, and only what the
  * diodes add at each node reaches the rest of the circuit. ngspice's own diode currents are not used: it
  * reports the current of its last iteration, which can be 1e-4 of it away (a diode with a 10 Ω series
- * resistance). Undefined when a value is missing, a sum's denominator passes MAX_BITS, or `budget` has
- * less left than a check counts (`checkWork`, taken from it).
+ * resistance). `level` gives each current source's value in that solution: a swept one is at the sweep's
+ * point, not at its netlist value (a diode fed by a current source swept from 0 was given the netlist's 1 mA
+ * at every point, so no point but that one was decided, the critic of round 4). Undefined when a value is
+ * missing, a sum's denominator passes MAX_BITS, or `budget` has less left than a check counts (`checkWork`,
+ * taken from it).
  */
-export function treeCurrents(model: ExactModel, tree: readonly number[], ng: NgspiceValues, budget: Budget = newBudget()): Map<number, Fraction> | undefined {
+export function treeCurrents(model: ExactModel, tree: readonly number[], ng: NgspiceValues, budget: Budget = newBudget(), level: (p: ExactPart) => Fraction = (p) => p.value): Map<number, Fraction> | undefined {
   // Counted as one check of ngspice's values (its terms are a check's), before it starts.
   const work = checkWork(model);
   if (work > budget.left) {
@@ -1085,7 +1088,7 @@ export function treeCurrents(model: ExactModel, tree: readonly number[], ng: Ngs
       const g: Fraction = { n: p.value.d, d: p.value.n };
       t = [times(v(p.a), g), negD(times(v(p.b), g))];
       off = (ulp(vd(p.a)) + ulp(vd(p.b))) / Math.abs(toDouble(p.value));
-    } else if (p.kind === 'I') t = [dyadicOf(p.value)];
+    } else if (p.kind === 'I') t = [dyadicOf(level(p))];
     else if (p.kind === 'G') {
       t = [times(v(p.c), p.value), negD(times(v(p.d), p.value))];
       off = Math.abs(toDouble(p.value)) * (ulp(vd(p.c)) + ulp(vd(p.d)));

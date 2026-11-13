@@ -1470,7 +1470,7 @@ function diodeStructure(ex: Exact, zero0: (t: number) => boolean, key0: (t: numb
  * equal diodes to ground got 4.622080e-13 A from their own node and 4.622093e-13 A from ground's law, a sum of
  * milliamps. A circuit that settles unevenly, as a latch does, gives currents that differ by far more.
  */
-function even(ex: Exact, shape: DiodeStructure, currents: ReadonlyMap<number, Fraction>, ng: NgspiceValues): boolean {
+function even(ex: Exact, shape: DiodeStructure, currents: ReadonlyMap<number, Fraction>, ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value): boolean {
   const { tree } = ex.diodes!;
   if (shape.classes.every((c) => c.length === 1)) return true;
   // The sizes of the terms of Kirchhoff's law at each node and at ground (index nodes.length), from ngspice's values.
@@ -1487,7 +1487,7 @@ function even(ex: Exact, shape: DiodeStructure, currents: ReadonlyMap<number, Fr
     if (p.kind === 'R') add(p, (v(p.a) + v(p.b)) / gain);
     else if (p.kind === 'G') add(p, gain * (v(p.c) + v(p.d)));
     else if (p.kind === 'F') add(p, gain * Math.abs(ng.branch(model.parts[p.control]!.key) ?? 0));
-    else if (p.kind === 'I') add(p, gain);
+    else if (p.kind === 'I') add(p, Math.abs(toDouble(level(p))));
     else if (p.kind === 'D') add(p, Math.abs(toDouble(currents.get(model.parts.indexOf(p)) ?? ZERO)));
     else if (p.branch >= 0) add(p, Math.abs(ng.branch(p.key) ?? 0));
   }
@@ -2114,10 +2114,12 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       const unknowns: Fraction[] = a.map((ai, i) => ({ n: ai * x.d + b[i]! * x.n, d: den * x.d }));
       let view: View = { x: unknowns, all: [unknowns], level: (p) => (p === swept ? x : p.value) };
       if (ex.diodes) {
-        const currents = treeCurrents(model, tree, ng, budget);
+        // A swept current source is at this point's value, not its netlist one (the critic of round 4).
+        const level = (p: ExactPart): Fraction => (p === swept ? x : p.value);
+        const currents = treeCurrents(model, tree, ng, budget, level);
         if (!currents) return undefined;
         if (!quietAgrees(tree.filter((_, t) => shape.quiet[t]), currents)) return undefined;
-        if (alike && !even(ex, shape, currents, ng)) return undefined;
+        if (alike && !even(ex, shape, currents, ng, level)) return undefined;
         const slopes = c.map((cj) => cj.map((v) => (v === 0n ? ZERO : { n: v * x.d, d: den * x.d })));
         const withDiodes = viewOf(ex, unknowns, slopes, shape, currents);
         view = { ...withDiodes, level: (p) => (p === swept ? x : withDiodes.level(p)) };
