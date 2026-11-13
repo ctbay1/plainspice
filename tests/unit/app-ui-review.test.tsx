@@ -167,8 +167,8 @@ describe('a fix on a video’s mistake example (kept F1)', () => {
     expect(tab('Checks').textContent).toBe('Checks1 found');
     fireEvent.click(tab('Checks'));
     const region = screen.getByRole('region', { name: 'Checks' });
-    fireEvent.click(within(region).getByRole('button', { name: 'Make n3 the ground (rename it to 0)' }));
-    await waitFor(() => expect(polite()).toContain('Done: Make n3 the ground (rename it to 0). No traps found.'));
+    fireEvent.click(within(region).getByRole('button', { name: 'Make node n3 the ground (rename it to 0)' }));
+    await waitFor(() => expect(polite()).toContain('Done: Make node n3 the ground (rename it to 0). No traps found.'));
     await waitFor(() => expect(tab('Checks').textContent).toBe('Checks'));
     expect(within(screen.getByRole('region', { name: 'Checks' })).getByText(t('checksNone'))).toBeTruthy();
     await waitFor(() => expect(localStorage.getItem('plainspice:netlist')).toContain('R2 n2 0 4'));

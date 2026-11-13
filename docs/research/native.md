@@ -514,7 +514,7 @@ Not different: every number string of 3.7 (except the resistor clamp), all sign 
    `A`/`F` suffixes on sources, resistors and capacitors (atto/femto), Greek `μ` (ignored), `2k2`-style values (2000 in
    default mode), a comma inside a value, a first line that looks like an element (title trap), current sources in series
    or into a node with no other element, nodes named `ground`/`00`, `.tf` output nodes that do not exist, lines starting
-   with `@`, empty `.dc` ranges (sign of step), and 0 ohm resistors (42 changes the answer in the 4th digit).
+   with `@`, empty `.dc` ranges (sign of step), and 0 ohm resistors (in T14a, 42 changed the answer in the 4th digit).
 5. **Engine robustness**: pre-validate B lines and balanced quotes/braces (fatal errors kill the engine instance).
    Feed netlists with a title line and an explicit `.end` and no blank first line, so that file mode and `ngSpice_Circ`
    behave the same.

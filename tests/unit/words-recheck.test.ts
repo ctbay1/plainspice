@@ -547,35 +547,35 @@ describe('critic of the fix: the floating-node and dangling-node checks name a n
   it('floating-dc: a hidden character named, ÇIKIŞ as written, a name like ground quoted; ngspice\'s warning as it prints it (M2d)', () => {
     // Native ngspice 47 and 42 (M2d): "singular matrix: check node ou___t", "__iki__", "ground".
     const zw = trap(`* t\nV1 in 0 5\nC1 in ou${ZW}t 1u\nC2 ou${ZW}t 0 1u\n.op\n.end\n`, 'floating-dc');
-    expect(zw.title).toBe('out (written with a zero-width space in it) has no DC path to ground');
+    expect(zw.title).toBe('Node out (written with a zero-width space in it) has no DC path to ground');
     expect(zw.ngspice).toContain("ngspice warns 'singular matrix: check node ou___t'");
-    expect(zw.fixes.map((f) => f.label)).toEqual(['Add a 1 GΩ resistor from out (written with a zero-width space in it) to ground']);
+    expect(zw.fixes.map((f) => f.label)).toEqual(['Add a 1 GΩ resistor from node out (written with a zero-width space in it) to ground']);
     expect(words(zw).filter((w) => INVISIBLE.test(w))).toEqual([]);
     const tr = trap('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', 'floating-dc');
-    expect([tr.title, tr.fixes[0]!.label]).toEqual(['ÇIKIŞ has no DC path to ground', 'Add a 1 GΩ resistor from ÇIKIŞ to ground']);
+    expect([tr.title, tr.fixes[0]!.label]).toEqual(['Node ÇIKIŞ has no DC path to ground', 'Add a 1 GΩ resistor from node ÇIKIŞ to ground']);
     expect(tr.ngspice).toContain("ngspice warns 'singular matrix: check node __iki__'");
     expect(applyFix('* t\nV1 GİRİŞ 0 5\nC1 GİRİŞ ÇIKIŞ 1u\nC2 ÇIKIŞ 0 1u\n.op\n.end\n', tr.fixes[0]!)).toContain('Rdc1 ÇIKIŞ 0 1g');
     expect(words(tr).filter((w) => /ÇikiŞ|gİrİŞ/.test(w))).toEqual([]);
     const ground = trap('* t\nV1 in 0 5\nC1 in ground 1u\nC2 ground 0 1u\n.op\n.end\n', 'floating-dc');
-    expect([ground.title, ground.fixes[0]!.label]).toEqual(['"ground" has no DC path to ground', 'Add a 1 GΩ resistor from "ground" to ground']);
+    expect([ground.title, ground.fixes[0]!.label]).toEqual(['Node "ground" has no DC path to ground', 'Add a 1 GΩ resistor from node "ground" to ground']);
     // A name in plain ASCII keeps its key, as before (W6).
-    expect(trap('* t\nV1 in 0 5\nC1 in OUT 1u\nC2 OUT 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('out has no DC path to ground');
+    expect(trap('* t\nV1 in 0 5\nC1 in OUT 1u\nC2 OUT 0 1u\n.op\n.end\n', 'floating-dc').title).toBe('Node out has no DC path to ground');
     // A current source into such a node says it so too.
-    expect(trap('* t\nI1 0 ÇIKIŞ 1m\nC1 ÇIKIŞ 0 1u\n.op\n.end\n', 'current-source-no-path').why).toContain('Here ÇIKIŞ has no DC path back to ground');
+    expect(trap('* t\nI1 0 ÇIKIŞ 1m\nC1 ÇIKIŞ 0 1u\n.op\n.end\n', 'current-source-no-path').why).toContain('Here node ÇIKIŞ has no DC path back to ground');
   });
 
-  it('dangling-node: "Did you mean ÇIKIŞ?" and "Rename ÇIKIŞS to ÇIKIŞ", never the key\'s ÇikiŞ; "ground" quoted', () => {
+  it('dangling-node: "Did you mean node ÇIKIŞ?" and "Rename node ÇIKIŞS to ÇIKIŞ", never the key\'s ÇikiŞ; "ground" quoted', () => {
     const TR = '* t\nV1 GİRİŞ 0 12\nR1 GİRİŞ ÇIKIŞ 1k\nR2 ÇIKIŞ 0 2k\nR3 ÇIKIŞS 0 1k\n.op\n.end\n';
     const tr = trap(TR, 'dangling-node');
-    expect(tr.why).toContain('Did you mean ÇIKIŞ?');
-    expect(tr.fixes.map((f) => f.label)).toEqual(['Rename ÇIKIŞS to ÇIKIŞ']);
+    expect(tr.why).toContain('Node ÇIKIŞS appears only here, so no current flows in R3. Did you mean node ÇIKIŞ?');
+    expect(tr.fixes.map((f) => f.label)).toEqual(['Rename node ÇIKIŞS to ÇIKIŞ']);
     expect(applyFix(TR, tr.fixes[0]!)).toContain('R3 ÇIKIŞ 0 1k');
     const g = trap('* t\nV1 in 0 5\nR1 in ground 1k\nR2 ground 0 1k\nR3 groundd 0 1k\n.op\n.end\n', 'dangling-node');
-    expect([g.why.replace(/^.*(Did you mean)/, '$1'), g.fixes[0]!.label]).toEqual(['Did you mean "ground"?', 'Rename groundd to "ground"']);
-    expect(trap('* t\nV1 in 0 5\nR1 in 0 1k\nR2 ground 0 1k\n.op\n.end\n', 'dangling-node').title).toBe('Only R2 touches "ground"');
-    // As written in plain ASCII, as before: "Only R3 touches OUTT", "Did you mean out?".
+    expect([g.why.replace(/^.*(Did you mean)/, '$1'), g.fixes[0]!.label]).toEqual(['Did you mean node "ground"?', 'Rename node groundd to "ground"']);
+    expect(trap('* t\nV1 in 0 5\nR1 in 0 1k\nR2 ground 0 1k\n.op\n.end\n', 'dangling-node').title).toBe('Only R2 touches node "ground"');
+    // As written in plain ASCII, as before: "Only R3 touches node OUTT", "Did you mean node out?".
     const caps = trap('* t\nV1 IN 0 5\nR1 IN OUT 1k\nR2 OUT 0 1k\nR3 OUTT 0 1k\n.op\n.end\n', 'dangling-node');
-    expect([caps.title, caps.fixes[0]!.label]).toEqual(['Only R3 touches OUTT', 'Rename OUTT to out']);
+    expect([caps.title, caps.fixes[0]!.label]).toEqual(['Only R3 touches node OUTT', 'Rename node OUTT to out']);
   });
 });
 
@@ -680,13 +680,13 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
     // node g__r____"; a and b, two groups: "check node a" only (floating-dc-8); c and d apart: "check node d" (-10).
     const S3 = '* t\nV1 in 0 5\nC1 in node1 1u\nR1 node1 x 1k\nC2 x 0 1u\n.op\n.end\n';
     const [s3] = traps(S3, 'floating-dc');
-    expect(s3!.title).toBe('node1 and x have no DC path to ground');
-    expect(s3!.ngspice).toBe("ngspice warns 'singular matrix: check node …' (it names one of the nodes with no DC path), falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5, floating-dc-7, floating-dc-8]");
+    expect(s3!.title).toBe('node1 and node x have no DC path to ground');
+    expect(s3!.ngspice).toBe("ngspice warns 'singular matrix: check node …' (it names one of the nodes with no DC path), falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5, floating-dc-7, floating-dc-8]");
     const tr = traps('* t\nV1 in 0 5\nC1 in ÇIKIŞ 1u\nR2 ÇIKIŞ GİRİŞ 1k\nC2 GİRİŞ 0 1u\n.op\n.end\n', 'floating-dc');
     const two = traps('* t\nV1 in 0 6\nC1 in a 1u\nC2 a 0 1u\nC3 in b 1u\nC4 b 0 1u\n.op\n.end\n', 'floating-dc');
     const apart = traps('* t\nV1 a 0 6\nR1 a 0 2\nE1 out 0 c d 2\nR2 out 0 1\n.op\n.end\n', 'floating-dc');
-    expect(two.map((c) => c.title)).toEqual(['a has no DC path to ground', 'b has no DC path to ground']);
-    expect(apart.map((c) => c.title)).toEqual(['c has no DC path to ground', 'd has no DC path to ground']);
+    expect(two.map((c) => c.title)).toEqual(['Node a has no DC path to ground', 'Node b has no DC path to ground']);
+    expect(apart.map((c) => c.title)).toEqual(['Node c has no DC path to ground', 'Node d has no DC path to ground']);
     for (const c of [s3!, ...tr, ...two, ...apart]) expect(c.ngspice, c.title).not.toMatch(/check node [^…]/);
     expect(apart[0]!.ngspice).toBe("ngspice warns 'singular matrix: check node …' (it names one of the nodes with no DC path) and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4, floating-dc-10]");
     // One node alone keeps ngspice's own words (floating-dc-1, -4, M2d).
@@ -745,7 +745,7 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
 
   it('a name with a hidden character and a look-alike letter has both named in every sentence, each character once', () => {
     const F7 = `* t\nV1 in 0 5\nC1 in ${CY}u${ZW}t 1u\nC2 ${CY}u${ZW}t 0 1u\n.op\n.end\n`;
-    expect(traps(F7, 'floating-dc')[0]!.title).toBe('оut (written with the Cyrillic letter о, which looks like o, and a zero-width space) has no DC path to ground');
+    expect(traps(F7, 'floating-dc')[0]!.title).toBe('Node оut (written with the Cyrillic letter о, which looks like o, and a zero-width space) has no DC path to ground');
     expect(describeCircuit(parseNetlist(F7))).toContain('node оut (written with the Cyrillic letter о, which looks like o, and a zero-width space) and ground');
     // A character that looks like a space keeps "one word for SPICE"; one kind alone keeps its words.
     expect(describeCircuit(parseNetlist(F7.replaceAll(ZW, '\u2009')))).toContain('node оu t (one word for SPICE: written with the Cyrillic letter о, which looks like o, and a thin space, not a space) and ground');
@@ -786,7 +786,7 @@ describe('critic of the fix, round 2: the checks and the words that name a node,
   it('round 1\'s other words have tests: a dangling node beside ou<ZWSP>t, a second output, the card\'s lower end', async () => {
     // A node dangling off a node with a hidden character: its voltage is that node's, named.
     const [d] = traps(`* t\nV1 in 0 5\nR1 in ou${ZW}t 1k\nR2 ou${ZW}t 0 1k\nR3 ou${ZW}t x 1k\n.op\n.end\n`, 'dangling-node');
-    expect(d!.why).toContain('so x sits at the same voltage as out (written with a zero-width space in it).');
+    expect(d!.why).toContain('so node x sits at the same voltage as node out (written with a zero-width space in it).');
     // A second output with a hidden character: ngspice gives 0.75 and 751 Ω (native 47 and 42, tf-problems-8),
     // so its words are tf-problems-2's, never "comes out 0 and the output impedance 1 Ω".
     const [second] = traps(`* t\nV1 in 0 6\nR1 in out 1k\nR2 out mid 2k\nR3 mid 0 1k\n.tf v(out,mi${ZW}d) V1\n.end\n`, 'tf-problems');

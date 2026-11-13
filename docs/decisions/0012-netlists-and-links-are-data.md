@@ -732,3 +732,78 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     bullet said not running `.control` blocks would close it: it would not, as `*#` lines run outside
     them.
 
+
+## After the last pass (13 November 2026)
+
+- **A message one version prints is said as that version's** (last pass F10). Five trap texts quoted
+  ngspice 47's words as plain "ngspice", where native ngspice 42 prints other words or runs: "no such
+  parameter on this device or parameter is missing" (42: "no such parameter on this device"), on a
+  value R, C or L can only report written after the value (space-before-suffix-12, unknown-word-6,
+  and the C and L runs recorded beside them), "mal formed B source instance" (42: "mal formed B
+  line", fatal-syntax-7), "no simulations run!" (42: 'Note: No ".plot", ".print", or ".fourier"
+  lines; no simulations run', no-analysis-1), and "unimplemented dot command" for `.pss`, which
+  ngspice 47 as built for PlainSpice does not know and ngspice 42 does (unknown-dot-command-2, A29b): it is
+  an experimental build option (`--enable-pss` in ngspice's `configure.ac`), off by default and on in
+  Ubuntu's ngspice 42 package, so the words say "as built for PlainSpice" and "as Ubuntu builds it".
+  Each now says "ngspice 47 …" with ngspice 42's words beside it, as the newer texts do; for `.pss`
+  the title and the why say "ngspice 47" too, and a misspelt dot command, which stops both, keeps
+  "ngspice" and cites only unknown-dot-command-1. The fallback ngspice takes when its DC solution
+  fails is quoted as it prints it, "Note: Transient op started", where five texts quoted a
+  lower-case 'transient op'. A unit test (`tests/unit/traps-last-pass-words.test.ts`) checks, on the
+  parts that reach these texts, that none of these 47-only messages is put to plain "ngspice". The
+  skeptic of the problem found the same message misquoted on sources: `V1 n2 0 dc 5 p`, `V1 n2 0 5 i`,
+  `I2 0 n1 1 p` and `I2 0 n1 1 v` got "unknown parameter (p)", where native 47 and 42 say "no such
+  parameter on this device…", as V's i and p and I's v and p are values the source can only report;
+  the checks now say so (`SOURCE_REPORTS` in `src/spice/traps.ts`: the parser's tables, which the
+  editor's highlighting shares, are left as they are), from runs recorded beside space-before-suffix-12
+  and unknown-word-6. We chose naming each version over the skeptic's other way, quoting under plain
+  "ngspice" only the words both versions print ("no such parameter on this device", "no simulations
+  run"), which is shorter: the texts beside these already name each version where the two differ
+  (invisible-character-46 with this very message, the .dc checks, zero-ohm), the ngspice output panel
+  shows ngspice 47's whole line, and for a B line the two messages share only "mal formed B".
+- **A resistance below 1e-12 Ω that is not 0** (last pass F4). The words for a 0 (C1, CR1-1 above)
+  covered a value of exactly 0 only: on `R1 n1 0 3a` the unit-letter card said "ngspice reads 3a as 3
+  attoohms and says nothing", where native ngspice 47 warns "Value of resistor r1 is too small, set to
+  1.000000e-12" and uses 1e-12 Ω, and the zero-ohm card beside it said "ngspice 42 used 0.001 Ω", where
+  ngspice 42 keeps 3 aΩ as written (P24). From runs of every such value (zero-ohm-7, zero-ohm-8):
+  ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative value (quoted "set to -1.000000e-12"), with a
+  warning; ngspice 42 keeps any value that is not 0 as written, without a word, and uses 1 mΩ for 0
+  only. The words every check gives a resistor's value (`zeroOhm` in `src/spice/traps.ts`: unit-letter,
+  mega-as-milli, rkm-notation, greek-mu, the character checks, the settings, a decimal comma, a sign)
+  now say that for any value below 1e-12 Ω in size, and the zero-ohm check leaves such a value to the
+  check that explains how it is written, as it did for a 0: one card for one word, whose fix writes
+  what was meant ("Write 3 (3 ohms)"), where "Use a 0 V source instead" would make a short. The error
+  for a resistor straight across a source stays beside it ("its current comes out enormous" for a value
+  that is not 0; 6e12 A in ngspice 47 with 3a too). We chose this over the reviewer's other ways (no
+  unit-letter card on a resistor, which would leave only the 0 V source; or "see the other check",
+  which keeps two cards for one word), as the skeptic of the problem argued.
+- **No digit of one test** (last pass F5). "ngspice 42 used 0.001 Ω without a word, which changed the
+  answer in the 4th digit" was said for every 0 Ω resistor, but holds for zero-ohm-1's circuit (a load of
+  a few ohms) only: with a subcircuit the answer changes in the 3rd digit (zero-ohm-6), in series with
+  1 kΩ in the 6th (P13), and the skeptic of the problem found the 6th to 8th digit for the kΩ circuits
+  beginners draw. The trap's sources are not shown on the page, so a student would read the digit as
+  the size of the change in their own circuit. The words now stop at "ngspice 42 used 0.001 Ω without a
+  word", as the character checks' words for a 0 do. We chose this over "which, in one test, changed the
+  answer in the 4th digit", the reviewer's first way.
+- **The why of a value below 1e-12 Ω that is not 0** (the words lane's round-1 critic, C3). "A
+  resistance this small is almost 0, and SPICE can't use a resistance of 0" read as if SPICE took 1 fΩ
+  for 0, which neither version does. The why is now ngspice 47's floor, in the Numbers panel's words:
+  "ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to
+  it can come out inaccurate" ("this close to 0" and −10⁻¹² Ω for a negative value). "Can", where the
+  Numbers panel says "come out": where a current source sets the current, the resistor carries exactly
+  it in both versions; in series with 1 kΩ across 6 V, ngspice 47 gives the source 5.859 mA for 6 mA and
+  ngspice 42 gives 0 A (zero-ohm-9). The why for a 0 stays the arithmetic one.
+- **One card for a Greek μ in such a value** (C6). zero-ohm leaves a value another check explains to that
+  check, but greek-mu ran after it, so `0μ47` and `1e-13μ` kept both cards, with the same words. zero-ohm
+  now runs after greek-mu, at the end of the line-by-line checks in `checkTraps`; none of the checks
+  between can mark a resistor's value, and their fresh names use other stems.
+- **A value a source can only report, in one table** (C4, C5). V's `i` and `p` and I's `v` and `p`,
+  which only `traps.ts` knew, are in the source tables of `src/spice/parse.ts`
+  (`isReportOnlyParameter`), so Explain says of them what the Checks panel says ("no such parameter on
+  this device"), where it said "unknown parameter"; how a line is parsed and the editor's table do not
+  change. ngspice's other values a source reports (pos_node, acreal … in vsrc.c and isrc.c) are not
+  listed: no beginner writes them, and their words are as before. For a current source the why says
+  "(such as its voltage or its power)", as its current is what its line sets. The same rule for the word
+  after a space corrects `1 volt` on an inductor, which got "unknown parameter (volt)" where both
+  versions print their "no such parameter" words. Each part's runs are records of their own
+  (space-before-suffix-19, -20, unknown-word-56, -57; C7), cited by the texts part by part.

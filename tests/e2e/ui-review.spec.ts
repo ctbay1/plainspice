@@ -148,8 +148,8 @@ test('Ctrl+K: a short query keeps the command whose name it starts: “v” the 
 test('a fix on the video’s mistake examples leaves no drawing warning; the tab and what is said agree (kept F1)', async ({ page }) => {
   await openApp(page);
   for (const [example, fix] of [
-    ['Mistake 1: no ground (node 0)', 'Make n3 the ground (rename it to 0)'],
-    ['Mistake 2: a typo in a node name', 'Rename n12 to n2'],
+    ['Mistake 1: no ground (node 0)', 'Make node n3 the ground (rename it to 0)'],
+    ['Mistake 2: a typo in a node name', 'Rename node n12 to n2'],
   ] as const) {
     await chooseExample(page, example);
     await expect.poll(() => checksCount(page)).toBe(1);

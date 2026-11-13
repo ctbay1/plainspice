@@ -35,6 +35,13 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
   Copy the output verbatim; shorten only file paths and the long model and device listings, and say so.
 - Note where 47 and 42 differ, and where our engine differs from native 47 (our build leaves out XSPICE,
   OSDI and some device models: `engine/README.md`).
+- Look in the folder for the results file, and read it, before writing what it holds: where a run stops,
+  ngspice often still writes a plot's header with 0 points ("a … plot with 0 points, its header only (no
+  results)"), which is not "no rawfile" (16 records in traps.md said no file or no data where ngspice
+  wrote one, until 13 November 2026).
+- For `.tran`, compare 42's whole time vector with 47's, not only the number of points and the values at
+  the times printed: 42's last point before a corner of a source, or before the end, can sit elsewhere,
+  and after a corner the two grids can part for good (P18, A17, A18). Say which points differ.
 - Native ngspice used so far: 47 built from the release tarball
   (`./configure --with-x=no --disable-debug --with-readline=no && make`, see `CLAUDE.md`), and 42 from
   Ubuntu's `ngspice 42+ds-3build1` package.
@@ -193,3 +200,25 @@ to it, and how its control reader makes their words (blanks kept in quotes, a ba
 braces made into words, `~` made the home folder); limit-12, limit-16 and limit-17 gained `ngbehavior` set
 before a built circuit, a built circuit's `.title` line, a formula's name with its blanks and quotes, and
 `fft`, `psd`, `spec` and `asciiplot`.
+
+## The last pass of 13 November 2026 (the words lane)
+
+New facts, run the same way: zero-ohm-7 and zero-ohm-8 in traps.md (a resistance below 1e-12 Ω that is
+not 0: ngspice 47 raises it to 1e-12 Ω, or −1e-12 Ω for a negative value, with a warning; ngspice 42
+keeps it as written, silently; 3a in series and across a source), with rows in
+`tests/golden/facts-traps.test.ts`; and, after the round-1 critic of those fixes, zero-ohm-9 (below
+1e-12 Ω but not 0, the currents next to the resistor can come out inaccurate, in ngspice 47 as for a 0
+and in ngspice 42 too) and the values a part can only report, each part's runs a record of its own:
+space-before-suffix-19 (a capacitor's or an inductor's p, an inductor's v and volt, after a space), -20
+(a voltage source's p, a current source's p and v), unknown-word-56 (a capacitor's i, an inductor's
+flux, a resistor's sens_dc) and -57 (a voltage source's i, a current source's v), 47's "no such
+parameter on this device or parameter is missing" and 42's "no such parameter on this device"; their
+rows, and the header-only results files our engine reports, are in
+`tests/golden/facts-traps-last-pass.test.ts`. Records corrected after native re-runs: limit-9 (native 47
+and 42 stop from a 105-byte version, not 150, and level 73 copies it too), the results file of 16 traps.md
+facts (15 hold a plot's header with 0 points where they said no file or no data; unknown-dot-command-2's
+ngspice 42 file holds the .op point), in the words A11, M3 and M3b in explanations.md now use for such a
+file too ("a … plot with 0 points, its header only"), and the ngspice 42 lines of P18, P19, P19b, P19c,
+P20b, A17, A18 and non-ascii-node-12 (the same output and summary, but their time points differ, said
+where). No engine run can check those, so `tests/unit/facts-records.test.ts` pins the records themselves,
+and checks that no fact ID heads two sections.

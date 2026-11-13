@@ -37,7 +37,7 @@ import {
 } from './characters.ts';
 import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
-import { nameSaysNode } from './node-words.ts';
+import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
@@ -1076,17 +1076,21 @@ function printedNames(c: Ctx, i: number): string[] | undefined {
  * A resistor's value that ngspice reads as 0 because of how it is written (0<zero-width space>.47,
  * 0R47, 0．47, 1,0): ngspice 47 cannot use 0 Ω, so it uses 1e-12 Ω and warns, and ngspice 42 used 1 mΩ
  * without a word (zero-ohm-1, zero-ohm-4). The check that reads the value says so, never "says
- * nothing", and zero-ohm leaves such a value to it (re-check critic CR1-1). `who`: the resistor's names in
- * ngspice's messages (printedNames), r.x1.r1 inside a subcircuit (zero-ohm-6).
+ * nothing", and zero-ohm leaves such a value to it (re-check critic CR1-1). So for any other value below
+ * 1e-12 Ω in size (3a, 1e-15, -3a): ngspice 47 uses 1e-12 Ω (−1e-12 Ω for a negative one) and warns, and
+ * ngspice 42 keeps it as written, without a word (zero-ohm-7, P24; last pass F4). `who`: the resistor's names
+ * in ngspice's messages (printedNames), r.x1.r1 inside a subcircuit (zero-ohm-6).
  */
 function zeroOhm(letter: ElementLetter | undefined, value: number, who: readonly string[] | undefined): { says: string; claims: string } | undefined {
-  if (letter !== 'R' || value !== 0) return undefined;
-  return { says: `which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${tooSmall(who)} (ngspice 42 used 0.001 Ω without a word).`, claims: `zero-ohm-1, zero-ohm-4${who?.length === 1 && !who[0]!.includes('.') ? '' : ', zero-ohm-6'}` };
+  if (letter !== 'R' || !(Math.abs(value) < 1e-12)) return undefined;
+  const sub = who?.length === 1 && !who[0]!.includes('.') ? '' : ', zero-ohm-6';
+  if (value === 0) return { says: `which ngspice 47 cannot use: it uses 1e-12 Ω instead and ${tooSmall(who)} (ngspice 42 used 0.001 Ω without a word).`, claims: `zero-ohm-1, zero-ohm-4${sub}` };
+  return { says: `which ngspice 47 cannot use: it uses ${value < 0 ? MINUS : ''}1e-12 Ω instead and ${tooSmall(who, value)} (ngspice 42 keeps it as written, without a word).`, claims: `zero-ohm-7${sub}` };
 }
 
-/** "warns 'Value of resistor r1 is too small, set to 1.000000e-12'", with ngspice's name for each use of the resistor (zero-ohm-1, -6). */
-function tooSmall(who: readonly string[] | undefined): string {
-  const quote = (n: string): string => `'Value of resistor ${n} is too small, set to 1.000000e-12'`;
+/** "warns 'Value of resistor r1 is too small, set to 1.000000e-12'", with ngspice's name for each use of the resistor (zero-ohm-1, -6), and -1.000000e-12 for a negative value (zero-ohm-7). */
+function tooSmall(who: readonly string[] | undefined, value = 0): string {
+  const quote = (n: string): string => `'Value of resistor ${n} is too small, set to ${value < 0 ? '-' : ''}1.000000e-12'`;
   if (!who) return "warns that the resistor's value is too small, once for each use of its subcircuit";
   return `warns ${quote(who[0]!)}${who.length > 1 ? `, and the same for ${list(who.slice(1))}` : ''}`;
 }
@@ -1659,8 +1663,10 @@ function suffixVerdict(letter: ElementLetter, word: string, name: string): strin
     if (letter === 'L') return `ngspice takes m as ${name}'s multiplier, given no value, and says nothing; a .tran then stops: 'Timestep too small'. [space-before-suffix-9]`;
     if (letter === 'G' || letter === 'F') return `PlainSpice's engine takes m as ${name}'s multiplier, given no value, and says nothing: ${name} then gives no current. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops: 'MIF-ERROR ... Bad real value'. [space-before-suffix-11]`;
   }
-  if ((w === 'p' && 'RCL'.includes(letter)) || (w === 'v' && letter === 'L')) {
-    return `ngspice stops: 'no such parameter on this device or parameter is missing' (${w} is a value ngspice can report for the part, not one you can set). [space-before-suffix-12]`;
+  // p on R, C, L, V and I, v on L and I, volt on L: values the part can only report (the parser's tables; V's and I's
+  // since the last pass's F10), each version's words (space-before-suffix-12, -19, -20; round-1 critic C4, C7).
+  if ('RCLVI'.includes(letter) && isReportOnlyParameter(letter, w)) {
+    return `ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device'), as ${w} is a value ngspice can report for the part, not one you can set. [space-before-suffix-${letter === 'R' ? 12 : letter === 'V' || letter === 'I' ? 20 : 19}]`;
   }
   if ('EFGH'.includes(letter)) {
     // p, v (and i) name values E, F, G and H can only report: a different message (space-before-suffix-15).
@@ -1834,21 +1840,26 @@ function checkUnknownWord(c: Ctx, i: number): void {
   const why = glued
     ? `A + or ${MINUS} right after a digit or a letter starts a new word in SPICE, so ${prev.token.text}${word} is read as ${prev.token.text} and then ${word}, a word ${name} can't use. For an exponent, write e: 1e-3.`
     : report
-      ? `${word} is a value SPICE can report for ${kind} (such as its current or its power), not one a netlist can set, so SPICE stops there.`
+      ? `${word} is a value SPICE can report for ${kind} (such as its ${e.letter === 'I' ? 'voltage' : 'current'} or its power), not one a netlist can set, so SPICE stops there.`
       : number
         ? `${efgh ? "PlainSpice's engine" : 'SPICE'} reads ${word} as one number too many for ${name}, so it stops there.`
         : `SPICE reads the words after a part's value as its settings, written name=value${multiplier ? '' : ' (like m=2)'}, and ${word} is not a setting of ${kind}, so it stops there. To add a note at the end of a line, start it with a semicolon: ; like this.`;
   // ngspice quotes the word as it spells it: each byte of a letter outside ASCII is _ (unknown-word-12, W16).
   const message = report ? 'no such parameter on this device or parameter is missing' : `unknown parameter (${ngspiceSpelling(word)})`;
   const spelled = ngspiceSpelling(word) !== lowerAscii(word) ? ', unknown-word-12' : '';
-  const claims = report ? 'unknown-word-6' : glued ? 'unknown-word-9' : number ? 'unknown-word-8' : `unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7${spelled}`;
+  // A value the part can only report: a resistor's i and p (unknown-word-6), its sens_dc and the like, a capacitor's or an
+  // inductor's (unknown-word-56), a source's (unknown-word-57; round-1 critic C7).
+  const reportClaim = e.letter === 'V' || e.letter === 'I' ? 'unknown-word-57' : e.letter === 'R' && /^[ip]$/i.test(word) ? 'unknown-word-6' : 'unknown-word-56';
+  const claims = report ? reportClaim : glued ? 'unknown-word-9' : number ? 'unknown-word-8' : `unknown-word-1, unknown-word-2, unknown-word-3, unknown-word-7${spelled}`;
   const ngspice = multiplier
     ? `ngspice stops: '${message}'. Native ngspice 47 and 42 stop there too: they read no polynomial here. [unknown-word-${e.letter === 'E' ? 40 : 41}]`
     : efgh
     ? number
       ? `PlainSpice's engine stops: '${message}'. Native ngspice 47, which has the XSPICE extension, reads the extra number as part of a polynomial and runs. [unknown-word-4]`
       : `PlainSpice's engine stops: '${message}'. Native ngspice 47, which has the XSPICE extension, reads the extra word as part of a polynomial and stops too: 'MIF-ERROR ... Bad real value'. [${report ? 'unknown-word-11' : 'unknown-word-5'}]`
-    : `ngspice stops: '${message}'. [${claims}]`;
+    : report
+      ? `ngspice 47 stops: '${message}' (ngspice 42: 'no such parameter on this device'). [${claims}]`
+      : `ngspice stops: '${message}'. [${claims}]`;
   const fixes: Fix[] = [];
   if (glued && /[dDeE]$/.test(prev.token.text) && /^[+-]\d/.test(word) && readNumber(`${prev.token.text.slice(0, -1)}e${word}`)) {
     const meant = `${prev.token.text.slice(0, -1)}e${word}`;
@@ -2143,8 +2154,8 @@ function checkGround(c: Ctx): void {
       anchor,
       'No ground: no node is called 0',
       "Without ground, SPICE can't pin the voltages down. It warns about a singular matrix, which means its equations have no single answer, and any numbers it still prints can't be trusted. Every circuit needs one node called 0 (gnd works too).",
-      "ngspice warns 'singular matrix', falls back to a 'transient op' and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]",
-      cand ? [fix(`Make ${cand.name} the ground (rename it to 0)`, ...renameNode(cand, GROUND))] : [],
+      "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]",
+      cand ? [fix(`Make ${nodeSaid(c, cand.name)} the ground (rename it to 0)`, ...renameNode(cand, GROUND))] : [],
     );
     return;
   }
@@ -2153,19 +2164,21 @@ function checkGround(c: Ctx): void {
     const t = firstRef(x);
     if (!t) continue;
     const gnd = x.name === 'gnd';
+    // The node as written, quoted when it reads like ground (node in, 'node "ground"': node-words.ts; last pass F6).
+    const shown = /^(gnd|ground|00)$/i.test(t.text) ? `"${t.text}"` : t.text;
     add(
       c,
       'ground-misnamed',
       'warning',
       t,
-      gnd ? 'gnd at the end of a line is not ground' : `${t.text} is not ground: ground is node 0`,
+      gnd ? `${atSentenceStart(nodeIn(shown))} at the end of a line is not ground` : `${atSentenceStart(nodeIn(shown))} is not ground: ground is node 0`,
       gnd
-        ? 'ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, gnd is an ordinary node, so this part is not connected to ground.'
-        : `In SPICE, ground is the node called 0 (gnd works too). ${t.text} is just another node name, so the parts on it are not connected to ground.`,
+        ? `ngspice turns gnd into ground (node 0) only when another word follows it on the line. As the last word, ${t.text} names an ordinary node, ${nodeIn(shown)}, so this part is not connected to ground.`
+        : `In SPICE, ground is the node called 0 (gnd works too). ${atSentenceStart(nodeIn(shown))} is just an ordinary node, so the parts on it are not connected to ground.`,
       gnd
         ? 'ngspice says nothing. In one test a 0 V ammeter written Vx b gnd read 0 A, because its gnd was a separate node. [ground-misnamed-2]'
-        : `ngspice says nothing and treats ${x.name} as an ordinary node. In one test, V1 n1 ${x.name === '00' ? '00' : 'ground'} 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]`,
-      [fix(`Rename ${t.text} to 0`, ...renameNode(x, GROUND))],
+        : `ngspice says nothing and treats ${nodeIn(shown)} as an ordinary node. In one test, V1 n1 ${x.name === '00' ? '00' : 'ground'} 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]`,
+      [fix(`Rename ${nodeIn(shown)} to 0`, ...renameNode(x, GROUND))],
     );
   }
 }
@@ -2222,10 +2235,10 @@ function checkDangling(c: Ctx): void {
         'dangling-node',
         'warning',
         t,
-        `Only ${name} touches ${here}`,
-        `A node needs at least two connections for current to flow through it. ${here} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => nodeWords(c, y.name))).replace(' and ', ' or ')}?`,
+        `Only ${name} touches ${nodeIn(here)}`,
+        `A node needs at least two connections for current to flow through it. ${atSentenceStart(nodeIn(here))} appears only here, so no current flows in ${name}. Did you mean ${list(candidates.slice(0, 2).map((y) => nodeSaid(c, y.name)), 'or')}?`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1, dangling-node-2]`,
-        candidates.slice(0, 2).map((y) => fix(`Rename ${here} to ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name)))),
+        candidates.slice(0, 2).map((y) => fix(`Rename ${nodeIn(here)} to ${nodeWords(c, y.name)}`, replace(t, writtenNode(c, y.name)))),
       );
     } else {
       add(
@@ -2233,8 +2246,8 @@ function checkDangling(c: Ctx): void {
         'dangling-node',
         'info',
         t,
-        `Only ${name} touches ${here}`,
-        `No current flows in ${name}, so ${here} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : nodeWords(c, other)}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
+        `Only ${name} touches ${nodeIn(here)}`,
+        `No current flows in ${name}, so ${nodeIn(here)} sits at the same voltage as ${other === GROUND ? 'ground (node 0)' : nodeSaid(c, other)}. That is right for an open terminal where you measure a voltage; if ${name} should connect to something, check this node name.`,
         `ngspice says nothing: ${name} carries no current, so it changes nothing else in the circuit. [dangling-node-1]`,
       );
     }
@@ -2257,6 +2270,26 @@ function nodeWords(c: Ctx, key: string): string {
   return /^(gnd|ground|00)$/i.test(name) ? `"${name}"` : nodeNameInWords(name);
 }
 
+/**
+ * A node in a check's sentence, by the node-words rule every other sentence on the page follows
+ * (src/spice/node-words.ts; describe.ts says it so; last pass F6): "node in", since a name may be an
+ * ordinary word, but a name that says node alone ("node1", never "node node1"), and ground (0) is
+ * "ground". `shown` is the name as the check shows it (nodeWords: a name like ground quoted, a character
+ * that is not what it looks like named). At the start of a sentence, atSentenceStart makes it "Node in".
+ */
+function nodeIn(shown: string): string {
+  return shown === GROUND ? 'ground' : nameSaysNode(shown) ? shown : `node ${shown}`;
+}
+
+/** A node's key in a check's sentence: "node in", "node1", 'node "ground"', "ground". */
+const nodeSaid = (c: Ctx, key: string): string => nodeIn(nodeWords(c, key));
+
+/** "the node çıkış", but a name that says node alone (never "the node node1"), for the sentences that say "the node …". */
+const theNodeIn = (shown: string): string => (nameSaysNode(shown) ? shown : `the node ${shown}`);
+
+/** A plain node name as the checks show it: quoted when it reads like ground (an ordinary node, W13), as nodeWords quotes it. */
+const quotedName = (name: string): string => (/^(gnd|ground|00)$/i.test(name) ? `"${name}"` : name);
+
 /** A floating group's first node reference, in netlist order. */
 function groupAnchor(c: Ctx, g: DcGroup): Token | undefined {
   let best: Token | undefined;
@@ -2277,7 +2310,7 @@ function checkFloating(c: Ctx): void {
     if (g.attachments.length === 0 && g.conductors.length === 0) continue;
     const kinds = new Set(g.attachments.map((a) => a.kind));
     const current = g.attachments.filter((a) => a.kind === 'current');
-    const nodes = list(g.nodes.map((n) => nodeWords(c, n)));
+    const nodes = list(g.nodes.map((n) => nodeSaid(c, n)));
     const plural = g.nodes.length > 1;
     if (current.length > 0) {
       currentSourceNoPath(c, g, kinds);
@@ -2294,7 +2327,7 @@ function checkFloating(c: Ctx): void {
     if (kinds.size === 0) {
       why = `${names(g.conductors.map((line) => ({ line })))} connect${g.conductors.length === 1 ? 's' : ''} ${nodes}, but nothing connects ${plural ? 'them' : 'it'} to the rest of the circuit, so SPICE can't pin ${plural ? 'their voltages' : 'its voltage'} down.`;
     } else if (controls.length > 0 && caps.length === 0 && gates.length === 0) {
-      why = `${nodes} ${plural ? 'are' : 'is'} used only as the control input of ${names(controls)}, which senses a voltage but draws no current. Nothing sets ${plural ? 'their voltages' : 'its voltage'}, so SPICE's equations have no single answer.`;
+      why = `${atSentenceStart(nodes)} ${plural ? 'are' : 'is'} used only as the control input of ${names(controls)}, which senses a voltage but draws no current. Nothing sets ${plural ? 'their voltages' : 'its voltage'}, so SPICE's equations have no single answer.`;
     } else if (gates.length > 0 && caps.length === 0 && controls.length === 0) {
       why = `A MOSFET's gate draws no current, so nothing sets the voltage at ${nodes}. SPICE's equations then have no single answer.`;
     } else if (caps.length > 0 && controls.length === 0 && gates.length === 0) {
@@ -2316,20 +2349,20 @@ function checkFloating(c: Ctx): void {
       ? `${warns} and then stops: 'The operating point could not be simulated successfully'. No results. [floating-dc-4${named ? '' : ', floating-dc-10'}]`
       : mixed
         ? `ngspice warns 'singular matrix'; then it either stops or prints numbers that can't be trusted. [floating-dc-1, floating-dc-4${g.conductors.length > 0 ? ', floating-dc-9' : ''}]`
-        : `${warns}, falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5${named ? '' : ', floating-dc-7, floating-dc-8'}]`;
+        : `${warns}, falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5${named ? '' : ', floating-dc-7, floating-dc-8'}]`;
     const fixes: Fix[] = [];
     if (!failing && !mixed && kinds.size > 0) {
       const target = g.nodes[0]!;
       const name = freshName(c, 'Rdc1');
       const lastTop = c.graph.elements[c.graph.elements.length - 1]!;
-      fixes.push(fix(`Add a 1 GΩ resistor from ${nodeWords(c, target)} to ground`, insertLineAfter(c, lastTop, `${name} ${writtenNode(c, target)} 0 1g`)));
+      fixes.push(fix(`Add a 1 GΩ resistor from ${nodeSaid(c, target)} to ground`, insertLineAfter(c, lastTop, `${name} ${writtenNode(c, target)} 0 1g`)));
     }
     add(
       c,
       'floating-dc',
       'error',
       anchor,
-      `${nodes} ${plural ? 'have' : 'has'} no DC path to ground`,
+      `${atSentenceStart(nodes)} ${plural ? 'have' : 'has'} no DC path to ground`,
       fixes.length > 0 ? `${why} Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.` : why,
       ngspice,
       fixes,
@@ -2343,12 +2376,12 @@ function currentSourceNoPath(c: Ctx, g: DcGroup, kinds: Set<string>): void {
   const sources = [...new Set(current.map((a) => a.line))].map((k) => el(c, k));
   const onlyI = sources.every((s) => s.letter === 'I');
   const other = [...kinds].filter((k) => k !== 'current');
-  const nodes = list(g.nodes.map((n) => nodeWords(c, n)));
+  const nodes = list(g.nodes.map((n) => nodeSaid(c, n)));
   let ngspice: string;
   if (other.length === 0 && g.conductors.length === 0 && onlyI) {
     ngspice = 'ngspice says nothing and acts as if there were 1 Ω from the node to ground: in one test, 1 A into such a node gave 1 V. [current-source-no-path-2, current-source-no-path-3]';
   } else if (other.every((k) => k === 'capacitor') && onlyI) {
-    ngspice = "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [current-source-no-path-1]";
+    ngspice = "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [current-source-no-path-1]";
   } else if (other.length === 0 && g.conductors.length === 0) {
     ngspice = "ngspice warns 'singular matrix' and then stops: 'The operating point could not be simulated successfully'. No results. [current-source-no-path-4, current-source-no-path-5]";
   } else {
@@ -2380,12 +2413,12 @@ function loopTrap(c: Ctx, loop: VoltageLoop): void {
       'voltage-loop',
       'error',
       e.name,
-      `${name} has both ends on node ${node}`,
+      `${name} has both ends on ${nodeSaid(c, node)}`,
       e.letter === 'L'
-        ? `${name} connects node ${node} to itself, so it does nothing, and its current is not defined: SPICE's equations have no single answer.`
+        ? `${name} connects ${nodeSaid(c, node)} to itself, so it does nothing, and its current is not defined: SPICE's equations have no single answer.`
         : `A source with both ends on the same node is shorted by itself: it can't make any voltage, and SPICE's equations have no single answer.`,
       e.letter === 'L'
-        ? "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers it can't trust. [voltage-loop-11]"
+        ? "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers it can't trust. [voltage-loop-11]"
         : `ngspice stops: 'instance ${lowerAscii(name)} is a shorted ${what}'. [voltage-loop-8, voltage-loop-9, voltage-loop-10]`,
     );
     return;
@@ -2412,7 +2445,7 @@ function loopTrap(c: Ctx, loop: VoltageLoop): void {
     title,
     why,
     loop.inductor
-      ? "ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [voltage-loop-5]"
+      ? "ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [voltage-loop-5]"
       : c.opNeeded
         ? "ngspice warns 'singular matrix' and then stops: 'The operating point could not be simulated successfully'. No results. [voltage-loop-1, voltage-loop-2, voltage-loop-3, voltage-loop-4]"
         : "With uic there is no operating point, but the loop still fails: ngspice warns 'singular matrix' and then stops: 'Timestep too small'. No results. [voltage-loop-7]",
@@ -2864,7 +2897,7 @@ function asWritten(c: Ctx, infos: readonly NodeInfo[], show: boolean): { said: s
     said.push(
       !show
         ? `On a .print or .plot line it reads the name as written, with the character in it, so it finds no such node there: run as ngspice -b, it ${warns}prints nothing for that line${none}. ${ignored}`
-        : `On a .print or .plot line it reads ${printed.length === 1 ? 'the name' : 'each name'} as written, so it finds no node ${list(printed.map((r) => r.name), 'or')} there: run as ngspice -b, it ${warns}prints nothing for ${that}${none}. ${ignored}`,
+        : `On a .print or .plot line it reads ${printed.length === 1 ? 'the name' : 'each name'} as written, so it finds no ${list(printed.map((r) => nodeIn(r.name)), 'or')} there: run as ngspice -b, it ${warns}prints nothing for ${that}${none}. ${ignored}`,
     );
   }
   const commands = infos.map((info) => controlNodes(c).get(info.name) ?? []).filter((x) => x.length > 0);
@@ -2881,7 +2914,7 @@ function asWritten(c: Ctx, infos: readonly NodeInfo[], show: boolean): { said: s
     const none = saves.size && savesNothing(c) ? `${show ? `${saved} ${saves.size === 1 ? 'saves' : 'save'}` : 'the save of that name saves'} nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved")` : '';
     said.push(
       show
-        ? `${where} it reads ${commands.length === 1 ? 'the name' : 'each name'} as written too, so it finds no node ${list(commands.map((x) => x[0]!.token.text), 'or')} there${none ? `: ${none}` : ''}.`
+        ? `${where} it reads ${commands.length === 1 ? 'the name' : 'each name'} as written too, so it finds no ${list(commands.map((x) => nodeIn(x[0]!.token.text)), 'or')} there${none ? `: ${none}` : ''}.`
         : `${where} it reads the name as written too, with the character in it, so it finds no such node there${none ? `: ${none}` : ''}.`,
     );
   }
@@ -2897,7 +2930,7 @@ function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
   const { said, print, command } = asWritten(c, [info], true);
   // Cites [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
   const facts = ['non-ascii-node-1', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
-  return [`ngspice spells the node ${spelled} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
+  return [`ngspice spells ${theNodeIn(spelled)} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
 }
 
 /** A node renamed on the commands for ngspice too (controlNodes): there ngspice reads the name as written. */
@@ -2990,9 +3023,9 @@ function checkNodeNames(c: Ctx): void {
       // non-ascii-node-4], the last two for their sentences.
       const { said, print, command } = asWritten(c, odd, true);
       const facts = ['non-ascii-node-2', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
-      add(c, 'non-ascii-node', 'error', at, `${list(names)} are one node for ngspice`,
-        `ngspice ${lettersRule(names, 'a node name')}, so ${list(names)} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
-        [`ngspice spells ${list(names)} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
+      add(c, 'non-ascii-node', 'error', at, `${atSentenceStart(list(names.map(nodeIn)))} are one node for ngspice`,
+        `ngspice ${lettersRule(names, 'a node name')}, so ${list(names.map(nodeIn))} ${names.length === 2 ? 'both' : 'all'} become ${spelled}: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.`,
+        [`ngspice spells ${list(names.map(nodeIn))} as ${spelled} and makes them one node${said.length ? '' : ', without a message'}: in one test this put both ends of a resistor on that node, so it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
         to.length ? [fix(`Write ${list(to.map(([i, n]) => `${n} for ${i.refs[0]!.text}`))}`, ...to.flatMap(([i, n]) => renaming(i, n)))] : []);
       continue;
     }
@@ -3003,10 +3036,10 @@ function checkNodeNames(c: Ctx): void {
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
     const to = plainFor(info);
-    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells the node ${written} as ${spelled}`,
+    add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells ${theNodeIn(written)} as ${spelled}`,
       `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
       spelledNodeSentence(c, info, spelled),
-      [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
+      [fix(`Rename ${nodeIn(written)} to ${to}`, ...renaming(info, to))]);
   }
   for (const info of c.n.nodes.values()) checkMicroNode(c, info, freeName);
 }
@@ -3057,7 +3090,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
     ...(controlNodes(c).get(info.name) ?? []).filter((x) => lowerAscii(x.token.text) === form).map((x) => replace(x.token, to)),
     ...printChanges(c, info, to, form),
   ];
-  const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}, without a message`;
+  const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown.map(nodeIn))} one node, ${spelled}, without a message`;
   if (across.length) {
     const names = across.map(nameOf);
     const at = across[0]!.nodes.find((r) => r.name === info.name && lowerAscii(r.token.text) !== kept[0])!.token;
@@ -3075,21 +3108,21 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
       const many = COUNT_WORDS[k] ?? String(k);
       return k < e.nodes.length ? `${many} ends of ${nameOf(e)}` : k === 2 ? `both ends of ${nameOf(e)}` : `all ${many} ends of ${nameOf(e)}`;
     });
-    add(c, 'non-ascii-node', 'warning', at, `${list(shown)} are one node for ngspice`,
+    add(c, 'non-ascii-node', 'warning', at, `${atSentenceStart(list(shown.map(nodeIn)))} are one node for ngspice`,
       still
-        ? `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro)} a name of its own in plain letters.`
-        : `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node, which joins ${list(joined)}. Give ${list(micro)} a name of its own in plain letters.`,
+        ? `ngspice reads the micro sign ${MICRO} as u, so ${list(shown.map(nodeIn))} are the same node: ${list(names)} ${names.length === 1 ? 'has both ends on it and carries' : 'have both ends on it and carry'} no current. Give ${list(micro.map(nodeIn))} a name of its own in plain letters.`
+        : `ngspice reads the micro sign ${MICRO} as u, so ${list(shown.map(nodeIn))} are the same node, which joins ${list(joined)}. Give ${list(micro.map(nodeIn))} a name of its own in plain letters.`,
       still
         ? across.every((e) => e.letter === 'R')
           ? `${ngspice}: in one test a resistor with an end on each carried no current. [non-ascii-node-5]`
           : `${ngspice}: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]`
-        : `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}. [${cited.join(', ')}]`,
-      [fix(to.length === 1 ? `Rename ${to[0]![1]} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
+        : `ngspice reads ${MICRO} as u and makes ${list(shown.map(nodeIn))} one node, ${spelled}. [${cited.join(', ')}]`,
+      [fix(to.length === 1 ? `Rename ${nodeIn(to[0]![1])} to ${to[0]![2]}` : `Write ${list(to.map(([, from, n]) => `${n} for ${from}`))}`, ...to.flatMap(([form, , n]) => writing(form, n)))]);
     return;
   }
   const one = kept[1][0]!.text;
-  add(c, 'non-ascii-node', 'info', others[0]![1][0]!, `${list(shown)} are one node for ngspice`,
-    `ngspice reads the micro sign ${MICRO} as u, so ${list(shown)} are the same node, written two ways. If they should be two nodes, give ${list(micro)} a name of its own in plain letters.`,
+  add(c, 'non-ascii-node', 'info', others[0]![1][0]!, `${atSentenceStart(list(shown.map(nodeIn)))} are one node for ngspice`,
+    `ngspice reads the micro sign ${MICRO} as u, so ${list(shown.map(nodeIn))} are the same node, written two ways. If they should be two nodes, give ${list(micro.map(nodeIn))} a name of its own in plain letters.`,
     `${ngspice}. [non-ascii-node-5]`,
     [fix(`Write ${one} for ${list(micro)}`, ...others.flatMap(([form]) => writing(form, one)))]);
 }
@@ -3113,9 +3146,9 @@ function checkInvisibleNodes(c: Ctx): void {
     // Cites [invisible-character-3, invisible-character-65, invisible-character-66], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-65'] : []), ...(command ? ['invisible-character-66'] : [])];
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
-      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
+      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
 
@@ -3145,10 +3178,10 @@ function checkSpaceNodes(c: Ctx): void {
     const { said, print, command } = asWritten(c, [info], false);
     // Cites [space-character-10, space-character-20, space-character-21], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-20'] : []), ...(command ? ['space-character-21'] : [])];
-    add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `The node ${withSpaces(t.text)} has ${nameOfCharacter(ch)!} in it`,
-      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not the node ${clean} the other lines name but another node, and the parts on it are not connected to ${clean}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+    add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `${capital(theNodeIn(withSpaces(t.text)))} has ${nameOfCharacter(ch)!} in it`,
+      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${clean}` : `Take it out: name the node ${clean}`, ...changes)]);
+      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
   }
 }
 
@@ -3173,12 +3206,12 @@ function checkLookAlikeNodes(c: Ctx): void {
     const { said, print, command } = asWritten(c, [info], true);
     // Cites [look-alike-letter-5, look-alike-letter-16, look-alike-letter-17], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-16'] : []), ...(command ? ['look-alike-letter-17'] : [])];
-    add(c, 'look-alike-letter', 'warning', t, `The node ${t.text} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
+    add(c, 'look-alike-letter', 'warning', t, `${capital(theNodeIn(t.text))} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
       other
-        ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not the node ${clean} the other lines name: it is another node, and the parts on it are not connected to ${clean}.`
+        ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not ${theNodeIn(quotedName(clean))} the other lines name: it is another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}.`
         : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`,
       [`ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Connect to ${clean}` : `Rename ${t.text} to ${clean}`, ...changes)]);
+      [fix(other ? `Connect to ${nodeIn(quotedName(clean))}` : `Rename ${nodeIn(t.text)} to ${clean}`, ...changes)]);
   }
 }
 
@@ -4002,7 +4035,7 @@ function checkEnd(c: Ctx): void {
       : change(c.text.length, c.text.length, `${c.text.endsWith('\n') ? '' : '\n'}.op\n`);
     add(c, 'no-analysis', 'error', anchor, 'No analysis: nothing will run',
       'A netlist describes a circuit; an analysis line tells SPICE what to work out. .op finds the DC voltages and currents, .dc sweeps a source, .tran shows how the circuit changes in time.',
-      "ngspice reads the circuit and runs nothing. In batch mode it ends with 'no simulations run!'; PlainSpice's engine gives no results and no message. [no-analysis-1]",
+      "ngspice reads the circuit and runs nothing. In batch mode ngspice 47 ends with 'no simulations run!' and ngspice 42 with 'Note: No \".plot\", \".print\", or \".fourier\" lines; no simulations run'; PlainSpice's engine gives no results and no message. [no-analysis-1]",
       [fix(endLine ? 'Add .op before .end' : 'Add .op at the end', insert)]);
   }
   if (c.n.end === undefined) {
@@ -4087,20 +4120,26 @@ function checkZeroOhm(c: Ctx, i: number): void {
   if (e.letter !== 'R' || v === undefined || Math.abs(v) >= 1e-12 || e.nodes.length < 2) return;
   const [a, b] = [e.nodes[0]!.name, e.nodes[1]!.name];
   const across = a !== b && !c.graph.inSubcircuit.has(i) && c.graph.voltagePaths.same(a, b) ? voltageAcross(c, a, b) : undefined;
+  // A value that is not 0 (3a, 1e-15): ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative one, and ngspice 42
+  // keeps it as written (zero-ohm-7, P24; last pass F4).
+  const zero = v === 0;
+  const sign = v < 0 ? '-' : '';
   if (across?.nonzero) {
     // zero-ohm-2: ngspice puts 1e-12 ohm there, so the current is the voltage times a million million.
     const sources = across.parts.filter((p) => p.letter !== 'L').map(nameOf);
-    add(c, 'zero-ohm', 'error', e.value!.token, `${nameOf(e)} shorts ${list(sources)}: its current has no finite answer`,
-      `A resistance of 0 straight across ${sources.length === 1 ? 'a voltage source' : 'voltage sources'} would need an endless current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where ${nameOf(e)} should go.`,
-      `ngspice 47 uses 1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to 1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2]`);
+    add(c, 'zero-ohm', 'error', e.value!.token, `${nameOf(e)} shorts ${list(sources)}: ${zero ? 'its current has no finite answer' : 'its current comes out enormous'}`,
+      `A resistance ${zero ? 'of 0' : 'this close to 0'} straight across ${sources.length === 1 ? 'a voltage source' : 'voltage sources'} would need ${zero ? 'an endless' : 'an enormous'} current: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; a wire across a source shorts it, so check where ${nameOf(e)} should go.`,
+      `ngspice 47 uses ${sign ? MINUS : ''}1e-12 Ω instead and warns: 'Value of resistor ${lowerAscii(nameOf(e))} is too small, set to ${sign}1.000000e-12'; in one test a 6 V source then gave 6e12 A, an artefact, not an answer. [zero-ohm-2${zero ? '' : ', zero-ohm-7'}]`);
     return;
   }
   // A 0 that another check already explains (0<zero-width space>.47, 0R47, 0k47, 0．47 ...: the student
   // meant 470 mΩ, and ngspice reads 0 only because of how it is written) is that check's: its fix
   // writes what was meant, where "Use a 0 V source" would make a short (re-check C1), and its words say
-  // what ngspice 47 does with 0 Ω, as these do (zeroOhm; its critic, CR1-1).
+  // what ngspice 47 does with 0 Ω, as these do (zeroOhm; its critic, CR1-1). So is any other value below
+  // 1e-12 Ω another check explains (3a, unit-letter): one card for one word, which says what each version
+  // does with it (zeroOhm), where "Use a 0 V source" would make a short where 3 Ω was meant (last pass F4).
   const tok = e.value!.token;
-  if (v === 0 && (c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
+  if ((c.byLine.get(lineAt(c.n, tok.from).number) ?? []).some((t) => t.id !== 'zero-ohm' && t.span.from <= tok.from && tok.to <= t.span.to)) return;
   const fixes: Fix[] = [];
   if (e.fields.length === 4 && a !== b && !c.graph.inSubcircuit.has(i) && !c.graph.voltagePaths.same(a, b)) {
     const name = freshName(c, `V${e.name.text}`);
@@ -4109,9 +4148,15 @@ function checkZeroOhm(c: Ctx, i: number): void {
   // ngspice names a resistor inside a subcircuit by the X line that uses it: r.x1.r1 (zero-ohm-6; re-check critic CR2-7).
   const who = printedNames(c, i);
   const inside = !(who?.length === 1 && !who[0]!.includes('.'));
+  // A value that is not 0 is no 0 for ngspice: 47's floor at 1e-12 Ω is the why, in the Numbers panel's words
+  // (tooSmallWhy), and the currents next to it can come out inaccurate (zero-ohm-9; round-1 critic C3).
   add(c, 'zero-ohm', 'warning', e.value!.token, `${nameOf(e)} has a resistance of ${formatSI(v, 'Ω')}`,
-    "SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).",
-    `ngspice 47 uses 1e-12 Ω instead and ${tooSmall(who)}. ngspice 42 used 0.001 Ω without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2${inside ? ', zero-ohm-6' : ''}]`,
+    `${zero ? "SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance" : `ngspice 47 cannot use a resistance ${sign ? 'this close to 0' : 'below 10⁻¹² Ω'}: it uses ${sign ? MINUS : ''}10⁻¹² Ω instead, and the currents next to it can come out inaccurate`}. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).`,
+    // No digit: how far 42's 1 mΩ moves an answer depends on the circuit (4th digit in zero-ohm-1, 3rd in zero-ohm-6,
+    // 6th in P13), and a beginner would read one test's digit as their own (last pass F5).
+    zero
+      ? `ngspice 47 uses 1e-12 Ω instead and ${tooSmall(who)}. ngspice 42 used 0.001 Ω without a word. [zero-ohm-1, zero-ohm-2${inside ? ', zero-ohm-6' : ''}]`
+      : `ngspice 47 uses ${sign ? MINUS : ''}1e-12 Ω instead and ${tooSmall(who, v)}. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9${inside ? ', zero-ohm-6' : ''}]`,
     fixes);
 }
 
@@ -4159,7 +4204,7 @@ function checkSyntax(c: Ctx): void {
       if (!kind) {
         add(c, 'fatal-syntax', 'error', e.name, `${nameOf(e)} needs V= or I=`,
           'A line starting with B is a behavioural source: its voltage or current is a formula, written V=... or I=..., for example B1 out 0 V=2*v(in).',
-          "ngspice stops with a fatal error: 'mal formed B source instance'. [fatal-syntax-7]");
+          "ngspice 47 stops with a fatal error: 'mal formed B source instance' (ngspice 42: 'mal formed B line'). [fatal-syntax-7]");
       } else if (params.length < 2) {
         add(c, 'fatal-syntax', 'error', params[0]?.token ?? e.name, `${nameOf(e)} has an empty formula`,
           `After ${kind.toUpperCase()}= comes the formula, for example B1 out 0 V=2*v(in).`,
@@ -4269,9 +4314,15 @@ function checkUnknownDots(c: Ctx): Set<number> {
     const near = COMMON_DOTS.filter((x) => fits(x) && nearDot(d.name, x)).slice(0, 2);
     if (near.some((x) => ANALYSIS_DOTS.has(x))) analysisTypos.add(l.index);
     const word = d.token.text;
-    add(c, 'unknown-dot-command', 'error', d.token, `ngspice does not know ${word}`,
-      `A line starting with a dot is a dot command for SPICE, and ${word} is not one ngspice knows${near.length ? `. Did you mean ${near.join(' or ')}?` : '.'} To keep the line as a note, start it with * instead.`,
-      `ngspice stops before running anything, with 'unimplemented dot command' for ${lowerAscii(word)}. [unknown-dot-command-1, unknown-dot-command-2]`,
+    // .pss is an experimental build option (--enable-pss, configure.ac): ngspice 47 as built for PlainSpice does not know
+    // it, ngspice 42 as Ubuntu builds it does (unknown-dot-command-2, A29b; last pass F10).
+    const pss = d.name === '.pss';
+    const who = pss ? 'ngspice 47' : 'ngspice';
+    add(c, 'unknown-dot-command', 'error', d.token, `${who} does not know ${word}`,
+      `A line starting with a dot is a dot command for SPICE, and ${word} is not one ${who} knows${pss ? ' as built for PlainSpice, without its experimental .pss analysis (ngspice 42 as Ubuntu builds it knows it)' : ''}${near.length ? `. Did you mean ${near.join(' or ')}?` : '.'} To keep the line as a note, start it with * instead.`,
+      pss
+        ? "ngspice 47 as built for PlainSpice stops before running anything, with 'unimplemented dot command' for .pss; ngspice 42 as Ubuntu builds it knows .pss. [unknown-dot-command-2]"
+        : `ngspice stops before running anything, with 'unimplemented dot command' for ${lowerAscii(word)}. [unknown-dot-command-1]`,
       [...near.map((x) => fix(`Use ${x}`, replace(d.token, x))), commentFix(c, l)]);
   }
   return analysisTypos;
@@ -4319,13 +4370,14 @@ export function checkTraps(netlist: Netlist): Trap[] {
     checkOddValues(c, i);
     checkUnknownWord(c, i);
     checkIncomplete(c, i);
-    checkZeroOhm(c, i);
   }
   for (const i of c.top) checkControlSource(c, i);
   checkLetters(c);
   checkModels(c);
   checkSyntax(c);
   checkGreekMu(c);
+  // After greek-mu, so a tiny or 0 value that check explains (0μ47, 1e-13μ) is its card alone (round-1 critic C6).
+  for (const i of netlist.elements) checkZeroOhm(c, i);
   for (const i of netlist.analyses) {
     const d = netlist.lines[i]!.directive!;
     d.args.forEach((t, k) => {

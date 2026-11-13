@@ -342,14 +342,17 @@ makes, not the names in it. The names ngspice makes inside subcircuits keep to t
 
 ## limit-9: a `.model` line's version is copied into a space of 100 bytes
 
-**Claim.** For a MOSFET model of level 8 or 49 (BSIM3) or 14 or 54 (BSIM4), ngspice looks for
-`version` on the `.model` line and copies the word after it, up to a blank, into a space of 100 bytes
-with no check (`src/spicelib/parser/inpfindv.c`, `INPfindVer()`: `where = strstr(line, "version");`,
-then blanks, `=`, `,`, `(`, `)` and `+` skipped, then `sscanf(where, "%s", version)` into `char
-ver[100]` of `INPdomodel()`). It does so only when a part uses the model, and before it looks for the
-model in its build, so our engine, which leaves BSIM3 and BSIM4 out, copies it too. A version of 99
-bytes fits; at 100 bytes the end of the string is written past the space; from 150 bytes native
-ngspice 47 and 42 stop.
+**Claim.** For a MOSFET model of level 8 or 49 (BSIM3), 14 or 54 (BSIM4) or 73 (HiSIM HV), ngspice
+looks for `version` on the `.model` line and copies the word after it, up to a blank, into a space of
+100 bytes with no check (`src/spicelib/parser/inpfindv.c`, `INPfindVer()`: `where = strstr(line,
+"version");`, then blanks, `=`, `,`, `(`, `)` and `+` skipped, then `sscanf(where, "%s", version)` into
+`char ver[100]` of `INPdomodel()`, whose `case 8: case 49:`, `case 14: case 54:` and `case 73:` call it).
+It does so only when a part uses the model, and before it looks for the model in its build, so our
+engine, which leaves BSIM3, BSIM4 and HiSIM HV out, copies it too. A version of 99 bytes fits; from 100
+bytes the end of the string is written past the space, and the sanitized build stops there. Native
+ngspice 47 and 42 do not notice up to 104 bytes (their own "could not find a valid modelname", exit 1)
+and stop from 105 bytes (exit 134), where these builds' stack check catches it: 105 is a property of
+the two builds, not a size in the source.
 
 **Why.** The word and the end of the string: 99 + 1 = 100.
 
@@ -359,7 +362,7 @@ V1 a 0 9
 R1 a b 1k
 M1 b b 0 0 mm
 R2 b 0 2k
-.model mm nmos level=8 version=4W…W     (the version: 99, 100, 150 bytes)
+.model mm nmos level=8 version=4W…W     (the version: 99 to 111, 120, 130, 140, 149 and 150 bytes)
 .op
 .end
 ```
@@ -377,15 +380,22 @@ Error: circuit not parsed.
 
 100 bytes: the same printout and exit code in native 47 and 42; the sanitized build: `ERROR:
 AddressSanitizer: stack-buffer-overflow … WRITE of size 101 … in __isoc23_sscanf … in INPfindVer`.
-150 bytes, and `level=14` with 150 bytes, native 47 and 42, `-b -r` and `-b` (exit 134):
+101 to 104 bytes: the same printout and exit code in native 47 and 42, `-b -r` and `-b`. From 105
+bytes (105 to 111, 120, 130, 140, 149 and 150 were run), and at levels 14, 49, 54 and 73 with 104
+bytes (the same "could not find a valid modelname") and 105 and 150 bytes, native 47 and 42, `-b -r`
+and `-b` (exit 134):
 
 ```
 *** stack smashing detected ***: terminated
 ```
 
-The same 150-byte model with no part using it runs in all of them (exit 0, v(b) = 6). **Our engine**
-gives the 99- and 100-byte ones the same "could not find a valid modelname" (exit 1), crashes on the
-150-byte ones (`RuntimeError: memory access out of bounds`, levels 8 and 14) and runs the unused one.
+The same model of 105 or 150 bytes with no part using it runs in all of them (exit 0, v(b) = 6).
+**Our engine** gives the same "could not find a valid modelname" (exit 1) up to 111 bytes, so from
+105 to 111 bytes it runs on where native 47 and 42 stop, with its memory past the space overwritten;
+from 112 bytes it crashes (`RuntimeError: memory access out of bounds`, levels 8, 14, 49, 54 and 73),
+and it runs the unused one. (Re-run after the last
+pass, 13 November 2026: this record said native 47 and 42 stop from 150 bytes; they stop from 105.
+PlainSpice's 90 bytes stay below both.)
 
 ## limit-10: a `.control` block prints a name made inside subcircuits through spaces of 512 bytes
 

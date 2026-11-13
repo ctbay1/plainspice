@@ -28,7 +28,7 @@ describe('a fix applied to a video’s example', () => {
   });
 
   it('is offered on the mistake examples (the test below has fixes to try)', () => {
-    expect(offered.map((o) => o.fix.label)).toEqual(expect.arrayContaining(['Make n3 the ground (rename it to 0)', 'Rename n12 to n2', 'Rename n12 to n1']));
+    expect(offered.map((o) => o.fix.label)).toEqual(expect.arrayContaining(['Make node n3 the ground (rename it to 0)', 'Rename node n12 to n2', 'Rename node n12 to n1']));
   });
 
   it('every fix offered on every example leaves no trap and no drawing warning', () => {
@@ -43,7 +43,7 @@ describe('a fix applied to a video’s example', () => {
   it('takes out only the name the fix left without a node: everything else is as the fix wrote it', () => {
     const e = manifest.examples.find((x) => x.id === 'sp01-4-no-ground')!;
     const text = exampleText(e);
-    const fix = readNetlist(text).traps.flatMap((t) => t.fixes).find((f) => f.label === 'Make n3 the ground (rename it to 0)')!;
+    const fix = readNetlist(text).traps.flatMap((t) => t.fixes).find((f) => f.label === 'Make node n3 the ground (rename it to 0)')!;
     const plain = applyChanges(text, fix.changes);
     // Without the tidying, the drawing warns about the label line of n3, which the student never wrote.
     expect(warnings(plain)).toEqual([expect.stringMatching(/^No node is called n3, so the name written on line \d+ is kept but not used\.$/)]);
@@ -59,7 +59,7 @@ describe('a drawing line that already named nothing before the fix', () => {
   it('stays, for the student to see in the Checks panel', () => {
     const text = typo.replace(/^\.end$/m, '*@ label zz 30 30\n.end');
     expect(warnings(text)).toEqual([expect.stringMatching(/^No node is called zz/)]);
-    const fix = readNetlist(text).traps.flatMap((t) => t.fixes).find((f) => f.label === 'Rename n12 to n2')!;
+    const fix = readNetlist(text).traps.flatMap((t) => t.fixes).find((f) => f.label === 'Rename node n12 to n2')!;
     const next = fixedText(text, fix.changes, MAX);
     expect(next).toMatch(/^R2 n2 0 4$/m);
     expect(next).not.toContain('*@ label n12');
@@ -70,7 +70,7 @@ describe('a drawing line that already named nothing before the fix', () => {
   });
 
   it('a netlist with more parts than the app draws is changed only as the fix says (it has no drawing to keep in step)', () => {
-    const fix = readNetlist(typo).traps.flatMap((t) => t.fixes).find((f) => f.label === 'Rename n12 to n2')!;
+    const fix = readNetlist(typo).traps.flatMap((t) => t.fixes).find((f) => f.label === 'Rename node n12 to n2')!;
     expect(fixedText(typo, fix.changes, 1)).toBe(applyChanges(typo, fix.changes));
     expect(fixedText(typo, fix.changes, MAX)).not.toBe(applyChanges(typo, fix.changes));
   });

@@ -54,7 +54,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | Trap | What it catches | Severity | What ngspice does |
 |---|---|---|---|
 | [mega-as-milli](#mega-as-milli) | `1M`, `4.7M`, `1MOhm` as a value | warning | reads milli, silently |
-| [unit-letter](#unit-letter) | `3A` (atto), `1F` on a capacitor (femto) | warning, info | reads atto or femto, silently |
+| [unit-letter](#unit-letter) | `3A` (atto), `1F` on a capacitor (femto) | warning, info | reads atto or femto, silently (on a resistor ngspice 47 warns that it is too small: see zero-ohm) |
 | [greek-mu](#greek-mu) | the Greek letter μ in a value | warning | ignores it; silently, except a model warning on C and L |
 | [rkm-notation](#rkm-notation) | `2k2`, `4k7`, `1M5`, `4R7` | warning | ignores the digits after the letter, silently (`0R47` is 0 Ω: see zero-ohm) |
 | [decimal-comma](#decimal-comma) | `1,5k` | error, warning | R, C, L: keeps the second number; V, I: stops |
@@ -83,7 +83,7 @@ run that justifies it. A unit test checks that every cited ID has its section he
 | [no-analysis](#no-analysis) | no analysis line | error | runs nothing |
 | [missing-end](#missing-end) | no `.end` | info | fine from a file |
 | [after-end](#after-end) | lines after `.end` | warning | still read from a file (unless `.end;...`) |
-| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω, `r=0` too (a 0 another check explains is that check's, with the same words) | warning, error | 47: 1e-12 Ω with a warning (inside a subcircuit for r.x1.r1); 42: 1 mΩ silently; across a source: absurd currents |
+| [zero-ohm](#zero-ohm) | a resistor below 1e-12 Ω, `r=0` too (a 0 another check explains is that check's, with the same words) | warning, error | 47: 1e-12 Ω with a warning (inside a subcircuit for r.x1.r1; −1e-12 Ω for a negative value); 42: 1 mΩ for 0, any other value as written, silently; across a source: absurd currents |
 | [fatal-syntax](#fatal-syntax) | an unclosed `{` or `'`, an undefined parameter, a malformed B line | error | stops with a fatal error |
 | [include-not-available](#include-not-available) | `.include`, `.lib file section`, `.lib` with one word | error | stops: the file is not there, or `.lib` is not recognised |
 | [lost-continuation](#lost-continuation) | a `+` line that ngspice loses | warning | loses it, silently |
@@ -189,6 +189,8 @@ PlainSpice's checks: `mega-as-milli`, `mega-as-milli`, `mega-as-milli`.
 ## unit-letter
 
 A value whose scale letter is `A`/`a` (atto) on any part with a main value, or `F` (femto) on a capacitor. Warning; a lower-case `f` on a capacitor is only info, because femtofarads are sometimes meant. Fix: the number alone (`3`, `1`). `100mA` or `10uF` raise nothing: the scale letter is m or u and the letters after it are ignored (unit-letter-3).
+
+On a resistor an atto value is below 1e-12 Ω (`3a` is 3e-18 Ω): ngspice 47 raises it to 1e-12 Ω and warns, and ngspice 42 keeps it as written, without a word (zero-ohm-7, zero-ohm-8, P24). After the last pass (13 November 2026, F4) this check says so there, where it said "says nothing", and the zero-ohm check leaves such a value to it: one card for the word, whose fix writes the number meant.
 
 What PlainSpice shows for unit-letter-1 (warning, line 2):
 
@@ -1150,7 +1152,7 @@ ngspice 42, ngspice -b (exit 1):
   ngspice -b -r out.raw (exit 1), which also prints:
     doAnalyses: TRAN:  Timestep too small; initial timepoint: cause unrecorded.
     run simulation(s) aborted
-    rawfile: (no rawfile)
+    rawfile: a Transient Analysis plot whose header says 0 points (no results); 40 bytes of zeros, one point's worth, follow its Binary: line
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     in                                           0
     out                                          0
@@ -1265,6 +1267,8 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `space-before-suffix`.
+
+After the last pass (13 November 2026): a capacitor's `p` and an inductor's `v` and `volt` give the same two messages, each version its own (space-before-suffix-19), and so do a voltage source's `p` and a current source's `p` and `v` (space-before-suffix-20).
 
 ### space-before-suffix-13. G1 0 b a 0 2 k
 
@@ -1538,6 +1542,294 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `space-before-suffix`.
+
+### space-before-suffix-19. A capacitor's or an inductor's p, and an inductor's v or volt, after a space: values the part can only report, so ngspice 47 stops with "no such parameter on this device or parameter is missing" (ngspice 42: "no such parameter on this device")
+
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C7), as the record of the runs space-before-suffix-12 noted in a paragraph. `1 p` on a capacitor or an inductor and `1 v` or `1 volt` on an inductor are two words for ngspice, and the second names a value the part can only report: its power, an inductor's voltage (ngspice's tables in cap.c and ind.c, and `src/spice/parse.ts`). So each version stops with its own words of space-before-suffix-12, which the check says: "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')". Until then the check quoted "unknown parameter (volt)" for `volt`, and cited space-before-suffix-12, a resistor's record, for the others. Its fix joins the words (`1p`, `1`).
+
+```spice
+* a space before p on a capacitor: p is its power, which it can only report
+V1 in 0 1
+R9 in out 1k
+C1 out 0 1 p
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      c1 out 0 1 p
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      c1 out 0 1 p
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a space before v on an inductor: v is its voltage, which it can only report
+V1 in 0 1
+R9 in out 1k
+L1 out 0 1 v
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 v
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 v
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a space before volt on an inductor: volt is its voltage too
+V1 in 0 1
+R9 in out 1k
+L1 out 0 1 volt
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 volt
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 volt
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a space before p on an inductor: p is its power, which it can only report
+V1 in 0 1
+R9 in out 1k
+L1 out 0 1 p
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 p
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 p
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-before-suffix`; `space-before-suffix`; `space-before-suffix`; `space-before-suffix`.
+
+### space-before-suffix-20. A voltage source's p and a current source's p or v after a space: the same two messages; a voltage source reports no v, so `5 v` gives "unknown parameter (v)"
+
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C4 and C7). A voltage source can only report its current (`i`) and its power (`p`), a current source its voltage (`v`) and its power (`p`) (vsrc.c and isrc.c), so `dc 5 p`, `1 p` (1 pA meant) and `1 v` stop ngspice 47 with "no such parameter on this device or parameter is missing" and ngspice 42 with "no such parameter on this device", where the check quoted "unknown parameter" until the last pass (F10). A voltage source has no `v` to report: `5 v` gives "unknown parameter (v)" in both versions, as the check says.
+
+```spice
+* a space before p on a voltage source: p is its power, which it can only report
+V1 a 0 dc 5 p
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 dc 5 p
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 dc 5 p
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a space before p on a current source: 1 p meant as 1 pA
+I1 0 a 1 p
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 p
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 p
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a space before v on a current source: v is its voltage, which it can only report
+I1 0 a 1 v
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 v
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 v
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a space before v on a voltage source, which reports no v
+V1 a 0 5 v
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 5 v
+      unknown parameter (v)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 5 v
+      unknown parameter (v)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-before-suffix`; `space-before-suffix`; `space-before-suffix`; `space-before-suffix`.
 
 ## midline-comment
 
@@ -3125,7 +3417,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     DC solution failed -
@@ -3367,9 +3659,9 @@ What PlainSpice shows for no-ground-1 (error, line 2):
 
 > **No ground: no node is called 0.** Without ground, SPICE can't pin the voltages down. It warns about a singular matrix, which means its equations have no single answer, and any numbers it still prints can't be trusted. Every circuit needs one node called 0 (gnd works too).
 >
-> *ngspice:* ngspice warns 'singular matrix', falls back to a 'transient op' and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]
+> *ngspice:* ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and still prints numbers. They are not the answer: in one test a 6 V source's + node came out at 9.000333 V. [no-ground-1]
 >
-> *Fixes:* "Make b the ground (rename it to 0)"
+> *Fixes:* "Make node b the ground (rename it to 0)"
 
 ### no-ground-1. No node 0: singular matrix, and numbers that are not the answer
 
@@ -3448,11 +3740,11 @@ The netlist has a ground, and another node has a ground-like name: `ground`, `00
 
 What PlainSpice shows for ground-misnamed-1 (warning, line 2):
 
-> **ground is not ground: ground is node 0.** In SPICE, ground is the node called 0 (gnd works too). ground is just another node name, so the parts on it are not connected to ground.
+> **Node "ground" is not ground: ground is node 0.** In SPICE, ground is the node called 0 (gnd works too). Node "ground" is just an ordinary node, so the parts on it are not connected to ground.
 >
-> *ngspice:* ngspice says nothing and treats ground as an ordinary node. In one test, V1 n1 ground 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]
+> *ngspice:* ngspice says nothing and treats node "ground" as an ordinary node. In one test, V1 n1 ground 6 with R1 n1 0 2 gave v(n1) = 0 and no current at all. [ground-misnamed-1, ground-misnamed-3]
 >
-> *Fixes:* "Rename ground to 0"
+> *Fixes:* "Rename node \"ground\" to 0"
 
 ### ground-misnamed-1. ground next to 0: two different nodes, silently
 
@@ -3537,7 +3829,7 @@ A node (not ground, not named in any directive) with exactly one connection, the
 
 What PlainSpice shows for dangling-node-1 (info, line 4):
 
-> **Only R2 touches n2.** No current flows in R2, so n2 sits at the same voltage as n1. That is right for an open terminal where you measure a voltage; if R2 should connect to something, check this node name.
+> **Only R2 touches node n2.** No current flows in R2, so node n2 sits at the same voltage as node n1. That is right for an open terminal where you measure a voltage; if R2 should connect to something, check this node name.
 >
 > *ngspice:* ngspice says nothing: R2 carries no current, so it changes nothing else in the circuit. [dangling-node-1]
 >
@@ -3601,11 +3893,11 @@ A group of nodes with no DC path to ground: what touches it are capacitors, the 
 
 What PlainSpice shows for floating-dc-1 (error, line 3):
 
-> **b has no DC path to ground.** At DC a capacitor is an open circuit, so nothing connects b to ground. SPICE can't pin its voltage down: its equations have no single answer. Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.
+> **Node b has no DC path to ground.** At DC a capacitor is an open circuit, so nothing connects node b to ground. SPICE can't pin its voltage down: its equations have no single answer. Engineers often add a very large resistor (1 GΩ) from such a node to ground: it gives SPICE a DC path and changes almost nothing else.
 >
-> *ngspice:* ngspice warns 'singular matrix: check node b', falls back to a 'transient op' and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]
+> *ngspice:* ngspice warns 'singular matrix: check node b', falls back to a transient op ('Note: Transient op started') and still prints numbers. They can't be trusted: in one test a node that is 3 V at DC came out at 0.0887 V. [floating-dc-1, floating-dc-2, floating-dc-3, floating-dc-5]
 >
-> *Fixes:* "Add a 1 GΩ resistor from b to ground"
+> *Fixes:* "Add a 1 GΩ resistor from node b to ground"
 
 ### floating-dc-1. A node between two capacitors has no DC path: singular matrix
 
@@ -3746,7 +4038,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -3986,7 +4278,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: an Operating Point plot with 0 points (no results)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4001,9 +4293,9 @@ A floating group (as in floating-dc) that a current source touches: I, the outpu
 
 What PlainSpice shows for current-source-no-path-1 (error, line 4):
 
-> **I1's current has nowhere to go.** A current source pushes its current through whatever it is connected to. Here b has no DC path back to ground (a capacitor is an open circuit at DC), so the current has nowhere to go and the voltage there is not defined.
+> **I1's current has nowhere to go.** A current source pushes its current through whatever it is connected to. Here node b has no DC path back to ground (a capacitor is an open circuit at DC), so the current has nowhere to go and the voltage there is not defined.
 >
-> *ngspice:* ngspice warns 'singular matrix', falls back to a 'transient op' and prints numbers that can't be trusted. [current-source-no-path-1]
+> *ngspice:* ngspice warns 'singular matrix', falls back to a transient op ('Note: Transient op started') and prints numbers that can't be trusted. [current-source-no-path-1]
 >
 > *Fixes:* none
 
@@ -4124,7 +4416,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4163,7 +4455,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4213,7 +4505,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4251,7 +4543,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4289,7 +4581,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4327,7 +4619,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     the same messages as ngspice 47
@@ -4421,14 +4713,14 @@ ngspice 47, ngspice -b (exit 1):
     Warning: singular matrix:  check node v1#branch
     doAnalyses: TRAN:  Timestep too small; initial timepoint: cause unrecorded.
     run simulation(s) aborted
-    rawfile: (no rawfile)
+    rawfile: a Transient Analysis plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 1), which also prints:
     Warning: singular matrix:  check node v1#branch
     doAnalyses: TRAN:  Timestep too small; initial timepoint: cause unrecorded.
     run simulation(s) aborted
-    rawfile: (no rawfile)
+    rawfile: a Transient Analysis plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 1, marked unreliable, no results):
     Operating point simulation skipped by 'uic',
       now using transient initial conditions.
@@ -6021,13 +6313,14 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `dc-sweep-problems`.
@@ -6051,13 +6344,14 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `dc-sweep-problems`.
@@ -6301,7 +6595,7 @@ ngspice 47, ngspice -b (exit 1):
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
@@ -6686,13 +6980,14 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `dc-sweep-problems`, `dc-sweep-problems`.
@@ -7632,7 +7927,7 @@ What PlainSpice shows for no-analysis-1 (error, line 4):
 
 > **No analysis: nothing will run.** A netlist describes a circuit; an analysis line tells SPICE what to work out. .op finds the DC voltages and currents, .dc sweeps a source, .tran shows how the circuit changes in time.
 >
-> *ngspice:* ngspice reads the circuit and runs nothing. In batch mode it ends with 'no simulations run!'; PlainSpice's engine gives no results and no message. [no-analysis-1]
+> *ngspice:* ngspice reads the circuit and runs nothing. In batch mode ngspice 47 ends with 'no simulations run!' and ngspice 42 with 'Note: No ".plot", ".print", or ".fourier" lines; no simulations run'; PlainSpice's engine gives no results and no message. [no-analysis-1]
 >
 > *Fixes:* "Add .op before .end"
 
@@ -7771,11 +8066,13 @@ PlainSpice's checks: `after-end`.
 
 A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3). An error, with no fix, when the resistor sits straight across a voltage source, or a chain of voltage sources and inductors whose voltages need not add up to 0: its current then has no finite answer, and ngspice's stand-in gives an absurd one (zero-ohm-2: 6e12 A from a 6 V source). After the re-check of the fixes (12 November 2026, C1), a 0 that another check already explains (`0<ZWSP>.47`, `0R47`, `0k47`, `0．47`: 470 mΩ was meant) is that check's, whose fix writes what was meant; the 0 V source would make a short. The error across a source stays. After the critic of those fixes (12 November 2026, CR1-1), that check says what this one says of a 0, from the runs of zero-ohm-4: ngspice 47 uses 1e-12 Ω and warns, ngspice 42 used 1 mΩ without a word; never "without a message" or "says nothing".
 
+After the last pass (13 November 2026, F4 and F5), the same for a value below 1e-12 Ω that is not 0 (zero-ohm-7, zero-ohm-8, P24): ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative value, and warns ("set to -1.000000e-12" for a negative one), and ngspice 42 keeps the value as written, without a word; only a value of exactly 0 becomes 1 mΩ in ngspice 42. Such a value that another check explains (`3a`, unit-letter) is that check's alone, whose words say what each version does, where "Use a 0 V source" would make a short where 3 Ω was meant; the error across a source stays. The words for a 0 no longer say that ngspice 42's 1 mΩ "changed the answer in the 4th digit": that is zero-ohm-1's circuit only (zero-ohm-6 changes in the 3rd digit, P13 in the 6th), and a student would read it as the size of the change in their own circuit (F5). After the round-1 critic of those fixes (C3, C6): the why for such a value that is not 0 is ngspice 47's floor, in the Numbers panel's words ("ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate", zero-ohm-9), where it said that SPICE cannot use a resistance of 0; and a Greek μ in a 0 or tiny value (`0μ47`, `1e-13μ`) is greek-mu's alone, as greek-mu now runs before this check.
+
 What PlainSpice shows for zero-ohm-1 (warning, line 3):
 
 > **R1 has a resistance of 0 Ω.** SPICE can't use a resistance of exactly 0: a resistor's current is its voltage divided by its resistance. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
 >
-> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 Ω without a word, which changed the answer in the 4th digit. [zero-ohm-1, zero-ohm-2]
+> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 Ω without a word. [zero-ohm-1, zero-ohm-2]
 >
 > *Fixes:* "Use a 0 V source instead (VR1)"
 
@@ -7802,6 +8099,30 @@ What PlainSpice shows for zero-ohm-4 (warning, line 4):
 > *ngspice:* ngspice reads 0R47 as 0 Ω (R2), which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to 1.000000e-12' (ngspice 42 used 0.001 Ω without a word). [rkm-notation-1, zero-ohm-1, zero-ohm-4]
 >
 > *Fixes:* "Write 0.47 (470 mΩ)"
+
+What PlainSpice shows for zero-ohm-7 (warning, line 3):
+
+> **R1 has a resistance of 1 fΩ.** ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
+>
+> *ngspice:* ngspice 47 uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9]
+>
+> *Fixes:* "Use a 0 V source instead (VR1)"
+
+What PlainSpice shows for zero-ohm-7 (warning, line 5):
+
+> **R2 has a resistance of −3 aΩ.** ngspice 47 cannot use a resistance this close to 0: it uses −10⁻¹² Ω instead, and the currents next to it can come out inaccurate. For a wire, give both ends the same node name; to measure the current in a wire, use a 0 V source (the ammeter trick).
+>
+> *ngspice:* ngspice 47 uses −1e-12 Ω instead and warns 'Value of resistor r2 is too small, set to -1.000000e-12'. ngspice 42 keeps it as written, without a word. [zero-ohm-7, zero-ohm-9]
+>
+> *Fixes:* "Use a 0 V source instead (VR2)"
+
+What PlainSpice shows for zero-ohm-8 (warning, line 3):
+
+> **3a means 3 attoohms.** A is not amps here: SPICE reads it as the scale letter a, atto (10⁻¹⁸), and it does not use units. Write the number alone: 3 means 3 ohms.
+>
+> *ngspice:* ngspice reads 3a as 3 attoohms, which ngspice 47 cannot use: it uses 1e-12 Ω instead and warns 'Value of resistor r1 is too small, set to 1.000000e-12' (ngspice 42 keeps it as written, without a word). [unit-letter-1, unit-letter-2, zero-ohm-7]
+>
+> *Fixes:* "Write 3 (3 ohms)"
 
 ### zero-ohm-1. A 0 Ω resistor: 47 uses 1e-12 Ω and warns, 42 used 1 mΩ silently
 
@@ -8048,6 +8369,189 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 PlainSpice's checks: `zero-ohm`, `invisible-character`.
+
+### zero-ohm-7. Below 1e-12 Ω but not 0: ngspice 47 uses 1e-12 Ω (−1e-12 Ω for a negative value) and warns; ngspice 42 keeps the value as written, silently
+
+Added after the last pass (13 November 2026, F4). A current of 1 A goes into each resistor, so each node sits at the resistance ngspice uses: ngspice 47 raises 1e-15 and 3a (3e-18) to 1e-12 Ω and −3e-18 to −1e-12 Ω, with a warning for each; ngspice 42 keeps all three as written and says nothing. Only a value of exactly 0 becomes 1 mΩ in ngspice 42 (zero-ohm-1). R1 and R2 get zero-ohm's warning; 3a is unit-letter's alone (zero-ohm-8).
+
+```spice
+* resistances below 1e-12 ohm that are not 0, 1 A into each: each node is at the resistance used
+I1 0 n1 1
+R1 n1 0 1e-15
+I2 0 n2 1
+R2 n2 0 -3e-18
+I3 0 n3 1
+R3 n3 0 3a
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n3                               1.000000e-12
+        n2                               -1.00000e-12
+        n1                               1.000000e-12
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+    Warning: Value of resistor r2 is too small, set to -1.000000e-12
+    Warning: Value of resistor r3 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 1e-12
+ngspice 42, ngspice -b (exit 0):
+        n3                               3.000000e-18
+        n2                               -3.00000e-18
+        n1                               1.000000e-15
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1e-15, v(n2) = -3.0000000000000002e-18, v(n3) = 3.0000000000000002e-18
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same messages as ngspice 47
+    vectors: v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 1e-12
+```
+
+PlainSpice's checks: `zero-ohm`, `zero-ohm`, `unit-letter`.
+
+### zero-ohm-8. 3a on a resistor: one check for the word; in series ngspice 42's current goes wrong, and across a source ngspice 47 gives 6e12 A
+
+Added after the last pass (13 November 2026, F4). 3a is read as 3 attoohms (unit-letter), which ngspice 47 raises to 1e-12 Ω with a warning, as in zero-ohm-7. In series with 2 Ω, ngspice 47 gives the 3 A of a wire; ngspice 42 keeps 3 aΩ and gives the source a current of 0 A, though 6 V sits across the 2 Ω. Straight across a 6 V source, ngspice 47 gives 6e12 A, as for a 0 (zero-ohm-2), and ngspice 42 gives 2e18 A. The unit-letter check owns each 3a, and its words say what each version does; the error for the resistor across the source stays, as for a 0.
+
+```spice
+* 3a in series with 2 ohm, and 3a across a voltage source
+V1 a 0 6
+R1 a b 3a
+R2 b 0 2
+V2 c 0 6
+R3 c 0 3a
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        c                                6.000000e+00
+        b                                6.000000e+00
+        a                                6.000000e+00
+        v1#branch                        -3.00000e+00
+        v2#branch                        -6.00000e+12
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+    Warning: Value of resistor r3 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 5.999999999997, v(c) = 6, i(v2) = -6000000000000, i(v1) = -3
+ngspice 42, ngspice -b (exit 0):
+        c                                6.000000e+00
+        b                                6.000000e+00
+        a                                6.000000e+00
+        v1#branch                        0.000000e+00
+        v2#branch                        -2.00000e+18
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6, v(c) = 6, i(v2) = -2000000000000000000, i(v1) = 0
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same messages as ngspice 47
+    vectors: v(a) = 6, v(b) = 5.999999999997, v(c) = 6, i(v2) = -6000000000000, i(v1) = -3
+```
+
+PlainSpice's checks: `unit-letter`, `unit-letter`, `zero-ohm`.
+
+### zero-ohm-9. Below 1e-12 Ω but not 0: the currents next to the resistor can come out inaccurate, in ngspice 47 as for a 0 (P13), and in ngspice 42 too
+
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C3), for the zero-ohm check's why for such a value: "ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate", the words of the Numbers panel's note too (P13, P24). Each resistor is in series with 1 kΩ across 6 V, so the exact current is 6 mA, run as PlainSpice runs an .op (`.options savecurrents`, A2 in explanations.md). ngspice 47 raises 1 fΩ to 1e-12 Ω, as it does a 0 (P13), and gives V1 5.859 mA and R1 6.217 mA; it makes −3 aΩ −1e-12 Ω and gives V1 4.883 mA and R1 5.329 mA. R2's 6 mA is right in both. ngspice 42 keeps each value and gives V1 and R1 0 A. Where a current source sets the current (P24's 3a), R1 carries exactly that 1 A in both versions: the currents can come out inaccurate, not always.
+
+```spice
+* 1 femtoohm in series with 1k, as PlainSpice runs it (.options savecurrents)
+V1 a 0 6
+R1 a b 1f
+R2 b 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           6.217249e-03
+        v1#branch                        -5.85938e-03
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 5.999999999999994, i(v1) = -0.005859375, i(@r1[i]) = 0.006217248937900877, i(@r2[i]) = 0.005999999999999994
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           0.000000e+00
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6, i(v1) = 0, i(@r1[i]) = 0, i(@r2[i]) = 0.006
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same message as ngspice 47
+    vectors: v(a) = 6, v(b) = 5.999999999999994, i(v1) = -0.005859375, i(@r1[i]) = 0.006217248937900877, i(@r2[i]) = 0.005999999999999994
+    diagnostics: resistor-too-small (r1)
+```
+
+```spice
+* minus 3 attoohms in series with 1k, as PlainSpice runs it (.options savecurrents)
+V1 a 0 6
+R1 a b -3e-18
+R2 b 0 1k
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           5.329071e-03
+        v1#branch                        -4.88281e-03
+    Warning: Value of resistor r1 is too small, set to -1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6.000000000000005, i(v1) = -0.0048828125, i(@r1[i]) = 0.005329070518200751, i(@r2[i]) = 0.006000000000000005
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        b                                6.000000e+00
+        a                                6.000000e+00
+        @r2[i]                           6.000000e-03
+        @r1[i]                           -0.000000e+00
+        v1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(a) = 6, v(b) = 6, i(v1) = 0, i(@r1[i]) = -0, i(@r2[i]) = 0.006
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same message as ngspice 47
+    vectors: v(a) = 6, v(b) = 6.000000000000005, i(v1) = -0.0048828125, i(@r1[i]) = 0.005329070518200751, i(@r2[i]) = 0.006000000000000005
+    diagnostics: resistor-too-small (r1)
+```
+
+```spice
+* 3a on a resistor, as PlainSpice runs it (.options savecurrents)
+I1 0 n1 1
+R1 n1 0 3a
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        n1                               1.000000e-12
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        n1                               3.000000e-18
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(n1) = 3.0000000000000002e-18, i(@i1[current]) = 1, i(@r1[i]) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    the same message as ngspice 47
+    vectors: v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
+    diagnostics: resistor-too-small (r1)
+```
+
+PlainSpice's checks: `zero-ohm`; `zero-ohm`; `unit-letter`.
 
 ## fatal-syntax
 
@@ -8916,6 +9420,8 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `unknown-word`.
+
+After the last pass (13 November 2026): the same two messages for a capacitor's `i`, an inductor's `flux` and a resistor's `sens_dc` (unknown-word-56), and for a voltage source's `i` and a current source's `v` (unknown-word-57).
 
 ### unknown-word-7. The same after an inductor value
 
@@ -10879,6 +11385,229 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `unknown-word`.
 
+### unknown-word-56. A capacitor's i, an inductor's flux and a resistor's sens_dc after the value: values the part can only report, so ngspice 47 stops with "no such parameter on this device or parameter is missing" (ngspice 42: "no such parameter on this device")
+
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C7), as the record of the runs unknown-word-6 noted in a paragraph. A capacitor reports its current (`i`), an inductor its flux, a resistor its sensitivities (`sens_dc` and the like, which ngspice first looks up as a model on a resistor's line, as unknown-word-6's `i`), and a line cannot set them. Each version stops with its own words, which the check says, citing this record; until the last pass it put ngspice 47's words to plain "ngspice" (F10).
+
+```spice
+* the current of a capacitor, written after its value
+V1 in 0 1
+R9 in out 1k
+C1 out 0 1u i
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      c1 out 0 1u i
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      c1 out 0 1u i
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* the flux of an inductor, written after its value
+V1 in 0 1
+R9 in out 1k
+L1 out 0 1m flux
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1m flux
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1m flux
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* the dc sensitivity of a resistor, written after its value
+V1 in 0 1
+R9 in out 1k
+R1 out 0 1k sens_dc
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    warning, can't find model 'sens_dc' from line
+        r1 out 0 1k sens_dc
+    Error on line 4 or its substitute:
+      r1 out 0 1k sens_dc
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    warning, can't find model 'sens_dc' from line
+        r1 out 0 1k sens_dc
+    Error on line 4 or its substitute:
+      r1 out 0 1k sens_dc
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+PlainSpice's checks: `unknown-word`; `unknown-word`; `unknown-word`.
+
+### unknown-word-57. A voltage source's i, and a current source's v after its AC value: values the source can only report, the same two messages; a current source reports no i, so `1 i` gives "unknown parameter (i)"
+
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C4, C5 and C7). The check's why says what the source can report: "(such as its current or its power)" for a voltage source, and "(such as its voltage or its power)" for a current source, whose current is what its line sets (C5). Explain gives these words the same meaning, "a value ngspice can report for this part, not one a line can set: ngspice stops ("no such parameter on this device")", where it said "unknown parameter" until then (C4): both read the source's table in `src/spice/parse.ts`. A current source has no `i` to report: `1 i` gives "unknown parameter (i)" in both versions, as the check and Explain say.
+
+```spice
+* the current of a voltage source, written after its value
+V1 a 0 5 i
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 5 i
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      v1 a 0 5 i
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* the voltage of a current source, written after its AC value
+I1 0 a 1 ac 1 v
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 ac 1 v
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 ac 1 v
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+```spice
+* a current source reports no i
+I1 0 a 1 i
+R1 a 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 i
+      unknown parameter (i)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 2 or its substitute:
+      i1 0 a 1 i
+      unknown parameter (i)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+PlainSpice's checks: `unknown-word`; `unknown-word`; `unknown-word`.
+
 ## unknown-dot-command
 
 A line starting with a dot that is not a dot command ngspice 47 knows (the list is `isKnownDotCommand` in `src/spice/explain.ts`, A29). Error: ngspice stops before anything runs. When it looks like a slip in a common command (a letter more, less, swapped or changed), the fix offers that command, and the no-analysis trap stays quiet for a misspelt analysis. Fix: the command it looks like, or make the line a comment.
@@ -10887,7 +11616,7 @@ What PlainSpice shows for unknown-dot-command-1 (error, line 4):
 
 > **ngspice does not know .tarn.** A line starting with a dot is a dot command for SPICE, and .tarn is not one ngspice knows. Did you mean .tran? To keep the line as a note, start it with * instead.
 >
-> *ngspice:* ngspice stops before running anything, with 'unimplemented dot command' for .tarn. [unknown-dot-command-1, unknown-dot-command-2]
+> *ngspice:* ngspice stops before running anything, with 'unimplemented dot command' for .tarn. [unknown-dot-command-1]
 >
 > *Fixes:* "Use .tran", "Make the line a comment"
 
@@ -11015,7 +11744,7 @@ ngspice 42, ngspice -b (exit 1):
     Shooting cycle iteration number:   0 || rr: 0 || predsum: -5e-10
     No detectable dynamic on voltages nodes or currents branches. PSS analysis aborted
     doAnalyses: impossible error - can't occur
-    rawfile: (no data)
+    rawfile: v(a) = 1, i(v1) = -0.001 (the .op), then a Time Domain Periodic Steady State Analysis plot with 0 points, its header only
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     Error on line 4 or its substitute:
       .pss 1k 1m a 1
@@ -11103,13 +11832,13 @@ What PlainSpice shows for non-ascii-node-1 (warning, line 2):
 >
 > *ngspice:* ngspice spells the node giri__ in its printout and results, without a message. [non-ascii-node-1]
 >
-> *Fixes:* "Rename giriş to giris"
+> *Fixes:* "Rename node giriş to giris"
 
 What PlainSpice shows for non-ascii-node-2 (error, line 3):
 
-> **ş and ç are one node for ngspice.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so ş and ç both become __: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.
+> **Node ş and node ç are one node for ngspice.** ngspice writes each letter other than a to z (or A to Z) in a node name as underscores, so node ş and node ç both become __: one node. It simulates a different circuit from the one written here. Give each node a name in plain letters.
 >
-> *ngspice:* ngspice spells ş and ç as __ and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]
+> *ngspice:* ngspice spells node ş and node ç as __ and makes them one node, without a message: in one test this put both ends of a resistor on that node, so it carried no current. [non-ascii-node-2]
 >
 > *Fixes:* "Write s for ş and c for ç"
 
@@ -11198,7 +11927,7 @@ What PlainSpice shows for non-ascii-node-3 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a .print line naming a node with Turkish letters
@@ -11324,7 +12053,7 @@ What PlainSpice shows for non-ascii-node-4 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node çıkış there: save v(çıkış) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-4]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * commands in a .control block naming a node with Turkish letters
@@ -11410,11 +12139,11 @@ of its ends are joined (non-ascii-node-11).
 
 What PlainSpice shows for non-ascii-node-5 (warning, line 3):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node: R1 has both ends on it and carries no current. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node: R1 has both ends on it and carries no current. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au, without a message: in one test a resistor with an end on each carried no current. [non-ascii-node-5]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * aµ and au are one node
@@ -11504,7 +12233,7 @@ What PlainSpice shows for non-ascii-node-7 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. In a .control block it reads the name as written too, so it finds no node çıkış there. [non-ascii-node-1, non-ascii-node-4]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a save that names a current too: the analysis runs
@@ -11635,11 +12364,11 @@ spelling, and for no other part (non-ascii-node-11), nor for a capacitor given a
 
 What PlainSpice shows for non-ascii-node-10 (warning, line 4):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node: C1 and D1 have both ends on it and carry no current. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node: C1 and D1 have both ends on it and carry no current. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au, without a message: in tests a resistor, a capacitor and a diode with an end on each carried no current. [non-ascii-node-5, non-ascii-node-10]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * a capacitor and a diode with an end on aµ and one on au
@@ -11685,11 +12414,11 @@ So for any part other than a resistor, a capacitor or a diode, the check says on
 
 What PlainSpice shows for non-ascii-node-11 (warning, line 4):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins both ends of I1. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node, which joins both ends of I1. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-11]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au. [non-ascii-node-5, non-ascii-node-11]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * a current source with an end on aµ and one on au
@@ -11756,11 +12485,11 @@ for the parts of non-ascii-node-11, and cites this fact.
 
 What PlainSpice shows for non-ascii-node-12 (warning, line 4):
 
-> **aµ and au are one node for ngspice.** ngspice reads the micro sign µ as u, so aµ and au are the same node, which joins both ends of C1. Give aµ a name of its own in plain letters.
+> **Node aµ and node au are one node for ngspice.** ngspice reads the micro sign µ as u, so node aµ and node au are the same node, which joins both ends of C1. Give node aµ a name of its own in plain letters.
 >
-> *ngspice:* ngspice reads µ as u and makes aµ and au one node, au. [non-ascii-node-5, non-ascii-node-12]
+> *ngspice:* ngspice reads µ as u and makes node aµ and node au one node, au. [non-ascii-node-5, non-ascii-node-12]
 >
-> *Fixes:* "Rename aµ to au2"
+> *Fixes:* "Rename node aµ to au2"
 
 ```spice
 * a capacitor given a starting voltage, with an end on aµ and one on au
@@ -11785,7 +12514,9 @@ ngspice 47, ngspice -b (exit 1), as for any .tran with no .print line:
     i(@c1[i]) = 0 at every later point
     last point: time = 9.999999999999999e-06, v(in) = 12, v(au) = 8, i(v1) = -0.004, i(@r1[i]) = 0.004, i(@c1[i]) = 0, i(@r2[i]) = 0.004
 ngspice 42, ngspice -b (exit 1): Note: No ".plot", ".print", or ".fourier" lines; no simulations run
-  ngspice -b -r out.raw (exit 0): "Using transient initial conditions", the same 76 points and values
+  ngspice -b -r out.raw (exit 0): "Using transient initial conditions", and the same summary: 76 points, the same
+  first and last points, i(@c1[i]) = 0 at every later point; 2 of its time points differ slightly (9.306e-7 s
+  where 47 has 8.653e-7 s, 9.9e-6 s where 47 has 9.85e-6 s), with the same values
 our engine (wasm), as ngspice -b -r (exit 0): the same 76 points, i(@c1[i]) = -4999.999999999999 at the
   first point and 0 at every later one, v(au) = 8 and i(@r1[i]) = 0.004 throughout
 ```
@@ -11819,7 +12550,7 @@ What PlainSpice shows for non-ascii-node-13 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it warns "can't parse 'çıkış'" and prints nothing for that line. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [non-ascii-node-1, non-ascii-node-3]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a .print line naming a node with Turkish letters beside one ngspice finds
@@ -11881,7 +12612,7 @@ What PlainSpice shows for non-ascii-node-14 (warning, line 3):
 >
 > *ngspice:* ngspice spells the node ____k____ in its printout and results. On a .print or .plot line it reads the name as written, so it finds no node çıkış there: run as ngspice -b, it prints nothing for that line. PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). In a .control block it reads the name as written too, so it finds no node çıkış there: save v(çıkış) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [non-ascii-node-1, non-ascii-node-3, non-ascii-node-4]
 >
-> *Fixes:* "Rename çıkış to cikis"
+> *Fixes:* "Rename node çıkış to cikis"
 
 ```spice
 * a save of the name in a .control block, read before the .print line
@@ -11971,7 +12702,7 @@ What PlainSpice shows for invisible-character-3 (warning, line 4):
 >
 > *ngspice:* ngspice keeps the character in the name, as underscores (ou___t), and makes a separate node, without a message: in one test the resistor on it carried no current. [invisible-character-3]
 >
-> *Fixes:* "Take it out: connect to out"
+> *Fixes:* "Take it out: connect to node out"
 
 What PlainSpice shows for invisible-character-5 (error, line 4):
 
@@ -13325,13 +14056,14 @@ ngspice 47, ngspice -b (exit 1):
            or no ".plot", ".print", or ".fourier" lines in batch mode;
     no simulations run!
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 ngspice 42, ngspice -b (exit 1):
     Note: No ".plot", ".print", or ".fourier" lines; no simulations run
   ngspice -b -r out.raw (exit 0)
-    rawfile: (no rawfile data)
+    rawfile: a DC transfer characteristic plot with 0 points, its header only (no results)
 our engine (wasm), as ngspice -b -r (exit 0, no results):
     vectors: (none)
+    diagnostics: rawfile (header without a Binary: or Values: section)
 ```
 
 PlainSpice's checks: `invisible-character`.
@@ -14811,11 +15543,11 @@ What PlainSpice shows for look-alike-letter-4 (warning, line 7):
 
 What PlainSpice shows for look-alike-letter-5 (warning, line 4):
 
-> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to out.
+> **The node оut has the Cyrillic letter о.** It looks like o, but SPICE knows only the plain letter o, so this is not the node out the other lines name: it is another node, and the parts on it are not connected to node out.
 >
 > *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node, without a message: in one test the resistor on it carried no current. [look-alike-letter-5]
 >
-> *Fixes:* "Connect to out"
+> *Fixes:* "Connect to node out"
 
 What PlainSpice shows for look-alike-letter-6 (error, line 2):
 
@@ -15496,7 +16228,7 @@ What PlainSpice shows for look-alike-letter-16 (warning, line 3):
 >
 > *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. On a .print or .plot line it reads the name as written, so it finds no node оut there: run as ngspice -b, it warns "can't parse 'оut'" and prints nothing for that line; with nothing else it can print or save, it runs no analysis ("no data saved"). PlainSpice's run leaves .print and .plot lines out (ngspice: ".print line ignored since rawfile was produced."). [look-alike-letter-5, look-alike-letter-16]
 >
-> *Fixes:* "Rename оut to out"
+> *Fixes:* "Rename node оut to out"
 
 ```spice
 * a Cyrillic о in a node name, on a .print line
@@ -15541,7 +16273,7 @@ What PlainSpice shows for look-alike-letter-17 (warning, line 3):
 >
 > *ngspice:* ngspice writes the letter's bytes as underscores (__ut) and makes a separate node: in one test the resistor on it carried no current. In a .control block it reads the name as written too, so it finds no node оut there: save v(оut) saves nothing, and since nothing else is saved, PlainSpice's run gives no results ("no data saved"). [look-alike-letter-5, look-alike-letter-17]
 >
-> *Fixes:* "Rename оut to out"
+> *Fixes:* "Rename node оut to out"
 
 ```spice
 * a Cyrillic о in a node name, saved in a .control block
@@ -15730,19 +16462,19 @@ What PlainSpice shows for space-character-8 (warning, line 6):
 
 What PlainSpice shows for space-character-10 (warning, line 3):
 
-> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.
+> **The node o ut has a thin space (U+2009) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to node out.
 >
 > *ngspice:* ngspice keeps the character in the name, as underscores (o___ut), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]
 >
-> *Fixes:* "Take it out: connect to out"
+> *Fixes:* "Take it out: connect to node out"
 
 What PlainSpice shows for space-character-10 (warning, line 5):
 
-> **The node o ut has a no-break space (U+00A0) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to out.
+> **The node o ut has a no-break space (U+00A0) in it.** It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is not the node out the other lines name but another node, and the parts on it are not connected to node out.
 >
 > *ngspice:* ngspice keeps the character in the name, as underscores (o__ut), and makes a separate node, without a message: in one test the resistor on it carried no current. [space-character-10]
 >
-> *Fixes:* "Take it out: connect to out"
+> *Fixes:* "Take it out: connect to node out"
 
 What PlainSpice shows for space-character-11 (warning, line 3):
 
