@@ -1359,9 +1359,9 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
  * draw it; the currents of the R, G and F that ngspice reports are answers here too, beyond what rounding leaves of
  * the numbers ngspice works each out from, exact.ts `ownGap`) and either is more than ANSWER_GAP from it beyond
  * what rounding leaves (exact.ts `answers`), or is a
- * node at exactly the voltage of another whose numbers ngspice gives are drawn differently: a 0 between them
- * would claim one voltage for two tags that differ (64.62 mV and 64.63 mV beside a 1e-10 Ω wire, each within
- * ANSWER_GAP of the exact 64.62 mV, the critic of round 4). An answer drawn with the exact value's digits is not
+ * node at exactly the voltage of another whose numbers ngspice gives are drawn differently, beyond rounding: a 0
+ * between them would claim one voltage for two tags that differ (64.62 mV and 64.63 mV beside a 1 nΩ wire, each
+ * within ANSWER_GAP of the exact 64.62 mV, the critic of round 4). An answer drawn with the exact value's digits is not
  * off, however far: V1's 372.4098 µA for 372.4395 µA is drawn "372.4 µA" either way, and a warning named it as
  * "372.4 µA, where ngspice gives 372.4 µA" until it was left out, which left the rule deciding with nothing said
  * (C9m fed through a 30 nΩ wire drew R7's exact 0 as 6.217e-20 A, the critic of round 4). Undefined when ngspice
@@ -1397,7 +1397,10 @@ function judgeAnswers(ex: Exact, view: View, ng: NgspiceValues): { same: true } 
  * Which answers of one solution are off on the page (judgeAnswers): drawn with other digits than the exact value,
  * and `gap` more than ANSWER_GAP (its gap beyond rounding, exact.ts `answers`), or a node whose exact voltage
  * another node shares (in every solution of the view, as its level on the page) while the numbers ngspice gives
- * the two are drawn differently.
+ * the two are drawn differently, beyond rounding. Within rounding, two such numbers are drawn differently only
+ * where the exact voltage lies on a rounding boundary of the page's digits (0.34375 V, which ngspice gives as
+ * 0.34375 and 0.34374999999999983, drawn 343.8 mV and 343.7 mV): ngspice lost nothing there, and a warning that
+ * says it lost most of its digits would not be true.
  */
 function offOnPage(ex: Exact, view: View, list: readonly Answer[]): (a: Answer, gap: number) => boolean {
   const drawn = (a: Answer, v: number): string => formatSI(v, a.kind === 'voltage' ? 'V' : 'A');
@@ -1414,7 +1417,7 @@ function offOnPage(ex: Exact, view: View, list: readonly Answer[]): (a: Answer, 
   }
   const split = new Set<string>();
   for (const g of groups.values()) if (g.length > 1 && g.some((a) => drawn(a, a.given) !== drawn(g[0]!, g[0]!.given))) for (const a of g) split.add(a.name);
-  return (a, gap) => a.exact !== 0 && misdrawn(a) && (gap > ANSWER_GAP || (a.kind === 'voltage' && split.has(a.name)));
+  return (a, gap) => a.exact !== 0 && misdrawn(a) && (gap > ANSWER_GAP || (a.kind === 'voltage' && split.has(a.name) && gap > 0));
 }
 
 /** With diodes, the warning names an off value whose diode terms are at most this share of its gap from ngspice's (opCheck). */

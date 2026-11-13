@@ -14,7 +14,7 @@ import { solveText } from '../../src/app/model.ts';
 import { csvText, tableRows } from '../../src/plot/table.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
 import { annotateLines, describeResults, roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
-import { add, agrees, answersGap, div, exactModel, fromDouble, MAX_PARTS, mul, operatingPoint, readExact, shares, solveExact, toDouble, type ExactModel, type Fraction } from '../../src/spice/exact.ts';
+import { add, agrees, answersGap, div, exactModel, fromDouble, MAX_PARTS, mul, operatingPoint, readExact, shares, solveExact, toDouble, unitSource, type ExactModel, type Fraction } from '../../src/spice/exact.ts';
 import { readAfterEnd } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { leastWorkMs } from './work-time.ts';
@@ -1254,6 +1254,11 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     expect(off(words)!.why).toContain('node a2 is at 64.63 mV, where ngspice gives 64.62 mV; and node m4 is at 64.63 mV, where ngspice gives 64.62 mV.');
   });
 
+  it('two nodes at exactly 343.75 mV, a rounding boundary of the page\'s digits, which ngspice gives a step of a double apart and the page draws as 343.7 mV and 343.8 mV, are not off: ngspice lost nothing, and a warning that it lost most of its digits would not be true (s4-522)', async () => {
+    const { words, by } = await solved(lines('V1 top1 0 0.5', 'R1 top1 a2 150', 'R2 a2 0 330', 'R3 top1 b3 15', 'R4 b3 0 33', 'R5 a2 m4 27', 'R6 m4 m5 6.8k', 'R7 m5 b3 820'));
+    expect([by, node(words, 'm4'), node(words, 'm5'), off(words)]).toEqual(['exact', '343.7 mV', '343.8 mV', undefined]);
+  });
+
   it('beside a sweep of a resistor the .op is decided exactly, and the sweep\'s point at the .op\'s own state shows its 0s: C9m with .dc R1 10k 20k 5k gives R7 0 A in the .op and at R1 = 15 kΩ, with both notes, and ngspice\'s real −4.682 µA at 20 kΩ (the rule drew R7\'s exact 0 as 6.217e-20 A with an arrow); with no point at the .op\'s state nothing in the sweep is marked; a point there that is not this circuit\'s (doctored 1 ppm off) leaves the .op to the rule and the sweep to ngspice', async () => {
     const c9m = ['V1 n1 0 9', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k', '.options savecurrents', '.op'];
     const text = `* t\n${[...c9m, '.dc R1 10k 20k 5k'].join('\n')}\n.end\n`;
@@ -1272,5 +1277,72 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     v[1] = v[1]! * (1 + 1e-6);
     expect(roundingNoise(parseNetlist(text), doctored).by).toBe('rule');
     expect(shownSweep(parseNetlist(text), doctored)).toBe(doctored.dc);
+  });
+
+  // Diodes placed alike carry equal currents only when they sit alike in every way the classes look at (the critic of round 4).
+  const arms = (feed2: string, top2: string[] = []): string => lines('V1 top 0 9', ...top2, 'R0 top t 100', 'D1 t a dmod', 'R1 a c 1k', 'R2 c 0 2.2k', feed2, 'D2 t2 b dmod', 'R3 b d 1k', 'R4 d 0 2.2k', 'R5 c m 4.7k', 'Vm m d 0', '.model dmod d', '.options savecurrents');
+
+  it('two diodes with one model line but other voltages across them with every diode at 0 A are not placed alike: arms fed from 9 V and 9.000000001 V keep the link\'s real 107.6 fA, with no note (dsym-t2: taken as alike by their line alone, the link was "no current", "placed alike in the circuit")', async () => {
+    const { words, by } = await solved(arms('R0b top2 t2 100', ['V2 top2 0 9.000000001']));
+    expect([by, current(words, 'R5'), current(words, 'Vm'), noise(words), note(words)]).toEqual(['exact', '107.6 fA from node m to node c through R5', 'Vm measures 107.6 fA flowing from node d to node m', [], undefined]);
+  });
+
+  it('two diodes alike at 0 A but whose currents make other voltages across them are not placed alike: feed resistors of 100 Ω and 100.0000001 Ω keep the link\'s real 27.14 fA, with no note (dsym-r0: with the classes not refined, the link was "no current")', async () => {
+    const { words, by } = await solved(arms('R0b top t2 100.0000001'));
+    expect([by, current(words, 'R5'), current(words, 'Vm'), noise(words), note(words)]).toEqual(['exact', '27.14 fA from node c to node m through R5', 'Vm measures 27.14 fA flowing from node m to node d', [], undefined]);
+  });
+
+  it('diodes placed alike that ngspice\'s numbers show carrying currents 1e-4 apart, far beyond its rounding (doctored as an exact solution with the two currents apart, as a latch can settle), are taken one by one: Vm keeps the current that makes, not "no current"', async () => {
+    const text = arms('R0b top t2 100');
+    const r = await solveText(text, ngspice);
+    expect(current(r.words, 'Vm')).toBe('Vm measures no current');
+    const netlist = parseNetlist(text);
+    const model = exactModel(netlist, netlist.lines.flatMap((l) => (l.element ? [l.element] : [])), readAfterEnd(netlist)) as ExactModel;
+    const k = (name: string): number => model.parts.findIndex((p) => p.key === name);
+    const [x0, s1, s2] = solveExact(model, [operatingPoint(model), unitSource(model, k('d1')), unitSource(model, k('d2'))])!;
+    const i1 = fromDouble(r.results.op!.currents.find((c) => c.element === 'r1')!.value);
+    const i2 = mul(i1, fromDouble(1 + 1e-4));
+    const x = x0!.map((v, j) => add(v, add(mul(i1, s1![j]!), mul(i2, s2![j]!))));
+    // ngspice's numbers: each node voltage and branch current that solution's, rounded once; each resistor's current
+    // worked out from the two rounded voltages at its ends, as ngspice does.
+    const doctored = structuredClone(r.results);
+    const volt = (n: number): number => (n < 0 ? 0 : toDouble(x[n]!));
+    for (const n of doctored.op!.nodes) n.value = volt(model.nodes.indexOf(n.node));
+    for (const c of doctored.op!.currents) {
+      const p = model.parts[k(c.element)];
+      if (!p) continue;
+      if (p.branch >= 0) c.value = toDouble(x[p.branch]!);
+      else if (p.kind === 'R') c.value = (volt(p.a) - volt(p.b)) / toDouble(p.value);
+    }
+    const w = describeResults(netlist, doctored, r.run);
+    expect(roundingNoise(netlist, doctored).by).toBe('exact');
+    expect(w.currents.find((c) => c.name === 'Vm')!.noise).toBeUndefined();
+    expect(sp(w.currents.find((c) => c.name === 'Vm')!.text)).toMatch(/^Vm measures [0-9.]+ nA flowing/);
+  });
+
+  it('a sweep is decided only where every point a diode free elsewhere has 0 V across is this circuit\'s: with the G reading the balanced bridge swept from V2 = −1.5 V, the point V2 = 0 V (not among the first, last and three between) is checked too, and doctored 1 ppm off there it leaves the sweep, and the .op beside it, as ngspice gives them', async () => {
+    const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\nG1 0 out a b 1m\nR6 out x 1k\nR7 x 0 1k\nD1 x y dmod\nV2 y 0 0\n.model dmod d\n.options savecurrents\n.op\n.dc V2 -1.5 2 0.5\n.end\n';
+    const r = await solveText(text, ngspice);
+    const at = Array.from(r.results.dc!.scale.values).indexOf(0);
+    expect(at).toBe(3);
+    expect(series(r, 'i(@r7[i])')[at]).toBe(0);
+    expect(r.results.dc!.series.find((s) => s.name === 'i(@r7[i])')!.values[at]).not.toBe(0);
+    const doctored = structuredClone(r.results);
+    const a = doctored.dc!.series.find((s) => s.name === 'v(a)')!.values;
+    a[at] = a[at]! * (1 + 1e-6);
+    const netlist = parseNetlist(text);
+    expect([roundingNoise(netlist, doctored).by, shownSweep(netlist, doctored) === doctored.dc]).toEqual(['rule', true]);
+  });
+
+  it('a circuit at rest beside a sweep takes leftovers up to 2^-30 of the sweep\'s largest voltage: a diode\'s I-V sweep to 1 V doctored 0.5 nV at node a in its .op is 0 V there; with no sweep beside it, 0.5 nV is beyond 2^-30 of vntol and the rule decides', async () => {
+    const text = '* t\nV1 in 0 0\nR1 in a 1k\nD1 a 0 dmod\n.model dmod d\n.op\n.dc V1 0 1 0.25\n.end\n';
+    const r = await solveText(text, ngspice);
+    const doctored = structuredClone(r.results);
+    doctored.op!.nodes.find((n) => n.node === 'a')!.value = 5e-10;
+    expect(roundingNoise(parseNetlist(text), doctored).by).toBe('exact');
+    const alone = await solveText(text.replace('.dc V1 0 1 0.25\n', ''), ngspice);
+    const lone = structuredClone(alone.results);
+    lone.op!.nodes.find((n) => n.node === 'a')!.value = 5e-10;
+    expect(roundingNoise(alone.netlist, lone).by).toBe('rule');
   });
 });
