@@ -2802,6 +2802,50 @@ uses that subcircuit, so it ran nothing …" and the line to go to; for `.ac` an
 ngspice's note that V1 has no DC value, which is no reason. These are golden rows
 an-tf-subckt-alone, an-op-subckt, an-dc-subckt, an-tran-subckt, an-ac-subckt and an-noise-subckt.
 
+ngspice counts the lines it reads that start with `.subckt` and with `.ends` (all but the title line,
+the lines after `.end` too, up to a line starting with @), and when the counts differ it stops before it
+builds anything: "Mismatch of .subckt ... .ends statements!" (inp_check_syntax in inpcom.c). So with a
+`.subckt` and no `.ends`, the `.op` after it is not skipped as above: ngspice stops, and moving the `.op`
+out of the subcircuit would not help, as the missing line is `.ends` (the round-1 critic, critic1-1:
+Explain said "ngspice skips this line … Put analysis lines in the main circuit"). The overview and
+Explain then say nothing of skipping, and ngspice's message is the run's reason. The same with another
+`.subckt` left open, or one `.ends` too many. ngspice counts no `.macro` and no `.eom` (it renames them
+later), and an `.ends` after `.end` counts: with those, the counts pair up, and the `.op` is skipped as
+above, with nothing said.
+
+```spice
+* a .subckt with no .ends, and the .op after it
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt s a b
+R9 a b 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1), the same with -b -r (no rawfile):
+    Error: Mismatch of .subckt ... .ends statements!
+        in file an-skip-no-ends.cir
+        This will cause subsequent errors.
+    Check line .subckt s a b
+    ERROR: fatal error in ngspice, exit(1)
+  the same, with "Check line .subckt t c d", with .ends after the .op and then .subckt t c d and
+    R8 c d 1k, with no .ends; and with "Check .ends in line number 9" with two .ends after the .op
+  with the .op in the main circuit, above a .subckt s a b and R9 a b 1k with no .ends: the same
+    message when spaces come before .subckt, and when the two lines come after .end or after
+    ".end;stop"; after a line starting with @, where ngspice stops reading, none: the .op runs
+    (in = 5, out = 2.5)
+  with .ends written after .end, ngspice -b (exit 1): "no simulations run!"; -b -r (exit 0): no
+    rawfile and no message, as above; the same with .macro s a b in place of .subckt s a b
+ngspice 42: the same messages and exit codes, without the "in file" line, and 'Note: No ".plot",
+  ".print", or ".fourier" lines; no simulations run' for the -b ending of the last two
+our engine (wasm), as ngspice -b -r: exit 1 and "Mismatch of .subckt ... .ends statements!" for the
+  first three, no results and no message for the last two (golden rows an-skip-no-ends,
+  -open-other, -extra-ends, -ends-after-end and -macro-open)
+```
+
 ### A3g. In a subcircuit an X line uses, a gnd in a .tf's v( ) is ground too
 
 ngspice turns gnd into 0 on every line before it runs a `.tf` between `.subckt` and `.ends` as the main

@@ -532,6 +532,11 @@ interface Context {
   subckts: Map<string, number>;
   /** For each line inside a .subckt … .ends: the .subckt line. */
   insideSubckt: Map<number, number>;
+  /**
+   * ngspice counts the lines it reads that start with .subckt and .ends (after .end too, up to an @
+   * line), and stops when the counts differ: "Mismatch of .subckt ... .ends statements!" (A3f).
+   */
+  subcktMismatch: boolean;
   /** .param values that are plain numbers. */
   params: Map<string, ParamValue>;
   /** Every name a top-level .param line defines (after .end too), with any value (an expression too), lower-case. */
@@ -570,6 +575,7 @@ function contextOf(netlist: Netlist): Context {
     models: new Map(),
     subckts: new Map(),
     insideSubckt: new Map(),
+    subcktMismatch: false,
     params: new Map(),
     paramNames: new Set(),
     endStops: false,
@@ -580,6 +586,10 @@ function contextOf(netlist: Netlist): Context {
     drawing: new Map(),
   };
   const open: number[] = [];
+  // ngspice's own count (inp_check_syntax): every line it reads but the title, by its first word, so not
+  // .macro and .eom, which it renames later; it reads past .end, and stops at an @ line (S4, S29).
+  let subs = 0;
+  let reading = true;
   let run: number | undefined;
   const closeRun = (last: number): void => {
     if (run === undefined) return;
@@ -594,6 +604,12 @@ function contextOf(netlist: Netlist): Context {
       const list = ctx.continuedBy.get(line.continues);
       if (list) list.push(line.index);
       else ctx.continuedBy.set(line.continues, [line.index]);
+    }
+    if (reading && line.index > 0) {
+      const t = line.text.trimStart();
+      if (t.startsWith('@')) reading = false;
+      else if (/^\.subckt/i.test(t)) subs++;
+      else if (/^\.ends/i.test(t)) subs--;
     }
     const inside = open[open.length - 1];
     if (inside !== undefined && line.kind !== 'title') ctx.insideSubckt.set(line.index, inside);
@@ -637,6 +653,7 @@ function contextOf(netlist: Netlist): Context {
     }
   }
   closeRun(netlist.lines.length - 1);
+  ctx.subcktMismatch = subs !== 0;
   if (netlist.end !== undefined && (ctx.stop === undefined || netlist.end < ctx.stop)) {
     ctx.stop = netlist.end;
     ctx.endStops = endIsGlued(netlist.lines[netlist.end]!);
@@ -1302,10 +1319,14 @@ export function unusedSubcircuit(netlist: Netlist, index: number): { name: strin
   return { name: name.text, line: at };
 }
 
-/** An analysis line A3f found ngspice skips: one of those it ran, in a subcircuit no X line uses. */
+/**
+ * An analysis line A3f found ngspice skips: one of those it ran, in a subcircuit no X line uses. Never
+ * while the .subckt and .ends lines do not pair up: ngspice stops first ("Mismatch of .subckt ... .ends
+ * statements!"), and its message is the reason (last pass critic1-1).
+ */
 export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   const name = netlist.lines[index]?.directive?.name;
-  return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;
+  return name !== undefined && RUN_ANALYSES.has(name) && !contextOf(netlist).subcktMismatch && unusedSubcircuit(netlist, index) !== undefined;
 }
 
 /** Where a name ngspice builds inside a subcircuit leads (A3h): the X lines that lead there, from the main circuit's down, as written, and the subcircuit the last one uses, as its .subckt line writes it, with that line (0-based). */
@@ -2072,15 +2093,19 @@ function commandRow(token: Token, what: string): FieldExplanation {
 function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation {
   const d = line.directive!;
   const name = d.name;
-  // A3f: ngspice ignores an analysis line in a subcircuit no X line uses, so what the line would make
-  // ngspice do (a missing node's 0, a stop) is not said: only that it is ignored.
+  // A3f: ngspice skips an analysis line in a subcircuit no X line uses, so what the line would make
+  // ngspice do (a missing node's 0, a stop) is not said: only that it is skipped. Nothing at all when the
+  // .subckt and .ends lines do not pair up: ngspice stops before it skips or runs a line ("Mismatch of
+  // .subckt ... .ends statements!"), and a missing .ends is no reason to move the line out of the
+  // subcircuit (last pass critic1-1).
   const unused = RUN_ANALYSES.has(name) ? unusedSubcircuit(netlist, line.index) : undefined;
+  const skipped = !unused || contextOf(netlist).subcktMismatch ? [] : [S.analysisInUnusedSubcircuit(unused.name, unused.line + 1)];
   const out = (what: string, summary: string, fields: FieldExplanation[] = [], notes: string[] = []): LineExplanation => ({
     line: line.number,
     heading: S.dotHeading(d.token.text, what),
     summary,
     fields: [commandRow(d.token, what), ...fields],
-    notes: unused ? [S.analysisInUnusedSubcircuit(unused.name, unused.line + 1)] : notes,
+    notes: unused ? skipped : notes,
   });
   const ctx = contextOf(netlist);
   switch (name) {

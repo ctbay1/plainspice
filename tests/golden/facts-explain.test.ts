@@ -112,6 +112,11 @@ const FACTS: Fact[] = [
   { code: 'A3f', id: 'an-skip-unused', netlist: "* lines ngspice would stop at, in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 0 -1\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A3f', id: 'an-skip-used-tran', netlist: "* the same .tran, in a subcircuit an X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tran 0 -1\n.ends\nX1 out 0 s\n.op\n.end\n", prints: ["TSTEP is invalid, must be greater than zero."], fails: true },
   { code: 'A3f', id: 'an-skip-used-dot', netlist: "* the same dot command, in a subcircuit an X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.foo bar\n.ends\nX1 out 0 s\n.op\n.end\n", prints: ["unimplemented dot command '.foo'"], fails: true },
+  { code: 'A3f', id: 'an-skip-no-ends', netlist: "* a .subckt with no .ends, and the .op after it\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.end\n", prints: ["Mismatch of .subckt ... .ends statements!"], fails: true },
+  { code: 'A3f', id: 'an-skip-open-other', netlist: "* the .op in a subcircuit no X line uses, and a .subckt with no .ends\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.subckt t c d\nR8 c d 1k\n.end\n", prints: ["Mismatch of .subckt ... .ends statements!"], fails: true },
+  { code: 'A3f', id: 'an-skip-extra-ends', netlist: "* the .op in a subcircuit no X line uses, and one .ends too many\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.ends\n.end\n", prints: ["Mismatch of .subckt ... .ends statements!"], fails: true },
+  { code: 'A3f', id: 'an-skip-ends-after-end', netlist: "* the .ends after .end, which ngspice reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.end\n.ends\n", fails: true },
+  { code: 'A3f', id: 'an-skip-macro-open', netlist: "* a .macro with no .eom, and the .op after it\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.macro s a b\nR9 a b 1k\n.op\n.end\n", fails: true },
   { code: 'A3g', id: 'an-tf-subckt-gnd', netlist: "* a .tf inside a subcircuit an X line uses, measured from gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(out,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0.3333333333333333, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(out,0))": 333.3333333333333 } },
   { code: 'A3g', id: 'an-tf-subckt-gnd-a', netlist: "* the same .tf from the subcircuit's own node a\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,gnd) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a,0))": 1 } },
   { code: 'A3g', id: 'an-tf-subckt-gnd-zz', netlist: "* the same .tf with a node no part connects to in place of gnd\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tf v(a,zz) V1\n.ends\nX1 out 0 s\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 1499.9999999999998, "v(output_impedance_at_V(a,zz))": 2 } },
@@ -723,6 +728,22 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
       const d = said(id);
       expect(d.words.warnings.map((m) => m.title), id).toEqual([`${name} is not a node of the circuit`]);
       expect(checkTraps(d.netlist).filter((t) => t.id === 'tf-problems').map((t) => t.title), id).toEqual([`.tf asks about node ${name}, which is not in the circuit`]);
+    }
+  });
+
+  it('.subckt and .ends lines that do not pair up stop ngspice before it skips a line, so nothing says it skips one (A3f, last pass critic1-1)', () => {
+    const said = (id: string): Described => describeRun(FACTS.find((x) => x.id === id)!.netlist, runs.get(id)!);
+    for (const id of ['an-skip-no-ends', 'an-skip-open-other', 'an-skip-extra-ends']) {
+      const d = said(id);
+      expect(d.words.warnings.map((m) => m.why), id).toEqual(['ngspice says: Error: Mismatch of .subckt ... .ends statements!']);
+      expect(explainLine(d.netlist, 6)!.notes, id).toEqual([]);
+      expect(describeCircuit(d.netlist), id).not.toMatch(/skip/);
+    }
+    // As ngspice counts: an .ends after .end pairs up, and it does not count .macro; the .op is skipped and nothing is said.
+    for (const id of ['an-skip-ends-after-end', 'an-skip-macro-open']) {
+      const d = said(id);
+      expect(d.words.warnings[0]?.title, id).toBe('.op is inside the subcircuit s, which no X line uses');
+      expect(explainLine(d.netlist, 6)!.notes[0], id).toMatch(/^ngspice skips this line/);
     }
   });
 

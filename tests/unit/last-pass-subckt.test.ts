@@ -233,6 +233,44 @@ describe('facts F2: ngspice "skips" an analysis line in a subcircuit no X line u
 
 // ------------------------------------------------------------------ the round-1 critic of these fixes
 
+describe('critic1-1: .subckt and .ends lines that do not pair up stop ngspice, so nothing says it skips a line (A3f)', () => {
+  // Native 47 and 42, -b and -b -r: "Error: Mismatch of .subckt ... .ends statements!", exit 1, no results.
+  const BASE = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n';
+  const NO_ENDS = `${BASE}.subckt s a b\nR9 a b 1k\n.op\n.end\n`;
+  const said = (text: string, w: Awaited<ReturnType<typeof solve>>['words']): string =>
+    [describeCircuit(parseNetlist(text)), ...explainNetlist(parseNetlist(text)).flatMap((e) => e.notes), w.summary, ...w.warnings.flatMap((m) => [m.title, m.why])].join('\n');
+
+  it('no .ends: ngspice\'s message is the reason, and Explain and the overview say nothing of skipping', async () => {
+    const n = parseNetlist(NO_ENDS);
+    expect(explainNetlist(n)[6]!.notes).toEqual([]);
+    expect(describeCircuit(n)).toContain('Analysis: operating point.');
+    const s = await solve(NO_ENDS, await engine);
+    expect(s.status).toBe('failed');
+    expect(s.words.warnings.map((m) => [m.code, m.severity, m.title])).toEqual([['error', 'error', 'ngspice reported an error']]);
+    expect(s.words.warnings[0]!.why).toContain('Mismatch of .subckt ... .ends statements!');
+    expect(said(NO_ENDS, s.words)).not.toMatch(/skip/);
+  }, 30000);
+
+  it('ngspice counts every .subckt and .ends line it reads: another .subckt left open, or a stray .ends, stops it too', async () => {
+    const other = `${BASE}.subckt s a b\nR9 a b 1k\n.op\n.ends\n.subckt t c d\nR8 c d 1k\n.end\n`;
+    const extra = `${BASE}.subckt s a b\nR9 a b 1k\n.op\n.ends\n.ends\n.end\n`;
+    for (const text of [other, extra]) {
+      expect(explainNetlist(parseNetlist(text))[6]!.notes, text).toEqual([]);
+      const s = await solve(text, await engine);
+      expect([s.words.warnings[0]?.code, s.words.warnings[0]?.why], text).toEqual(['error', 'ngspice says: Error: Mismatch of .subckt ... .ends statements!']);
+      expect(said(text, s.words), text).not.toMatch(/skip/);
+    }
+  }, 30000);
+
+  it('as ngspice counts: an .ends after .end pairs up, and .macro is not counted, so those .op lines are still skipped', async () => {
+    // Native 47 and 42: no message with -b -r and nothing runs, as A3f (ngspice reads past .end, S25; it renames .macro later).
+    for (const text of [`${BASE}.subckt s a b\nR9 a b 1k\n.op\n.end\n.ends\n`, `${BASE}.macro s a b\nR9 a b 1k\n.op\n.end\n`]) {
+      expect(explainNetlist(parseNetlist(text))[6]!.notes[0], text).toMatch(/^ngspice skips this line: it is inside the subcircuit s \(from line 5\)/);
+      expect((await solve(text, await engine)).words.warnings[0]?.title, text).toBe('.op is inside the subcircuit s, which no X line uses');
+    }
+  }, 30000);
+});
+
 describe('critic1-7: a .tf inside a used subcircuit with 200,000 continuation lines is explained', () => {
   it('explains it without overflowing the stack (Math.max over every continuation line did, at 150,000)', () => {
     const k = 200000;
