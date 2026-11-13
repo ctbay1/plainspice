@@ -1,6 +1,6 @@
 /**
  * The operating point of a circuit worked out exactly, with fractions: what PlainSpice uses to tell a
- * value the circuit makes exactly 0 from a tiny real one (rounding noise, decision 0015; C9 to C9t in
+ * value the circuit makes exactly 0 from a tiny real one (rounding noise, decision 0015; C9 to C9u in
  * docs/spice-facts/explanations.md). Plain TypeScript: no floating point in the solution, BigInt
  * fractions only.
  *
@@ -22,8 +22,9 @@
  * - `agrees` checks that ngspice simulated that same circuit: its node voltages and branch currents,
  *   put into the exact equations, leave only what its own rounding can leave.
  * - `answersAgree` checks that ngspice solved it to the digits the page shows: each answer whose exact
- *   value is not 0 is that value to within 5e-5 of it, beyond what rounding leaves (ANSWER_FLOOR);
- *   `answers` lists them, and the currents of the R, G and F too, for the note where they are off.
+ *   value is not 0 is that value to within 5e-5 of it, beyond what rounding leaves of the numbers it is
+ *   worked out from (ANSWER_FLOOR of its own scale, `answerScales`); `answers` lists them, and the
+ *   currents of the R, G and F too, for the note where they are off.
  */
 import type { NumberReading } from './types.ts';
 import { isSpaceCode, numberWordEnd } from './numbers.ts';
@@ -1573,7 +1574,7 @@ export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceVa
 /**
  * The largest gap of ngspice's answers from the exact unknowns `x` beyond what rounding leaves, as a
  * share of the exact value (`answers`), over the answers whose exact value is not 0: 0 when every one is
- * within ANSWER_FLOOR of the largest of its kind. What ngspice gives for an exact 0 is not weighed here:
+ * within ANSWER_FLOOR of its own scale (`answerScales`). What ngspice gives for an exact 0 is not weighed here:
  * roundingNoise decides it, and an H of 1 GΩ lifts a balanced bridge's rounding to 193.5 nV with every
  * other answer exact to 16 digits (C9o). Undefined when ngspice gave no value for one of them.
  */

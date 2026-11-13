@@ -875,7 +875,7 @@ const SOURCE_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'I', 'E', 'F', 
 const DEVICE_LETTERS: ReadonlySet<ElementLetter> = new Set(['R', 'C', 'L', 'F', 'G', 'I', 'B']);
 const BRANCH_LETTERS: ReadonlySet<ElementLetter> = new Set(['V', 'E', 'H', 'L']);
 
-// ------------------------------------------------------------------ rounding noise (C9–C9t)
+// ------------------------------------------------------------------ rounding noise (C9–C9u)
 
 /** ngspice's current tolerance, abstol (C9c). The rule for other circuits calls only a current below it noise. */
 export const ABSTOL = 1e-12;
@@ -1005,17 +1005,20 @@ class Groups {
 
 /**
  * Which currents and node voltages of an operating point ngspice gave as rounding noise of a 0, and
- * which nodes are at the same voltage (decision 0015; C9 to C9t).
+ * which nodes are at the same voltage (decision 0015; C9 to C9u).
  *
  * For a circuit PlainSpice solves exactly (exact.ts: R, C, L, V, I, E, F, G and H with plain values,
  * and diodes, whose currents are left free; the circuit ngspice simulated, as its values show, and
- * solved by ngspice to the digits the page shows), the exact solution decides: a current or node
- * voltage whose exact value is 0 (for every current the diodes could carry) is noise of 0, whatever
- * size ngspice gives it (an H of 1 GΩ makes 193.5 pA of a balanced bridge's noise, C9o); one whose exact
- * value is not 0 is real, however tiny, and shown as ngspice gives it (732 nV and 61 nA beside a 1 TΩ
+ * solved by ngspice to the digits the page shows; beside a sweep that is decided exactly too), the exact
+ * solution decides: a current or node voltage whose exact value is 0 (for every current the diodes could
+ * carry, those that carry 0 A at 0 V at 0 and those placed alike equal, diodeStructure) is noise of 0,
+ * whatever size ngspice gives it (an H of 1 GΩ makes 193.5 pA of a balanced bridge's noise, C9o); one whose
+ * exact value is not 0 is real, however tiny, and shown as ngspice gives it (732 nV and 61 nA beside a 1 TΩ
  * meter, C9n), or as the exact solution gives it where ngspice's arithmetic rounded it to exactly 0 (the
- * 1 µΩ wire in series with that meter; `lostCurrents`, `lostNodes`; not with diodes). Two nodes are at
- * the same voltage when their exact voltages are equal.
+ * 1 µΩ wire in series with that meter; `lostCurrents`, `lostNodes`; with diodes only where no diode's
+ * current changes it). Two nodes are at the same voltage when their exact voltages are equal. A circuit at
+ * rest, every exact value 0, is decided when ngspice's Newton leftovers are within 2^-30 of its tolerances
+ * (atRest).
  *
  * Where ngspice's answers are not the exact ones to the page's digits (a 1e-12 Ω wire beside kilohms
  * gives 4.321 V for 4.5 V), a 0 or an exact value from the exact solution would sit beside ngspice's
@@ -1100,12 +1103,13 @@ interface View {
   x: Fraction[];
   /**
    * The solutions a value must be 0 in to be 0 for every current the diodes could carry: the operating
-   * point with each diode at 0 A, and the change a unit current through each makes. [x] without diodes.
+   * point with each diode at 0 A, and for each class of free diodes (diodeStructure) the change a unit
+   * current through each of its diodes together makes. [x] without diodes.
    */
   all: Fraction[][];
   /** Each current source's and diode's current in `x`. */
   level: (p: ExactPart) => Fraction;
-  /** The diodes whose unit-current solutions follow the operating point in `all`, in order (the others carry 0 A). */
+  /** A diode of each class whose summed unit-current solution follows the operating point in `all`, in order (the others carry 0 A). */
   live?: number[];
   /** With diodes: true when diodes that sit alike are taken as carrying equal currents (diodeStructure). */
   alike?: boolean;
@@ -1539,9 +1543,10 @@ function sweepReserve(netlist: Netlist, results: AnalysisResults, ex: Exact): nu
 }
 
 /**
- * What the exact solution says is 0 and equal, for every current the diodes could carry: a value is 0
- * only when it is 0 in each of the view's solutions (one, without diodes), two nodes are at the same
- * voltage only when they are in each. A diode's own current is never 0 here: it is free.
+ * What the exact solution says is 0 and equal, for every current the diodes could carry (the quiet ones at
+ * 0 A, those placed alike equal): a value is 0 only when it is 0 in each of the view's solutions (one,
+ * without diodes), two nodes are at the same voltage only when they are in each. A diode's own current is
+ * never 0 here: it is free.
  */
 function exactly(ex: Exact, view: View): { zero: boolean[]; nodeZero: (k: number) => boolean; same: (a: number, b: number) => boolean; key: (k: number) => string } {
   const { model } = ex;
