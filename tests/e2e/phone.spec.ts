@@ -1202,6 +1202,57 @@ test('two quick taps on More’s Undo, 150 ms apart, undo twice while an error s
   await expect(page.getByRole('dialog', { name: t('barMore') }).getByRole('button', { name: t('redo'), exact: true })).toBeEnabled();
 });
 
+test('an open sheet the student scrolled keeps its head where it is: a later run lifts neither its head nor its × (AP-2)', async ({ page }) => {
+  // The error undone gives the room the error's words took back to the paper; then the student scrolls More.
+  // Held to grow back as far as its scroll gave back at the next change above it, the sheet's head and its ×
+  // went up by the 40 px scrolled with the next run (640 × 400: from 199 to 159), its rows staying put.
+  const bar = page.getByRole('navigation', { name: t('barLabel') });
+  for (const view of [
+    { width: 640, height: 400 },
+    { width: 320, height: 568 },
+  ] as const) {
+    const at = `${view.width} × ${view.height}`;
+    await page.setViewportSize(view);
+    await openApp(page);
+    await expectSolved(page);
+    await partOnDrawing(page, 'Ground').focus();
+    await page.keyboard.press('Delete');
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await bar.getByRole('button', { name: t('barMore'), exact: true }).tap();
+    const more = page.getByRole('dialog', { name: t('barMore') });
+    await expect(more).toBeVisible();
+    await settle(page);
+    await page.keyboard.press('Control+z');
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'ok');
+    await settle(page);
+    // The student's own scroll: its rows go up with it, its head stays.
+    await page.evaluate(() => {
+      document.querySelector('.phone-bottom > .sheet > .card-body')!.scrollTop += 40;
+    });
+    await settle(page);
+    const close = more.getByRole('button', { name: t('moreClose') });
+    const before = (await close.boundingBox())!.y;
+    await logSheetRows(page);
+    await stepAndRun(page, 'T on R2', async () => {
+      await partOnDrawing(page, 'R2').focus();
+      await page.keyboard.press('t');
+    });
+    await stepAndRun(page, 'T again', () => page.keyboard.press('t'));
+    for (const step of ['T on R2', 'T again']) {
+      const [lo, hi] = await sheetTopsIn(page, step);
+      expect(hi - lo, `${at}, ${step}: the sheet's top moves (${lo} to ${hi})`).toBeLessThanOrEqual(1);
+    }
+    expect(Math.abs((await close.boundingBox())!.y - before), `${at}: the × moved`).toBeLessThanOrEqual(1);
+    expect(await rowsThatMoved(page), `${at}: the sheet's rows that moved`).toEqual([]);
+    // Start here again for the next view (the netlist is saved on this device).
+    await page.evaluate(() => {
+      (window as unknown as { sheetStop: boolean }).sheetStop = true;
+      localStorage.removeItem('plainspice:netlist');
+    });
+  }
+});
+
 test('an upright phone keeps the status line and its Undo above More and Parts, and a short sheet keeps them above it on its side (320 × 568, the usual text)', async ({ page }) => {
   // Upright, an iPhone SE at the usual text size: above More and Parts the hint steps aside and the status
   // line stays (the first step). On its side, Plot before a sweep has one line of words below its head:

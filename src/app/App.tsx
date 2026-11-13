@@ -354,6 +354,11 @@ interface SheetHold {
   height: number;
   head: number;
   scroll: number;
+  /** How tall the lines above it were when last drawn, and the room it gave them while held: it takes back only that. */
+  above: number;
+  given: number;
+  /** The greatest height it is held to (none: its own, app.css), in pixels. */
+  max: number | undefined;
   /** Laid out afresh and not yet drawn: the steps above it may still settle, so it follows them. */
   fresh: boolean;
   release: () => void;
@@ -367,6 +372,8 @@ const headOf = (sheet: HTMLElement): number => {
 };
 /** How tall the sheet is, to the fraction of a pixel (offsetHeight rounds, and a rounded size moved it). */
 const heightOf = (sheet: HTMLElement): number => sheet.getBoundingClientRect().height;
+/** How tall what stands above the sheet in the stack is (the hint and status lines). */
+const aboveOf = (sheet: HTMLElement): number => sheet.previousElementSibling?.getBoundingClientRect().height ?? 0;
 
 /**
  * Holds a sheet as it is laid out, from the frame it is first drawn in (until then the lines above it may
@@ -375,7 +382,7 @@ const heightOf = (sheet: HTMLElement): number => sheet.getBoundingClientRect().h
 function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement): SheetHold {
   sheet.style.removeProperty('max-height');
   const cap = Number.parseFloat(getComputedStyle(sheet).maxHeight);
-  const held: SheetHold = { room, sheet, body, rows: 0, cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY, height: 0, head: 0, scroll: 0, fresh: true, release: () => undefined };
+  const held: SheetHold = { room, sheet, body, rows: 0, cap: Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY, height: 0, head: 0, scroll: 0, above: 0, given: 0, max: undefined, fresh: true, release: () => undefined };
   measureSheet(held);
   const onScroll = (): void => {
     held.scroll = body.scrollTop;
@@ -401,6 +408,9 @@ function measureSheet(held: SheetHold): void {
   held.height = heightOf(held.sheet);
   held.head = headOf(held.sheet);
   held.scroll = held.body.scrollTop;
+  held.above = aboveOf(held.sheet);
+  held.given = 0;
+  held.max = undefined;
 }
 
 /** What the polite region says after a run (decision 0010): the summary, and each sweep's last point. */
@@ -2022,9 +2032,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // An open sheet keeps its rows where they are on the screen while the lines above it change (a run, a
   // new status, an undo, the hint): its top moves only as far as its scroll takes back, so a finger about
   // to tap a row again (More's Undo, twice) finds it there. When the lines need more room the sheet gives
-  // it and its scroll moves on by as much; when they need less it takes back no more than its scroll can
-  // give back, and the paper takes the rest. Opening it, scrolling it, rows of its own coming or going, or
-  // a new window, text size or stack (a part in hand, the keyboard) lay it out afresh (AP-2).
+  // it and its scroll moves on by as much; when they need less it takes back what it gave them, no more
+  // than its scroll can give back, and the paper takes the rest. Opening it, scrolling it, rows of its
+  // own coming or going, or a new window, text size or stack (a part in hand, the keyboard) lay it out
+  // afresh (AP-2).
   const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
   const sheetHold = useRef<SheetHold | undefined>(undefined);
   useLayoutEffect(() => {
@@ -2050,11 +2061,21 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     // its scroll. (Its head may change on its own: the Checks count as a check is typed in.)
     const keep = held.height - held.head + held.scroll;
     const head = headOf(sheet);
-    const max = `${Math.min(held.cap, keep + head)}px`;
+    // It takes back only the room it gave the lines above it while held, as they give it back, and no
+    // further than its scroll gives back (its rows staying where they are): the paper takes the rest.
+    // Never because its scroll changed: the student's own scroll moves its rows, not its head (grown by
+    // its scroll at the next change above it, a run lifted the head and its × by the 40 px scrolled).
+    const above = aboveOf(sheet);
+    const gave = held.above - above;
+    if (held.max === undefined) held.max = Math.min(held.cap, held.height);
+    else if (gave > 0.01) held.max = Math.min(held.cap, held.height + Math.min(gave, held.given, held.scroll));
+    held.above = above;
+    const max = `${held.max}px`;
     if (sheet.style.maxHeight !== max) sheet.style.maxHeight = max;
     const height = heightOf(sheet);
     if (Math.abs(height - held.height) > 0.01 || Math.abs(head - held.head) > 0.01) {
       body.scrollTop = keep - (height - head);
+      held.given = Math.max(0, held.given + held.height - height);
       held.height = height;
       held.head = head;
       held.scroll = body.scrollTop;
