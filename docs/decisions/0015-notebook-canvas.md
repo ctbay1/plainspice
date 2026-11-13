@@ -302,27 +302,35 @@ that a phone left no room to watch the numbers move; this record says what the c
   could not, measured below. What it cannot know is a value that is 0 only because two diodes carry
   equal currents (two equal arms): it is taken as real and shown as ngspice gives it.
 - **Other circuits keep a rule** (a transistor, a switch, a subcircuit, a B source, a part with
-  settings, .param, .temp and other .options lines, more than 150 unknowns, 1,600 parts or 16 diodes,
-  or more work than the limit below; and where ngspice's answers are farther off, above). It decides
-  from ngspice's numbers alone, and each 0 it writes must agree with the numbers the page shows beside
-  it: a resistor or capacitor is 0 only where its two ends are within 4 steps of a double, never as "the
-  only current left at a node", and a resistor's current that ngspice gives as exactly 0 proves nothing
-  and joins nothing (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV, C9n); an F that copies a 0
-  and a G that reads two nodes shown alike are 0; a source carrying the only current left at a node is
-  0. The current an F or an H turns into a real value is real (an F of 1e6 showed 193.5 pA beside "Vm
-  measures no current"). Where the currents shown at a node do not add up to 0, every 0 written there
-  gets ngspice's number back, and so on from node to node (a G reading a balanced bridge into two loads
-  keeps its attoamps beside theirs, S3). And it writes no node voltage as 0 V: no guard could tell a
+  settings, .param, .temp and other .options lines, more than 150 unknowns, 1,600 parts or 16 diodes, or
+  more work than the limit below; and where ngspice's answers are farther off, above). It decides from
+  ngspice's numbers alone, and each 0 it writes must agree with the numbers the page shows beside it: a
+  resistor or capacitor is 0 only where its two ends are within 4 steps of a double, never as "the only
+  current left at a node", and a resistor's current that ngspice gives as exactly 0 proves nothing and
+  joins nothing (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV, C9n); an F that copies a 0 and a
+  G that reads two nodes shown alike are 0; a source carrying the only current left at a node is 0. The
+  current an F or an H turns into a real value is real (an F of 1e6 showed 193.5 pA beside "Vm measures
+  no current"). Where the currents shown at a node do not add up to 0, every 0 written there gets
+  ngspice's number back, and so on from node to node (a G reading a balanced bridge into two loads keeps
+  its attoamps beside theirs, S3). A controlled source's equation holds on the page the same way: an F
+  whose current is shown copies a current that is shown, and an E whose two ends are shown at voltages
+  that are not alike, or a G whose current is shown, reads a voltage that is not 0, so the resistors
+  written as 0 that join its two control nodes into one group of nodes (whose 0s claim one voltage for
+  all of them) get ngspice's numbers back, the whole group at once, until nothing changes (C9o.5: with a
+  .temp line, the E of 10⁶ reading the bridge of C9 showed R5 as 0 A, "its two ends at the same
+  voltage", beside out's −931.3 pV, which E1 makes from that voltage; the critic of round 2). A chain of
+  controlled sources (an E reading what another E makes), and a source whose value is an expression
+  (value=, a B source), are not followed. And it writes no node voltage as 0 V: no guard could tell a
   node's real 433.7 fV, behind a bridge 1e−13 off balance, from noise (the critic of round 2 found 5
   real node voltages and 49 real currents that the rule's chain turned into 0 in the corpora's circuits
   with a diode). What that gives up: an exact 0 node voltage is drawn with ngspice's noise, and so is
   what follows from it; with a transistor or a .temp line beside it, the H of 1 GΩ shows out −193.5 nV
-  and Rl and H1 193.5 pA, H1 with the power that makes, and the fed E delivers 4.657 pW at out's
-  −931.3 pV (C9o.4). Its levels agree with what the page shows: ground's level only for a node shown as
-  0 V; no level for a group with a resistor between two of its nodes whose current is shown as real, nor
-  for one whose nodes are shown at voltages that are not alike. Taking two ends as the same only within
-  2 steps of a double showed more wrong values in all (328 against 316 on 1,000 circuits with diodes,
-  when the rule decided those), so the 4 steps stay.
+  and Rl and H1 193.5 pA, H1 with the power that makes, and the fed E delivers 4.657 pW at out's −931.3
+  pV (C9o.4), R5 keeping ngspice's 8.882e−19 A as in C9o.5. Its levels agree with what the page shows:
+  ground's level only for a node shown as 0 V; no level for a group with a resistor between two of its
+  nodes whose current is shown as real, nor for one whose nodes are shown at voltages that are not
+  alike. Taking two ends as the same only within 2 steps of a double showed more wrong values in all
+  (328 against 316 on 1,000 circuits with diodes, when the rule decided those), so the 4 steps stay.
 - **Measured on circuits generated at random** (re-judged after the critic of round 2: each circuit
   solved exactly in Python, from the netlist, as the judge, a diode replaced by the current ngspice gives
   it, or by 0 A where it has exactly 0 V across it with its own current at 0 A, which 0 V across a diode
@@ -344,7 +352,7 @@ that a phone left no room to watch the numbers move; this record says what the c
     exact 0s drawn as currents and 223 as node voltages (round 1's count, which took ngspice's diode
     currents as they are).
   - 405 circuits whose answers are off (61 with a diode): every number is ngspice's; ngspice gives 299
-    real currents and 24 real node voltages as exactly 0, and 165 exact 0s as currents (27 above 1 pA, 10
+    real currents and 24 real node voltages as exactly 0, and 166 exact 0s as currents (27 above 1 pA, 10
     with a power) and 16 as node voltages; the warning names the worst of them.
   - 171 circuits left to the rule: 141 past the exact solution's limits (16 of them with a diode), and
     30 with a diode whose values ngspice gives differently from the exact solution (in s2-2 a diode in a
@@ -361,24 +369,28 @@ that a phone left no room to watch the numbers move; this record says what the c
   netlist), lose its sweep's decision on the second run and its exact 0s on the third. The count is the
   same on every computer: building the equations and each check of ngspice's values count 1,000 a term
   before they start (a term costs up to about 3 µs with numbers of 4,096 bits); each combination of two
-  rows in the elimination counts 2,000, and each entry it writes 16 plus the square of its size in 64-bit
-  words; the back substitution the same, before it starts; with diodes, the currents Kirchhoff's law
-  gives them count as a check. A whole number past 4,096 bits stops it too, in the elimination and in
-  the one denominator of an equation's terms or of a check's sum (a node with hundreds of resistors of
-  different values has thousands of bits there); at most 150 unknowns, 1,600 parts (past them no value is
-  read: reading the values of a 256 kB netlist of 12,000 resistors alone took 40 to 80 ms) and 16 diodes.
-  Only the elimination was counted before, and 1,000 resistors of prime values side by side, which add
-  no unknown, froze the page for 12.9 s (2,000: 90 s of processor time; the critic of round 2). Measured
-  in processor time on a machine shared with other builds (load average 6 to 10): describeResults with
-  annotateLines takes at most 22 ms on any of the 11,500 circuits; 1,000, 1,599 and 2,000 resistors of
-  prime values side by side 11 to 24 ms, 1,599 of 1 kΩ with a sweep 35 to 38 ms, 150 of 17 digits 3 to
-  5 ms, a 60-part ladder 4 to 5 ms, 16 diodes in a chain each with 60 resistors of 17 digits 19 to 26 ms;
-  netlists of 256 kB (a mesh of 12,000 resistors, the largest a link opens) 167 to 212 ms, of which
-  deciding the noise is 47 to 89 ms and the rest the words for 12,000 currents. Earlier measurements (174
-  grids, meshes, ladders and networks of E and G of up to 146 unknowns): a solve at most 43 ms, between
-  2.6e−6 and 9.1e−6 ms a unit of work; describeResults 45 to 81 ms near the limits with .op, a 1001-point
-  .dc and a .tf. Unit tests keep 60 parts under 50 ms; the limits, grids of 3-digit values, 1,000
-  resistors of prime values and 150 of 17 digits under 200 ms; and a 99,999-point sweep under 50 ms.
+  rows in the elimination counts 2,000, and each entry it writes 16 plus the square of its size in
+  64-bit words; the back substitution the same, before it starts; with diodes, the currents Kirchhoff's
+  law gives them count as a check. A whole number past 4,096 bits stops it too, in the elimination and
+  in the one denominator of an equation's terms or of a check's sum (a node with hundreds of resistors
+  of different values has thousands of bits there); at most 150 unknowns, 1,600 parts (past them no
+  value is read: reading the values of a 256 kB netlist of 12,000 resistors alone took 40 to 80 ms) and
+  16 diodes. Only the elimination was counted before, and 1,000 resistors of prime values side by side,
+  which add no unknown, froze the page for 12.9 s (2,000: 90 s of processor time; the critic of round
+  2). Measured in processor time on a machine shared with other builds (load average 3 to 10):
+  describeResults with annotateLines takes at most 22 ms on any of the 11,500 circuits; 1,000, 1,599 and
+  2,000 resistors of prime values side by side 11 to 32 ms, 1,599 of 1 kΩ with a sweep 34 to 41 ms, 150
+  of 17 digits at most 5 ms, a 60-part ladder 4 to 8 ms, 16 diodes in a chain each with 60 resistors of
+  17 digits 16 to 26 ms; netlists of 256 kB (a mesh of 12,000 resistors, the largest a link opens) 151
+  to 216 ms, of which deciding the noise is 41 to 89 ms and the rest the words for 12,000 currents. The
+  rule gives a group of 0s back with one look at the group, and looks at a node again only when a 0 at
+  it has changed: 10,000 resistors of 1 TΩ written as 0 between the two nodes an E reads take 138 to 162
+  ms in all, the rule 38 to 109 ms (one path of 0s at a time, each node balanced again for each of its
+  parts, took 16 s). Earlier measurements (174 grids, meshes, ladders and networks of E and G of up to
+  146 unknowns): a solve at most 43 ms, between 2.6e−6 and 9.1e−6 ms a unit of work; describeResults 45
+  to 81 ms near the limits with .op, a 1001-point .dc and a .tf. Unit tests keep 60 parts under 50 ms;
+  the limits, grids of 3-digit values, 1,000 resistors of prime values and 150 of 17 digits under 200
+  ms; the rule on those 10,000 resistors under 200 ms; and a 99,999-point sweep under 50 ms.
 - **Our own netlists.** The words of all 210 netlists we have (the examples, the fixtures, the trap
   and letter corpora, the engine settings' goldens and the channel's episode netlists; 186 of them
   with `.op`), their line notes, sweeps and messages too, are the same, letter for letter, as at
