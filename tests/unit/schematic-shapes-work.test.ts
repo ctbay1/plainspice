@@ -171,7 +171,7 @@ const SHAPES: [string, () => string][] = [
 function size(text: string, s: Schematic): number {
   const sc = s.scene;
   const lines = text.split('\n').filter((l) => l.startsWith('*@'));
-  const drawn = lines.reduce((n, l) => n + (/^\*@ wire /.test(l) ? l.trim().split(/\s+/).length - 3 : 0), 0);
+  const drawn = lines.reduce((n, l) => n + (l.startsWith('*@ wire ') ? l.trim().split(/\s+/).length - 3 : 0), 0);
   return lines.length + drawn + sc.wires.reduce((n, w) => n + w.points.length - 1, 0) + sc.junctions.length + sc.crossings.length + sc.nodeLabels.length + sc.parts.length + sc.grounds.length;
 }
 
