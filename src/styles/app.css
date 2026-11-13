@@ -3895,6 +3895,18 @@ html[data-motion='reduce'] .note-arrow .note-arrow__head {
   .icon {
     forced-color-adjust: auto;
   }
+  /* The status line's dot in the text's colour (the page's own, Canvas, left an empty outline where a calm
+     status folds to its dot: a laptop at 400 %); a paused one keeps its ring. The folded status keeps no box:
+     a transparent border is painted in CanvasText here, so its colours stay as written. */
+  .status__dot {
+    background: CanvasText;
+  }
+  .status__dot--paused {
+    background: Canvas;
+  }
+  .is-phone.is-shorter .status[data-tone='ok']:not(:has(button)) {
+    forced-color-adjust: none;
+  }
 }
 
 /* ------------------------------------------------------------------ nothing to draw yet */

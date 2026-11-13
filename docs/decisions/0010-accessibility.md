@@ -112,4 +112,15 @@ A), and again for Run (b060bc8: neither).
   and Run and Ctrl+Enter one each for an engine whose run stops (c520a49: none of the five);
   `tests/unit/app-live.test.ts`: a failed change's outcome has `manual: false`, a failed Run's
   `manual: true`.
+- **In forced colours the status line's dot is painted, and the folded calm status keeps no box** (the
+  last pass, a11y-phone-3). The dot was painted in the page's own colour (Canvas, as forced colours paint a
+  background), and the folded calm status, a dot in the margin at 400 % (a 1280 × 800 laptop: 320 × 200),
+  kept the forced CanvasText border its transparent one becomes there: an empty outlined ring, light or
+  dark. Now `app.css`'s forced-colours block paints the dot in CanvasText (a paused one keeps its ring,
+  filled with Canvas), and the folded status keeps its own colours (`forced-color-adjust: none`), so it is
+  the dot alone, as in normal colours. Not taken: Mark for a status that went wrong, which is yellow on a
+  white page (1.07:1, unseen), and `border-color: transparent` alone, which forced colours paint over. Test
+  (`tests/e2e/a11y.spec.ts`, both projects, light and dark): at 320 × 200 in forced colours the folded
+  status's dot is painted in another colour than the page and its edge in the page's (c520a49: the dot
+  rgb(255, 255, 255) on rgb(255, 255, 255), the edge rgb(0, 0, 0)).
 
