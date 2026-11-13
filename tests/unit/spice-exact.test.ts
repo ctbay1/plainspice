@@ -190,16 +190,17 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
     expect(why(model(`${bridge}${diodes(17)}\n.model dmod d\n.op\n.end\n`))).toBe('size');
   });
 
-  it('leaves to the other rule a subcircuit, a B source, POLY, a transient source, a part with settings, .param, .temp, other options, a 0 Ω resistor, an F reading a resistor', () => {
+  it('leaves to the other rule a subcircuit, a B source, POLY, a transient source with no DC value, a part with settings, .param, two temperatures, other options, a 0 Ω resistor, an F reading a resistor', () => {
     const cases: [string, string][] = [
       ['X1 a 0 sub\n', 'part'],
       ['B1 a 0 V=1\n', 'part'],
       ['E1 a 0 POLY(1) a 0 0 1\n', 'part'],
       ['V2 a 0 SIN(0 1 1k)\n', 'part'],
       ['R9 a 0 1k tc1=0.01\n', 'part'],
+      ['R9 a 0 1k m=2\n', 'part'],
       ['R9 a 0 {2*1k}\n', 'value'],
       ['.param r=1k\n', 'directive'],
-      ['.temp 50\n', 'directive'],
+      ['.temp 27 50\n', 'directive'],
       ['.options gmin=1e-9\n', 'directive'],
       ['R9 a 0 0\n', 'value'],
       ['F1 0 a R1 2\n', 'control'],
@@ -209,6 +210,23 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
     const ladder = Array.from({ length: MAX_UNKNOWNS }, (_, k) => `R${k} n${k} n${k + 1} 1k\nRg${k} n${k + 1} 0 1k`).join('\n');
     const why = (m: ExactModel | string): string => (typeof m === 'string' ? m : 'modelled exactly');
     expect(why(model(`* t\nV1 n0 0 1\n${ladder}\n.op\n.end\n`))).toBe('size');
+  });
+});
+
+describe('exactModel after the last pass (13 November 2026): lines that leave the operating point as it is (C9w)', () => {
+  const bridge = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\n';
+  const model = (text: string): ExactModel | string => {
+    const n = parseNetlist(text);
+    return exactModel(n, n.lines.filter((l) => l.element).map((l) => l.element!), readAfterEnd(n));
+  };
+  it('models exactly a .temp line with one temperature, .options temp, a DC value written beside a source\'s transient function, and m=1 on an R, C or L', () => {
+    for (const line of ['.temp 27\n', '.temp -40\n', '.options temp=100\n', 'V2 c 0 DC 9 SIN(9 1 1k)\nRc c 0 1k\n', 'V2 c 0 9 PULSE(0 9 1m)\nRc c 0 1k\n', 'V2 c 0 SIN(9 1 1k) DC 9\nRc c 0 1k\n', 'I2 0 c DC 1m PULSE(0 1m 1n)\nRc c 0 1k\n', 'R9 a 0 1k m=1\n', 'C9 a 0 1u M = 1\n', 'L9 b c 1m m=1.0\nRc c 0 1k\n']) {
+      const m = model(`${bridge}${line}.op\n.end\n`);
+      expect(typeof m, line).toBe('object');
+    }
+    // The source is its DC value there, as ngspice's .op takes it (P3b, P4c).
+    const m = model(`${bridge}V2 c 0 DC 9 SIN(9 1 1k)\nRc c 0 1k\n.op\n.end\n`) as ExactModel;
+    expect(m.parts.find((p) => p.key === 'v2')!.value).toEqual({ n: 9n, d: 1n });
   });
 });
 

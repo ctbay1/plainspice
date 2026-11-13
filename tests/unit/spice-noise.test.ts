@@ -27,8 +27,11 @@ beforeAll(async () => {
 
 const sp = (s: string): string => s.replace(/[  ]/g, ' ');
 const lines = (...l: string[]): string => `* t\n${l.join('\n')}\n.op\n.end\n`;
-/** A line PlainSpice does not model exactly (decision 0015), so the rule for other circuits decides; ngspice runs at 27 °C anyway, so its numbers are the same. */
-const RULE = '.temp 27';
+/**
+ * A line PlainSpice does not model exactly (decision 0015), so the rule for other circuits decides; 1e-12 is ngspice's own
+ * gmin, so its numbers are the same (C9w). A .temp line was this until the last pass, which models it exactly.
+ */
+const RULE = '.options gmin=1e-12';
 async function solved(text: string): Promise<{ words: ResultsInWords; by: string }> {
   const r = await solveText(text, ngspice);
   return { words: r.words, by: roundingNoise(r.netlist, r.results).by };

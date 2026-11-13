@@ -840,7 +840,7 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     // "from the netlist's values and its diodes' currents" said the opposite of how the 0 was found).
     expect(w.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain("from the netlist's values, the circuit makes each of them exactly 0 (D1 has 0 V across it, so it carries no current), so PlainSpice shows 0 A and 0 V.");
     // A line PlainSpice does not model exactly leaves it to the rule, which says so only below ngspice's tolerances.
-    const rule = describeResults(parseNetlist(text.replace('.op', '.temp 27\n.op')), r, run());
+    const rule = describeResults(parseNetlist(text.replace('.op', '.options gmin=1e-12\n.op')), r, run());
     expect(rule.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1']);
     expect(rule.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain("They are below 1 pA, ngspice's current tolerance (its abstol option), so PlainSpice shows 0 A.");
   });
@@ -848,13 +848,13 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
   it("the rule for other circuits never takes a resistor's 0 as proof: C9d keeps what ngspice gave (C9n); with a diode, solved exactly, its 0s are 0", () => {
     // R5's 0 comes from its two ends being the same double, as the 1 µΩ wire's does in C9n, where a real 0.73 aA
     // flows: by ngspice's numbers alone the two cannot be told apart, so Vm is not "the only current left" at m.
-    const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\nD1 top 0 dmod\n.model dmod d\n.temp 27\n.op\n.end\n';
+    const text = '* t\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\nF1 0 out Vm 1000\nR6 out 0 1k\nD1 top 0 dmod\n.model dmod d\n.options gmin=1e-12\n.op\n.end\n';
     const r = op({ top: 9, a: 4.499999999999999, b: 4.499999999999999, m: 4.499999999999999, out: -2.1684043449710089e-13 }, [['v1', -0.0014074468085106388, 'branch'], ['r1', 4.5e-4, 'device'], ['r2', 4.5e-4, 'device'], ['r3', 9.574468085106385e-4, 'device'], ['r4', 9.574468085106381e-4, 'device'], ['r5', 0, 'device'], ['vm', -2.168404344971009e-19, 'branch'], ['r6', -2.1684043449710089e-16, 'device'], ['f1', -2.1684043449710089e-16, 'device']]);
     const w = describeResults(parseNetlist(text), r, run());
     expect(w.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual([]);
     expect(w.nodes.find((x) => x.node === 'out')!.value).toBe(-2.1684043449710089e-13);
-    // Without the .temp line the circuit is solved exactly, the diode's current left free: Vm, F1, R6 and out are exactly 0.
-    const exact = describeResults(parseNetlist(text.replace('.temp 27\n', '')), r, run());
+    // Without the .options line the circuit is solved exactly, the diode's current left free: Vm, F1, R6 and out are exactly 0.
+    const exact = describeResults(parseNetlist(text.replace('.options gmin=1e-12\n', '')), r, run());
     expect(exact.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['Vm', 'F1', 'R6']);
     expect(exact.nodes.find((x) => x.node === 'out')!.value).toBe(0);
   });

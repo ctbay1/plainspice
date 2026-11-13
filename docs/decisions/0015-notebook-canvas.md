@@ -423,13 +423,16 @@ that a phone left no room to watch the numbers move; this record says what the c
   the rule; this decides them exactly where the rule could not, measured below. What it cannot know is a
   value that is 0 only because two diodes carry currents in some other relation, or two diodes alike in
   their circuit but written with different model lines: it is taken as real and shown as ngspice gives it.
-- **Other circuits keep a rule** (a transistor, a switch, a subcircuit, a B source, a part with settings,
-  .param, .temp and other .options lines, more than 150 unknowns, 1,600 parts or 16 diodes, or more work
+- **Other circuits keep a rule** (a transistor, a switch, a subcircuit, a B source, a part with settings
+  other than m=1, .param, two temperatures and .options lines other than the temperature (a .temp line and
+  a DC value beside a transient function are modelled since the last pass, below), more than 150 unknowns,
+  1,600 parts or 16 diodes, or more work
   than the limit below; and where ngspice's answers are farther off, above). It decides from ngspice's
   numbers alone, and each 0 it writes must agree with the numbers the page shows beside it: a resistor or
   capacitor is 0 only where its two ends are within 4 steps of a double, never as "the only current left
   at a node", and a resistor's current that ngspice gives as exactly 0 proves nothing and joins nothing
-  (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV, C9n); an F that copies a 0 and a G that reads
+  (rounding hides 7.3e−25 V across a 1 µΩ wire at 732 nV, C9n), but where it is a source's only partner
+  at a node (since the last pass, below); an F that copies a 0 and a G that reads
   two nodes shown alike are 0; a source carrying the only current left at a node is 0. The current an F
   or an H turns into a real value is real (an F of 1e6 showed 193.5 pA beside "Vm measures no current"),
   and each F that copies a current given back gets its number back too (C9r.3: an F of 1 reading the Vm
@@ -442,7 +445,7 @@ that a phone left no room to watch the numbers move; this record says what the c
   is shown copies a current that is shown, and an E whose two ends are shown at voltages that are not
   alike, or a G whose current is shown, reads a voltage that is not 0, so the resistors written as 0 that
   join its two control nodes into one group of nodes (whose 0s claim one voltage for all of them) get
-  ngspice's numbers back, the whole group at once, until nothing changes (C9o.5: with a .temp line, the E
+  ngspice's numbers back, the whole group at once, until nothing changes (C9o.5: with a line it does not model exactly, the E
   of 10⁶ reading the bridge of C9 showed R5 as 0 A, "its two ends at the same voltage", beside out's
   −931.3 pV, which E1 makes from that voltage; the critic of round 2). A chain of controlled sources (an
   E reading what another E makes), and a source whose value is an expression (value=, a B source), are
@@ -450,7 +453,7 @@ that a phone left no room to watch the numbers move; this record says what the c
   a bridge 1e−13 off balance, from noise (the critic of round 2 found 5 real node voltages and 49 real
   currents that the rule's chain turned into 0 in the corpora's circuits with a diode). What that gives
   up: an exact 0 node voltage is drawn with ngspice's noise, and so is what follows from it; with a
-  transistor or a .temp line beside it, the H of 1 GΩ shows out −193.5 nV and Rl and H1 193.5 pA, H1 with
+  transistor or a line it does not model exactly beside it, the H of 1 GΩ shows out −193.5 nV and Rl and H1 193.5 pA, H1 with
   the power that makes, and the fed E delivers 4.657 pW at out's −931.3 pV (C9o.4), R5 keeping ngspice's
   8.882e−19 A as in C9o.5; and since those numbers agree with each other only to ngspice's rounding, Vm's
   193.5 aA and R5's 377.9 aA, alone in series at m, do not add up there. Its levels agree with what the
@@ -634,3 +637,43 @@ that a phone left no room to watch the numbers move; this record says what the c
   What it gives up: that bridge swept over 99,999 points, decided at every point since round 3 (41 ms),
   now keeps ngspice's numbers there, with the note; the .op beside it is still decided exactly. The Plot
   panel still copies a series that has points marked, as it draws it.
+- **An attoamp is never drawn as an answer with nothing said** (regress-1; C9w). The noise lane of the
+  first re-check made the rule take no resistor's 0 as proof (C9n), so a balanced bridge's 0 V ammeter in
+  series with R5, which ngspice gives exactly 0 A, was drawn "Vm measures 2.168e-19 A" beside "R5: no
+  current", with no note, wherever the rule decided: with a .param line, a .temp line, a .control block, a DC
+  value beside a SIN or a PULSE, or m=1 (13 of the 23 rounding-noise facts drew such noise with a .temp line).
+  Three changes:
+  - Lines that leave the operating point as it is are modelled exactly, still behind the check that ngspice
+    simulated this circuit: a .temp line with one temperature and `.options temp` (no part modelled exactly
+    depends on the temperature with no settings; a diode's current, which does, is left free), a DC value
+    written beside a transient function (P3b, P4c), and m=1 on an R, C or L. Native 47 and 42 give every
+    vector the same double with each, alone and together, in the bridge and in a circuit of every kind
+    PlainSpice models (C9w). With a .temp line, none of the 63 C9 facts that have an .op draws an exact 0 as
+    a number with no note (20 did at c520a49). A source with a function and no DC value (its value at time 0, P17), m
+    other than 1, two temperatures, .param and a .control block stay with the rule: a .control block that
+    only runs makes ngspice write the operating point twice, and the vectors are not the same; a .param value
+    is written into the line by ngspice's own expression reader, whose numbers this record has not checked.
+    The tests that reached the rule with `.temp 27` now use `.options gmin=1e-12`, ngspice's own gmin (the
+    same doubles), as do facts C9o.5 and C9r.3.
+  - The rule takes a source whose only partner at a node is a resistor that ngspice gives exactly 0 A, its two
+    ends one double, as carrying 0: the page shows 0 V across that resistor and no current through it (as
+    b060bc8 did, C9w.2). Where the source's current is real, the next node gives it back: a real 0.73 aA after
+    a 1 µΩ wire that ngspice gives 0 A reaches a 1 TΩ meter, whose current is shown, so Kirchhoff's law at
+    that node gives the ammeter its number back (C9w.3).
+  - The rule says which tiny values it can prove neither real nor noise: a current below abstol and a node
+    voltage below vntol that it leaves as ngspice gives them get a note, "Vm's current may be rounding noise:
+    ngspice gave Vm -1.935098e-16 A. It is below 1 pA, … so it may be rounding noise, what its arithmetic
+    leaves of a value that is exactly 0, or a real value that small. PlainSpice does not solve this circuit
+    exactly, so it cannot tell which, and shows it as ngspice gives it." Proven real here is only a current of
+    at least abstol, a current source's own, a resistor's or a G's with a real voltage across or read, what
+    an F copies of one, and the last current at a node whose proven currents do not add up to 0; the rule's
+    other reasons to keep a number (what an H makes, a part beside a transistor, a share of a node's tiny
+    difference) keep it, but prove nothing. A node voltage is proven real by a resistor to ground with a
+    proven current, a voltage source that holds it, or the very double of such a node. On the rule path
+    (`.options gmin=1e-12` added to the 63 C9 facts that have an .op), 20 drew an exact 0 as a number with
+    no note at c520a49; 5 do now, each the recorded give-up above: what a gain lifts above 1 pA (the H of
+    1 GΩ's 193.5 pA in H1 and Rl, the E of 10⁶'s 9.3 pA) is real by ngspice's tolerance, and so is the node
+    it drives (out's −193.5 nV), and the rule cannot tell; the note names their attoamps (R5, Vm). Our own netlists:
+    the words of the 352 netlists of the repository and the facts' golden tests are the same as at c520a49
+    but for the meant changes (the transistor's currents, the 1 nV source's verb, and C9o.5's and C9r.3's
+    new notes).

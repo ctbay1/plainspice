@@ -164,3 +164,45 @@ describe('the sweep decision\'s work is bounded by points × results (last pass:
     expect(ms).toBeLessThan(50);
   }, 120_000);
 });
+
+describe('an attoamp is never drawn as an answer with nothing said: lines that leave the .op as it is are solved exactly, and the rule says what it cannot tell (last pass: regress-1; C9w)', () => {
+  const bridge = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0'];
+  const by = (r: Awaited<ReturnType<typeof solveText>>): string => roundingNoise(r.netlist, r.results).by;
+  const text = (w: ResultsInWords, name: string): string => sp(w.currents.find((c) => c.name === name)!.text);
+
+  it('the balanced bridge read by a 0 V ammeter, with a .temp line, .options temp, a DC value beside a SIN or a PULSE, or m=1 on R5: solved exactly, Vm is 0 A with the note', async () => {
+    const variants: [string, string][] = [
+      ['V1 top 0 9', 'V1 top 0 9\n.temp 27'],
+      ['V1 top 0 9', 'V1 top 0 9\n.temp 100'],
+      ['V1 top 0 9', 'V1 top 0 9\n.options temp=-40'],
+      ['V1 top 0 9', 'V1 top 0 DC 9 SIN(9 1 1k)'],
+      ['V1 top 0 9', 'V1 top 0 DC 9 PULSE(0 9 1m 1m 1m 5m 10m)'],
+      ['R5 a m 1k', 'R5 a m 1k m=1'],
+    ];
+    for (const [old, line] of variants) {
+      const r = await solveText(netlist(...bridge.map((l) => (l === old ? line : l)), '.op'), ngspice);
+      expect([by(r), text(r.words, 'Vm')], line).toEqual(['exact', 'Vm measures no current']);
+      expect(r.words.warnings.find((m) => m.code === 'rounding-noise')?.why, line).toContain('Solved exactly, with fractions');
+    }
+  });
+
+  it('by the rule (a line it does not model exactly), an ammeter whose only partner at a node is a resistor ngspice gives exactly 0 A carries 0 too; a real 0.73 aA after a 1 µΩ wire is given back at the next node, with the note', async () => {
+    const rule = await solveText(netlist(...bridge, '.options gmin=1e-12', '.op'), ngspice);
+    expect([by(rule), text(rule.words, 'Vm')]).toEqual(['rule', 'Vm measures no current']);
+    const ladder = ['V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'Rw n3 p 1u', 'Vm p q 0', 'Rvm q 0 1t', '.options savecurrents'];
+    const wire = await solveText(netlist(...ladder, '.options gmin=1e-12', '.op'), ngspice);
+    expect([by(wire), text(wire.words, 'Vm')]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q']);
+    expect(sp(wire.words.warnings.find((m) => m.code === 'maybe-noise')?.title)).toBe('2 currents may be rounding noise');
+    // Solved exactly, the same circuit has every one of them real, and the wire's 7.324e-19 A is shown exactly (C9n).
+    const exact = await solveText(netlist(...ladder, '.op'), ngspice);
+    expect([by(exact), text(exact.words, 'Rw'), exact.words.warnings.some((m) => m.code === 'maybe-noise')]).toEqual(['exact', '7.324e-19 A from node n3 to node p through Rw', false]);
+  });
+
+  it('beside a transistor the rule decides: the H of 1 GΩ\'s ammeter and R5 keep ngspice\'s attoamps, which a note says may be rounding noise (it drew "Vm measures 193.5 aA" with nothing said)', async () => {
+    const r = await solveText(netlist('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'H1 out 0 Vm 1g', 'Rl out 0 1k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.options savecurrents', '.op'), ngspice);
+    expect([by(r), text(r.words, 'Vm')]).toEqual(['rule', 'Vm measures 193.5 aA flowing from node b to node m']);
+    const maybe = r.words.warnings.find((m) => m.code === 'maybe-noise')!;
+    expect(sp(maybe.why)).toMatch(/^ngspice gave R5 -3\.779483e-16 A and Vm -1\.935098e-16 A\. /);
+    expect(sp(maybe.why)).toContain('PlainSpice does not solve this circuit exactly, so it cannot tell which, and shows each as ngspice gives it.');
+  });
+});

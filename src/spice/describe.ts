@@ -182,7 +182,8 @@ export interface MessageWords {
    * The diagnostic code (src/engine/diagnostics.ts), one PlainSpice adds for messages that file does
    * not classify (unknown-control-source, unknown-dot-command, meas-skipped), or one of: unreliable,
    * no-analysis, no-results, tf-node-missing, rounding-noise (a note: currents said as 0 A, C9), rounded-to-0
-   * and imprecise-answers (decision 0015), sweep-not-checked (a sweep too large to look through, SWEEP_VALUES).
+   * and imprecise-answers (decision 0015), sweep-not-checked (a sweep too large to look through, SWEEP_VALUES),
+   * maybe-noise (tiny values the rule for other circuits can prove neither real nor noise, C9w).
    */
   code: string;
   severity: 'error' | 'warning' | 'note';
@@ -629,6 +630,23 @@ export const DESCRIBE_STRINGS = {
         : "below 1 pA and 1 µV, ngspice's tolerances for currents and voltages (its abstol and vntol options)";
     return `${head} ${one ? 'It is' : 'They are'} ${below}, so PlainSpice shows ${shows}.`;
   },
+  // C9w: by the rule for other circuits, tiny values it can prove neither real nor noise, shown as ngspice gives them.
+  maybeTitle: (currents: readonly string[], nodes: readonly string[]): string => {
+    const what = [
+      currents.length === 1 ? `${currents[0]}'s current` : currents.length ? `${currents.length} currents` : '',
+      nodes.length === 1 ? `the voltage at ${nodeIn(nodes[0]!)}` : nodes.length ? `${nodes.length} node voltages` : '',
+    ].filter(Boolean).join(' and ');
+    return `${what[0]!.toUpperCase()}${what.slice(1)} may be rounding noise`;
+  },
+  maybeWhy: (gave: string, currents: number, voltages: number): string => {
+    const one = currents + voltages === 1;
+    const below = !voltages
+      ? "below 1 pA, ngspice's current tolerance (its abstol option)"
+      : !currents
+        ? "below 1 µV, ngspice's voltage tolerance (its vntol option)"
+        : "below ngspice's tolerances, 1 pA for a current and 1 µV for a voltage (its abstol and vntol options)";
+    return `ngspice gave ${gave}. ${one ? 'It is' : 'Each is'} ${below}, so ${one ? 'it' : 'each'} may be rounding noise, what its arithmetic leaves of a value that is exactly 0, or a real value that small. PlainSpice does not solve this circuit exactly, so it cannot tell which, and shows ${one ? 'it' : 'each'} as ngspice gives it.`;
+  },
   // C9n: a real current or voltage ngspice's arithmetic rounded to exactly 0, shown as the exact solution gives it.
   lostTitle: (currents: readonly string[], nodes: readonly string[]): string => {
     const what = [
@@ -1054,6 +1072,13 @@ export interface RoundingNoise {
   diodes?: boolean;
   /** With diodes, decided exactly: what the 0s the note names need of the diodes (DiodeWhy). */
   diodeWhy?: DiodeWhy;
+  /**
+   * By the rule for other circuits alone (no exact solution to hold it to): the tiny values it can prove neither real
+   * nor rounding noise, currents below abstol and node voltages below vntol, by part key and node name. They are shown
+   * as ngspice gives them, with a note that they may be rounding noise of an exact 0 (the last pass: an attoamp was
+   * drawn as an answer with nothing said, regress-1).
+   */
+  unproven?: { currents: Set<string>; nodes: Set<string> };
 }
 
 /** No rounding noise and nothing lost: what a run without an operating point has. */
@@ -2156,7 +2181,7 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact):
   if (t1 === null) return undefined;
   if (!outer) {
     // A sweep of the temperature alone (too large to look through, SWEEP_VALUES): its point at the .op's own temperature.
-    const at = t1 ?? OP_TEMPERATURE;
+    const at = t1 ?? opTemperature(netlist);
     const points: number[] = [];
     for (let k = 0; k < xs.length; k++) if (xs[k] === at) points.push(k);
     return { points, name: (k) => label(inner, xs[k]!) };
@@ -2176,8 +2201,23 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults, ex: Exact):
 
 /** 0 °C in kelvin, as ngspice adds it to a temperature (CONSTCtoK). */
 const KELVIN = 273.15;
-/** The temperature of an operating point PlainSpice solves exactly, in °C: ngspice's default (A15). */
-const OP_TEMPERATURE = 27;
+/**
+ * The temperature of the .op, in °C: a .temp line's or `.options temp`'s, else ngspice's own 27 °C ("Doing analysis at
+ * TEMP = 27.000000" in every printout).
+ */
+function opTemperature(netlist: Netlist): number {
+  for (const line of netlist.lines) {
+    const d = line.directive;
+    if (!d) continue;
+    if (d.name === '.temp' && d.args.length === 1) return readNumber(d.args[0]!.text)?.value ?? 27;
+    if (d.name === '.options' || d.name === '.option' || d.name === '.opt') {
+      const k = d.args.findIndex((a) => lowerAscii(a.text) === 'temp');
+      const v = k >= 0 ? readNumber(d.args[k + 1]?.text ?? '')?.value : undefined;
+      if (v !== undefined) return v;
+    }
+  }
+  return 27;
+}
 
 /**
  * A sweep the exact solution does not follow (of a resistor, of two sources), decided at its points at the .op's
@@ -2883,6 +2923,19 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     // node would claim that the voltage across it is noise, and another part's 0 there can be ngspice's
     // rounding of a real current (C9n).
     if (el.letter !== 'R' && el.letter !== 'C') for (const node of ends.get(el.key) ?? []) if (counted(node) && left.get(node) === 1) return { kind: 'node', node };
+    // A source whose only partner at a node is a resistor that ngspice gives exactly 0 A, its two ends one double:
+    // the page shows 0 V across that resistor and no current through it, so the source in series with it carries
+    // none on the page either (C9w; the last pass, regress-1: Vm drew 2.168e-19 A beside R5's 0 A, alone in series
+    // at node m). Where the source's current is real, the next node gives it back (step 3: a 1 µΩ wire's 0 before an
+    // ammeter and a meter that carries its real attoamps).
+    if (el.letter !== 'R' && el.letter !== 'C') {
+      for (const node of ends.get(el.key) ?? []) {
+        const list = counted(node) ? at.get(node)! : [];
+        const other = list.length === 2 ? (list[0] === el ? list[1]! : list[0]!) : undefined;
+        const [a, b] = other?.letter === 'R' ? other.nodes : [];
+        if (other && a && b && !real.has(other.key) && amps.get(other.key) === 0 && volt(a) !== undefined && volt(a) === volt(b)) return { kind: 'node', node };
+      }
+    }
     return undefined;
   };
   // Each decision depends only on ngspice's numbers and on the 0s already written, which only add: one
@@ -3055,6 +3108,68 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     if (level === undefined) levelOf.set(root, (level = levelOf.size));
     out.levels.set(node, level);
   }
+
+  // ---- 5. What the rule can prove neither real nor noise: a current below abstol and a node voltage below vntol
+  // that it leaves as ngspice gives them. Step 1 takes some currents as real only so that no 0 is written where the
+  // page shows what follows from them (what an H makes, a part beside a transistor, a share of a node's tiny
+  // difference); proven real here is only a current of at least abstol, a current source's own, a resistor's or a
+  // G's with a real voltage across or read, what an F copies of one, and the last current at a node whose proven
+  // currents do not add up to 0. A node voltage is real when a resistor joins the node to ground and carries a
+  // current proven real (its voltage is that current times the resistance), when a voltage source with a value that
+  // is not 0 holds it against ground, or when ngspice gives it the very double of such a node (a 1 µΩ wire's two
+  // ends, C9n). The note says each of the others may be rounding noise of an exact 0 (C9w).
+  const sure = new Set<string>();
+  const sureQueue: Element[] = [];
+  const markSure = (el: Element): void => {
+    if (sure.has(el.key)) return;
+    sure.add(el.key);
+    sureQueue.push(el);
+  };
+  for (const el of parts) {
+    const amp = amps.get(el.key);
+    if (!amp) continue;
+    const [p, n, c, d] = el.nodes;
+    if (!(Math.abs(amp) < ABSTOL) || el.letter === 'I' || (el.letter === 'B' && behaviouralKind(el) !== 'v') || (el.letter === 'R' && realVoltage(p, n)) || (el.letter === 'G' && realVoltage(c, d))) markSure(el);
+  }
+  // At each node: the proven currents' sum, the largest of them, and how many currents there are not proven and not 0.
+  const proven = new Map<string, { sum: number; largest: number; open: number }>();
+  for (const [node, list] of at) if (counted(node)) proven.set(node, { sum: 0, largest: 0, open: list.filter((el) => amps.get(el.key)).length });
+  for (let k = 0; k < sureQueue.length; k++) {
+    const el = sureQueue[k]!;
+    for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) markSure(r);
+    const amp = amps.get(el.key) ?? 0;
+    for (const node of ends.get(el.key) ?? []) {
+      const b = proven.get(node);
+      if (!b) continue;
+      b.sum += node === ends.get(el.key)![0] ? amp : -amp;
+      b.largest = Math.max(b.largest, Math.abs(amp));
+      b.open -= 1;
+      if (b.open !== 1 || !clearlyNot0(b.sum, b.largest)) continue;
+      const last = at.get(node)!.find((x) => amps.get(x.key) && !sure.has(x.key));
+      if (last) markSure(last);
+    }
+  }
+  const unproven = { currents: new Set<string>(), nodes: new Set<string>() };
+  for (const el of parts) {
+    const amp = amps.get(el.key);
+    if (amp !== undefined && amp !== 0 && Number.isFinite(amp) && Math.abs(amp) < ABSTOL && !sure.has(el.key) && !out.currents.has(el.key)) unproven.currents.add(el.key);
+  }
+  const realNode = new Set<string>();
+  for (const el of parts) {
+    const [p, n] = el.nodes;
+    if (!p || !n || (nodeName(p) === '0') === (nodeName(n) === '0')) continue;
+    const node = nodeName(p) === '0' ? nodeName(n) : nodeName(p);
+    if ((el.letter === 'R' && sure.has(el.key)) || (el.letter === 'V' && el.value?.number?.value)) realNode.add(node);
+  }
+  const realValues = new Set<number>();
+  for (const node of realNode) {
+    const v = volts.get(node);
+    if (v) realValues.add(v);
+  }
+  for (const [node, v] of volts) {
+    if (node !== '0' && v !== 0 && Number.isFinite(v) && Math.abs(v) < VNTOL && !realNode.has(node) && !realValues.has(v)) unproven.nodes.add(node);
+  }
+  if (unproven.currents.size || unproven.nodes.size) out.unproven = unproven;
   return out;
 }
 
@@ -3648,6 +3763,34 @@ function noiseNote(netlist: Netlist, results: AnalysisResults, words: SummaryInp
 }
 
 /**
+ * The note for the tiny values the rule for other circuits can prove neither real nor rounding noise (C9w): what
+ * ngspice gave, that each is below its tolerance, and that it may be noise of an exact 0 or a real value that small.
+ * Lists stop at NOTE_LIST values, as the noise note's.
+ */
+function maybeNote(netlist: Netlist, results: AnalysisResults, words: SummaryInput): MessageWords | undefined {
+  const unproven = noiseOf(netlist, results).unproven;
+  if (!unproven) return undefined;
+  const currents = words.currents.filter((c) => c.noise === undefined && c.given === undefined && c.value !== 0 && unproven.currents.has(c.element));
+  const nodes = words.nodes.filter((n) => n.noise === undefined && n.given === undefined && n.value !== 0 && unproven.nodes.has(n.node));
+  if (!currents.length && !nodes.length) return undefined;
+  const gave = cappedList([
+    ...currents.map((c) => ({ text: S.noiseGaveCurrent(c.name, formatLikeNgspice(c.value)), kind: 'current' as const })),
+    ...nodes.map((n) => ({ text: S.noiseGaveVoltage(said(n.name), formatLikeNgspice(n.value)), kind: 'voltage' as const })),
+  ]);
+  const note: MessageWords = {
+    code: 'maybe-noise',
+    severity: 'note',
+    title: S.maybeTitle(
+      currents.map((c) => c.name),
+      nodes.map((n) => said(n.name)),
+    ),
+    why: S.maybeWhy(gave, currents.length, nodes.length),
+  };
+  if (currents.length === 1 && !nodes.length && currents[0]!.line !== undefined) note.line = currents[0]!.line;
+  return note;
+}
+
+/**
  * The note for the currents and node voltages that ngspice's arithmetic rounded to exactly 0 though the
  * circuit makes them real (C9n): PlainSpice shows the exact values, and says why ngspice gave 0. For one
  * resistor whose two ends ngspice gave as the same number, that is its reason; for others a reason true
@@ -3850,6 +3993,9 @@ export function describeResults(netlist: Netlist, results: AnalysisResults, run:
   // problem). Only with numbers that are answers: a failed or untrusted run is summed up by its first message.
   const note = status === 'ok' ? noiseNote(netlist, results, words) : undefined;
   if (note) words.warnings.push(note);
+  // C9w: by the rule for other circuits, the tiny values it can prove neither real nor noise.
+  const maybe = status === 'ok' ? maybeNote(netlist, results, words) : undefined;
+  if (maybe) words.warnings.push(maybe);
   // C9n: the real values ngspice's arithmetic rounded to 0, shown exactly.
   const lost = status === 'ok' ? lostNote(netlist, results, words) : undefined;
   if (lost) words.warnings.push(lost);

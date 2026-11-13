@@ -372,13 +372,15 @@ const HARMLESS_DOTS = new Set([
 const OPTIONS = new Set(['.options', '.option', '.opt']);
 /**
  * Options that cannot change the operating point of a circuit of R, C, L, V, I, E, F, G and H: what is
- * saved and printed, and the tolerances and iteration limits of ngspice's iterations, which a linear
- * circuit meets at its first solution. Any other option (gmin, rshunt, temp, scale, ...) leaves the
- * decision to the rule for other circuits.
+ * saved and printed, the tolerances and iteration limits of ngspice's iterations, which a linear
+ * circuit meets at its first solution, and the temperature, which none of these parts depends on with
+ * no settings (C9w: the same doubles at −40 °C, 27 °C and 150 °C; a diode's current, which does, is left
+ * free). Any other option (gmin, rshunt, tnom, scale, ...) leaves the decision to the rule for other circuits.
  */
 const HARMLESS_OPTIONS = new Set([
   'savecurrents', 'abstol', 'vntol', 'reltol', 'chgtol', 'trtol', 'itl1', 'itl2', 'itl3', 'itl4', 'itl5', 'itl6',
   'numdgt', 'acct', 'noacct', 'list', 'nolist', 'nomod', 'nopage', 'node', 'opts', 'warn', 'maxwarns', 'method', 'maxord', 'interp', 'keepopinfo',
+  'temp',
 ]);
 
 /** At most this many unknowns (node voltages and branch currents) are solved exactly (measured: decision 0015). */
@@ -431,6 +433,8 @@ export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], a
       }
       continue;
     }
+    // .temp with one temperature: no part modelled exactly depends on it (C9w), as with `.options temp`.
+    if (d.name === '.temp' && d.args.length === 1 && readExact(d.args[0]!.text) !== undefined) continue;
     if (!HARMLESS_DOTS.has(d.name)) return 'directive';
   }
   for (const line of afterEnd) if (/^\s*\./.test(line.text) && !/^\s*\.(op|tf|dc|tran|ac|end)\b/i.test(line.text)) return 'directive';
@@ -459,11 +463,18 @@ export function exactModel(netlist: NetlistInput, parts: readonly PartInput[], a
     // A diode with a thermal node has a third end.
     if (el.nodes.length !== (fourNodes ? 4 : 2)) return 'part';
     if (reads !== !!el.controlSource) return 'part';
-    if ((kind === 'V' || kind === 'I') && el.sourceFunction) return 'part';
+    // A source with a transient function is its DC value in an operating point, a .dc and a .tf when one is written
+    // (P3b, P4c; C9w: the same doubles as without the function); without one, ngspice uses the function's value at
+    // time 0 (P17), which is left to the other rule.
+    if ((kind === 'V' || kind === 'I') && el.sourceFunction && !el.value) return 'part';
     const allowed = PLAIN_ROLES[kind];
+    // m=1 on an R, C or L: one part, as without it (C9w: the same doubles).
+    const settings = el.fields.filter((f) => f.role === 'parameter').map((f) => f.token.text);
+    const one = readExact(settings[1] ?? '');
+    const unitM = (kind === 'R' || kind === 'C' || kind === 'L') && settings.length === 2 && settings[0]!.toLowerCase() === 'm' && one !== undefined && one.n === 1n && one.d === 1n;
     if (kind !== 'D') {
       for (const f of el.fields.slice(1)) {
-        if (NODE_ROLES.has(f.role) || (reads && f.role === 'control-source')) continue;
+        if (NODE_ROLES.has(f.role) || (reads && f.role === 'control-source') || (unitM && f.role === 'parameter')) continue;
         if (!allowed.includes(f.role)) return 'part';
       }
     }
