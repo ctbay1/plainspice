@@ -181,8 +181,8 @@ and compared; anything they need that v1 cannot say becomes a new field (read pa
   wave of another node took about 4 s to build and half a minute on a slowed phone (decision 0012).
   It now looks only at the wires near each place and tries at most 100 places, lowest first (and as
   many ends for a lead); real drawings have a few dozen. Checking overlaps (`findOverlaps`, used to
-  judge a turned view and an edit's stored sides) still compares every symbol and name with every
-  wire, which is small for the drawings it is used on.
+  judge a turned view and an edit's stored sides) compared every symbol and name with every wire
+  and every other one; since the second re-check it looks only near each (below).
 - **The phone tries to turn a drawing only up to 100 parts and 1000 pieces of wire**
   (`TURN_LIMITS`, `src/notebook/turn.ts`). Each try rebuilds the whole drawing, up to four tries, so
   a drawing line with thousands of pieces kept the phone busy to find no clean turn. No circuit a
@@ -200,6 +200,81 @@ and compared; anything they need that v1 cannot say becomes a new field (read pa
   before, and a 300-part ladder and a dense mesh build faster. After this round's changes too, all
   145 repository netlists give the same drawing, scene, problems and turned view as the first fix,
   and the wire functions match the release reviewed on 25,000 random wire sets.
+
+**Corrected after the second re-check: building and drawing a crafted drawing is bounded too**
+(P2 and P3, with decision 0012). The wires were bounded; other things the drawing lines can pile up
+were not: parts on other nodes' pins, names and ground symbols at one point, what the drawing draws
+for each wire, and the places tried for a card or a note. "Bounded" now covers reconcile's first
+step and the render as well as the wires.
+
+- **The parts to move are moved from one scene.** Reconcile's first step moved one part at a time
+  and built a whole scene for each, every name piled at the point placed again each time: 59 scenes
+  for the 542-character link that puts V1 and R2 … R60 at one point, and with 1900 names there too,
+  37 to 47 s on a computer. The parts to move are now found from the pins alone (the last part at a
+  point with pins of two nodes, until no such point is left), then placed one by one from one scene
+  of the drawing with the others still standing (`placeMoved`, `src/schematic/layout.ts`): each
+  leaves its place as it is placed, so the parts still to move keep pulling their neighbours near
+  (their pins are copper) and stay in the way, and each part placed is in the way of the next, its
+  words on the first free side. The first part is placed exactly as before, so a drawing with one
+  part to move draws as it did; none of the repository's netlists has more. The 60 parts come out in
+  66 × 44 squares (a scene each gave 56 × 61; taking them all out first, without the parts still to
+  move, gave a row of 358 × 11). A place for a part is tried without making the symbol's geometry for
+  each place tried (the symbol turned at (0, 0), moved by the place's point: the same numbers), and
+  what is in the way is filed in numbered cells, each look marking what it took. The loop that moved
+  one part at a time stays after it, for a part placed on another node's pin all the same (none is).
+- **What the lines pile at one point counts once.** A ground symbol drawn twice at one place, turned
+  the same way, is one symbol, as wire drawn over wire is one piece; a node's name written twice at
+  one point is written once (the repairs kept only the first anyway); and the scenes made to place a
+  part (renamed, added or moved) see the first name at each point, while every name is still put in
+  order by the repairs (step 3). A drawing PlainSpice writes has none of these.
+- **A look at what words avoid takes each thing once with a mark**, not a Set, and sorts nothing it
+  need not: it looks at everything in order when its squares hold as many entries as there are things
+  at all, and puts several squares' entries in order by reading the marks in order when that is less
+  work than sorting them. `findOverlaps` now compares each symbol and name only with what shares a
+  square with it, in the order a comparison of every pair takes them, so the list is the same (1,600
+  ground symbols on a mesh: 75,000 checks, where every pair was 3.75 million).
+- **A repair round that changes nothing ends the step.** A pin that a slanted piece of wire runs
+  through is joined to it (the copper is filed at every grid point a slanted piece passes), but a cut
+  splits only straight pieces, so it cannot free that pin, and reconcile's second step went round 50
+  times, each over the whole drawing, three times for each edit: a refused Disconnect on a slanted
+  lattice at the limits took 1.8 s. Each round after one that changes nothing would start from the
+  same drawing. Each route also takes the pins its islands came from, not every ground symbol's
+  geometry afresh. (Such a pin stays joined to the other node, so the drawing shows that short, as
+  the build re-checked did, though the warning about slanted wires says they connect only at their
+  ends; slanted copper is only ever typed, never drawn by the editor. Left as it is for now.)
+- **The render finds each junction dot's and hop's colour at its point.** The drawing looked for the
+  wire under each dot and each hop in every wire piece: 47 million looks on every hover, click and
+  key on a slanted lattice at the limits (4,898 dots, 9,666 pieces), and dots on slanted copper never
+  got their node's colour. The scene now gives each junction its node (`junctionNodes`, from the
+  islands it already finds) and each crossing the node of the wire that hops (`crossingNodes`), and
+  the drawing is drawn in layers that are drawn again only when what they show changes, so a hover, a
+  selection or the focus ring draws the highlights and the ring only. A dot on slanted copper, or
+  where only pins meet, now takes its node's colour too.
+- **A place beside something is looked for nearest first, without making every place on the paper**
+  (`src/notebook/place.ts`). A card's place summed what each place it tried covers, every word,
+  symbol and piece of wire, until it found a free one: a click on the fitted lattice checked 140
+  million pieces (two seconds of work). It now looks only near each place (the room filed by squares)
+  and stops at the first thing a place covers. And every place along each side of the paper was made
+  and sorted before the nearest free one was looked for, so a red-pen note on a drawing that reaches
+  ±2000 sorted 1.6 million places, a second of work each time the notes were drawn; the places are now
+  made a band of their order at a time (each band twice as wide as the one before) and each band put
+  in order as all the places were, so the place found is the same: 270 places sorted there. The
+  card, the notes, the old voltages crossed out and the sticky note keep only a free place, so they
+  ask for one (`freeOnly`) and nothing sums what every place covers to find the least.
+
+All 147 netlists of the repository, as written and without their drawing lines, give the same drawing
+lines, scene, problems and turned view as before (294 builds), and every edit on them the same result
+(6,843 edits: each kind on each part, wire, node, name and ground symbol); 1,857 drawings with a part
+put on another node's pin (each part of the examples and fixtures on each other part's pins) draw as
+before; the same overlaps on 334 scenes; the same 702 dots and their colours; the same places for
+4,443 cards and as many sticky notes, 1,508 notes and 150 sets of old voltages (every netlist and the
+crafted shapes, at several zooms and pans), and on 1,500 random rooms; and every example, opened from
+the menu and solved, the same drawing: the same SVG at 1280 × 800 and on a Pixel 7 (42 pictures), and
+the same picture as a second run of the build re-checked (two runs of that build differ by 12 to 65
+pixels of the netlist panel over the drawing on six pictures). The tests count the work, not the
+time (`tests/unit/schematic-piles.test.ts`, `schematic-shapes-work.test.ts`,
+`notebook-drawing-work.test.tsx`, `app-card-builds.test.tsx`), and those of each fix fail on the
+build re-checked.
 
 **A node's name goes where it is read clear of the parts, wherever its copper or its end leaves
 room** (student:label-on-part). A name with no spot of its own (no `side=`) that touches a symbol,

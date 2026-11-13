@@ -107,7 +107,7 @@ describe('parts piled on one point move from one scene (second re-check, P3)', (
 
   it('a place for a part is tried without making a symbol for each place tried', { timeout: 60_000 }, () => {
     // 59 parts moved, each tried at up to 48 × 36 places in four turns: one symbol geometry for each
-    // place tried was 400,000 and more for this drawing.
+    // place tried was 198,000 for this drawing.
     const sixty = counted(() => build(partsAtOnePoint(60)));
     expect(sixty.geometries).toBeLessThan(20_000);
   });
@@ -171,7 +171,7 @@ describe('overlaps are found by looking near each symbol and name (P3)', () => {
     const words = sc.parts.length + sc.nodeLabels.length;
     const pairs = (symbols.length * (symbols.length - 1)) / 2 + symbols.length * (pieces + words) + (words * (words - 1)) / 2 + words * pieces;
     expect(found.result.length).toBeGreaterThan(0);
-    // About 25 checks for each symbol here; comparing every pair was 5.5 million.
+    // 75,164 checks here, about 47 for each symbol; comparing every pair was 3.75 million.
     expect(found.checks).toBeLessThan(50 * (symbols.length + words + pieces));
     expect(found.checks).toBeLessThan(pairs / 20);
   });

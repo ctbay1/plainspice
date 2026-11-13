@@ -92,6 +92,69 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   box while building the link and a control (the same link with the ground symbol and its lead
   given, so nothing is searched): the search may add fewer checks than the drawing has pieces of
   wire (9,951). It adds about 370; the first fix's added 48 million.
+- **Corrected after the second re-check: bounded work covers the whole drawing, not only its wires**
+  (P2 and P3). "Its work grows with the drawing lines and the wire they draw ..., never with their
+  square" held for the wires only. A 542-character link that puts 60 parts at one point froze a
+  computer for 1.4 s and a phone slowed four times for 6 s, and each key typed on a card for 1.5 to
+  3.5 s; with 1900 names piled there too (a 1007-character link), 37 to 47 s on a computer and 164 s
+  on the phone. On a slanted lattice at the format's limits (a 30 kB link), every hover, click and key
+  cost 0.6 to 2.3 s of drawing, and opening it 5.5 to 6.5 s on the phone. Decision 0013 says how
+  building and drawing are bounded now: reconcile's first step, the names and ground symbols piled at
+  a point, the render, and the places tried for a card or a note. A key typed on a card also builds
+  the drawing once, not twice: the page takes the schematic `keepDrawing` built to tell whether the
+  new value would move a part (`schematicOf`, `src/app/card-edit.ts`).
+
+  The budget at the format's limits (2000 drawing lines, 20,000 grid units and points, 60 parts
+  drawn, a 32,000-character link, or saved work as large), as the page's longest task on a computer
+  and on a Pixel 7 slowed four times:
+  - opening: up to about 0.6 s on a computer, and up to about two and a half seconds on the slowed
+    phone, four for the heaviest drawings (30 kB of wire, the 100 × 100 grid kept as saved work, 60
+    parts in one square turned every way: 2.5 to 3.7 s; a build of each is 0.25 to 0.7 s of CPU in
+    Node, where a pile of parts, names or ground symbols at one point is about 0.2 s);
+  - a hover, a selection or the focus ring: no long task (only the highlights are drawn again); a
+    click on a part with its card placed: up to about 0.1 s, and a tap 0.17 s on the phone;
+  - a key typed on a card (one build) or an edit (move, turn, mirror, wire, delete, rename,
+    disconnect, a name moved, undo: two to four builds): up to about 0.45 s on a computer and 1.4 s
+    on the slowed phone, and up to 0.55 s and 2.4 s on the heaviest drawings of wire.
+  The tests count the work, so they hold on any machine (decision 0013 lists them).
+
+  Measured on 13 November on the shared machine, this build first and the build re-checked (b060bc8)
+  in brackets; the load was 1 to 4 for this build (7.5 for the long names) and 2 to 10 for the other,
+  and the builds' CPU time in Node, best of three at load 5, depends little on it:
+  - the 542-character link: on a computer opening 0.27 s (0.97 s), a key 0.18 s (0.91 s, then
+    0.76 s: two builds), Delete 0.09 s (0.25 s), Undo no long task (0.90 s); on the slowed Pixel 7,
+    opening 1.44 s (4.10 s) and a key 0.60 s (3.63 s, then 3.08 s); a build 0.20 s of CPU (1.53 s);
+  - the 1007-character link with 1900 names: opening 0.29 s (33.8 s), a key 0.20 s (36.2 s, then
+    33.6 s), Undo no long task (34.2 s); on the phone, opening 1.6 s (164 s, the re-check's); a
+    build 0.17 s (40.2 s); the same names over one square, 1900 ground symbols at the point, every
+    part in one square: builds of 0.25 s, 0.13 s and 0.26 s (53.6 s, 10.0 s and 1.52 s), opening
+    0.31 to 0.52 s and a key 0.24 to 0.44 s, on the phone opening 1.6 to 3.7 s and a key 0.75 to
+    1.3 s;
+  - the 861-character link, 60 parts at one point with 500-character node names (load 7.5 to 10):
+    a build 0.18 s (1.22 s); opening 0.62 s (1.52 s), a key 0.38 s (1.13 s, then 0.89 s); on the
+    phone opening 2.5 s (6.0 s) and a key 1.1 s (4.05 s, then 3.34 s);
+  - the slanted lattice (30 kB): opening 0.43 s (1.01 s), a hover no long task and 30 ms of CPU
+    (0.49 s), a click 0.06 s (0.95 s), a key 0.28 s (0.80 s), Escape 0.06 s (0.61 s), Delete 0.19 s
+    (0.77 s), Undo 0.31 s (1.01 s); on the phone, opening 1.86 s (3.67 s), a tap 0.12 s (2.43 s), a
+    key 0.97 s (3.21 s); with a trap on R1 (its red-pen note), opening 0.56 s (1.66 s) and on the
+    phone 1.94 s (6.31 s), a tap 0.17 s (2.32 s) and a key 1.38 s (4.23 s);
+  - a red-pen note next to R1 on a drawing that reaches ±2000, the whole drawing in view: 2 ms of
+    CPU in Node (1.7 s, every place along the paper made and sorted);
+  - the heaviest drawings of wire, already linear: the first critic's 31 kB wave opens in 0.59 s
+    (0.66 s), takes a key in 0.39 s (0.53 s, then 0.39 s) and Delete in 0.55 s (0.77 s); on the
+    phone it opens in 2.5 s (2.7 s) and takes a key in 2.35 s, in one task now (1.69 s, then
+    1.43 s); the 100 × 100 grid kept as saved work (122 kB) opens in 0.61 s (0.75 s at load 7) and
+    takes a click in 0.07 s (0.78 s) and a key in 0.35 s (0.45 s, then 0.49 s), on the phone 3.0 s
+    (3.1 s) and a key in 1.8 s (1.84 s, then 1.97 s); builds of 0.69 s and 0.62 s (0.78 s and
+    0.80 s).
+
+  The first value typed on a card does not write the repaired drawing lines when they differ from the
+  lines in the text (the 60 parts at one point, say), though later visits would then build faster
+  (27 ms instead of 190 ms here). The card's rule stays the one decision 0016 gives: a value changes
+  only the value, unless the new value would move a part. Writing them would rewrite 60 lines of the
+  student's text for one key, and drop the lines kept for parts not in the netlist yet, which only a
+  change made in the drawing drops; and once each build is bounded, a visit costs a build like the
+  one that opened the link.
 - **Characters that are not what they look like** (security review F2). Text copied from a web page
   or a PDF can carry invisible characters, and a phone or another keyboard can type a letter from
   another alphabet that looks like a scale letter. ngspice reads bytes and writes each byte outside
