@@ -1578,6 +1578,13 @@ export function plusLineAfterEnd(netlist: Netlist): { plus: number; joins?: numb
   return found ?? undefined;
 }
 
+/** Where the two backslashes that end a line start, which make the next line a + line to ngspice (chk_for_line_continuation), or -1. */
+function endBackslashes(s: string): number {
+  let e = s.length;
+  while (e > 0 && /[ \t\n\v\f\r]/.test(s[e - 1]!)) e -= 1;
+  return e >= 2 && s[e - 1] === '\\' && s[e - 2] === '\\' ? e - 2 : -1;
+}
+
 /**
  * ngspice reads an .options line with savecurrents in this netlist (A2d). It takes every line that starts with .opt
  * out of the netlist before it reads the circuit, wherever the line is: after .end too, even after a .end with a
@@ -1585,20 +1592,49 @@ export function plusLineAfterEnd(netlist: Netlist): { plus: number; joins?: numb
  * after one that starts with @, where it stops reading (S29, S30). It finds the option as inp_savecurrents does:
  * savecurrents anywhere in the line (which ngspice reads in lower case), with its + lines joined (past comments,
  * blank lines and a plain .end, limit-18) and its comment cut. A command (option or set savecurrents) does not count.
+ * The lines are read as inp_read reads them (A2d): a line after one that ends in two backslashes is a + line, whatever
+ * it is, past blank lines and .hdl and .biaschk lines, which ngspice 47 drops (not after a line starting with * or $,
+ * nor after a .title or .end line, which ngspice has made a comment by then); and a comment is cut by the .control
+ * rule (a $ only before a blank) from a .control line to the line before .endc, and on every line when the netlist
+ * does not have as many .control lines as .endc lines.
  */
 function readsSaveCurrents(netlist: Netlist): boolean {
+  // As inp_read reads the lines: the title first (line 1, unless ngspice drops it), then each line ngspice keeps.
+  const read: string[] = [];
+  /** .control lines less .endc lines, the title too (is_control): unless 0, every comment is cut by the .control rule. */
+  let open = 0;
+  let title = true;
+  /** The line before ended in two backslashes. */
+  let shell = false;
+  for (const { text } of netlist.lines) {
+    let line = asRead(text);
+    if (/^\.(?:hdl|biaschk)/i.test(line) || (!title && line === '')) continue;
+    if (line.startsWith('@')) break;
+    if (/^\.control/i.test(line)) open += 1;
+    else if (/^\.endc/i.test(line)) open -= 1;
+    if (DOT_TITLE.test(line) || isEndLine(line)) line = `*${line.slice(1)}`;
+    if (shell) line = `+${line}`;
+    const k = /^[*$]/.test(line) ? -1 : endBackslashes(line);
+    shell = k >= 0;
+    if (shell) line = `${line.slice(0, k)}  ${line.slice(k + 2)}`;
+    if (title) title = false;
+    else read.push(line);
+  }
+  // As inp_stripcomments_deck cuts the comments and inp_stitch_continuation_lines joins the + lines.
+  let control = false;
   /** The .opt line being read, with its + lines so far ('' while the line of its own is not one). */
   let options = '';
-  for (let i = 1; i < netlist.lines.length; i++) {
-    const read = asRead(netlist.lines[i]!.text);
-    if (read.startsWith('@')) break;
-    if (read.startsWith('+')) {
-      if (options) options += ` ${withoutComment(read, false).slice(1)}`;
+  for (const line of read) {
+    if (/^\.control/i.test(line)) control = true;
+    if (/^\.endc/i.test(line)) control = false;
+    const code = withoutComment(line, control || open !== 0);
+    if (code.startsWith('+')) {
+      if (options) options += ` ${code.slice(1)}`;
       continue;
     }
-    if (!ownLine(read)) continue;
+    if (/^[#$*]/.test(code) || code.trim() === '') continue;
     if (/savecurrents/i.test(options)) return true;
-    options = /^\.opt/i.test(read) ? withoutComment(read, false) : '';
+    options = /^\.opt/i.test(code) ? code : '';
   }
   return /savecurrents/i.test(options);
 }

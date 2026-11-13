@@ -127,6 +127,44 @@ describe('netlistToRun', () => {
     ] as const;
     for (const [text, plus, joins] of said) expect(toRun(text), text).toEqual({ text, added: [], notes: [RUN_COPY_WORDS.plusAfterEnd(plus, joins)] });
   });
+
+  it('reads the student’s .options line as ngspice reads every line: two backslashes, and the comments of a .control block (the round-2 critic’s CR2-1; A2e)', () => {
+    // Native 47 and 42 save @r1[i] and @i1[current] for each of these (A2e; .hdl and .biaschk: 47 only): the copy says nothing.
+    const quiet = [
+      // A line after one that ends in two backslashes is a + line (the critic's b3): past a blank line, and on again;
+      // a comment line and a .title line too; and after a # line, or with the backslashes in a comment.
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options \\\\\nsavecurrents\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options \\\\\n\ntemp=27 \\\\\nsavecurrents\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options \\\\\n* a note \\\\\n.title savecurrents\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options\n# a note \\\\\nsavecurrents\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options temp=27 ; a note \\\\\nsavecurrents\n',
+      // Not after a * or $ line, nor a .title line: the .options line is a line of its own.
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n* a note \\\\\n$ a note \\\\\n.title x \\\\\n.options savecurrents\n',
+      // ngspice 47 drops .hdl and .biaschk lines.
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options \\\\\n.hdl x\n.biaschk\nsavecurrents\n',
+      // In a .control block a $ starts a comment only before a blank (the critic's b16), on a + line too; and on every
+      // line when the .control lines and the .endc lines (the title's too) are not as many.
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.control\n.options temp=27 $savecurrents\n.endc\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.control\n.options temp=27\n+ $savecurrents\n.endc\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options temp=27 $savecurrents\n.control\necho hi\n',
+      '* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.endc\n.end\n+ 3\n.options temp=27 $savecurrents\n',
+      '.endc t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options temp=27 $savecurrents\n',
+    ];
+    for (const text of quiet) expect(toRun(text), text).toEqual({ text, added: [], notes: [] });
+    // Native 47 and 42 save no current for these: the note is said.
+    const said = [
+      // In a .control block a $ before a blank starts a comment, even glued to the word before it (the critic's b16c);
+      // outside one, a $ after a blank does.
+      ['* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.control\n.options temp=27$ savecurrents\n.endc\n', 6, 4],
+      ['* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options temp=27 $savecurrents\n', 6, 4],
+      // After a title that ends in two backslashes, line 2 is a + line that continues no line: ngspice ignores it.
+      ['a title ending in two backslashes \\\\\n.options savecurrents\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n', 7, 5],
+      // A .control line made a + line opens no block; and ngspice stops reading at a line starting with @.
+      ['* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options \\\\\n.control\n.options temp=27 $savecurrents\n.endc\n', 6, 4],
+      ['* t\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options \\\\\n@ x\nsavecurrents\n', 6, 4],
+    ] as const;
+    for (const [text, plus, joins] of said) expect(toRun(text), text).toEqual({ text, added: [], notes: [RUN_COPY_WORDS.plusAfterEnd(plus, joins)] });
+  });
 });
 
 const w = (n: number, c = 'w'): string => c.repeat(n);
