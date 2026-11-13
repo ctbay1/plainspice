@@ -5,13 +5,14 @@
 import { expect, test } from '@playwright/test';
 import { encodeShare } from '../../src/share/link.ts';
 import { RUN_COPY_WORDS } from '../../src/spice/run-netlist.ts';
-import { expectSolved, openApp, openPanel, setNetlist, statusLine, t } from './helpers.ts';
+import { expectSolved, openApp, openPanel, runButton, setNetlist, statusLine, t } from './helpers.ts';
 
 const DIVIDER = 'V1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n.end\n';
 
 // Playwright's browser for these projects (chrome-headless-shell) turns any WebAssembly trap into a
 // crashed page, so on b060bc8 each of these ends in "Target crashed": the engine ran past the end of a
-// space in ngspice. Here ngspice gets only what fits (src/spice/run-netlist.ts).
+// space in ngspice. Here ngspice gets only what fits (src/spice/run-netlist.ts), and the status line of a
+// netlist it never got says "PlainSpice did not run it", not "ngspice could not run" (the last pass, C3-4).
 test.describe('what PlainSpice hands ngspice', () => {
   test('a run=1 link with a title of 600 bytes runs, and the ngspice output panel says the title was cut', async ({ page }) => {
     await openApp(page, `./#${await encodeShare(`* ${'W'.repeat(598)}\n${DIVIDER}`, { run: true })}`);
@@ -39,7 +40,8 @@ test.describe('what PlainSpice hands ngspice', () => {
   test('a run=1 link whose .save line joins three 200-byte words is not given to ngspice: the status line says why', async ({ page }) => {
     const words = `${'W'.repeat(200)} ${'W'.repeat(200)} ${'W'.repeat(200)}`;
     await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.save i( ${words} ) v(b)\n.op\n.end\n`, { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.joinedWord(5, `i( ${words} )`, 603));
   });
 
@@ -50,20 +52,23 @@ test.describe('what PlainSpice hands ngspice', () => {
   test('a run=1 link that builds a circuit by *# circbyline lines with a 601-byte title is not given to ngspice: the status line says why', async ({ page }) => {
     const lines = [`* ${'ab '.repeat(200).trimEnd()}`, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end'].map((l) => `*# circbyline ${l}`).join('\n');
     await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n${lines}\n*# op\n.end\n`, { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.circuitTitle(6, 601));
   });
 
   test('a run=1 link whose circbyline .title line is 599 bytes is not given to ngspice: the status line says why', async ({ page }) => {
     const lines = ['* short', `.title ${'ab '.repeat(200).trimEnd()}`, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end'].map((l) => `circbyline ${l}`).join('\n');
     await openApp(page, `./#${await encodeShare(`* t\nV9 z 0 1\nR9 z 0 1\n.op\n.control\n${lines}\nop\n.endc\n.end\n`, { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.circuitDotTitle(7, 599));
   });
 
   test('a run=1 link whose print line has choices in braces is not given to ngspice: the status line says why', async ({ page }) => {
     await openApp(page, `./#${await encodeShare('* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.control\nop\nprint ({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+ v(b)\n.endc\n.end\n', { run: true })}`);
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.braceChoices(7, '({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+'));
   });
 
@@ -74,10 +79,44 @@ test.describe('what PlainSpice hands ngspice', () => {
     await expectSolved(page);
   });
 
+  // The last pass's regress-3: the copy adds no .options savecurrents when a + line after .end would continue it
+  // (decision 0011), and the parts' currents were gone with no word of why.
+  test('a + line after .end: the copy runs as written, and the ngspice output panel says why the parts’ currents are missing', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n', { run: true })}`);
+    await expectSolved(page);
+    const output = await openPanel(page, 'output');
+    await expect(output.getByText(RUN_COPY_WORDS.plusAfterEnd(6, 4))).toBeVisible();
+    await expect(output.getByText(t('outputAdded'))).toHaveCount(0);
+  });
+
+  // The round-1 critic's CR1-2: ngspice reads an .options savecurrents line after .end too (A2d), and the panel said
+  // the currents were missing beside the Numbers panel's currents.
+  test('a + line after .end with the student’s own .options savecurrents after it: every current, and no note says one is missing', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* a + line after .end\nI1 0 n1 1\n.op\nR1 n1 0 2\n.end\n+ 3\n.options savecurrents\n', { run: true })}`);
+    await expectSolved(page);
+    const numbers = await openPanel(page, 'numbers');
+    await expect(numbers).toContainText('i(@r1[i]) = 1.000000e+00');
+    await expect(numbers).toContainText('i(@i1[current]) = 1.000000e+00');
+    const output = await openPanel(page, 'output');
+    await expect(output).toContainText(t('outputIntro'));
+    await expect(output).not.toContainText('PlainSpice did not add .options savecurrents');
+  });
+
+  // The round-1 critic's CR1-1: after Run on a link opened without running, the status line said "press Run" again.
+  test('Run on a link opened without running, of a netlist PlainSpice does not run: the status line says why, not "press Run"', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n', { run: false })}`);
+    await expect(statusLine(page)).toContainText(t('statusNotRun'));
+    await runButton(page).click();
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.noClose(4, 'v('));
+    await expect(statusLine(page)).toHaveAttribute('data-tone', 'bad');
+  });
+
   test('a B source typed without its ) is not given to ngspice: the status line says why, until the ) is there', async ({ page }) => {
     await openApp(page);
     await setNetlist(page, '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n');
-    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(t('statusRefused'));
+    await expect(statusLine(page)).not.toContainText(t('statusRunFailed'));
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.noClose(4, 'v('));
     await setNetlist(page, '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a)/2\n.op\n.end\n');
     await expectSolved(page);

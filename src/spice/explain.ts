@@ -21,6 +21,7 @@ import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
 import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, wordNativeStopsAt } from './parse.ts';
+import { plusLineAfterEnd, saveCurrentsLeftOut } from './run-netlist.ts';
 import type {
   Element,
   ElementLetter,
@@ -416,6 +417,9 @@ export const EXPLAIN_STRINGS = {
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
   opWhat: 'operating point',
   op: 'Find the DC operating point: every node voltage and the current in every voltage source. Capacitors act as open circuits and inductors as short circuits.',
+  /** The copy has no such line here (src/spice/run-netlist.ts, A2c): a + line after .end would continue it. */
+  opSaveCurrentsLeftOut: (line: number): string =>
+    `ngspice saves the current through every part only with .options savecurrents. PlainSpice does not add that line to the copy it runs here, because of the + line after .end (line ${line}).`,
   opSaveCurrents: 'ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.',
   tfWhat: 'transfer function',
   tf: (out: string, input: string, at: string): string =>
@@ -2416,7 +2420,12 @@ function explainDirective(netlist: Netlist, line: NetlistLine): LineExplanation 
   const ctx = contextOf(netlist);
   switch (name) {
     case '.op': {
-      const notes = ctx.hasSaveCurrents ? [] : [S.opSaveCurrents]; // A2, A2b, C7
+      // "PlainSpice adds that line" only where the copy does: not with a + line after .end (A2c, decision 0011), which
+      // is said, unless a .options savecurrents line of the student's that ngspice reads (after .end too, A2d) saves
+      // every current: no note then, as with one before .end.
+      const plus = ctx.hasSaveCurrents ? undefined : plusLineAfterEnd(netlist);
+      const left = plus ? saveCurrentsLeftOut(netlist) : undefined;
+      const notes = ctx.hasSaveCurrents || (plus && !left) ? [] : [left ? S.opSaveCurrentsLeftOut(left.plus) : S.opSaveCurrents]; // A2, A2b, C7
       return out(S.opWhat, S.op, [], notes); // A1, P11, P12
     }
     case '.tf':

@@ -84,6 +84,42 @@ describe('the status line', () => {
     expect(statusWords(READY, paused({ reason: 'long', points: 250_000 }), TEXT, true).detail).not.toContain('Ctrl');
   });
 
+  it('Run while live runs are paused: a netlist that did not run says why, not "press Run" again (the last pass’s critic, CR1-1)', () => {
+    // A change runs nothing while live runs are paused, so these come from Run (the Run button, Ctrl+Enter, Ctrl+K).
+    const why = 'Line 4: the v( in this formula has no ) after it. ngspice would look for the ) past the end of the line and write over its own memory, so PlainSpice did not run it. Add the ).';
+    const after = (outcome: LiveState<RunRecord>['outcome'], p: NonNullable<LiveState<RunRecord>['paused']>): LiveState<RunRecord> => ({ ...live({ outcome }), paused: p });
+    const pauses = [{ reason: 'link' }, { reason: 'long', points: 120_001 }, { reason: 'slow', ms: 2400 }, { reason: 'stopped' }, { reason: 'timeout', seconds: 20 }] as const;
+    for (const p of pauses) {
+      expect(statusWords(READY, after({ kind: 'failed', text: TEXT, reason: why, manual: true, refused: true }, p), TEXT)).toEqual({ main: 'PlainSpice did not run it', detail: why, tone: 'bad' });
+      // ngspice that stopped keeps its own words.
+      expect(statusWords(READY, after({ kind: 'failed', text: TEXT, reason: 'The engine stopped unexpectedly.', manual: true }, p), TEXT)).toEqual({ main: 'ngspice could not run', detail: 'The engine stopped unexpectedly.', tone: 'bad' });
+      // No analysis line: what to do.
+      expect(statusWords(READY, after({ kind: 'nothing', text: TEXT }, p), TEXT)).toEqual({ main: 'Nothing to run yet', detail: 'Add an analysis line, such as .op: the Checks panel offers one.', tone: 'paused' });
+      // Changed since (the text Run ran is not the text as it is now): the pause's words, as before.
+      const changed = `${TEXT}* x\n`;
+      expect(statusWords(READY, after({ kind: 'failed', text: TEXT, reason: why, manual: true, refused: true }, p), changed)).toEqual(statusWords(READY, after({ kind: 'none' }, p), changed));
+      expect(statusWords(READY, after({ kind: 'nothing', text: TEXT }, p), changed)).toEqual(statusWords(READY, after({ kind: 'none' }, p), changed));
+    }
+  });
+
+  it('a run whose numbers are not answers says so, though it took so long that live runs paused (the round-2 critic’s CR2-2)', () => {
+    // The slow pause comes from the run that just ended (live.ts): the status line says how that run went, as
+    // it does after a quick one, and as the cards do; the pause is said aloud.
+    const slow = (base: LiveState<RunRecord>): LiveState<RunRecord> => ({ ...base, paused: { reason: 'slow', ms: 9100 } });
+    const checked = done('check', { checks: [{ id: 'floating-dc', severity: 'error', line: 4, span: { from: 0, to: 1 }, title: 'b has no DC path to ground.', why: '', ngspice: '', fixes: [] }] });
+    expect(statusWords(READY, slow(checked), TEXT)).toEqual({ main: 'Not reliable', detail: 'A check found an error: b has no DC path to ground.', tone: 'bad' });
+    const noAnswer = done('failed', { words: { summary: 'x.', ngspiceError: true } as unknown as RunRecord['words'] });
+    for (const quick of [checked, done('unreliable'), noAnswer]) expect(statusWords(READY, slow(quick), TEXT)).toEqual(statusWords(READY, quick, TEXT));
+    // Numbers that are answers: the pause is what to know.
+    const pause = { main: 'Live runs paused', detail: 'The last run took 9.1 s, so ngspice does not run after every change: press Run (Ctrl+Enter).', tone: 'paused' };
+    expect(statusWords(READY, slow(done('ok')), TEXT)).toEqual(pause);
+    // A change since: the pause's words, as before (no old numbers to speak of after numbers that were not answers).
+    expect(statusWords(READY, slow(checked), `${TEXT}* x\n`)).toEqual(pause);
+    expect(statusWords(READY, slow(done('unreliable')), `${TEXT}* x\n`)).toEqual(pause);
+    // On a phone, the same words with its Run button.
+    expect(statusWords(READY, slow(checked), TEXT, true)).toEqual({ main: 'Not reliable', detail: 'A check found an error: b has no DC path to ground.', tone: 'bad' });
+  });
+
   it('nothing to run, a run that failed, and ngspice that could not start', () => {
     expect(statusWords(READY, live({ outcome: { kind: 'nothing', text: TEXT } }), TEXT)).toEqual({
       main: 'Nothing to run yet',
@@ -91,6 +127,9 @@ describe('the status line', () => {
       tone: 'paused',
     });
     expect(statusWords(READY, live({ outcome: { kind: 'failed', text: TEXT, reason: 'out of memory' } }), TEXT)).toEqual({ main: 'ngspice could not run', detail: 'out of memory', tone: 'bad' });
+    // A netlist PlainSpice did not give ngspice: no failure of ngspice's (the last pass, C3-4); the reason follows.
+    const why = 'Line 4: the v( in this formula has no ) after it. ngspice would look for the ) past the end of the line and write over its own memory, so PlainSpice did not run it. Add the ).';
+    expect(statusWords(READY, live({ outcome: { kind: 'failed', text: TEXT, reason: why, refused: true } }), TEXT)).toEqual({ main: 'PlainSpice did not run it', detail: why, tone: 'bad' });
     expect(statusWords({ status: 'failed', reason: 'no WebAssembly' }, live(), TEXT)).toEqual({ main: 'ngspice could not start', detail: 'no WebAssembly', tone: 'bad' });
     // An empty netlist is never sent to ngspice: the status says to type a part.
     expect(statusWords(READY, live({ outcome: { kind: 'nothing', text: '' } }), '', false, false)).toEqual({

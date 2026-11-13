@@ -44,7 +44,11 @@ export type LiveOutcome<R> =
   | { kind: 'nothing'; text: string }
   | { kind: 'stopped'; text: string }
   | { kind: 'timeout'; text: string; seconds: number; points?: number }
-  | { kind: 'failed'; text: string; reason: string };
+  /**
+   * `manual` as for 'done': a run Run asked for is said even when it fails for the reason said last.
+   * `refused`: the text was never given to ngspice (`isRefused`), so it is no failure of ngspice's.
+   */
+  | { kind: 'failed'; text: string; reason: string; manual?: boolean; refused?: boolean };
 
 export interface LiveState<R> {
   outcome: LiveOutcome<R>;
@@ -73,6 +77,8 @@ export interface LiveOptions<R> {
   cancel: () => void;
   isCancelled: (error: unknown) => boolean;
   isTimeout: (error: unknown) => boolean;
+  /** The run failed before ngspice was asked: a text PlainSpice does not give it. */
+  isRefused?: (error: unknown) => boolean;
   /** The time limit the engine applies, in seconds (for the words). */
   timeoutSeconds: number;
   /** Points a netlist asks for, when that is many (for the time-out's words). */
@@ -191,7 +197,8 @@ export function createLiveRunner<R>(options: LiveOptions<R>): LiveRunner<R> {
         paused = { reason: 'timeout', seconds: options.timeoutSeconds };
         queued = undefined;
       } else {
-        outcome = { kind: 'failed', text, reason: error instanceof Error ? error.message : String(error) };
+        const reason = error instanceof Error ? error.message : String(error);
+        outcome = options.isRefused?.(error) ? { kind: 'failed', text, reason, manual, refused: true } : { kind: 'failed', text, reason, manual };
       }
     } finally {
       if (gen === generation) clearTimeout(slowTimer);

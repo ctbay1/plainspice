@@ -170,7 +170,7 @@ import { checksSaid, checksSaidFor, drawingWarnings as drawingWarningsOf, fixedT
 import { hintShowsNote, noteAfterTool, REFUSAL_SHOWN_MS, useNoteTimer, type HintNote } from './hint-note.ts';
 import { useKeyboardInset, useMedia, useOverflowing, useRect, useTextScale, useWindowSize } from './hooks.ts';
 import { createLiveRunner, type LiveState } from './live.ts';
-import { explainLine, hasParts, hasSweeps, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
+import { explainLine, hasParts, hasSweeps, NotRunError, planRun, pointsAskedFor, readNetlist, solveText, type RunRecord } from './model.ts';
 import { nodeColours, sameColours } from './nodes.ts';
 import type { Notice } from './notices.ts';
 import { checkForUpdate, registerServiceWorker } from './pwa.ts';
@@ -516,13 +516,24 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
   // is not about to be tapped again.
   const onPress = (e: PointerEvent): void => press(rowPressed(body, e.target));
   const onKey = (): void => press(undefined);
+  // Laid out afresh in the next frame, not inside the watcher's delivery: its height changes, and so does
+  // the stack's, which other watchers watch (the window's "ResizeObserver loop" error as a plot came into
+  // the Plot sheet, a11y-phone-4). Its rows are all new then (or Checks' own), so none is kept in place;
+  // keeping rows in place only scrolls the body and the room below its rows, before the frame is drawn.
+  let later = 0;
+  const afreshLater = (): void => {
+    cancelAnimationFrame(later);
+    later = requestAnimationFrame(() => {
+      if (!held.fresh) measureSheet(held);
+    });
+  };
   const ro =
     typeof ResizeObserver === 'undefined'
       ? undefined
       : new ResizeObserver(() => {
           if (held.fresh) return;
-          if (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5) measureSheet(held);
-          else keepRows(held);
+          if (held.afresh && Math.abs(rowsOf(body) - held.rows) > 0.5) afreshLater();
+          else keepRows(held, afreshLater);
         });
   const watch = (): void => {
     ro?.observe(body);
@@ -542,6 +553,7 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
   });
   held.release = () => {
     cancelAnimationFrame(frame);
+    cancelAnimationFrame(later);
     ro?.disconnect();
     mo?.disconnect();
     body.removeEventListener('scroll', onScroll);
@@ -594,12 +606,12 @@ function measureSheet(held: SheetHold): void {
  * (the head coming down over it hid the focus after Enter on More's Undo: the critic of the second
  * re-check's second fixes): the rows go down with it as far as that needs, as no finger aims at them.
  */
-function keepRows(held: SheetHold): void {
+function keepRows(held: SheetHold, afresh: (held: SheetHold) => void = measureSheet): void {
   const { body } = held;
   const rows = held.rowsInView;
   const row = rows.find((r) => r.el.isConnected && body.contains(r.el));
   if (!row) {
-    measureSheet(held);
+    afresh(held);
     return;
   }
   // What scrolls was cut back under its scroll (the browser took the scroll in with it): from where it was.
@@ -722,6 +734,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       cancel: () => engine.cancel(),
       isCancelled,
       isTimeout,
+      isRefused: (error) => error instanceof NotRunError,
       timeoutSeconds: Math.round(RUN_TIMEOUT_MS / 1000),
       pointsOf: (netlist) => pointsAskedFor(readNetlist(netlist).netlist),
       // While ngspice downloads, a run waits without turning Run into Stop.
@@ -1323,14 +1336,15 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const outcome = liveState.outcome;
   const paused = liveState.paused;
   const lastSaid = useRef<unknown>(undefined);
-  // The same reason again is not said again: a netlist PlainSpice does not give ngspice fails at every
-  // pause while it is typed (src/spice/run-netlist.ts), until it is mended.
+  // The same reason again is not said again after a change: a netlist PlainSpice does not give ngspice
+  // fails at every pause while it is typed (src/spice/run-netlist.ts), until it is mended. A run Run
+  // asked for is always said, as a run that finishes is (decision 0010).
   const lastFailed = useRef('');
   useEffect(() => {
     if (outcome === lastSaid.current) return;
     if (outcome.kind === 'stopped') announce(t('announceStopped'));
     else if (outcome.kind === 'timeout') announce(t('announceTimeout', { seconds: outcome.seconds }));
-    else if (outcome.kind === 'failed' && outcome.reason !== lastFailed.current) announce(t('announceFailed', { reason: outcome.reason }), 'assertive');
+    else if (outcome.kind === 'failed' && (outcome.manual || outcome.reason !== lastFailed.current)) announce(t('announceFailed', { reason: outcome.reason }), 'assertive');
     if (outcome.kind !== 'none') lastFailed.current = outcome.kind === 'failed' ? outcome.reason : '';
     lastSaid.current = outcome;
   }, [outcome, announce]);
@@ -2488,8 +2502,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       ...(nodeCard.refused ? { refused: nodeCard.refused } : {}),
       groundName: EDIT_STRINGS.groundName,
       voltage,
-      // No voltage from a run that found an error: why (the check), not "in a moment".
-      ...(!voltage && current && record ? { noVoltage: noNumbersReason(record) } : {}),
+      // No voltage: why, not "in a moment". From a run that found an error, the check; when nothing will run
+      // without Run (a netlist PlainSpice does not run, no analysis line, a link not run, Stop, a time-out),
+      // the status line's words, as a part's card says them (cardRun); "in a moment" only while a run comes.
+      ...(voltage ? {} : current && record ? { noVoltage: noNumbersReason(record) } : cardRun.stalled ? { noVoltage: cardRun.stalled } : {}),
       sentence: describeNode(schematic, nodeCard.node),
       session: nodeCard.session,
       takeFocus: nodeCard.focus,
@@ -3689,10 +3705,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
         // Why there is no plot, for the state it is in: no sweep line; numbers that are not answers; not run yet.
         if (!sweepNames.length) return <p className="muted">{t('plotNone')}</p>;
         if (current && record && record.status !== 'ok') return <p className="muted">{t('plotNotAnswers')}</p>;
+        // A netlist that did not run says why, as the ngspice output panel does (the round-2 critic's CR2-3).
+        const o = liveState.outcome;
+        if (o.kind === 'failed' && o.text === text) return <p>{t('statusFailedText', { reason: o.reason })}</p>;
         return <p className="muted">{[t('plotWaiting'), status.tone === 'paused' ? status.detail : undefined].filter(Boolean).join(' ')}</p>;
       }
       case 'output':
-        return <OutputPanel result={record?.run} added={record?.added ?? []} notes={record?.notes ?? []} />;
+        return <OutputPanel result={record?.run} added={record?.added ?? []} notes={record?.notes ?? []} failed={liveState.outcome.kind === 'failed' && liveState.outcome.text === text ? liveState.outcome.reason : undefined} />;
     }
   };
 

@@ -346,6 +346,67 @@ test('a very short window (a laptop at 400 %): walking the drawing with the keys
   }
 });
 
+/** The colours of a screenshot's pixels at these points (CSS pixels from its top left), read in a blank page of their own. */
+async function pixelsOf(page: Page, png: Buffer, points: readonly { x: number; y: number }[]): Promise<string[]> {
+  const blank = await page.context().newPage();
+  try {
+    return await blank.evaluate(
+      async ({ data, at, scale }) => {
+        const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${data}`)).blob());
+        const canvas = new OffscreenCanvas(image.width, image.height);
+        const g = canvas.getContext('2d')!;
+        g.drawImage(image, 0, 0);
+        return at.map(({ x, y }) => {
+          const [r, gr, b] = g.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data;
+          return `rgb(${r}, ${gr}, ${b})`;
+        });
+      },
+      { data: png.toString('base64'), at: points, scale: await page.evaluate(() => devicePixelRatio) },
+    );
+  } finally {
+    await blank.close();
+  }
+}
+
+// The last pass's a11y-phone-3: in forced colours the dot was painted in the page's own colour (Canvas) and the
+// folded status kept a CanvasText outline, so a laptop at 400 % showed an empty ring in the margin.
+test('a very short window in forced colours, light and dark: the calm status folds to a dot painted unlike the page, with no outline round it', async ({ page }) => {
+  for (const [width, height, colorScheme] of [
+    [320, 200, 'light'],
+    [320, 200, 'dark'],
+    [427, 267, 'light'],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ forcedColors: 'active', colorScheme });
+    await openApp(page);
+    await expectSolved(page);
+    await settle(page);
+    const at = `${width} × ${height}, forced colours, ${colorScheme}`;
+    // Folded: the dot and the margin round it, with nothing to press (its words are for screen readers only).
+    const status = (await statusLine(page).boundingBox())!;
+    const dot = (await statusLine(page).locator('.status__dot').boundingBox())!;
+    expect(status.width, `${at}: the calm status is folded to its dot`).toBeLessThan(30);
+    await expect(statusLine(page).getByRole('button')).toHaveCount(0);
+    // The page's colour here, as the system gives it (forced colours paint the paper in Canvas).
+    const canvas = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;left:-20px;top:-20px;width:4px;height:4px;background:Canvas';
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    });
+    const clip = { x: status.x, y: status.y, width: status.width, height: status.height };
+    const [middle, edge] = await pixelsOf(page, await page.screenshot({ clip }), [
+      { x: dot.x + dot.width / 2 - clip.x, y: dot.y + dot.height / 2 - clip.y },
+      // The status box's left edge, half-way down, where its outline was.
+      { x: 0.5, y: clip.height / 2 },
+    ]);
+    expect(middle, `${at}: the dot's middle (the page is ${canvas})`).not.toBe(canvas);
+    expect(edge, `${at}: no outline round the folded status (the page is ${canvas})`).toBe(canvas);
+  }
+});
+
 test('"Link copied." reaches screen readers while the Share dialog is open (a11y review F1)', async ({ page }) => {
   await openApp(page);
   const dialog = await openShare(page);

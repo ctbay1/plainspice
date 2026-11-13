@@ -1402,6 +1402,881 @@ our engine (wasm), as ngspice -b -r (exit 0):
     vectors: i(@d1[id]) = 0.004307674725988779, i(@q1[ic]) = 0.00005670347201442283, i(@m1[id]) = 0.0000049000050100000015
 ```
 
+### A2c. A `+` line after `.end` continues the last line before `.end`, so `.options savecurrents` added just before `.end` would take that line's place
+
+ngspice does not stop reading at `.end` (S25): it makes `.end` a comment, and a `+` line after it continues the last line before it that is no comment (S28, limit-18). Here `+ 3` continues R1, which takes the second value, 3 Ω: v(n1) = 3 V. Without `.options savecurrents`, ngspice saves no current through R1 and none from I1 (A1, A2): the results file has v(n1) alone. Which currents a run saves without the line depends on the parts: below, a voltage source keeps its current, and so does a B line with V=. With the line added just before `.end`, `+ 3` continues that line instead, R1 keeps 2 Ω and v(n1) is 2 V. So PlainSpice leaves the line out of the copy it runs here (decision 0011), and the ngspice output panel says why, with what the line does in Explain's words (ngspice saves the current through every part only with it), not with a list of the currents saved without it; it says nothing where the student's own `.options savecurrents` line, which ngspice reads after `.end` too, saves every current (A2d). With `.end` moved to the bottom (the after-end check's fix), the line goes in before it, and the run has the same 3 V and every current.
+
+```spice
+* a + line after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+With `.options savecurrents` just before `.end`:
+
+```spice
+* a + line after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.options savecurrents
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+With `.end` moved to the bottom and the line added before it, as PlainSpice runs the netlist after the after-end check's fix "Move .end to the bottom":
+
+```spice
+* a + line after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
++ 3
+.options savecurrents
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+With a voltage source, as written: its current is saved, the resistors' are not (R2 takes 3 Ω: v(b) = 6 × 3/4 = 4.5 V).
+
+```spice
+* a + line after .end, with a voltage source
+V1 a 0 6
+R1 a b 1
+.op
+R2 b 0 2
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                4.500000e+00
+        a                                6.000000e+00
+        v1#branch                        -1.50000e+00
+  rawfile from ngspice -b -r (exit 0): v(a) = 6, v(b) = 4.5, i(v1) = -1.5
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 6, v(b) = 4.5, i(v1) = -1.5
+```
+
+With a B line with V=, as written (decision 0011's netlist): `+ v(b)` continues B1, whose formula is then 1+v(b) = 1 + 6 = 7 V; ngspice saves B1's current and V1's, not the resistors' (13 November 2026, the round-1 critic of the last pass's fixes).
+
+```spice
+* a + line after .end, with a B source
+V1 a 0 9
+R1 a b 1k
+R2 b 0 2k
+.op
+R3 c 0 1k
+B1 c 0 V=1+
+.end
++ v(b)
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        c                                7.000000e+00
+        b                                6.000000e+00
+        a                                9.000000e+00
+        v1#branch                        -3.00000e-03
+        b1#branch                        -7.00000e-03
+  rawfile from ngspice -b -r (exit 0): v(a) = 9, v(b) = 6, v(c) = 7, i(b1) = -0.007, i(v1) = -0.003000000000000001
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(a) = 9, v(b) = 6, v(c) = 7, i(b1) = -0.007, i(v1) = -0.003000000000000001
+```
+
+### A2d. ngspice reads an `.options savecurrents` line after `.end` too, even after a `.end` with a comment glued on; not after a line starting with `@`, and the command `option savecurrents` saves no current
+
+Before it reads the circuit, ngspice takes every line that starts with `.opt` out of the whole netlist (inp_getopts), and `.options savecurrents` works wherever that line is: after `.end` (S25), even after a `.end` with a comment glued on, after which ngspice reads no more parts (S27: `+ 3` is lost there and v(n1) is 2 V, yet both currents are saved), in a `.control` block, and with `savecurrents` on a `+` line after `.end` that continues an `.options` line before it. A line starting with `@` ends what ngspice reads (S29), so an `.options` line after it does nothing; and the command `option savecurrents` (in a `.control` block, or on a `*#` line) saves no current, nor does `set savecurrents`. ngspice finds the word as inp_savecurrents does, anywhere in such a line (`.OPT SaveCurrents`, `.optfoo savecurrents_mos1` too), and not in its comment; which lines ngspice joins to it, and where a comment starts, follow its rules for every line (A2e: two backslashes at the end of a line, and the comments of a `.control` block). So when a `+` line after `.end` keeps PlainSpice's line out of the copy (A2c), the ngspice output panel says nothing of missing currents, and Explain's `.op` line has no note, where the student's own line saves every current (src/spice/run-netlist.ts, `saveCurrentsLeftOut`; 13 November 2026, the round-1 critic of the last pass's fixes).
+
+```spice
+* .options savecurrents after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+After a `.end` with a comment glued on: no more parts (R1 keeps 2 Ω), but the `.options` line.
+
+```spice
+* .options savecurrents after .end with a comment glued on
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end;x
++ 3
+.options savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+After a line starting with `@`: not read, so no current is saved.
+
+```spice
+* .options savecurrents after a line starting with @
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+@ x
+.options savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+In a `.control` block (here `+ 3` continues `.endc`, so R1 keeps 2 Ω).
+
+```spice
+* .options savecurrents in a .control block
+I1 0 n1 1
+.op
+R1 n1 0 2
+.control
+.options savecurrents
+.endc
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+`savecurrents` on a `+` line after `.end`, which continues the `.options` line before it.
+
+```spice
+* .options before .end, savecurrents on a + line after it
+I1 0 n1 1
+R1 n1 0 2
+.op
+.options
+.end
++ savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+The command `option savecurrents` in a `.control` block: no current is saved.
+
+```spice
+* the command option savecurrents
+I1 0 n1 1
+.op
+R1 n1 0 2
+.control
+option savecurrents
+.endc
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2
+```
+
+In a `.control` block after `.end` too.
+
+```spice
+* .options savecurrents in a .control block after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.control
+.options savecurrents
+.endc
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+`.OPT` in capitals, indented, with a comment after it: ngspice reads the line in lower case.
+
+```spice
+* .OPT SaveCurrents, indented, with a comment
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+  .OPT SaveCurrents ; a note
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+A line that starts with `.opt`, with `savecurrents` inside a longer word.
+
+```spice
+* .optfoo savecurrents_mos1
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.optfoo savecurrents_mos1
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+`savecurrents` only in a comment: no current is saved.
+
+```spice
+* savecurrents in a comment only
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options temp=27 ; savecurrents
+* .options savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+The command `option savecurrents` on a `*#` line: no current is saved.
+
+```spice
+* the command option savecurrents on a *# line
+I1 0 n1 1
+.op
+R1 n1 0 2
+*# option savecurrents
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+The command `set savecurrents` in a `.control` block: no current is saved.
+
+```spice
+* the command set savecurrents
+I1 0 n1 1
+.op
+R1 n1 0 2
+.control
+set savecurrents
+.endc
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 2
+```
+
+### A2e. ngspice reads an `.options` line as it reads every line: after a line that ends in two backslashes, the next line is a `+` line, and in a `.control` block a `$` starts a comment only before a blank
+
+Before ngspice takes the `.opt` lines out of the netlist (A2d), it reads each line of the file (inp_read), cuts the comments (inp_stripcomments_deck) and joins the `+` lines (inp_stitch_continuation_lines). Three of its rules there decide whether an `.options savecurrents` line saves every current:
+
+- A line that ends in two backslashes makes the next line a `+` line, whatever that line is (a comment line, a `.title` line), past blank lines and past the `.hdl` and `.biaschk` lines that ngspice 47 drops. ngspice looks for the backslashes before it cuts the comment, on the title too, but not on a line that starts with `*` or `$`, nor on a `.title` or `.end` line, which it has made a comment by then.
+- From a `.control` line to the line before `.endc`, a `$` starts a comment only before a blank, so `$savecurrents` is read there; outside a `.control` block a `$` after a blank starts one.
+- ngspice counts the `.control` lines less the `.endc` lines (the title too, and a `.control` line that two backslashes made a `+` line, which opens no block). Unless that comes to 0, it cuts the comment of every line by the `.control` rule.
+
+So PlainSpice reads the student's lines the same way before the ngspice output panel says why the parts' currents are missing, and before Explain's `.op` line says "does not add" (src/spice/run-netlist.ts, `readsSaveCurrents`; 13 November 2026, the round-2 critic of the last pass's fixes). Each netlist below has `+ 3` after `.end`, so PlainSpice adds no `.options savecurrents` line of its own (A2c); the note comes exactly where the run below has no part's own current.
+
+A line after one that ends in two backslashes is a `+` line (here after `.end`): `savecurrents` continues the `.options` line, and both currents are saved (the round-2 critic's netlist).
+
+```spice
+* .options ending in two backslashes, after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options \\
+savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+Past a blank line, which ngspice drops, and on again: a `+` line made this way can end in two backslashes too.
+
+```spice
+* two backslashes, a blank line, two backslashes again
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options \\
+
+temp=27 \\
+savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+Whatever the next line is: a comment line becomes a `+` line (and, ending in two backslashes, makes the next one a `+` line too), and so does a `.title` line.
+
+```spice
+* two backslashes before a comment line and a .title line
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options \\
+* a note \\
+.title savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+Not after a line that starts with `*` or `$`, nor after a `.title` line, which ngspice has made a comment by then: the `.options` line after them is a line of its own (were it a `+` line, it would continue R1).
+
+```spice
+* comment lines ending in two backslashes
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+* a note \\
+$ a note \\
+.title x \\
+.options savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Unusual leading characters like '$' or others out of '= [] ? () & % $"!:,\f'
+        in netlist or included files, will be replaced with '*'.
+        check line  $ a note \\
+        line no. 8 from file circuit.cir!
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Unusual leading characters like '$' or others out of '= [] ? () & % $"!:,\f'
+        in netlist or included files, will be replaced with '*'.
+        Check line no 8:  $ a note \\
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Unusual leading characters like '$' or others out of '= [] ? () & % $"!:,\f'
+        in netlist or included files, will be replaced with '*'.
+        check line  $ a note \\
+        line no. 8 from file /circuit.cir!
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+  diagnostics: unusual-leading-character
+```
+
+After a line that starts with `#`, ngspice does look for the two backslashes (it makes the line a comment only later).
+
+```spice
+* a # line ending in two backslashes
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options
+# a note \\
+savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+ngspice looks for the two backslashes before it cuts the comment, so they count inside a comment too.
+
+```spice
+* two backslashes inside a ; comment
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options temp=27 ; a note \\
+savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+ngspice 47 drops a `.hdl` line and a `.biaschk` line with a warning, so the line after them is the `+` line; ngspice 42 stops at them.
+
+```spice
+* two backslashes, then .hdl and .biaschk lines
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options \\
+.hdl x
+.biaschk
+savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Dot command .hdl is not supported, ingnored
+        line no. 8, .hdl x
+        file circuit.cir
+        This message will be posted only once!
+    Warning: Dot command .biaschk is not supported, ingnored
+        This message will be posted only once!
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 1):
+    Error on line 9 or its substitute:
+      .biaschk
+     unimplemented dot command '.biaschk'
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  rawfile from ngspice -b -r (exit 1): (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Dot command .hdl is not supported, ingnored
+        line no. 8, .hdl x
+        file /circuit.cir
+        This message will be posted only once!
+    Warning: Dot command .biaschk is not supported, ingnored
+        This message will be posted only once!
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+  diagnostics: warning, warning
+```
+
+The title counts too: after a title that ends in two backslashes, line 2 is a `+` line, which continues no line, and ngspice ignores it: no current is saved.
+
+```spice
+a title ending in two backslashes \\
+.options savecurrents
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+In a `.control` block a `$` starts a comment only before a blank, so `$savecurrents` is read, and both currents are saved (the round-2 critic's netlist).
+
+```spice
+* $savecurrents in a .control block after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.control
+.options temp=27 $savecurrents
+.endc
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+In a `.control` block a `$` before a blank starts a comment, even glued to the word before it: no current is saved (the round-2 critic's netlist).
+
+```spice
+* 27$ savecurrents in a .control block after .end
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.control
+.options temp=27$ savecurrents
+.endc
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+The same rule on a `+` line in a `.control` block.
+
+```spice
+* + $savecurrents in a .control block
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.control
+.options temp=27
++ $savecurrents
+.endc
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+Outside a `.control` block a `$` after a blank starts a comment: no current is saved.
+
+```spice
+* $savecurrents outside a .control block
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options temp=27 $savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3
+```
+
+With a `.control` line and no `.endc`, ngspice cuts the comment of every line by the `.control` rule, a line before `.control` too.
+
+```spice
+* .control with no .endc
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options temp=27 $savecurrents
+.control
+echo hi
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Missing .endc statement!
+        in file circuit.cir
+        This may cause subsequent errors.
+    .end: no such command available in ngspice
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Missing .endc statement!
+        This may cause subsequent errors.
+    .end: no such command available in ngspice
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Missing .endc statement!
+        in file /circuit.cir
+        This may cause subsequent errors.
+    .end: no such command available in ngspice
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+  diagnostics: warning
+```
+
+The same with an `.endc` line and no `.control`: ngspice counts the `.control` lines less the `.endc` lines, and unless that is 0, every line is cut by the `.control` rule.
+
+```spice
+* an .endc with no .control
+I1 0 n1 1
+.op
+R1 n1 0 2
+.endc
+.end
++ 3
+.options temp=27 $savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Missing .control statement!
+        in file circuit.cir
+        This may cause subsequent errors.
+    Warning: misplaced .endc card
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 0):
+        n1                               2.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Missing .control statement!
+        This may cause subsequent errors.
+    Warning: misplaced .endc card
+  rawfile from ngspice -b -r (exit 0): v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Missing .control statement!
+        in file /circuit.cir
+        This may cause subsequent errors.
+    Warning: misplaced .endc card
+  vectors: v(n1) = 2, i(@i1[current]) = 1, i(@r1[i]) = 1
+  diagnostics: warning, warning
+```
+
+The title counts in that sum too.
+
+```spice
+.endc as the title
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options temp=27 $savecurrents
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+  vectors: v(n1) = 3, i(@i1[current]) = 1, i(@r1[i]) = 1
+```
+
+A `.control` line made a `+` line by two backslashes counts in that sum, but opens no block: the `.options` line after it is cut by the rule outside one, and no current is saved.
+
+```spice
+* two backslashes before .control
+I1 0 n1 1
+.op
+R1 n1 0 2
+.end
++ 3
+.options \\
+.control
+.options temp=27 $savecurrents
+.endc
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        n1                               3.000000e+00
+    Warning: Missing .control statement!
+        in file circuit.cir
+        This may cause subsequent errors.
+    Warning: misplaced .endc card
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+ngspice 42, ngspice -b (exit 0):
+        n1                               3.000000e+00
+    Warning: Missing .control statement!
+        This may cause subsequent errors.
+    Warning: misplaced .endc card
+  rawfile from ngspice -b -r (exit 0): v(n1) = 3
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Missing .control statement!
+        in file /circuit.cir
+        This may cause subsequent errors.
+    Warning: misplaced .endc card
+  vectors: v(n1) = 3
+  diagnostics: warning, warning
+```
+
 ### A3. .tf v(a) V1 gives the transfer function v(a)/V1, the input resistance seen by V1 and the output resistance at a
 
 F4: v(a) = 24 × 3/9 = 8 V, so the transfer function is 8/24 = 1/3; V1 sees R1 + R2 = 9 Ω; looking back into a with V1 replaced by a short, the resistance is R3 + R1 ‖ R2 = 2 + 2 = 4 Ω, the Thévenin resistance at a. ngspice writes the three as `transfer_function`, `v1#input_impedance` and `output_impedance_at_v(a)`.

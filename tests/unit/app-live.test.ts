@@ -9,6 +9,7 @@ import { createLiveRunner, LIVE_DELAY_MS, SLOW_RUN_MS, STOP_AFTER_MS, type LiveP
 
 class Cancelled extends Error {}
 class TimedOut extends Error {}
+class Refused extends Error {}
 
 interface Fake {
   live: LiveRunner<{ text: string; ms: number }>;
@@ -47,6 +48,7 @@ function fake(): Fake {
     cancel,
     isCancelled: (e) => e instanceof Cancelled,
     isTimeout: (e) => e instanceof TimedOut,
+    isRefused: (e) => e instanceof Refused,
     timeoutSeconds: 20,
     pointsOf: () => 250_000,
   });
@@ -203,7 +205,26 @@ describe('live runs', () => {
     const f = fake();
     f.live.run('e');
     await f.fail(new Error('ngspice could not load'));
-    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'ngspice could not load' });
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'ngspice could not load', manual: true });
+    expect(f.live.getState().paused).toBeUndefined();
+  });
+
+  it('a failed run’s outcome says whether Run asked for it, as a finished one does (the last pass: C3-2)', async () => {
+    const f = fake();
+    f.live.edited('e');
+    vi.advanceTimersByTime(LIVE_DELAY_MS);
+    await f.fail(new Error('the same reason'));
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'the same reason', manual: false });
+    f.live.run('e');
+    await f.fail(new Error('the same reason'));
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'e', reason: 'the same reason', manual: true });
+  });
+
+  it('a text that was never given to ngspice fails as refused, so the words do not blame ngspice (the last pass: C3-4)', async () => {
+    const f = fake();
+    f.live.run('refused');
+    await f.fail(new Refused('Line 4: why'));
+    expect(f.live.getState().outcome).toEqual({ kind: 'failed', text: 'refused', reason: 'Line 4: why', manual: true, refused: true });
     expect(f.live.getState().paused).toBeUndefined();
   });
 

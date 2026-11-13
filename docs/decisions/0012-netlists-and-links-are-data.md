@@ -655,11 +655,13 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
     line, and a `.title` line's words) keeps to 504 bytes, and a `circbyline` command inside it is
     refused, as ngspice crashes on it (limit-12, limit-16); so is a netlist that sets `ngbehavior` and
     builds a circuit, which ngspice then reads in another mode (with `ps` a `$` starts no comment). The run fails with the reason, the line and
-    what to do: the status line says "ngspice could not run" and why, the Numbers panel and the live
-    region too (the path a failed run already had), and nothing reaches ngspice, from the app, the
+    what to do: the status line says "PlainSpice did not run it" and why, the Numbers panel and the
+    alert "The simulation could not run:" and why (the path a failed run already had), and nothing
+    reaches ngspice, from the app, the
     checkpoint, the prototypes or the spike page. The alert says a reason once: while the student
     types on in a refused line, each pause fails again with the same reason, which is not said again
-    until it changes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
+    until it changes; a run Run asks for says it each time (decision 0010).
+    250, not 511: ngspice joins two names in one space when it turns a resistor's
     formula into a B source (`v(n1, n2)`), and a `.control` block's `display` writes about 40 more
     bytes around a name (limit-10); one number for every name, written or made inside subcircuits, is
     simpler to say than one per place. Where ngspice joins more than two (a `.probe` line's formula: a
@@ -807,3 +809,82 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   after a space corrects `1 volt` on an inductor, which got "unknown parameter (volt)" where both
   versions print their "no such parameter" words. Each part's runs are records of their own
   (space-before-suffix-19, -20, unknown-word-56, -57; C7), cited by the texts part by part.
+
+- **Run says a refused netlist's reason each time** (the last pass, C3-2 and a11y-phone-1). The reason
+  said once was meant for the pauses while the student types on in a refused line; it also silenced Run,
+  Ctrl+Enter and Ctrl+K's "Run ngspice now" after the first alert. A run Run asks for is now always said,
+  as decision 0010 records.
+- **The status line says "PlainSpice did not run it"** for a refused netlist (the last pass, C3-4), where
+  it said "ngspice could not run" though ngspice was never asked: beside "… so PlainSpice did not run it",
+  the two sentences said opposite things, and for a word over 250 bytes ngspice runs the netlist (native
+  47 and 42, exit 0), so the headline was false about ngspice. `solveText` throws a `NotRunError`, the
+  failed outcome is marked refused (`live.ts`), and `words.ts` gives it its own headline, the words of
+  the reasons themselves; an engine that stops keeps "ngspice could not run". This record said the
+  Numbers panel said "ngspice could not run" too: it says "The simulation could not run:", as the alert
+  does, and both stay so, true of either failure. Measured by the last pass's skeptic at 320 px: the
+  headline is 143 px wide (131 px before), and the page does not scroll sideways. Not taken: "Not run"
+  (45 px), which reads like "Not run yet", a link waiting for Run; and "The simulation could not run"
+  for every failure, which would take the engine's failures their own words. Tests:
+  `tests/unit/app-words.test.ts` and `tests/unit/app-run-copy.test.tsx` (the headline, and an engine that
+  stops keeping its own), `tests/unit/app-live.test.ts` (the outcome), `tests/e2e/run-copy.spec.ts` (the
+  five refused links say the new headline and not "ngspice could not run").
+- **A node's card and the ngspice output panel give the reason too** (the last pass, a11y-phone-2). A
+  refused netlist has no run record, so a node's card fell back to "No voltage yet: ngspice runs the
+  circuit in a moment." and the output panel to "Nothing yet: ngspice has not run this circuit.", while
+  nothing would run until the netlist changed. A node's card now follows a part's card (decision 0016):
+  the check that stopped the numbers, or, when nothing runs without Run, the status line's words (here
+  the reason; for no analysis line, a link opened without running, Stop or a time-out, what to do, which
+  was "in a moment" on fix-base too), and "in a moment" only while a run is on its way. The output panel
+  says "The simulation could not run:" and why, as the Numbers panel and the alert do, for the netlist as
+  it is now. Not taken: leaving the output panel's "Nothing yet: ngspice has not run this circuit.", true
+  of a netlist ngspice never got (its skeptic's view), whose "yet" promises a run that does not come
+  until the netlist changes. Tests: `tests/unit/app-run-copy.test.tsx` (the refused netlist's node card
+  and output panel; a node's card with no analysis line and on a link not run; both fail on c520a49).
+  In the built site (1280 × 800, the reviewer's link): the node card's voltage row reads the reason
+  (c520a49: "No voltage yet: ngspice runs the circuit in a moment."); on an iPhone SE at 150 % text the
+  card's sheet scrolls it whole into view, with no sideways scroll.
+- **Run says why while live runs are paused too** (the critic of the first fixes, CR1-1). Live runs pause
+  for a link opened without running, a netlist that asks for very many points, a slow run, Stop and a
+  time-out, and the status line gave the pause's words ("Not run yet · This link opens without running:
+  press Run (Ctrl+Enter) to run it.") before it looked at how the last run went. So Run on a refused
+  netlist gave the alert, but the status line, and with it a node's card and a part's card (above), said
+  "press Run" right after Run. While live runs are paused a change runs nothing, so a run of the text as
+  it is now that failed, or found no analysis line, came from Run: the status line now says it as when
+  live runs are on ("PlainSpice did not run it" and why, "ngspice could not run" and why, "Nothing to run
+  yet · Add an analysis line…"), and the cards follow. A text changed since keeps the pause's words. Not
+  taken: lifting a link's pause after a Run that fails, as after one that finishes quickly: a change
+  typed while that Run ran would then not run, and the status line would give the failure of the text
+  before it (`live.ts` keeps no text typed during a pause). Tests: `tests/unit/app-words.test.ts` (each
+  of the five pauses with a refused netlist, an engine that stopped and no analysis line; a changed text
+  keeps the pause's words), `tests/unit/app-run-copy.test.tsx` (Run on a link opened without running: the
+  status line, the node card and R1's card give the reason), `tests/e2e/run-copy.spec.ts` (the same link
+  in the built site, both projects); all fail on a0fcb61. In the built site (1280 × 800, the critic's
+  probes): Run on that link gives "PlainSpice did not run it · Line 4: …", and the node card and R1's card
+  the reason; Ctrl+Enter on the 120,001-point sweep with the B line typed in gives the same, for line 6; Run
+  on a link opened without running of a netlist with no analysis line gives "Nothing to run yet · Add an
+  analysis line…" (a0fcb61: "Not run yet" or "Live runs paused" and "press Run", each time).
+- **A slow run whose numbers are not answers says so on the status line** (the round-2 critic of these
+  fixes, CR2-2). A run over 1.5 s pauses live runs itself, and the status line gave the pause's words for
+  every outcome but CR1-1's two: after a 9 s run that found an error (two capacitors in series, 2,000,000
+  points), "Live runs paused · The last run took 9.1 s, so ngspice does not run after every change: press
+  Run (Ctrl+Enter)." in the paused tone, while the drawing's red pen, both cards, the Numbers panel and the
+  announcements said the numbers were not answers. While live runs are paused, a finished run of the text
+  as it is now is that slow run (a quick Run turns live runs on again, `live.ts`), so when its numbers are
+  not answers the status line now says how it went, as after a quick run ("Not reliable · A check found an
+  error: …", in the bad tone); the pause is still said aloud ("That run took … s, so ngspice now runs only
+  when you press Run"), and a change brings the pause's words back. A slow run whose numbers are answers
+  keeps the pause's words: they are what to know then. Tests: `tests/unit/app-words.test.ts` (fails on
+  0104ec1). In the built site (1280 × 800, the critic's link): after a 10.7 s run, "Not reliable · A check
+  found an error: b has no DC path to ground." (rc3: "Live runs paused · …"); after a change, the pause's
+  words.
+- **The Plot panel gives the reason too** (the round-2 critic, CR2-3). For a sweep PlainSpice does not run,
+  the Plot panel, and the Plot sheet on a phone, said only "The plot comes once ngspice has run this
+  netlist.", a run that does not come until the netlist changes (it added the status line's words for the
+  paused tone only). For a run of the netlist as it is now that failed (a netlist PlainSpice does not run,
+  or an engine that stopped), it now says "The simulation could not run:" and why, as the ngspice output
+  panel does (above). Not taken: the status line's words after "The plot comes once…" for the bad tone too,
+  which would keep that promise. Tests: `tests/unit/app-run-copy.test.tsx` (fails on 0104ec1). In the built
+  site (the critic's refused `.tran` link, 1280 × 800 and the Plot sheet on an iPhone SE): "The simulation
+  could not run: Line 5: …" (rc3: "The plot comes once ngspice has run this netlist."), with no sideways
+  scroll and the zoom where it was.
+

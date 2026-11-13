@@ -161,7 +161,7 @@ export interface RunRecord extends Solution {
   results: AnalysisResults;
   /** Lines PlainSpice added to the copy ngspice ran (shown in the ngspice output panel). */
   added: readonly string[];
-  /** What else PlainSpice did to that copy, a sentence each (shown there too): a title cut. */
+  /** What else PlainSpice did to that copy, a sentence each (shown there too): a title cut, the line it did not add for a + line after .end. */
   notes: readonly string[];
 }
 
@@ -171,15 +171,31 @@ export interface Runner {
 }
 
 /**
+ * A text PlainSpice does not give ngspice (src/spice/run-netlist.ts, decision 0012): its message is
+ * the reason, with the line and what to do. ngspice was never asked, so the status line says
+ * "PlainSpice did not run it", not "ngspice could not run".
+ */
+export class NotRunError extends Error {
+  /** The line the reason is about (1-based). */
+  readonly line: number;
+  constructor(reason: string, line: number) {
+    super(reason);
+    this.name = 'NotRunError';
+    this.line = line;
+  }
+}
+
+/**
  * Runs a text and reads its results. The numbers are answers only when ngspice found them
  * trustworthy and no check found an error (status 'ok'): otherwise the drawing shows none. A text
- * with a word ngspice cannot take is not run: the run fails with the reason (the status line and
- * the Numbers panel say it, "ngspice could not run").
+ * with a word ngspice cannot take is not run: the run fails with a NotRunError that gives the reason
+ * (the status line says "PlainSpice did not run it" and why; the alert and the Numbers panel say
+ * "The simulation could not run:" and why).
  */
 export async function solveText(text: string, runner: Runner, now: () => number = () => performance.now()): Promise<RunRecord> {
   const { netlist, traps } = readNetlist(text);
   const toRun = netlistToRun(netlist);
-  if (toRun.notRun) throw new Error(toRun.notRun.reason);
+  if (toRun.notRun) throw new NotRunError(toRun.notRun.reason, toRun.notRun.line);
   const t0 = now();
   const run = await runner.run(toRun.text);
   const ms = now() - t0;

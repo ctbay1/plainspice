@@ -201,7 +201,8 @@ view is decision [0015](0015-notebook-canvas.md)'s and the editor's pointer deci
   Example 2 does at 427 × 267 with n1 reached), its words still read by screen readers; with buttons on
   it (Undo; Show the whole drawing until the second re-check, below) it keeps them. Running, paused or
   an error keep their words, their reason and their buttons. The status line keeps its height, so the
-  drawing does not move as runs come and go.
+  drawing does not move as runs come and go. In forced colours the folded dot is drawn in the system's
+  text colour and no box round it (decision 0010, the last pass).
 - **Two buttons on one row.** On a phone, when "Show the whole drawing" shares the status line with
   another button (the turn, Undo), a calm status keeps its words for screen readers only and leaves
   out its dot, so the line is just the buttons, on one row: at 360 px the two buttons take 175 and
@@ -550,3 +551,29 @@ Still open: when a circuit opens, and after each pan or zoom, the drawing slides
 a third of a second (`.nb-world`'s transition), and a tap during a slide is read against where the
 drawing is going, not where it is (seen in the tests, which wait for the drawing to settle; a sheet
 going away no longer slides). The ladder above still opens as drawn: its turn is the schematic's to fix.
+
+## After the last pass (13 November 2026)
+
+- **The open sheet's hold lays the sheet out afresh outside a ResizeObserver's delivery** (the last pass,
+  a11y-phone-4). The first plot drawn into a phone's Plot sheet raised the window's "ResizeObserver loop
+  completed with undelivered notifications" error (RC charging, opened from More, or chosen while Plot was
+  open; an iPhone SE, a Pixel 7 on its side, 640 × 400): about 1 run in 3 for the reviewer, 5 of 5 on each
+  of the three at a load of 10 to 20 (c520a49). The plot takes the place of "Loading the plot…", so none of
+  the rows the hold noted in view is left, and the hold's watcher laid the sheet out afresh inside its
+  delivery: its height (120 → 318 px), the body's and the stack's changed, boxes other watchers watch at
+  depths no deeper than the plot's box, which the browser then skips and reports. Now, when a watcher sees
+  all its rows new (or Checks' own rows change), the hold lays the sheet out afresh in the next frame;
+  keeping rows in place (its scroll and the room below its rows), which changes no watched box's size,
+  stays in the delivery, before the frame is drawn, so a run, a new status or an undo still moves none of
+  them. The cost is one frame: the plot can show in the sheet's old height for one frame before the sheet
+  grows to it (on an iPhone SE the sheet's top 402 → 201 px a frame later in one of six runs). The reviewer
+  blamed the hint's mark of hidden words (`hooks.ts`, `useOverflowing`: `data-more` gives the hint a line
+  and a half): its skeptic found it written in the frame after the error, and freeing the hint's height
+  from it, or writing it in the next frame, left the error (5 of 5 each). So it is written as before.
+  Measured with the reviewer's way of opening it (More, then Plot, by touch, `plotopen.cjs`): with the
+  hold's change alone, 0 of 5 on each of the three views at a load of 7 to 10 (with the hint's change as
+  well, 0 of 16 at 14 to 20). The phone audits are as on c520a49: the leftovers lane's, 1 problem in 24
+  (the known "Change R1" over R1 on an iPhone SE at 150 %). Test (`tests/e2e/phone.spec.ts`, "the first
+  plot drawn into a phone's Plot sheet raises no "ResizeObserver loop" error"): the three views, Plot open
+  as RC charging is chosen, and Plot opened on it in a new page, the window's errors watched from before
+  (c520a49: the error at 320 × 568).
