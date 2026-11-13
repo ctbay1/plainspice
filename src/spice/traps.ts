@@ -180,6 +180,10 @@ interface Ctx {
   labels?: Map<string, { span: Span; form: string }[]>;
   /** The node names on the commands for ngspice (.control, *#, ##), by node, read on the first use (controlNodes). */
   controlNodes?: Map<string, CommandRef[]>;
+  /** Every word ngspice reads as a node's name, by node, read on the first rename (referencesOf). */
+  references?: Map<string, Token[]>;
+  /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
+  oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
   savesNothing?: boolean;
   /** The .print and .plot cards as ngspice -b reads them, read on the first use (printCards). */
@@ -2941,21 +2945,106 @@ function spelledNodeSentence(c: Ctx, info: NodeInfo, spelled: string): string {
   return [`ngspice spells the node ${spelled} in its printout and results${said.length ? '.' : ', without a message.'}`, ...said, `[${facts.join(', ')}]`].join(' ');
 }
 
-/** A node renamed on the commands for ngspice too (controlNodes): there ngspice reads the name as written. */
-function commandChanges(c: Ctx, info: NodeInfo, to: string): TextChange[] {
-  return (controlNodes(c).get(info.name) ?? []).map((x) => replace(x.token, to));
+/**
+ * Every word ngspice reads as a node's name outside subcircuits, by node as the parser keys them (C3-1):
+ * on part lines its nodes, and the nodes a formula reads inside v(...) (B lines, E and G written with
+ * VALUE=, vol=, cur= or TABLE, R, C and L values written as formulas); on dot commands the words inside
+ * v(...) and .pz's four nodes (all NodeInfo.refs); a name bare on a .print or .plot line (printNodes);
+ * the commands for ngspice (controlNodes); and all of these on the lines after a plain .end, which
+ * ngspice reads as part of the circuit (S25, readAfterEnd), each line read as the parser would read it
+ * before .end. A rename that changes them all changes no part's connection and no formula. Read once.
+ */
+function referencesOf(c: Ctx): Map<string, Token[]> {
+  if (c.references) return c.references;
+  const found = new Map<string, Map<number, Token>>();
+  const put = (key: string, t: Token): void => {
+    let same = found.get(key);
+    if (!same) found.set(key, (same = new Map()));
+    if (!same.has(t.from)) same.set(t.from, t);
+  };
+  for (const [key, info] of c.n.nodes) for (const t of info.refs) put(key, t);
+  for (const [key, refs] of printNodes(c)) for (const r of refs) put(key, r.token);
+  for (const [key, refs] of controlNodes(c)) for (const r of refs) put(key, r.token);
+  const after = readAfterEnd(c.n);
+  if (after.length) {
+    // The lines after .end, read on their own as the lines before it are: a later .end becomes a
+    // comment of the same length, so that every one of them is read (S25).
+    const from = after[0]!.span.from;
+    const body = c.text.slice(from, after[after.length - 1]!.span.to).replace(/^([ \t]*)\.(end(?=[ \t;\r]|$))/gim, '$1*$2');
+    const shift = from - 2;
+    for (const [key, tokens] of referencesOf(context(parseNetlist(`*\n${body}`)))) {
+      for (const t of tokens) put(key, { from: t.from + shift, to: t.to + shift, text: t.text });
+    }
+  }
+  c.references = new Map([...found].map(([key, same]) => [key, [...same.values()].sort((a, b) => a.from - b.from)]));
+  return c.references;
+}
+
+const referencesCache = new WeakMap<Netlist, Map<string, Token[]>>();
+
+/**
+ * Every word ngspice reads as the node `key` (lower-case, as the parser keys it) outside subcircuits,
+ * in netlist order (referencesOf): what the drawing editor's renames change (src/schematic/edit.ts).
+ */
+export function nodeReferences(netlist: Netlist, key: string): Token[] {
+  let all = referencesCache.get(netlist);
+  if (!all) {
+    all = referencesOf(context(netlist));
+    referencesCache.set(netlist, all);
+  }
+  return all.get(key) ?? [];
 }
 
 /**
- * A node renamed where a .print or .plot line names it bare (`.print dc çıkış`, printNodes), which the
- * parser's references leave out: inside v(...) they have it already. With `form`, only the words written
- * that way (checkMicroNode renames one spelling of a node).
+ * The words on the lines ngspice reads, outside subcircuits, that are a node's name (with `form`,
+ * written that way) and that no reader above found (C3-1): a form of line PlainSpice does not read,
+ * such as a command for ngspice that names the node bare (print çıkış). Only for a name with a
+ * character outside printable ASCII (the checks below; µ too), which no keyword, model or parameter
+ * of ngspice's is: there such a word names the node. Words end at a blank, ',', '(', ')' or '=', as
+ * the names ngspice reads do, and on a command for ngspice, which reads an expression, at an operator too.
  */
-function printChanges(c: Ctx, info: NodeInfo, to: string, form?: string): TextChange[] {
-  const refs = new Set(info.refs.map((t) => t.from));
-  return (printNodes(c).get(info.name) ?? [])
-    .filter((r) => r.bare && !refs.has(r.token.from) && (form === undefined || lowerAscii(r.token.text) === form))
-    .map((r) => replace(r.token, to));
+function namedElsewhere(c: Ctx, key: string, found: readonly Token[], form?: string): Token[] {
+  if (!c.oddWords) {
+    // Read once for all the nodes (a link with thousands of such names stays fast: code-2).
+    const words = new Map<string, Token[]>();
+    const read = new Set(readAfterEnd(c.n).map((l) => l.index));
+    let depth = 0;
+    for (const l of c.n.lines) {
+      const head = /^[ \t]*\.(subckt|macro|ends|eom)\b/i.exec(l.text)?.[1]?.toLowerCase();
+      if (head === 'subckt' || head === 'macro') depth += 1;
+      const inside = depth > 0;
+      if (head === 'ends' || head === 'eom') depth = Math.max(0, depth - 1);
+      if (inside || head) continue;
+      const reads = l.kind === 'element' || l.kind === 'directive' || l.kind === 'continuation' || l.kind === 'control' || read.has(l.index);
+      if (!reads || /^[\x20-\x7e\t]*$/.test(l.text)) continue;
+      let end = 0;
+      for (const t of l.tokens) end = Math.max(end, t.to - l.span.from);
+      const command = l.kind === 'control';
+      const { code, from } = command ? commandCode(l) : { code: l.text.slice(0, end), from: l.span.from };
+      // A command reads an expression: there a name also ends at an operator (let x = 2*çıkış).
+      for (const w of code.matchAll(command ? /[^ \t\r\n\v\f,()=+\-*/^%<>&|!{}[\]"';]+/g : /[^ \t\r\n\v\f,()=]+/g)) {
+        if (/^[\x20-\x7e]*$/.test(w[0])) continue;
+        const name = ngspiceName(w[0]);
+        const same = words.get(name) ?? [];
+        same.push({ from: from + w.index, to: from + w.index + w[0].length, text: w[0] });
+        words.set(name, same);
+      }
+    }
+    c.oddWords = words;
+  }
+  const known = new Set(found.map((t) => t.from));
+  return (c.oddWords.get(key) ?? []).filter((t) => !known.has(t.from) && (form === undefined || lowerAscii(t.text) === form));
+}
+
+/**
+ * The changes that rename a node everywhere ngspice reads its name (referencesOf), and, for a name with a
+ * character outside printable ASCII, wherever else a line ngspice reads names it (namedElsewhere), so a
+ * working circuit stays the same circuit (C3-1). With `form`, only the words written that way
+ * (checkMicroNode renames one spelling of a node). The drawing's label lines are the caller's (labelChanges).
+ */
+function renamesOf(c: Ctx, key: string, to: string, form?: string): TextChange[] {
+  const found = (referencesOf(c).get(key) ?? []).filter((t) => form === undefined || lowerAscii(t.text) === form);
+  return [...found, ...namedElsewhere(c, key, found, form)].map((t) => replace(t, to));
 }
 
 /**
@@ -3019,7 +3108,7 @@ function checkNodeNames(c: Ctx): void {
   }
   const freeName = nodeNamer(new Set(groups.keys()));
   const plainFor = (info: NodeInfo): string => freeName(plainLetters(info.refs[0]!.text, true) || 'n1');
-  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renameNode(info, to), ...labelChanges(c, info.name, to), ...commandChanges(c, info, to), ...printChanges(c, info, to)];
+  const renaming = (info: NodeInfo, to: string): TextChange[] => [...renamesOf(c, info.name, to), ...labelChanges(c, info.name, to)];
   for (const [spelled, infos] of groups) {
     if (infos.length > 1) {
       const odd = infos.filter((i) => !isPlainName(i.name));
@@ -3092,12 +3181,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
   const shown = all.map(([, refs]) => refs[0]!.text);
   const micro = others.map(([, refs]) => refs[0]!.text);
   const spelled = ngspiceSpelling(info.name);
-  const writing = (form: string, to: string): TextChange[] => [
-    ...forms.get(form)!.map((t) => replace(t, to)),
-    ...labelChanges(c, info.name, to, form),
-    ...(controlNodes(c).get(info.name) ?? []).filter((x) => lowerAscii(x.token.text) === form).map((x) => replace(x.token, to)),
-    ...printChanges(c, info, to, form),
-  ];
+  const writing = (form: string, to: string): TextChange[] => [...renamesOf(c, info.name, to, form), ...labelChanges(c, info.name, to, form)];
   const ngspice = `ngspice reads ${MICRO} as u and makes ${list(shown)} one node, ${spelled}, without a message`;
   if (across.length) {
     const names = across.map(nameOf);
@@ -3149,7 +3233,7 @@ function checkInvisibleNodes(c: Ctx): void {
     const what = nameOfCharacter(ch)!;
     const clean = withoutInvisible(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...printChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
     const { said, print, command } = asWritten(c, [info], false);
     // Cites [invisible-character-3, invisible-character-65, invisible-character-66], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-65'] : []), ...(command ? ['invisible-character-66'] : [])];
@@ -3183,7 +3267,7 @@ function checkSpaceNodes(c: Ctx): void {
     const ch = [...t.text].find((x) => SPACE_LIKE.test(x))!;
     const clean = withoutSpaces(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...printChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
     const { said, print, command } = asWritten(c, [info], false);
     // Cites [space-character-10, space-character-20, space-character-21], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-20'] : []), ...(command ? ['space-character-21'] : [])];
@@ -3211,7 +3295,7 @@ function checkLookAlikeNodes(c: Ctx): void {
     const ch = cleanWord(t.text).odd[0]!;
     const like = lookAlikeOf(ch)!;
     const other = c.n.nodes.get(lowerAscii(clean));
-    const changes = [...renameNode(info, clean), ...commandChanges(c, info, clean), ...printChanges(c, info, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
+    const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
     const { said, print, command } = asWritten(c, [info], true);
     // Cites [look-alike-letter-5, look-alike-letter-16, look-alike-letter-17], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-16'] : []), ...(command ? ['look-alike-letter-17'] : [])];

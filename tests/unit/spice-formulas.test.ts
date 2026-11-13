@@ -11,12 +11,17 @@
  * - A character that looks like a space in a formula stops ngspice: its fix takes it out (space-character-22, -23, nbsp-4).
  */
 import { describe, expect, it } from 'vitest';
-import { buildSchematic } from '../../src/schematic/index.ts';
+import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { describeCircuit } from '../../src/spice/describe.ts';
 import { explainLine } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
-import { checkTraps } from '../../src/spice/traps.ts';
+import { applyFix, checkTraps, nodeReferences } from '../../src/spice/traps.ts';
 
+const T = '\u00e7\u0131k\u0131\u015f'; // çıkış
+const ZW = '\u200b';
+const THIN = '\u2009';
+const NBSP = '\u00a0';
+const CYR_O = '\u043e';
 const DIVIDER = 'V1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n';
 
 const refsOf = (text: string, key: string): string[] => (parseNetlist(text).nodes.get(key)?.refs ?? []).map((t) => `${t.text}@${t.from}`);
@@ -148,6 +153,126 @@ describe('the checks read E, F, G and H lines written as a formula, a table or a
     const n = parseNetlist(`* t\n${DIVIDER}G1 0 c cur={v(out)*2m}\nC1 c 0 1u\n.op\n.end\n`);
     const words = explainDiagnostic({ code: 'singular-matrix', subject: 'c', message: '' } as never, n);
     expect(words.title).not.toMatch(/G1/);
+  });
+});
+
+/** Every form of line that names a node, before and after .end (C3-1). */
+const FORMS = (n: string): [string, string[], string[], string?][] => [
+  ['B V=', [`B1 b 0 V=v(${n})*2`, 'Rb b 0 1k'], []],
+  ['B V={}', [`B1 b 0 V={v(${n})*2}`, 'Rb b 0 1k'], []],
+  ['B I=', [`B2 0 b I=v(${n})/1k`, 'Rb b 0 1k'], []],
+  ['B v(a,b)', [`B1 b 0 V=v(giris,${n})`, 'Rb b 0 1k'], []],
+  ['B V( )', [`B1 b 0 V=V( ${n} )*2`, 'Rb b 0 1k'], []],
+  ['E VALUE=', [`E1 e 0 VALUE={v(${n})*2}`, 'Re e 0 1k'], []],
+  ['E vol=', [`E1 e 0 vol='v(${n})*2'`, 'Re e 0 1k'], []],
+  ['G cur=', [`G1 0 g cur={v(${n})/1k}`, 'Rg g 0 1k'], []],
+  ['E POLY', [`E1 e 0 POLY(1) ${n} 0 0 2`, 'Re e 0 1k'], []],
+  ['E TABLE', [`E1 e 0 TABLE {v(${n})} = (0,0) (5,10)`, 'Re e 0 1k'], []],
+  ['R formula', [`R4 x 0 R={1k+v(${n})}`, 'Rx giris x 1k'], []],
+  ['C formula', [`C4 x 0 {1u*(1+v(${n}))}`, 'Rx giris x 1k'], []],
+  ['.pz', [`.pz giris 0 ${n} 0 vol pz`], [], 'V1 giris 0 dc 10 ac 1'],
+  ['.print bare', ['.dc V1 0 10 1', `.print dc ${n}`], []],
+  ['.tf', [`.tf v(${n}) V1`], []],
+  ['.control', ['.control', 'op', `print v(${n})`, `save ${n}`, '.endc'], []],
+  ['*#', [`*# let x = v(${n})*2`], []],
+  ['after .end: part', [], [`R3 ${n} 0 1k`]],
+  ['after .end: .tf', [], [`.tf v(${n}) V1`]],
+  ['after .end: B', [], [`B9 b9 0 V=v(${n})`, 'R9 b9 0 1k']],
+  ['after .end: .control', [], ['.control', `print v(${n})`, `save ${n}`, '.endc']],
+];
+const netlistOf = (node: string, extra: string[], after: string[], src = 'V1 giris 0 10'): string => ['* t', src, `R1 giris ${node} 1k`, `R2 ${node} 0 1k`, ...extra, '.op', '.end', ...after, ''].join('\n');
+/** The lines ngspice reads: not the title, not comments, not inside .subckt ... .ends. */
+const readLines = (text: string): string[] => {
+  let depth = 0;
+  return text.split('\n').slice(1).filter((l) => {
+    if (/^\s*\.subckt/i.test(l)) depth += 1;
+    const inside = depth > 0;
+    if (/^\s*\.ends/i.test(l)) depth -= 1;
+    return !inside && !/^\s*\*(?!#)/.test(l);
+  });
+};
+
+describe('every rename leaves the old name nowhere ngspice reads it (C3-1)', () => {
+  const kinds: [string, string, string[]][] = [
+    ['a Turkish letter', T, ['non-ascii-node']],
+    ['an invisible character', `ou${ZW}t`, ['invisible-character']],
+    ['a thin space', `o${THIN}ut`, ['space-character']],
+    ['a no-break space', `o${NBSP}ut`, ['nbsp']],
+    ['a look-alike letter', `${CYR_O}ut`, ['look-alike-letter']],
+  ];
+  for (const [what, node, checks] of kinds) {
+    it(`the fix for ${what}, on every form of line`, () => {
+      for (const [form, extra, after, src] of FORMS(node)) {
+        const text = netlistOf(node, extra, after, src);
+        const trap = checkTraps(parseNetlist(text)).find((t) => checks.includes(t.id) && t.fixes.length > 0 && t.line === 3);
+        expect(trap, `${what} / ${form}`).toBeDefined();
+        const fixed = applyFix(text, trap!.fixes[0]!);
+        expect(readLines(fixed).filter((l) => l.includes(node)), `${what} / ${form}: ${trap!.fixes[0]!.label}`).toEqual([]);
+      }
+    });
+  }
+
+  it('two names ngspice makes one (ş and ç): the fix renames each in the formulas and after .end too', () => {
+    const text = '* t\nV1 a 0 10\nR1 a ş 1k\nR2 ş ç 1k\nR3 ç 0 1k\nB1 b 0 V=v(ş)+v(ç)\nRb b 0 1k\n.op\n.end\nR4 ç 0 1k\n';
+    const trap = checkTraps(parseNetlist(text)).find((t) => t.id === 'non-ascii-node')!;
+    const fixed = applyFix(text, trap.fixes[0]!);
+    expect(readLines(fixed).filter((l) => /[şç]/.test(l))).toEqual([]);
+  });
+
+  it('aµ and au: the fix renames the µ spelling only, in a formula and after .end too', () => {
+    const text = '* t\nV1 aµ 0 12\nR1 aµ au 1k\nR2 au 0 2k\nB1 b 0 V=v(aµ)\nRb b 0 1k\n.op\n.end\nR3 aµ 0 1k\n';
+    const trap = checkTraps(parseNetlist(text)).find((t) => t.id === 'non-ascii-node')!;
+    expect(trap.fixes[0]!.label).toBe('Rename aµ to au2');
+    const fixed = applyFix(text, trap.fixes[0]!);
+    expect(readLines(fixed).filter((l) => l.includes('µ'))).toEqual([]);
+    expect(fixed).toContain('B1 b 0 V=v(au2)');
+    expect(fixed).toContain('R2 au 0 2k');
+    expect(fixed).toContain('R3 au2 0 1k');
+  });
+
+  it('a word ngspice reads as the node that no reader finds is renamed too: a command for ngspice that names it bare', () => {
+    const text = netlistOf(T, ['.control', 'op', `let doubled = 2*${T}`, `print ${T} doubled`, '.endc'], ['.control', `print ${T}`, '.endc']);
+    const trap = checkTraps(parseNetlist(text)).find((t) => t.id === 'non-ascii-node')!;
+    expect(readLines(applyFix(text, trap.fixes[0]!)).filter((l) => l.includes(T))).toEqual([]);
+  });
+
+  it('a subcircuit\'s own node of the same name stays as it is', () => {
+    const text = `* t\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\nX1 ${T} 0 sub\n.subckt sub ${T} b\nB1 b 0 V=v(${T})*2\n.ends\n.op\n.end\n`;
+    const trap = checkTraps(parseNetlist(text)).find((t) => t.id === 'non-ascii-node')!;
+    const fixed = applyFix(text, trap.fixes[0]!);
+    expect(fixed).toContain(`X1 cikis 0 sub\n.subckt sub ${T} b\nB1 b 0 V=v(${T})*2\n.ends`);
+  });
+
+  it('nodeReferences lists every word ngspice reads as the node, after .end too, in netlist order', () => {
+    const text = netlistOf('out', ['B1 b 0 V=v(out)*2', '.pz giris 0 out 0 vol pz', '.print dc out', '.control', 'save out', '.endc'], ['R3 out 0 1k', '.tf v(out) V1']);
+    const refs = nodeReferences(parseNetlist(text), 'out');
+    expect(refs.map((t) => text.slice(t.from, t.to))).toEqual(Array(8).fill('out'));
+    const at = refs.map((t) => t.from);
+    expect(at).toEqual(at.slice().sort((a, b) => a - b));
+    const lines = new Set(refs.map((t) => text.slice(0, t.from).split('\n').length));
+    expect([...lines]).toEqual([3, 4, 5, 6, 7, 9, 13, 14]);
+  });
+});
+
+describe('the drawing editor\'s rename leaves the old name nowhere ngspice reads it (C3-1)', () => {
+  for (const [form, extra, after, src] of FORMS('out')) {
+    if (form === '*#') continue; // a let names no node the parser reads; ngspice reads out as written there
+    it(form, () => {
+      const text = netlistOf('out', extra, after, src);
+      const r = applyEdit(buildSchematic(text), { kind: 'rename-node', node: 'out', name: 'vout' }, { drawingInText: true });
+      expect(r.ok, r.reason).toBe(true);
+      const left = readLines(r.text).filter((l) => !/^\s*\*@/.test(l) && /(^|[\s(,=])out([\s),=*/+]|$)/.test(l) && !/^\s*(\.control|\.endc|op)\s*$/.test(l));
+      expect(left, form === '.control' ? 'print v(out), save out' : form).toEqual([]);
+    });
+  }
+
+  it('ground: the formula reads v(0) after the node is joined to ground', () => {
+    const text = netlistOf('out', ['B1 b 0 V=v(out)*2', 'Rb b 0 1k'], ['R3 out 0 1k']);
+    const s = buildSchematic(text);
+    const r = applyEdit(s, { kind: 'rename-node', node: 'out', name: '0' }, { drawingInText: true });
+    expect(r.ok, r.reason).toBe(true);
+    expect(r.text).toContain('B1 b 0 V=v(0)*2');
+    expect(r.text).toContain('R3 0 0 1k');
   });
 });
 

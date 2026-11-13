@@ -40,6 +40,7 @@
 import { describeCharacter, hasInvisible, hasSpaceLike, lookAlikeOf, plainLetters } from '../spice/characters.ts';
 import { elementInfo } from '../spice/elements.ts';
 import { nodeNameInWords } from '../spice/explain.ts';
+import { nodeReferences } from '../spice/traps.ts';
 import { atSentenceStart, nameSaysNode } from '../spice/node-words.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from '../spice/parse.ts';
 import type { Netlist, TextChange, Token } from '../spice/types.ts';
@@ -421,12 +422,17 @@ function controlNodeRefs(netlist: Netlist): { token: Token; name: string; line: 
   return out;
 }
 
-/** Every mention of a node: part lines, dot commands and .control lines. */
+/**
+ * Every mention of a node: wherever ngspice reads its name (nodeReferences in src/spice/traps.ts): part
+ * lines, the formulas of B lines and of E and G lines written with VALUE=, the nodes of .pz, dot commands,
+ * .print lines that name it bare, .control lines, and the lines after a plain .end, which ngspice reads too
+ * (C3-1). A rename that changed fewer cut a formula off its node: B1's v(out) after "Rename out to vout".
+ */
 function refsOf(netlist: Netlist, node: string): Token[] {
-  return [...(netlist.nodes.get(node)?.refs ?? []), ...controlNodeRefs(netlist).filter((r) => r.name === node).map((r) => r.token)];
+  return nodeReferences(netlist, node);
 }
 
-/** The changes that rename every mention of a node (part lines, dot commands and .control lines). */
+/** The changes that rename every mention of a node (refsOf). */
 function renameRefs(netlist: Netlist, node: string, text: string): TextChange[] {
   return refsOf(netlist, node).map((t) => replaceToken(t, text));
 }

@@ -494,6 +494,13 @@ const FACTS: Fact[] = [
   { code: 'model-not-in-engine-12', netlist: "* an E written with POLY(2)\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 POLY(2) out 0 in 0 0 1 1\nRe e 0 1k\n.op\n.end\n", prints: ["XSPICE is required to run the 'poly' option"], fails: true, traps: ['model-not-in-engine'] },
   { code: 'model-not-in-engine-13', netlist: "* a G written with TABLE\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nG1 0 e TABLE {v(out)} = (0,0) (5,10m)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
   { code: 'model-not-in-engine-14', netlist: "* an E with control nodes and a table\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nE1 e 0 out 0 table=(0,0,5,10)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown device type"], fails: true, traps: ['model-not-in-engine'] },
+  { code: 'non-ascii-node-15', netlist: "* a node a formula reads, with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 b 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-16', netlist: "* formulas that read a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB2 0 b2 I=v(\u00e7\u0131k\u0131\u015f)/1k\nRb2 b2 0 1k\nB3 b3 0 V=v(giris,\u00e7\u0131k\u0131\u015f)\nRb3 b3 0 1k\nE1 e 0 VALUE={v(\u00e7\u0131k\u0131\u015f)*2}\nRe e 0 1k\nR4 x 0 R={1k+v(\u00e7\u0131k\u0131\u015f)}\nRx giris x 1k\n.op\n.end\n", vectors: { "v(b2)": 5, "v(b3)": 5, "v(e)": 10, "v(x)": 5.012468827930174 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-17', netlist: "* a part after .end on a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n", vectors: { "v(____k____)": 3.333333333333333, "i(v1)": -0.006666666666666667 }, traps: ['non-ascii-node', 'after-end'] },
+  { code: 'non-ascii-node-18', netlist: "* a .tf after .end on a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.end\n.tf v(\u00e7\u0131k\u0131\u015f) V1\n", vectors: { "v(Transfer_function)": 0.5 }, traps: ['non-ascii-node', 'after-end'] },
+  { code: 'non-ascii-node-19', netlist: "* .pz on a node with Turkish letters\nV1 giris 0 dc 10 ac 1\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nC1 \u00e7\u0131k\u0131\u015f 0 1u\n.pz giris 0 \u00e7\u0131k\u0131\u015f 0 vol pz\n.end\n", traps: ['non-ascii-node'] },
+  { code: 'invisible-character-67', netlist: "* a zero-width space in a node a formula reads\nV1 giris 0 10\nR1 giris ou\u200bt 1k\nR2 ou\u200bt 0 1k\nB1 b 0 V=v(ou\u200bt)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['invisible-character'] },
+  { code: 'look-alike-letter-18', netlist: "* a Cyrillic o in a node a formula reads\nV1 giris 0 10\nR1 giris \u043eut 1k\nR2 \u043eut 0 1k\nB1 b 0 V=v(\u043eut)*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['look-alike-letter'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -634,6 +641,35 @@ it('non-ascii-node-12: the capacitor given ic=5 between aµ and au carries −50
   expect(agrees(values[0]!, -5000), String(values[0])).toBe(true);
   expect(values.slice(1).every((x) => x === 0)).toBe(true);
   expect(vector(r, 'i(@r1[i])')!.every((x) => x === 0.004)).toBe(true);
+});
+
+it('C3-1: a rename reaches the formulas, .pz and the lines after .end, so the renamed netlist gives the same numbers', () => {
+  const rename = (code: string): { label: string; netlist: string; run: RunResult } => fixed.get(code)!.find((f) => !f.label.startsWith('after-end'))!;
+  // [fact, the old name, the numbers before, the same numbers after the rename, by the new name]
+  const cases: [string, string, Record<string, number>, Record<string, number>][] = [
+    ['non-ascii-node-15', '\u00e7\u0131k\u0131\u015f', { 'v(b)': 10, 'v(____k____)': 5 }, { 'v(b)': 10, 'v(cikis)': 5 }],
+    ['non-ascii-node-16', '\u00e7\u0131k\u0131\u015f', { 'v(b2)': 5, 'v(b3)': 5, 'v(e)': 10, 'v(x)': 5.012468827930174 }, { 'v(b2)': 5, 'v(b3)': 5, 'v(e)': 10, 'v(x)': 5.012468827930174 }],
+    ['non-ascii-node-17', '\u00e7\u0131k\u0131\u015f', { 'v(____k____)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }, { 'v(cikis)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }],
+    ['non-ascii-node-18', '\u00e7\u0131k\u0131\u015f', { 'v(Transfer_function)': 0.5 }, { 'v(Transfer_function)': 0.5, 'v(output_impedance_at_V(cikis))': 500 }],
+    ['non-ascii-node-19', '\u00e7\u0131k\u0131\u015f', { 'v(pole(1))': -2000 }, { 'v(pole(1))': -2000 }],
+    ['invisible-character-67', 'ou\u200bt', { 'v(b)': 10, 'v(ou___t)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
+    ['look-alike-letter-18', '\u043eut', { 'v(b)': 10, 'v(__ut)': 5 }, { 'v(b)': 10, 'v(out)': 5 }],
+  ];
+  for (const [code, old, before, after] of cases) {
+    const f = rename(code);
+    expect(f.netlist, `${code}: ${f.label}`).not.toContain(old);
+    for (const [name, want] of Object.entries(before)) expect(vector(runs.get(code)!, name), `${code} before: ${name}`).toEqual([want]);
+    for (const [name, want] of Object.entries(after)) expect(vector(f.run, name), `${code} after: ${name}`).toEqual([want]);
+  }
+});
+
+it('C3-1: "Rename" and "Move .end to the bottom" give the same circuit in either order (non-ascii-node-17)', () => {
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-17')!.netlist;
+  const step = (netlist: string, id: string): string => applyFix(netlist, checkTraps(parseNetlist(netlist)).find((t) => t.id === id)!.fixes[0]!);
+  const one = step(step(text, 'non-ascii-node'), 'after-end');
+  const other = step(step(text, 'after-end'), 'non-ascii-node');
+  expect(one).toBe(other);
+  expect(one).toContain('R3 cikis 0 1k');
 });
 
 it('model-not-in-engine-7, -9 to -11: POLY(1) with the coefficients 0 and k is written as the plain gain k, which gives what native ngspice gave', () => {
