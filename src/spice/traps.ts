@@ -1455,8 +1455,11 @@ function checkOddValues(c: Ctx, i: number): void {
   const firstOther = e.value ? -1 : e.fields.findIndex((x) => x.role === 'other');
   const signed = signSplit(c, e);
   if (signed) c.spaced.add(signed.next.token.from);
+  // A character that looks like a space in a formula is no value's: checkFormulaSpaces' (CR1-2).
+  const formula = formulaOf(c, e);
   e.fields.forEach((f, k) => {
     if (f.role === 'name' || f.role === 'model' || NODE_ROLES.has(f.role) || f === signed?.next) return;
+    if (formula && f.token.from >= formula.from && hasSpaceLike(f.token.text)) return;
     if (before.some((t) => t.span.from <= f.token.from && f.token.to <= t.span.to)) return;
     const place = places[k];
     if (place === null) return;
@@ -1912,13 +1915,117 @@ function cardOf(c: Ctx, l: NetlistLine): Element | undefined {
 }
 
 /**
- * A word of a B source's formula (C3-1): on a B line after its nodes, and on an E or G line written with
- * VALUE=, vol= or cur= after that word, which ngspice makes a B line (space-character-22, -23).
+ * Where a formula stands on a part that has one (C3-1): on a B line after its two nodes, on an E or G line
+ * written with VALUE=, vol= or cur= after that word (ngspice makes it a B line). `body` is where the formula
+ * itself starts: after a B line's V= or I=, or the E or G line's formula; undefined when there is none.
  */
-function inFormula(c: Ctx, l: NetlistLine, t: Token): boolean {
-  const e = cardOf(c, l);
-  if (e?.letter === 'B') return e.nodes.length === 2 && t.from >= e.nodes[1]!.token.to;
-  return e?.form?.kind === 'formula' && t.from > e.form.keyword.from;
+function formulaOf(c: Ctx, e: Element | undefined): { from: number; body: number | undefined } | undefined {
+  if (e?.letter === 'B') {
+    if (e.nodes.length !== 2) return undefined;
+    const from = e.nodes[1]!.token.to;
+    const key = e.fields.find((f) => f.token.from >= from);
+    const equals = key && /^[vViI]$/.test(key.token.text) ? /^[ \t]*=/.exec(c.text.slice(key.token.to, key.token.to + 200)) : null;
+    return { from, body: key && equals ? key.token.to + equals[0].length : undefined };
+  }
+  if (e?.form?.kind === 'formula') return { from: e.form.keyword.to, body: e.form.formula?.from };
+  return undefined;
+}
+
+/** The words B takes after its formula, which a character that looks like a space keeps apart from it (PTlex in ngspice's inpptree.c). */
+const B_SETTINGS = /^(tc1|tc2|temp|dtemp|reciproctc)=/i;
+
+/**
+ * What ngspice says of a formula whose first character that looks like a space stands at `at` (CR1-4): its
+ * bytes become names (_), and what ngspice says depends on what stands before it, past blanks, in the formula
+ * (space-character-22, -23, -25 to -28, nbsp-4, -5, run in native ngspice 47 and 42 and our engine):
+ * - at the start of the formula (after V=, I=, VALUE=, a {, a quote, or a + there): 'parameter value out of
+ *   range or the wrong type';
+ * - after an operator (* / ^ + - < > == && || :), or a - at the start: 'The internal check of parse tree \u2026
+ *   failed', then the same;
+ * - after an opening bracket, a comma or a ? (a sign there too): ngspice 47 'YYparse error', a fatal one, and
+ *   ngspice 42 'PTerror: syntax error';
+ * - after a number, a closing bracket or the formula's }: 'unknown parameter (_)';
+ * - after a v that is a word of its own (v(out) written v<thin space>(out)): 'Undefined parameter [v]'.
+ * Anywhere else (after a name, a function's name before its bracket, inside V=), only that it stops (space-character-29).
+ */
+function formulaStops(c: Ctx, at: number, body: number | undefined, nbsp: boolean): string {
+  const somewhere = 'ngspice stops with an error on this line. [space-character-29]';
+  if (body === undefined || at < body) return somewhere;
+  const s = c.text;
+  // The character before p in the formula, past blanks and the start of a continuation line (+).
+  const back = (p: number): number => {
+    let q = p;
+    for (;;) {
+      while (q >= body && ' \t\r\n'.includes(s[q]!)) q -= 1;
+      if (q < body || s[q] !== '+') return q;
+      let r = q - 1;
+      while (r >= body && (s[r] === ' ' || s[r] === '\t')) r -= 1;
+      if (r >= body && s[r] !== '\n') return q;
+      q = r;
+    }
+  };
+  const atStart = (q: number): boolean => q < body || ('{\'"'.includes(s[q]!) && back(q - 1) < body);
+  const START = "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]";
+  const OPERATOR = "ngspice stops: 'The internal check of parse tree \u2026 failed', then 'parameter value out of range or the wrong type'. [space-character-26]";
+  const OPEN = "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression' (ngspice 42: 'PTerror: syntax error'). [space-character-28]";
+  const p = back(at - 1);
+  if (atStart(p)) return START;
+  const ch = s[p]!;
+  if ('(,?'.includes(ch)) return OPEN;
+  if (ch === '+' || ch === '-') {
+    const q = back(p - 1);
+    if (atStart(q)) return ch === '+' ? START : OPERATOR;
+    if ('(,?'.includes(s[q]!)) return OPEN;
+    return /[A-Za-z0-9_.)}]/.test(s[q]!) ? OPERATOR : somewhere;
+  }
+  if ('*/^<>:'.includes(ch) || (ch === '&' && s[p - 1] === '&') || (ch === '|' && s[p - 1] === '|') || (ch === '=' && s[p - 1] === '=')) return OPERATOR;
+  if (ch === ')') return `ngspice stops: 'unknown parameter (_)'. [${nbsp ? 'nbsp-4' : 'space-character-22'}]`;
+  if (ch === '}') return "ngspice stops: 'unknown parameter (_)'. [space-character-27]";
+  if (!/[A-Za-z0-9_.]/.test(ch)) return somewhere;
+  let a = p;
+  while (a > body && /[A-Za-z0-9_.]/.test(s[a - 1]!)) a -= 1;
+  // A character outside ASCII is part of a name for ngspice: the word is longer than it looks.
+  if (a > body && s.charCodeAt(a - 1) >= 0x80) return somewhere;
+  const word = s.slice(a, p + 1);
+  if (/^[0-9.]/.test(word)) return "ngspice stops: 'unknown parameter (_)'. [space-character-27]";
+  if (word === 'v' || word === 'V') return `ngspice stops: 'Undefined parameter [v]'. [${nbsp ? 'nbsp-5' : 'space-character-23'}]`;
+  return somewhere;
+}
+
+/**
+ * Characters that look like a space in a part's formula (C3-1, CR1-2): ngspice reads each of their bytes as
+ * a name and stops, wherever one stands (formulaStops), and a formula needs no spaces. One error for the
+ * part, named by the first such character, whose fix takes them all out, from the formula's start to the
+ * end of its last line, after a number and at the end too; one that keeps a setting of B's apart from the
+ * formula (tc1=) becomes a normal space. The characters inside a node's name are checkSpaceNodes'.
+ */
+function checkFormulaSpaces(c: Ctx, i: number, region: { from: number; body: number | undefined }): void {
+  const e = el(c, i);
+  const last = c.lastContinuation.get(i) ?? i;
+  const tokens: Token[] = [];
+  for (let k = i; k <= last; k++) {
+    const line = c.n.lines[k]!;
+    if (k === i || line.continues === i) tokens.push(...line.tokens.filter((x) => x.to > region.from));
+  }
+  const odd: number[] = [];
+  for (const x of tokens) for (let k = Math.max(0, region.from - x.from); k < x.text.length; k++) if (SPACE_LIKE.test(x.text[k]!) && !c.spacedChars.has(x.from + k)) odd.push(x.from + k);
+  if (!odd.length) return;
+  const changes: TextChange[] = [];
+  for (let k = 0; k < odd.length; k++) {
+    let end = k;
+    while (end + 1 < odd.length && odd[end + 1] === odd[end]! + 1) end += 1;
+    const keepsApart = e.letter === 'B' && B_SETTINGS.test(c.text.slice(odd[end]! + 1, odd[end]! + 16)) && !/[ \t]/.test(c.text[odd[k]! - 1] ?? ' ');
+    changes.push(change(odd[k]!, odd[end]! + 1, keepsApart ? ' ' : ''));
+    k = end;
+  }
+  const at = odd[0]!;
+  const t = tokens.find((x) => x.from <= at && at < x.to)!;
+  const ch = c.text[at]!;
+  const what = describeCharacter(ch);
+  add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'error', t, `${capital(what)} stops the formula of ${nameOf(e)}`,
+    `This formula has ${what}, which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one: it reads it as part of a name, and the formula has no such name. A formula needs no spaces.`,
+    formulaStops(c, at, region.body, ch === '\u00a0'),
+    [fix(odd.length > 1 ? 'Take them out' : 'Take it out', ...changes)]);
 }
 
 /**
@@ -1926,37 +2033,32 @@ function inFormula(c: Ctx, l: NetlistLine, t: Token): boolean {
  * space-character-4): ngspice reads it as part of the word, so the words on either side become one.
  * One trap per line, named by its first such character; its fix writes a space for each. A value word
  * read as a number and a unit (checkSpaceInValue) is left out: the space was not meant between words.
- * On an analysis line, what ngspice does with the word is its place's (gluedOnAnalysis).
+ * On an analysis line, what ngspice does with the word is its place's (gluedOnAnalysis). In a part's formula
+ * they are checkFormulaSpaces', once for the part.
  */
 function checkSpaces(c: Ctx): void {
   for (const l of c.n.lines) {
     if (l.kind !== 'element' && l.kind !== 'directive' && l.kind !== 'continuation') continue;
-    // The characters inside a node's name are checkSpaceNodes', also inside a formula ({v(o<thin>ut)}).
-    const odd = (x: Token): number[] => [...x.text].flatMap((ch, k) => (SPACE_LIKE.test(ch) && !c.spacedChars.has(x.from + k) ? [x.from + k] : []));
-    const tokens = l.tokens.filter((x) => hasSpaceLike(x.text) && !c.spaced.has(x.from) && odd(x).length > 0);
+    // The characters inside a node's name are checkSpaceNodes', also inside a formula ({v(o<thin>ut)}). By UTF-16
+    // offset, as the text is indexed: a character above U+FFFF (an emoji, a math letter) is two (CR1-5).
+    const odd = (x: Token): number[] => {
+      const out: number[] = [];
+      for (let k = 0; k < x.text.length; k++) if (SPACE_LIKE.test(x.text[k]!) && !c.spacedChars.has(x.from + k)) out.push(x.from + k);
+      return out;
+    };
+    const card = cardOf(c, l);
+    const region = card ? formulaOf(c, card) : undefined;
+    if (region && l.kind === 'element') checkFormulaSpaces(c, l.index, region);
+    const tokens = l.tokens.filter((x) => hasSpaceLike(x.text) && !c.spaced.has(x.from) && (!region || x.to <= region.from) && odd(x).length > 0);
     const t = tokens[0];
     if (!t) continue;
-    // In a formula ngspice reads the character as part of a name and stops (space-character-22, nbsp-4):
-    // taken out, the formula reads as meant; a normal space between v and its ( would stop it too.
-    const formula = tokens.every((x) => inFormula(c, l, x));
     const changes: TextChange[] = [];
-    for (const x of tokens) for (const at of odd(x)) changes.push(change(at, at + 1, formula ? '' : ' '));
+    for (const x of tokens) for (const at of odd(x)) changes.push(change(at, at + 1, ' '));
     const ch = c.text[odd(t)[0]!]!;
     const shown = shownWord(t.text);
     const bare = nameOfCharacter(ch, false)!.replace(/^an? /, '');
     const glued = gluedOnAnalysis(c, l, t, bare);
     for (const x of tokens.slice(1)) c.meant.set(x.from, 'split');
-    if (formula) {
-      const what = describeCharacter(ch);
-      // Right after a v and before its (, ngspice takes the v for a .param name.
-      const at = odd(t)[0]!;
-      const afterV = /(^|[^A-Za-z0-9_\u0080-\uffff])[vV]$/.test(c.text.slice(Math.max(0, at - 2), at)) && /^[\s\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]*\(/.test(c.text.slice(at, at + 16));
-      add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'error', t, `${capital(what)} stops the formula of ${nameOf(cardOf(c, l)!)}`,
-        `This formula has ${what}, which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one: it reads it as part of a name, and the formula has no such name. A formula needs no spaces.`,
-        `ngspice stops: '${afterV ? 'Undefined parameter [v]' : 'unknown parameter (_)'}'. [${ch === '\u00a0' ? 'nbsp-4' : 'space-character-22'}]`,
-        [fix('Take it out', ...changes)]);
-      continue;
-    }
     const replaceAll = fix('Replace it with a normal space', ...changes);
     const fixes = !glued ? [replaceAll] : [...(glued.whole ? [glued.whole] : []), ...(glued.space ? [replaceAll] : [])];
     const severity: TrapSeverity = glued?.stops ? 'error' : 'warning';

@@ -513,7 +513,19 @@ const FACTS: Fact[] = [
   { code: 'space-character-22', netlist: "* a thin space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u2009*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
   { code: 'space-character-23', netlist: "* a thin space between v and its bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v\u2009(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["Undefined parameter [v]"], fails: true, traps: ['space-character'] },
   { code: 'space-character-24', netlist: "* a thin space in a node a formula reads\nV1 giris 0 10\nR1 giris o\u2009ut 1k\nR2 o\u2009ut 0 1k\nB1 b 0 V={v(o\u2009ut)*2}\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10 }, traps: ['space-character'] },
-  { code: 'nbsp-4', netlist: "* a no-break space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u00a0*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },
+  { code: 'nbsp-4', netlist: "* a no-break space in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)\u00a0*2\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },  // The round-1 critic of the formulas lane (13 November 2026). A name a formula, a dot command or a part after .end
+  // writes with a capital letter (Çıkış) is the node ngspice spells the same (çıkış): renamed with it (CR1-1). The
+  // renames reach .save, .global and a .func's formula too (CR1-3). A character that looks like a space anywhere in a
+  // formula is taken out, and the words ngspice says depend on where it stands (CR1-2, CR1-4); a node called value
+  // on an E line (CR1-10); one word before a formula that native ngspice lets through (missing-fields-10).
+  { code: 'space-character-25', netlist: "* a thin space at the start of a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=\u2009v(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-26', netlist: "* a thin space after an operator in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*\u20092\nRe e 0 1k\n.op\n.end\n", prints: ["The internal check of parse tree", "parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-27', netlist: "* a thin space between the digits of a number in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V={1\u2009000*v(out)/1k}\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-28', netlist: "* a thin space after a bracket in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=(\u2009v(out))*2\nRe e 0 1k\n.op\n.end\n", prints: ["YYparse error, syntax error, in expression"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-29', netlist: "* a thin space after a function's name in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=abs\u2009(v(out))*2\nRe e 0 1k\n.op\n.end\n", prints: ["Cannot compute substitute"], fails: true, traps: ['space-character'] },
+  { code: 'space-character-30', netlist: "* a thin space between a formula and tc1=\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*2\u2009tc1=0\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
+  { code: 'nbsp-5', netlist: "* a no-break space between v and its bracket\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v\u00a0(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["Undefined parameter [v]"], fails: true, traps: ['nbsp'] },
+  { code: 'nbsp-6', netlist: "* two no-break spaces in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=2\u00a0*\u00a0v(out)\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['nbsp'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -684,6 +696,17 @@ it('C3-1: "Rename" and "Move .end to the bottom" give the same circuit in either
   const other = step(step(text, 'after-end'), 'non-ascii-node');
   expect(one).toBe(other);
   expect(one).toContain('R3 cikis 0 1k');
+});
+
+it('CR1-2, CR1-4: the fix takes every character that looks like a space out of the formula, wherever it stands, and the formula runs', () => {
+  for (const code of ['space-character-25', 'space-character-26', 'space-character-27', 'space-character-28', 'space-character-29', 'space-character-30', 'nbsp-5', 'nbsp-6']) {
+    const [f] = fixed.get(code)!;
+    expect(f!.netlist, code).not.toMatch(/[   -   　]/);
+    expect(vector(f!.run, 'v(e)'), code).toEqual([code === 'space-character-27' ? 2.5 : 5]);
+  }
+  // Before B's own setting the character becomes a normal space: without one, ngspice stops again (space-character-30).
+  expect(fixed.get('space-character-30')![0]!.netlist).toContain('B1 e 0 V=v(out)*2 tc1=0\n');
+  expect(fixed.get('nbsp-6')![0]!.label).toBe('nbsp: Take them out');
 });
 
 it('model-not-in-engine-7, -9 to -11: POLY(1) with the coefficients 0 and k is written as the plain gain k, which gives what native ngspice gave', () => {

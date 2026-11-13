@@ -456,3 +456,66 @@ describe('words ngspice takes out of an E, F, G or H line before it reads it (C3
     expect([p.title, p.line]).toEqual(["PlainSpice's engine can't run F1's POLY", 5]);
   });
 });
+
+describe("the round-1 critic of these fixes (13 November 2026)", () => {
+  const TC = 'Çıkış'; // Çıkış
+  const traps = (text: string) => checkTraps(parseNetlist(text));
+  const formula = (line: string): string => `* t\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`;
+  const SPACE_LIKE_ANY = /[   -   　]/;
+
+  it('CR1-2: one error for every character that looks like a space in a formula, after a number and at the end too, and its fix leaves none', () => {
+    for (const line of [`B1 e 0 V=2${NBSP}*${NBSP}v(out)`, `B1 e 0 V=v(out)*2${NBSP}`, `B1 e 0 V=v(out)*2${THIN}`, `B1 e 0 V=2${THIN}*v(out)`, `B1 e 0 V=v(out)${NBSP}*${NBSP}2`, `E1 e 0 VALUE=v(out)*2${THIN}`, `B1 e 0\n+ V=v(out)${THIN}*\n+ 2${NBSP}`]) {
+      const text = formula(line);
+      const found = traps(text);
+      expect(found.map((t) => `${t.id} ${t.severity}`), line).toEqual([`${line.includes(NBSP) && !line.includes(THIN) ? 'nbsp' : line.indexOf(NBSP) >= 0 && line.indexOf(NBSP) < line.indexOf(THIN) ? 'nbsp' : 'space-character'} error`]);
+      expect(found[0]!.ngspice, line).not.toContain('__2');
+      const fixed = applyFix(text, found[0]!.fixes[0]!);
+      expect(fixed, line).not.toMatch(SPACE_LIKE_ANY);
+      expect(traps(fixed), line).toEqual([]);
+    }
+    // A blank stays between the formula and B's own setting.
+    const tc = formula(`B1 e 0 V=v(out)*2${THIN}tc1=0`);
+    expect(applyFix(tc, traps(tc)[0]!.fixes[0]!)).toContain('B1 e 0 V=v(out)*2 tc1=0\n');
+  });
+
+  it("CR1-4, CR1-6: the words ngspice says, by what stands before the character, each with its own fact", () => {
+    for (const [line, says] of [
+      [`B1 e 0 V=${THIN}v(out)*2`, "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"],
+      [`B1 e 0 V=${NBSP}v(out)*2`, "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"],
+      [`B1 e 0 V={${THIN}v(out)*2}`, "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"],
+      [`E1 e 0 VALUE={${THIN}v(out)*2}`, "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"],
+      [`G1 0 e cur={${THIN}v(out)*2m}`, "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"],
+      [`B1 e 0 V=+${THIN}v(out)*2`, "ngspice stops: 'parameter value out of range or the wrong type'. [space-character-25]"],
+      [`B1 e 0 I=-${THIN}v(out)/1k`, "ngspice stops: 'The internal check of parse tree … failed', then 'parameter value out of range or the wrong type'. [space-character-26]"],
+      [`B1 e 0 V=v(out)*${THIN}2`, "ngspice stops: 'The internal check of parse tree … failed', then 'parameter value out of range or the wrong type'. [space-character-26]"],
+      [`B1 e 0 V=v(out)>1&&${THIN}v(in)>1?10:0`, "ngspice stops: 'The internal check of parse tree … failed', then 'parameter value out of range or the wrong type'. [space-character-26]"],
+      [`B1 e 0 V=2${THIN}*v(out)`, "ngspice stops: 'unknown parameter (_)'. [space-character-27]"],
+      [`B1 e 0 V={v(out)*2}${THIN}`, "ngspice stops: 'unknown parameter (_)'. [space-character-27]"],
+      [`B1 e 0 V=v(out)${THIN}*2`, "ngspice stops: 'unknown parameter (_)'. [space-character-22]"],
+      [`B1 e 0 V=v(out)${NBSP}*2`, "ngspice stops: 'unknown parameter (_)'. [nbsp-4]"],
+      [`B1 e 0 V=(${THIN}v(out))*2`, "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression' (ngspice 42: 'PTerror: syntax error'). [space-character-28]"],
+      [`B1 e 0 V=max(v(out),${THIN}1)*2`, "ngspice 47 stops with a fatal error: 'YYparse error, syntax error, in expression' (ngspice 42: 'PTerror: syntax error'). [space-character-28]"],
+      [`B1 e 0 V=v${THIN}(out)*2`, "ngspice stops: 'Undefined parameter [v]'. [space-character-23]"],
+      [`B1 e 0 V=v${NBSP}(out)*2`, "ngspice stops: 'Undefined parameter [v]'. [nbsp-5]"],
+      [`B1 e 0 V=abs${THIN}(v(out))*2`, 'ngspice stops with an error on this line. [space-character-29]'],
+    ] as const) {
+      const found = traps(formula(line));
+      expect(found.map((t) => t.ngspice), line).toEqual([says]);
+    }
+  });
+
+  it('CR1-5: an emoji or a math letter before a thin space stops no check, and no fix leaves half of one', () => {
+    const lines = [
+      `* t\n.title \u{1F600}${THIN}devre\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nC1 out x 1u\n.op\n.end\n`,
+      `* t\nV1 in 0 5\nR1 in out 1k \u{1F600}${THIN}x\nR2 out 0 1k\nC1 out x 1u\n.op\n.end\n`,
+      `* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nC1 out x 1u\nB1 e 0 V=v(out)*2+\u{1D465}${THIN}*2\nRe e 0 1k\n.op\n.end\n`,
+    ];
+    for (const text of lines) {
+      let found: ReturnType<typeof traps> = [];
+      expect(() => (found = traps(text)), text).not.toThrow();
+      expect(found.map((t) => t.id), text).toContain('floating-dc');
+      expect(found.some((t) => t.id === 'space-character'), text).toBe(true);
+      for (const t of found) for (const f of t.fixes) expect(applyFix(text, f), `${t.id}: ${f.label}`).not.toMatch(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+    }
+  });
+});

@@ -2190,6 +2190,136 @@ after the fix "Take it out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
 
 PlainSpice's checks: `nbsp`.
 
+### nbsp-5. A no-break space between v and its bracket: "Undefined parameter [v]", as for a thin space
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). As with a thin space (space-character-23), ngspice takes the v for a name of its own and stops with a fatal error: "Undefined parameter [v]", then "Cannot compute substitute". In braces too, and with a capital V. The fix takes the character out, and the formula runs.
+
+```spice
+* a no-break space between v and its bracket
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v<NBSP>(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error in netlist line no. 7, new internal line no. 5:
+    Undefined parameter [v]
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+    Undefined parameter [v]
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (nbsp), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+in braces (V={v<NBSP>(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line (VALUE={v<NBSP>(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 9, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a capital V (V=V<NBSP>(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+v alone, no bracket after it (V=v<NBSP>*2+v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [v]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `nbsp`.
+
+### nbsp-6. Two no-break spaces in a formula, the first after a number: one error, and its fix takes both out
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). Text copied from a web page often has a no-break space on each side of an operator. ngspice stops at the first: after a number, "unknown parameter (_)" (space-character-27). Before, the checks read 2<NBSP> as a value and left that character in the fix's text, which then stopped ngspice with no check left; the fix now takes every such character out of the formula, and it runs.
+
+```spice
+* two no-break spaces in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=2<NBSP>*<NBSP>v(out)
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   2.0000000000e+00 _ _ * _ _ v(out)
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   2.0000000000e+00 _ _ * _ _ v(out)
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take them out" (nbsp), which writes `B1 e 0 V=2*v(out)`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `nbsp`.
+
 ## missing-value
 
 A part line with its nodes but no value. R, C and L: warning (ngspice leaves the part out when nothing follows the nodes; with settings such as m=2 or ic=0 it keeps it: a resistor at 1 mΩ with a warning, a capacitor or inductor without capacitance or inductance, silently: missing-value-8 to -10). V and I: warning (ngspice uses 0); for V the fix writes the 0 explicitly, which is right for an ammeter. E, F, G and H: error, because native ngspice 47 stops while PlainSpice's engine silently uses 0. After the re-check of the fixes (12 November 2026, S6), E, F, G and H are told apart by what follows the nodes: with nothing at all, native 47 stops (missing-value-4 to -7); with settings but no number (`gain`, `m=2`), native 47 and 42, like our engine, use 0 and say nothing (missing-value-11 to -14); a word ngspice cannot read where the gain goes is no missing gain, but the character checks' or unknown-word's (invisible-character-26, look-alike-letter-14, unknown-word-18 to -21). After the last pass (13 November 2026, code review C3-5): an E given by a formula, `VALUE={...}` or `vol={...}`, and a G given by `VALUE={...}` or `cur={...}`, has two nodes and no gain, and needs none: ngspice turns the line into a B source, and native 47 and 42 and our engine run it (missing-value-15 to -17). Before, its words were read as control nodes and a gain: "E1 has no gain", "value has no DC path to ground", and no numbers.
@@ -16787,6 +16917,20 @@ a formula, `v(o<THIN>ut)`, it is that node, and the node's check takes it out th
 (space-character-24); the glue check's "Replace it with a normal space" wrote `v(o ut)` there, which
 ngspice cannot read.
 
+After the round-1 critic of those fixes (13 November 2026, CR1-2, CR1-4, CR1-5): the check reads the whole
+formula, from its start to the end of its last line, and so also finds the character after a number
+(`2<THIN>*v(out)`) and at the end (`v(out)*2<THIN>`), which the value checks used to take for part of a
+value; one error for the part, whose fix takes every such character out of the formula, so none is left
+for ngspice to stop at (nbsp-6). One that keeps a B line's own setting apart from its formula (`tc1=`) becomes
+a normal space instead (space-character-30). What ngspice says depends on what stands before the first one:
+at the start of the formula "parameter value out of range or the wrong type" (space-character-25), after
+an operator or a minus sign "The internal check of parse tree … failed" and then the same (-26), after a
+number or the formula's closing brace "unknown parameter (_)" (-27), after an opening bracket, a comma or a
+? ngspice 47's fatal "YYparse error" and ngspice 42's "PTerror: syntax error" (-28), after a `v` of its own
+"Undefined parameter [v]" (-23; nbsp-5 for a no-break space); anywhere else the check says only that
+ngspice stops (-29). Indexes of characters are counted as JavaScript counts them, so an emoji or a math
+letter before such a character (𝑥 from an equation editor) no longer stopped every check.
+
 After the re-check of those fixes (12 November 2026): a sign followed by such a character (`-<THIN>5`,
 or a minus sign from a document and then one) is no number either, and ngspice stops; the check says
 where the character is, as for an invisible one, and its fix writes the sign and the number together,
@@ -17901,6 +18045,845 @@ the netlist the old fix "Replace it with a normal space" wrote, V={v(o ut)*2}:
       Simulation interrupted due to error!
       Error: circuit not parsed.
     our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-25. At the start of a formula: "parameter value out of range or the wrong type"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). ngspice reads each byte of the character as a name (`_`), and what it says depends on what stands before it in the formula. Right after V=, I=, VALUE=, vol= or cur=, after the formula's { or quote, or after a + there, it is the first thing of the formula: "parameter value out of range or the wrong type". The fix takes the character out, and the formula runs. (ngspice also prints "Preparing expression for numparam" and "What is this?" with the bytes it could not read; those lines are left out below.)
+
+```spice
+* a thin space at the start of a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=<THIN>v(out)*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    oops
+    Error on line 5 or its substitute:
+      b1 e 0 v= _ _ _ v(out) *   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    oops
+    Error on line 5 or its substitute:
+      b1 e 0 v= _ _ _ v(out) *   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+a no-break space there (V=<NBSP>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a blank (V= <THIN>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in braces (V={<THIN>v(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line (VALUE={<THIN>v(out)*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line without braces (VALUE=<THIN>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in quotes (vol='<THIN>v(out)*2'):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on a G line (cur={<THIN>v(out)*2m}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a + at the start (V=+<THIN>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+an ideographic space (V=<IDEO>v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-26. After an operator or a minus sign: "The internal check of parse tree … failed", then "parameter value out of range or the wrong type"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After an operator (* / ^ + - < > == && || :), or after a minus sign at the start of the formula, ngspice first says that the internal check of its parse tree failed, with the formula between the two halves of that sentence, and then the same as at the start. The fix takes the character out, and the formula runs.
+
+```spice
+* a thin space after an operator in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)*<THIN>2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    oops
+    Error: The internal check of parse tree
+    v(out) * _ _ _   2.0000000000e+00
+    failed
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) * _ _ _   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    oops
+    Error: The internal check of parse tree
+    v(out) * _ _ _   2.0000000000e+00
+    failed
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) * _ _ _   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+after + (V=v(out)+<THIN>1):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after - (V=v(out)-<THIN>1):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after / (V=v(out)/<THIN>0.5):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after ^ (V=v(out)^<THIN>1):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after > (V=v(out)><THIN>1?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after < (V=v(out)<<THIN>1?0:10):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after == (V=v(out)==<THIN>2.5?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after && (V=v(out)>1&&<THIN>v(in)>1?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after || (V=v(out)>1||<THIN>v(in)>1?10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after : (V=v(out)>1?10:<THIN>0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a minus sign at the start (I=-<THIN>v(out)/1k):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a no-break space (V=v(out)*<NBSP>2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in braces (V={v(out)*<THIN>2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+on an E line (VALUE={v(out)*<THIN>2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error: The internal check of parse tree
+      failed
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-27. After a number or the formula's closing brace: "unknown parameter (_)"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After a number, as after a closing bracket (space-character-22), ngspice has read a whole formula and takes the bytes after it for another of the line's settings: "unknown parameter (_)". Here the character groups the digits of 1000, as documents do: the fix takes it out and writes 1000, and the formula gives e = 2.5 V. The same holds after a number at the end of the formula and after its closing brace.
+
+```spice
+* a thin space between the digits of a number in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V={1<THIN>000*v(out)/1k}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   1.0000000000e+00 _ _ _   0.0000000000e+00 * v(out) /   1.0000000000e+03
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v=   1.0000000000e+00 _ _ _   0.0000000000e+00 * v(out) /   1.0000000000e+03
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V={1000*v(out)/1k}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 2.5, i(b1) = -0.0025, i(v1) = -0.0025
+after a number before an operator (V=2<THIN>*v(out)):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a number at the end (V=v(out)*2<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a no-break space there (V=v(out)*2<NBSP>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a number with a scale letter (V=v(out)*2m<THIN>*1k):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after the formula's closing brace (V={v(out)*2}<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after an E's formula in braces (VALUE={v(out)*2}<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after an E's formula without braces (VALUE=v(out)*2<THIN>):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-28. After a bracket, a comma or a ?: ngspice 47 "YYparse error", a fatal error, and ngspice 42 "PTerror: syntax error"
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After an opening bracket (not v's), a comma between a function's words or the ? of a choice, ngspice 47 stops with a fatal error, "YYparse error, syntax error, in expression"; ngspice 42 says "PTerror: syntax error" and then "parameter value out of range or the wrong type". Our engine says what ngspice 47 says. A sign there changes nothing. The fix takes the character out, and the formula runs.
+
+```spice
+* a thin space after a bracket in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=(<THIN>v(out))*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    YYparse error, syntax error, in expression: parsing stopped at line 5
+        _ _ v(out) ) *   2.0000000000e+00 in  _ v(out) ) *   2.0000000000e+00
+    from file    c.cir
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    PTerror: syntax error, parsing stopped at
+        _ _ v(out) ) *   2.0000000000e+00
+    Error on line 5 or its substitute:
+      b1 e 0 v= ( _ _ _ v(out) ) *   2.0000000000e+00
+    parameter value out of range or the wrong type
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    YYparse error, syntax error, in expression: parsing stopped at line 5
+    _ _ v(out) ) *   2.0000000000e+00 in  _ v(out) ) *   2.0000000000e+00
+    from file    /circuit.cir
+    ERROR: fatal error in ngspice, exit(1)
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=(v(out))*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+after a comma (V=max(v(out),<THIN>1)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a no-break space there (V=max(v(out),<NBSP>1)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a ? (V=v(out)>1?<THIN>10:0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a sign after a bracket (V=(-<THIN>v(out))*-2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+in braces (V={(<THIN>v(out))*2}):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      YYparse error, syntax error, in expression: parsing stopped at line 5
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      PTerror: syntax error, parsing stopped at
+      Error on line 5 or its substitute:
+      parameter value out of range or the wrong type
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-29. Anywhere else in a formula ngspice stops too, with other words
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). After a function's name, before its bracket, ngspice says only "Cannot compute substitute" (a fatal error); after a name it does not know, "Undefined parameter" with that name; after one it knows, "unknown parameter (_)"; inside the V= of a B line, "unknown parameter (v___)". Wherever it stands, ngspice stops: the checks say only that, where no run above shows the words. The fix takes the character out.
+
+```spice
+* a thin space after a function's name in a formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=abs<THIN>(v(out))*2
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error in netlist line no. 7, new internal line no. 5:
+     Expression err: abs}) _ _ _ ( v(out) ) *   2.0000000000e+00
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Netlist line no. 5:
+     Expression err: abs}) _ _ _ ( v(out) ) *   2.0000000000e+00
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice -b -r out.raw (exit 1)
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=abs(v(out))*2`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+after a name it does not know (V=xv<THIN>(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [xv]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [xv]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after i, before its bracket (V=i<THIN>(V1)*-2k):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error in netlist line no. 7, new internal line no. 5:
+      Undefined parameter [i]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Undefined parameter [i]
+      Cannot compute substitute
+      ERROR: fatal error in ngspice, exit(1)
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+after a name it knows (V=v(out)*2+temper<THIN>*0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (_)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+between V and = (V<THIN>=v(out)*2):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (v___)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (v___)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `space-character`.
+
+### space-character-30. Between a formula and B's own setting tc1=: the fix writes a normal space there
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-4). A B line may give settings after its formula (tc1=, tc2=, temp=, dtemp=, reciproctc=), and a blank must keep them apart from it. With a thin space there ngspice stops ("unknown parameter (_)", as after any number: space-character-27); taken out, the formula and tc1 become one word, and ngspice stops again (the second run below). So the fix writes a normal space there, and the line runs.
+
+```spice
+* a thin space between a formula and tc1=
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 e 0 V=v(out)*2<THIN>tc1=0
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) *   2.0000000000e+00 _ _ _ tc1=0
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 5 or its substitute:
+      b1 e 0 v= v(out) *   2.0000000000e+00 _ _ _ tc1=0
+      unknown parameter (_)
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1), which also prints:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same messages as ngspice 47
+    vectors: (none)
+after the fix "Take it out" (space-character), which writes `B1 e 0 V=v(out)*2 tc1=0`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
+the character taken out (V=v(out)*2tc1=0):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (1.0000000000e+00)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (1.0000000000e+00)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
 ```
 
 PlainSpice's checks: `space-character`.
