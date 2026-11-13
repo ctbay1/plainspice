@@ -762,6 +762,11 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   the reason; for no analysis line, a link opened without running, Stop or a time-out, what to do, which
   was "in a moment" on fix-base too), and "in a moment" only while a run is on its way. The output panel
   says "The simulation could not run:" and why, as the Numbers panel and the alert do, for the netlist as
-  it is now. Tests: `tests/unit/app-run-copy.test.tsx` (the refused netlist's node card and output
-  panel; a node's card with no analysis line and on a link not run; both fail on c520a49).
+  it is now. Not taken: leaving the output panel's "Nothing yet: ngspice has not run this circuit.", true
+  of a netlist ngspice never got (its skeptic's view), whose "yet" promises a run that does not come
+  until the netlist changes. Tests: `tests/unit/app-run-copy.test.tsx` (the refused netlist's node card
+  and output panel; a node's card with no analysis line and on a link not run; both fail on c520a49).
+  In the built site (1280 × 800, the reviewer's link): the node card's voltage row reads the reason
+  (c520a49: "No voltage yet: ngspice runs the circuit in a moment."); on an iPhone SE at 150 % text the
+  card's sheet scrolls it whole into view, with no sideways scroll.
 
