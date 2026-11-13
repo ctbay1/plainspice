@@ -23,7 +23,9 @@
  *   gives no results or crashes. So PlainSpice does not give ngspice a netlist with such a name
  *   (`notRun`, with the line and why): the student shortens it. No real netlist comes near these
  *   lengths; a link can. A circuit built with `circbyline` commands is checked the same way, once
- *   (limit-12, limit-16).
+ *   (limit-12, limit-16). The netlist is read as ngspice reads it: the lines after `.end` are part of
+ *   the circuit, and every line ngspice runs as a command (a `.control` block's, a `*#` line anywhere,
+ *   limit-18) is checked with its words as ngspice's control reader makes them (limit-19).
  *
  * The ngspice output tab lists what PlainSpice added and changed (`added`, `notes`).
  */
