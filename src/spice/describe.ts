@@ -1678,8 +1678,8 @@ export function shownSweep(netlist: Netlist, results: AnalysisResults): Sweep | 
  * First, the currents that are real, which are never noise:
  * - a current of at least 1 pA (abstol); a current source's (I, or B with I=): its own value;
  * - a resistor with a real voltage across it (at least 1 µV and more than rounding), a G that reads one;
- * - an F that copies a real current, and the current a real F copies; the current an H reads when its
- *   two ends are shown at voltages that are not alike (it makes them from that current);
+ * - an F that copies a real current; the current an H reads when its two ends are shown at voltages
+ *   that are not alike (it makes them from that current);
  * - a part at a node with a part whose current ngspice does not give by name (a diode with a third
  *   node, a transistor, a subcircuit, a switch): it may carry that part's current;
  * - Kirchhoff's current law: where the real currents at a node do not add up to 0 (by more than
@@ -1699,13 +1699,14 @@ export function shownSweep(netlist: Netlist, results: AnalysisResults): Sweep | 
  * up to 0 (to KCL_ROUNDING of the largest), every 0 written there gets ngspice's number back, and so on
  * from node to node (an F that copies a 0 into loads ngspice gives attoamps: S3). And a controlled
  * source's: a value it makes is shown beside the value it makes it from. An F whose current is shown
- * copies a current that is shown; an E whose two ends are shown at voltages that are not alike, or a G
- * whose current is shown, reads a voltage that is not 0, so its two control nodes are not in one group of
- * nodes joined by resistors written as 0: each 0 of such a group gets its number back (an E of 1e6
- * reading the balanced bridge of C9 makes out −931.3 pV from the voltage across R5, so R5 keeps
- * ngspice's 8.882e-19 A, not 0 A with "its two ends at the same voltage"). Each number given back can
- * unbalance a node, and each node balanced again can give a source its number back: until nothing
- * changes. A chain of controlled sources (an E reading what another E makes), and a source whose value
+ * copies a current that is shown, and each F that copies a current given back gets its number too (an
+ * F of 1 beside an F of 1000, both reading one ammeter); an E whose two ends are shown at voltages that
+ * are not alike, or a G whose current is shown, reads a voltage that is not 0, so its two control nodes
+ * are not in one group of nodes joined by resistors written as 0: each 0 of such a group gets its number
+ * back (an E of 1e6 reading the balanced bridge of C9 makes out −931.3 pV from the voltage across R5, so
+ * R5 keeps ngspice's 8.882e-19 A, not 0 A with "its two ends at the same voltage"). Each number given
+ * back can unbalance a node, and each node balanced again can give a source its number back: until
+ * nothing changes. A chain of controlled sources (an E reading what another E makes), and a source whose value
  * is an expression (value=, a B source), are not followed. Such a rule can still write a real current
  * smaller than ngspice's rounding as 0 (C9l): a resistor whose ends are 4 units in the last place apart
  * can carry one; decision 0015 says how often that was measured.
@@ -1792,11 +1793,9 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
         b.open -= 1;
         toCheck.push(node);
       }
-      // An F copies its control's current: a real current copied is real, and the current a real F copies is real.
+      // An F copies its control's current: a real current copied is real (the current a real F copies is
+      // given back in step 3, with every F that copies it).
       for (const r of readers.get(el.key) ?? []) if (r.letter === 'F' && amps.get(r.key)) stack.push(r);
-      const control = el.letter === 'F' ? controlOf(el) : undefined;
-      const read = control === undefined ? undefined : byKey.get(control);
-      if (read && amps.get(read.key)) stack.push(read);
     }
   };
   const realVoltage = (x: NodeRef | undefined, y: NodeRef | undefined): boolean => {
@@ -1927,13 +1926,19 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   // again only when a 0 at it has changed since (a node can be queued once for each of its parts).
   const changes = new Map<string, number>();
   const lookedAt = new Map<string, number>();
-  /** Gives a 0 written for a part its number back, and balances its nodes again (not `from`, being balanced). */
+  /**
+   * Gives a 0 written for a part its number back, and balances its nodes again (not `from`, being balanced).
+   * An F that copies the current given back gets its number too: a 0 written for it ("copies a current that
+   * is 0") beside the current it copies, shown, broke its equation on the page (an F of 1 into a 0 V
+   * ammeter, reading the Vm that an F of 1000 beside it had given back).
+   */
   const giveBack = (key: string, from?: string): boolean => {
     if (!out.currents.delete(key)) return false;
     for (const node of ends.get(key) ?? []) {
       changes.set(node, (changes.get(node) ?? 0) + 1);
       if (node !== from && counted(node)) toBalance.push(node);
     }
+    for (const r of readers.get(key) ?? []) if (r.letter === 'F') giveBack(r.key);
     return true;
   };
   /**

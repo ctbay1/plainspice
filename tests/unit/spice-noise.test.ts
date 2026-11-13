@@ -795,6 +795,25 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect([f.by, noise(f.words)]).toEqual(['rule', ['R5', 'Vm', 'F1', 'Vo']]);
   });
 
+  it('the rule for other circuits gives an F its number back with the current it copies: F1 of 1000 gets Vm back through its two loads, so F2 of 1, reading the same Vm into a 0 V ammeter, shows 1 × 193.5 aA, not "copies a current that is 0" beside it', async () => {
+    const bridge = ['V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0'];
+    const { words, by } = await solved(lines(...bridge, 'F1 0 out Vm 1000', 'R6 out 0 1k', 'R7 out 0 1k', 'F2 0 y Vm 1', 'Vx y 0 0', '.options savecurrents', RULE));
+    expect([by, current(words, 'Vm'), current(words, 'F1'), current(words, 'F2'), current(words, 'Vx'), noise(words), note(words)]).toEqual([
+      'rule',
+      'Vm measures 193.5 aA flowing from node b to node m',
+      '193.5 fA from node out to ground through F1',
+      '193.5 aA from node y to ground through F2',
+      'Vx measures 193.5 aA flowing from ground to node y',
+      [],
+      undefined,
+    ]);
+    // An F that copies a real current is real, however tiny: 1e-17 × Vm's 1 mA is 1e-20 A, from top into y and back
+    // through R2, whose two ends ngspice gives a step apart (9.000000000000002 V against 9 V). Taken as noise, R2's 0
+    // would leave F2 the only current at y, and the rule would write F2's real 1e-20 A as 0 A.
+    const tiny = await solved(lines('V1 top 0 9', 'Vm top q 0', 'R1 q 0 9k', 'F2 top y Vm 1e-17', 'R2 y top 1k', '.options savecurrents', RULE));
+    expect([tiny.by, current(tiny.words, 'F2'), noise(tiny.words), note(tiny.words)]).toEqual(['rule', '1e-20 A from node top to node y through F2', [], undefined]);
+  });
+
   it('the rule gives a group of 0s back with one look at it: 10,000 resistors of 1 TΩ between the two nodes an E reads, each with its two ends a step apart, all get their numbers back in well under 200 ms (one path at a time, each node balanced again for each of its parts, took 16 s)', async () => {
     const body = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', ...Array.from({ length: 10_000 }, (_, k) => `R${k}x a b 1t`), 'Rl out 0 100', RULE];
     const text = lines(...body, 'E1 out 0 a b 1e6');
