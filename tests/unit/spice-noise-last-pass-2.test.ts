@@ -150,17 +150,29 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
     expect(shownSweep(r.netlist, r.results)).toBe(r.results.dc);
   });
 
-  it('the .tf beside an .op the rule decides, a slope it cannot decide, gets the note that it may be rounding noise when it is less than a billionth of its output per volt of its input: v(a,b)/V1 = −5.551e-17 V/V beside R5\'s two ends at one voltage (it was drawn with nothing said); a ratio of 0.5 gets none', async () => {
+  it('the .tf beside an .op the rule decides, a slope it cannot decide, gets the note that it may be rounding noise where the .op shows its output as 0 and it is less than a billionth of its input\'s own response: v(a,b)/V1 = −5.551e-17 V/V beside R5\'s two ends at one voltage (it was drawn with nothing said); a ratio of 0.5, of 3.6 V/A from a source of 1 aA, or a ladder\'s far node gets none', async () => {
     const r = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.options savecurrents', '.op', '.tf v(a,b) V1'), ngspice);
     const tf = r.words.tf!.transferFunction!;
-    expect([by(r), sp(tf.text), tf.maybe, tf.noise]).toEqual(['rule', 'v(a,b)/V1 = −5.551e-17 (V/V)', true, undefined]);
+    expect([by(r), sp(tf.text), tf.maybe, tf.noise]).toEqual(['rule', 'v(a,b)/V1 = −5.551e-17 (V/V)', 'zero', undefined]);
     const note = r.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')!;
     expect([note.code, note.severity, sp(note.why)]).toEqual([
       'maybe-noise',
       'note',
-      "ngspice gave v(a,b)/V1 = -5.551115e-17. That is less than a billionth of the voltages at node a and node b for each volt of V1 in the operating point, so it may be rounding noise, what ngspice's arithmetic leaves of a ratio that is exactly 0, or a real ratio that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows it as ngspice gives it.",
+      "ngspice gave v(a,b)/V1 = -5.551115e-17. In the operating point node a and node b are at the same voltage, and this ratio is less than a billionth of a volt for each volt of V1, so it may be rounding noise, what ngspice's arithmetic leaves of a ratio that is exactly 0, or a real ratio that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows it as ngspice gives it.",
     ]);
     const half = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.op', '.tf v(a) V1'), ngspice);
     expect([sp(half.words.tf!.transferFunction!.text), half.words.tf!.transferFunction!.maybe, half.words.warnings.some((m) => m.code === 'maybe-noise')]).toEqual(['v(a)/V1 = 0.5 (V/V)', undefined, false]);
+    // Its own input resistance, 3.6 Ω, is the scale of a ratio in V/A: the .op's 3.6 aV for 1 aA says nothing of it.
+    const small = await solveText(netlist('I1 0 a 1A', 'R1 a 0 3.6', 'Q1 a x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.op', '.tf v(a) I1'), ngspice);
+    expect([sp(small.words.tf!.transferFunction!.text), small.words.tf!.transferFunction!.maybe]).toEqual(['v(a)/I1 = 3.6 (V/A)', undefined]);
+    // An ammeter's current per volt is weighed by the current through the input for each of its volts.
+    const amm = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.op', '.tf i(Vm) V1'), ngspice);
+    expect(sp(amm.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')?.why)).toMatch(/^ngspice gave i\(Vm\)\/V1 = \S+\. In the operating point Vm measures no current, and this ratio is less than a billionth of the current through V1 for each of its volts \(156\.4 µA\), so it may be rounding noise/);
+    // A ladder's far node, real however small, is not 0 in the operating point: no note.
+    const ladder = ['V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'R9 n4 n5 1.5k', 'R10 n5 0 12', 'Q1 n0 x 0 qmod', 'Rx x 0 1meg', '.model qmod npn'];
+    const far = await solveText(netlist(...ladder, '.op', '.tf v(n5) V1'), ngspice);
+    const ratio = far.words.tf!.transferFunction!;
+    expect(Math.abs(ratio.value)).toBeLessThan(2 ** -30);
+    expect([ratio.maybe, far.words.warnings.some((m) => m.code === 'maybe-noise' && m.title.startsWith('The transfer function'))]).toEqual([undefined, false]);
   });
 });

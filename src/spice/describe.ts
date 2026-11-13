@@ -150,8 +150,11 @@ export interface QuantityWords {
   given?: number;
   /** The exact ratio, where ngspice's (`value`) is drawn with other digits and is more than ANSWER_GAP from it: a warning names both. */
   exact?: number;
-  /** True where PlainSpice has no exact ratio to judge ngspice's by and it is tiny beside its output: it may be rounding noise of a 0, as a note says. */
-  maybe?: true;
+  /**
+   * Where PlainSpice has no exact ratio to judge ngspice's by, and it is tiny beside an .op that shows its output as 0
+   * ('zero') or as values that may be rounding noise themselves ('unproven'): it may be rounding noise of a 0, as a note says.
+   */
+  maybe?: 'zero' | 'unproven';
 }
 
 export interface TransferFunctionWords {
@@ -692,9 +695,12 @@ export const DESCRIBE_STRINGS = {
     `ngspice gave ${tf} = ${value}. That is rounding noise, what its arithmetic leaves of a ratio that is 0: ${output} does not change when ${input} changes. Solved exactly, with fractions, from the netlist's values, the circuit makes the ratio exactly 0, so PlainSpice shows 0 ${ratio}.`,
   // A .tf ratio with no exact ratio to judge it by, tiny beside its output in the .op (ruleRatio): it may be rounding noise.
   maybeTfTitle: 'The transfer function may be rounding noise',
-  /** `output`: "the voltages at node a and node b", "the currents at the ends of Vm"; `per`: "volt of V1", "amp of I1". */
-  maybeTfWhy: (tf: string, value: string, output: string, per: string): string =>
-    `ngspice gave ${tf} = ${value}. That is less than a billionth of ${output} for each ${per} in the operating point, so it may be rounding noise, what ngspice's arithmetic leaves of a ratio that is exactly 0, or a real ratio that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows it as ngspice gives it.`,
+  /**
+   * `op`: what the operating point shows of the output, "node a and node b are at the same voltage", "Vm measures no
+   * current"; `self`: the input's own response, "a volt for each volt of V1", "the current through V1 for each of its volts (243.3 µA)".
+   */
+  maybeTfWhy: (tf: string, value: string, op: string, self: string): string =>
+    `ngspice gave ${tf} = ${value}. In the operating point ${op}, and this ratio is less than a billionth of ${self}, so it may be rounding noise, what ngspice's arithmetic leaves of a ratio that is exactly 0, or a real ratio that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows it as ngspice gives it.`,
   // C9n, C9w.10: a real .tf ratio ngspice gave as exactly 0, shown exactly; one drawn with other digits, with a warning.
   lostTfTitle: 'The transfer function is not 0, though ngspice gave 0',
   lostTfWhy: (tf: string, value: string): string =>
@@ -2093,8 +2099,8 @@ interface TransferCheck {
   lost?: number;
   /** The exact ratio, where ngspice's is drawn with other digits and is more than ANSWER_GAP from it: ngspice's is shown, with a warning. */
   off?: number;
-  /** With no exact ratio: ngspice's, tiny beside its output in the .op, may be rounding noise of a 0 (ruleRatio). */
-  maybe?: true;
+  /** With no exact ratio: ngspice's, tiny, beside an .op that shows its output as 0 or as maybe rounding noise itself (ruleRatio). */
+  maybe?: 'zero' | 'unproven';
 }
 
 /**
@@ -2184,37 +2190,31 @@ interface LostPoints {
 
 /**
  * A .tf ratio with no exact ratio to judge it by (the rule decides the .op beside it, or a diode's conductance sets the
- * ratio): one less than RESIDUAL_SHARE of its output's size in the .op for each volt or amp of its input there (the
- * voltages at the output's nodes, or the largest current at the output part's nodes) is what ngspice's arithmetic leaves of
- * a ratio that is 0, or a real ratio that small, and a note says it may be either (the critic of the last pass's fixes:
- * "v(a,b)/V1 = −5.551e-17 (V/V)" beside R5's two ends "at the same voltage", with nothing said). Undefined for any other
- * ratio, and with no .op, or an input at 0 there, to weigh it by.
+ * ratio), beside an .op that shows its output as 0 (its two nodes at one voltage, its one node at ground's, its
+ * ammeter's current as none): there it may be rounding noise of a ratio that is 0, or a real one that small, where it is
+ * less than RESIDUAL_SHARE of its input's own response in the output's unit (1 V for a volt in, the current through the
+ * input for each of its volts, the voltage across it for each of its amps), which the solution ngspice works the ratio
+ * out of holds; a note says so (the critic of the last pass's fixes: "v(a,b)/V1 = −5.551e-17 (V/V)" beside R5's two ends
+ * "at the same voltage", with nothing said). Undefined for any other ratio: a ladder's far node, real however small, is
+ * not 0 in the .op.
  */
 function ruleRatio(netlist: Netlist, results: AnalysisResults, reading: Extract<AnalysisReading, { kind: 'tf' }>, given: number): TransferCheck | undefined {
-  const op = results.op;
-  const input = reading.input ? partsOf(netlist).byKey.get(netlistPart(netlist, reading.input.text))?.element : undefined;
-  if (!op || given === 0 || !input) return undefined;
-  const volts = voltages(netlist, results);
-  const amps = new Map(op.currents.map((c) => [netlistPart(netlist, c.element), Math.abs(c.value)]));
-  const at = (ref: NodeRef | undefined): number | undefined => (ref ? volts.get(nodeName(ref)) : undefined);
-  // The input's level in the .op, by ngspice's own numbers: a voltage source's voltage, a current source's current.
-  const [p, n] = input.nodes;
-  const level = input.letter === 'V' ? Math.abs((at(p) ?? Number.NaN) - (at(n) ?? Number.NaN)) : input.letter === 'I' ? (amps.get(input.key) ?? Number.NaN) : Number.NaN;
-  let size: number;
+  const rin = results.tf?.inputImpedance?.value;
+  const voltsIn = reading.inputKind !== 'current';
+  const self = voltsIn === (reading.outputKind === 'voltage') ? 1 : rin === undefined || !(rin > 0) || !Number.isFinite(rin) ? Number.NaN : voltsIn ? 1 / rin : rin;
+  if (!results.op || !(self > 0) || !Number.isFinite(self) || given === 0 || Math.abs(given) > RESIDUAL_SHARE * self) return undefined;
+  const noisy = noiseOf(netlist, results);
   if (reading.outputKind === 'voltage') {
-    size = reading.outputNodes.reduce((m, ref) => m + Math.abs(ref.ground ? 0 : (volts.get(nodeName(ref)) ?? Number.NaN)), 0);
-  } else {
-    const part = partsOf(netlist).byKey.get(netlistPart(netlist, reading.outputNames[0] ?? ''))?.element;
-    const ends = new Set((part?.nodes ?? []).slice(0, 2).map((ref) => nodeName(ref)).filter((x) => x !== '0'));
-    size = Number.NaN;
-    for (const line of partsOf(netlist).lines) {
-      const el = line.element!;
-      const a = amps.get(el.key);
-      if (a !== undefined && el.nodes.slice(0, 2).some((ref) => ends.has(nodeName(ref)))) size = Number.isNaN(size) ? a : Math.max(size, a);
-    }
+    const ends = reading.outputNodes.map((n) => nodeName(n));
+    const [a, b] = ends;
+    if (a !== undefined && sameLevel(noisy, a, b ?? '0')) return { maybe: 'zero' };
+    // Or the .op's own note says the output's voltages may be rounding noise.
+    return ends.every((n) => n === '0' || noisy.unproven?.nodes.has(n)) ? { maybe: 'unproven' } : undefined;
   }
-  if (!(level > 0) || !(size > 0) || !Number.isFinite(level) || !Number.isFinite(size) || Math.abs(given) > RESIDUAL_SHARE * (size / level)) return undefined;
-  return { maybe: true };
+  const key = netlistPart(netlist, reading.outputNames[0] ?? '');
+  const c = results.op.currents.find((x) => x.origin === 'branch' && netlistPart(netlist, x.element) === key);
+  if (c && (c.value === 0 ? !noisy.lostCurrents.has(key) : noisy.currents.has(key))) return { maybe: 'zero' };
+  return noisy.unproven?.currents.has(key) ? { maybe: 'unproven' } : undefined;
 }
 
 /** A .dc sweep in a circuit solved exactly: by series, the points where ngspice gave rounding noise of an exact 0, and those where it gave 0 for a real value. */
@@ -3717,7 +3717,7 @@ function tfOf(netlist: Netlist, results: AnalysisResults): TransferFunctionWords
     if (noise !== undefined) words.transferFunction.noise = noise;
     if (check?.lost !== undefined) words.transferFunction.given = tf.transferFunction;
     if (check?.off !== undefined) words.transferFunction.exact = check.off;
-    if (check?.maybe) words.transferFunction.maybe = true;
+    if (check?.maybe) words.transferFunction.maybe = check.maybe;
   }
   if (tf.inputImpedance) {
     const o = ohms(tf.inputImpedance.value);
@@ -4207,19 +4207,28 @@ function tfNoiseNote(netlist: Netlist, words: SummaryInput): MessageWords | unde
   return m;
 }
 
-/** The note for a .tf ratio PlainSpice has no exact ratio to judge by, tiny beside its output in the .op: it may be rounding noise (ruleRatio). */
+/** The note for a .tf ratio PlainSpice has no exact ratio to judge by, tiny beside its input's own response: it may be rounding noise (ruleRatio). */
 function tfMaybeNote(netlist: Netlist, words: SummaryInput): MessageWords | undefined {
   const tf = words.tf;
   const q = tf?.transferFunction;
+  if (!tf || !q?.maybe) return undefined;
+  const rin = tf.inputResistance?.value ?? Number.NaN;
+  const self =
+    tf.ratio === 'V/V' ? `a volt for each volt of ${tf.input}`
+    : tf.ratio === 'A/A' ? `an amp for each amp of ${tf.input}`
+    : tf.ratio === 'A/V' ? `the current through ${tf.input} for each of its volts (${formatSI(1 / rin, 'A')})`
+    : `the voltage across ${tf.input} for each of its amps (${formatSI(rin, 'V')})`;
+  // What the .op shows of the output (ruleRatio found it 0 there).
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
-  if (!tf || !q?.maybe || r?.kind !== 'tf') return undefined;
-  const nodes = r.outputNodes.filter((n) => !n.ground).map((n) => nodeIn(said(n.token.text)));
-  const output =
-    r.outputKind === 'current' ? `the currents at the ends of ${r.outputNames[0] ?? tf.output}` : nodes.length === 1 ? `the voltage at ${nodes[0]}` : `the voltages at ${listWords(nodes)}`;
-  const per = `${r.inputKind === 'current' ? 'amp' : 'volt'} of ${tf.input}`;
-  const m: MessageWords = { code: 'maybe-noise', severity: 'note', title: S.maybeTfTitle, why: S.maybeTfWhy(`${tf.output}/${tf.input}`, formatLikeNgspice(q.value), output, per) };
-  m.line = line! + 1;
+  const nodes = r?.kind === 'tf' && r.outputKind === 'voltage' ? r.outputNodes.filter((n) => !n.ground).map((n) => nodeIn(said(n.token.text))) : [];
+  const meter = r?.kind === 'tf' && r.outputKind === 'current' ? partsOf(netlist).byKey.get(netlistPart(netlist, r.outputNames[0] ?? ''))?.element : undefined;
+  const op =
+    q.maybe === 'unproven'
+      ? meter ? `${meter.name.text}'s current may itself be rounding noise` : `the ${nodes.length === 1 ? 'voltage' : 'voltages'} at ${listWords(nodes.length ? nodes : [tf.output])} may themselves be rounding noise`
+      : meter ? (isAmmeter(meter) ? S.measuresNothing(meter.name.text) : `${meter.name.text} carries no current`) : nodes.length === 2 ? `${nodes[0]} and ${nodes[1]} are at the same voltage` : `${nodes[0] ?? tf.output} is at 0 V, ground's voltage`;
+  const m: MessageWords = { code: 'maybe-noise', severity: 'note', title: S.maybeTfTitle, why: S.maybeTfWhy(`${tf.output}/${tf.input}`, formatLikeNgspice(q.value), op, self) };
+  if (line !== undefined) m.line = line + 1;
   return m;
 }
 
