@@ -769,4 +769,19 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   In the built site (1280 × 800, the reviewer's link): the node card's voltage row reads the reason
   (c520a49: "No voltage yet: ngspice runs the circuit in a moment."); on an iPhone SE at 150 % text the
   card's sheet scrolls it whole into view, with no sideways scroll.
+- **Run says why while live runs are paused too** (the critic of the first fixes, CR1-1). Live runs pause
+  for a link opened without running, a netlist that asks for very many points, a slow run, Stop and a
+  time-out, and the status line gave the pause's words ("Not run yet · This link opens without running:
+  press Run (Ctrl+Enter) to run it.") before it looked at how the last run went. So Run on a refused
+  netlist gave the alert, but the status line, and with it a node's card and a part's card (above), said
+  "press Run" right after Run. While live runs are paused a change runs nothing, so a run of the text as
+  it is now that failed, or found no analysis line, came from Run: the status line now says it as when
+  live runs are on ("PlainSpice did not run it" and why, "ngspice could not run" and why, "Nothing to run
+  yet · Add an analysis line…"), and the cards follow. A text changed since keeps the pause's words. Not
+  taken: lifting a link's pause after a Run that fails, as after one that finishes quickly: a change
+  typed while that Run ran would then not run, and the status line would give the failure of the text
+  before it (`live.ts` keeps no text typed during a pause). Tests: `tests/unit/app-words.test.ts` (each
+  of the five pauses with a refused netlist, an engine that stopped and no analysis line; a changed text
+  keeps the pause's words), `tests/unit/app-run-copy.test.tsx` (Run on a link opened without running: the
+  status line, the node card and R1's card give the reason); both fail on a0fcb61.
 

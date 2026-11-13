@@ -190,6 +190,27 @@ describe('a node card and the ngspice output panel say why there are no numbers,
     expect(output.textContent).not.toContain('Nothing yet');
   }, 30_000);
 
+  // The first fix and c520a49: after Run on a link opened without running, the status line, the node card and R1's
+  // card kept "This link opens without running: press Run (Ctrl+Enter) to run it.", while the alert said why it did
+  // not run. A change runs nothing while live runs are paused, so the failure of the text as it is now came from Run.
+  it('Run on a link opened without running, of a netlist PlainSpice does not run: the status line, the node card and R1’s card give the reason (the last pass’s critic, CR1-1)', async () => {
+    const runs: string[] = [];
+    const engine: Engine = { warmUp: async () => (await ngspice, 1), run: async (netlist) => (runs.push(netlist), (await ngspice).run(netlist)), cancel: () => undefined };
+    render(<App startup={{ source: 'share', netlist: '* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n', run: false }} engine={engine} serviceWorker={false} />);
+    await waitFor(() => expect(statusLine()).toContain('Not run yet'), { timeout: 15000 });
+    const why = RUN_COPY_WORDS.noClose(4, 'v(');
+    fireEvent.click(runButton());
+    await waitFor(() => expect(document.querySelector('.status__main')?.textContent).toBe('PlainSpice did not run it'), { timeout: 5000 });
+    expect(statusLine()).toContain(why);
+    expect(statusLine()).not.toContain('press Run');
+    fireEvent.click(screen.getByRole('button', { name: 'Node a' }));
+    await waitFor(() => expect(noVoltage()).toBe(why));
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /^R1, / }));
+    await waitFor(() => expect(document.querySelector('.index-card__note')?.textContent).toBe(why));
+    expect(runs).toEqual([]);
+  }, 30_000);
+
   // The same sentence came for every netlist that does not run without Run (fix-base too): the node card
   // now says what the status line and a part's card say.
   it('no analysis line, and a link opened without running: the node card says what to do, not "in a moment"', async () => {

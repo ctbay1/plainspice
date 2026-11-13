@@ -36,6 +36,9 @@ const seconds = (ms: number): string => (ms / 1000).toLocaleString('en-US', { ma
 /** How to run, in the device's words: "press Run (Ctrl+Enter)" on a computer, "tap Run" on a phone. */
 export const pressRun = (phone: boolean): string => (phone ? t('pressRunPhone') : t('pressRunDesk'));
 
+/** A run that failed, and why. A netlist PlainSpice did not give ngspice is no failure of ngspice's (its reason says why). */
+const failedWords = (o: { reason: string; refused?: boolean }): StatusWords => ({ main: t(o.refused ? 'statusRefused' : 'statusRunFailed'), detail: o.reason, tone: 'bad' });
+
 /** The word the Numbers panel's banner uses for a run whose numbers are not answers. */
 function notAnswersWord(r: RunRecord): string {
   if (r.status === 'check' || r.status === 'unreliable') return t('statusUnreliable');
@@ -56,6 +59,12 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
   if (live.running) return { main: t('statusSolving'), tone: 'busy' };
   const o = live.outcome;
   const p = live.paused;
+  // A change runs nothing while live runs are paused, so a run of the text as it is now that did not run
+  // (no analysis line, or it failed) came from Run: it says why, not "press Run" again (CR1-1).
+  if (o.kind === 'nothing' && o.text === text) {
+    return { main: t('noAnalysisTitle'), detail: parts ? t('statusNothingDetail') : t('statusNoParts'), tone: 'paused' };
+  }
+  if (p && o.kind === 'failed' && o.text === text) return failedWords(o);
   if (p) {
     // Only when there are old numbers to see: the last run gave answers and the drawing still shows
     // some of them, in pencil. A run that gave none, or a circuit whose names are all new, leaves none to warn of.
@@ -73,9 +82,6 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
         return { main: t('statusTimedOut', { seconds: p.seconds }), detail: `${t('statusPausedStopped', { run })}${old}`, tone: 'paused' };
     }
   }
-  if (o.kind === 'nothing' && o.text === text) {
-    return { main: t('noAnalysisTitle'), detail: parts ? t('statusNothingDetail') : t('statusNoParts'), tone: 'paused' };
-  }
   if (live.waiting || (o.kind === 'done' && o.text !== text) || (o.kind === 'none' && engine.status === 'ready')) {
     return engine.status === 'loading' ? { main: t('statusLoading'), detail: t('statusLoadingDetail'), tone: 'busy' } : { main: t('statusSolving'), tone: 'busy' };
   }
@@ -89,8 +95,7 @@ export function statusWords(engine: EngineStatus, live: LiveState<RunRecord>, te
     case 'timeout':
       return { main: t('statusTimedOut', { seconds: o.seconds }), detail: t('statusPausedStopped', { run }), tone: 'paused' };
     case 'failed':
-      // A netlist PlainSpice did not give ngspice is no failure of ngspice's (its reason says why).
-      return { main: t(o.refused ? 'statusRefused' : 'statusRunFailed'), detail: o.reason, tone: 'bad' };
+      return failedWords(o);
     case 'done': {
       const r = o.result;
       // ngspice's own time for the run, as the ngspice output panel says it (one number for one run).
