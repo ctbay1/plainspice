@@ -63,12 +63,30 @@ on a run's outcome whether Run asked for it):
   node voltages. The numbers are ngspice's, at the point facts A7 (`.dc V1 0 12 1` ends at 12 V) and
   A16 (a `.tran` ends at its stop time) give. Only the spoken summary changes: the Numbers panel's
   written summary keeps its words, beside the card that shows the last point.
+- **The last point is said as the operating point's nodes are: its first four values, then how many
+  more** (`DESCRIBE_STRINGS.summaryValues`, as `summaryNodes` says "and 1 more node"). The critic of
+  these fixes heard all 8 values of a six-stage RC ladder (`.tran 10u 2m`) after every change and every
+  Run, where a five-node `.op` said four and counted the rest: two rules for one thing. Now: "Simulation
+  finished: a transient to 2 milliseconds, 228 time points. At 2 milliseconds: the voltage at node in is
+  5 volts, the voltage at node n1 is 4.526 volts, the voltage at node n2 is 4.079 volts, the voltage at
+  node n3 is 3.686 volts and 4 more values." (native ngspice 47 and 42 alike: 228 points; at 2 ms v(n1)
+  = 4.525632, v(n2) = 4.078858, v(n3) = 3.685655). The results card, the Numbers panel and their words
+  for screen readers keep every value (`SweepWords.speech`); only the live region, said after each run,
+  is cut, and its first four are the ones the card lists first. Considered: only the values that changed
+  since the last announcement, which says a different set each time and nothing of the ones that stayed.
 
 Tests (`tests/unit/app-smoke.test.tsx`) count the paragraphs the polite region gets, as they come: a
 paragraph stays there for 10 s, so a check of the region's words passes on the one from before. Start
 here, then Run, then Ctrl+Enter: two more (none on the merged build); a comment typed: none. The DC
 sweep example with R2 changed to 1k: one more, with v(out) = 6 V (none on the merged build); then Run:
-one more.
+one more. The numbers the words do not say each have a test that fails without them (the critic of these
+fixes: the DC sweep's test passes on its words alone): R3 changed in a divider, only the currents moving
+(v(in) = 6 V and v(out) = 4 V either way, i(v1) −8 mA then −5 mA in native ngspice 47 and 42), and R6
+changed in a five-node circuit, only the fifth node moving (5 V then 7.5 V), are each said once in the
+same words, and silent without `resultsHeard`; Start here opened again from the menu is said again, and
+silent without the circuit opened in the key (`circuitKey`). `tests/unit/sweep-end.test.ts`: a sweep of
+six values says four and "2 more values", its words for the panel all six (all six said on the previous
+fix).
 
 In the browser (1280 × 800, every live region watched): Start here's Run, Ctrl+Enter with nothing and
 with R2 focused, Ctrl+K's "Run ngspice now" and Run twice after a change are each said once (b060bc8:
