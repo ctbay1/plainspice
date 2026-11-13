@@ -48,6 +48,8 @@ export interface BesideOptions {
    * side with room wins, however far along it). A note prefers the nearest free paper on any side.
    */
   sidePenalty?: number;
+  /** Only a place that covers nothing: none when every place covers something (the least is then not looked for). */
+  freeOnly?: boolean;
 }
 
 const width = (b: Box): number => b.x1 - b.x0;
@@ -55,6 +57,82 @@ const height = (b: Box): number => b.y1 - b.y0;
 const overlapArea = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
 const inside = (b: Box, area: Box): boolean => b.x0 >= area.x0 - 1e-9 && b.y0 >= area.y0 - 1e-9 && b.x1 <= area.x1 + 1e-9 && b.y1 <= area.y1 + 1e-9;
 export const moveBy = (b: Box, dx: number, dy: number): Box => ({ x0: b.x0 + dx, y0: b.y0 + dy, x1: b.x1 + dx, y1: b.y1 + dy });
+
+/**
+ * A room's boxes and wires filed by the squares of a grid (made once for a room, which is never
+ * changed once made): `covers` looks only at what is near a box.
+ */
+class Near {
+  private readonly size: number;
+  private readonly cells = new Map<number, number[]>();
+  /** What covers too many squares to file: looked at every time. */
+  private readonly big: number[] = [];
+
+  constructor(room: Room) {
+    this.size = Math.max(1e-6, Math.max(width(room.area), height(room.area)) / 64);
+    room.boxes.forEach((b, i) => this.file(b, i));
+    room.segments.forEach(([a, b], i) => this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i));
+  }
+
+  /** The squares a box covers (undefined: too many, or not finite). */
+  private squares(b: Box): { x0: number; x1: number; y0: number; y1: number } | undefined {
+    const q = { x0: Math.floor(b.x0 / this.size), x1: Math.floor(b.x1 / this.size), y0: Math.floor(b.y0 / this.size), y1: Math.floor(b.y1 / this.size) };
+    return (q.x1 - q.x0 + 1) * (q.y1 - q.y0 + 1) <= 4096 ? q : undefined;
+  }
+
+  private file(b: Box, id: number): void {
+    const q = this.squares(b);
+    if (!q) {
+      this.big.push(id);
+      return;
+    }
+    for (let x = q.x0; x <= q.x1; x++) for (let y = q.y0; y <= q.y1; y++) (this.cells.get(x * 65536 + y) ?? this.cells.set(x * 65536 + y, []).get(x * 65536 + y)!).push(id);
+  }
+
+  /** True when one of the room's boxes or wires is in the box's way (what coverCost counts). */
+  covers(box: Box, room: Room): boolean {
+    const hit = (id: number): boolean => {
+      if (id >= 0) return boxesOverlap(box, room.boxes[id]!);
+      const [a, b] = room.segments[-1 - id]!;
+      return segmentCrossesBox(a, b, box);
+    };
+    if (this.big.some(hit)) return true;
+    const q = this.squares(box);
+    if (!q) return room.boxes.some((_, i) => hit(i)) || room.segments.some((_, i) => hit(-1 - i));
+    for (let x = q.x0; x <= q.x1; x++) for (let y = q.y0; y <= q.y1; y++) if (this.cells.get(x * 65536 + y)?.some(hit)) return true;
+    return false;
+  }
+}
+
+const near = new WeakMap<Room, Near>();
+
+/** True when `box` covers something of the room (coverCost is not 0), looking only near it. */
+function covers(box: Box, room: Room): boolean {
+  for (const n of room.never ?? []) if (boxesOverlap(box, n)) return true;
+  let grid = near.get(room);
+  if (!grid) near.set(room, (grid = new Near(room)));
+  return grid.covers(box, room);
+}
+
+/**
+ * coverCost, summed in the same order, but stopping once the sum reaches `bound`: below `bound` it is
+ * coverCost; otherwise it is no less than `bound` (the parts summed, which never decrease the sum).
+ */
+function coverCostBelow(box: Box, room: Room, bound: number): number {
+  for (const n of room.never ?? []) if (boxesOverlap(box, n)) return Infinity;
+  let cost = 0;
+  for (const b of room.boxes) {
+    if (!boxesOverlap(box, b)) continue;
+    cost += 1 + overlapArea(box, b);
+    if (cost >= bound) return cost;
+  }
+  for (const [a, b] of room.segments) {
+    if (!segmentCrossesBox(a, b, box)) continue;
+    cost += 1;
+    if (cost >= bound) return cost;
+  }
+  return cost;
+}
 
 /** How much of the room's boxes and wires `box` covers (0: none; Infinity: a box it may never cover). */
 export function coverCost(box: Box, room: Room): number {
@@ -77,37 +155,90 @@ export function placeBeside(target: Box, w: number, h: number, room: Room, optio
   const reach = options.reach ?? Math.max(width(area), height(area));
   const cx = (target.x0 + target.x1) / 2;
   const cy = (target.y0 + target.y1) / 2;
-  const candidates: { box: Box; side: Side; rank: number; distance: number }[] = [];
-  sides.forEach((side, rank) => {
-    const along = side === 'above' || side === 'below';
-    // Away from the target (as near as the gap first), and along its side (its middle first).
-    const awaySteps = Math.max(0, Math.floor(reach / step));
-    const alongReach = along ? width(area) : height(area);
-    const alongSteps = Math.ceil(alongReach / step);
-    for (let a = 0; a <= awaySteps; a++) {
-      const away = gap + a * step;
-      for (let s = -alongSteps; s <= alongSteps; s++) {
-        const shift = s * step;
-        let box: Box;
-        if (side === 'above') box = { x0: cx - w / 2 + shift, y0: target.y0 - away - h, x1: cx + w / 2 + shift, y1: target.y0 - away };
-        else if (side === 'below') box = { x0: cx - w / 2 + shift, y0: target.y1 + away, x1: cx + w / 2 + shift, y1: target.y1 + away + h };
-        else if (side === 'right') box = { x0: target.x1 + away, y0: cy - h / 2 + shift, x1: target.x1 + away + w, y1: cy + h / 2 + shift };
-        else box = { x0: target.x0 - away - w, y0: cy - h / 2 + shift, x1: target.x0 - away, y1: cy + h / 2 + shift };
-        if (!inside(box, area)) continue;
-        candidates.push({ box, side, rank, distance: a * step + Math.abs(shift) });
-      }
-    }
-  });
-  if (!candidates.length) return undefined;
+  type Candidate = { box: Box; side: Side; rank: number; distance: number };
   // The first side with room wins, on it the nearest place; or, with a side penalty, the nearest place on any side.
   const pen = options.sidePenalty;
-  if (pen === undefined) candidates.sort((p, q) => p.rank - q.rank || p.distance - q.distance);
-  else candidates.sort((p, q) => p.distance + p.rank * pen - (q.distance + q.rank * pen));
+  const order = pen === undefined ? (p: Candidate, q: Candidate): number => p.rank - q.rank || p.distance - q.distance : (p: Candidate, q: Candidate): number => p.distance + p.rank * pen - (q.distance + q.rank * pen);
+  const keyOf = (distance: number, rank: number): number => (pen === undefined ? distance : distance + rank * pen);
+  // Away from the target (as near as the gap first), and along its side (its middle first).
+  const awaySteps = Math.max(0, Math.floor(reach / step));
+  const alongStepsOf = (side: Side): number => Math.ceil((side === 'above' || side === 'below' ? width(area) : height(area)) / step);
+  /**
+   * The places of the sides `ranks` whose order key is in (lo, hi], in the order they are made: side,
+   * then away, then along (from one end to the other). The key grows with the distance along, so the
+   * steps along that fall in the band are found by halving, not by making every place.
+   */
+  const band = (ranks: readonly number[], lo: number, hi: number): Candidate[] => {
+    const out: Candidate[] = [];
+    for (const rank of ranks) {
+      const side = sides[rank]!;
+      const alongSteps = alongStepsOf(side);
+      for (let a = 0; a <= awaySteps; a++) {
+        const away = gap + a * step;
+        const key = (s: number): number => keyOf(a * step + Math.abs(s * step), rank);
+        /** The first step along, from 0, whose key is above `k` (alongSteps + 1 when none is). */
+        const above = (k: number): number => {
+          let l = 0;
+          let r = alongSteps + 1;
+          while (l < r) {
+            const m = Math.floor((l + r) / 2);
+            if (key(m) > k) r = m;
+            else l = m + 1;
+          }
+          return l;
+        };
+        const first = above(lo);
+        const last = above(hi) - 1;
+        if (first > last) continue;
+        const add = (s: number): void => {
+          const shift = s * step;
+          let box: Box;
+          if (side === 'above') box = { x0: cx - w / 2 + shift, y0: target.y0 - away - h, x1: cx + w / 2 + shift, y1: target.y0 - away };
+          else if (side === 'below') box = { x0: cx - w / 2 + shift, y0: target.y1 + away, x1: cx + w / 2 + shift, y1: target.y1 + away + h };
+          else if (side === 'right') box = { x0: target.x1 + away, y0: cy - h / 2 + shift, x1: target.x1 + away + w, y1: cy + h / 2 + shift };
+          else box = { x0: target.x0 - away - w, y0: cy - h / 2 + shift, x1: target.x0 - away, y1: cy + h / 2 + shift };
+          if (inside(box, area)) out.push({ box, side, rank, distance: a * step + Math.abs(shift) });
+        };
+        for (let s = -last; s <= -Math.max(first, 1); s++) add(s);
+        for (let s = first; s <= last; s++) add(s);
+      }
+    }
+    return out;
+  };
+  // The places in order of their key, a band of keys at a time (each twice as wide as the one before),
+  // each band put in order as all the places were: the same order, but only the places up to the first
+  // free one are made and sorted. Making every place first grew with the paper, not with what is
+  // drawn: a note on a drawing that reaches ±2000 made and sorted three million places (second
+  // re-check). With no side penalty, each side's places come before the next side's.
+  const longest = awaySteps * step + Math.max(...sides.map(alongStepsOf)) * step;
+  const top = keyOf(longest, sides.length - 1) * (1 + 1e-9) + step;
+  const lazy = step > 0 && Number.isFinite(top);
+  const groups = pen === undefined ? sides.map((_, r) => [r]) : [sides.map((_, r) => r)];
+  const made: Candidate[][] = [];
+  for (const ranks of groups) {
+    let lo = -Infinity;
+    for (let hi = 8 * step; ; hi *= 2) {
+      const upTo = !lazy || hi >= top ? Infinity : hi;
+      const list = band(ranks, lo, upTo);
+      list.sort(order);
+      // The first place that covers nothing, found by looking near each place and stopping at the first
+      // thing it covers (on a drawing at the format's limits, summing each place's whole cover took two
+      // seconds a click; second re-check, P2).
+      for (const c of list) if (!covers(c.box, room)) return { box: c.box, side: c.side, cost: 0 };
+      if (!options.freeOnly) made.push(list);
+      if (upTo === Infinity) break;
+      lo = upTo;
+    }
+  }
+  if (options.freeOnly) return undefined;
+  // Only when every place covers something is each one's cover summed, for the least, each sum
+  // stopping once it is no less than the least so far.
   let best: Placement | undefined;
-  for (const c of candidates) {
-    const cost = coverCost(c.box, room);
-    if (cost === 0) return { box: c.box, side: c.side, cost };
-    if (!best || cost < best.cost) best = { box: c.box, side: c.side, cost };
+  for (const list of made) {
+    for (const c of list) {
+      const cost = coverCostBelow(c.box, room, best ? best.cost : Infinity);
+      if (!best || cost < best.cost) best = { box: c.box, side: c.side, cost };
+    }
   }
   return best && Number.isFinite(best.cost) ? best : undefined;
 }
@@ -165,6 +296,11 @@ export interface CardRequest {
   avoid?: readonly Box[];
   /** The drawing may be panned once to make room (default true); not when the reader (or an edit) holds the view. */
   pan?: boolean;
+  /**
+   * Only a place that covers nothing (the page docks the card otherwise): none when no place is free,
+   * instead of the one that covers least, which takes summing what every place tried covers.
+   */
+  freeOnly?: boolean;
 }
 
 export interface CardPlacement {
@@ -198,7 +334,7 @@ export function placeCard(req: CardRequest): CardPlacement | undefined {
     const room: Room = { ...drawingRoom(req.scene, view, req.area, req.avoid ?? []), never: [boxOnScreen(view, own)] };
     const target = boxOnScreen(view, own);
     // The nearest free place on any side; above or below is worth a little more than beside.
-    const p = placeBeside(target, req.width, req.height, room, { gap, sides: SIDES_BY_ROOM, step: 8, sidePenalty: SIDE_PENALTY });
+    const p = placeBeside(target, req.width, req.height, room, { gap, sides: SIDES_BY_ROOM, step: 8, sidePenalty: SIDE_PENALTY, ...(req.freeOnly ? { freeOnly: true } : {}) });
     if (!p) return undefined;
     const body = boxOnScreen(view, 'symbol' in placed ? placed.symbol : placed.body);
     const notch = notchFor(p.box, p.side, body);

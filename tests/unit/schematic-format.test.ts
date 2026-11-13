@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COORD_LIMIT,
   DRAWING_HEADER,
+  EDIT_STRINGS,
   MAX_DRAWING_LINES,
   MAX_WIRE_LENGTH,
   MAX_WIRE_POINTS,
@@ -17,6 +18,7 @@ import {
   buildSchematic,
   drawingBlockChanges,
   findOverlaps,
+  linesFit,
   parseDrawingLines,
   readDrawing,
   schematicConnectivity,
@@ -29,7 +31,7 @@ import {
 import { NOTEBOOK_OPTIONS } from '../../src/notebook/schematic.ts';
 import { TURN_LIMITS, turnedQuarter } from '../../src/notebook/turn.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
-import { groundRowsAndWave } from './schematic-hostile.ts';
+import { groundRowsAndWave, namedGrid, starAtOnePoint } from './schematic-hostile.ts';
 
 const DIVIDER = '* divider\nV1 in 0 6\nR1 in out 1k\nR2 out 0 2k\n.op\n.end\n';
 
@@ -456,6 +458,88 @@ describe('limits: wire over wire, slanted wire and long chains build quickly (se
     const again = buildSchematic(`${head.slice(0, head.indexOf('* plainspice-drawing'))}${written.join('\n')}\n.end\n`, NOTEBOOK_OPTIONS);
     expect(serializeDrawing(again.circuit, again.drawing)).toEqual(written);
     expect(written.some((l) => l.includes('18,6') || l.includes('29,7'))).toBe(false);
+  });
+});
+
+describe('limits: a drawing written is read to its end (the critic of the second re-check’s fixes, D7)', () => {
+  const HEAD = ['* divider', 'V1 in 0 6', 'R1 in out 1k', 'R2 out 0 2k', '.op', '* plainspice-drawing v1', '*@ V1 0 3 0 m', '*@ R1 4 0 270', '*@ R2 7 3 0'];
+  /** A k × k grid on ground's pin, every point joined: typed in 2k lines, read as about k² pieces. */
+  const grid = (k: number): string => {
+    const row = (j: number): string => `*@ wire ${Array.from({ length: k }, (_, i) => `${7 + i},${5 + j}`).join(' ')}`;
+    const column = (i: number): string => `*@ wire ${Array.from({ length: k }, (_, j) => `${7 + i},${5 + j}`).join(' ')}`;
+    return `${[...HEAD, ...Array.from({ length: k }, (_, j) => row(j)), ...Array.from({ length: k }, (_, i) => column(i)), '.end'].join('\n')}\n`;
+  };
+  /** Each grid unit of straight wire a drawing draws, as "x,y x,y". */
+  const units = (s: Schematic): Set<string> => {
+    const out = new Set<string>();
+    for (const w of s.drawing.wires) {
+      for (const [a, b] of segmentsOf(w)) {
+        const [dx, dy] = [Math.sign(b.x - a.x), Math.sign(b.y - a.y)];
+        if (dx && dy) continue;
+        for (let x = a.x, y = a.y; x !== b.x || y !== b.y; x += dx, y += dy) out.add([`${x},${y}`, `${x + dx},${y + dy}`].sort().join(' '));
+      }
+    }
+    return out;
+  };
+  const gridUnits = (k: number): string[] => {
+    const out: string[] = [];
+    for (let a = 0; a < k; a++) for (let b = 0; b + 1 < k; b++) out.push([`${7 + b},${5 + a}`, `${8 + b},${5 + a}`].sort().join(' '), [`${7 + a},${5 + b}`, `${7 + a},${6 + b}`].sort().join(' '));
+    return out;
+  };
+
+  it('writes the pieces of a joined grid chained when a line for each would be more than the format reads, and they read back as drawn', () => {
+    const text = grid(70);
+    const s = buildSchematic(text, NOTEBOOK_OPTIONS);
+    expect(s.drawing.wires.length).toBeGreaterThan(MAX_DRAWING_LINES);
+    const written = serializeDrawing(s.circuit, s.drawing);
+    expect(written.length - 1).toBeLessThanOrEqual(MAX_DRAWING_LINES);
+    expect(linesFit(written)).toBe(true);
+    const back = buildSchematic(applyChanges(text, drawingBlockChanges(s.netlist, written)), NOTEBOOK_OPTIONS);
+    expect(back.drawing.wires).toEqual(s.drawing.wires);
+    expect(back.scene.junctions).toEqual(s.scene.junctions);
+    expect(serializeDrawing(back.circuit, back.drawing)).toEqual(written);
+    // Pieces that fit are written one to a line, as always.
+    const small = buildSchematic(grid(5), NOTEBOOK_OPTIONS);
+    expect(serializeDrawing(small.circuit, small.drawing).filter((l) => l.startsWith('*@ wire '))).toEqual(small.drawing.wires.map((w) => `*@ wire ${w.map((p) => `${p.x},${p.y}`).join(' ')}`));
+  });
+
+  it('an edit on a joined 70 × 70 grid keeps every piece of it', { timeout: 60_000 }, () => {
+    // The lines were written a piece to a line, 4,770 of them: reading stopped at 2000, and the edit
+    // wrote the drawing of those, about 2,700 grid units of wire short.
+    const s = buildSchematic(grid(70), NOTEBOOK_OPTIONS);
+    for (const op of [{ kind: 'move-part', part: 'r1', to: { x: 4, y: -3 } }, { kind: 'rotate-part', part: 'r1' }] as const) {
+      const r = applyEdit(s, op, NOTEBOOK_OPTIONS);
+      expect(r.ok, op.kind).toBe(true);
+      const after = buildSchematic(r.text, NOTEBOOK_OPTIONS);
+      expect(after.problems.map((p) => p.kind)).not.toContain('too-many-lines');
+      const drawn = units(after);
+      expect(gridUnits(70).filter((u) => !drawn.has(u)), op.kind).toEqual([]);
+    }
+  });
+
+  it('an edit whose drawing would need more than the format reads is refused, never written in part', { timeout: 60_000 }, () => {
+    // 1990 ground symbols along ground's wire, a line each: 1998 lines with the parts, wires and
+    // names. A part added (its line and its two nodes' names) makes 2001: the last would not be read.
+    const grounds = (n: number): string =>
+      `${[...HEAD, `*@ wire 0,5 0,8 ${n + 10},8 ${n + 10},5 7,5`, ...Array.from({ length: n }, (_, i) => `*@ ground ${i + 10} 8 0`), '.end'].join('\n')}\n`;
+    const add = { kind: 'add-part', letter: 'R', at: { x: -20, y: -20 } } as const;
+    const full = buildSchematic(grounds(1990), NOTEBOOK_OPTIONS);
+    const refused = applyEdit(full, add, NOTEBOOK_OPTIONS);
+    expect(refused.ok).toBe(false);
+    expect(refused.reason).toBe(EDIT_STRINGS.tooBig);
+    expect(refused.text).toBe(full.netlist.text);
+    // Two symbols fewer, it fits, and is read to its end.
+    const room = buildSchematic(grounds(1988), NOTEBOOK_OPTIONS);
+    const made = applyEdit(room, add, NOTEBOOK_OPTIONS);
+    expect(made.ok).toBe(true);
+    expect(buildSchematic(made.text, NOTEBOOK_OPTIONS).problems.map((p) => p.kind)).not.toContain('too-many-lines');
+    // Wire: 60 parts between node 1 and ground at one point, beside a 99 × 99 grid named 1. The
+    // repairs' wires make 20,077 grid units, more than a reading takes: a part moved wrote the 2000
+    // lines read, and the grid was gone.
+    const star = buildSchematic(starAtOnePoint(60, namedGrid(99, '1')), NOTEBOOK_OPTIONS);
+    const moved = applyEdit(star, { kind: 'move-part', part: 'r2', to: { x: star.drawing.parts.get('r2')!.at.x, y: star.drawing.parts.get('r2')!.at.y - 3 } }, NOTEBOOK_OPTIONS);
+    expect(moved.ok).toBe(false);
+    expect(moved.reason).toBe(EDIT_STRINGS.tooBig);
   });
 });
 

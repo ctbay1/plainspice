@@ -100,7 +100,7 @@ import { elementInfo } from '../spice/elements.ts';
 import type { Fix, Trap } from '../spice/types.ts';
 import { AnnouncerProvider, useAnnounce } from './announcer.tsx';
 import { cardContent, noNumbersReason, onValueField, relatedOf, typeHint, type CardRun, type CardState } from './card.ts';
-import { keepDrawing, spotValue, valueSpot, withValue, writeValue, type ValueSpot } from './card-edit.ts';
+import { keepDrawing, schematicOf, spotValue, valueSpot, withValue, writeValue, type ValueSpot } from './card-edit.ts';
 import { ChecksPanel } from './components/ChecksPanel.tsx';
 import { CommandPalette, type Command } from './components/CommandPalette.tsx';
 import { ExplainPanel, type ExplainSelection } from './components/ExplainPanel.tsx';
@@ -464,7 +464,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const source = store.snapshot().last.source;
     if (source === 'editor' || source === 'fix') setFitCount((n) => n + 1);
   }, [partCount, store]);
-  const schematic = useMemo((): Schematic | undefined => (tooBig ? undefined : buildSchematic(netlist, NOTEBOOK_OPTIONS)), [netlist, tooBig]);
+  // A value typed on a card was built already, to keep its drawing (card-edit.ts, schematicOf).
+  const schematic = useMemo((): Schematic | undefined => (tooBig ? undefined : schematicOf(netlist)), [netlist, tooBig]);
   const title = titleOf(text);
   /** The netlist's first line as written (what Export names its file after). */
   const titleLine = text.split(/\r?\n/, 1)[0] ?? '';
@@ -1744,8 +1745,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     }
     placedFor.current = what;
     const p = card
-      ? placeCard({ scene: shown.scene, part: card.key, view: base, area, width: cardWidth, height: cardH, pan })
-      : placeCard({ scene: shown.scene, part: '', target: cardTarget, view: base, area, width: cardWidth, height: cardH, pan });
+      ? placeCard({ scene: shown.scene, part: card.key, view: base, area, width: cardWidth, height: cardH, pan, freeOnly: true })
+      : placeCard({ scene: shown.scene, part: '', target: cardTarget, view: base, area, width: cardWidth, height: cardH, pan, freeOnly: true });
     if (!p || p.cost > 0) {
       setPlacement(undefined);
       setDockedSession(openSession);
@@ -1856,7 +1857,7 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     const part = firstScreenInvite;
     const room = drawingRoom(shown.scene, viewInfo.view, area);
     const target = boxOnScreen(viewInfo.view, unionBoxes([part.box, part.labelBox])!);
-    const p = placeBeside(target, noteRect.width + 8, noteRect.height + 8, room, { gap: 30, sides: ['above', 'right', 'left', 'below'], step: 8 });
+    const p = placeBeside(target, noteRect.width + 8, noteRect.height + 8, room, { gap: 30, sides: ['above', 'right', 'left', 'below'], step: 8, freeOnly: true });
     if (!p || p.cost > 0) return undefined;
     const box = { x0: p.box.x0 + 4, y0: p.box.y0 + 4, x1: p.box.x1 - 4, y1: p.box.y1 - 4 };
     const name = part.labels.find((l) => l.role === 'name');

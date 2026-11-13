@@ -173,6 +173,43 @@ export function segmentCrossesBox(a: Point, b: Point, box: Box): boolean {
   return boxContains(box, mid);
 }
 
+/**
+ * The squares of a grid of side `size` that the segment a–b runs through, each once, numbered
+ * x * 65536 + y as the indexes of the drawing number them (undefined when an end is not finite). A
+ * straight segment's squares are those of its box. A slanted one is filed where it runs, one column
+ * of squares at a time, not in every square of the box round it: a long slanted piece's box covers
+ * hundreds of squares the piece never touches, so filing it there (or, past a limit, checking it on
+ * every look) made each look near any of them check it (second re-check, P3: 159 long slanted pieces
+ * far from the parts were checked 167,000 times each). A square the segment only touches at an edge
+ * or a corner is included, so every square holding a point of the segment is.
+ */
+export function squaresAlong(a: Point, b: Point, size: number): number[] | undefined {
+  if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return undefined;
+  const out: number[] = [];
+  const x0 = Math.floor(Math.min(a.x, b.x) / size);
+  const x1 = Math.floor(Math.max(a.x, b.x) / size);
+  if (a.x === b.x || a.y === b.y) {
+    const y0 = Math.floor(Math.min(a.y, b.y) / size);
+    const y1 = Math.floor(Math.max(a.y, b.y) / size);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push(x * 65536 + y);
+    return out;
+  }
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lo = Math.min(a.x, b.x);
+  const hi = Math.max(a.x, b.x);
+  for (let x = x0; x <= x1; x++) {
+    // The part of the segment over this column (its edges included): where it enters and leaves.
+    const ya = a.y + ((Math.max(lo, x * size) - a.x) / dx) * dy;
+    const yb = a.y + ((Math.min(hi, (x + 1) * size) - a.x) / dx) * dy;
+    // A hair more on each side, so a point on a square's edge is not lost to rounding.
+    const y0 = Math.floor(Math.min(ya, yb) / size - 1e-9);
+    const y1 = Math.floor(Math.max(ya, yb) / size + 1e-9);
+    for (let y = y0; y <= y1; y++) out.push(x * 65536 + y);
+  }
+  return out;
+}
+
 /** Splits a polyline into its segments (zero-length ones dropped). */
 export function segmentsOf(points: readonly Point[]): [Point, Point][] {
   const out: [Point, Point][] = [];

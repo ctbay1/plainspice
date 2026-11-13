@@ -24,9 +24,9 @@
  */
 import type { Circuit, CircuitPart } from './circuit.ts';
 import { GROUND } from './circuit.ts';
-import { SegmentIndex } from './connectivity.ts';
-import { emptyDrawing, symbolGeometry, type Drawing } from './drawing.ts';
-import { DIRECTION_VECTORS, boxContains, boxesOverlap, inflate, pointKey, pt, segmentCrossesBox, segmentsOf, type Box, type Point, type Rotation } from './geometry.ts';
+import { SegmentIndex, pointId } from './connectivity.ts';
+import { emptyDrawing, symbolGeometry, type Drawing, type LabelSide } from './drawing.ts';
+import { DIRECTION_VECTORS, boxContains, boxesOverlap, inflate, pt, segmentCrossesBox, segmentsOf, squaresAlong, type Box, type Point, type Rotation } from './geometry.ts';
 import { buildScene, defaultSide, findOverlaps, partLabelLines, partLabelSpecs, resultRoomOf, type Scene, type SceneItem, type SceneOptions } from './scene.ts';
 import { isIndependentSource } from './symbols.ts';
 import { TEXT, defaultMeasure, type Measure } from './text.ts';
@@ -807,44 +807,107 @@ function copperPoints(scene: Scene): Map<string, Point[]> {
   return out;
 }
 
-/** Boxes and segments found by the grid cells they cover, so a check looks only near the candidate. */
+/**
+ * Boxes and segments found by the grid cells they cover, so a check looks only near the candidate.
+ * Cells are numbered, and each check marks what it has looked at with its own number, so a check
+ * makes no Set and no text keys (a part is tried at a few thousand places; second re-check, P3). A
+ * segment is filed in the cells it runs through (squaresAlong): a long slanted one is not filed in
+ * every cell of its box, nor checked by every look (159 of them far from the parts were checked
+ * 167,000 times each: the second re-check's critic). A box covering more than MAX_BUCKET_CELLS cells
+ * is filed in none and checked by every look instead.
+ */
 class Buckets {
-  private readonly cells = new Map<string, number[]>();
+  private readonly cells = new Map<number, number[]>();
+  private readonly big: number[] = [];
   readonly boxes: Box[] = [];
   readonly segments: [Point, Point][] = [];
   private static readonly SIZE = 4;
+  /** Boxes taken away again (a part leaving its place): no longer in the way. */
+  private readonly gone = new Set<number>();
+  private boxSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private segmentSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private looks = 0;
 
-  private keys(b: Box): string[] {
-    const k: string[] = [];
+  /** Files an id under the cells a box covers (or as big). */
+  private file(b: Box, id: number): void {
     const s = Buckets.SIZE;
-    for (let x = Math.floor(b.x0 / s); x <= Math.floor(b.x1 / s); x++) for (let y = Math.floor(b.y0 / s); y <= Math.floor(b.y1 / s); y++) k.push(`${x},${y}`);
-    return k;
+    const x0 = Math.floor(b.x0 / s);
+    const x1 = Math.floor(b.x1 / s);
+    const y0 = Math.floor(b.y0 / s);
+    const y1 = Math.floor(b.y1 / s);
+    if (!((x1 - x0 + 1) * (y1 - y0 + 1) <= MAX_BUCKET_CELLS)) {
+      this.big.push(id);
+      return;
+    }
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        const k = x * 65536 + y;
+        const list = this.cells.get(k);
+        if (list) list.push(id);
+        else this.cells.set(k, [id]);
+      }
+    }
   }
 
-  addBox(b: Box): void {
+  addBox(b: Box): number {
     const i = this.boxes.push(b) - 1;
-    for (const k of this.keys(b)) (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push(i);
+    this.file(b, i);
+    return i;
+  }
+
+  /** Takes a box away (by the number addBox gave it). */
+  removeBox(i: number): void {
+    this.gone.add(i);
   }
 
   addSegment(a: Point, c: Point): void {
     const i = this.segments.push([a, c]) - 1;
-    const box = { x0: Math.min(a.x, c.x), y0: Math.min(a.y, c.y), x1: Math.max(a.x, c.x), y1: Math.max(a.y, c.y) };
-    for (const k of this.keys(box)) (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push(-1 - i);
+    const keys = squaresAlong(a, c, Buckets.SIZE);
+    if (!keys) {
+      this.big.push(-1 - i);
+      return;
+    }
+    for (const k of keys) {
+      const list = this.cells.get(k);
+      if (list) list.push(-1 - i);
+      else this.cells.set(k, [-1 - i]);
+    }
+  }
+
+  /** True when one of the ids hits the box (and has not been looked at in this look). */
+  private hitIn(list: readonly number[], b: Box, withSegments: boolean, look: number): boolean {
+    for (const i of list) {
+      if (i >= 0) {
+        if (this.boxSeen[i] === look) continue;
+        this.boxSeen[i] = look;
+        if (this.gone.size && this.gone.has(i)) continue;
+        if (boxesOverlap(b, this.boxes[i]!)) return true;
+      } else if (withSegments) {
+        const j = -1 - i;
+        if (this.segmentSeen[j] === look) continue;
+        this.segmentSeen[j] = look;
+        const [p, q] = this.segments[j]!;
+        if (segmentCrossesBox(p, q, b)) return true;
+      }
+    }
+    return false;
   }
 
   /** True when the box overlaps a stored box or a stored segment crosses it. */
   hits(b: Box, withSegments = true): boolean {
-    const seen = new Set<number>();
-    for (const k of this.keys(b)) {
-      for (const i of this.cells.get(k) ?? []) {
-        if (seen.has(i)) continue;
-        seen.add(i);
-        if (i >= 0) {
-          if (boxesOverlap(b, this.boxes[i]!)) return true;
-        } else if (withSegments) {
-          const [p, q] = this.segments[-1 - i]!;
-          if (segmentCrossesBox(p, q, b)) return true;
-        }
+    if (this.boxSeen.length < this.boxes.length) this.boxSeen = grownMarks(this.boxSeen, this.boxes.length);
+    if (this.segmentSeen.length < this.segments.length) this.segmentSeen = grownMarks(this.segmentSeen, this.segments.length);
+    const look = ++this.looks;
+    if (this.big.length && this.hitIn(this.big, b, withSegments, look)) return true;
+    const s = Buckets.SIZE;
+    const x0 = Math.floor(b.x0 / s);
+    const x1 = Math.floor(b.x1 / s);
+    const y0 = Math.floor(b.y0 / s);
+    const y1 = Math.floor(b.y1 / s);
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        const list = this.cells.get(x * 65536 + y);
+        if (list && this.hitIn(list, b, withSegments, look)) return true;
       }
     }
     return false;
@@ -852,11 +915,29 @@ class Buckets {
 
   /** True when a stored box contains the point. */
   contains(p: Point): boolean {
-    for (const i of this.cells.get(`${Math.floor(p.x / Buckets.SIZE)},${Math.floor(p.y / Buckets.SIZE)}`) ?? []) {
-      if (i >= 0 && boxContains(this.boxes[i]!, p)) return true;
-    }
-    return false;
+    const inside = (list: readonly number[]): boolean => list.some((i) => i >= 0 && !(this.gone.size && this.gone.has(i)) && boxContains(this.boxes[i]!, p));
+    return inside(this.big) || inside(this.cells.get(Math.floor(p.x / Buckets.SIZE) * 65536 + Math.floor(p.y / Buckets.SIZE)) ?? NO_IDS);
   }
+}
+
+/** The sides a part's words go on, in the order a scene tries them (scene.ts): its usual side, the opposite one, then the two across. */
+const WORD_SIDES: Readonly<Record<LabelSide, readonly LabelSide[]>> = {
+  right: ['right', 'left', 'above', 'below'],
+  left: ['left', 'right', 'above', 'below'],
+  above: ['above', 'below', 'right', 'left'],
+  below: ['below', 'above', 'right', 'left'],
+};
+
+/** A box covering more cells than this is filed in none: every look checks it. */
+const MAX_BUCKET_CELLS = 256;
+
+const NO_IDS: readonly number[] = [];
+
+/** A copy of `marks` with room for at least `n` (twice that, so it grows a few times at most). */
+function grownMarks(marks: Uint32Array, n: number): Uint32Array<ArrayBuffer> {
+  const out = new Uint32Array(2 * n);
+  out.set(marks);
+  return out;
 }
 
 /** A ground pin farther than this from ground's wires gets a ground symbol of its own. */
@@ -930,104 +1011,219 @@ function distanceMap(area: Box, seeds: readonly Point[]): (p: Point) => number |
   };
 }
 
+/** What placing a part looks at: the copper and pins already drawn, the wires, and what takes room (symbols, words, names). */
+interface PlaceRoom {
+  /** Copper points of each node: pins, ground pins and every grid point along wires. */
+  copper: Map<string, Point[]>;
+  /** True when a pin of another node than `node` is at the point. */
+  otherPin: (at: Point, node: string) => boolean;
+  /** True when a wire of another node than `node` (or of none) passes through or ends at the point. */
+  foreignWireAt: (at: Point, node: string) => boolean;
+  taken: Buckets;
+  bounds: Box;
+  /** Nothing drawn yet. */
+  empty: boolean;
+  /** The boxes each part takes in `taken` (its symbol, its words), by its key. */
+  boxesOf: Map<string, number[]>;
+}
+
+/** What a scene of the drawing gives placing a part (as placeParts has always looked at it). */
+function roomOf(scene: Scene): PlaceRoom {
+  const copper = copperPoints(scene);
+  // One index of every wire, asked for the wires of other nodes at a point, not one index of the other
+  // nodes' wires for each node (60 nodes each indexed every slanted point of the drawing again:
+  // the second re-check's critic).
+  const wires = new SegmentIndex(scene.wires.map((w) => w.points));
+  const foreignWireAt = (at: Point, node: string): boolean => wires.at(at).some((t) => scene.wires[t.wire]!.node !== node);
+  const pinAt = new Map<number | string, string>();
+  for (const p of scene.parts) for (const pin of p.pins) pinAt.set(pointId(pin.at), pin.node);
+  for (const gr of scene.grounds) pinAt.set(pointId(gr.at), GROUND);
+  const taken = new Buckets();
+  const boxesOf = new Map<string, number[]>();
+  for (const p of scene.parts) boxesOf.set(p.key, [taken.addBox(inflate(p.box, 0.6)), taken.addBox(p.labelBox)]);
+  for (const gr of scene.grounds) taken.addBox(inflate(gr.box, 0.4));
+  for (const l of scene.nodeLabels) taken.addBox(l.box);
+  for (const w of scene.wires) for (const [p, q] of segmentsOf(w.points)) taken.addSegment(p, q);
+  const otherPin = (at: Point, node: string): boolean => {
+    const there = pinAt.get(pointId(at));
+    return there !== undefined && there !== node;
+  };
+  return { copper, otherPin, foreignWireAt, taken, bounds: scene.bounds, empty: scene.parts.length === 0 && scene.grounds.length === 0, boxesOf };
+}
+
+/**
+ * Places one part next to its nodes' copper, where neither the symbol nor its words touch anything
+ * (see placeParts), and gives a ground pin that ends far from ground a ground symbol of its own.
+ * Returns the ground symbols it added.
+ */
+function placeOne(drawing: Drawing, part: CircuitPart, room: PlaceRoom, options: LayoutOptions): { at: Point; rot: Rotation }[] {
+  const results = options.results ?? true;
+  const measure = options.measure ?? defaultMeasure;
+  const { copper, otherPin, foreignWireAt, taken } = room;
+  const [a, b] = part.nodes;
+  const groundPin = a === GROUND && b !== GROUND ? 0 : b === GROUND && a !== GROUND ? 1 : -1;
+  const rots: Rotation[] =
+    groundPin >= 0 ? [groundPin === 1 ? 0 : 180, 270, 90] : isIndependentSource(part.letter) ? [0, 180, 270, 90] : [270, 90, 0, 180];
+  const area = searchArea(part, copper, room.bounds, room.empty);
+  const cx = Math.round((area.x0 + area.x1) / 2);
+  const cy = Math.round((area.y0 + area.y1) / 2);
+  const maps = new Map<string, (p: Point) => number | undefined>();
+  const distance = (node: string, pin: Point): number | undefined => {
+    const own = copper.get(node);
+    if (!own || !own.length) return undefined;
+    let map = maps.get(node);
+    if (!map) {
+      map = distanceMap(area, own);
+      maps.set(node, map);
+    }
+    const d = map(pin);
+    if (d !== undefined && Number.isFinite(d)) return d;
+    let far = Infinity;
+    for (const q of own) far = Math.min(far, Math.abs(q.x - pin.x) + Math.abs(q.y - pin.y));
+    return far;
+  };
+  let best: { at: Point; rot: Rotation; cost: number } | undefined;
+  rots.forEach((rot, ri) => {
+    // The symbol turned this way, at (0, 0): at each place tried, its box and pins are these moved by
+    // the place's point, the same numbers symbolGeometry gives there (transform turns, then adds the
+    // point), without making the whole geometry for each of the few thousand places tried.
+    const local = symbolGeometry(part.letter, pt(0, 0), rot, false);
+    const lb = local.box;
+    for (let y = Math.ceil(area.y0); y <= Math.floor(area.y1); y++) {
+      for (let x = Math.ceil(area.x0); x <= Math.floor(area.x1); x++) {
+        const at = pt(x, y);
+        if (taken.hits(inflate({ x0: at.x + lb.x0, y0: at.y + lb.y0, x1: at.x + lb.x1, y1: at.y + lb.y1 }, 0.3))) continue;
+        let cost = 3 * ri;
+        let bad = false;
+        for (let i = 0; i < local.pins.length && !bad; i++) {
+          const pin = pt(at.x + local.pins[i]!.x, at.y + local.pins[i]!.y);
+          const node = part.nodes[i]!;
+          if (otherPin(pin, node) || foreignWireAt(pin, node)) bad = true;
+          // Room to wire the pin: the grid point just outside it is free.
+          const v = DIRECTION_VECTORS[local.outward[i]!];
+          const exit = pt(pin.x + v.x, pin.y + v.y);
+          if (otherPin(exit, node) || foreignWireAt(exit, node) || taken.contains(exit)) bad = true;
+          // A wire starts just outside the pin, along its lead: measure from there.
+          const d = distance(node, exit);
+          if (d !== undefined) cost += 1 + (node === GROUND && local.outward[i] === 'down' ? Math.min(d, LOCAL_GROUND) : d);
+          else if (node === GROUND) cost += LOCAL_GROUND;
+          else cost += (0.2 * (Math.abs(pin.x - cx) + Math.abs(pin.y - cy))) / 4;
+        }
+        if (bad || (best && cost >= best.cost + 4)) continue;
+        const geom = symbolGeometry(part.letter, at, rot, false);
+        const lines = partLabelLines(geom, partLabelSpecs(part, results, resultRoomOf(part, options)), defaultSide(rot, false), measure);
+        const lbox = lines.reduce<Box | undefined>((u, l) => (u ? { x0: Math.min(u.x0, l.box.x0), y0: Math.min(u.y0, l.box.y0), x1: Math.max(u.x1, l.box.x1), y1: Math.max(u.y1, l.box.y1) } : l.box), undefined)!;
+        if (taken.hits(lbox)) cost += 4;
+        if (!best || cost < best.cost - 1e-9) best = { at, rot, cost };
+      }
+    }
+  });
+  const chosen = best ?? { at: pt(Math.ceil(room.bounds.x1) + 4, cy), rot: rots[0]!, cost: 0 };
+  drawing.parts.set(part.key, { at: chosen.at, rot: chosen.rot, mirror: false });
+  // A ground pin far from ground copper gets its own ground symbol.
+  const added: { at: Point; rot: Rotation }[] = [];
+  const geom = symbolGeometry(part.letter, chosen.at, chosen.rot, false);
+  geom.pins.forEach((pin, i) => {
+    if (part.nodes[i] !== GROUND || geom.outward[i] !== 'down') return;
+    const d = distance(GROUND, pt(pin.x, pin.y + 1));
+    if (d === undefined || d > LOCAL_GROUND) {
+      const g = { at: pin, rot: 0 as Rotation };
+      drawing.grounds.push(g);
+      added.push(g);
+    }
+  });
+  return added;
+}
+
 /**
  * Places parts that have no place yet, one by one in the order given, next to their nodes' copper,
  * where neither the symbol nor its words touch anything. Ground pins that end far from ground get a
  * ground symbol of their own. Wires are not drawn here: building the schematic routes them.
  */
 export function placeParts(circuit: Circuit, drawing: Drawing, keys: readonly string[], options: LayoutOptions = {}): void {
-  const results = options.results ?? true;
-  const measure = options.measure ?? defaultMeasure;
   for (const key of keys) {
     const part = circuit.parts.find((p) => p.key === key);
     if (!part || drawing.parts.has(key)) continue;
-    const scene = buildScene(circuit, drawing, options);
-    const copper = copperPoints(scene);
-    const foreignIndex = new Map<string, SegmentIndex>();
-    const foreignWires = (node: string): SegmentIndex => {
-      let idx = foreignIndex.get(node);
-      if (!idx) {
-        idx = new SegmentIndex(scene.wires.filter((w) => w.node !== node).map((w) => w.points));
-        foreignIndex.set(node, idx);
-      }
-      return idx;
-    };
-    const pinAt = new Map<string, string>();
-    for (const p of scene.parts) for (const pin of p.pins) pinAt.set(pointKey(pin.at), pin.node);
-    for (const gr of scene.grounds) pinAt.set(pointKey(gr.at), GROUND);
-    const taken = new Buckets();
-    for (const p of scene.parts) {
-      taken.addBox(inflate(p.box, 0.6));
-      taken.addBox(p.labelBox);
-    }
-    for (const gr of scene.grounds) taken.addBox(inflate(gr.box, 0.4));
-    for (const l of scene.nodeLabels) taken.addBox(l.box);
-    for (const w of scene.wires) for (const [p, q] of segmentsOf(w.points)) taken.addSegment(p, q);
+    placeOne(drawing, part, roomOf(buildScene(circuit, drawing, options)), options);
+  }
+}
 
-    const [a, b] = part.nodes;
-    const groundPin = a === GROUND && b !== GROUND ? 0 : b === GROUND && a !== GROUND ? 1 : -1;
-    const rots: Rotation[] =
-      groundPin >= 0 ? [groundPin === 1 ? 0 : 180, 270, 90] : isIndependentSource(part.letter) ? [0, 180, 270, 90] : [270, 90, 0, 180];
-    const empty = scene.parts.length === 0 && scene.grounds.length === 0;
-    const area = searchArea(part, copper, scene.bounds, empty);
-    const cx = Math.round((area.x0 + area.x1) / 2);
-    const cy = Math.round((area.y0 + area.y1) / 2);
-    const maps = new Map<string, (p: Point) => number | undefined>();
-    const distance = (node: string, pin: Point): number | undefined => {
-      const own = copper.get(node);
-      if (!own || !own.length) return undefined;
-      let map = maps.get(node);
-      if (!map) {
-        map = distanceMap(area, own);
-        maps.set(node, map);
-      }
-      const d = map(pin);
-      if (d !== undefined && Number.isFinite(d)) return d;
-      let far = Infinity;
-      for (const q of own) far = Math.min(far, Math.abs(q.x - pin.x) + Math.abs(q.y - pin.y));
-      return far;
-    };
-    let best: { at: Point; rot: Rotation; cost: number } | undefined;
-    rots.forEach((rot, ri) => {
-      for (let y = Math.ceil(area.y0); y <= Math.floor(area.y1); y++) {
-        for (let x = Math.ceil(area.x0); x <= Math.floor(area.x1); x++) {
-          const at = pt(x, y);
-          const geom = symbolGeometry(part.letter, at, rot, false);
-          if (taken.hits(inflate(geom.box, 0.3))) continue;
-          let cost = 3 * ri;
-          let bad = false;
-          geom.pins.forEach((pin, i) => {
-            if (bad) return;
-            const node = part.nodes[i]!;
-            const there = pinAt.get(pointKey(pin));
-            if ((there !== undefined && there !== node) || foreignWires(node).at(pin).length > 0) bad = true;
-            // Room to wire the pin: the grid point just outside it is free.
-            const v = DIRECTION_VECTORS[geom.outward[i]!];
-            const exit = pt(pin.x + v.x, pin.y + v.y);
-            const exitThere = pinAt.get(pointKey(exit));
-            if ((exitThere !== undefined && exitThere !== node) || foreignWires(node).at(exit).length > 0 || taken.contains(exit)) bad = true;
-            // A wire starts just outside the pin, along its lead: measure from there.
-            const d = distance(node, exit);
-            if (d !== undefined) cost += 1 + (node === GROUND && geom.outward[i] === 'down' ? Math.min(d, LOCAL_GROUND) : d);
-            else if (node === GROUND) cost += LOCAL_GROUND;
-            else cost += (0.2 * (Math.abs(pin.x - cx) + Math.abs(pin.y - cy))) / 4;
-          });
-          if (bad || (best && cost >= best.cost + 4)) continue;
-          const lines = partLabelLines(geom, partLabelSpecs(part, results, resultRoomOf(part, options)), defaultSide(rot, false), measure);
-          const lbox = lines.reduce<Box | undefined>((u, l) => (u ? { x0: Math.min(u.x0, l.box.x0), y0: Math.min(u.y0, l.box.y0), x1: Math.max(u.x1, l.box.x1), y1: Math.max(u.y1, l.box.y1) } : l.box), undefined)!;
-          if (taken.hits(lbox)) cost += 4;
-          if (!best || cost < best.cost - 1e-9) best = { at, rot, cost };
-        }
-      }
-    });
-    const chosen = best ?? { at: pt(Math.ceil(scene.bounds.x1) + 4, cy), rot: rots[0]!, cost: 0 };
-    drawing.parts.set(key, { at: chosen.at, rot: chosen.rot, mirror: false });
-    // A ground pin far from ground copper gets its own ground symbol.
-    const geom = symbolGeometry(part.letter, chosen.at, chosen.rot, false);
-    geom.pins.forEach((pin, i) => {
-      if (part.nodes[i] !== GROUND || geom.outward[i] !== 'down') return;
-      const d = distance(GROUND, pt(pin.x, pin.y + 1));
-      if (d === undefined || d > LOCAL_GROUND) drawing.grounds.push({ at: pin, rot: 0 });
-    });
+/**
+ * Moves parts that must leave where they stand (a pin of each on a pin of another node: reconcile's
+ * first step), one by one in the order given, from one scene of the drawing with the others still
+ * standing there (the first is placed exactly as placeParts would place it). Each leaves its place as
+ * it is placed, so the parts still to move keep pulling their neighbours near (their pins are copper)
+ * and stay in the way, and each part placed is in the way of the next, with its words on their usual
+ * side. placeParts builds a scene for each part it places (59 for 60 parts piled on one point; with
+ * names piled there too, the build took half a minute on a computer: second re-check, P3); this
+ * builds one, whatever the number.
+ */
+export function placeMoved(circuit: Circuit, drawing: Drawing, keys: readonly string[], options: LayoutOptions = {}): void {
+  const results = options.results ?? true;
+  const measure = options.measure ?? defaultMeasure;
+  // The first leaves before the scene is made, so it is placed exactly as placeParts would place it.
+  if (keys[0] !== undefined) drawing.parts.delete(keys[0]);
+  const scene = buildScene(circuit, drawing, options);
+  const room = roomOf(scene);
+  // The pins at each point, counted by node, so a part's pins can leave their point (`room.copper`
+  // already has them, from the scene).
+  const pins = new Map<number | string, Map<string, number>>();
+  const count = (at: Point, node: string, n: number): void => {
+    const k = pointId(at);
+    const here = pins.get(k) ?? pins.set(k, new Map()).get(k)!;
+    here.set(node, (here.get(node) ?? 0) + n);
+  };
+  for (const p of scene.parts) for (const pin of p.pins) count(pin.at, pin.node, 1);
+  for (const gr of scene.grounds) count(gr.at, GROUND, 1);
+  const leave = (at: Point, node: string): void => {
+    count(at, node, -1);
+    const list = room.copper.get(node);
+    const i = list ? list.findIndex((q) => q.x === at.x && q.y === at.y) : -1;
+    if (list && i >= 0) list.splice(i, 1);
+  };
+  const arrive = (at: Point, node: string): void => {
+    count(at, node, 1);
+    (room.copper.get(node) ?? room.copper.set(node, []).get(node)!).push(at);
+  };
+  room.otherPin = (at: Point, node: string): boolean => {
+    const here = pins.get(pointId(at));
+    if (here) for (const [n, k] of here) if (k > 0 && n !== node) return true;
+    return false;
+  };
+  const union = (u: Box, b: Box): Box => ({ x0: Math.min(u.x0, b.x0), y0: Math.min(u.y0, b.y0), x1: Math.max(u.x1, b.x1), y1: Math.max(u.y1, b.y1) });
+  for (const key of keys) {
+    const part = circuit.parts.find((p) => p.key === key);
+    if (!part) continue;
+    const standing = scene.parts.find((p) => p.key === key);
+    if (standing) {
+      for (const id of room.boxesOf.get(key) ?? []) room.taken.removeBox(id);
+      standing.pins.forEach((pin) => leave(pin.at, pin.node));
+    }
+    drawing.parts.delete(key);
+    const grounds = placeOne(drawing, part, room, options);
+    // What the next part avoids: this one's symbol, its words on their usual side and its pins (and a
+    // ground symbol it was given).
+    const placed = drawing.parts.get(key)!;
+    const geom = symbolGeometry(part.letter, placed.at, placed.rot, false);
+    const specs = partLabelSpecs(part, results, resultRoomOf(part, options));
+    // Its words where a scene would write them when nothing is in the way: the usual side, else the
+    // first free one of the others in the scene's order.
+    const sides = WORD_SIDES[defaultSide(placed.rot, false)];
+    const boxes = sides.map((side) => partLabelLines(geom, specs, side, measure).map((l) => l.box));
+    const words = (boxes.find((list) => list.length && !room.taken.hits(list.reduce(union))) ?? boxes[0]!).reduce<Box | undefined>((u, b) => (u ? union(u, b) : b), undefined);
+    room.taken.addBox(inflate(geom.box, 0.6));
+    room.bounds = union(room.bounds, geom.box);
+    if (words) {
+      room.taken.addBox(words);
+      room.bounds = union(room.bounds, words);
+    }
+    geom.pins.forEach((at, i) => arrive(at, part.nodes[i]!));
+    for (const g of grounds) {
+      const box = symbolGeometry('ground', g.at, g.rot, false).box;
+      room.taken.addBox(inflate(box, 0.4));
+      room.bounds = union(room.bounds, box);
+      arrive(g.at, GROUND);
+    }
+    room.empty = false;
   }
 }

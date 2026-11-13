@@ -25,11 +25,11 @@
 import { lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Netlist } from '../spice/types.ts';
 import { circuitFromNetlist, GROUND, labelNode, subCircuit, type Circuit } from './circuit.ts';
-import { SegmentIndex, checkConnectivity, drawnPins, findIslands, type ConnectivityProblem, type DrawnPin, type Islands } from './connectivity.ts';
-import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type NodeLabel, type PartPlacement } from './drawing.ts';
+import { SegmentIndex, checkConnectivity, drawnPins, findIslands, pointId, type ConnectivityProblem, type DrawnPin, type Islands } from './connectivity.ts';
+import { NODE_SPOTS, cloneDrawing, cloneLabel, emptyDrawing, groundGeometry, partGeometry, symbolGeometry, type Drawing, type GroundPlacement, type NodeLabel, type PartPlacement } from './drawing.ts';
 import { parseDrawingLines, readDrawing, type DrawingLines, type DrawingProblem, type PositionLine } from './format.ts';
-import { boxesOverlap, inflate, isOrthogonal, manhattan, pointKey, pt, samePoint, segmentCrossesBox, segmentsOf, unionBoxes, type Box, type Direction, type Point } from './geometry.ts';
-import { autoLayout, layOut, placeParts, type LayoutOptions } from './layout.ts';
+import { boxesOverlap, inflate, isOrthogonal, manhattan, pointKey, pt, samePoint, segmentCrossesBox, segmentsOf, squaresAlong, unionBoxes, type Box, type Direction, type Point } from './geometry.ts';
+import { autoLayout, layOut, placeMoved, placeParts, type LayoutOptions } from './layout.ts';
 import { ROUTE_COSTS, findRoute, type RouteEnd } from './route.ts';
 import { buildScene, nodeLabelLines, type Scene } from './scene.ts';
 import { cutAt, normalizeWires, pruneDangling, toSegments, type Segment } from './wires.ts';
@@ -129,13 +129,17 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     if (keys.has(key)) given.set(key, placementOf(pos));
     else unknown.push({ key, pos });
   }
+  // The copper merged once, before anything looks at it: wire drawn over wire (a share link may
+  // repeat one piece two thousand times) becomes one piece, so no later step sees the repeats. A
+  // ground symbol drawn twice at one place, turned the same way, is one symbol, for the same reason
+  // (1900 of them at one point made every step that looks at the pins look at each; second re-check, P3).
+  const wires = normalizeWires(lines.wires);
+  const grounds = uniqueGrounds(lines.grounds.map((g) => ({ at: g.at, rot: g.rot })));
   const base = (): Drawing => {
     const d = emptyDrawing();
     for (const [k, p] of given) d.parts.set(k, p);
-    d.grounds = lines.grounds.map((g) => ({ at: g.at, rot: g.rot }));
-    // The copper merged once, before anything looks at it: wire drawn over wire (a share link may
-    // repeat one piece two thousand times) becomes one piece, so no later step sees the repeats.
-    d.wires = normalizeWires(lines.wires);
+    d.grounds = grounds.map((g) => ({ at: g.at, rot: g.rot }));
+    d.wires = wires.slice();
     d.labels = lines.labels.map((l) => {
       const node = labelNode(circuit, l.node);
       return l.side ? { node, at: l.at, side: l.side } : { node, at: l.at };
@@ -170,14 +174,17 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
     origin = 'auto';
   } else {
     drawing = base();
-    drawing.labels = labelsInStep(circuit, drawing, lines, problems, orphans);
+    // A name written twice at one point (the same node) is written once: the repairs would keep only
+    // the first anyway (reconcile, step 3), and until then every scene made on the way places each
+    // (1900 at one point took most of a minute to build; second re-check, P3).
+    drawing.labels = uniqueLabels(labelsInStep(circuit, drawing, lines, problems, orphans));
     origin = given.size === circuit.parts.length ? 'given' : 'partial';
     const missing = circuit.parts.filter((p) => !given.has(p.key));
     if (missing.length) {
       const onlyPositions = !lines.wires.length && !lines.grounds.length && !lines.labels.length;
       const shifted = onlyPositions ? shiftedLayout(circuit, given, options) : undefined;
       if (shifted) drawing = shifted;
-      else if (missing.length <= 2) placeParts(circuit, drawing, missing.map((p) => p.key), options);
+      else if (missing.length <= 2) placeParts(circuit, oneNamePerPoint(drawing), missing.map((p) => p.key), options);
       else layOutBeside(circuit, drawing, new Set(missing.map((p) => p.key)), options);
       problems.push({ kind: 'placed-part', severity: 'info', message: BUILD_STRINGS.placed(missing.map((p) => p.name)) });
     }
@@ -193,11 +200,51 @@ function build(netlist: Netlist, circuit: Circuit, lines: DrawingLines, options:
   return { netlist, circuit, drawing, scene, origin, problems, kept, orphans, foreign: lines.foreign.slice(), options };
 }
 
+/** The ground symbols, each place and turn once (the first of those drawn there). */
+function uniqueGrounds(grounds: GroundPlacement[]): GroundPlacement[] {
+  const seen = new Set<string>();
+  return grounds.filter((g) => {
+    const k = `${pointKey(g.at)} ${g.rot}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** The names of nodes, each node once at each point (the first written there). */
+function uniqueLabels(labels: NodeLabel[]): NodeLabel[] {
+  const seen = new Set<string>();
+  return labels.filter((l) => {
+    const k = `${l.node} ${pointKey(l.at)}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/**
+ * The drawing as the scenes made on the way to place parts see it (sharing its parts, ground symbols
+ * and wires, which placing a part changes): one name at each point, the first written there. A
+ * drawing PlainSpice writes has one at most; lines can pile a name of every node on each point of a
+ * square (61 × 25), and each scene placed each against all the others (second re-check, P3). All the
+ * names are put in order afterwards (reconcile, step 3).
+ */
+function oneNamePerPoint(drawing: Drawing): Drawing {
+  const seen = new Set<string>();
+  const labels = drawing.labels.filter((l) => {
+    const k = pointKey(l.at);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return labels.length === drawing.labels.length ? drawing : { ...drawing, labels };
+}
+
 /** True when a part could stand at a placement: its symbol and words clear of the other symbols, and no pin on another node's copper. */
 function placeIsFree(circuit: Circuit, drawing: Drawing, key: string, placement: PartPlacement, options: LayoutOptions): boolean {
   const part = circuit.parts.find((p) => p.key === key);
   if (!part) return false;
-  const scene = buildScene(circuit, drawing, options);
+  const scene = buildScene(circuit, oneNamePerPoint(drawing), options);
   const geom = partGeometry(part, placement);
   const own = new Set(geom.pins.map(pointKey));
   for (const p of scene.parts) if (boxesOverlap(inflate(geom.box, 0.2), p.box) || boxesOverlap(geom.box, p.labelBox)) return false;
@@ -299,14 +346,14 @@ function layOutBeside(circuit: Circuit, drawing: Drawing, keys: ReadonlySet<stri
   for (const l of drawing.labels) shared.add(l.node);
   const start = [...sub.nodes.keys()].find((n) => n !== GROUND && shared.has(n));
   const laid = layOut(sub, options, start);
-  const here = buildScene(circuit, drawing, options).bounds;
+  const here = buildScene(circuit, oneNamePerPoint(drawing), options).bounds;
   const there = buildScene(sub, laid, options).bounds;
   const dx = Math.ceil(here.x1 + 3 - there.x0);
   // The start node's highest copper in the given drawing: a pin pointing up meets a rail just above it.
   let railY: number | undefined;
   if (start !== undefined) {
     const copper = copperOf(circuit, drawing, toSegments(drawing.wires)).get(start) ?? [];
-    const scene = buildScene(circuit, drawing, options);
+    const scene = buildScene(circuit, oneNamePerPoint(drawing), options);
     const up = new Set(scene.parts.flatMap((p) => p.pins.filter((q) => q.outward === 'up').map((q) => pointKey(q.at))));
     for (const q of copper) {
       const y = up.has(pointKey(q)) ? q.y - 1 : q.y;
@@ -351,12 +398,33 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   const pinsOf = (): DrawnPin[] => drawnPins(circuit, drawing);
   const nodeOrder = new Map([...circuit.nodes.keys()].map((n, i) => [n, i]));
 
-  // 1. Pins of different nodes touching: a part whose pin sits on another node's pin moves.
+  // 1. Pins of different nodes touching: a part whose pin sits on another node's pin moves. The parts
+  //    to move are found from the pins alone (the last part at such a point, until no point has pins
+  //    of two nodes), then placed from one scene of the drawing (placeMoved), not one scene each
+  //    (second re-check, P3). The loop after it moves any part still on another node's pin.
+  const movers: string[] = [];
+  {
+    let pins = pinsOf();
+    for (let round = 0; round < circuit.parts.length + 1; round++) {
+      const clash = clashOf(pins);
+      if (!clash) break;
+      const mover = clash.slice().reverse().find((p) => p.part !== undefined);
+      if (!mover?.part) {
+        const g = clash.find((p) => p.ground !== undefined);
+        if (g?.ground !== undefined) drawing.grounds.splice(g.ground, 1);
+        pins = pinsOf().filter((p) => p.part === undefined || !movers.includes(p.part));
+        continue;
+      }
+      movers.push(mover.part);
+      pins = pins.filter((p) => p.part !== mover.part);
+    }
+  }
+  if (movers.length) {
+    placeMoved(circuit, { ...oneNamePerPoint(drawing), wires: segs }, movers, options);
+    for (const key of movers) problems.push({ kind: 'moved-part', severity: 'info', message: `${circuit.parts.find((p) => p.key === key)!.name} was moved: a pin of it touched a pin of another node.` });
+  }
   for (let round = 0; round < circuit.parts.length + 1; round++) {
-    const pins = pinsOf();
-    const byPoint = new Map<string, DrawnPin[]>();
-    for (const p of pins) (byPoint.get(pointKey(p.at)) ?? byPoint.set(pointKey(p.at), []).get(pointKey(p.at))!).push(p);
-    const clash = [...byPoint.values()].find((list) => new Set(list.map((p) => p.node)).size > 1);
+    const clash = clashOf(pinsOf());
     if (!clash) break;
     const mover = clash.slice().reverse().find((p) => p.part !== undefined);
     if (!mover?.part) {
@@ -366,13 +434,17 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     }
     const part = circuit.parts.find((p) => p.key === mover.part)!;
     drawing.parts.delete(part.key);
-    placeParts(circuit, { ...drawing, wires: segs }, [part.key], options);
+    placeParts(circuit, { ...oneNamePerPoint(drawing), wires: segs }, [part.key], options);
     problems.push({ kind: 'moved-part', severity: 'info', message: `${part.name} was moved: a pin of it touched a pin of another node.` });
   }
 
   // 2. Islands joining different nodes: cut the odd pins loose (the most common node keeps the wires).
+  //    A round that changes nothing (a pin on slanted copper, which a cut cannot free) ends the step:
+  //    each round after it would start from the same drawing and change nothing either (second
+  //    re-check, P3: on a slanted lattice at the format's limits, 50 such rounds took a second).
   let cut = false;
   for (let round = 0; round < 50; round++) {
+    const before = { segs, grounds: drawing.grounds.length };
     const pins = pinsOf();
     const islands = islandsOf(pins.map((p) => p.at));
     const members = new Map<number, DrawnPin[]>();
@@ -399,6 +471,7 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     }
     if (!changed) break;
     segs = pruneDangling(segs, pinsOf().map((p) => p.at), drawing.labels.map((l) => l.at));
+    if (drawing.grounds.length === before.grounds && sameSegments(segs, before.segs)) break;
   }
 
   // 3. Labels: on their node's copper, else moved onto it (when close) or dropped; then one name per
@@ -470,24 +543,25 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
   let named = false;
   const budget = { left: ROUTING_STEPS };
   let obstacles: Obstacles | undefined;
-  // The islands, found again only when a route adds wire or a ground symbol is added (segs only grows here).
-  let found: { wires: number; grounds: number; pins: DrawnPin[]; islands: Islands } | undefined;
-  const islandsNow = (): { pins: DrawnPin[]; islands: Islands } => {
-    if (found?.wires !== segs.length || found.grounds !== drawing.grounds.length) {
-      const pins = drawnPins(circuit, drawing);
-      found = { wires: segs.length, grounds: drawing.grounds.length, pins, islands: islandsOf(pins.map((p) => p.at)) };
-    }
-    return found;
+  // The islands, found once and kept up to date as each route adds wire (RouteCopper), and found again
+  // only when a ground symbol is added (segs only grows here).
+  let copper: RouteCopper | undefined;
+  const copperNow = (): RouteCopper => {
+    if (copper?.grounds !== drawing.grounds.length) copper = new RouteCopper(segs, drawnPins(circuit, drawing), indexOf(segs), drawing.grounds.length);
+    return copper;
   };
   for (const node of circuit.nodes.keys()) {
     for (let guard = 0; guard < 64; guard++) {
-      const { groups, islands } = groupsOf(drawing, node, islandsNow());
+      const now = copperNow();
+      const { groups } = groupsOf(drawing, node, { pins: now.pins, islands: now });
       if (groups.length <= 1) break;
       obstacles ??= obstaclesOf(circuit, drawing, mergedOf(segs), options);
-      const path = budget.left > 0 ? routeBetween(circuit, drawing, segs, node, groups, obstacles, budget, islands) : undefined;
+      const path = budget.left > 0 ? routeBetween(drawing, node, groups, obstacles, budget, now) : undefined;
       if (path && path.length < 2) break;
       if (path) {
+        const from = segs.length;
         for (let i = 1; i < path.length; i++) segs.push([path[i - 1]!, path[i]!]);
+        if (!now.added(from)) copper = undefined;
         routed = true;
         continue;
       }
@@ -558,6 +632,18 @@ export function reconcile(circuit: Circuit, input: Drawing, problems: DrawingPro
     problems.push({ kind: 'wires-redrawn', severity: 'info', message: 'Some wires were redrawn so that the drawing connects what the netlist connects.' });
   }
   return drawing;
+}
+
+/** The pins at the first point where pins of two nodes touch (in the order of the pins), if any. */
+function clashOf(pins: readonly DrawnPin[]): DrawnPin[] | undefined {
+  const byPoint = new Map<string, DrawnPin[]>();
+  for (const p of pins) (byPoint.get(pointKey(p.at)) ?? byPoint.set(pointKey(p.at), []).get(pointKey(p.at))!).push(p);
+  return [...byPoint.values()].find((list) => new Set(list.map((p) => p.node)).size > 1);
+}
+
+/** True when two lists of segments are the same, point for point, in the same order. */
+function sameSegments(a: readonly Segment[], b: readonly Segment[]): boolean {
+  return a === b || (a.length === b.length && a.every(([p, q], i) => samePoint(p, b[i]![0]) && samePoint(q, b[i]![1])));
 }
 
 /** True when two lists of polylines are the same, point for point. */
@@ -642,8 +728,8 @@ interface Group {
   labelled: boolean;
 }
 
-/** The pieces of a node: islands of its pins, joined where ground symbols or labels join them by name (and the islands they were found from: of the segments and the drawing's pins). */
-function groupsOf(drawing: Drawing, node: string, { pins, islands }: { pins: readonly DrawnPin[]; islands: Islands }): { groups: Group[]; islands: Islands } {
+/** The pieces of a node: islands of its pins, joined where ground symbols or labels join them by name (`islands`: of the segments and the drawing's pins). */
+function groupsOf(drawing: Drawing, node: string, { pins, islands }: { pins: readonly DrawnPin[]; islands: Pick<Islands, 'at' | 'anchors'> }): { groups: Group[] } {
   const named = new Set<number>();
   for (const l of drawing.labels) {
     if (l.node !== node) continue;
@@ -671,8 +757,234 @@ function groupsOf(drawing: Drawing, node: string, { pins, islands }: { pins: rea
     }
     g.pins.push(p);
   });
-  return { groups, islands };
+  return { groups };
 }
+
+/** The side of the squares RouteCopper files pieces of wire in, for the pieces near a route. */
+const ROUTE_SQUARE = 16;
+/** A box covering more of those squares than this is asked about every piece instead. */
+const ROUTE_SQUARES_MAX = 4096;
+
+/**
+ * The copper while the repairs route new wire (reconcile, step 5): its islands, found once and then
+ * kept up to date as each route adds wire, joining exactly the islands finding them again would join
+ * (findIslands joins the pieces at each end of a piece, passing or ending there, and each pin to the
+ * pieces at its point): those with a piece or a pin at a corner or an end of the route, and those with
+ * a piece ending, or a pin, on it. And what a route looks up, each where it is needed: the pieces of
+ * each island, whether a wire ends at a point, and the pieces near a box. Finding the islands again
+ * after each route, and going through every piece of wire for each, made the work grow with the
+ * routes times the wire: 60 parts piled at one point, every resistor between node 1 and ground, and a
+ * large grid named far away took 2 s to route (the second re-check's critic asked for every shape at
+ * the format's limits to be bounded). Every point must be a grid point (the drawing format's are);
+ * `added` says when one is not, and the islands are then found again.
+ */
+class RouteCopper {
+  readonly segs: readonly Segment[];
+  readonly pins: readonly DrawnPin[];
+  /** How many ground symbols the drawing had: a new one is a new pin (the islands are found again). */
+  readonly grounds: number;
+  /** The island of each pin and of each piece of wire (segs[i]), kept up to date. */
+  readonly anchors: number[];
+  readonly wires: number[];
+  /** The pieces of wire there were, indexed (routes add the rest, filed in `addedAt`). */
+  private readonly index: SegmentIndex;
+  /** Each island's pieces of wire (`sorted`: in order) and pins. */
+  private readonly members = new Map<number, { wires: number[]; pins: number[]; sorted: boolean }>();
+  private next: number;
+  /** The pieces routes added, by each grid point they pass, and the points where one ends. */
+  private readonly addedAt = new Map<number | string, number[]>();
+  private readonly addedEnds = new Set<number | string>();
+  /** The first pin at each point, and the points where more than one sits. */
+  private readonly pinAt = new Map<number | string, number>();
+  private readonly crowded = new Set<number | string>();
+  /** Every piece by the squares it runs through, and the span of their ends. */
+  private readonly squares = new Map<number, number[]>();
+  private readonly big: number[] = [];
+  private seen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private looks = 0;
+  private readonly span = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  /** Every end and pin on the grid: what keeping the islands up to date relies on. */
+  private readonly grid: boolean;
+
+  constructor(segs: readonly Segment[], pins: readonly DrawnPin[], index: SegmentIndex, grounds: number) {
+    this.segs = segs;
+    this.pins = pins;
+    this.index = index;
+    this.grounds = grounds;
+    const islands = findIslands(segs, pins.map((p) => p.at), index);
+    this.wires = islands.wires.slice();
+    this.anchors = islands.anchors.slice();
+    this.next = islands.count;
+    this.wires.forEach((id, i) => this.member(id).wires.push(i));
+    this.anchors.forEach((id, j) => this.member(id).pins.push(j));
+    pins.forEach((p, j) => {
+      const k = pointId(p.at);
+      if (this.pinAt.has(k)) this.crowded.add(k);
+      else this.pinAt.set(k, j);
+    });
+    const whole = (n: number): boolean => Number.isInteger(n);
+    this.grid = segs.every(([a, b]) => whole(a.x) && whole(a.y) && whole(b.x) && whole(b.y)) && pins.every((p) => whole(p.at.x) && whole(p.at.y));
+    for (let i = 0; i < segs.length; i++) this.file(i);
+  }
+
+  private member(id: number): { wires: number[]; pins: number[]; sorted: boolean } {
+    let m = this.members.get(id);
+    if (!m) this.members.set(id, (m = { wires: [], pins: [], sorted: true }));
+    return m;
+  }
+
+  private file(i: number): void {
+    const [a, b] = this.segs[i]!;
+    this.span.x0 = Math.min(this.span.x0, a.x, b.x);
+    this.span.y0 = Math.min(this.span.y0, a.y, b.y);
+    this.span.x1 = Math.max(this.span.x1, a.x, b.x);
+    this.span.y1 = Math.max(this.span.y1, a.y, b.y);
+    const keys = squaresAlong(a, b, ROUTE_SQUARE);
+    if (!keys) {
+      this.big.push(i);
+      return;
+    }
+    for (const k of keys) (this.squares.get(k) ?? this.squares.set(k, []).get(k)!).push(i);
+  }
+
+  /** The island at a point: of its first piece of wire (horizontal ones first, then vertical, then slanted, each in order), else of its pin. */
+  at(p: Point): number | undefined {
+    const kind = (s: Segment): number => (s[0].y === s[1].y ? 0 : s[0].x === s[1].x ? 1 : 2);
+    const there = this.index.at(p)[0];
+    let best = there ? there.wire : -1;
+    let bestKind = there ? kind([there.a, there.b]) : 3;
+    for (const i of this.addedAt.get(pointId(p)) ?? NO_PIECES) {
+      const k = kind(this.segs[i]!);
+      if (k < bestKind) {
+        best = i;
+        bestKind = k;
+      }
+    }
+    if (best >= 0) return this.wires[best];
+    const pin = this.pinAt.get(pointId(p));
+    return pin === undefined ? undefined : this.anchors[pin];
+  }
+
+  /** True when a piece of wire ends at the point, or more than one pin sits there. */
+  wiredAt(p: Point): boolean {
+    const k = pointId(p);
+    return this.crowded.has(k) || this.addedEnds.has(k) || this.index.at(p).some((s) => samePoint(s.a, p) || samePoint(s.b, p));
+  }
+
+  /** The pieces of wire of some islands, in order. */
+  piecesOf(islands: ReadonlySet<number>): number[] {
+    const out: number[] = [];
+    let lists = 0;
+    let sorted = true;
+    for (const id of islands) {
+      const m = this.members.get(id);
+      if (!m?.wires.length) continue;
+      lists++;
+      sorted &&= m.sorted;
+      for (const i of m.wires) out.push(i);
+    }
+    if (lists > 1 || !sorted) out.sort((i, j) => i - j);
+    return out;
+  }
+
+  /** The pieces of wire of other islands than `own` that can touch a box: every one with a point in it. */
+  othersNear(box: Box, own: ReadonlySet<number>): Segment[] {
+    const x0 = Math.floor(Math.floor(box.x0) / ROUTE_SQUARE);
+    const x1 = Math.floor(Math.ceil(box.x1) / ROUTE_SQUARE);
+    const y0 = Math.floor(Math.floor(box.y0) / ROUTE_SQUARE);
+    const y1 = Math.floor(Math.ceil(box.y1) / ROUTE_SQUARE);
+    const out: Segment[] = [];
+    if (!((x1 - x0 + 1) * (y1 - y0 + 1) <= ROUTE_SQUARES_MAX)) {
+      this.segs.forEach((s, i) => {
+        if (!own.has(this.wires[i]!)) out.push(s);
+      });
+      return out;
+    }
+    if (this.seen.length < this.segs.length) {
+      const grown = new Uint32Array(2 * this.segs.length);
+      grown.set(this.seen);
+      this.seen = grown;
+    }
+    const look = ++this.looks;
+    const take = (i: number): void => {
+      if (this.seen[i] === look) return;
+      this.seen[i] = look;
+      if (!own.has(this.wires[i]!)) out.push(this.segs[i]!);
+    };
+    for (const i of this.big) take(i);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (const i of this.squares.get(x * 65536 + y) ?? NO_PIECES) take(i);
+    return out;
+  }
+
+  /** The box round every piece's ends and `extra` (a route's whole area). */
+  spanWith(extra: Box): Box {
+    return { x0: Math.min(this.span.x0, extra.x0), y0: Math.min(this.span.y0, extra.y0), x1: Math.max(this.span.x1, extra.x1), y1: Math.max(this.span.y1, extra.y1) };
+  }
+
+  /**
+   * Joins the pieces segs[from …] (one route, end to end) to the islands they touch, as finding the
+   * islands again would. False when a point is off the grid: the islands must then be found again.
+   */
+  added(from: number): boolean {
+    const added: number[] = [];
+    for (let i = from; i < this.segs.length; i++) added.push(i);
+    const whole = (q: Point): boolean => Number.isInteger(q.x) && Number.isInteger(q.y);
+    if (!this.grid || added.some((i) => !whole(this.segs[i]![0]) || !whole(this.segs[i]![1]) || !isOrthogonal(this.segs[i]![0], this.segs[i]![1]))) return false;
+    const touched = new Set<number>();
+    const pinThere = (q: Point): void => {
+      const pin = this.pinAt.get(pointId(q));
+      if (pin !== undefined) touched.add(this.anchors[pin]!);
+    };
+    // At the route's corners and ends: every piece there, passing or ending, and the pin there.
+    const corners = [this.segs[from]![0], ...added.map((i) => this.segs[i]![1])];
+    for (const q of corners) {
+      for (const t of this.index.at(q)) touched.add(this.wires[t.wire]!);
+      for (const i of this.addedAt.get(pointId(q)) ?? NO_PIECES) touched.add(this.wires[i]!);
+      pinThere(q);
+    }
+    // Along it: every piece ending there, and the pin there.
+    for (const i of added) {
+      for (const q of gridPoints(this.segs[i]!)) {
+        for (const t of this.index.at(q)) if (samePoint(t.a, q) || samePoint(t.b, q)) touched.add(this.wires[t.wire]!);
+        for (const j of this.addedAt.get(pointId(q)) ?? NO_PIECES) if (samePoint(this.segs[j]![0], q) || samePoint(this.segs[j]![1], q)) touched.add(this.wires[j]!);
+        pinThere(q);
+      }
+    }
+    // One island: the largest keeps its number, the others' pieces and pins take it.
+    let keep = -1;
+    let most = -1;
+    for (const id of touched) {
+      const m = this.members.get(id)!;
+      if (m.wires.length + m.pins.length > most) {
+        most = m.wires.length + m.pins.length;
+        keep = id;
+      }
+    }
+    if (keep < 0) keep = this.next++;
+    const target = this.member(keep);
+    for (const id of touched) {
+      if (id === keep) continue;
+      const m = this.members.get(id)!;
+      for (const i of m.wires) this.wires[i] = keep;
+      for (const j of m.pins) this.anchors[j] = keep;
+      if (m.wires.length) target.sorted = target.sorted && m.sorted && (!target.wires.length || m.wires[0]! > target.wires[target.wires.length - 1]!);
+      for (const i of m.wires) target.wires.push(i);
+      for (const j of m.pins) target.pins.push(j);
+      this.members.delete(id);
+    }
+    for (const i of added) {
+      this.wires[i] = keep;
+      target.wires.push(i);
+      for (const q of gridPoints(this.segs[i]!)) (this.addedAt.get(pointId(q)) ?? this.addedAt.set(pointId(q), []).get(pointId(q))!).push(i);
+      this.addedEnds.add(pointId(this.segs[i]![0]));
+      this.addedEnds.add(pointId(this.segs[i]![1]));
+      this.file(i);
+    }
+    return true;
+  }
+}
+
+const NO_PIECES: readonly number[] = [];
 
 /**
  * Work all the routes of one schematic may do together (route.ts, RouteBudget); then pieces are
@@ -709,39 +1021,40 @@ function obstaclesOf(circuit: Circuit, drawing: Drawing, wires: Point[][], optio
   };
 }
 
-/** A new wire from the first piece of a node to the nearest other piece, or undefined (`islands`: of these segments and the drawing's pins, as groupsOf found them). */
-function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment[], node: string, groups: readonly Group[], obstacles: Obstacles, budget: { left: number }, islands: Islands): Point[] | undefined {
-  const pins = drawnPins(circuit, drawing);
+/**
+ * A new wire from the first piece of a node to the nearest other piece, or undefined (`copper`: the
+ * drawing's pins and the islands of the segments and those pins, as groupsOf found them: not found
+ * again for each route).
+ */
+function routeBetween(drawing: Drawing, node: string, groups: readonly Group[], obstacles: Obstacles, budget: { left: number }, copper: RouteCopper): Point[] | undefined {
   const pinOutward = new Map<string, RouteEnd>();
   for (const [k, list] of obstacles.outward) {
     const own = list.find((x) => x.node === node);
     if (own) pinOutward.set(k, { at: own.at, outward: own.outward });
   }
-  // Points where a wire ends or another pin sits: a route may leave a pin there sideways, at a cost.
-  const wired = new Set(segs.flatMap((s) => [pointKey(s[0]), pointKey(s[1])]));
-  const pinCount = new Map<string, number>();
-  for (const p of pins) pinCount.set(pointKey(p.at), (pinCount.get(pointKey(p.at)) ?? 0) + 1);
-  for (const [k, n] of pinCount) if (n > 1) wired.add(k);
   const ends = (group: Group): RouteEnd[] => {
     const out: RouteEnd[] = [];
-    segs.forEach((s, i) => {
-      if (group.islands.has(islands.wires[i]!)) for (const p of gridPoints(s)) out.push({ at: p });
-    });
+    for (const i of copper.piecesOf(group.islands)) for (const p of gridPoints(copper.segs[i]!)) out.push({ at: p });
     for (const p of group.pins) {
       const pin = pinOutward.get(pointKey(p.at));
-      // A pin that already has a wire may be left sideways, at a cost; a bare pin only along its lead.
-      // A pin with no wire yet is best left along its lead; across it (an L at the pin) costs more.
-      out.push(pin ? (wired.has(pointKey(p.at)) ? { ...pin, soft: true } : { ...pin, sideCost: ROUTE_COSTS.bareSide }) : { at: p.at });
+      // A pin that already has a wire (where a wire ends or another pin sits) may be left sideways, at
+      // a cost; a bare pin only along its lead. A pin with no wire yet is best left along its lead;
+      // across it (an L at the pin) costs more.
+      out.push(pin ? (copper.wiredAt(p.at) ? { ...pin, soft: true } : { ...pin, sideCost: ROUTE_COSTS.bareSide }) : { at: p.at });
     }
     return out;
   };
   const sources = ends(groups[0]!);
   const targets = groups.slice(1).flatMap(ends);
+  // Each end is work for the search before it takes a step (a state to file, a distance to measure):
+  // it counts as a step, so a node whose copper is a lattice at the format's limits does not make each
+  // of its routes go through the whole lattice again without end (60 parts piled at one point with one
+  // pin on such a lattice: 622,000 ends in 32 routes).
+  budget.left -= sources.length + targets.length;
   const ownIslands = new Set(groups.flatMap((g) => [...g.islands]));
-  const foreignWires = segs.filter((_, i) => !ownIslands.has(islands.wires[i]!)).map((s) => [s[0], s[1]]);
   // Other nodes' pins, and the points their names are written at (a wire through one would leave the
   // name on a crossing of two nodes' wires).
-  const foreignPins = [...pins.filter((p) => p.node !== node).map((p) => p.at), ...drawing.labels.filter((l) => l.node !== node).map((l) => l.at)];
+  const foreignPins = [...copper.pins.filter((p) => p.node !== node).map((p) => p.at), ...drawing.labels.filter((l) => l.node !== node).map((l) => l.at)];
   const span = (points: readonly Point[], margin: number): Box => {
     let x0 = Infinity;
     let y0 = Infinity;
@@ -758,14 +1071,15 @@ function routeBetween(circuit: Circuit, drawing: Drawing, segs: readonly Segment
   // The words of the node itself (its name, the words of the parts on it) are not avoided: the scene
   // places them again around the new wire, where a detour round them would snake (critique of step B).
   const avoid = obstacles.avoid.filter((_, i) => !obstacles.avoidNodes[i]!.has(node));
-  // First near the two pieces, then over the whole drawing.
+  // First near the two pieces, then over the whole drawing. The other nodes' wires a route must keep
+  // to are those near its area (a wire with no point in it changes nothing there), not every one.
   const near = span([...sources, ...targets].map((e) => e.at), 8);
-  const all = segs.flatMap(([a, b]) => [a, b]);
-  const whole = span([...all, { x: obstacles.bounds.x0, y: obstacles.bounds.y0 }, { x: obstacles.bounds.x1, y: obstacles.bounds.y1 }], 4);
-  for (const bounds of [near, whole]) {
+  const whole = (): Box => inflate(copper.spanWith(obstacles.bounds), 4);
+  for (const area of [() => near, whole]) {
     if (budget.left <= 0) return undefined;
+    const bounds = area();
     const limits = { steps: budget.left, used: 0 };
-    const path = findRoute({ walls: obstacles.walls, avoid, foreignWires, foreignPins, bounds }, sources, targets, limits);
+    const path = findRoute({ walls: obstacles.walls, avoid, foreignWires: copper.othersNear(bounds, ownIslands), foreignPins, bounds }, sources, targets, limits);
     budget.left -= limits.used;
     if (path) return path;
   }
@@ -852,7 +1166,10 @@ function groundSpot(circuit: Circuit, drawing: Drawing, segs: readonly Segment[]
 /**
  * Where to write a node's name: the first of its open wire ends (a terminal), wire corners and ends
  * (top left first), the middles of its wires and its pins where the name fits clear of everything
- * (scene.ts places it at the freest spot around the point); else the first of them.
+ * (scene.ts places it at the freest spot around the point); else the first of them. Never a point
+ * another node's wire runs through (`wires`: the scene's wires, indexed): a name there sits on a
+ * crossing of two nodes' wires, where it reads as the other node's (the middle of a wire a route of
+ * another node crosses, say; second re-check's critic: in 4 piles of V1 and R2 … Rn at one point).
  */
 function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], segs: readonly Segment[], islands: Islands, scene: Scene, wires: SegmentIndex, taken: readonly Box[], options: LayoutOptions): Point {
   const own = pins.filter((p) => p.node === node);
@@ -871,16 +1188,18 @@ function labelPoint(circuit: Circuit, node: string, pins: readonly DrawnPin[], s
   const open = points.filter((p) => counts.get(pointKey(p)) === 1 && !pinKeys.has(pointKey(p)));
   const sorted = (list: Point[]): Point[] => list.slice().sort((a, b) => a.y - b.y || a.x - b.x);
   const seen = new Set<string>();
-  const candidates = [...sorted(open), ...sorted(points.filter((p) => !pinKeys.has(pointKey(p)))), ...sorted(middles), ...sorted(points), ...own.map((p) => p.at)].filter((p) => {
+  const all = [...sorted(open), ...sorted(points.filter((p) => !pinKeys.has(pointKey(p)))), ...sorted(middles), ...sorted(points), ...own.map((p) => p.at)].filter((p) => {
     const k = pointKey(p);
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
+  const crossed = (p: Point): boolean => wires.at(p).some((t) => scene.wires[t.wire]?.node !== node);
+  const candidates = all.filter((p) => !crossed(p));
   const text = circuit.nodes.get(node)?.text ?? node;
   const boxes: Box[] = [...scene.parts.map((p) => p.box), ...scene.parts.map((p) => p.labelBox), ...scene.grounds.map((g) => g.box), ...scene.nodeLabels.map((l) => l.box), ...taken];
   for (const at of candidates.slice(0, 40)) if (labelFits(boxes, wires, text, at, options)) return at;
-  return candidates[0] ?? pt(0, 0);
+  return candidates[0] ?? all[0] ?? pt(0, 0);
 }
 
 /** True when a node's name fits at one of its spots around a point, clear of the boxes and the wires (indexed: the scene's). */

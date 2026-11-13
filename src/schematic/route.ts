@@ -63,53 +63,86 @@ const EXPANSION_LIMIT = 100_000;
  */
 export const MAX_ROUTE_CELLS = 250_000;
 
-/** Search states by cost so far plus distance left (f), then nearest the target (h), then first found. */
+/**
+ * Search states by cost so far plus distance left (f), then nearest the target (h), then first found
+ * (order): among equally good states, the one nearer the target first, so in open space the search
+ * runs straight to it instead of filling the whole rectangle between the two pieces. No two states
+ * share an order, so the state taken next is always the one least by these three, whatever the heap's
+ * inner order. Kept in flat arrays: an object per state pushed, and one per swap, made a route of a
+ * hundred thousand steps a third of a second of collecting garbage (the second re-check's critic).
+ */
 class Heap {
-  private readonly items: [f: number, h: number, order: number, state: number][] = [];
+  private f = new Float64Array(256);
+  private h = new Float64Array(256);
+  private order = new Float64Array(256);
+  private state = new Int32Array(256);
+  size = 0;
 
-  get size(): number {
-    return this.items.length;
+  /** True when entry i comes before the state (f, h, order). */
+  private before(i: number, f: number, h: number, order: number): boolean {
+    const fi = this.f[i]!;
+    if (fi !== f) return fi < f;
+    const hi = this.h[i]!;
+    return hi !== h ? hi < h : this.order[i]! < order;
   }
 
-  push(item: [number, number, number, number]): void {
-    const a = this.items;
-    a.push(item);
-    let i = a.length - 1;
+  private put(i: number, f: number, h: number, order: number, state: number): void {
+    this.f[i] = f;
+    this.h[i] = h;
+    this.order[i] = order;
+    this.state[i] = state;
+  }
+
+  private move(from: number, to: number): void {
+    this.put(to, this.f[from]!, this.h[from]!, this.order[from]!, this.state[from]!);
+  }
+
+  push(f: number, h: number, order: number, state: number): void {
+    if (this.size === this.state.length) {
+      const grow = <T extends Float64Array<ArrayBuffer> | Int32Array<ArrayBuffer>>(a: T, make: (n: number) => T): T => {
+        const b = make(2 * a.length);
+        b.set(a);
+        return b;
+      };
+      this.f = grow(this.f, (n) => new Float64Array(n));
+      this.h = grow(this.h, (n) => new Float64Array(n));
+      this.order = grow(this.order, (n) => new Float64Array(n));
+      this.state = grow(this.state, (n) => new Int32Array(n));
+    }
+    let i = this.size++;
     while (i > 0) {
       const parent = (i - 1) >> 1;
-      if (!less(a[i]!, a[parent]!)) break;
-      [a[i], a[parent]] = [a[parent]!, a[i]!];
+      if (this.before(parent, f, h, order)) break;
+      this.move(parent, i);
       i = parent;
     }
+    this.put(i, f, h, order, state);
   }
 
-  pop(): [number, number, number, number] | undefined {
-    const a = this.items;
-    if (a.length === 0) return undefined;
-    const top = a[0]!;
-    const last = a.pop()!;
-    if (a.length > 0) {
-      a[0] = last;
+  /** The state of the entry that comes first, taken off the heap (the heap must not be empty). */
+  pop(): number {
+    const top = this.state[0]!;
+    const n = --this.size;
+    if (n > 0) {
+      const f = this.f[n]!;
+      const h = this.h[n]!;
+      const order = this.order[n]!;
+      const state = this.state[n]!;
       let i = 0;
       for (;;) {
         const l = 2 * i + 1;
+        if (l >= n) break;
         const r = l + 1;
-        let m = i;
-        if (l < a.length && less(a[l]!, a[m]!)) m = l;
-        if (r < a.length && less(a[r]!, a[m]!)) m = r;
-        if (m === i) break;
-        [a[i], a[m]] = [a[m]!, a[i]!];
+        const m = r < n && this.before(r, this.f[l]!, this.h[l]!, this.order[l]!) ? r : l;
+        if (!this.before(m, f, h, order)) break;
+        this.move(m, i);
         i = m;
       }
+      this.put(i, f, h, order, state);
     }
     return top;
   }
 }
-
-// Among equally good states, the one nearer the target first: in open space the search then runs
-// straight to it instead of filling the whole rectangle between the two pieces.
-const less = (x: [number, number, number, number], y: [number, number, number, number]): boolean =>
-  x[0] < y[0] || (x[0] === y[0] && (x[1] < y[1] || (x[1] === y[1] && x[2] < y[2])));
 
 const DIR_INDEX: Readonly<Record<Direction, number>> = { up: 0, right: 1, down: 2, left: 3 };
 const START = 4;
@@ -244,13 +277,13 @@ export function findRoute(world: RouteWorld, sources: readonly RouteEnd[], targe
     g[s] = 0;
     const x = Math.floor(c / height) + bx0;
     const y = (c % height) + by0;
-    heap.push([h(x, y), h(x, y), order++, s]);
+    heap.push(h(x, y), h(x, y), order++, s);
   }
 
   let found = -1;
   let expansions = 0;
   while (heap.size > 0) {
-    const [, , , s] = heap.pop()!;
+    const s = heap.pop();
     if (closed[s]) continue;
     closed[s] = 1;
     budget.used = setup + ++expansions;
@@ -295,7 +328,7 @@ export function findRoute(world: RouteWorld, sources: readonly RouteEnd[], targe
         g[ns] = ng;
         parent[ns] = s;
         const hn = h(nx, ny);
-        heap.push([ng + hn, hn, order++, ns]);
+        heap.push(ng + hn, hn, order++, ns);
       }
     }
   }

@@ -314,9 +314,94 @@ export const isDrawingLine = (text: string): boolean => LINE.test(text) || HEADE
 
 const fmt = (p: Point): string => `${p.x},${p.y}`;
 
+const straight = (w: readonly Point[]): boolean => w.every((p, i) => i === 0 || p.x === w[i - 1]!.x || p.y === w[i - 1]!.y);
+
+/**
+ * The same wire in as few lines as read back to it: straight pieces chained end to end, each point
+ * kept (reading merges straight copper and cuts it at the points written, in an order of its own:
+ * wires.ts, normalizeWires), and a slanted piece chained only onto the one before it, so slanted
+ * pieces keep their order (reading keeps them in the order they come). For a drawing whose pieces
+ * would not fit one to a line: a joined grid typed as 2k lines is read as k² pieces.
+ */
+function chainedWires(wires: readonly (readonly Point[])[]): Point[][] {
+  const pieces = wires.filter(straight);
+  const ends = new Map<string, number[]>();
+  pieces.forEach((w, i) => {
+    for (const p of [w[0]!, w[w.length - 1]!]) {
+      const list = ends.get(fmt(p));
+      if (list) list.push(i);
+      else ends.set(fmt(p), [i]);
+    }
+  });
+  const used = new Uint8Array(pieces.length);
+  /** A straight piece not written yet with an end at `p`, turned to start there. */
+  const from = (p: Point): readonly Point[] | undefined => {
+    const list = ends.get(fmt(p));
+    while (list?.length) {
+      const i = list.pop()!;
+      if (used[i]) continue;
+      used[i] = 1;
+      const w = pieces[i]!;
+      return w[0]!.x === p.x && w[0]!.y === p.y ? w : w.slice().reverse();
+    }
+    return undefined;
+  };
+  const out: Point[][] = [];
+  pieces.forEach((w, i) => {
+    if (used[i]) return;
+    used[i] = 1;
+    const line = w.slice();
+    for (let next = from(line[line.length - 1]!); next; next = from(line[line.length - 1]!)) for (let k = 1; k < next.length; k++) line.push(next[k]!);
+    // Then the pieces before its first point, each written the other way round, the farthest first.
+    const before: (readonly Point[])[] = [];
+    for (let prev = from(line[0]!); prev; prev = from(prev[prev.length - 1]!)) before.push(prev);
+    const chain: Point[] = [];
+    for (let j = before.length - 1; j >= 0; j--) for (let k = before[j]!.length - 1; k >= 1; k--) chain.push(before[j]![k]!);
+    out.push(chain.length ? [...chain, ...line] : line);
+  });
+  let last: Point[] | undefined;
+  for (const w of wires) {
+    if (straight(w)) continue;
+    const end = last?.[last.length - 1];
+    if (last && end && end.x === w[0]!.x && end.y === w[0]!.y) for (let k = 1; k < w.length; k++) last.push(w[k]!);
+    else out.push((last = w.slice()));
+  }
+  return out;
+}
+
+const pointsIn = (wires: readonly (readonly Point[])[]): number => wires.reduce((n, w) => n + w.length, 0);
+
+/**
+ * True when reading `lines` (drawing lines as serializeDrawing writes them) uses every one: no more
+ * than MAX_DRAWING_LINES lines, and their wire within MAX_WIRE_LENGTH and MAX_WIRE_POINTS. A drawing
+ * written past those limits would lose what comes after them.
+ */
+export function linesFit(lines: readonly string[]): boolean {
+  let count = 0;
+  let length = 0;
+  let points = 0;
+  for (const l of lines) {
+    if (!LINE.test(l)) continue;
+    count += 1;
+    const words = l.replace(LINE, '').trim().split(/\s+/);
+    if (lowerAscii(words[0] ?? '') !== 'wire') continue;
+    const ps = words.slice(1).map(coord);
+    points += ps.length;
+    for (let i = 1; i < ps.length; i++) {
+      const a = ps[i - 1];
+      const b = ps[i];
+      if (a && b) length += Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+    }
+  }
+  return count <= MAX_DRAWING_LINES && length <= MAX_WIRE_LENGTH && points <= MAX_WIRE_POINTS;
+}
+
 /**
  * The drawing lines for a drawing, header first: parts in netlist order, then ground symbols, wires
- * and labels, then the lines to keep as written (`kept`).
+ * and labels, then the lines to keep as written (`kept`). One line for each piece of wire, unless
+ * the drawing's lines would then be more than the format reads: then the pieces are chained
+ * (chainedWires), which reads back the same (critic of the second re-check's fixes, D7: an edit on a
+ * joined 100 × 100 grid wrote 9,800 lines and kept the wire of the first 2000).
  */
 export function serializeDrawing(circuit: Circuit, drawing: Drawing, kept: readonly string[] = []): string[] {
   const out = [DRAWING_HEADER];
@@ -327,7 +412,8 @@ export function serializeDrawing(circuit: Circuit, drawing: Drawing, kept: reado
     out.push(`${DRAWING_PREFIX} ${name} ${p.at.x} ${p.at.y} ${p.rot}${p.mirror ? ' m' : ''}${p.side ? ` side=${p.side}` : ''}`);
   }
   for (const g of drawing.grounds) out.push(`${DRAWING_PREFIX} ground ${g.at.x} ${g.at.y} ${g.rot}`);
-  for (const w of drawing.wires) out.push(`${DRAWING_PREFIX} wire ${w.map(fmt).join(' ')}`);
+  const many = out.length - 1 + drawing.wires.length + drawing.labels.length > MAX_DRAWING_LINES || pointsIn(drawing.wires) > MAX_WIRE_POINTS;
+  for (const w of many ? chainedWires(drawing.wires) : drawing.wires) out.push(`${DRAWING_PREFIX} wire ${w.map(fmt).join(' ')}`);
   for (const l of drawing.labels) out.push(`${DRAWING_PREFIX} label ${circuit.nodes.get(l.node)?.text ?? l.node} ${l.at.x} ${l.at.y}${l.side ? ` side=${l.side}` : ''}`);
   for (const k of kept) out.push(k.trim());
   return out;

@@ -90,7 +90,7 @@ export function placeNote(scene: Scene, about: Box, text: string, options: NoteO
     const w = Math.max(...lines.map(noteWidth)) + 0.2;
     const h = lines.length * NOTE_LINE + 0.1;
     // The nearest free paper on any side (above first when it is as near), never far along one side.
-    const p = placeBeside(about, w, h, room, { gap: 0.35, sides: options.sides ?? ['above', 'below', 'right', 'left'], step: 0.25, reach: 6, sidePenalty: 0.75 });
+    const p = placeBeside(about, w, h, room, { gap: 0.35, sides: options.sides ?? ['above', 'below', 'right', 'left'], step: 0.25, reach: 6, sidePenalty: 0.75, freeOnly: true });
     if (!p || p.cost > 0) continue;
     const d = distance(p.box, about);
     // A line more costs a little: prefer the wider note when it is about as near.
@@ -166,7 +166,7 @@ export function wasMarks(scene: Scene, now: DrawingResults, before: DrawingResul
     const dx = label ? nameShift(label, n.mark) : 0;
     const drawn = drawnBox(n.mark);
     const target = dx ? { ...drawn, x0: drawn.x0 + dx, x1: drawn.x1 + dx } : markBox(n.mark);
-    const p = placeBeside(target, w, h, room, { gap: 0.02, sides: ['above', 'below', 'right'], step: 0.1, reach: 0.6 });
+    const p = placeBeside(target, w, h, room, { gap: 0.02, sides: ['above', 'below', 'right'], step: 0.1, reach: 0.6, freeOnly: true });
     if (!p || p.cost > 0) continue;
     out.push({ node: n.node, text, x: p.box.x0 + 0.05, y: (p.box.y0 + p.box.y1) / 2, box: p.box });
   }

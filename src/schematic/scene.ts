@@ -29,6 +29,7 @@ import {
   samePoint,
   segmentCrossesBox,
   segmentsOf,
+  squaresAlong,
   transform,
   unionBoxes,
   type Box,
@@ -169,10 +170,18 @@ export interface Scene {
   grounds: PlacedGround[];
   wires: PlacedWire[];
   junctions: Point[];
+  /**
+   * The node of the copper at each junction, in step with `junctions` (undefined where it is no one
+   * node's): its dot's colour, worked out once here, where the copper's islands are known, so a
+   * renderer never looks for the wire under each dot (second re-check, P2).
+   */
+  junctionNodes: (string | undefined)[];
   terminals: Terminal[];
   stubs: Stub[];
   /** Points where two wires cross without connecting (a style may draw a hop). */
   crossings: Point[];
+  /** The node of the wire that hops at each crossing (the horizontal one), in step with `crossings`. */
+  crossingNodes: (string | undefined)[];
   nodeLabels: PlacedNodeLabel[];
   bounds: Box;
 }
@@ -223,8 +232,34 @@ const boxOfLines = (lines: readonly TextLine[]): Box => unionBoxes(lines.map((l)
 
 /** The side of the squares obstacles are filed in, in grid units. */
 const CELL = 4;
-/** A box covering more squares than this (a very long word, say) is checked by every look instead. */
+/**
+ * A box covering more squares than this (a very long word, say) is checked by every look instead. A
+ * piece of wire is filed in the squares it runs through, however long (squaresAlong).
+ */
 const MAX_CELLS = 256;
+
+const NO_IDS: readonly number[] = [];
+
+/** A copy of `marks` with room for at least `n` (twice that, so it grows a few times at most). */
+const grown = (marks: Uint32Array, n: number): Uint32Array<ArrayBuffer> => {
+  const out = new Uint32Array(2 * n);
+  out.set(marks);
+  return out;
+};
+
+/**
+ * Puts the ids a look took (marked `look` in `seen`, out of `count`) in order, in place: by reading the
+ * marks in order when sorting them would be more work.
+ */
+function ordered(ids: number[], seen: Uint32Array, look: number, count: number): void {
+  if (ids.length < 2) return;
+  if (ids.length * Math.log2(ids.length) < count) {
+    ids.sort((i, j) => i - j);
+    return;
+  }
+  let n = 0;
+  for (let i = 0; i < count; i++) if (seen[i] === look) ids[n++] = i;
+}
 
 /** The squares a box covers, or undefined when it covers more than MAX_CELLS (or is not finite). */
 function cellsOf(b: Box): number[] | undefined {
@@ -254,9 +289,13 @@ class Obstacles {
   /** What each square holds: box i as i, segment i as −1 − i; `big`: what covers too many squares to file. */
   private readonly cells = new Map<number, number[]>();
   private readonly big: number[] = [];
+  /** The look that last took each box and each segment (`looks` counts the looks): each is taken once per look, with no Set. */
+  private boxSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private segmentSeen: Uint32Array<ArrayBuffer> = new Uint32Array(64);
+  private looks = 0;
 
-  private file(b: Box, id: number): void {
-    const keys = cellsOf(b);
+  private file(b: Box, id: number, along?: readonly [Point, Point]): void {
+    const keys = along ? squaresAlong(along[0], along[1], CELL) : cellsOf(b);
     if (!keys) {
       this.big.push(id);
       return;
@@ -278,24 +317,55 @@ class Obstacles {
   addWire(points: readonly Point[]): void {
     for (const [a, b] of segmentsOf(points)) {
       const i = this.segments.push([a, b]) - 1;
-      this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i);
+      this.file({ x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y), x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y) }, -1 - i, [a, b]);
     }
   }
 
-  /** What is filed in the squares a box covers (and what covers too many squares to file), each once, in order. */
-  private near(box: Box): { boxes: number[]; segments: number[] } {
-    const near = new Set<number>(this.big);
+  /**
+   * What is filed in the squares a box covers (and what covers too many squares to file), each once,
+   * in order: box indexes, then segment indexes. Undefined means everything, in order: when the box
+   * covers too many squares to look them up, and when its squares hold as many entries as there are
+   * boxes and segments at all (a crowded place: a name written over a hundred others), where looking
+   * at everything in order is less work than gathering the entries. Each look marks what it took with
+   * its own number, and puts several squares' entries in order by reading the marks in order when
+   * that is less work than sorting (second re-check, P3: a Set and two sorts of every entry, on every
+   * look, made each look in a crowded square cost more than looking at everything).
+   */
+  private near(box: Box): { boxes: number[]; segments: number[] } | undefined {
     const keys = cellsOf(box);
-    if (keys) for (const k of keys) for (const id of this.cells.get(k) ?? []) near.add(id);
-    else {
-      this.boxes.forEach((_, i) => near.add(i));
-      this.segments.forEach((_, i) => near.add(-1 - i));
-    }
+    if (!keys) return undefined;
+    let filed = this.big.length;
+    for (const k of keys) filed += this.cells.get(k)?.length ?? 0;
+    if (filed >= this.boxes.length + this.segments.length) return undefined;
+    if (this.boxSeen.length < this.boxes.length) this.boxSeen = grown(this.boxSeen, this.boxes.length);
+    if (this.segmentSeen.length < this.segments.length) this.segmentSeen = grown(this.segmentSeen, this.segments.length);
+    const look = ++this.looks;
     const boxes: number[] = [];
     const segments: number[] = [];
-    for (const id of near) (id >= 0 ? boxes : segments).push(id);
-    boxes.sort((i, j) => i - j);
-    segments.sort((i, j) => j - i);
+    let lists = 0;
+    const take = (list: readonly number[]): void => {
+      if (!list.length) return;
+      lists++;
+      for (const id of list) {
+        if (id >= 0) {
+          if (this.boxSeen[id] !== look) {
+            this.boxSeen[id] = look;
+            boxes.push(id);
+          }
+        } else if (this.segmentSeen[-1 - id] !== look) {
+          this.segmentSeen[-1 - id] = look;
+          segments.push(-1 - id);
+        }
+      }
+    };
+    take(this.big);
+    for (const k of keys) take(this.cells.get(k) ?? NO_IDS);
+    // Each list is in order already (things are filed as they come): one needs no ordering. Several
+    // are put in order by reading the marks in order when that is less work than sorting.
+    if (lists > 1) {
+      ordered(boxes, this.boxSeen, look, this.boxes.length);
+      ordered(segments, this.segmentSeen, look, this.segments.length);
+    }
     return { boxes, segments };
   }
 
@@ -306,14 +376,16 @@ class Obstacles {
    * them would.
    */
   cost(box: Box, skip = -1, solid = false): number {
-    const { boxes, segments } = this.near(box);
+    const near = this.near(box);
     let c = 0;
-    for (const i of boxes) {
+    const count = this.boxes.length;
+    for (let k = 0, n = near ? near.boxes.length : count; k < n; k++) {
+      const i = near ? near.boxes[k]! : k;
       const b = this.boxes[i]!;
       if (i !== skip && !(solid && this.kinds[i] === 'soft') && boxesOverlap(box, b)) c += 1 + overlapArea(box, b);
     }
-    for (const id of segments) {
-      const [a, b] = this.segments[-1 - id]!;
+    for (let k = 0, n = near ? near.segments.length : this.segments.length; k < n; k++) {
+      const [a, b] = this.segments[near ? near.segments[k]! : k]!;
       if (segmentCrossesBox(a, b, box)) c += 1;
     }
     return c;
@@ -321,8 +393,12 @@ class Obstacles {
 
   /** How much of the box lies on boxes of one kind (symbols, or nodes' names), in square grid units. */
   areaOn(box: Box, kind: ObstacleKind): number {
+    const near = this.near(box);
     let area = 0;
-    for (const i of this.near(box).boxes) if (this.kinds[i] === kind) area += overlapArea(box, this.boxes[i]!);
+    for (let k = 0, n = near ? near.boxes.length : this.boxes.length; k < n; k++) {
+      const i = near ? near.boxes[k]! : k;
+      if (this.kinds[i] === kind) area += overlapArea(box, this.boxes[i]!);
+    }
     return area;
   }
 }
@@ -824,7 +900,19 @@ export function buildScene(circuit: Circuit, drawing: Drawing, options: SceneOpt
       ...stubs.map((t) => t.box),
       ...drawing.wires.flatMap((w) => w.map((p) => ({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }))),
     ]) ?? EMPTY_BOX;
-  return { parts, grounds, wires, junctions, terminals, stubs, crossings: wireCrossings(drawing.wires, wireIndex), nodeLabels, bounds };
+  // Each junction's node and each crossing's hopping wire, found once at its point (not by looking
+  // at every wire for each: a slanted lattice at the format's limits has 4,898 junctions and 9,666
+  // pieces of wire).
+  const junctionNodes = junctions.map((j) => {
+    const island = islands.at(j);
+    return island === undefined ? undefined : (islandNode.get(island) ?? undefined);
+  });
+  const crossings = wireCrossings(drawing.wires, wireIndex);
+  const crossingNodes = crossings.map((p) => {
+    const over = wireIndex.at(p).find((t) => t.a.y === t.b.y && Math.min(t.a.x, t.b.x) < p.x && p.x < Math.max(t.a.x, t.b.x));
+    return over ? wires[over.wire]!.node : undefined;
+  });
+  return { parts, grounds, wires, junctions, junctionNodes, terminals, stubs, crossings, crossingNodes, nodeLabels, bounds };
 }
 
 // ------------------------------------------------------------------ overlaps
@@ -843,6 +931,11 @@ export interface Overlap {
 /**
  * Everything that collides: symbols with symbols, wires crossing symbols, words on symbols, on
  * wires or on other words. A clean drawing has none.
+ *
+ * Each symbol and each set of words is compared only with what is filed in the squares of the grid it
+ * covers, in the order a comparison of every pair would take them, so the list is the same; a
+ * comparison of every pair grew with the square of the drawing (1,600 ground symbols drawn by lines
+ * made each edit compare three million pairs, three times; second re-check, P3).
  */
 export function findOverlaps(scene: Scene): Overlap[] {
   const out: Overlap[] = [];
@@ -855,18 +948,64 @@ export function findOverlaps(scene: Scene): Overlap[] {
     ...scene.nodeLabels.map((l, i) => ({ item: { kind: 'node-label' as const, id: `${l.node}#${i}` }, box: l.box })),
   ];
   const segments = scene.wires.flatMap((w, i) => segmentsOf(w.points).map((s) => ({ item: { kind: 'wire' as const, id: String(i) }, s })));
+  const symbolsNear = new Grid(symbols.map((t) => cellsOf(t.box)));
+  const wordsNear = new Grid(words.map((t) => cellsOf(t.box)));
+  // A piece of wire is filed where it runs, not in the squares of its box (squaresAlong).
+  const segmentsNear = new Grid(segments.map(({ s: [a, b] }) => squaresAlong(a, b, CELL)));
   for (let i = 0; i < symbols.length; i++) {
-    for (let j = i + 1; j < symbols.length; j++) {
-      if (boxesOverlap(symbols[i]!.box, symbols[j]!.box)) out.push({ a: symbols[i]!.item, b: symbols[j]!.item });
-    }
-    for (const w of segments) if (segmentCrossesBox(w.s[0], w.s[1], symbols[i]!.box)) out.push({ a: symbols[i]!.item, b: w.item });
-    for (const t of words) if (boxesOverlap(symbols[i]!.box, t.box)) out.push({ a: symbols[i]!.item, b: t.item });
+    const box = symbols[i]!.box;
+    for (const j of symbolsNear.near(box)) if (j > i && boxesOverlap(box, symbols[j]!.box)) out.push({ a: symbols[i]!.item, b: symbols[j]!.item });
+    for (const k of segmentsNear.near(box)) if (segmentCrossesBox(segments[k]!.s[0], segments[k]!.s[1], box)) out.push({ a: symbols[i]!.item, b: segments[k]!.item });
+    for (const k of wordsNear.near(box)) if (boxesOverlap(box, words[k]!.box)) out.push({ a: symbols[i]!.item, b: words[k]!.item });
   }
   for (let i = 0; i < words.length; i++) {
-    for (let j = i + 1; j < words.length; j++) {
-      if (boxesOverlap(words[i]!.box, words[j]!.box)) out.push({ a: words[i]!.item, b: words[j]!.item });
-    }
-    for (const w of segments) if (segmentCrossesBox(w.s[0], w.s[1], words[i]!.box)) out.push({ a: words[i]!.item, b: w.item });
+    const box = words[i]!.box;
+    for (const j of wordsNear.near(box)) if (j > i && boxesOverlap(box, words[j]!.box)) out.push({ a: words[i]!.item, b: words[j]!.item });
+    for (const k of segmentsNear.near(box)) if (segmentCrossesBox(segments[k]!.s[0], segments[k]!.s[1], box)) out.push({ a: words[i]!.item, b: segments[k]!.item });
   }
   return out;
+}
+
+/**
+ * Things filed by the squares of the grid they cover (as the obstacles words avoid are; `squares`: each
+ * thing's, undefined for one that covers too many to file): `near` gives, in order, every thing that
+ * shares a square with a given box (every thing that can overlap it), each once.
+ */
+class Grid {
+  private readonly cells = new Map<number, number[]>();
+  /** What covers too many squares to file: in every answer. */
+  private readonly big: number[] = [];
+  private readonly seen: Uint32Array<ArrayBuffer>;
+  private looks = 0;
+  private readonly count: number;
+
+  constructor(squares: readonly (readonly number[] | undefined)[]) {
+    this.count = squares.length;
+    this.seen = new Uint32Array(squares.length);
+    squares.forEach((keys, i) => {
+      if (!keys) this.big.push(i);
+      else for (const k of keys) (this.cells.get(k) ?? this.cells.set(k, []).get(k)!).push(i);
+    });
+  }
+
+  near(box: Box): readonly number[] {
+    const keys = cellsOf(box);
+    if (!keys) return Array.from({ length: this.count }, (_, i) => i);
+    const look = ++this.looks;
+    const out: number[] = [];
+    let lists = 0;
+    const take = (list: readonly number[]): void => {
+      if (!list.length) return;
+      lists++;
+      for (const i of list) {
+        if (this.seen[i] === look) continue;
+        this.seen[i] = look;
+        out.push(i);
+      }
+    };
+    take(this.big);
+    for (const k of keys) take(this.cells.get(k) ?? NO_IDS);
+    if (lists > 1) out.sort((a, b) => a - b);
+    return out;
+  }
 }

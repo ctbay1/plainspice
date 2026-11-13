@@ -49,9 +49,12 @@ import { cloneDrawing, cloneLabel, groundGeometry, partGeometry, symbolGeometry,
 import { LABEL_SIDES, NODE_SPOTS } from './drawing.ts';
 import {
   COORD_LIMIT,
+  MAX_DRAWING_LINES,
+  MAX_WIRE_LENGTH,
   NEW_TITLE,
   applyChanges,
   drawingBlockChanges,
+  linesFit,
   newlineOf,
   parseDrawingLines,
   readDrawing,
@@ -254,6 +257,8 @@ export const EDIT_STRINGS = {
     `This drawing was saved by another version of PlainSpice (${header}), so this one can't change it; reloading the page gets the newest PlainSpice. Values and node names can still be changed, and parts reversed or deleted; the Netlist panel changes anything.`,
   failed: 'PlainSpice could not make that change.',
   outOfStep: 'PlainSpice could not draw that change with wires that connect exactly what the netlist connects, so it left the circuit as it was. You can make it in the Netlist panel.',
+  /** The drawing written would be more than reading takes (format.ts), and what comes after would be lost. */
+  tooBig: `PlainSpice could not make that change: its drawing would need more lines or more wire than PlainSpice reads (${MAX_DRAWING_LINES} drawing lines, ${MAX_WIRE_LENGTH.toLocaleString('en-US')} grid units of wire), so part of the drawing would be lost. You can make it in the Netlist panel.`,
   // W9: gnd as the last word of a line is an ordinary node; W8: anywhere else it is ground (0).
   // `word`: the node as the Checks panel's fix names it ("Rename gnd to 0", traps.ts).
   gndNode: (name: string, word = 'gnd'): string =>
@@ -677,6 +682,9 @@ function finish(s: Schematic, lineChanges: TextChange[], next: Drawing, f: Finis
   // drawing does not show.
   let drawing = rebuilt.drawing;
   let lines = serializeDrawing(rebuilt.circuit, drawing, s.kept);
+  // Never more than reading takes: the drawing past the format's limits would be lost (critic of the
+  // second re-check's fixes, D7). Wire too long to write a piece to a line is chained (format.ts).
+  if (!linesFit(lines.slice(0, lines.length - s.kept.length))) return refuse(s, S.tooBig);
   let shown = buildSchematic(netlist2, { ...layout, lines: parseDrawingLines(lines.map((l, i) => ({ text: l, line: i + 1 }))) });
   for (let round = 0; round < 3; round++) {
     const again = serializeDrawing(shown.circuit, shown.drawing, s.kept);
