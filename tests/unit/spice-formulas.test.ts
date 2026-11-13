@@ -9,6 +9,7 @@
  * - Every rename, the checks' fixes and the drawing editor's, leaves the old name nowhere ngspice reads it
  *   (non-ascii-node-15 to -19, invisible-character-67, look-alike-letter-18, space-character-24).
  * - A character that looks like a space in a formula stops ngspice: its fix takes it out (space-character-22, -23, nbsp-4).
+ * - Words ngspice takes out of an E, F, G or H line before it reads it are no nodes (unknown-word-53, -54).
  */
 import { describe, expect, it } from 'vitest';
 import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
@@ -16,6 +17,7 @@ import { describeCircuit } from '../../src/spice/describe.ts';
 import { explainLine } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps, nodeReferences } from '../../src/spice/traps.ts';
+import type { Element } from '../../src/spice/types.ts';
 
 const T = '\u00e7\u0131k\u0131\u015f'; // çıkış
 const ZW = '\u200b';
@@ -347,5 +349,53 @@ describe('Explain, the overview and the drawing for E, F, G and H written as a f
     expect(s.circuit.parts.map((p) => p.name)).toEqual(['V1', 'R1', 'R2', 'Re', 'Rf']);
     expect(s.circuit.notDrawn.map((n) => `${n.name} ${n.reason}`)).toEqual(['E1 part-kind', 'E2 part-kind']);
     expect(s.problems).toEqual([]);
+  });
+});
+
+describe('words ngspice takes out of an E, F, G or H line before it reads it (C3-5, unknown-word-53, -54)', () => {
+  const KINDS = '* t\nV1 in 0 5\nVs in mid 0\nR1 mid out 1k\nR2 out 0 1k\n';
+
+  it("HSPICE's word for the kind, on a line of exactly seven words (E, G) or six (F, H), is no node and no source", () => {
+    const n = parseNetlist(`${KINDS}E1 e 0 vcvs out 0 2\nG1 0 g vccs out 0 2m\nF1 0 f cccs Vs 2\nH1 h 0 ccvs Vs 1k\nRe e 0 1k\nRg g 0 1k\nRf f 0 1k\nRh h 0 1k\n.op\n.end\n`);
+    const [e, g, f, h] = [5, 6, 7, 8].map((i) => n.lines[i]!.element!) as [Element, Element, Element, Element];
+    expect(e.nodes.map((r) => r.name)).toEqual(['e', '0', 'out', '0']);
+    expect(e.value?.number?.value).toBe(2);
+    expect(g.nodes.map((r) => r.name)).toEqual(['0', 'g', 'out', '0']);
+    expect(g.value?.number?.value).toBe(0.002);
+    expect([f.controlSource?.text, f.value?.number?.value]).toEqual(['Vs', 2]);
+    expect([h.controlSource?.text, h.value?.number?.value]).toEqual(['Vs', 1000]);
+    expect([...n.nodes.keys()].filter((k) => /vcvs|vccs/.test(k))).toEqual([]);
+    expect(checkTraps(n)).toEqual([]);
+  });
+
+  it('with one word more ngspice keeps the word as a node and stops at the next one ("unknown parameter (2)"), and so do the checks', () => {
+    const text = `* t\n${DIVIDER}E1 e 0 vcvs out 0 2 m=1\nRe e 0 1k\n.op\n.end\n`;
+    expect(parseNetlist(text).lines[4]!.element!.nodes.map((r) => r.name)).toEqual(['e', '0', 'vcvs', 'out']);
+    expect(ids(text).sort()).toEqual(['floating-dc', 'unknown-word']);
+  });
+
+  it('two words between the output nodes and VALUE= or cur= are dropped: no nodes, nothing connected, no trap', () => {
+    const n = parseNetlist(`* t\n${DIVIDER}E1 e 0 in 0 VALUE={v(out)*2}\nG1 0 g in 0 cur={v(out)*2m}\nE2 e2 0 out 0 VALUE={2}\nRe e 0 1k\nRg g 0 1k\nRe2 e2 0 1k\n.op\n.end\n`);
+    const [e, g, e2] = [4, 5, 6].map((i) => n.lines[i]!.element!) as [Element, Element, Element];
+    expect(e.nodes.map((r) => r.name)).toEqual(['e', '0']);
+    expect(e.form?.kind).toBe('formula');
+    expect(e.form?.dropped?.map((t) => t.text)).toEqual(['in', '0']);
+    expect(e.reads!.map((r) => r.name)).toEqual(['out']);
+    expect(g.nodes.map((r) => r.name)).toEqual(['0', 'g']);
+    expect(g.form?.keyword.text).toBe('cur');
+    expect(e2.reads).toBeUndefined();
+    expect(n.nodes.get('in')!.connections.map((c) => c.element)).toEqual(['v1', 'r1']);
+    expect(checkTraps(n)).toEqual([]);
+  });
+
+  it('Explain shows them as words ngspice takes out or drops', () => {
+    const n = parseNetlist(`${KINDS}E1 e 0 vcvs out 0 2\nH1 h 0 ccvs Vs 1k\nE2 e2 0 in 0 VALUE={v(out)*2}\nRe e 0 1k\n.op\n.end\n`);
+    const e = explainLine(n, 5)!;
+    expect(e.fields.map((f) => `${f.label}: ${f.text}`)).toEqual(['name: E1', '+ node: e', '− node: 0', 'kind: vcvs', 'control + node: out', 'control − node: 0', 'gain: 2']);
+    expect(e.fields[3]!.meaning).toBe("vcvs: HSPICE's word for this kind of part, which ngspice takes out");
+    expect(explainLine(n, 6)!.fields.map((f) => f.label)).toEqual(['name', '+ node', '− node', 'kind', 'control source', 'volts per amp']);
+    const e2 = explainLine(n, 7)!;
+    expect(e2.fields.map((f) => `${f.label}: ${f.text}`)).toEqual(['name: E2', '+ node: e2', '− node: 0', 'dropped word: in', 'dropped word: 0', 'formula: VALUE', 'formula: {v(out)*2}']);
+    expect(e2.notes).toContain('ngspice drops the two words before the formula (in 0), so they change nothing: the output is the formula alone.');
   });
 });

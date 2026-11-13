@@ -331,6 +331,9 @@ export const EXPLAIN_STRINGS = {
   tableLooksUp: 'what the table looks up',
   tablePoint: 'a number of one of the table\'s points',
   currentIn: (source: string): string => `the current in ${source}`,
+  droppedWord: 'a word ngspice drops: with a formula, the output is the formula alone',
+  droppedNote: (words: string): string => `ngspice drops the two words before the formula (${words}), so they change nothing: the output is the formula alone.`,
+  kindWord: (word: string): string => `${word}: HSPICE's word for this kind of part, which ngspice takes out`,
   eFieldsNote: 'An E or G line needs four nodes and a number. With fewer, PlainSpice\'s engine finds no single answer (a singular matrix) and gives no results.',
   noGainNote: (word: string): string =>
     `This line has no ${word}. PlainSpice's engine (built without XSPICE) reads it as 0 and says nothing, so the output is 0; native ngspice 47 stops: "not enough parameters in line".`,
@@ -1569,6 +1572,11 @@ function partFields(p: PartContext): FieldExplanation[] {
           rows.push(bRow(p, f, k));
           return;
         }
+        // HSPICE's word for the part's kind after the output nodes (unknown-word-53).
+        if (k === 3 && el.letter && 'EFGH'.includes(el.letter) && key === { E: 'vcvs', F: 'cccs', G: 'vccs', H: 'ccvs' }[el.letter as 'E']) {
+          rows.push(fieldOf('kind', f.token, S.kindWord(f.token.text)));
+          return;
+        }
         const prev = el.fields[k - 1];
         const isValue = prev?.role === 'parameter' && netlist.text.slice(prev.token.to, f.token.from).includes('=');
         if (isValue && prev) {
@@ -1681,6 +1689,7 @@ function otherWordMeaning(letter: ElementLetter | undefined, word: string): stri
 function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
   const form = p.el.form!;
   const at = p.el.fields.findIndex((g) => g.token === form.keyword);
+  if (k < at) return fieldOf('dropped word', f.token, S.droppedWord);
   if (k === at) {
     if (form.kind === 'poly') return fieldOf('polynomial', f.token, S.polyKeyword);
     if (form.kind === 'table') return fieldOf('table', f.token, S.tableKeyword);
@@ -1712,6 +1721,7 @@ function explainForm(p: PartContext, sentences: string[]): void {
     const read = [...new Map((el.reads ?? []).map((r) => [r.name, r])).values()];
     if (read.length) sentences.push(S.formulaReads(S.listJoin(read.map((r) => nodeProse(r)))));
     addNote(p.notes, S.formulaNote);
+    if (form.dropped) addNote(p.notes, S.droppedNote(form.dropped.map((t) => t.text).join(' ')));
     return;
   }
   if (form.kind === 'poly') {

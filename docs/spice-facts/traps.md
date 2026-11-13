@@ -9118,7 +9118,7 @@ PlainSpice's checks: no trap.
 
 ## unknown-word
 
-A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24). After the critic of those fixes (12 November 2026): a sign with a space after it is said part by part (CR1-3): on E, F, G and H lines native 47 and 42 read a polynomial and stop with a MIF-ERROR while our engine says "unknown parameter (-)" (unknown-word-25 to -28), on C and L ngspice first warns that it can't find a model called `-` (-29, -30), and R, V and I stop at the sign (-31, -32, space-character-13). Only a top-level `.param` line's names are values outside a subcircuit, after `.end` too, as ngspice reads them (-36, -37); a subcircuit's own parameter, a `.param` inside a subcircuit and a `.func`'s name are not, and ngspice stops (-33 to -35), so the words say where the name has its value (CR1-7).
+A word after a part's value that ngspice cannot use there, on R, C, L, V, I, E, F, G and H lines: a note written without a semicolon, a value the part can only report (i, p), one number too many, or the second half of `1d-3` (a sign after a letter starts a new word, N8). The parser knows each part's settings from ngspice 47's parameter tables (`src/spice/parse.ts`), so `m=2`, `tc1=1m`, `ic=0` and the like are not flagged. Error: ngspice stops; on E, F, G and H lines our engine stops while native 47 reads a polynomial (XSPICE). Words a more specific trap explains (a decimal comma, a space before a scale letter, a mid-line comment) are left to it. Fixes: turn the word and the rest of the line into a comment with `;`, or write `1e-3` for `1d-3`. After the re-check of the fixes (12 November 2026, S6): a word where the value goes, with no value before it (`R1 a 0 Rload`, `E1 b 0 a 0 Av`), is said as that: it is no number, so ngspice stops, on E, F, G and H lines too, with no polynomial (unknown-word-13 to -21); its fix is never a comment, which would leave the part with no value, and a sign with a space after it (`- 5`) gets Write -5 (space-character-13). A name defined on a `.param` line is that value there, so it is no trap (unknown-word-22 to -24). After the critic of those fixes (12 November 2026): a sign with a space after it is said part by part (CR1-3): on E, F, G and H lines native 47 and 42 read a polynomial and stop with a MIF-ERROR while our engine says "unknown parameter (-)" (unknown-word-25 to -28), on C and L ngspice first warns that it can't find a model called `-` (-29, -30), and R, V and I stop at the sign (-31, -32, space-character-13). Only a top-level `.param` line's names are values outside a subcircuit, after `.end` too, as ngspice reads them (-36, -37); a subcircuit's own parameter, a `.param` inside a subcircuit and a `.func`'s name are not, and ngspice stops (-33 to -35), so the words say where the name has its value (CR1-7). After the last pass (13 November 2026, code review C3-5): two words ngspice takes out before it reads an E, F, G or H line are no trap. HSPICE's word for the kind of part after the output nodes (`vcvs`, `vccs`, `cccs`, `ccvs`) goes when the line has exactly seven words (E, G) or six (F, H), and stays as a node with one word more (unknown-word-53); two words between an E's or G's output nodes and its formula (`E1 e 0 in 0 VALUE={...}`) are dropped, so the output is the formula alone (unknown-word-54).
 
 What PlainSpice shows for unknown-word-1 (error, line 3):
 
@@ -11358,6 +11358,107 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 ```
 
 PlainSpice's checks: `unknown-word`.
+
+### unknown-word-53. HSPICE's word for the kind of part (E1 e 0 vcvs out 0 2): ngspice takes it out of a line of seven words (E, G) or six (F, H) (no trap)
+
+Added after the last pass (13 November 2026, code review C3-5). HSPICE writes the kind of a controlled source after its two output nodes: `vcvs` on E lines, `vccs` on G, `cccs` on F and `ccvs` on H. ngspice takes the word out before it reads the line (inp_compat in its inpcom.c, replace_token), but only when the line has exactly seven words (E, G) or six (F, H), so each source here works as usual: native 47 and 42 and our engine give e = 5 V, g = 5 V, f = 5 V and h = 2.5 V. Before, PlainSpice read the word as a node or a voltage source and said "vcvs has no DC path to ground", "SPICE can't use 2 on this line", "There is no voltage source called cccs" and "F1's gain is not a number". With one more word on the line, ngspice keeps the word as a node and stops at the next one, and so do the checks (the second run below).
+
+```spice
+* the word for the kind of controlled source, as HSPICE writes it
+V1 in 0 5
+Vs in mid 0
+R1 mid out 1k
+R2 out 0 1k
+E1 e 0 vcvs out 0 2
+Re e 0 1k
+G1 0 g vccs out 0 2m
+Rg g 0 1k
+F1 0 f cccs Vs 2
+Rf f 0 1k
+H1 h 0 ccvs Vs 1k
+Rh h 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        h                                2.500000e+00
+        f                                5.000000e+00
+        g                                5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        mid                              5.000000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        h1#branch                        -2.50000e-03
+        vs#branch                        2.500000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(mid) = 5, v(out) = 2.5, v(e) = 5, v(g) = 5, v(f) = 5, v(h) = 2.5, i(vs) = 0.0025, i(h1) = -0.0025, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(mid) = 5, v(out) = 2.5, v(e) = 5, v(g) = 5, v(f) = 5, v(h) = 2.5, i(vs) = 0.0025, i(h1) = -0.0025, i(e1) = -0.005, i(v1) = -0.0025
+with one more word (E1 e 0 vcvs out 0 2 m=1, eight words), which PlainSpice's checks say as `unknown-word` (SPICE can't use 2 on this line) and `floating-dc` (vcvs has no DC path to ground):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2)
+      Simulation interrupted due to error!
+      Error: incomplete or empty netlist
+      Error: circuit not parsed.
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      Error on line 5 or its substitute:
+      unknown parameter (2)
+      Simulation interrupted due to error!
+      Error: circuit not parsed.
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: no trap.
+
+### unknown-word-54. Two words between the output nodes and VALUE= or cur= (E1 e 0 in 0 VALUE={...}): ngspice drops them, the output is the formula alone (no trap)
+
+Added after the last pass (13 November 2026, code review C3-5). When an E or G line has two more words after its output nodes and then the formula, ngspice drops the two words (inp_compat in its inpcom.c keeps the output nodes and the formula), so they change nothing: `E2 e2 0 out 0 VALUE={2}` gives e2 = 2 V whatever v(out) is. Native 47 and 42 and our engine give e = 5 V, g = 5 V and e2 = 2 V. Before, PlainSpice said "E1 has no setting called VALUE", "G1 has no setting called cur" and "E2 has no setting called VALUE". Explain shows the two words as words ngspice drops.
+
+```spice
+* two words between the output nodes and the formula
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+E1 e 0 in 0 VALUE={v(out)*2}
+Re e 0 1k
+G1 0 g in 0 cur={v(out)*2m}
+Rg g 0 1k
+E2 e2 0 out 0 VALUE={2}
+Re2 e2 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e2_int1                          2.000000e+00
+        e2                               2.000000e+00
+        g1_int1                          5.000000e-03
+        g                                5.000000e+00
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -2.00000e-03
+        be1#branch                       0.000000e+00
+        bg1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(g) = 5, v(g1_int1) = 0.005, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(bg1) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(e) = 5, v(e1_int1) = 5, v(g) = 5, v(g1_int1) = 0.005, v(e2) = 2, v(e2_int1) = 2, i(be2) = 0, i(bg1) = 0, i(be1) = 0, i(e2) = -0.002, i(e1) = -0.005, i(v1) = -0.0025
+```
+
+PlainSpice's checks: no trap.
 
 ## unknown-dot-command
 

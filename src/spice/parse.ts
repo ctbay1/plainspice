@@ -740,9 +740,8 @@ function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | '
     return form;
   }
   if (letter === 'F' || letter === 'H') return undefined;
-  const kw = lowerAscii(w.clean);
-  const formula = kw === 'value' || (kw === (letter === 'E' ? 'vol' : 'cur') && r.equalsAfter(w.b));
-  if (!formula && kw !== 'table') return undefined;
+  const formula = isFormulaWord(r, w, letter);
+  if (!formula && lowerAscii(w.clean) !== 'table') return undefined;
   const form: ControlledForm = { kind: formula ? 'formula' : 'table', keyword: b.field(r.take(w), 'parameter') };
   b.formula(w.b, s.length);
   const first = r.peek('word');
@@ -755,6 +754,25 @@ function controlledForm(r: Reader, b: ElementBuilder, s: string, letter: 'E' | '
   if (first && isGroupStart(first.clean.charCodeAt(0))) form.formula = b.token(first);
   else if (first && last && formula) form.formula = b.token({ a: first.a, b: last.b, clean: '' });
   return form;
+}
+
+/** The word that names a formula on an E or G line: VALUE, then '=' or not, or vol= (E) or cur= (G). */
+function isFormulaWord(r: Reader, w: Word, letter: 'E' | 'G'): boolean {
+  const kw = lowerAscii(w.clean);
+  return kw === 'value' || (kw === (letter === 'E' ? 'vol' : 'cur') && r.equalsAfter(w.b));
+}
+
+/**
+ * HSPICE's word for the part's kind after its output nodes, which ngspice takes out of a line of exactly
+ * seven words (E: vcvs, G: vccs) or six (F: cccs, H: ccvs) before it reads the line (inp_compat,
+ * replace_token; unknown-word-53): read as a setting, and the line as usual after it.
+ */
+function kindWord(r: Reader, b: ElementBuilder, s: string, letter: 'E' | 'F' | 'G' | 'H'): void {
+  const w = r.peek('net');
+  const word = { E: 'vcvs', G: 'vccs', F: 'cccs', H: 'ccvs' }[letter];
+  // Words as ngspice's nexttok counts them: runs of characters between C's spaces (not a no-break space).
+  const words = s.split(/[ \t\n\v\f\r]+/).filter(Boolean).length;
+  if (w && lowerAscii(w.clean) === word && words === ('EG'.includes(letter) ? 7 : 6)) b.field(r.take(w), 'parameter');
 }
 
 /** E or G written with control nodes and then TABLE (LTspice's form): an XSPICE block too (C3-5). */
@@ -842,6 +860,18 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       fixedNodes(r, b, letter === 'E' ? ['plus', 'minus'] : ['from', 'to']);
       form = b.nodes.length === 2 ? controlledForm(r, b, src.text, letter) : undefined;
       if (form) break;
+      // Two words and then a formula: ngspice keeps the output nodes and the formula, and drops the two
+      // words (inp_compat; unknown-word-54).
+      const w1 = b.nodes.length === 2 ? r.peek('net') : undefined;
+      const w2 = w1 && r.peek('net', w1.b);
+      const w3 = w2 && r.peek('net', w2.b);
+      if (w1 && w2 && w3 && isFormulaWord(r, w3, letter)) {
+        const dropped = [b.field(r.take(w1), 'parameter'), b.field(r.take(w2), 'parameter')];
+        form = controlledForm(r, b, src.text, letter);
+        if (form) form.dropped = dropped;
+        break;
+      }
+      if (b.nodes.length === 2) kindWord(r, b, src.text, letter);
       fixedNodes(r, b, ['control-plus', 'control-minus']);
       form = b.nodes.length === 4 ? tableAfterControls(r, b) : undefined;
       if (form) break;
@@ -857,6 +887,7 @@ function parseElement(src: Source, netlistText: string, models: ReadonlySet<stri
       fixedNodes(r, b, letter === 'F' ? ['from', 'to'] : ['plus', 'minus']);
       form = b.nodes.length === 2 ? controlledForm(r, b, src.text, letter) : undefined;
       if (form) break;
+      if (b.nodes.length === 2) kindWord(r, b, src.text, letter);
       const control = b.nodes.length === 2 ? r.next('net') : undefined;
       if (control) controlSource = b.field(control, 'control-source');
       const role: FieldRole = letter === 'F' ? 'gain' : 'transresistance';
