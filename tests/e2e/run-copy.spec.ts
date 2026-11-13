@@ -43,6 +43,30 @@ test.describe('what PlainSpice hands ngspice', () => {
     await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.joinedWord(5, `i( ${words} )`, 603));
   });
 
+  // The round-2 critic's C2-2, C2-3 and C2-4: ngspice runs a *# line as a command outside a .control block
+  // too, reads a .title line of a circuit built with circbyline as its title, and makes a word of each
+  // choice in braces. No check saw these, and each of these links crashed the page on b060bc8 and on the
+  // round-2 fix.
+  test('a run=1 link that builds a circuit by *# circbyline lines with a 601-byte title is not given to ngspice: the status line says why', async ({ page }) => {
+    const lines = [`* ${'ab '.repeat(200).trimEnd()}`, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end'].map((l) => `*# circbyline ${l}`).join('\n');
+    await openApp(page, `./#${await encodeShare(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.op\n${lines}\n*# op\n.end\n`, { run: true })}`);
+    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.circuitTitle(6, 601));
+  });
+
+  test('a run=1 link whose circbyline .title line is 599 bytes is not given to ngspice: the status line says why', async ({ page }) => {
+    const lines = ['* short', `.title ${'ab '.repeat(200).trimEnd()}`, 'V1 a 0 9', 'R1 a 0 1k', '.op', '.end'].map((l) => `circbyline ${l}`).join('\n');
+    await openApp(page, `./#${await encodeShare(`* t\nV9 z 0 1\nR9 z 0 1\n.op\n.control\n${lines}\nop\n.endc\n.end\n`, { run: true })}`);
+    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.circuitDotTitle(7, 599));
+  });
+
+  test('a run=1 link whose print line has choices in braces is not given to ngspice: the status line says why', async ({ page }) => {
+    await openApp(page, `./#${await encodeShare('* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.control\nop\nprint ({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+ v(b)\n.endc\n.end\n', { run: true })}`);
+    await expect(statusLine(page)).toContainText(t('statusRunFailed'));
+    await expect(statusLine(page)).toContainText(RUN_COPY_WORDS.braceChoices(7, '({v(b),v(b)}{,}{,}{,}{,}{,}{,}{,})+'));
+  });
+
   // The round-1 critic's R5: only analysis commands are written into 512 bytes; the first fix refused
   // every .control line over 500 bytes, though ngspice runs these.
   test('a .control block with a print line of 525 bytes runs', async ({ page }) => {
