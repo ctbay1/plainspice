@@ -1543,9 +1543,9 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 
 PlainSpice's checks: `space-before-suffix`.
 
-### space-before-suffix-19. A capacitor's p and an inductor's v or volt after a space: values the part can only report, so ngspice 47 stops with "no such parameter on this device or parameter is missing" (ngspice 42: "no such parameter on this device")
+### space-before-suffix-19. A capacitor's or an inductor's p, and an inductor's v or volt, after a space: values the part can only report, so ngspice 47 stops with "no such parameter on this device or parameter is missing" (ngspice 42: "no such parameter on this device")
 
-Added after the round-1 critic of the last pass's fixes (13 November 2026, C7), as the record of the runs space-before-suffix-12 noted in a paragraph. `1 p` on a capacitor and `1 v` or `1 volt` on an inductor are two words for ngspice, and the second names a value the part can only report: a capacitor's power, an inductor's voltage (ngspice's tables in cap.c and ind.c, and `src/spice/parse.ts`). So each version stops with its own words of space-before-suffix-12, which the check says: "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')". Until then the check quoted "unknown parameter (volt)" for `volt`. Its fix joins the words (`1p`, `1`).
+Added after the round-1 critic of the last pass's fixes (13 November 2026, C7), as the record of the runs space-before-suffix-12 noted in a paragraph. `1 p` on a capacitor or an inductor and `1 v` or `1 volt` on an inductor are two words for ngspice, and the second names a value the part can only report: its power, an inductor's voltage (ngspice's tables in cap.c and ind.c, and `src/spice/parse.ts`). So each version stops with its own words of space-before-suffix-12, which the check says: "ngspice 47 stops: 'no such parameter on this device or parameter is missing' (ngspice 42: 'no such parameter on this device')". Until then the check quoted "unknown parameter (volt)" for `volt`, and cited space-before-suffix-12, a resistor's record, for the others. Its fix joins the words (`1p`, `1`).
 
 ```spice
 * a space before p on a capacitor: p is its power, which it can only report
@@ -1652,7 +1652,42 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
     vectors: (none)
 ```
 
-PlainSpice's checks: `space-before-suffix`; `space-before-suffix`; `space-before-suffix`.
+```spice
+* a space before p on an inductor: p is its power, which it can only report
+V1 in 0 1
+R9 in out 1k
+L1 out 0 1 p
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 p
+    no such parameter on this device or parameter is missing
+        Simulation interrupted due to error!
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+ngspice 42, ngspice -b (exit 1):
+    Error on line 4 or its substitute:
+      l1 out 0 1 p
+    no such parameter on this device
+        Simulation interrupted due to error!
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 1): the same lines up to "Simulation interrupted due to error!", then:
+    Error: circuit not parsed.
+    rawfile: (no rawfile)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    the same lines as ngspice 47 -b -r
+    vectors: (none)
+```
+
+PlainSpice's checks: `space-before-suffix`; `space-before-suffix`; `space-before-suffix`; `space-before-suffix`.
 
 ### space-before-suffix-20. A voltage source's p and a current source's p or v after a space: the same two messages; a voltage source reports no v, so `5 v` gives "unknown parameter (v)"
 
@@ -8031,7 +8066,7 @@ PlainSpice's checks: `after-end`.
 
 A resistor whose value is less than 1e-12 Ω in size (ngspice 47's limit, resparam.c), 0 included. Warning. Fix: a 0 V source in its place, offered only when that adds no loop of voltage sources and the line has nothing else on it (zero-ohm-3). An error, with no fix, when the resistor sits straight across a voltage source, or a chain of voltage sources and inductors whose voltages need not add up to 0: its current then has no finite answer, and ngspice's stand-in gives an absurd one (zero-ohm-2: 6e12 A from a 6 V source). After the re-check of the fixes (12 November 2026, C1), a 0 that another check already explains (`0<ZWSP>.47`, `0R47`, `0k47`, `0．47`: 470 mΩ was meant) is that check's, whose fix writes what was meant; the 0 V source would make a short. The error across a source stays. After the critic of those fixes (12 November 2026, CR1-1), that check says what this one says of a 0, from the runs of zero-ohm-4: ngspice 47 uses 1e-12 Ω and warns, ngspice 42 used 1 mΩ without a word; never "without a message" or "says nothing".
 
-After the last pass (13 November 2026, F4 and F5), the same for a value below 1e-12 Ω that is not 0 (zero-ohm-7, zero-ohm-8, P24): ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative value, and warns ("set to -1.000000e-12" for a negative one), and ngspice 42 keeps the value as written, without a word; only a value of exactly 0 becomes 1 mΩ in ngspice 42. Such a value that another check explains (`3a`, unit-letter) is that check's alone, whose words say what each version does, where "Use a 0 V source" would make a short where 3 Ω was meant; the error across a source stays. The words for a 0 no longer say that ngspice 42's 1 mΩ "changed the answer in the 4th digit": that is zero-ohm-1's circuit only (zero-ohm-6 changes in the 3rd digit, P13 in the 6th), and a student would read it as the size of the change in their own circuit (F5).
+After the last pass (13 November 2026, F4 and F5), the same for a value below 1e-12 Ω that is not 0 (zero-ohm-7, zero-ohm-8, P24): ngspice 47 uses 1e-12 Ω, or −1e-12 Ω for a negative value, and warns ("set to -1.000000e-12" for a negative one), and ngspice 42 keeps the value as written, without a word; only a value of exactly 0 becomes 1 mΩ in ngspice 42. Such a value that another check explains (`3a`, unit-letter) is that check's alone, whose words say what each version does, where "Use a 0 V source" would make a short where 3 Ω was meant; the error across a source stays. The words for a 0 no longer say that ngspice 42's 1 mΩ "changed the answer in the 4th digit": that is zero-ohm-1's circuit only (zero-ohm-6 changes in the 3rd digit, P13 in the 6th), and a student would read it as the size of the change in their own circuit (F5). After the round-1 critic of those fixes (C3, C6): the why for such a value that is not 0 is ngspice 47's floor, in the Numbers panel's words ("ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate", zero-ohm-9), where it said that SPICE cannot use a resistance of 0; and a Greek μ in a 0 or tiny value (`0μ47`, `1e-13μ`) is greek-mu's alone, as greek-mu now runs before this check.
 
 What PlainSpice shows for zero-ohm-1 (warning, line 3):
 
