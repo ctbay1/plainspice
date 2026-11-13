@@ -1368,6 +1368,17 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     expect(shownSweep(netlist, doctored)!.series.find((s) => s.name === 'i(@r5[i])')!.values[last]).toBe(0);
   });
 
+  it('each controlled source that reads another part adds one exact solution, so a chain of 30 of them, each reading the stage before into a load of its own (62 parts, with a 11-point sweep), is still decided exactly in well under 50 ms', async () => {
+    const chain = ['V1 in 0 1', 'R0 in 0 1k'];
+    for (let k = 1; k <= 30; k++) chain.push(`${k % 2 ? 'E' : 'G'}${k} o${k} 0 ${k === 1 ? 'in' : `o${k - 1}`} 0 ${k % 2 ? '1.5' : '0.002'}`, `Rl${k} o${k} 0 ${k % 2 ? '1k' : '470'}`);
+    const text = `* t\n${chain.join('\n')}\n.options savecurrents\n.op\n.dc V1 0 1 0.1\n.end\n`;
+    const r = await solveText(text, ngspice);
+    expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
+    const copies = [0, 1, 2, 3, 4].map(() => structuredClone(r.results));
+    const [ms] = leastWorkMs([() => describeResults(parseNetlist(text), copies.pop()!, r.run)], 5);
+    expect(ms).toBeLessThan(50);
+  });
+
   it('a circuit at rest beside a sweep takes leftovers up to 2^-30 of the sweep\'s largest voltage: a diode\'s I-V sweep to 1 V doctored 0.5 nV at node a in its .op is 0 V there; with no sweep beside it, 0.5 nV is beyond 2^-30 of vntol and the rule decides', async () => {
     const text = '* t\nV1 in 0 0\nR1 in a 1k\nD1 a 0 dmod\n.model dmod d\n.op\n.dc V1 0 1 0.25\n.end\n';
     const r = await solveText(text, ngspice);
