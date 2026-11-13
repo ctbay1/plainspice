@@ -160,6 +160,12 @@ const FACTS: Fact[] = [
   { code: 'C9w', id: 'cur-exact-temp-sin-m1', netlist: "* the bridge of C9 with an ammeter, a .temp line, a SIN beside V1's DC value and m=1 on R5\nV1 top 0 DC 9 SIN(9 1 1k)\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k m=1\nVm m b 0\n.temp 100\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9.0, "v(a)": 4.499999999999999, "v(b)": 4.499999999999999, "v(m)": 4.499999999999999, "i(vm)": -2.168404344971009e-19, "i(v1)": -0.0014074468085106388, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106385, "i(@r4[i])": 0.0009574468085106381, "i(@r5[i])": 0.0} },
   { code: 'C9w.2', id: 'cur-rule-ammeter-in-series', netlist: "* the bridge of C9 with an ammeter, with ngspice's own gmin written out\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a m 1k\nVm m b 0\n.options gmin=1e-12\n.options savecurrents\n.op\n.end\n", vectors: {"v(top)": 9.0, "v(a)": 4.499999999999999, "v(b)": 4.499999999999999, "v(m)": 4.499999999999999, "i(vm)": -2.168404344971009e-19, "i(v1)": -0.0014074468085106388, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106385, "i(@r4[i])": 0.0009574468085106381, "i(@r5[i])": 0.0} },
   { code: 'C9w.3', id: 'cur-rule-maybe-noise', netlist: "* the C9n ladder read through a 1 uohm wire, a 0 V ammeter and a 1 Tohm meter, with ngspice's own gmin written out\nV1 n0 0 1.5\nR1 n0 n1 1.5k\nR2 n1 0 12\nR3 n1 n2 1.5k\nR4 n2 0 12\nR5 n2 n3 1.5k\nR6 n3 0 12\nR7 n3 n4 1.5k\nR8 n4 0 12\nRw n3 p 1u\nVm p q 0\nRvm q 0 1t\n.options gmin=1e-12\n.options savecurrents\n.op\n.end\n", vectors: {"v(n0)": 1.5, "v(n1)": 0.011811755997793995, "v(n2)": 9.301171983709262e-05, "v(n3)": 7.324215167679475e-07, "v(n4)": 5.812869180697997e-09, "v(p)": 7.324215167679475e-07, "v(q)": 7.324215167679475e-07, "i(vm)": 7.324215167679474e-19, "i(v1)": -0.0009921254960014707, "i(@r1[i])": 0.0009921254960014707, "i(@r2[i])": 0.0009843129998161663, "i(@r3[i])": 7.812496185304601e-06, "i(@r4[i])": 7.750976653091051e-06, "i(@r5[i])": 6.151953221354978e-08, "i(@r6[i])": 6.103512639732895e-08, "i(@r7[i])": 4.844057650581663e-10, "i(@r8[i])": 4.844057650581663e-10, "i(@rw[i])": 0.0, "i(@rvm[i])": 7.324215167679474e-19} },
+  { code: 'C9w.4', id: 'cur-page-digits-carrier', netlist: "* a G of 1e6 S reads a 1e15 ohm resistor that carries no current; its load holds a 1 aA source\nV1 top 0 3.3\nRw top f1 100u\nVa f1 n 0\nR2 n 0 150\nR1 n f2 1e15\nC1 f2 0 1p\nG1 0 g n f2 1e6\nR3 g 0 820k\nI1 0 g 1n\n.options savecurrents\n.op\n.end\n", vectors: {"v(n)": 3.2999978000014667, "v(f2)": 3.2999978000014663, "v(g)": 0.00146484375, "i(@r1[i])": 4.4408920985006265e-31, "i(@g1[i])": 4.440892098500626e-10, "i(@r3[i])": 1.7863948170731707e-09} },
+  { code: 'C9w.5', id: 'cur-spread-ammeters', netlist: "* C9m's two equal arms fed through a 1 uOhm wire, a 1 GOhm resistor and two 0 V ammeters\nV1 top 0 9\nRw top s 1u\nRg s 0 1g\nVa s v3 0\nVb v3 n1 0\nRl n1 0 820\nR1 n1 n2 15k\nR2 n2 n3 330\nR3 n3 0 33k\nR4 n1 n4 15k\nR5 n4 n5 330\nR6 n5 0 33k\nR7 n3 n5 100k\n.options savecurrents\n.op\n.end\n", vectors: {"v(s)": 8.99999998865194, "v(v3)": 9.000001907348633, "v(n1)": 9.000001907348633, "v(n3)": 6.145252698996582, "v(n5)": 6.145252698996587, "i(va)": 0.011348050087690353, "i(@r7[i])": -5.329070518200752e-20} },
+  { code: 'C9w.6', id: 'cur-save-judged', netlist: "* C9m with a .save line naming the link and its ends\nV1 n1 0 9\nR1 n1 n2 15k\nR2 n2 n3 330\nR3 n3 0 33k\nR4 n1 n4 15k\nR5 n4 n5 330\nR6 n5 0 33k\nR7 n3 n5 100k\n.save v(n3) v(n5) @r7[i]\n.op\n.end\n", vectors: {"v(n3)": 6.145251396648049, "v(n5)": 6.145251396648042, "i(@r7[i])": 6.217248937900877e-20} },
+  { code: 'C9w.7', id: 'cur-sweep-off-wire', netlist: "* the 1 nohm wire of C9n.4, its .op and a long sweep\nV1 top1 0 1.5\nR1 top1 d2 270k\nR2 d2 0 820\nR3 d2 p3 1n\nR4 p3 0 10meg\n.options savecurrents\n.op\n.dc V1 0 1.5 0.00025\n.end\n", summaries: { "i(@r3[i])": { points: 6001, first: 0, last: 0 } } },
+  { code: 'C9w.8', id: 'cur-guarded-maybe-noise', netlist: "* a reverse diode's leak beside a 1 nV divider: the exact solution keeps the run's tiny values as ngspice gives them\nV1 top1 0 0.5\nR1 top1 s2 1m\nR2 s2 0 1e12\nD1 d3 s2 dmod\nR3 d3 0 120k\nR4 d3 x4 1.2\nC1 x4 0 1n\nV2 d3 v5 0\nR5 v5 0 1\nF1 0 f6 V1 1m\nR6 f6 0 10\nV3 n1 0 1n\nR7 n1 n2 1k\nR8 n2 0 1k\n.model dmod D(is=1e-14)\n.options savecurrents\n.op\n.end\n", vectors: {"v(d3)": 5.099938892338058e-13, "v(n2)": 5.000000000000001e-10, "i(v2)": 5.099938892338058e-13, "i(v3)": -5e-13, "i(@r3[i])": 4.2499490769483816e-18, "i(@r5[i])": 5.099938892338058e-13, "i(@r7[i])": 4.999999999999999e-13, "i(@r8[i])": 5.000000000000002e-13} },
+  { code: 'C9w.9', id: 'cur-wire-two-ammeters', netlist: "* a 1 nohm wire into two 0 V ammeters in series (the skeptic of the last pass, P1-1n)\nV1 a 0 9\nRw a b 1n\nVm1 b c 0\nVm2 c d 0\nRl d 0 820\n.options savecurrents\n.op\n.end\n", vectors: {"v(b)": 8.999999999989024, "v(c)": 8.9994049072265625, "v(d)": 8.9994049072265625, "i(vm1)": 0.010974884033203125, "i(vm2)": 0.010974884033203125, "i(@rw[i])": 0.010976108910654146, "i(@rl[i])": 0.010974884033203125} },
   { code: 'C9', id: 'cur-noise-bridge', netlist: "* a balanced bridge: no current through R5\nV1 top 0 9\nR1 top a 10k\nR2 a 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 a b 1k\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(a)": 4.499999999999999, "v(b)": 4.5, "i(v1)": -0.0014074468085106386, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r3[i])": 0.0009574468085106382, "i(@r4[i])": 0.0009574468085106382, "i(@r5[i])": -8.881784197001253e-19 } },
   { code: 'C9b', id: 'cur-noise-everywhere', netlist: "* a 0 V ammeter whose last word is gnd: no current anywhere\nV1 in 0 12\nR1 in a 1k\nR2 a x 2k\nVm x gnd\nR3 a b 3k\nF1 0 b V1 2\n.options savecurrents\n.op\n.end\n", vectors: { "v(in)": 12, "v(a)": 11.999999999999998, "v(x)": 11.999999999999998, "v(gnd)": 11.999999999999998, "v(b)": 11.999999999999995, "i(v1)": -1.734723475976807e-18, "i(vm)": 0, "i(@r1[i])": 1.7763568394002505e-18, "i(@r2[i])": 0, "i(@r3[i])": 1.1842378929335003e-18, "i(@f1[i])": -3.469446951953614e-18 }, prints: ["vm: has no value, DC 0 assumed"], codes: ["no-value-dc0"] },
   { code: 'C9c', id: 'cur-abstol', netlist: "* ngspice's tolerances\nV1 a 0 1\nR1 a 0 1k\n.control\nop\noptions\n.endc\n.end\n", prints: ["abstol      (current) = 1e-12", "vntol       (voltage) = 1e-06", "reltol      (current) = 0.001"], fails: true },
@@ -1250,10 +1256,11 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     expect(d.results.op!.currents.find((c) => c.element === '@d1[id]')!.value).toBe(-1.2312373330778934e-27);
   });
 
-  it('C9t.3: with a diode, a bridge 1e-13 off balance read by an H of 1 MΩ: h5\'s real −433.7 fV is shown as ngspice gives it, never 0 V', () => {
+  it('C9t.3: with a diode, a bridge 1e-13 off balance read by an H of 1 MΩ: h5\'s real −433.7 fV is shown as ngspice gives it, never 0 V; since the last pass with the warning, which names its exact −425.9 fV', () => {
     const d = ofFact('C9t.3');
-    expect(roundingNoise(d.netlist, d.results).by).toBe('exact');
+    expect(roundingNoise(d.netlist, d.results).by).toBe('rule');
     expect([node(d, 'h5'), noise(d)]).toEqual(['−433.7 fV', []]);
+    expect(offNote(d)).toContain('node h5 is at −425.9 fV, where ngspice gives −433.7 fV');
   });
 
   it('C9t.4: ngspice gives a diode\'s current as its last iteration\'s: with a 10 Ω series resistance, @d1[id] is 1.4e-4 off the 4.2647 mA that flows through R1 into it; the exact solution takes the current Kirchhoff\'s law gives it', () => {
@@ -1300,9 +1307,10 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
     ]);
   });
 
-  it('C9t.7: a diode\'s current is taken at the node whose law ngspice\'s rounding leaves nearest 0 (here ground, not the 1 nΩ wire\'s node): the circuit is decided exactly, with no warning claiming d2 is at 4.542 mV', () => {
+  it('C9t.7: a diode\'s current is taken at the node whose law ngspice\'s rounding leaves nearest 0 (here ground, not the 1 nΩ wire\'s node): no warning claims d2 is at 4.542 mV; since the last pass the warning names R3\'s 867.4 pA for 454.1 pA, which no floor excuses', () => {
     const d = ofFact('C9t.7');
-    expect([roundingNoise(d.netlist, d.results).by, offNote(d), node(d, 'd2'), plain(currentText(d, 'R3'))]).toEqual(['exact', '', '4.541 mV', '867.4 pA from node d2 to node p3 through R3']);
+    expect([roundingNoise(d.netlist, d.results).by, node(d, 'd2'), plain(currentText(d, 'R3'))]).toEqual(['rule', '4.541 mV', '867.4 pA from node d2 to node p3 through R3']);
+    expect(offNote(d)).toBe("Solved exactly, with fractions, from the netlist's values, R3 carries 454.1 pA, where ngspice gives 867.4 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them. PlainSpice shows ngspice's numbers as it gives them, so they may not agree with each other.");
   });
 
   it('C9t.8: with a diode, the warning that ngspice\'s answers are off names only the values no diode\'s current changes: Rw and R5, which the balanced bridge makes 0 whatever top is', () => {
@@ -1417,6 +1425,42 @@ describe('after the re-check of 12 November 2026: what the circuit makes exactly
 });
 
 describe('after the last pass (13 November 2026)', () => {
+  it('C9w.4: a G that the circuit makes 0 A, whose own rounding lifts node g to 1.465 mV for 820 µV, keeps ngspice\'s 444.1 pA, with the warning; it was drawn "no current" beside it, the floor excusing node g', () => {
+    const d = ofFact('C9w.4');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'G1')), plain(d.words.nodes.find((n) => n.node === 'g')?.text)]).toEqual(['rule', '444.1 pA from ground to node g through G1', '1.465 mV']);
+    expect(plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')?.why)).toContain('G1 carries no current, where ngspice gives 444.1 pA; R1 carries no current, where ngspice gives 4.441e-31 A; node g is at 820 µV, where ngspice gives 1.465 mV; and R3 carries 1 nA, where ngspice gives 1.786 nA.');
+  });
+
+  it('C9w.5: a 1 µΩ wire into two 0 V ammeters leaves 1.07e-7 of the equations, within what the spread of its conductances allows; every answer drawn with its exact digits, R7 is 0 A with the note', () => {
+    const d = ofFact('C9w.5');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R7'))]).toEqual(['exact', 'no current through R7']);
+  });
+
+  it('C9w.6: with a .save line, the values ngspice gives are judged by the page\'s digits: R7 0 A with the note', () => {
+    const d = ofFact('C9w.6');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R7'))]).toEqual(['exact', 'no current through R7']);
+  });
+
+  it('C9w.7: a sweep whose checked point ngspice gives with other digits (R3 433.7 pA for 340.6 pA) is shown as ngspice gives it, with the warning; the .op beside it is decided exactly', () => {
+    const d = ofFact('C9w.7');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R3')), shownSweep(d.netlist, d.results) === d.results.dc]).toEqual(['exact', '454.1 pA from node d2 to node p3 through R3', true]);
+    expect(plain(d.words.warnings.find((m) => m.title === "Some of ngspice's answers in the DC sweep are off")?.why)).toContain('at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA.');
+  });
+
+  it('C9w.8: beside a reverse diode, whose leak only ngspice\'s numbers give, the rule\'s tiny values keep the note that they may be noise, but the 1 nV divider\'s 500 fA, real whatever the diode carries, is left out of it', () => {
+    const d = ofFact('C9w.8');
+    expect([roundingNoise(d.netlist, d.results).by, d.words.warnings.some((m) => m.code === 'imprecise-answers'), plain(currentText(d, 'R7'))]).toEqual(['rule', false, '500 fA from node n1 to node n2 through R7']);
+    const maybe = d.words.warnings.find((m) => m.code === 'maybe-noise')!;
+    expect(plain(maybe.title)).toBe('3 currents and 3 node voltages may be rounding noise');
+    expect(plain(maybe.why)).toMatch(/^ngspice gave R3 4\.249949e-18 A, V2 5\.099939e-13 A, R5 5\.099939e-13 A, node d3 5\.099939e-13 V and 2 more node voltages, each in the tables above\. /);
+  });
+
+  it('C9w.9: a 1 nΩ wire into two 0 V ammeters in series, which ngspice gives 10.97 mA beside the wire\'s 10.98 mA, is shown as ngspice gives it with the warning; it was decided by the rule with nothing said', () => {
+    const d = ofFact('C9w.9');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm1')), plain(d.words.nodes.find((n) => n.node === 'c')?.text)]).toEqual(['rule', 'Vm1 measures 10.97 mA flowing from node b to node c', '8.999 V']);
+    expect(plain(d.words.warnings.find((m) => m.code === 'imprecise-answers')?.why)).toContain('V1 carries 10.98 mA, where ngspice gives 10.97 mA; Vm1 carries 10.98 mA, where ngspice gives 10.97 mA;');
+  });
+
   it('C9w: a .temp line, a SIN beside V1\'s DC value and m=1 on R5 leave the bridge\'s doubles as they are, and PlainSpice models them exactly: Vm is 0 A with the note, where the rule drew "Vm measures 2.168e-19 A" beside "R5: no current" (regress-1)', () => {
     const d = ofFact('C9w');
     expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'R5'))]).toEqual(['exact', 'Vm measures no current', 'no current through R5']);
@@ -1435,7 +1479,7 @@ describe('after the last pass (13 November 2026)', () => {
     expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'Rw'))]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q', 'no current through Rw']);
     const maybe = d.words.warnings.find((m) => m.code === 'maybe-noise')!;
     expect(plain(maybe.title)).toBe('2 currents may be rounding noise');
-    expect(plain(maybe.why)).toBe("ngspice gave Vm 7.324215e-19 A and Rvm 7.324215e-19 A. Each is below 1 pA, ngspice's current tolerance (its abstol option), so each may be rounding noise, what its arithmetic leaves of a value that is exactly 0, or a real value that small. PlainSpice does not solve this circuit exactly, so it cannot tell which, and shows each as ngspice gives it.");
+    expect(plain(maybe.why)).toBe("ngspice gave Vm 7.324215e-19 A and Rvm 7.324215e-19 A. Each is below 1 pA, ngspice's current tolerance (its abstol option), so each may be rounding noise, what its arithmetic leaves of a value that is exactly 0, or a real value that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows each as ngspice gives it.");
   });
 
   it('C8b: a sweep\'s words name a transistor\'s currents by their terminals, as ngspice\'s devhelp describes them, never "the current in Q1" four times', () => {

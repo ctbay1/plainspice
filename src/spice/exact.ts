@@ -929,10 +929,12 @@ export function partCurrent(model: ExactModel, x: readonly Fraction[], k: number
  * sizes of an equation's terms of the same kind (Shares.equations). ngspice solves the equations of a
  * circuit of these parts once, with an LU factorisation in doubles (its Newton iterations of a linear
  * circuit repeat the same solution), and such a solution leaves a few units in the last place of the
- * whole system, times a growth factor that is small in practice. Measured on the 9,627 netlists of the
+ * whole system, times a growth factor. Measured on the 9,627 netlists of the
  * repository and the re-check's corpora that PlainSpice models exactly, run in our engine (wires of 1 µΩ, meters of 1e20 Ω, gains of
  * 1e9): at most 3.8e-15 for the nodes and 4.4e-11 for the branches, most below 2^-52. 2^-30 (about
- * 9.3e-10) leaves room above that. It says nothing of how far ngspice's answers are from the exact
+ * 9.3e-10) leaves room above that. That is no bound: a 1 nΩ to 10 µΩ wire into 0 V ammeters in series leaves
+ * 1.07e-7 to 1.9e-3 (the last pass), so `agrees` allows this share times the spread of the conductances
+ * (conductanceSpread). It says nothing of how far ngspice's answers are from the exact
  * ones where a tiny wire makes the equations ill-conditioned: `answersAgree` does.
  * A circuit other than ngspice's leaves more, measured on one with every kind of part: a node or part
  * it does not have fails at the names; a 9 V source, a gain of an E or of an H 1 ppm off leave 5e-7,
@@ -1223,7 +1225,8 @@ export interface Shares {
    * is a share of the whole system, not of that equation's own terms: a chain of 0 V sources that
    * carries no current can show 1e-16 A against 1e-16 A, and a 0 V source next to a 1 mΩ wire 8e-10 V
    * against 9 V (decision 0015). Measured over the 9,627 netlists of the re-check's corpora and the
-   * repository that PlainSpice models exactly: at most 3.8e-15 for the nodes and 4.4e-11 for the branches.
+   * repository that PlainSpice models exactly: at most 3.8e-15 for the nodes and 4.4e-11 for the branches
+   * (a tiny wire into 0 V ammeters leaves far more: RESIDUAL_SHARE).
    */
   equations: Fraction;
   /**
@@ -1363,9 +1366,31 @@ export function shares(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
  * (PRODUCT_SHARE): then the model is the circuit ngspice simulated, and every difference between its
  * values and the exact ones (the noise of a 0 among them) is what that rounding leaves.
  */
-export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget()): boolean {
+export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPart) => Fraction, budget: Budget = newBudget(), spread = 1): boolean {
   const s = shares(model, ng, level, budget);
-  return !!s && compare(s.equations, fromDouble(RESIDUAL_SHARE)) <= 0 && compare(s.products, fromDouble(PRODUCT_SHARE)) <= 0;
+  return !!s && compare(s.equations, fromDouble(RESIDUAL_SHARE * Math.max(1, spread))) <= 0 && compare(s.products, fromDouble(PRODUCT_SHARE)) <= 0;
+}
+
+/**
+ * How far apart the conductances of the circuit's resistors and G sources are: the largest over the smallest (1 with
+ * fewer than two). What ngspice's arithmetic leaves of its equations grows with it: a 1 µΩ wire into 0 V ammeters beside
+ * 1 GΩ (a spread of 1e15) left 1.07e-7 of the equations' sizes, far beyond RESIDUAL_SHARE, with every answer within
+ * the page's digits; a run of another circuit, 1 ppm off, leaves 5e-7 of a bridge whose spread is 2 (decision 0015,
+ * after the last pass). `agrees` allows RESIDUAL_SHARE times it; the products of the R, F, G and I keep their own
+ * share, which no spread changes.
+ */
+export function conductanceSpread(model: ExactModel): number {
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = 0;
+  for (const p of model.parts) {
+    if (p.kind !== 'R' && p.kind !== 'G') continue;
+    const v = Math.abs(toDouble(p.value));
+    const g = p.kind === 'R' ? 1 / v : v;
+    if (!(g > 0) || !Number.isFinite(g)) continue;
+    lo = Math.min(lo, g);
+    hi = Math.max(hi, g);
+  }
+  return hi > 0 && Number.isFinite(lo) ? hi / lo : 1;
 }
 
 // ------------------------------------------------------------------ ngspice's answers beside the exact ones
@@ -1394,7 +1419,7 @@ export const ANSWER_GAP = 5e-5;
  * worked out from 12 V, one step of which over 1 kΩ is 1.8 aA, C9h). ngspice's LU solution leaves each
  * equation a few units in the last place of the sizes of its terms (what it leaves of the equations was
  * at most 3.8e-15 of their sizes over the 9,627 netlists of the corpora and the repository that
- * PlainSpice models exactly, RESIDUAL_SHARE), and an unknown that equation fixes is off by that over
+ * PlainSpice models exactly, though not in general, RESIDUAL_SHARE), and an unknown that equation fixes is off by that over
  * the equation's own coefficient, where the circuit is well conditioned. 2^-30 (about 9.3e-10) leaves room
  * above that. The scale is each answer's own, not the circuit's largest value: an open-loop E making
  * 1.2 MV beside a bridge at a few millivolts made the floor 1.1 mV for every node, and hid ngspice's
@@ -1621,22 +1646,24 @@ export interface Answer {
  * (a resistor's from the voltages at its ends, which can cancel to a few digits), and `agrees` holds it
  * to that product. With `devices`, for the note that names the answers that are off, the current of each
  * R, G and F that ngspice reports follows them (a wire ngspice gives as 0 A where 46.46 µA flows).
- * Undefined when ngspice gave no value for one of the answers. Worked out in doubles from the
+ * Undefined when ngspice gave no value for one of the answers, unless `partial` (a .save line keeps only some of
+ * them: those it gave are judged, decision 0015 after the last pass). Worked out in doubles from the
  * exact values (each rounded once, with no arithmetic on the fractions): a bound of 5e-5 needs no more.
  * Each answer is held to ANSWER_FLOOR of its own scale (`answerScales`): a 0 V ammeter beside milliamps
  * is weighed against the milliamps that flow at its nodes, a node against the terms of its own equations.
  * `carried`: the changes the controlled sources that read another part make (`carrierSides`), solved with the
  * circuit (describe.ts does it once per netlist); worked out here when not given.
  */
-export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value, devices = false, carried: readonly Carried[] = carriedOf(model)): Answer[] | undefined {
+export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceValues, level: (p: ExactPart) => Fraction = (p) => p.value, devices = false, carried: readonly Carried[] = carriedOf(model), partial = false): Answer[] | undefined {
   const exactV = model.nodes.map((_, k) => (isZero(x[k]!) ? 0 : toDouble(x[k]!)));
   const branches = model.parts.filter((p) => p.branch >= 0);
   const exactI = branches.map((p) => (isZero(x[p.branch]!) ? 0 : toDouble(x[p.branch]!)));
   const branchOf = new Map(branches.map((p, k) => [p.branch, exactI[k]!]));
   const { volts, amps } = answerScales(model, exactV, (p) => branchOf.get(p.branch) ?? 0, (p) => toDouble(level(p)), carried);
   const out: Answer[] = [];
+  // `partial`: the answers ngspice gave, where it gave only some (a .save line); else every answer must be there.
   const one = (kind: Answer['kind'], name: string, exact: number, given: number | undefined, scale: number): boolean => {
-    if (given === undefined || !Number.isFinite(given)) return false;
+    if (given === undefined || !Number.isFinite(given)) return partial && given === undefined;
     const beyond = Math.max(0, Math.abs(given - exact) - ANSWER_FLOOR * scale);
     out.push({ kind, name, exact, given, gap: exact !== 0 ? beyond / Math.abs(exact) : beyond > 0 ? Number.POSITIVE_INFINITY : 0 });
     return true;
@@ -1651,7 +1678,8 @@ export function answers(model: ExactModel, x: readonly Fraction[], ng: NgspiceVa
     model.parts.forEach((p, k) => {
       if (p.kind !== 'R' && p.kind !== 'G' && p.kind !== 'F') return;
       const exact = currentDouble(model, whole.num, whole.den, k);
-      if (!one('current', p.key, exact, ng.device(p.key), amps(p))) return;
+      const before = out.length;
+      if (!one('current', p.key, exact, ng.device(p.key), amps(p)) || out.length === before) return;
       const gain = Math.abs(toDouble(p.value));
       const worked = p.kind === 'R' ? (at(p.a) + at(p.b)) / gain : p.kind === 'G' ? gain * (at(p.c) + at(p.d)) : gain * amps(model.parts[p.control]!);
       const a = out[out.length - 1]!;

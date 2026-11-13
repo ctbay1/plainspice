@@ -203,6 +203,74 @@ describe('an attoamp is never drawn as an answer with nothing said: lines that l
     expect([by(r), text(r.words, 'Vm')]).toEqual(['rule', 'Vm measures 193.5 aA flowing from node b to node m']);
     const maybe = r.words.warnings.find((m) => m.code === 'maybe-noise')!;
     expect(sp(maybe.why)).toMatch(/^ngspice gave R5 -3\.779483e-16 A and Vm -1\.935098e-16 A\. /);
-    expect(sp(maybe.why)).toContain('PlainSpice does not solve this circuit exactly, so it cannot tell which, and shows each as ngspice gives it.');
+    expect(sp(maybe.why)).toContain("PlainSpice cannot tell which from ngspice's numbers alone, so it shows each as ngspice gives it.");
+  });
+});
+
+describe('on the exact path, ngspice\'s numbers are answers only where the page draws them with their exact digits (last pass: carrier-zero-beside-own-noise, silent-rule-same-circuit-check)', () => {
+  const by = (r: Awaited<ReturnType<typeof solveText>>): string => roundingNoise(r.netlist, r.results).by;
+  const text = (w: ResultsInWords, name: string): string => sp(w.currents.find((c) => c.name === name)!.text);
+  const off = (w: ResultsInWords): string => sp(w.warnings.find((m) => m.code === 'imprecise-answers')?.why);
+
+  it('a G of 1e6 S that the circuit makes exactly 0 keeps ngspice\'s 444.1 pA beside the node it lifts, with the warning; it was drawn "no current" beside its own rounding (g520d)', async () => {
+    const r = await solveText(netlist('V1 top 0 3.3', 'Rw top f1 100u', 'Va f1 n 0', 'R2 n 0 150', 'R1 n f2 1e15', 'C1 f2 0 1p', 'G1 0 g n f2 1e6', 'R3 g 0 820k', 'I1 0 g 1n', '.options savecurrents', '.op'), ngspice);
+    expect([by(r), text(r.words, 'G1'), sp(r.words.nodes.find((n) => n.node === 'g')!.text)]).toEqual(['rule', '444.1 pA from ground to node g through G1', '1.465 mV']);
+    expect(off(r.words)).toContain('G1 carries no current, where ngspice gives 444.1 pA');
+    expect(off(r.words)).toContain('node g is at 820 µV, where ngspice gives 1.465 mV; and R3 carries 1 nA, where ngspice gives 1.786 nA.');
+  });
+
+  it('the same G lifting a 1 aA load\'s node to 520.1 V for 715.3 fV is named, not drawn as "no current" (i9751-450)', async () => {
+    const r = await solveText(netlist('Vf f0 0 3.3', 'Rw f0 f1 100u', 'Rg f1 0 1g', 'Va0 f1 fa0 0', 'Va1 fa0 top1 0', 'R1 top1 f2 1e15', 'C1 f2 0 1p', 'L1 top1 x3 1m', 'R2 x3 0 150', 'G1 0 g4 top1 f2 1e6', 'R3 g4 0 820k', 'I1 0 g4 1e-18', 'R4 g4 i5 5.6meg', 'R5 i5 0 3.3k', '.options savecurrents', '.op'), ngspice);
+    expect([by(r), text(r.words, 'G1')]).toEqual(['rule', '727.1 µA from ground to node g4 through G1']);
+    expect(off(r.words)).toContain('G1 carries no current, where ngspice gives 727.1 µA');
+    expect(off(r.words)).toContain('node g4 is at 715.3 fV, where ngspice gives 520.1 V');
+  });
+
+  it('C9m fed through a 1 µΩ wire into two 0 V ammeters: ngspice\'s values leave 1.07e-7 of the equations, beyond 2^-30, yet every answer is drawn with its exact digits, so it is decided exactly: R7 is 0 A with the note (sc9m-w1u: the rule drew 5.329e-20 A, with nothing said)', async () => {
+    const r = await solveText(netlist('V1 top 0 9', 'Rw top s 1u', 'Rg s 0 1g', 'Va s v3 0', 'Vb v3 n1 0', 'Rl n1 0 820', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k', '.options savecurrents', '.op'), ngspice);
+    expect([by(r), text(r.words, 'R7')]).toEqual(['exact', 'no current through R7']);
+    expect(sp(r.words.warnings.find((m) => m.code === 'rounding-noise')?.why)).toContain('the two ends of R7, node n3 and node n5, are at the same voltage, 6.145 V');
+  });
+
+  it('an ill-fed bridge whose real −60.29 zA ngspice gives as 270.8 zA keeps ngspice\'s numbers with the warning; the rule wrote them as 0, "rounding noise" (i9751-394)', async () => {
+    const r = await solveText(netlist('Vf f0 0 12', 'Rw f0 f1 100p', 'Rg f1 0 1meg', 'Va0 f1 fa0 0', 'Va1 fa0 fa1 0', 'Va2 fa1 top1 0', 'R1 top1 a2 1.5meg', 'R2 a2 top1 120k', 'R3 top1 b3 4.5meg', 'R4 b3 top1 360k', 'R5 a2 b3 390k', 'R6 b3 a4 1.2', 'R7 a4 0 27000', 'R8 b3 b5 3.6', 'R9 b5 0 81000.000000081', 'R10 a4 m6 820', 'V2 m6 b5 0', 'R11 top1 a7 3.3', 'R12 a7 a2 5.6meg', 'R13 top1 b8 330m', 'R14 b8 a2 560k', 'R15 a7 m9 82', 'R16 m9 m10 820', 'R17 m10 b8 150', 'L1 top1 x11 1m', 'R18 x11 0 4.7', '.options savecurrents', '.op'), ngspice);
+    expect([by(r), text(r.words, 'R10'), text(r.words, 'V2')]).toEqual(['rule', '2.708e-19 A from node m6 to node a4 through R10', 'V2 measures 2.168e-19 A flowing from node b5 to node m6']);
+    expect(off(r.words)).toContain('R10 carries 6.029e-20 A, where ngspice gives 2.708e-19 A');
+    expect(r.words.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).not.toContain('R10');
+  });
+
+  it('an exact 0 that an F of 1e9 lifts to 888.2 nA, where every other answer is drawn with its exact digits, is 0 with the note (i9751-1437: the rule drew it with 78.89 pW)', async () => {
+    const r = await solveText(netlist('Vf f0 0 15', 'Rw f0 f1 10n', 'Rg f1 0 1e12', 'Va0 f1 fa0 0', 'Va1 fa0 top1 0', 'R1 top1 a2 1.2', 'R2 a2 0 100', 'R3 top1 b3 0.12', 'R4 b3 0 10.01', 'G1 0 g4 a2 b3 1m', 'R5 g4 0 4.7meg', 'R6 a2 b3 820k', 'R7 b3 a5 4.7', 'R8 a5 top1 2.7meg', 'R9 b3 b6 14.1', 'R10 b6 top1 8.1meg', 'V2 a5 m7 0', 'V3 m7 m8 0', 'V4 m8 m9 0', 'V5 m9 m10 0', 'V6 m10 m11 0', 'V7 m11 m12 0', 'R11 m12 b6 2.2', 'F1 0 f13 V5 1e9', 'R12 f13 0 100', '.options savecurrents', '.op'), ngspice);
+    const f1 = r.words.currents.find((c) => c.name === 'F1')!;
+    expect([by(r), sp(f1.text), f1.power]).toEqual(['exact', 'no current through F1', undefined]);
+  });
+
+  it('with a .save line, the values ngspice gives are judged by the page\'s digits: C9m saving v(n3), v(n5) and R7\'s current is decided exactly, R7 0 A with the note (c9m-save: the rule drew 6.217e-20 A); a node missing with no .save line is not this circuit\'s', async () => {
+    const r = await solveText(netlist('V1 n1 0 9', 'R1 n1 n2 15k', 'R2 n2 n3 330', 'R3 n3 0 33k', 'R4 n1 n4 15k', 'R5 n4 n5 330', 'R6 n5 0 33k', 'R7 n3 n5 100k', '.save v(n3) v(n5) @r7[i]', '.op'), ngspice);
+    expect([by(r), text(r.words, 'R7')]).toEqual(['exact', 'no current through R7']);
+  });
+
+  it('a long sweep of the 1 nΩ wire of C9n.4 whose checked point at V1 = 1.125 V ngspice gives one step of a double over 1 nΩ (433.7 pA for 340.6 pA) is shown as ngspice gives it, with a warning that names it; the .op beside it is still decided exactly', async () => {
+    const r = await solveText(netlist('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.options savecurrents', '.op', '.dc V1 0 1.5 0.00025'), ngspice);
+    expect([by(r), text(r.words, 'R3')]).toEqual(['exact', '454.1 pA from node d2 to node p3 through R3']);
+    expect(shownSweep(r.netlist, r.results)).toBe(r.results.dc);
+    const warning = r.words.warnings.find((m) => m.code === 'imprecise-answers')!;
+    expect(sp(warning.title)).toBe("Some of ngspice's answers in the DC sweep are off");
+    expect(sp(warning.why)).toBe("Solved exactly, with fractions, from the netlist's values, at V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. ngspice computes with about 16 significant digits, and solving this circuit loses most of them there. PlainSpice shows the sweep as ngspice gives it, so its numbers may not agree with each other.");
+  });
+
+  it('where the rule decides beside the exact solution with no warning (values that hang on a diode\'s current), the tiny values it cannot tell from noise keep the note, except those real whatever the diode carries (C9w.8: "V2 measures 510 fA" and "node d3 510 fV" were drawn with nothing said)', async () => {
+    const lines = ['V1 top1 0 0.5', 'R1 top1 s2 1m', 'R2 s2 0 1e12', 'D1 d3 s2 dmod', 'R3 d3 0 120k', 'R4 d3 x4 1.2', 'C1 x4 0 1n', 'V2 d3 v5 0', 'R5 v5 0 1', 'F1 0 f6 V1 1m', 'R6 f6 0 10', 'V3 n1 0 1n', 'R7 n1 n2 1k', 'R8 n2 0 1k', '.model dmod D(is=1e-14)', '.options savecurrents'];
+    const r = await solveText(netlist(...lines, '.op'), ngspice);
+    expect([by(r), off(r.words), text(r.words, 'V2'), sp(r.words.nodes.find((n) => n.node === 'd3')!.text)]).toEqual(['rule', '', 'V2 measures 510 fA flowing from node d3 to node v5', '510 fV']);
+    const maybe = r.words.warnings.find((m) => m.code === 'maybe-noise')!;
+    expect(sp(maybe.title)).toBe('3 currents and 3 node voltages may be rounding noise');
+    expect(sp(maybe.why)).toMatch(/^ngspice gave R3 4\.249949e-18 A, V2 5\.099939e-13 A, R5 5\.099939e-13 A, node d3 5\.099939e-13 V and 2 more node voltages, each in the tables above\. /);
+    // By the rule alone (ngspice's own gmin written out: the same doubles), the 1 nV divider's 500 fA and n2's 500 pV are in it too.
+    const rule = await solveText(netlist(...lines, '.options gmin=1e-12', '.op'), ngspice);
+    expect(sp(rule.words.warnings.find((m) => m.code === 'maybe-noise')?.title)).toBe('6 currents and 4 node voltages may be rounding noise');
+    // Beside the warning, the note leaves out what the warning names: g520d's R1, 4.441e-31 A, is named once.
+    const g = await solveText(netlist('V1 top 0 3.3', 'Rw top f1 100u', 'Va f1 n 0', 'R2 n 0 150', 'R1 n f2 1e15', 'C1 f2 0 1p', 'G1 0 g n f2 1e6', 'R3 g 0 820k', 'I1 0 g 1n', '.options savecurrents', '.op'), ngspice);
+    expect([off(g.words).includes('R1 carries no current, where ngspice gives 4.441e-31 A'), g.words.warnings.some((m) => m.code === 'maybe-noise')]).toEqual([true, false]);
   });
 });

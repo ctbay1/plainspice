@@ -164,7 +164,9 @@ that a phone left no room to watch the numbers move; this record says what the c
   sum of the sizes of an equation's terms, Kirchhoff's law at the nodes weighed against the nodes'
   own sizes (in amps) and the branches' own equations against theirs (in volts): weighed together, a
   9 V source's equation hid a node's misread nanoamps (measured over the 9,627 netlists of the
-  re-check's corpora and the repository that it models exactly: at most 3.8e−15 for the nodes, 4.4e−11 for the branches);
+  re-check's corpora and the repository that it models exactly: at most 3.8e−15 for the nodes, 4.4e−11 for the branches;
+  no bound, as the last pass found: a 1 nΩ to 10 µΩ wire into 0 V ammeters leaves 1.07e−7 to 1.9e−3, and the
+  check now allows 2⁻³⁰ times the spread of the circuit's conductances, see "After the last pass");
   and each current it reports is its own numbers' product to 2⁻⁴⁰ (measured: at most 3.4e−16). In a
   circuit with every kind of part any value 1 ppm off fails one or the other, and so does a .dc
   point's value 1 ppm off (unit tests keep it so); a source is weighed against the circuit's largest
@@ -525,7 +527,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   drawn so, its gain lifting ngspice's rounding of what it reads (11 runs of gA and 2 of g9501, as before:
   an H's −251.4 nV for −4.164 nV); its floor carries that rounding, with no warning, as for C9o's H.
   Linear runs within the exact solution's limits that the rule decides with no warning: 0
-  (28 before, 15 exact 0s drawn as currents). The rule draws 571 exact 0s as currents (1,242 before) and 240
+  (28 before, 15 exact 0s drawn as currents). That held for those corpora only: the last pass found 131 of
+  1,500 such runs (a tiny wire into 0 V ammeters, a .save line), now none (see "After the last pass"). The rule draws 571 exact 0s as currents (1,242 before) and 240
   as node voltages (622), the imprecise path 1,222 and 14 beside its warning (1,114 and 14). 2 runs with a
   diode go from the exact path to the rule with no warning, their every off value one a diode's current
   changes (their pages are the same: no value of either is noise); 75 go the other way (circuits at rest
@@ -663,8 +666,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   - The rule says which tiny values it can prove neither real nor noise: a current below abstol and a node
     voltage below vntol that it leaves as ngspice gives them get a note, "Vm's current may be rounding noise:
     ngspice gave Vm -1.935098e-16 A. It is below 1 pA, … so it may be rounding noise, what its arithmetic
-    leaves of a value that is exactly 0, or a real value that small. PlainSpice does not solve this circuit
-    exactly, so it cannot tell which, and shows it as ngspice gives it." Proven real here is only a current of
+    leaves of a value that is exactly 0, or a real value that small. PlainSpice cannot tell which from ngspice's
+    numbers alone, so it shows it as ngspice gives it." Proven real here is only a current of
     at least abstol, a current source's own, a resistor's or a G's with a real voltage across or read, what
     an F copies of one, and the last current at a node whose proven currents do not add up to 0; the rule's
     other reasons to keep a number (what an H makes, a part beside a transistor, a share of a node's tiny
@@ -677,3 +680,56 @@ that a phone left no room to watch the numbers move; this record says what the c
     the words of the 352 netlists of the repository and the facts' golden tests are the same as at c520a49
     but for the meant changes (the transistor's currents, the 1 nV source's verb, and C9o.5's and C9r.3's
     new notes).
+- **A number the page draws is an answer only with its exact digits** (carrier-zero-beside-own-noise; C9w.4,
+  C9w.7). The exact path took a value drawn with other digits than its exact value as off only where it was
+  more than ANSWER_GAP from it beyond what rounding leaves of the numbers it is worked out from (its floor). A
+  floor that large means ngspice cannot give the value's digits, yet the page drew them: in g520d a G of 10⁶ S
+  reads a 1e15 Ω resistor whose two ends ngspice gives a step apart, so G1 carries 444.1 pA where the circuit
+  makes it 0, and lifts node g to 1.465 mV for 820 µV; the page drew "G1: no current" beside R3's 1.786 nA out of
+  g and I1's 1 nA in, with no warning (i9751-450: g4 520.1 V for 715.3 fV, G1 727 µA). A value is now off when
+  the page draws it with other digits and it is more than ANSWER_GAP from its exact value, whatever its floor
+  (two nodes at one voltage drawn differently still need a gap beyond rounding: C9v.5's boundary stays recorded). g520d
+  is shown as ngspice gives it, with the warning "G1 carries no current, where ngspice gives 444.1 pA; R1 …; node g
+  is at 820 µV, where ngspice gives 1.465 mV; and R3 carries 1 nA, where ngspice gives 1.786 nA". This also settles
+  what round 4 left above, a controlled source's output drawn far from its exact value, its floor carrying the
+  rounding of what it reads, with no warning (C9t.3's h5, −433.7 fV for −425.9 fV): where the exact solution
+  decides, it now gets the warning (gA's s6-426, the H's −251.4 nV, is past the exact solution's work since
+  round 4 and goes to the rule, as at c520a49). A sweep's checked point
+  is judged the same way: where one is off, the sweep is shown as ngspice gives it (but at the .op's own state
+  when the .op is decided exactly), with a warning, "Some of ngspice's answers in the DC sweep are off": "…, at
+  V1 = 1.125 V, R3 carries 340.6 pA, where ngspice gives 433.7 pA. … PlainSpice shows the sweep as ngspice gives
+  it, so its numbers may not agree with each other." (C9w.7; g520d swept over I1: v(g) 1.953 mV for 1.64 mV).
+  With diodes, a value whose exact value hangs on a diode's current, which only ngspice's numbers give, is off
+  only beyond its floor, as before, and the warning names only values whose digits are known (s9701-47: a
+  diode's current 1e−4 off left such values drawn with other digits, and a warning could name none). Such a run
+  is decided by the rule beside the exact solution with no warning, and its tiny values keep the rule's note
+  that they may be rounding noise, but those the exact solution shows real whatever the diodes carry, and those a
+  warning names (C9w.8: until now that path dropped the note, and "V2 measures 510 fA" was drawn with nothing
+  said). What it gives up: many more runs carry the warning. Of the critic's 3,000 bridges beside controlled
+  sources of high gain (gA), 2,270 are decided exactly (2,732 at c520a49), 642 with the warning (176), 16 with
+  diodes by the rule with no warning (20); of the generated g9701, 1,139 exactly (1,363), 327 with the warning
+  (99), 12 with diodes by the rule with no warning (16). Open: in one of those 12 (s9701-1341, as at c520a49
+  and b060bc8), a 1 nΩ resistor whose ends ngspice gives a step apart is drawn 3.553 µA in series with a 1e14 Ω
+  resistor's 3.027e−19 A, with no warning: every value there hangs on the diode's current.
+- **ngspice's own rounding no longer sends a run to the rule unsaid** (silent-rule-same-circuit-check; C9w.5,
+  C9w.6, C9w.9). Two ways in led to the rule with no warning and no exact solution beside it. (1) What
+  ngspice's arithmetic leaves of the equations grows with how far apart the circuit's conductances are: a 1 nΩ
+  to 10 µΩ wire into two 0 V ammeters in series left 1.07e−7, 3.3e−5 and 1.9e−3 of the equations' sizes (the
+  skeptic of the last pass), far beyond 2⁻³⁰, and C9m fed that way drew R7's exact 0 as 5.329e−20 A; a 1 nΩ wire
+  into two ammeters drew "Vm1 measures 10.97 mA" beside the wire's 10.98 mA. The check now allows 2⁻³⁰ times
+  that spread (the largest conductance of an R or a G over the smallest; `conductanceSpread`); the products of
+  the R, F, G and I keep their own share. Such a run is then judged by the page's digits: C9m through the 1 µΩ
+  wire has every answer drawn with its exact digits, so it is decided exactly, R7 0 A with the note (C9w.5);
+  the 1 nΩ wire into two ammeters is shown as ngspice gives it, with the warning "V1 carries 10.98 mA, where
+  ngspice gives 10.97 mA; Vm1 …" (C9w.9). What it gives up: where conductances are 2³⁰ or more apart, the check
+  that these are this circuit's numbers rests on the products and the names; a run of another circuit there
+  is judged by the page's digits and shown as ngspice gives it, with the warning, which then blames ngspice's
+  rounding (the unit tests' 1 ppm-off runs, of a bridge whose spread is 2, still fail the check). (2) A .save
+  line that leaves values out: the values ngspice gives are judged by the page's digits with no same-circuit
+  check, which needs every equation's values (C9m saving v(n3), v(n5) and R7's current: R7 0 A with the note,
+  where the rule drew 6.217e−20 A; C9w.6). With diodes, whose currents need every value, such a run goes to the
+  rule; a node missing with no .save line is still not this circuit. The corpus: of i9751's 1,500, 131 were
+  decided by the rule with no warning within the exact solution's limits at c520a49, none now (690 exactly,
+  775 before; 769 with the warning, 553). "Linear runs within the exact solution's limits that the rule decides
+  with no warning: 0" (after round 4, above) held for those corpora only; ngspice's leftovers of 3.8e−15 and
+  4.4e−11 are what that set of netlists measured, not a bound.
