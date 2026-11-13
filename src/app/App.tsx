@@ -406,6 +406,16 @@ const rowsOf = (body: HTMLElement): number => {
  */
 const naturalOf = (held: SheetHold): number => held.body.scrollHeight - held.kept;
 
+/** The element in a sheet's body the keys put the focus on (its focus ring shows), if any. */
+function keyFocusIn(body: HTMLElement): Element | undefined {
+  const el = document.activeElement;
+  if (!el || el === body || !body.contains(el)) return undefined;
+  try {
+    return el.matches(':focus-visible') ? el : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * The rows in view at the top of a sheet's body, with where each begins in what scrolls: the boxes in view
@@ -549,7 +559,9 @@ function measureSheet(held: SheetHold): void {
  * and room is kept below its rows as far as that scroll, and so the sheet's height, need it (rows below
  * them gone). When none of the rows that were in view is left, or there were none (all of them new: the
  * first numbers, a plot where there was none or "Loading the plot…"), there is nothing to keep, and the
- * sheet is laid out afresh for the new ones.
+ * sheet is laid out afresh for the new ones. The row the keys are on is never hidden more than it was
+ * (the head coming down over it hid the focus after Enter on More's Undo: the critic of the second
+ * re-check's second fixes): the rows go down with it as far as that needs, as no finger aims at them.
  */
 function keepRows(held: SheetHold): void {
   const { body } = held;
@@ -562,11 +574,17 @@ function keepRows(held: SheetHold): void {
   // What scrolls was cut back under its scroll (the browser took the scroll in with it): from where it was.
   const scroll = body.scrollTop;
   const from = scroll < held.scroll - 0.5 && scroll >= body.scrollHeight - body.clientHeight - 0.5 ? held.scroll : scroll;
+  // Where the row the keys are on begins in what scrolls (when all of it fits in the view).
+  const focus = keyFocusIn(body)?.getBoundingClientRect();
+  const focusAt = focus && focus.height <= body.clientHeight ? focus.top - body.getBoundingClientRect().top - body.clientTop + scroll : undefined;
   let want = from;
   for (let tries = 0; tries < 3; tries++) {
     const top = bodyTopOf(held);
     const moved = row.el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - row.at;
     want = Math.max(0, from + top - held.top + moved);
+    // The row the keys are on, if some of it was in view (it moved with the rows, and the view began at
+    // `from`, as tall as it is now and as far as the body's box moved), is hidden no more than it was.
+    if (focus && focusAt !== undefined && focusAt - moved + focus.height > from + 0.5 && focusAt - moved < from + body.clientHeight + top - held.top - 0.5) want = Math.min(want, Math.max(focusAt, from + moved));
     const kept = Math.max(0, want + body.clientHeight - naturalOf(held));
     if (Math.abs(kept - held.kept) <= 0.5) break;
     keepRoom(held, kept);
