@@ -199,16 +199,16 @@ describe('N4: the note lists at most 4 values, the rest counted, never "and 1 mo
 });
 
 describe('code-6: the rule for other circuits gives the same words whatever the order of the lines', () => {
-  it('an E reading the C9 bridge, decided by the rule: R6 written before or after E1 gives the same words; out keeps ngspice\'s −909.5 fV, so R6 and E1 keep their 909.5 aA', async () => {
+  it('an E reading the C9 bridge, decided by the rule: R6 written before or after E1 gives the same words; out keeps ngspice\'s −909.5 fV, so R6 and E1 keep their 909.5 aA, and R5 its 8.882e-19 A, the voltage E1 makes out from', async () => {
     const parts = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'E1 out 0 a b 1000'];
     // A 0 the rule writes depends only on ngspice's numbers and the 0s before it, which only add: groups of
     // joined nodes give levels only (the critic of round 2), so no part waits on a join to be looked at again.
     const first = await solved(lines('R6 out 0 1k', ...parts, RULE));
     const last = await solved(lines(...parts, 'R6 out 0 1k', RULE));
     expect([first.by, last.by]).toEqual(['rule', 'rule']);
-    expect(noise(first.words)).toEqual(['R5']);
-    expect(noise(last.words)).toEqual(['R5']);
-    expect([node(first.words, 'out'), current(first.words, 'R6')]).toEqual(['−909.5 fV', '909.5 aA from ground to node out through R6']);
+    expect(noise(first.words)).toEqual([]);
+    expect(noise(last.words)).toEqual([]);
+    expect([node(first.words, 'out'), current(first.words, 'R6'), current(first.words, 'R5')]).toEqual(['−909.5 fV', '909.5 aA from ground to node out through R6', '8.882e-19 A from node b to node a through R5']);
     expect(first.words.currents.map((c) => c.text).sort()).toEqual(last.words.currents.map((c) => c.text).sort());
     const nodes = (w: ResultsInWords): string[] => w.nodes.map((n) => `${n.node} ${n.text} ${n.level}`).sort();
     expect(nodes(first.words)).toEqual(nodes(last.words));
@@ -725,9 +725,10 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect([fed.by, node(fed.words, 'out'), current(fed.words, 'E1'), fed.words.currents.find((c) => c.name === 'E1')!.power]).toEqual(['exact', '0 V', '5 mA from node out to ground through E1', undefined]);
     const e = await solved(lines(...c9, 'E1 out 0 a b 1e6', 'Rl out 0 100', ...diode));
     expect([e.by, node(e.words, 'out'), noise(e.words)]).toEqual(['exact', '0 V', ['R5', 'E1', 'Rl', 'node out']]);
-    // The rule: E1 into 100 Ω shows ngspice's 9.313 pA beside out's −931.3 pV, as Ohm's law on the page wants.
+    // The rule: E1 into 100 Ω shows ngspice's 9.313 pA beside out's −931.3 pV, as Ohm's law on the page wants,
+    // and R5 keeps ngspice's 8.882e-19 A: E1 makes out from the voltage across it, so it is not 0 A on the page.
     const rule = await solved(lines(...c9, 'E1 out 0 a b 1e6', 'Rl out 0 100', RULE));
-    expect([rule.by, node(rule.words, 'out'), current(rule.words, 'E1'), current(rule.words, 'Rl'), noise(rule.words)]).toEqual(['rule', '−931.3 pV', '9.313 pA from node out to ground through E1', '9.313 pA from ground to node out through Rl', ['R5']]);
+    expect([rule.by, node(rule.words, 'out'), current(rule.words, 'E1'), current(rule.words, 'Rl'), current(rule.words, 'R5'), noise(rule.words)]).toEqual(['rule', '−931.3 pV', '9.313 pA from node out to ground through E1', '9.313 pA from ground to node out through Rl', '8.882e-19 A from node b to node a through R5', []]);
   });
 
   it('a node whose only DC path goes through a diode has no single answer with the diode\'s current left free: the circuit is left to the rule (a G drives R6 and D1 in series to ground)', async () => {
@@ -749,15 +750,56 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
   it('the rule for other circuits: the current a real F copies is real (Vm keeps its 193.5 aA beside F1\'s 193.5 pA, 1e6 times it), and a 0 it writes at a node whose shown currents do not add up to 0 gets ngspice\'s number back (G1\'s 888.2 zA beside its two loads, whose ends are not alike)', async () => {
     const f = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'F1 0 out Vm 1e6', 'Rl out 0 1k', RULE));
     expect([f.by, current(f.words, 'Vm'), current(f.words, 'F1'), noise(f.words)]).toEqual(['rule', 'Vm measures 193.5 aA flowing from node b to node m', '193.5 pA from node out to ground through F1', []]);
-    // C9r.2: G1 reads a and b, which ngspice gives a step apart, so the rule takes its current as noise; R6 and R7 keep ngspice's attoamps (out is not written as 0 V), so G1 gets its number back.
+    // C9r.2: G1 reads a and b, which ngspice gives a step apart, so the rule takes its current as noise; R6 and R7 keep ngspice's attoamps (out is not written as 0 V), so G1 gets its number back,
+    // and so does R5 between the two nodes G1 reads: G1's current is made from the voltage across R5.
     const two = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'G1 0 out a b 1m', 'R6 out 0 1k', 'R7 out 0 2k', '.options savecurrents', RULE));
-    expect([two.by, current(two.words, 'G1'), current(two.words, 'R6'), current(two.words, 'R7'), noise(two.words)]).toEqual(['rule', '8.882e-19 A from node out to ground through G1', '8.882e-19 A from ground to node out through R6', '4.441e-19 A from ground to node out through R7', ['R5']]);
+    expect([two.by, current(two.words, 'G1'), current(two.words, 'R6'), current(two.words, 'R7'), current(two.words, 'R5'), noise(two.words)]).toEqual(['rule', '8.882e-19 A from node out to ground through G1', '8.882e-19 A from ground to node out through R6', '4.441e-19 A from ground to node out through R7', '8.882e-19 A from node b to node a through R5', []]);
   });
 
-  it('the rule for other circuits gives ground\'s level only to a node shown as 0 V: an E reading the balanced bridge, fed 5 mA through 1k, keeps ngspice\'s −931.3 pV at out, so E1 shows the power that makes (no node is written as 0 V there)', async () => {
+  it('the rule for other circuits gives ground\'s level only to a node shown as 0 V: an E reading the balanced bridge, fed 5 mA through 1k, keeps ngspice\'s −931.3 pV at out, so E1 shows the power that makes (no node is written as 0 V there); and R5 keeps ngspice\'s 8.882e-19 A, not 0 A with "its two ends at the same voltage", since E1 makes out from that voltage (the critic of round 2)', async () => {
     const { words, by } = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'E1 out 0 a b 1e6', 'V2 x 0 5', 'Rx x out 1k', RULE));
     expect([by, node(words, 'out'), words.nodes.find((n) => n.node === 'out')!.level, current(words, 'E1'), sp(words.currents.find((c) => c.name === 'E1')!.power!.text)]).toEqual(['rule', '−931.3 pV', undefined, '5 mA from node out to ground through E1', 'E1 delivers 4.657 pW']);
+    expect([current(words, 'R5'), noise(words), note(words)]).toEqual(['8.882e-19 A from node b to node a through R5', [], undefined]);
+    // With R5's current shown, nothing joins a and b: the page does not claim 0 V between them.
+    expect(words.nodes.find((n) => n.node === 'a')!.level).not.toBe(words.nodes.find((n) => n.node === 'b')!.level);
   });
+
+  it('the rule for other circuits keeps a controlled source\'s equation on the page: no path of resistors written as 0 joins the two nodes an E reads when it shows a voltage, nor those of a G whose current is shown, and the current an F copies is shown when the F\'s is (the critic of round 2)', async () => {
+    const bridge = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k'];
+    // The E's two control nodes joined through m by two resistors, each with its two ends a step apart: both keep ngspice's 1.776 aA.
+    const split = await solved(lines(...bridge, 'R5 a m 500', 'R5b m b 500', 'E1 out 0 a b 1e6', 'V2 x 0 5', 'Rx x out 1k', RULE));
+    expect([split.by, node(split.words, 'out'), current(split.words, 'R5'), current(split.words, 'R5b'), noise(split.words)]).toEqual(['rule', '1.863 nV', '1.776 aA from node a to node m through R5', '1.776 aA from node m to node b through R5b', []]);
+    // A G of 1e9 S makes 888.2 nA, above ngspice's 1 pA, from the voltage across R5.
+    const g = await solved(lines(...bridge, 'R5 a b 1k', 'G1 0 out a b 1e9', 'R6 out 0 1k', RULE));
+    expect([g.by, current(g.words, 'G1'), current(g.words, 'R5'), noise(g.words)]).toEqual(['rule', '888.2 nA from node out to ground through G1', '8.882e-19 A from node b to node a through R5', []]);
+    // An F of 1000 copies Vm's current, which the rule took as the only current left at m, into two loads whose attoamps
+    // Kirchhoff's law keeps: F1 gets its number back, then Vm, the current it copies, and then R5, in series with Vm at m.
+    const f = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'F1 0 out Vm 1000', 'R6 out 0 1k', 'R7 out 0 1k', RULE));
+    expect([f.by, current(f.words, 'F1'), current(f.words, 'Vm'), current(f.words, 'R5'), noise(f.words)]).toEqual(['rule', '193.5 fA from node out to ground through F1', 'Vm measures 193.5 aA flowing from node b to node m', '377.9 aA from node m to node a through R5', []]);
+  });
+
+  it('the rule for other circuits keeps the 0 a controlled source reads where the page does not show what it makes from it: an E of 1 whose two ends are shown alike (no power), and a G and an F into a 0 V ammeter, which carry 0 with it', async () => {
+    const bridge = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k'];
+    const e = await solved(lines(...bridge, 'V3 d 0 4.5', 'E1 c d a b 1', 'Rc c 0 1k', RULE));
+    const level = (name: string): number | undefined => e.words.nodes.find((n) => n.node === name)!.level;
+    expect([e.by, noise(e.words), e.words.currents.find((c) => c.name === 'E1')!.power, level('c') === level('d')]).toEqual(['rule', ['R5'], undefined, true]);
+    const g = await solved(lines(...bridge, 'G1 0 out a b 1m', 'Vo out 0 0', RULE));
+    expect([g.by, noise(g.words)]).toEqual(['rule', ['R5', 'G1', 'Vo']]);
+    const f = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'F1 0 out Vm 1000', 'Vo out 0 0', RULE));
+    expect([f.by, noise(f.words)]).toEqual(['rule', ['R5', 'Vm', 'F1', 'Vo']]);
+  });
+
+  it('the rule gives a group of 0s back with one look at it: 10,000 resistors of 1 TΩ between the two nodes an E reads, each with its two ends a step apart, all get their numbers back in well under 200 ms (one path at a time, each node balanced again for each of its parts, took 16 s)', async () => {
+    const body = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', ...Array.from({ length: 10_000 }, (_, k) => `R${k}x a b 1t`), 'Rl out 0 100', RULE];
+    const text = lines(...body, 'E1 out 0 a b 1e6');
+    const r = await solveText(text, ngspice);
+    const [ms] = leastWorkMs([() => roundingNoise(parseNetlist(text), structuredClone(r.results))], 3);
+    expect([roundingNoise(r.netlist, r.results).by, roundingNoise(r.netlist, r.results).currents.size]).toEqual(['rule', 0]);
+    expect(ms).toBeLessThan(200);
+    // Without E1 they are all 0 A, their two ends at the same voltage.
+    const without = await solveText(lines(...body), ngspice);
+    expect(roundingNoise(without.netlist, without.results).currents.size).toBe(10_000);
+  }, 60_000);
 
   it('a run\'s .op and .dc are decided exactly together or not at all: beside 250 resistors of prime values both are, and out is 0 V in both; beside 320 the work for both does not fit, and both keep ngspice\'s −931.3 pV (the .op alone would fit, and said 0 V beside the sweep\'s −931.3 pV)', async () => {
     const primes: number[] = [];

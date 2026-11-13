@@ -1695,11 +1695,20 @@ export function shownSweep(netlist: Netlist, results: AnalysisResults): Sweep | 
  * A resistor's current that ngspice gives as exactly 0 (its two ends the same double) proves nothing:
  * rounding can hide a real current there (C9n, where a 1 µΩ wire in series with a 1 TΩ meter carries
  * 0.73 aA), so it never makes another part's current 0.
- * Last, Kirchhoff's current law on the page: at a node where the currents shown do not add up to 0 (to
- * KCL_ROUNDING of the largest), every 0 written there gets ngspice's number back, and so on from node to
- * node (an F that copies a 0 into loads ngspice gives attoamps: S3). Such a rule can still write a real
- * current smaller than ngspice's rounding as 0 (C9l): a resistor whose ends are 4 units in the last place
- * apart can carry one; decision 0015 says how often that was measured.
+ * Last, the page's own equations. Kirchhoff's current law: at a node where the currents shown do not add
+ * up to 0 (to KCL_ROUNDING of the largest), every 0 written there gets ngspice's number back, and so on
+ * from node to node (an F that copies a 0 into loads ngspice gives attoamps: S3). And a controlled
+ * source's: a value it makes is shown beside the value it makes it from. An F whose current is shown
+ * copies a current that is shown; an E whose two ends are shown at voltages that are not alike, or a G
+ * whose current is shown, reads a voltage that is not 0, so its two control nodes are not in one group of
+ * nodes joined by resistors written as 0: each 0 of such a group gets its number back (an E of 1e6
+ * reading the balanced bridge of C9 makes out −931.3 pV from the voltage across R5, so R5 keeps
+ * ngspice's 8.882e-19 A, not 0 A with "its two ends at the same voltage"). Each number given back can
+ * unbalance a node, and each node balanced again can give a source its number back: until nothing
+ * changes. A chain of controlled sources (an E reading what another E makes), and a source whose value
+ * is an expression (value=, a B source), are not followed. Such a rule can still write a real current
+ * smaller than ngspice's rounding as 0 (C9l): a resistor whose ends are 4 units in the last place apart
+ * can carry one; decision 0015 says how often that was measured.
  */
 function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const out = noNoise('rule');
@@ -1894,10 +1903,14 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     for (const r of readers.get(el.key) ?? []) if (r.letter === 'F') queue.push(r);
   }
 
-  // ---- 3. Kirchhoff's current law on the page: at each node, the currents shown add up to 0, to
-  // KCL_ROUNDING of the largest of them; where they do not, every 0 written there gets its number back
-  // (an F that copies a 0 into loads whose currents ngspice gives as attoamps: S3), and so on from node
-  // to node. No node voltage is written as 0 V (see above).
+  // ---- 3. The page's own equations. Kirchhoff's current law: at each node, the currents shown add up to
+  // 0, to KCL_ROUNDING of the largest of them; where they do not, every 0 written there gets its number
+  // back (an F that copies a 0 into loads whose currents ngspice gives as attoamps: S3), and so on from
+  // node to node. A controlled source's equation: an F whose current is shown copies a current that is
+  // shown; an E whose two ends are shown at voltages that are not alike, or a G whose current is shown,
+  // reads a voltage that is not 0, so the resistors written as 0 that join its two control nodes into one
+  // group get their numbers back (the critic of round 2: R5 0 A, "its two ends at the same voltage",
+  // beside an E of 1e6 that makes out −931.3 pV from that voltage). No node voltage is written as 0 V.
   const shownAmp = (el: Element): number => (out.currents.has(el.key) ? 0 : (amps.get(el.key) ?? 0));
   const balanced = (node: string): boolean => {
     let sum = 0;
@@ -1910,12 +1923,80 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
     return largest === 0 || Math.abs(sum) <= KCL_ROUNDING * largest;
   };
   const toBalance = [...at.keys()].filter((node) => counted(node) && (at.get(node) ?? []).some((el) => out.currents.has(el.key)));
-  for (let node = toBalance.pop(); node !== undefined; node = toBalance.pop()) {
-    if (balanced(node)) continue;
-    for (const el of at.get(node)!) {
-      if (!out.currents.delete(el.key)) continue;
-      for (const other of ends.get(el.key) ?? []) if (other !== node && counted(other)) toBalance.push(other);
+  // How many 0s each node has had given back, and how many when it was last balanced: a node is looked at
+  // again only when a 0 at it has changed since (a node can be queued once for each of its parts).
+  const changes = new Map<string, number>();
+  const lookedAt = new Map<string, number>();
+  /** Gives a 0 written for a part its number back, and balances its nodes again (not `from`, being balanced). */
+  const giveBack = (key: string, from?: string): boolean => {
+    if (!out.currents.delete(key)) return false;
+    for (const node of ends.get(key) ?? []) {
+      changes.set(node, (changes.get(node) ?? 0) + 1);
+      if (node !== from && counted(node)) toBalance.push(node);
     }
+    return true;
+  };
+  /**
+   * The resistors and capacitors written as 0 that join a group of nodes holding both `from` and `to`, or
+   * undefined when no such group holds both. Their 0s claim one voltage for the whole group.
+   */
+  const zeroGroup = (from: string, to: string): string[] | undefined => {
+    const seen = new Set([from]);
+    const queue = [from];
+    const keys = new Set<string>();
+    for (let k = 0; k < queue.length; k++) {
+      const node = queue[k]!;
+      for (const el of at.get(node) ?? []) {
+        if ((el.letter !== 'R' && el.letter !== 'C') || !out.currents.has(el.key)) continue;
+        keys.add(el.key);
+        const [p, n] = ends.get(el.key)!;
+        const next = p === node ? n : p;
+        if (!seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    return seen.has(to) ? [...keys] : undefined;
+  };
+  const gains = parts.filter((el) => el.letter === 'E' || el.letter === 'G' || el.letter === 'F');
+  /** A controlled source whose value the page shows: an E's two ends not alike, a G's or an F's current. */
+  const makes = (el: Element): boolean => (el.letter === 'E' ? realVoltageAcross(el.nodes[0], el.nodes[1]) : !out.currents.has(el.key) && !!amps.get(el.key));
+  for (;;) {
+    for (let node = toBalance.pop(); node !== undefined; node = toBalance.pop()) {
+      if (lookedAt.get(node) === (changes.get(node) ?? 0)) continue;
+      if (!balanced(node)) for (const el of at.get(node)!) giveBack(el.key, node);
+      lookedAt.set(node, changes.get(node) ?? 0);
+    }
+    let given = false;
+    // The nodes joined by resistors and capacitors written as 0, so that only two control nodes they join
+    // are looked at; in this pass a group's 0s are given back all together, and its nodes are then free.
+    let joined: Groups | undefined;
+    const free = new Set<string>();
+    for (const el of gains) {
+      if (!makes(el)) continue;
+      const control = el.letter === 'F' ? controlOf(el) : undefined;
+      if (control !== undefined) {
+        if (giveBack(control)) given = true;
+        continue;
+      }
+      const [c, d] = [el.nodes[2], el.nodes[3]];
+      if (el.letter === 'F' || !c || !d || nodeName(c) === nodeName(d)) continue;
+      if (!joined) {
+        joined = new Groups();
+        for (const key of out.currents.keys()) {
+          const letter = byKey.get(key)?.letter;
+          const pair = letter === 'R' || letter === 'C' ? ends.get(key) : undefined;
+          if (pair) joined.join(pair[0], pair[1]);
+        }
+      }
+      if (free.has(nodeName(c)) || joined.find(nodeName(c)) !== joined.find(nodeName(d))) continue;
+      for (const key of zeroGroup(nodeName(c), nodeName(d)) ?? []) {
+        if (giveBack(key)) given = true;
+        for (const node of ends.get(key) ?? []) free.add(node);
+      }
+    }
+    if (!given) break;
   }
 
   // ---- 4. Levels: one for each group of nodes joined by parts with no voltage across them; ground's is
