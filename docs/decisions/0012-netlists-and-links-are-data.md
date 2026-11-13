@@ -785,3 +785,25 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   the size of the change in their own circuit. The words now stop at "ngspice 42 used 0.001 Ω without a
   word", as the character checks' words for a 0 do. We chose this over "which, in one test, changed the
   answer in the 4th digit", the reviewer's first way.
+- **The why of a value below 1e-12 Ω that is not 0** (the words lane's round-1 critic, C3). "A
+  resistance this small is almost 0, and SPICE can't use a resistance of 0" read as if SPICE took 1 fΩ
+  for 0, which neither version does. The why is now ngspice 47's floor, in the Numbers panel's words:
+  "ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to
+  it can come out inaccurate" ("this close to 0" and −10⁻¹² Ω for a negative value). "Can", where the
+  Numbers panel says "come out": where a current source sets the current, the resistor carries exactly
+  it in both versions; in series with 1 kΩ across 6 V, ngspice 47 gives the source 5.859 mA for 6 mA and
+  ngspice 42 gives 0 A (zero-ohm-9). The why for a 0 stays the arithmetic one.
+- **One card for a Greek μ in such a value** (C6). zero-ohm leaves a value another check explains to that
+  check, but greek-mu ran after it, so `0μ47` and `1e-13μ` kept both cards, with the same words. zero-ohm
+  now runs after greek-mu, at the end of the line-by-line checks in `checkTraps`; none of the checks
+  between can mark a resistor's value, and their fresh names use other stems.
+- **A value a source can only report, in one table** (C4, C5). V's `i` and `p` and I's `v` and `p`,
+  which only `traps.ts` knew, are in the source tables of `src/spice/parse.ts`
+  (`isReportOnlyParameter`), so Explain says of them what the Checks panel says ("no such parameter on
+  this device"), where it said "unknown parameter"; how a line is parsed and the editor's table do not
+  change. ngspice's other values a source reports (pos_node, acreal … in vsrc.c and isrc.c) are not
+  listed: no beginner writes them, and their words are as before. For a current source the why says
+  "(such as its voltage or its power)", as its current is what its line sets. The same rule for the word
+  after a space corrects `1 volt` on an inductor, which got "unknown parameter (volt)" where both
+  versions print their "no such parameter" words. Each part's runs are records of their own
+  (space-before-suffix-19, -20, unknown-word-56, -57; C7), cited by the texts part by part.

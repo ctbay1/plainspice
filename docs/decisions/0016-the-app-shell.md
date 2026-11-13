@@ -467,3 +467,21 @@ Ctrl+K stay as they are.
   every circuit written in capitals, and is left for after the release. Nothing is lower-cased with
   toLowerCase, which turns İ into i with a combining dot and knows no Turkish ı. Known gap: the
   rounding-noise note (another lane's) still names a node by its key.
+
+## After the last pass (13 November 2026)
+
+- **The checks name a node by the node-words rule** (the words lane, F6; its round-1 critic, C9). The
+  checks of the bullet above (floating-dc, current-source-no-path, dangling-node) no longer say a node
+  bare: its examples now read "Node ÇIKIŞ has no DC path to ground", "Did you mean node ÇIKIŞ?" and
+  "Rename node ÇIKIŞS to ÇIKIŞ", as the Numbers panel and the drawing say a node (decision 0017, "After
+  the last pass").
+- **The drawing writes the no-single-answer note once** (the words lane's round-1 critic, C1). With
+  those words, floating-dc's title is the node's very sentence, so the red pen wrote "Node in has no DC
+  path to ground" twice, beside the part the check marks and beside the node, and on a small phone the
+  two notes stacked under the node. The node's note is now left out when a note already on the paper says
+  the same (`notes` in `src/app/App.tsx`), and its words are left out of what a screen reader hears for
+  the node when a part's check has that title (`penWords`); where the part's check says something else
+  ("I1's current has nowhere to go", ngspice pointing at node b), the node keeps its note and its words
+  (`tests/unit/app-last-pass-words.test.tsx`). We chose this over leaving out the part's note instead
+  (its note is placed first, beside the symbol the red pen marks) and over a test of the check's kind
+  (the same sentence is what makes it a repeat).

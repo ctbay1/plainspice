@@ -606,3 +606,7 @@ page meets them, and fails without the change (`tests/e2e/editor.spec.ts`):
   ÇIKIŞ?" and "Rename node ÇIKIŞS to ÇIKIŞ". The editor's refusal to reverse a part whose line ends
   with gnd quotes the Checks panel's button, so it follows it: 'Rename node "gnd" first: the Checks
   panel says why and offers “Rename node "gnd" to 0”.' (`src/schematic/edit.ts`, decision 0013's W10).
+- **gnd at the end of a line** (the words lane's round-1 critic, C2). The why said "As the last word,
+  it is an ordinary node, node "gnd""; it now names the word as written, then the node it makes: "As the
+  last word, gnd names an ordinary node, node "gnd", so this part is not connected to ground", with the
+  word as it is written (GND stays GND).
