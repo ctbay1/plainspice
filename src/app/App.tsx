@@ -2222,6 +2222,8 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       held.release();
       held = sheetHold.current = undefined;
     }
+    // Lines that waited for another sheet (or this one, closed since) wait no more.
+    if (linesWait && (linesWait.room !== sheetRoom || !held)) setLinesWait(undefined);
     if (!sheetRoom || !sheet || !body) return;
     if (!held) {
       sheetHold.current = holdSheet(sheetRoom, sheet, body, sheetOpen === 'checks');
