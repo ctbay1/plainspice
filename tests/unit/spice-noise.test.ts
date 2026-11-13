@@ -1211,7 +1211,7 @@ describe('after the critic of round 4 of the re-check\'s fixes', () => {
     expect(roundingNoise(parseNetlist(text), doctored).by).toBe('rule');
   });
 
-  it('at rest, a current is held to what rounding leaves of it beside the voltages the sources hold: C9b\'s F1 loop, which no current can flow around, with a diode loop beside it, swept from 0 to 12 V, carries ngspice\'s 1.8e-18 A beside 12 V over 1 kΩ, which is 0 at every point, in the .op and in the sweep', async () => {
+  it('a circuit where no current flows but a source holds a voltage across resistors is checked as any other first, the same-circuit check weighing its leftovers against the held voltages: C9b\'s F1 loop, which no current can flow around, with a diode loop beside it, swept from 0 to 12 V, carries ngspice\'s 1.8e-18 A beside 12 V over 1 kΩ, which is 0 at every point, in the .op and in the sweep (held to 2^-30 of 1 pA as a circuit at rest, it would fall to the rule)', async () => {
     const r = await solveText('* t\nV1 in 0 12\nR1 in a 1k\nR3 a b 3k\nF1 0 b V1 2\nD1 0 dd dmod\nRd dd 0 1k\n.model dmod d\n.options savecurrents\n.op\n.dc V1 0 12 6\n.end\n', ngspice);
     expect(roundingNoise(r.netlist, r.results).by).toBe('exact');
     expect([current(r.words, 'R1'), current(r.words, 'F1'), node(r.words, 'dd')]).toEqual(['no current through R1', 'no current through F1', '0 V']);

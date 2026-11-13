@@ -1308,16 +1308,17 @@ function opCheck(ex: Exact, op: NonNullable<AnalysisResults['op']>, reserved = 0
     view.alike = alike;
     view.shape = shape;
   }
-  // At rest, no current anywhere, exactly (every source that would drive one at 0, every diode carrying 0 A at 0 V,
-  // and any other source holding its nodes but driving nothing): no equation has anything to weigh ngspice's
-  // Newton leftovers against (a diode's I-V sweep from 0 V: 7.3e-29 V at its node, 7.3e-32 A through its
-  // resistor), so each must be within ANSWER_FLOOR of ngspice's own tolerances, vntol and abstol, or of the
-  // largest value of its kind its sweep gives, and a node a source holds within ANSWER_FLOOR of its exact
-  // voltage (atRest; the critic of round 3: the .op drew them with arrows while the sweep beside it called the
-  // same values rounding noise of exact 0s; the critic of round 4: so did a 5 V source charging only a capacitor
-  // beside the diode, whose node equations hold nothing but leftovers).
-  if (still(ex, view)) return atRest(ex, view, op, dc) ? { check: 'same', view, off: [] } : { check: 'other' };
-  if (!agrees(ex.model, ng, view.level, budget)) return { check: 'other' };
+  // At rest, every value exactly 0 (every source at 0, every diode carrying 0 A at 0 V): no equation has anything
+  // to weigh ngspice's Newton leftovers against (a diode's I-V sweep from 0 V: 7.3e-29 V at its node, 7.3e-32 A
+  // through its resistor), so each must be within ANSWER_FLOOR of ngspice's own tolerances, vntol and abstol, or
+  // of the largest value of its kind its sweep gives (atRest; the critic of round 3: the .op drew them with arrows
+  // while the sweep beside it called the same values rounding noise of exact 0s). A circuit where no current flows
+  // but a source holds a voltage (still) is checked as any other, and where its node equations hold nothing but
+  // leftovers, so that the same-circuit check cannot weigh them (a 5 V source charging only a capacitor beside the
+  // diode, the critic of round 4), as a circuit at rest, its held voltages against their exact values.
+  const rest = (): { check: 'same'; view: View; off: Answer[] } | { check: 'other' } => (atRest(ex, view, op, dc) ? { check: 'same', view, off: [] } : { check: 'other' });
+  if (view.all.every((x) => x.every(isZero))) return rest();
+  if (!agrees(ex.model, ng, view.level, budget)) return still(ex, view) ? rest() : { check: 'other' };
   const judged = judgeAnswers(ex, view, ng);
   if (!judged) return { check: 'other' };
   if (judged.same) return { check: 'same', view, off: [] };
@@ -1452,39 +1453,24 @@ function still(ex: Exact, view: View): boolean {
 }
 
 /**
- * True when ngspice's values of a circuit at rest (still) are what its Newton iterations leave of it: each node
- * voltage within ANSWER_FLOOR of its exact voltage, of vntol (1 µV) or of the largest node voltage the run's sweep
- * gives, the largest of the three, and each current within ANSWER_FLOOR of abstol (1 pA), of the sweep's largest
- * current or of what rounding leaves of a current beside the voltages the sources hold (heldScale), the largest
- * (9.3e-16 V and 9.3e-22 A for a node at 0 V and a current, without a sweep or a held voltage). The circuit makes
- * every current 0 there, so these only check that ngspice settled near that answer, not on another (a circuit with
- * positive feedback can have more than one), and that its sources are the netlist's.
+ * True when ngspice's values of a circuit at rest are what its Newton iterations leave of it: each node voltage
+ * within ANSWER_FLOOR of its exact voltage (one a source holds; else 0), of vntol (1 µV) or of the largest node
+ * voltage the run's sweep gives, the largest of the three, and each current within ANSWER_FLOOR of abstol (1 pA)
+ * or of the sweep's largest current, the larger (9.3e-16 V and 9.3e-22 A for a node at 0 V and a current, without a
+ * sweep). The circuit makes every current 0 there, so these only check that ngspice settled near that answer, not
+ * on another (a circuit with positive feedback can have more than one), and that its sources are the netlist's. A
+ * held voltage never sits across a resistor here: one that did would give the same-circuit check its scale (opCheck).
  */
 function atRest(ex: Exact, view: View, op: NonNullable<AnalysisResults['op']>, dc: Sweep | undefined): boolean {
   const l = sweepScale(dc);
-  const volt = (k: number): number => (k < 0 || isZero(view.x[k]!) ? 0 : toDouble(view.x[k]!));
-  const amps = ANSWER_FLOOR * Math.max(ABSTOL, l.current, heldScale(ex.model, volt));
+  const amps = ANSWER_FLOOR * Math.max(ABSTOL, l.current);
   return (
     op.nodes.every((n) => {
-      const exact = volt(ex.node.get(n.node) ?? -1);
+      const k = ex.node.get(n.node);
+      const exact = k === undefined || isZero(view.x[k]!) ? 0 : toDouble(view.x[k]!);
       return Math.abs(n.value - exact) <= ANSWER_FLOOR * Math.max(VNTOL, Math.abs(exact), l.voltage);
     }) && op.currents.every((c) => Math.abs(c.value) <= amps)
   );
-}
-
-/**
- * The size of what ngspice's rounding can leave of a current in a circuit at rest, from the voltages the sources
- * hold (`volt`, exact, by node; 0 for ground): a resistor's |v(a)| + |v(b)| over its resistance, a G's gain times
- * |v(c)| + |v(d)|, the largest (two nodes a 5 V source holds, joined by 1 kΩ, carry 0 A, which ngspice can give as
- * a step of 5 V over 1 kΩ).
- */
-function heldScale(model: ExactModel, volt: (k: number) => number): number {
-  let held = 0;
-  for (const p of model.parts) {
-    const size = p.kind === 'R' ? (Math.abs(volt(p.a)) + Math.abs(volt(p.b))) / Math.abs(toDouble(p.value)) : p.kind === 'G' ? Math.abs(toDouble(p.value)) * (Math.abs(volt(p.c)) + Math.abs(volt(p.d))) : 0;
-    if (Number.isFinite(size) && size > held) held = size;
-  }
-  return held;
 }
 
 /** Which diodes of the forest carry 0 A, and which carry the same current as each other (diodeStructure). */
@@ -2348,24 +2334,25 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       const x = fromDouble(xs[k]!);
       const shape = shapes.get(xs[k]!) ?? everywhere;
       if (checkCost(ex) > budget.left) return undefined;
-      if (!shape.classes.length && stillAt(x)) {
-        // At rest, no current anywhere (atRest), counted as the check it stands for, so the run's .op and .dc still
-        // fit in its budget together or not at all: each voltage within ANSWER_FLOOR of its exact value there, of
-        // vntol or of the sweep's largest, each current within ANSWER_FLOOR of abstol, of the sweep's largest or of
-        // what rounding leaves beside the voltages the sources hold there.
-        budget.left -= checkCost(ex);
-        if (dc.series.every((s) => s.values[k] === 0)) continue;
+      /** At rest there (atRest): each voltage within ANSWER_FLOOR of its exact value, of vntol or of the sweep's largest, each current within ANSWER_FLOOR of abstol or of the sweep's largest. */
+      const settled = (): boolean => {
+        if (dc.series.every((s) => s.values[k] === 0)) return true;
         scale ??= sweepScale(dc);
         const l = scale;
         const volt = (node: number): number => (node < 0 ? 0 : toDouble({ n: a[node]! * x.d + b[node]! * x.n, d: den * x.d }));
-        const amps = ANSWER_FLOOR * Math.max(ABSTOL, l.current, heldScale(model, volt));
-        const settled = dc.series.every((s, j) => {
+        const amps = ANSWER_FLOOR * Math.max(ABSTOL, l.current);
+        return dc.series.every((s, j) => {
           const given = s.values[k]!;
           if (kindOf(j) !== 'voltage') return Math.abs(given) <= amps;
           const exact = volt(ex.node.get(kinds[j]!.name)!);
           return Math.abs(given - exact) <= ANSWER_FLOOR * Math.max(VNTOL, Math.abs(exact), l.voltage);
         });
-        if (!settled) return undefined;
+      };
+      if (!shape.classes.length && a.every((ai, i) => ai * x.d + b[i]! * x.n === 0n)) {
+        // At rest, every value exactly 0, counted as the check it stands for, so the run's .op and .dc still fit in
+        // its budget together or not at all.
+        budget.left -= checkCost(ex);
+        if (!settled()) return undefined;
         continue;
       }
       const nodes = new Map<string, number>();
@@ -2389,7 +2376,13 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
         const withDiodes = viewOf(ex, unknowns, slopes, shape, currents);
         view = { ...withDiodes, level: (p) => (p === swept ? x : withDiodes.level(p)) };
       }
-      if (!agrees(model, ng, view.level, budget) || !judgeAnswers(ex, view, ng)?.same) return undefined;
+      // Where no current flows but a source holds a voltage, and the same-circuit check cannot weigh the leftovers,
+      // the point is checked as one at rest (opCheck).
+      if (!agrees(model, ng, view.level, budget)) {
+        if (!shape.classes.length && stillAt(x) && settled()) continue;
+        return undefined;
+      }
+      if (!judgeAnswers(ex, view, ng)?.same) return undefined;
     }
     return { shapes, everywhere };
   };

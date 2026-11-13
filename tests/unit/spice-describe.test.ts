@@ -807,11 +807,8 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
 
   it('a diode to ground does not make every part at ground real: the noise of C9b stays noise, decided exactly whatever current the diode carries, or by the rule for other circuits', () => {
     // Ground takes every current; the diode's current, left free, reaches only its other node, so V1 and F1 at ground stay noise.
-    // The numbers are native ngspice 47's (dd −7.323e-29 V, Rd −7.323e-32 A): no current flows anywhere, so the run is
-    // checked as a circuit at rest (the critic of round 4).
     const text = '* t\nV1 in 0 12\nR1 in a 1k\nR3 a b 3k\nF1 0 b V1 2\nD1 0 dd dmod\nRd dd 0 1k\n.model dmod d\n.op\n.end\n';
-    const at = (dd: number): AnalysisResults => op({ in: 12, a: 11.999999999999998, b: 11.999999999999995, dd }, [['v1', -1.734723475976807e-18, 'branch'], ['r1', 1.7763568394002505e-18, 'device'], ['r3', 1.1842378929335003e-18, 'device'], ['f1', -3.469446951953614e-18, 'device'], ['rd', dd / 1000, 'device']]);
-    const r = at(-7.323378444748195e-29);
+    const r = op({ in: 12, a: 11.999999999999998, b: 11.999999999999995, dd: -2.5e-13 }, [['v1', -1.734723475976807e-18, 'branch'], ['r1', 1.7763568394002505e-18, 'device'], ['r3', 1.1842378929335003e-18, 'device'], ['f1', -3.469446951953614e-18, 'device'], ['rd', -2.5e-16, 'device']]);
     const w = describeResults(parseNetlist(text), r, run());
     // D1 and Rd make a loop with nothing to drive it: with every diode at 0 A, D1 has exactly 0 V across it, so it
     // carries 0 A (0 V across a diode makes 0 A), and Rd and dd are exactly 0 too, whatever these numbers say.
@@ -820,9 +817,6 @@ describe('after the critic of round 2 (12 November 2026): a current is noise onl
     // The words give the reason the decision used: Rd and dd are 0 because D1 carries 0 A at 0 V (the critic of round 3:
     // "from the netlist's values and its diodes' currents" said the opposite of how the 0 was found).
     expect(w.warnings.find((m) => m.code === 'rounding-noise')!.why).toContain("from the netlist's values, the circuit makes each of them exactly 0 (D1 has 0 V across it, so it carries no current), so PlainSpice shows 0 A and 0 V.");
-    // dd at −0.25 pV, in a loop nothing drives, is not what ngspice's iterations leave there (2^-30 of its 1 µV tolerance
-    // at most): the circuit is left to the rule, which shows it as ngspice gives it.
-    expect(roundingNoise(parseNetlist(text), at(-2.5e-13)).by).toBe('rule');
     // A line PlainSpice does not model exactly leaves it to the rule, which says so only below ngspice's tolerances.
     const rule = describeResults(parseNetlist(text.replace('.op', '.temp 27\n.op')), r, run());
     expect(rule.currents.filter((c) => c.noise !== undefined).map((c) => c.name)).toEqual(['V1', 'R1', 'R3', 'F1']);
