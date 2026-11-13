@@ -2072,12 +2072,16 @@ function checkFormulaSpaces(c: Ctx, i: number, region: { from: number; body: num
   const what = describeCharacter(ch);
   // One inside i(...)'s bracket is part of the source's name, which ngspice looks for only once the circuit is built,
   // so any other one's message comes first (CR2-5, space-character-31).
+  // Both lists run in text order: one pass finds the first character outside every bracket.
   const sources = sourceBrackets(c.text, region.from, tokens[tokens.length - 1]!.to);
-  const inSource = (p: number): [number, number] | undefined => sources.find(([a, b]) => a < p && p < b);
-  const first = odd.find((p) => !inSource(p));
+  let first: number | undefined;
+  for (let k = 0, b = 0; k < odd.length && first === undefined; k++) {
+    while (b < sources.length && sources[b]![1] <= odd[k]!) b += 1;
+    if (b >= sources.length || odd[k]! <= sources[b]![0]) first = odd[k];
+  }
   add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'error', t, `${capital(what)} stops the formula of ${nameOf(e)}`,
     `This formula has ${what}, which often comes with text copied from a document or a web page. It looks like a space, but SPICE does not treat it as one: it reads it as part of a name, and the formula has no such name. A formula needs no spaces.`,
-    first === undefined ? sourceStops(c.text, inSource(at)!) : formulaStops(c, first, region.body, c.text[first] === '\u00a0'),
+    first === undefined ? sourceStops(c.text, sources.find(([a, b]) => a < at && at < b)!) : formulaStops(c, first, region.body, c.text[first] === '\u00a0'),
     [fix(odd.length > 1 ? 'Take them out' : 'Take it out', ...changes)]);
 }
 
