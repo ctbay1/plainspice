@@ -176,10 +176,11 @@ describe('where the parts are drawn', () => {
   it('a value typed where the lines put parts on other nodes’ pins writes where they are drawn, once (second re-check’s critic)', () => {
     // Every build of such lines moves the parts again (60 parts at one point: a fifth of a second on a
     // computer, a second on a phone, for every key and every visit). The first value typed writes the
-    // drawing shown, so the next builds read it as written.
-    const text = partsAtOnePoint(10, ['*@ R99 5 5 0', '*@ label nope 3 3']);
+    // drawing shown, so the next builds read it as written: where ten parts or more move (its critic,
+    // D6; below, the next test).
+    const text = partsAtOnePoint(12, ['*@ R99 5 5 0', '*@ label nope 3 3']);
     const drawn = drawnOf(text);
-    expect(drawn.problems.filter((p) => p.kind === 'moved-part').length).toBe(9);
+    expect(drawn.problems.filter((p) => p.kind === 'moved-part').length).toBe(11);
     expect(drawn.orphans).toEqual(['*@ R99 5 5 0', '*@ label nope 3 3']);
     const next = withValue(valueSpot(text, 'r2')!, '3');
     const kept = keepDrawing(drawn, next);
@@ -204,7 +205,7 @@ describe('where the parts are drawn', () => {
     // of the 900 were dropped. So the value is written alone, as before the piled lines' shortcut.
     ['60 parts at one point, 900 names each on its own piece of wire far away', () => partsAtOnePoint(60, namedStubs(900)), false],
     // A slanted lattice through the parts' pins: reading the drawing the repairs drew repairs it again, differently.
-    ['6 parts at one point, a slanted lattice through their pins', () => partsAtOnePoint(6, latticeThrough(20)), false],
+    ['12 parts at one point, a slanted lattice through their pins', () => partsAtOnePoint(12, latticeThrough(16)), false],
   ])('a value typed where the lines pile parts keeps the picture, and never writes more lines than are read: %s (its critic, D5)', (_, make, written) => {
     const text = make();
     const drawn = drawnOf(text);
@@ -224,11 +225,43 @@ describe('where the parts are drawn', () => {
   }, 120_000);
 
   it('Put back where the lines pile parts gives the text the card opened on, exactly (its critic, D6)', () => {
-    const text = partsAtOnePoint(10);
+    const text = partsAtOnePoint(12);
     const drawn = drawnOf(text);
     const spot = valueSpot(text, 'r2')!;
     const typed = withValue(spot, '47');
     expect(keepDrawing(drawn, typed)).not.toBe(typed);
     expect(keepDrawing(drawn, withValue(spot, spotValue(spot)))).toBe(text);
+  });
+
+  it('a value typed on a student’s own circuit where a renamed node moved a part changes only the value (its critic, D6)', () => {
+    // The editor lets two parts meet end to end at a shared pin; a node renamed in the text then puts
+    // R1's and R2's pins at (0, 2) on nodes c and b, and the build moves R2. The first value typed wrote
+    // R2's new place, the wire the repairs drew and three names over the student's lines.
+    const text = ['* my divider', 'V1 a 0 6', 'R1 a c 1k', 'R2 b 0 2k', '.op', '* plainspice-drawing v1', '*@ V1 -4 2 0', '*@ R1 0 0 0', '*@ R2 0 4 0', '*@ wire -4,0 -4,-2 0,-2', '*@ wire -4,4 -4,6 0,6', '*@ ground -4 6 0', '.end', ''].join('\n');
+    const drawn = drawnOf(text);
+    expect(drawn.problems.filter((p) => p.kind === 'moved-part').map((p) => p.message)).toEqual(['R2 was moved: a pin of it touched a pin of another node.']);
+    const spot = valueSpot(text, 'r1')!;
+    for (const value of ['2k', '22k']) {
+      const next = withValue(spot, value);
+      expect(keepDrawing(drawn, next)).toBe(next);
+      expect(picture(drawnOf(next))).toEqual(picture(drawn));
+    }
+    expect(keepDrawing(drawn, withValue(spot, spotValue(spot)))).toBe(text);
+  });
+
+  it('the drawing shown is written for a value only where ten parts or more move: nine at one point keep their lines', () => {
+    // Building nine parts at one point again for each key costs a few milliseconds (decision 0012).
+    for (const [n, written] of [
+      [10, false],
+      [11, true],
+    ] as const) {
+      const text = partsAtOnePoint(n);
+      const drawn = drawnOf(text);
+      expect(drawn.problems.filter((p) => p.kind === 'moved-part').length).toBe(n - 1);
+      const next = withValue(valueSpot(text, 'r2')!, '3');
+      const kept = keepDrawing(drawn, next);
+      expect(kept !== next, `${n} parts`).toBe(written);
+      expect(picture(drawnOf(kept))).toEqual(picture(drawn));
+    }
   });
 });

@@ -110,10 +110,10 @@ describe('a value typed on a card is drawn from one build (second re-check, P3)'
     expect(builds.texts).toEqual([]);
   }, 60000);
 
-  it('10 parts at one point and names left where the repairs took their wire away: the first value checks once the lines it would write, then each value is built once', async () => {
+  it('12 parts at one point and names left where the repairs took their wire away: the first value checks once the lines it would write, then each value is built once', async () => {
     // Read again, the drawing shown would drop the names (its critic, D5): so the lines are not
     // written, and each value is drawn from one build of the piled lines, as before the shortcut.
-    const netlist = partsAtOnePoint(10, namedStubs(9));
+    const netlist = partsAtOnePoint(12, namedStubs(11));
     const piled = (texts: readonly string[]): number => texts.filter((t) => /^\*@ R3 0 0 0$/m.test(t)).length;
     const field = await cardOf(netlist, 'R2');
     const first = await typed(field, '3', /3\sΩ/);
