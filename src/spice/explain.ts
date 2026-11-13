@@ -355,10 +355,10 @@ export const EXPLAIN_STRINGS = {
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
   opWhat: 'operating point',
   op: 'Find the DC operating point: every node voltage and the current in every voltage source. Capacitors act as open circuits and inductors as short circuits.',
-  opSaveCurrents: 'ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.',
   /** The copy has no such line here (src/spice/run-netlist.ts, A2c): a + line after .end would continue it. */
   opSaveCurrentsLeftOut: (line: number): string =>
     `ngspice saves the current through every part only with .options savecurrents. PlainSpice does not add that line to the copy it runs here, because of the + line after .end (line ${line}).`,
+  opSaveCurrents: 'ngspice saves the current through every part only with .options savecurrents; PlainSpice adds that line to the copy it runs.',
   tfWhat: 'transfer function',
   tf: (out: string, input: string, at: string): string =>
     `Find three DC quantities: the transfer function ${out}/${input} (output ÷ input), the input resistance seen by ${input}, and the output resistance ${at}, which is the Thévenin resistance seen ${at}. ngspice calls the two resistances "impedance"; at DC they are resistances, in ohms.`,
