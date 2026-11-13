@@ -751,6 +751,14 @@ function expressionsOf(args: string): string[] {
       i += 1;
       continue;
     }
+    // A comma outside brackets separates words, as a blank does (ngspice's control reader drops it).
+    if (c === ',' && depth === 0) {
+      if (current) out.push(current);
+      current = '';
+      afterOperand = false;
+      i += 1;
+      continue;
+    }
     if (c === '(' || c === '[' || c === ')' || c === ']' || OPERATOR.test(c)) {
       if (c === '(' || c === '[') depth += 1;
       else if (c === ')' || c === ']') depth = Math.max(0, depth - 1);

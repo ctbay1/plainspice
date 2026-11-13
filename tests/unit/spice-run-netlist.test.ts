@@ -417,6 +417,7 @@ describe('the names print and write give a formula, and the words of meas (limit
     expect(reasonAt(control(`print ${Array.from({ length: 50 }, () => 'v(b)').join(' + ')}`))).toBeUndefined();
     expect(reasonAt(control(`print ${Array.from({ length: 51 }, () => 'v(b)').join(' + ')}`))?.line).toBe(7);
     expect(reasonAt(control(`print${' v(b)'.repeat(150)}`))).toBeUndefined();
+    expect(reasonAt(control(`print ${w(200)}, ${w(200)}, ${w(200)}`))).toBeUndefined();
     expect(reasonAt(control(`print v(b) gt 1${' v(a)'.repeat(100)}`))).toBeUndefined();
     // let names the result itself; wrdata and plot copy no such name.
     for (const line of [`let q = ${sum}`, `wrdata out.txt ${sum}`, `plot ${sum}`]) expect(reasonAt(control(line)), line.slice(0, 6)).toBeUndefined();
