@@ -35,6 +35,13 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
   Copy the output verbatim; shorten only file paths and the long model and device listings, and say so.
 - Note where 47 and 42 differ, and where our engine differs from native 47 (our build leaves out XSPICE,
   OSDI and some device models: `engine/README.md`).
+- Look in the folder for the results file, and read it, before writing what it holds: where a run stops,
+  ngspice often still writes a plot's header with 0 points ("a … plot with 0 points, its header only (no
+  results)"), which is not "no rawfile" (16 records in traps.md said no file or no data where ngspice
+  wrote one, until 13 November 2026).
+- For `.tran`, compare 42's whole time vector with 47's, not only the number of points and the values at
+  the times printed: 42's last point before a corner of a source, or before the end, can sit elsewhere,
+  and after a corner the two grids can part for good (P18, A17, A18). Say which points differ.
 - Native ngspice used so far: 47 built from the release tarball
   (`./configure --with-x=no --disable-debug --with-readline=no && make`, see `CLAUDE.md`), and 42 from
   Ubuntu's `ngspice 42+ds-3build1` package.
