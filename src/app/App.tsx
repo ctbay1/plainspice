@@ -342,12 +342,6 @@ interface CardEdit {
   written: string;
 }
 
-/**
- * How long an open phone sheet waits, after a finger (or the mouse) last pressed or let go on it, before the
- * lines above it may take its room and bring its head down: a double tap's time, with room to spare (a
- * second tap 300 ms after the first met the head or its ×: the critic of the second re-check's fixes).
- */
-const SHEET_QUIET_MS = 600;
 /** Lines that wait at less than this had no room of their own above the sheet (out of sight): they stay out of sight. */
 const LINE_WAIT_MIN_PX = 12;
 
@@ -380,8 +374,13 @@ interface SheetHold {
   kept: number;
   /** Laid out afresh and not yet drawn: the steps above it may still settle, so it follows them. */
   fresh: boolean;
-  /** When a finger or the mouse last pressed or let go on it (performance.now()). */
-  touched: number;
+  /**
+   * The row of its body a finger or the mouse last pressed (the button, or what was pressed), until the
+   * student presses anything else, uses the keys or scrolls the sheet: a second tap may be on its way to it.
+   */
+  pressed: Element | undefined;
+  /** Told when that row is pressed no more (the lines waiting for it may take their room). */
+  onFree: (() => void) | undefined;
   release: () => void;
 }
 
@@ -415,6 +414,13 @@ function keyFocusIn(body: HTMLElement): Element | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** What a press at this target is on in a sheet's body: its button or field, else what was pressed (none: outside the body). */
+function rowPressed(body: HTMLElement, target: EventTarget | null): Element | undefined {
+  if (!(target instanceof Element) || !body.contains(target) || target === body) return undefined;
+  const control = target.closest('button, a[href], input, select, textarea, summary, label, [role="button"], [tabindex]');
+  return control && body.contains(control) && control !== body ? control : target;
 }
 
 /**
@@ -488,19 +494,28 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
     rowsInView: [],
     kept: 0,
     fresh: true,
-    touched: Number.NEGATIVE_INFINITY,
+    pressed: undefined,
+    onFree: undefined,
     release: () => undefined,
   };
   measureSheet(held);
+  const press = (row: Element | undefined): void => {
+    if (row === held.pressed) return;
+    held.pressed = row;
+    held.onFree?.();
+  };
   // The student's own scroll moves its rows: the rows in view are noted again, and room kept below them that
-  // the scroll no longer needs goes (never more is kept for a scroll).
+  // the scroll no longer needs goes (never more is kept for a scroll). (Its scroll set here is noted as it is
+  // set: a scroll elsewhere is the student's, and the row last pressed is not aimed at again.)
   const onScroll = (): void => {
+    if (Math.abs(body.scrollTop - held.scroll) > 0.5) press(undefined);
     if (held.kept) keepRoom(held, Math.min(held.kept, body.scrollTop + body.clientHeight - naturalOf(held)));
     noteRows(held);
   };
-  const onTouch = (): void => {
-    held.touched = performance.now();
-  };
+  // Anywhere on the page: a press on another row (or anything else) and the keys mean the row last pressed
+  // is not about to be tapped again.
+  const onPress = (e: PointerEvent): void => press(rowPressed(body, e.target));
+  const onKey = (): void => press(undefined);
   const ro =
     typeof ResizeObserver === 'undefined'
       ? undefined
@@ -517,8 +532,8 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
   mo?.observe(body, { childList: true });
   watch();
   body.addEventListener('scroll', onScroll, { passive: true });
-  sheet.addEventListener('pointerdown', onTouch, { capture: true, passive: true });
-  sheet.addEventListener('pointerup', onTouch, { capture: true, passive: true });
+  document.addEventListener('pointerdown', onPress, { capture: true, passive: true });
+  document.addEventListener('keydown', onKey, { capture: true, passive: true });
   let frame = requestAnimationFrame(() => {
     frame = requestAnimationFrame(() => {
       held.fresh = false;
@@ -530,12 +545,28 @@ function holdSheet(room: string, sheet: HTMLElement, body: HTMLElement, afresh: 
     ro?.disconnect();
     mo?.disconnect();
     body.removeEventListener('scroll', onScroll);
-    sheet.removeEventListener('pointerdown', onTouch, { capture: true });
-    sheet.removeEventListener('pointerup', onTouch, { capture: true });
+    document.removeEventListener('pointerdown', onPress, { capture: true });
+    document.removeEventListener('keydown', onKey, { capture: true });
+    held.onFree = undefined;
     sheet.style.removeProperty('max-height');
     keepRoom(held, 0);
   };
   return held;
+}
+
+/**
+ * Whether the head of a held sheet, coming down as the lines above it take more room (its body's box has
+ * moved down since its rows were noted, and they with it until they are kept), would cover any of the row
+ * a finger last pressed while some of it is in view: a second tap on it would meet the head, or its ×.
+ */
+function coversPressed(held: SheetHold): boolean {
+  const { body, pressed } = held;
+  if (!pressed?.isConnected || !body.contains(pressed)) return false;
+  const down = bodyTopOf(held) - held.top;
+  if (down <= 0.5) return false;
+  const r = pressed.getBoundingClientRect();
+  const view = body.getBoundingClientRect().top + body.clientTop;
+  return r.bottom > view + 0.5 && r.top < view + body.clientHeight - 0.5 && r.top - view < down - 0.5;
 }
 
 /** The sheet laid out afresh, as it is now by itself, and held there. */
@@ -2188,9 +2219,10 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   const sheetHeadNow = running ? settled.head : sheetHead;
   const sheetKey = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}|${sheetHeadNow}|${Math.round(rowsKeptNow)}|${statusKey}` : undefined;
   const sheetRoom = sheetOpen ? `${sheetOpen}|${vw}|${vh}|${textScale}|${stackMax}|${Math.round(barRect.height)}` : undefined;
-  // Lines that need more room just after a finger was on the open sheet wait at the height they had, until
-  // the sheet has been still for a double tap's time (SheetHold below); out of sight before, they stay so.
-  const [linesWait, setLinesWait] = useState<{ room: string; height: number } | undefined>(undefined);
+  // Lines that need more room while the open sheet's head would come down over the row a finger last
+  // pressed wait at the height they had (SheetHold below), until that row is pressed no more; out of sight
+  // before, they stay so.
+  const [linesWait, setLinesWait] = useState<{ room: string; height: number; row: Element } | undefined>(undefined);
   /** The wait just ended: whether the lines are still squeezed is measured before they are drawn (linesCut). */
   const [waitEnded, setWaitEnded] = useState(false);
   const waiting = linesWait && linesWait.room === sheetRoom ? linesWait : undefined;
@@ -2229,8 +2261,9 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
   // An open sheet keeps its rows where they are on the screen, whatever changes above it or in it (a run, a
   // new status, an undo, the hint, a run's own rows): a finger about to tap a row again (More's Undo, twice)
   // finds it there. When the lines need more room the sheet gives it from its top and its scroll moves on
-  // by as much, its head coming down over its top rows: not while a finger may be about to tap one, just
-  // after a press on the sheet (the lines wait, squeezed, until it has been still for SHEET_QUIET_MS).
+  // by as much, its head coming down over its top rows: never over the row a finger last pressed, while
+  // some of it is in view (the lines wait, squeezed, until the student presses anything else, uses the keys
+  // or scrolls the sheet), and never over the row the keys are on (keepRows: the rows go down with it).
   // When they need less it takes back what it gave them, no more than its scroll can give back, and the
   // paper takes the rest. Its own rows coming or going keep the rows in view where they are (keepRows):
   // its scroll follows them, and room is kept below them while rows below have gone. Opening it, scrolling
@@ -2262,12 +2295,13 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
       return;
     }
     const above = aboveOf(sheet);
-    // A finger was just on the sheet (an undo or a redo tapped in More, a second tap perhaps on its way):
-    // the lines that need more room wait at the height they had, before this is drawn, and the sheet keeps
-    // its room and its head where they are (the critic of the second re-check's fixes: a second tap 300 ms
-    // after the first met the head, or its ×, which had come down over the row tapped).
-    if (!waiting && above > held.above + 0.5 && performance.now() - held.touched < SHEET_QUIET_MS) {
-      setLinesWait({ room: sheetRoom, height: held.above });
+    // The head would come down over the row a finger last pressed (an undo or a redo tapped in More, a second
+    // tap perhaps on its way): the lines that need more room wait at the height they had, before this is
+    // drawn, and the sheet keeps its room and its head where they are. (The critic of the second re-check's
+    // fixes: a second tap 300 ms after the first met the head, or its ×, which had come down over the row
+    // tapped; waiting 600 ms after the last press, a second tap 0.65 to 0.95 s after the first still did.)
+    if (!waiting && above > held.above + 0.5 && held.pressed && coversPressed(held)) {
+      setLinesWait({ room: sheetRoom, height: held.above, row: held.pressed });
       return;
     }
     // It takes back only the room it gave the lines above it while held, as they give it back, and no
@@ -2291,20 +2325,24 @@ function Shell({ startup, engine, createEditor, initialSettings, serviceWorker =
     },
     [],
   );
-  // The lines wait until the sheet has been still for a double tap's time since its last press.
+  // The lines wait until the row they wait for is pressed no more (another press, the keys, the sheet
+  // scrolled), however long that is: a student who taps Undo, looks at the drawing and taps it again finds it
+  // there (decision 0018).
   useEffect(() => {
     if (!waiting) return undefined;
-    let timer = 0;
-    const check = (): void => {
-      const left = (sheetHold.current?.touched ?? Number.NEGATIVE_INFINITY) + SHEET_QUIET_MS - performance.now();
-      if (left > 0) timer = window.setTimeout(check, left + 1);
-      else {
-        setLinesWait(undefined);
-        setWaitEnded(true);
-      }
+    const held = sheetHold.current;
+    const end = (): void => {
+      setLinesWait(undefined);
+      setWaitEnded(true);
     };
-    check();
-    return () => window.clearTimeout(timer);
+    if (!held || held.pressed !== waiting.row) {
+      end();
+      return undefined;
+    }
+    held.onFree = end;
+    return () => {
+      if (held.onFree === end) held.onFree = undefined;
+    };
   }, [waiting]);
   // The card says what the status line says about runs: about to answer, or waiting for Run (and why).
   const cardRun: CardRun = { waiting: status.tone === 'busy', ...(status.tone === 'paused' || status.tone === 'bad' ? { stalled: status.detail ?? status.main } : {}) };
