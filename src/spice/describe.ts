@@ -390,6 +390,8 @@ export const DESCRIBE_STRINGS = {
   summaryUnreliable: (why: string): string => `Simulation finished, but its numbers can't be trusted: ${why}. Open the results for details.`,
   summaryFailed: (why: string): string => `ngspice stopped with an error: ${why}. Open the results for details.`,
   summaryEmpty: (why: string): string => `ngspice finished but gave no results: ${why}. Open the results for details.`,
+  /** The same when ngspice said nothing: noResultsWhy's words, never "no results: no results" (last pass F3). */
+  summaryEmptyNoWhy: 'ngspice finished without writing any results, and it printed no message that says why. Open the results for details.',
   summaryNodes: (list: string, more: number): string => (more ? `${list} and ${more} more ${more === 1 ? 'node' : 'nodes'}` : list),
   /** A sweep's last point as the live region says it: its first four values, then how many more, as summaryNodes. */
   summaryValues: (values: readonly string[]): string => (values.length > 4 ? `${values.slice(0, 4).join(', ')} and ${values.length - 4} more ${values.length === 5 ? 'value' : 'values'}` : values.join(', ')),
@@ -423,6 +425,14 @@ export const DESCRIBE_STRINGS = {
   noAnalysisAtWhy: (line: number): string =>
     `Line ${line} starts with @, so ngspice stopped reading there and never saw the analysis lines after it. It ran nothing.`,
   noAnalysisTitleWhy: (word: string): string => `Line 1 is always the title, so ngspice never runs the ${word} written there. It ran nothing.`,
+  /**
+   * A3f: every analysis line is in a subcircuit no X line uses, where ngspice skips it (last pass F3): the title
+   * names the line and the subcircuit (`name`: undefined for several), so the status line gives the reason.
+   */
+  skippedTitle: (word: string | undefined, name: string | undefined): string =>
+    `${word ? `${word} is` : 'The analysis lines are'} inside ${name === undefined ? 'subcircuits that no X line uses' : `the subcircuit ${name}, which no X line uses`}`,
+  skippedWhy:
+    'ngspice skips an analysis line between .subckt and .ends when no X line uses that subcircuit, so it ran nothing, and with a results file it says nothing about it. Put analysis lines in the main circuit, outside .subckt … .ends.',
   controlOnlyTitle: 'ngspice ran the .control block',
   controlOnlyWhy:
     'ngspice ran the commands in the .control block; what they printed is in the ngspice output tab. PlainSpice shows the results of analysis lines such as .op, .dc and .tran, and this netlist has none.',
@@ -3437,6 +3447,21 @@ function nothingRanWords(netlist: Netlist): MessageWords {
   return { code: 'no-analysis', severity: 'error', title: S.noAnalysisTitle, why: S.noAnalysisWhy };
 }
 
+/**
+ * Why a run gave nothing when every analysis line is in a subcircuit no X line uses: ngspice skips each
+ * of them there and runs nothing, and with a results file says nothing about it (A3f). undefined in any
+ * other case: no analysis line, one ngspice runs, a .control block (ngspice runs its commands, A36), an
+ * analysis after .end (S25) or on the title line (M20). Last pass F3: the page said ngspice gave no reason.
+ */
+function skippedWords(netlist: Netlist): MessageWords | undefined {
+  const lines = netlist.analyses;
+  if (!lines.length || !lines.every((i) => ignoredAnalysis(netlist, i)) || ANALYSIS_WORD.test(netlist.lines[0]?.text ?? '')) return undefined;
+  if (netlist.lines.some((l) => l.kind === 'control' && /^\s*\.control\b/i.test(l.text)) || readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) return undefined;
+  const subs = new Set(lines.map((i) => unusedSubcircuit(netlist, i)!.name));
+  const word = lines.length === 1 ? netlist.lines[lines[0]!]!.directive!.token.text : undefined;
+  return { code: 'no-analysis', severity: 'error', title: S.skippedTitle(word, subs.size === 1 ? [...subs][0] : undefined), why: S.skippedWhy, line: lines[0]! + 1 };
+}
+
 function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults): MessageWords[] {
   const diagnostics = [...run.diagnostics, ...unclassified(run)];
   const out: MessageWords[] = [];
@@ -3477,7 +3502,11 @@ function messagesOf(netlist: Netlist, run: RunResult, results: AnalysisResults):
       }
     }
   }
-  if (!run.ok && !hasResults && out.length === 0) {
+  // A3f: every analysis line is in a subcircuit no X line uses. Said beside a note ngspice printed too (an
+  // .ac's "has no value", which is no reason), and first, as the run's error (last pass F3).
+  const skipped = !run.ok && !hasResults && !out.some((m) => m.severity === 'error') ? skippedWords(netlist) : undefined;
+  if (skipped) push(skipped);
+  else if (!run.ok && !hasResults && out.length === 0) {
     if (netlist.analyses.length === 0 && !readAfterEnd(netlist).some((l) => ANALYSIS_WORD.test(l.text))) push(nothingRanWords(netlist)); // M20
     else push({ code: 'no-results', severity: 'error', title: S.noResultsTitle, why: S.noResultsWhy });
   }
@@ -3501,6 +3530,8 @@ function summaryOf(status: ResultsInWords['status'], ngspiceError: boolean, word
   // (Rş), and the two names of "Ru and Rµ are the same name for ngspice" (M4b, M4c).
   const lower = (s: string): string =>
     s && !/^[A-Z]{2}|^[A-Z]\d|^\.|^[A-Z]\S*[^\sa-z]|^\S+ and \S+ are the same name/.test(s) ? s[0]!.toLowerCase() + s.slice(1) : s;
+  // "No results" is the status's own word: never "gave no results: no results" (last pass F3).
+  if (status === 'failed' && !ngspiceError && firstProblem?.code === 'no-results') return S.summaryEmptyNoWhy;
   if (status === 'failed') return (ngspiceError ? S.summaryFailed : S.summaryEmpty)(firstProblem ? lower(firstProblem.title) : S.summaryNothing);
   if (status === 'unreliable') {
     const specific = words.warnings.find((m) => m.code !== 'unreliable');

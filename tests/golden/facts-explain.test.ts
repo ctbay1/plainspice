@@ -659,6 +659,22 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(runs.get('an-tf-subckt-twice')!.plots.filter((p) => /transfer function/i.test(p.plotname)).length).toBe(2);
   });
 
+  it('every analysis line in a subcircuit no X line uses: the run\'s first message and the status line say why nothing ran (A3f, last pass F3)', () => {
+    for (const id of ['an-tf-subckt-alone', 'an-op-subckt', 'an-dc-subckt', 'an-tran-subckt', 'an-ac-subckt', 'an-noise-subckt']) {
+      const f = FACTS.find((x) => x.id === id)!;
+      const d = describeRun(f.netlist, runs.get(id)!);
+      const word = d.netlist.lines[6]!.directive!.token.text;
+      const title = `${word} is inside the subcircuit s, which no X line uses`;
+      expect([d.words.status, d.words.warnings[0]?.code, d.words.warnings[0]?.severity, d.words.warnings[0]?.title, d.words.warnings[0]?.line], id).toEqual(['failed', 'no-analysis', 'error', title, 7]);
+      expect(d.words.warnings[0]?.why, id).toBe('ngspice skips an analysis line between .subckt and .ends when no X line uses that subcircuit, so it ran nothing, and with a results file it says nothing about it. Put analysis lines in the main circuit, outside .subckt … .ends.');
+      expect(d.words.summary, id).toBe(`ngspice finished but gave no results: ${title}. Open the results for details.`);
+    }
+    // ngspice's note about V1 (an AC value alone is no DC value) comes after it: it is no reason.
+    expect(describeRun(FACTS.find((x) => x.id === 'an-ac-subckt')!.netlist, runs.get('an-ac-subckt')!).words.warnings.map((m) => m.title)).toEqual(['.ac is inside the subcircuit s, which no X line uses', 'V1 has no value: 0 V']);
+    // ngspice reads none of such a subcircuit's lines: a .tran and a dot command it stops at elsewhere say nothing there.
+    expect(runs.get('an-skip-unused')!.stderr).not.toMatch(/TSTEP|unimplemented/);
+  });
+
   it('a gnd in the v( ) of a .tf inside a subcircuit an X line uses is ground, as at the top level (A3g, last pass regress-2)', () => {
     const said = (id: string): Described => describeRun(FACTS.find((x) => x.id === id)!.netlist, runs.get(id)!);
     const main = said('an-tf-subckt-gnd');

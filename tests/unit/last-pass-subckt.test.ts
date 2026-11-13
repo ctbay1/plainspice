@@ -8,6 +8,8 @@
  *   name for it, so it is no error, and Explain says which node it is (A3h).
  * - regress-2: a gnd in the v( ) of a .tf inside a subcircuit an X line uses is ground, as at the top
  *   level (A3g); and the summary names every warning it counts, four and how many more.
+ * - facts F3: when every analysis line is in a subcircuit no X line uses, the run's message and the
+ *   status line say why nothing ran, and never "no results: no results".
  * - facts F2: ngspice "skips" those lines, the word for a whole line it does not read (W11).
  */
 import { readFileSync } from 'node:fs';
@@ -141,6 +143,51 @@ describe('regress-2: a gnd in a .tf inside a subcircuit an X line uses is ground
     expect(six.words.summary).toContain(`. 6 warnings: ${four}; and 2 more warnings. Open the results for details.`);
     expect(six.words.summarySpeech).toContain(`. 6 warnings: ${four}; and 2 more warnings. Open the results for details.`);
   }, 30000);
+});
+
+describe('facts F3: every analysis line in a subcircuit no X line uses (A3f)', () => {
+  const ALONE = (line: string, v1 = '5'): string => `* t\nV1 in 0 ${v1}\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n${line}\n.ends\n.end\n`;
+  const WHY = 'ngspice skips an analysis line between .subckt and .ends when no X line uses that subcircuit, so it ran nothing, and with a results file it says nothing about it. Put analysis lines in the main circuit, outside .subckt … .ends.';
+
+  it('the run\'s message and the status line say why nothing ran, with the line to go to', async () => {
+    const s = await solve(ALONE('.tf v(a,gnd) V1'), await engine);
+    expect(s.status).toBe('failed');
+    expect(s.words.warnings.map((m) => [m.code, m.severity, m.title, m.why, m.line])).toEqual([['no-analysis', 'error', '.tf is inside the subcircuit s, which no X line uses', WHY, 7]]);
+    expect(s.words.summary).toBe('ngspice finished but gave no results: .tf is inside the subcircuit s, which no X line uses. Open the results for details.');
+    for (const line of ['.op', '.dc V1 0 5 1', '.tran 1m 5m']) {
+      expect((await solve(ALONE(line), await engine)).words.warnings[0]?.title, line).toBe(`${line.split(' ')[0]} is inside the subcircuit s, which no X line uses`);
+    }
+  }, 30000);
+
+  it('comes before a note ngspice printed, which is no reason (.ac and .noise: "has no value")', async () => {
+    for (const line of ['.ac dec 1 1k 10k', '.noise v(out) V1 dec 1 1k 10k']) {
+      const s = await solve(ALONE(line, 'AC 1'), await engine);
+      expect(s.words.warnings.map((m) => [m.severity, m.title]), line).toEqual([
+        ['error', `${line.split(' ')[0]} is inside the subcircuit s, which no X line uses`],
+        ['note', 'V1 has no value: 0 V'],
+      ]);
+      expect(s.words.summary, line).toBe(`ngspice finished but gave no results: ${line.split(' ')[0]} is inside the subcircuit s, which no X line uses. Open the results for details.`);
+    }
+  }, 30000);
+
+  it('names several lines together, and says nothing of the kind where ngspice runs an analysis', async () => {
+    const one = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.tf v(out) V1\n.ends\n.end\n';
+    expect((await solve(one, await engine)).words.warnings.map((m) => m.title)).toEqual(['The analysis lines are inside the subcircuit s, which no X line uses']);
+    const two = '* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.op\n.ends\n.subckt t c d\nR8 c d 1k\n.tf v(out) V1\n.ends\n.end\n';
+    expect((await solve(two, await engine)).words.warnings.map((m) => m.title)).toEqual(['The analysis lines are inside subcircuits that no X line uses']);
+    // An X line uses it: ngspice runs the line as the main circuit's (A3f), 1/3.
+    const used = (await solve(ALONE('.tf v(out) V1').replace('.end\n', 'X1 out 0 s\n.end\n'), await engine)).words;
+    expect([used.status, used.warnings]).toEqual(['ok', []]);
+    // An analysis line in the main circuit too: it runs, and its results are the words.
+    expect((await solve(ALONE('.tf v(a,gnd) V1').replace('.end\n', '.op\n.end\n'), await engine)).words.status).toBe('ok');
+  }, 30000);
+
+  it('never says "no results" twice: with no message from ngspice, the summary says so once', () => {
+    const empty = describeResults(parseNetlist('* t\nR1 a 0 1\n.op\n'), { other: [] }, nothing());
+    expect(empty.warnings.map((m) => m.title)).toEqual(['No results']);
+    expect(empty.summary).toBe('ngspice finished without writing any results, and it printed no message that says why. Open the results for details.');
+    expect(empty.summarySpeech).toBe(empty.summary);
+  });
 });
 
 describe('facts F2: ngspice "skips" an analysis line in a subcircuit no X line uses (W11)', () => {

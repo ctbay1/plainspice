@@ -2793,6 +2793,14 @@ our engine (wasm), as ngspice -b -r: exit 0, vectors: v(in) = 5, v(out) = 2.5, i
   '.foo'", no results
 ```
 
+When every analysis line is in such a subcircuit, ngspice runs nothing and, with a results file, says
+nothing about it. PlainSpice's results say why, as the run's first message and in the status line,
+never "ngspice printed no message that says why" (last pass F3): ".tf is inside the subcircuit s,
+which no X line uses", with "ngspice skips an analysis line between .subckt and .ends when no X line
+uses that subcircuit, so it ran nothing …" and the line to go to; for `.ac` and `.noise`, before
+ngspice's note that V1 has no DC value, which is no reason. These are golden rows
+an-tf-subckt-alone, an-op-subckt, an-dc-subckt, an-tran-subckt, an-ac-subckt and an-noise-subckt.
+
 ### A3g. In a subcircuit an X line uses, a gnd in a .tf's v( ) is ground too
 
 ngspice turns gnd into 0 on every line before it runs a `.tf` between `.subckt` and `.ends` as the main
