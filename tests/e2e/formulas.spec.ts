@@ -48,6 +48,23 @@ test('the rename fix for a node a formula reads renames it in the formula too: t
   expect(readPlain(await shownText(rowNamed(nodeTable(page), 'cikis').getByRole('cell').first()), 'V')).toBe(5);
 });
 
+test('a formula that writes the node with a capital letter (v(Çıkış)) gets no false error: the numbers show, and the rename keeps them (non-ascii-node-20, round-1 critic CR1-1)', async ({ page }) => {
+  const netlist = '* t\nV1 giris 0 10\nR1 giris çıkış 1k\nR2 çıkış 0 1k\nB1 b 0 V=v(Çıkış)*2\nRb b 0 1k\n.op\n.end\n';
+  await openApp(page);
+  await setNetlist(page, netlist);
+  await expectFinished(page);
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'b').getByRole('cell').first()), 'V')).toBe(10);
+  await expect.poll(() => checksCount(page)).toBe(1);
+  const panel = await openPanel(page, 'checks');
+  await panel.getByRole('button', { name: 'Rename çıkış to cikis' }).click();
+  await expect(panel).toContainText(t('checksNone'));
+  await openNetlist(page);
+  await expect.poll(() => netlistText(page)).toBe(netlist.replaceAll('çıkış', 'cikis').replace('Çıkış', 'cikis'));
+  await expectFinished(page);
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'b').getByRole('cell').first()), 'V')).toBe(10);
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'cikis').getByRole('cell').first()), 'V')).toBe(5);
+});
+
 test('an emoji before a thin space in the title stops no check: the error for x shows, not "No traps found" (round-1 critic CR1-5)', async ({ page }) => {
   await openApp(page);
   await setNetlist(page, '* t\n.title \u{1F600} devre\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nC1 out x 1u\n.op\n.end\n');

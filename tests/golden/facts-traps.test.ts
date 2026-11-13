@@ -22,6 +22,7 @@ import createNgspice from '../../engine/dist/ngspice.mjs';
 import { agrees } from '../../src/engine/compare.ts';
 import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import type { RunResult } from '../../src/engine/types.ts';
+import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 
@@ -518,6 +519,12 @@ const FACTS: Fact[] = [
   // renames reach .save, .global and a .func's formula too (CR1-3). A character that looks like a space anywhere in a
   // formula is taken out, and the words ngspice says depend on where it stands (CR1-2, CR1-4); a node called value
   // on an E line (CR1-10); one word before a formula that native ngspice lets through (missing-fields-10).
+  { code: 'non-ascii-node-20', netlist: "* formulas that write the node with a capital letter\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 b 0 V=v(\u00c7\u0131k\u0131\u015f)*2\nRb b 0 1k\nE1 e 0 VALUE={v(\u00c7\u0131k\u0131\u015f)*2}\nRe e 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(e)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-21', netlist: "* .pz that writes the node with a capital letter\nV1 giris 0 dc 10 ac 1\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nC1 \u00e7\u0131k\u0131\u015f 0 1u\n.pz giris 0 \u00c7\u0131k\u0131\u015f 0 vol pz\n.end\n", traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-22', netlist: "* a part after .end that writes the node with a capital letter\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\nR3 \u00c7\u0131k\u0131\u015f 0 1k\n", vectors: { "v(____k____)": 3.333333333333333, "i(v1)": -0.006666666666666667 }, traps: ['non-ascii-node', 'after-end'] },
+  { code: 'non-ascii-node-23', netlist: "* .save names the node bare\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.save \u00e7\u0131k\u0131\u015f\n.op\n.end\n", vectors: { "v(____k____)": 5 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-24', netlist: "* .global with a node with Turkish letters\n.global \u00e7\u0131k\u0131\u015f\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 2k\nX1 sub\n.subckt sub\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.ends\n.op\n.end\n", vectors: { "v(____k____)": 4 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-25', netlist: "* a .func that reads a node with Turkish letters\nV1 giris 0 10\nR1 giris \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.func vo() {v(\u00e7\u0131k\u0131\u015f)}\nB1 b 0 V=vo()*2\nRb b 0 1k\n.op\n.end\n", vectors: { "v(b)": 10, "v(____k____)": 5 }, traps: ['non-ascii-node'] },
   { code: 'space-character-25', netlist: "* a thin space at the start of a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=\u2009v(out)*2\nRe e 0 1k\n.op\n.end\n", prints: ["parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
   { code: 'space-character-26', netlist: "* a thin space after an operator in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(out)*\u20092\nRe e 0 1k\n.op\n.end\n", prints: ["The internal check of parse tree", "parameter value out of range or the wrong type"], fails: true, traps: ['space-character'] },
   { code: 'space-character-27', netlist: "* a thin space between the digits of a number in a formula\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V={1\u2009000*v(out)/1k}\nRe e 0 1k\n.op\n.end\n", prints: ["unknown parameter (_)"], fails: true, traps: ['space-character'] },
@@ -696,6 +703,48 @@ it('C3-1: "Rename" and "Move .end to the bottom" give the same circuit in either
   const other = step(step(text, 'after-end'), 'non-ascii-node');
   expect(one).toBe(other);
   expect(one).toContain('R3 cikis 0 1k');
+});
+
+it('CR1-1, CR1-3: a name written with a capital letter, .save, .global and a .func are renamed with the node, so the renamed netlist gives the same numbers', () => {
+  // [fact, the numbers before, the same numbers after the rename, by the new name]
+  const cases: [string, Record<string, number>, Record<string, number>][] = [
+    ['non-ascii-node-20', { 'v(b)': 10, 'v(e)': 10, 'v(____k____)': 5 }, { 'v(b)': 10, 'v(e)': 10, 'v(cikis)': 5 }],
+    ['non-ascii-node-21', { 'v(pole(1))': -2000 }, { 'v(pole(1))': -2000 }],
+    ['non-ascii-node-22', { 'v(____k____)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }, { 'v(cikis)': 3.333333333333333, 'i(v1)': -0.006666666666666667 }],
+    ['non-ascii-node-23', { 'v(____k____)': 5 }, { 'v(cikis)': 5 }],
+    ['non-ascii-node-24', { 'v(____k____)': 4 }, { 'v(cikis)': 4 }],
+    ['non-ascii-node-25', { 'v(b)': 10, 'v(____k____)': 5 }, { 'v(b)': 10, 'v(cikis)': 5 }],
+  ];
+  for (const [code, before, after] of cases) {
+    const f = fixed.get(code)!.find((x) => x.label.startsWith('non-ascii-node'))!;
+    expect(f.label, code).toBe('non-ascii-node: Rename çıkış to cikis');
+    // Neither spelling is left on a line ngspice reads (the title is a comment line here).
+    expect(f.netlist.split('\n').slice(1).join('\n'), code).not.toMatch(/çıkış|Çıkış/);
+    for (const [name, want] of Object.entries(before)) expect(vector(runs.get(code)!, name), `${code} before: ${name}`).toEqual([want]);
+    for (const [name, want] of Object.entries(after)) expect(vector(f.run, name), `${code} after: ${name}`).toEqual([want]);
+  }
+  // The check for names ngspice makes one says nothing: Çıkış in a formula is no second node (CR1-1).
+  for (const code of ['non-ascii-node-20', 'non-ascii-node-21']) expect(checkTraps(parseNetlist(FACTS.find((x) => x.code === code)!.netlist)).map((t) => t.severity), code).toEqual(['warning']);
+});
+
+it('CR1-3: the drawing editor\'s rename reaches .save, .global and a .func\'s formula, before and after .end: the same numbers', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const cases: [string, string, Record<string, number>][] = [
+    ['.save', '* t\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\n.save out\n.op\n.end\n', { 'v(out)': 5 }],
+    ['.save after .end', '* t\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\n.op\n.end\n.save out\n', { 'v(out)': 5 }],
+    ['.global', '* t\n.global out\nV1 in 0 10\nR1 in out 1k\nR3 out 0 2k\nX1 sub\n.subckt sub\nR2 out 0 1k\n.ends\n.op\n.end\n', { 'v(out)': 4 }],
+    ['.func', '* t\n.func vo() {v(out)}\nV1 in 0 10\nR1 in out 1k\nR2 out 0 1k\nB1 b 0 V=vo()*2\nRb b 0 1k\n.op\n.end\n', { 'v(out)': 5, 'v(b)': 10 }],
+  ];
+  for (const [form, text, want] of cases) {
+    const r = applyEdit(buildSchematic(text), { kind: 'rename-node', node: 'out', name: 'vout' }, { drawingInText: true });
+    expect(r.ok, `${form}: ${r.reason}`).toBe(true);
+    const before = await engine.run(text);
+    const after = await engine.run(r.text);
+    for (const [name, v] of Object.entries(want)) {
+      expect(vector(before, name), `${form} before: ${name}`).toEqual([v]);
+      expect(vector(after, name.replace('(out)', '(vout)')), `${form} after: ${name}\n${r.text}`).toEqual([v]);
+    }
+  }
 });
 
 it('CR1-2, CR1-4: the fix takes every character that looks like a space out of the formula, wherever it stands, and the formula runs', () => {

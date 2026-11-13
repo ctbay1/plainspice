@@ -184,6 +184,10 @@ interface Ctx {
   controlNodes?: Map<string, CommandRef[]>;
   /** Every word ngspice reads as a node's name, by node, read on the first rename (referencesOf). */
   references?: Map<string, Token[]>;
+  /** The nodes' keys by ngspice's spelling of them: those parts connect to, and all the others (ownerOf), read on the first use. */
+  spellings?: { connected: Map<string, string[]>; named: Map<string, string[]> };
+  /** The nodes .save and .global lines name bare, and a .global node's words inside subcircuits, by node, read on the first use (savedNodes). */
+  savedNodes?: Map<string, Token[]>;
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
@@ -3139,9 +3143,10 @@ function referencesOf(c: Ctx): Map<string, Token[]> {
     if (!same) found.set(key, (same = new Map()));
     if (!same.has(t.from)) same.set(t.from, t);
   };
-  for (const [key, info] of c.n.nodes) for (const t of info.refs) put(key, t);
-  for (const [key, refs] of printNodes(c)) for (const r of refs) put(key, r.token);
-  for (const [key, refs] of controlNodes(c)) for (const r of refs) put(key, r.token);
+  for (const [key, info] of c.n.nodes) for (const t of info.refs) put(ownerOf(c, key), t);
+  for (const [key, refs] of printNodes(c)) for (const r of refs) put(ownerOf(c, key), r.token);
+  for (const [key, refs] of controlNodes(c)) for (const r of refs) put(ownerOf(c, key), r.token);
+  for (const [key, tokens] of savedNodes(c)) for (const t of tokens) put(ownerOf(c, key), t);
   const after = readAfterEnd(c.n);
   if (after.length) {
     // The lines after .end, read on their own as the lines before it are: a later .end becomes a
@@ -3150,11 +3155,110 @@ function referencesOf(c: Ctx): Map<string, Token[]> {
     const body = c.text.slice(from, after[after.length - 1]!.span.to).replace(/^([ \t]*)\.(end(?=[ \t;\r]|$))/gim, '$1*$2');
     const shift = from - 2;
     for (const [key, tokens] of referencesOf(context(parseNetlist(`*\n${body}`)))) {
-      for (const t of tokens) put(key, { from: t.from + shift, to: t.to + shift, text: t.text });
+      for (const t of tokens) put(ownerOf(c, key), { from: t.from + shift, to: t.to + shift, text: t.text });
     }
   }
   c.references = new Map([...found].map(([key, same]) => [key, [...same.values()].sort((a, b) => a.from - b.from)]));
   return c.references;
+}
+
+/**
+ * The nodes named bare on .save and .global lines outside subcircuits, by node as the parser keys them, read once
+ * (CR1-3; the words inside v(...) are the parser's). ngspice saves a node named bare on .save as v(name), so a
+ * .save left with the old name saves nothing of it, and with nothing else to save PlainSpice's run stops: "no data
+ * saved" (non-ascii-node-23). save's own words (all, allv, alli ...), a function's name before its bracket (v, i),
+ * a current or a part's value (@r1[i], v1#branch) and a setting (name=) are no nodes. A bare name on .probe is no
+ * node: ngspice warns "Strange parameter" and ignores it. .global makes the nodes it names one node in every
+ * subcircuit too: the words inside a subcircuit's lines that name such a node, other than the subcircuit's own
+ * ends (its .subckt line), are that node, so a rename that left them would cut those parts off it (non-ascii-node-24).
+ */
+function savedNodes(c: Ctx): Map<string, Token[]> {
+  if (c.savedNodes) return c.savedNodes;
+  const out = new Map<string, Token[]>();
+  const put = (t: Token): void => {
+    const key = ngspiceName(t.text);
+    const same = out.get(key);
+    if (same) same.push(t);
+    else out.set(key, [t]);
+  };
+  const global = new Set<string>();
+  let depth = 0;
+  for (const i of c.n.directives) {
+    const d = c.n.lines[i]!.directive!;
+    if (d.name === '.subckt' || d.name === '.macro') depth += 1;
+    else if (d.name === '.ends' || d.name === '.eom') depth = Math.max(0, depth - 1);
+    if (depth > 0 || (d.name !== '.save' && d.name !== '.global')) continue;
+    let level = 0;
+    let end = d.token.to;
+    for (const t of d.args) {
+      for (const ch of c.text.slice(end, t.from)) level = ch === '(' ? level + 1 : ch === ')' ? Math.max(0, level - 1) : level;
+      end = t.to;
+      if (level > 0) continue;
+      if (d.name === '.global') {
+        put(t);
+        global.add(ngspiceName(t.text));
+        continue;
+      }
+      const after = c.text.slice(t.to, t.to + 64);
+      if (/^[ \t]*[(=]/.test(after) || /[@#[\]]/.test(t.text) || SAVE_WORDS.has(lowerAscii(t.text))) continue;
+      put(t);
+    }
+  }
+  if (global.size) {
+    // Each subcircuit's own ends, from its .subckt line, and the words its part lines name nodes by.
+    let own: Set<string> = new Set();
+    const stack: Set<string>[] = [];
+    for (const l of c.n.lines) {
+      const d = l.directive;
+      if (d?.name === '.subckt' || d?.name === '.macro') {
+        own = new Set();
+        for (const t of d.args.slice(1)) {
+          if (/^params:$/i.test(t.text) || /^[ \t]*=/.test(c.text.slice(t.to, t.to + 64))) break;
+          own.add(ngspiceName(t.text));
+        }
+        stack.push(own);
+      } else if (d?.name === '.ends' || d?.name === '.eom') {
+        stack.pop();
+        own = stack.at(-1) ?? new Set();
+      }
+      if (!stack.length || !l.element) continue;
+      for (const r of [...l.element.nodes, ...(l.element.reads ?? [])]) if (global.has(r.name) && !own.has(r.name)) put(r.token);
+    }
+  }
+  c.savedNodes = out;
+  return out;
+}
+
+/**
+ * The node a name ngspice reads belongs to, by the parser's key (CR1-1). ngspice writes each byte of a
+ * letter outside a to z as '_' wherever it reads a node's name, so Çıkış and çıkış are one node for it,
+ * ____k____, while the parser keys them as two. A name that parts connect to is its own node. Any other
+ * name (one a formula, a dot command, a .print line or a command for ngspice only reads, or a part after
+ * .end names) is the node parts connect to that ngspice spells the same: the one with the same letters but
+ * for their case when several are (the check for names ngspice makes one says so), else the first; with
+ * none, the first name the netlist reads so spelled. A rename of the node then renames them all, and the
+ * circuit stays the one ngspice simulates (non-ascii-node-20 to -22).
+ */
+function ownerOf(c: Ctx, key: string): string {
+  const own = c.n.nodes.get(key);
+  if (own && (own.ground || own.connections.length > 0)) return key;
+  if (!c.spellings) {
+    const connected = new Map<string, string[]>();
+    const named = new Map<string, string[]>();
+    for (const [k, info] of c.n.nodes) {
+      if (info.ground || info.refs.length === 0) continue;
+      const spelled = ngspiceSpelling(k);
+      const into = info.connections.length > 0 ? connected : named;
+      const same = into.get(spelled);
+      if (same) same.push(k);
+      else into.set(spelled, [k]);
+    }
+    c.spellings = { connected, named };
+  }
+  const spelled = ngspiceSpelling(key);
+  const parts = c.spellings.connected.get(spelled);
+  if (parts) return parts.length === 1 ? parts[0]! : (parts.find((k) => k.toLowerCase() === key.toLowerCase()) ?? parts[0]!);
+  return c.spellings.named.get(spelled)?.[0] ?? key;
 }
 
 const referencesCache = new WeakMap<Netlist, Map<string, Token[]>>();
@@ -3193,15 +3297,19 @@ function namedElsewhere(c: Ctx, key: string, found: readonly Token[], form?: str
       if (head === 'ends' || head === 'eom') depth = Math.max(0, depth - 1);
       if (inside || head) continue;
       const reads = l.kind === 'element' || l.kind === 'directive' || l.kind === 'continuation' || l.kind === 'control' || read.has(l.index);
-      if (!reads || /^[\x20-\x7e\t]*$/.test(l.text)) continue;
+      // A title is text, not names: ngspice reads none of its words as a node (CR1-11).
+      if (!reads || /^[\x20-\x7e\t]*$/.test(l.text) || l.directive?.name === '.title' || /^[ \t]*\.title\b/i.test(l.text)) continue;
       let end = 0;
       for (const t of l.tokens) end = Math.max(end, t.to - l.span.from);
       const command = l.kind === 'control';
       const { code, from } = command ? commandCode(l) : { code: l.text.slice(0, end), from: l.span.from };
+      // echo prints its words as text (CR1-11).
+      if (command && /^[ \t]*echo\b/i.test(code)) continue;
       // A command reads an expression: there a name also ends at an operator (let x = 2*çıkış).
       for (const w of code.matchAll(command ? /[^ \t\r\n\v\f,()=+\-*/^%<>&|!{}[\]"';]+/g : /[^ \t\r\n\v\f,()=]+/g)) {
         if (/^[\x20-\x7e]*$/.test(w[0])) continue;
-        const name = ngspiceName(w[0]);
+        // By the node ngspice reads it as: Çıkış is çıkış's (ownerOf, CR1-1).
+        const name = ownerOf(c, ngspiceName(w[0]));
         const same = words.get(name) ?? [];
         same.push({ from: from + w.index, to: from + w.index + w[0].length, text: w[0] });
         words.set(name, same);
@@ -3277,7 +3385,9 @@ function lettersRule(names: readonly string[], what: string): string {
 function checkNodeNames(c: Ctx): void {
   const groups = new Map<string, NodeInfo[]>();
   for (const info of c.n.nodes.values()) {
-    if (info.ground || info.refs.length === 0) continue;
+    // A name only read (in a formula, on a dot command) that ngspice spells as a node parts connect to is that
+    // node: no other name for it, and renamed with it (ownerOf, CR1-1).
+    if (info.ground || info.refs.length === 0 || ownerOf(c, info.name) !== info.name) continue;
     const spelled = ngspiceSpelling(info.name);
     const g = groups.get(spelled);
     if (g) g.push(info);
@@ -3315,7 +3425,7 @@ function checkNodeNames(c: Ctx): void {
       spelledNodeSentence(c, info, spelled),
       [fix(`Rename ${written} to ${to}`, ...renaming(info, to))]);
   }
-  for (const info of c.n.nodes.values()) checkMicroNode(c, info, freeName);
+  for (const info of c.n.nodes.values()) if (ownerOf(c, info.name) === info.name) checkMicroNode(c, info, freeName);
 }
 
 /**
@@ -3404,7 +3514,7 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
  */
 function checkInvisibleNodes(c: Ctx): void {
   for (const info of c.n.nodes.values()) {
-    if (info.ground || info.refs.length === 0 || !hasInvisible(info.name)) continue;
+    if (info.ground || info.refs.length === 0 || !hasInvisible(info.name) || ownerOf(c, info.name) !== info.name) continue;
     const t = info.refs[0]!;
     const ch = [...t.text].find((x) => INVISIBLE.test(x))!;
     const what = nameOfCharacter(ch)!;
@@ -3433,6 +3543,11 @@ function checkInvisibleNodes(c: Ctx): void {
 function checkSpaceNodes(c: Ctx): void {
   for (const info of c.n.nodes.values()) {
     if (info.ground || info.refs.length === 0 || !hasSpaceLike(info.name) || hasInvisible(info.name)) continue;
+    if (ownerOf(c, info.name) !== info.name) {
+      // Another node's name, renamed with it (ownerOf): its characters are that node's check's.
+      for (const r of info.refs) for (let k = 0; k < r.text.length; k++) if (SPACE_LIKE.test(r.text[k]!)) c.spacedChars.add(r.from + k);
+      continue;
+    }
     const valueless = info.connections.some((k) => {
       const e = el(c, k.line);
       // A formula, a table or a polynomial is no missing value (C3-5).
@@ -3468,7 +3583,7 @@ function checkSpaceNodes(c: Ctx): void {
  */
 function checkLookAlikeNodes(c: Ctx): void {
   for (const info of c.n.nodes.values()) {
-    if (info.ground || info.refs.length === 0 || hasInvisible(info.name) || hasSpaceLike(info.name)) continue;
+    if (info.ground || info.refs.length === 0 || hasInvisible(info.name) || hasSpaceLike(info.name) || ownerOf(c, info.name) !== info.name) continue;
     const t = info.refs[0]!;
     const clean = lookAlikeName(t.text);
     if (clean === undefined) continue;

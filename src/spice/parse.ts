@@ -49,9 +49,10 @@
  * Nodes: lower-case (ASCII letters only, like ngspice; W6, W7). "0" is ground, and so is "gnd" in
  * any case, except as the last word of its line, where ngspice keeps it as an ordinary node called
  * "gnd" (W8-W12). "ground" and "00" are ordinary nodes (W13, W14). Ground is listed under "0" in
- * `Netlist.nodes`. Nodes named in directives (".tf v(a) V1", and .pz's four bare nodes) and the nodes a
- * formula reads (inside v(...) on a B line, on an E or G line given by a formula or a table, and in an
- * R, C or L value written as a formula: `Element.reads`; C3-1) are listed with their references; a node
+ * `Netlist.nodes`. Nodes named in directives (".tf v(a) V1", .pz's four bare nodes, and the nodes a .func's
+ * formula reads) and the nodes a formula reads (inside v(...) on a B line, on an E or G line given by a
+ * formula or a table, and in an R, C or L value written as a formula: `Element.reads`; C3-1) are listed
+ * with their references; a node
  * named only there has no connections. An E, F, G or H line written as a formula, a table or a
  * polynomial has `Element.form`, its two output nodes and, for POLY, its controls (C3-5). Nodes inside .subckt ... .ends are local to the
  * subcircuit and are not listed. The keys keep letters outside ASCII as written ("giriş"), although
@@ -1353,7 +1354,10 @@ function formulaRefs(src: Source, from: number, to: number, netlistText: string)
 
 /**
  * Nodes named in a directive: the words inside v(...), vm(...), vp(...), vr(...), vi(...), vdb(...),
- * and the four nodes of a .pz line, which it names bare (.pz in 0 out 0 vol pz; C3-1).
+ * and the four nodes of a .pz line, which it names bare (.pz in 0 out 0 vol pz; C3-1). On a .func line,
+ * the nodes its formula reads, after the function's name and its bracket (.func vo() {v(out)}): ngspice
+ * reads them as nodes wherever the function is used, even a name that is one of the function's own
+ * (.func vd(a,b) {v(a)-v(b)} reads the nodes a and b; critic CR1-3, non-ascii-node-25).
  *
  * Each word is named once, by the first bracket that holds it, and each closing bracket is
  * looked for once: a line of v( with no ) (or with one ) at its end) is read in one pass. Read
@@ -1372,6 +1376,12 @@ function nodeRefsInDirective(src: Source, netlistText: string): { token: Token; 
     return { token: { from, to, text: netlistText.slice(from, to) }, name: ground ? '0' : name, ground };
   };
   if (words[0] && lowerAscii(s.slice(words[0][0], words[0][1])) === '.pz') return words.slice(1, 5).map(ref);
+  if (words[0] && words[1] && lowerAscii(s.slice(words[0][0], words[0][1])) === '.func') {
+    let p = words[1][1];
+    while (p < s.length && isSpaceCode(s.charCodeAt(p))) p += 1;
+    const close = s.charCodeAt(p) === LPAREN ? s.indexOf(')', p) : -1;
+    return close < 0 ? [] : formulaRefs(src, close + 1, s.length, netlistText);
+  }
   let next = 0; // the first word no bracket has named yet
   let stop = -1; // the first ) at or after the last place looked from, or the line's end
   for (let k = 0; k < words.length; k++) {

@@ -177,10 +177,15 @@ const FORMS = (n: string): [string, string[], string[], string?][] => [
   ['.tf', [`.tf v(${n}) V1`], []],
   ['.control', ['.control', 'op', `print v(${n})`, `save ${n}`, '.endc'], []],
   ['*#', [`*# let x = v(${n})*2`], []],
+  ['.save bare', [`.save ${n}`], []],
+  ['.global', [`.global ${n}`], []],
+  ['.func', [`.func vo() {v(${n})}`, 'B1 b 0 V=vo()*2', 'Rb b 0 1k'], []],
   ['after .end: part', [], [`R3 ${n} 0 1k`]],
   ['after .end: .tf', [], [`.tf v(${n}) V1`]],
   ['after .end: B', [], [`B9 b9 0 V=v(${n})`, 'R9 b9 0 1k']],
   ['after .end: .control', [], ['.control', `print v(${n})`, `save ${n}`, '.endc']],
+  ['after .end: .save', [], [`.save ${n}`]],
+  ['after .end: .func', [], [`.func vo() {v(${n})}`]],
 ];
 const netlistOf = (node: string, extra: string[], after: string[], src = 'V1 giris 0 10'): string => ['* t', src, `R1 giris ${node} 1k`, `R2 ${node} 0 1k`, ...extra, '.op', '.end', ...after, ''].join('\n');
 /** The lines ngspice reads: not the title, not comments, not inside .subckt ... .ends. */
@@ -210,6 +215,28 @@ describe('every rename leaves the old name nowhere ngspice reads it (C3-1)', () 
         expect(trap, `${what} / ${form}`).toBeDefined();
         const fixed = applyFix(text, trap!.fixes[0]!);
         expect(readLines(fixed).filter((l) => l.includes(node)), `${what} / ${form}: ${trap!.fixes[0]!.label}`).toEqual([]);
+      }
+    });
+  }
+
+  // CR1-1: the other lines write the name with a capital first letter, as ngspice spells it the same (both
+  // ____k____, __ut, ...): the same node, renamed with it, and no "one node for ngspice" error.
+  const capitals: [string, string, string, string[]][] = [
+    ['a Turkish letter', T, '\u00c7\u0131k\u0131\u015f', ['non-ascii-node']],
+    ['a look-alike letter', `${CYR_O}ut`, '\u041eut', ['look-alike-letter']],
+  ];
+  for (const [what, node, capital, checks] of capitals) {
+    it(`the fix for ${what}, where the other lines write it with a capital letter (CR1-1)`, () => {
+      for (const [form, extra, after, src] of FORMS(capital)) {
+        // POLY's control nodes are a part's ends, as on part lines: two names there are the error's (non-ascii-node-2).
+        if (form === 'E POLY') continue;
+        const text = netlistOf(node, extra, after, src);
+        const traps = checkTraps(parseNetlist(text));
+        expect(traps.filter((t) => t.severity === 'error' && ['non-ascii-node', ...checks].includes(t.id)).map((t) => t.title), `${what} / ${form}`).toEqual([]);
+        const trap = traps.find((t) => checks.includes(t.id) && t.fixes.length > 0 && t.line === 3);
+        expect(trap, `${what} / ${form}`).toBeDefined();
+        const fixed = applyFix(text, trap!.fixes[0]!);
+        expect(readLines(fixed).filter((l) => l.includes(node) || l.includes(capital)), `${what} / ${form}: ${trap!.fixes[0]!.label}`).toEqual([]);
       }
     });
   }
@@ -462,6 +489,55 @@ describe("the round-1 critic of these fixes (13 November 2026)", () => {
   const traps = (text: string) => checkTraps(parseNetlist(text));
   const formula = (line: string): string => `* t\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`;
   const SPACE_LIKE_ANY = /[   -   　]/;
+
+  it('CR1-1: a name written with a capital letter in a formula, on .pz or after .end is the node: one warning, and the rename reaches it', () => {
+    for (const extra of [[`B1 b 0 V=v(${TC})*2`, 'Rb b 0 1k'], [`E1 e 0 VALUE={v(${TC})*2}`, 'Re e 0 1k'], [`.pz giris 0 ${TC} 0 vol pz`]]) {
+      const text = netlistOf(T, extra, []);
+      const found = traps(text);
+      expect(found.map((t) => `${t.id} ${t.severity}`), extra[0]).toEqual(['non-ascii-node warning']);
+      expect(found[0]!.fixes[0]!.label).toBe(`Rename ${T} to cikis`);
+      expect(applyFix(text, found[0]!.fixes[0]!), extra[0]).toContain(extra[0]!.replace(TC, 'cikis'));
+    }
+    const after = netlistOf(T, [], [`R3 ${TC} 0 1k`]);
+    expect(applyFix(after, traps(after).find((t) => t.id === 'non-ascii-node')!.fixes[0]!)).toContain('.end\nR3 cikis 0 1k');
+    // The guard matches ngspice's spelling too: a command for ngspice that names the node bare, with a capital.
+    const command = netlistOf(T, ['.control', 'op', `print ${TC}`, '.endc'], []);
+    expect(applyFix(command, traps(command)[0]!.fixes[0]!)).toContain('print cikis');
+    // The drawing editor's rename reaches them as well.
+    const r = applyEdit(buildSchematic(netlistOf(T, [`B1 b 0 V=v(${TC})*2`, 'Rb b 0 1k'], [`R3 ${TC} 0 1k`])), { kind: 'rename-node', node: T, name: 'vout' }, { drawingInText: true });
+    expect(r.ok, r.reason).toBe(true);
+    expect(readLines(r.text).filter((l) => l.includes(T) || l.includes(TC))).toEqual([]);
+  });
+
+  it('CR1-1: two names parts connect to that ngspice makes one are still the error, and a name a formula reads goes with the one written like it', () => {
+    const text = `* t\nV1 a 0 10\nR1 a şıkış 1k\nR2 şıkış ${T} 1k\nR3 ${T} 0 1k\nB1 b 0 V=v(${TC})\nRb b 0 1k\n.op\n.end\n`;
+    const [error] = traps(text).filter((t) => t.severity === 'error');
+    expect(error!.title).toBe(`şıkış and ${T} are one node for ngspice`);
+    expect(applyFix(text, error!.fixes[0]!)).toContain('B1 b 0 V=v(cikis)');
+  });
+
+  it('CR1-3: a rename reaches a bare name on .save, the names on .global and inside its subcircuits, and a .func\'s formula; a .probe word stays', () => {
+    const text = `* t\n.global ${T}\nV1 giris 0 10\nR1 giris ${T} 1k\nX1 sub\n.subckt sub\nR2 ${T} 0 1k\n.ends\n.func vo() {v(${T})}\nB1 b 0 V=vo()*2\nRb b 0 1k\n.save ${T} b\n.op\n.end\n.save ${T}\n`;
+    const fixed = applyFix(text, traps(text).find((t) => t.id === 'non-ascii-node')!.fixes[0]!);
+    expect(fixed.split('\n').filter((l) => l.includes(T))).toEqual([]);
+    expect(fixed).toContain('.save cikis b\n');
+    // A bare name on .probe is no node for ngspice ("Strange parameter", ignored): the editor's rename leaves it.
+    const probe = applyEdit(buildSchematic(netlistOf('out', ['.probe out'], [])), { kind: 'rename-node', node: 'out', name: 'vout' }, { drawingInText: true });
+    expect(probe.text).toContain('.probe out\n');
+    // A subcircuit's own end of that name is the subcircuit's, not the .global node.
+    const own = `* t\n.global ${T}\nV1 giris 0 10\nR1 giris ${T} 1k\nX1 ${T} sub\n.subckt sub ${T}\nR2 ${T} 0 1k\n.ends\n.op\n.end\n`;
+    expect(applyFix(own, traps(own).find((t) => t.id === 'non-ascii-node')!.fixes[0]!)).toContain(`.subckt sub ${T}\nR2 ${T} 0 1k`);
+    // The parser reads a .func's v(...) as nodes, even a word of the function's own.
+    expect(parseNetlist('* t\n.func vd(a,b) {v(a)-v(b)}\nV1 a 0 1\n.op\n.end\n').nodes.get('a')!.refs.length).toBe(2);
+  });
+
+  it('CR1-11: the rename leaves a title and an echo as written', () => {
+    const text = netlistOf(T, ['.control', `echo ${T} devresi`, 'op', '.endc'], []).replace('* t\n', `* t\n.title ${T} devresi\n`);
+    const fixed = applyFix(text, traps(text).find((t) => t.id === 'non-ascii-node')!.fixes[0]!);
+    expect(fixed).toContain(`.title ${T} devresi`);
+    expect(fixed).toContain(`echo ${T} devresi`);
+    expect(fixed).toContain('R2 cikis 0 1k');
+  });
 
   it('CR1-2: one error for every character that looks like a space in a formula, after a number and at the end too, and its fix leaves none', () => {
     for (const line of [`B1 e 0 V=2${NBSP}*${NBSP}v(out)`, `B1 e 0 V=v(out)*2${NBSP}`, `B1 e 0 V=v(out)*2${THIN}`, `B1 e 0 V=2${THIN}*v(out)`, `B1 e 0 V=v(out)${NBSP}*${NBSP}2`, `E1 e 0 VALUE=v(out)*2${THIN}`, `B1 e 0\n+ V=v(out)${THIN}*\n+ 2${NBSP}`]) {

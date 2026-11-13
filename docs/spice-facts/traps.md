@@ -12121,7 +12121,14 @@ ngspice reads that is the name is renamed too, so the old name is left nowhere n
 they renamed only the part lines and the dot commands' `v(...)`: a formula then read a node with nothing on
 it, and ngspice stopped with no check left, or a part after `.end` was cut off and the numbers changed
 silently. The same holds for the invisible-character, space-character, nbsp and look-alike-letter fixes
-(invisible-character-67, space-character-24, look-alike-letter-18). What ngspice does is said only as far
+(invisible-character-67, space-character-24, look-alike-letter-18). After the round-1 critic of those fixes
+(13 November 2026, CR1-1, CR1-3): a name that a formula, a dot command, a .print line or a command for
+ngspice only reads, or that a part after `.end` names, is the node parts connect to that ngspice spells the
+same, so `v(Çıkış)` reads the node `çıkış` (both are `____k____`): no second node for the check that finds
+names ngspice makes one, and the rename changes it with the node (non-ascii-node-20 to -22); the words of a
+title and of `echo` are text, never renamed. The rename also reaches a name bare on `.save` (-23), the names
+on `.global` and the lines inside a subcircuit that name such a node (-24), and the `v(...)` of a `.func`'s
+formula (-25). What ngspice does is said only as far
 as it holds in every run, with a sentence more when a .print or .plot line (non-ascii-node-3) or a
 command for ngspice (non-ascii-node-4) names the node; that a save there leaves PlainSpice's run no
 results is said only when it leaves ngspice nothing else to save (non-ascii-node-7 to -9), that ngspice
@@ -13155,6 +13162,249 @@ the netlist the fix wrote before (the .pz left on çıkış):
     ngspice 42, -b -r (exit 1): (no rawfile)
       doAnalyses: The input signal is shorted on the way to the output
     our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-20. A formula that writes the node with a capital letter (v(Çıkış)) reads the node çıkış: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-1). ngspice writes each byte of a letter outside a to z as `_` wherever it reads a node's name, so Çıkış and çıkış are one node for it, ____k____: the formulas read the node that R1 and R2 connect to, and b = e = 10 V. A name a formula only reads, written so, is that node: the check gives the warning for çıkış alone, and its fix renames the formulas too, so the numbers stay the same. Before, the checks counted Çıkış as another node: "çıkış and Çıkış are one node for ngspice", an error that hid the numbers, whose fix wrote Cikis2 into the formulas, a node with nothing on it (native 47: "singular matrix: check node cikis2").
+
+```spice
+* formulas that write the node with a capital letter
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+B1 b 0 V=v(Çıkış)*2
+Rb b 0 1k
+E1 e 0 VALUE={v(Çıkış)*2}
+Re e 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          1.000000e+01
+        e                                1.000000e+01
+        b                                1.000000e+01
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        e1#branch                        -1.00000e-02
+        b1#branch                        -1.00000e-02
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
+after the fix "Rename çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `B1 b 0 V=v(cikis)*2`, `E1 e 0 VALUE={v(cikis)*2}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
+the netlist the error's fix wrote before (Cikis2 in the formulas):
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check node cikis2
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-21. .pz that writes the node with a capital letter: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-1). The same on a .pz line: .pz giris 0 Çıkış 0 reads the node çıkış, and gives the pole at −2000 before the rename and after it. Before, the checks said "çıkış and Çıkış are one node for ngspice", an error, and its fix wrote Cikis2 on the .pz line, a node with nothing on it, so the run aborted (the second run below).
+
+```spice
+* .pz that writes the node with a capital letter
+V1 giris 0 dc 10 ac 1
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+C1 çıkış 0 1u
+.pz giris 0 Çıkış 0 vol pz
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(pole(1)) = -2000
+ngspice 42, ngspice -b (exit 1):
+    Note: No ".plot", ".print", or ".fourier" lines; no simulations run
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(pole(1)) = -2000
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(pole(1)) = -2000
+after the fix "Rename çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `C1 cikis 0 1u`, `.pz giris 0 cikis 0 vol pz`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(pole(1)) = -2000
+the netlist the error's fix wrote before (Cikis2 on the .pz line):
+    ngspice 47, -b -r (exit 1): (no rawfile)
+      Error: incomplete or empty netlist
+      doAnalyses: The input signal is shorted on the way to the output
+    ngspice 42, -b -r (exit 1): (no rawfile)
+      doAnalyses: The input signal is shorted on the way to the output
+    our engine (exit 1, no results): (none)
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-22. A part after .end that writes the node with a capital letter is on that node: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-1). ngspice reads the lines after a plain .end (S25), and R3 Çıkış is on ____k____ with R2: 3.333 V. The rename writes cikis on R3 too, and the circuit is the same. Before, R3 kept Çıkış and was cut off: cikis = 5 V, i(v1) = −5 mA (the second run below), with only the after-end warning left.
+
+```spice
+* a part after .end that writes the node with a capital letter
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.op
+.end
+R3 Çıkış 0 1k
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        3.333333e+00
+        giris                            1.000000e+01
+        v1#branch                        -6.66667e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+after the fix "Rename çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `R3 cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 3.333333333333333, i(v1) = -0.006666666666666667
+after the fix "Move .end to the bottom" (after-end), which writes `R3 Çıkış 0 1k`, `.end`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(____k____) = 3.333333333333333, i(v1) = -0.006666666666666667
+the netlist the fix wrote before (R3 left on Çıkış):
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 5, v(____k____) = 0, i(v1) = -0.005
+    our engine (exit 0): v(giris) = 10, v(cikis) = 5, v(____k____) = 0, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node`, `after-end`.
+
+### non-ascii-node-23. .save names the node bare: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-3). ngspice saves a node named bare on .save as v(name); it writes the letters of the name as `_` there, as on part lines, so .save çıkış saves ____k____ (and so does .save Çıkış). The rename writes cikis on the .save line too. Left there, the old name saves nothing: run as PlainSpice runs it (-b -r), ngspice says "no data saved for D.C. Operating point analysis; analysis not run" (the second run below), and PlainSpice's run, which also saves every part's current for .op, gives the currents but no node voltage. A bare name on .probe is no node: ngspice warns "Strange parameter" and ignores it (the third run).
+
+```spice
+* .save names the node bare
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.save çıkış
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(____k____) = 5
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(____k____) = 5
+after the fix "Rename çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `.save cikis`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(cikis) = 5
+the old name left on .save after the rename:
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile)
+      Error: no data saved for D.C. Operating point analysis; analysis not run
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
+a bare name on .probe:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(out) = 5, i(r2) = 0.005, i(r1) = 0.005, i(v1) = -0.005
+      Warning: Strange parameter in line *probe out, ingnored
+    our engine (exit 0): v(in) = 10, v(out) = 5, i(r2) = 0.005, i(r1) = 0.005, i(v1) = -0.005, with the same messages as ngspice 47
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-24. .global makes the node one node in every subcircuit: the rename changes it there and inside the subcircuit
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-3). .global çıkış makes çıkış one node in the subcircuit sub too, so R2, inside it, is on the same node as R1 and R3: 1 kΩ in parallel with 2 kΩ, 4 V. The rename writes cikis on the .global line, on R1 and R3, and on R2 inside the subcircuit, and the circuit is the same. A rename that left the subcircuit's line would cut R2 off: cikis = 6.667 V (the second run below).
+
+```spice
+* .global with a node with Turkish letters
+.global çıkış
+V1 giris 0 10
+R1 giris çıkış 1k
+R3 çıkış 0 2k
+X1 sub
+.subckt sub
+R2 çıkış 0 1k
+.ends
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        4.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -6.00000e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 4, i(v1) = -0.006
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 4, i(v1) = -0.006
+after the fix "Rename çıkış to cikis" (non-ascii-node), which writes `.global cikis`, `R1 giris cikis 1k`, `R3 cikis 0 2k`, `R2 cikis 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 4, i(v1) = -0.006
+R2's line in the subcircuit left with the old name:
+    ngspice 47 and 42, -b -r (exit 0): v(giris) = 10, v(cikis) = 6.666666666666666, v(x1.____k____) = 0, i(v1) = -0.003333333333333334
+    our engine (exit 0): v(giris) = 10, v(cikis) = 6.666666666666666, v(x1.____k____) = 0, i(v1) = -0.003333333333333334
+```
+
+PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-25. A .func's formula reads the node: the rename changes it there too
+
+Added after the last pass (13 November 2026, round-1 critic of the formulas lane, CR1-3). .func vo() {v(çıkış)} reads the node wherever vo() is used: b = 10 V. The rename writes cikis inside the .func too, and the numbers stay the same. ngspice reads every name inside v(...) of a .func as a node, even one of the function's own names: .func vd(a,b) {v(a)-v(b)} reads the nodes a and b, not the words vd is given (the second run below: "singular matrix: check nodes b1#branch and a").
+
+```spice
+* a .func that reads a node with Turkish letters
+V1 giris 0 10
+R1 giris çıkış 1k
+R2 çıkış 0 1k
+.func vo() {v(çıkış)}
+B1 b 0 V=vo()*2
+Rb b 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        b                                1.000000e+01
+        ____k____                        5.000000e+00
+        giris                            1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        -1.00000e-02
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+after the fix "Rename çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `.func vo() {v(cikis)}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+a .func with words of its own inside v(...):
+    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+      DC solution failed -
+      Warning: singular matrix:  check nodes b1#branch and a
+      Warning: Dynamic gmin stepping failed
+      Warning: True gmin stepping failed
+      Warning: source stepping failed
+      Error: Transient op failed, timestep too small
+      Error: The operating point could not be simulated successfully.
+    our engine (exit 1, no results): (none), with the same messages as ngspice 47
 ```
 
 PlainSpice's checks: `non-ascii-node`.
