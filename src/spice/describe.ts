@@ -632,9 +632,9 @@ export const DESCRIBE_STRINGS = {
   lostTitle: (currents: readonly string[], nodes: readonly string[]): string => {
     const what = [
       currents.length === 1 ? `${currents[0]}'s current` : currents.length ? `${currents.length} currents` : '',
-      nodes.length === 1 ? `${nodeIn(nodes[0]!)}'s voltage` : nodes.length ? `${nodes.length} node voltages` : '',
+      nodes.length === 1 ? `the voltage at ${nodeIn(nodes[0]!)}` : nodes.length ? `${nodes.length} node voltages` : '',
     ].filter(Boolean).join(' and ');
-    return `${atSentenceStart(what)} ${currents.length + nodes.length === 1 ? 'is' : 'are'} not 0, though ngspice gave 0`;
+    return `${what[0]!.toUpperCase()}${what.slice(1)} ${currents.length + nodes.length === 1 ? 'is' : 'are'} not 0, though ngspice gave 0`;
   },
   lostGaveCurrent: (name: string): string => `${name} exactly 0 A`,
   lostGaveVoltage: (node: string): string => `${nodeIn(node)} exactly 0 V`,

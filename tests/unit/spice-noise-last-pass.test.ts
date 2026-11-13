@@ -32,11 +32,11 @@ describe('the notes name a node by the node-words rule: "node1", never "node nod
     expect(notes(r.words).filter((t) => DOUBLED.test(t))).toEqual([]);
   });
 
-  it('the note for real values ngspice gave as 0: "3 currents and node9\'s voltage are not 0", "node9 7.324e-25 V"', async () => {
+  it('the note for real values ngspice gave as 0: "3 currents and the voltage at node9 are not 0", "node9 7.324e-25 V"', async () => {
     const ladder = ['V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12', 'Rw n3 p 1u', 'Rvm p 0 1t'];
     const r = await solveText(netlist(...ladder, 'E1 node9 0 n3 p 1', 'Rl node9 0 1k', '.op'), ngspice);
     const lost = r.words.warnings.find((m) => m.code === 'rounded-to-0')!;
-    expect(sp(lost.title)).toBe("3 currents and node9's voltage are not 0, though ngspice gave 0");
+    expect(sp(lost.title)).toBe('3 currents and the voltage at node9 are not 0, though ngspice gave 0');
     expect(sp(lost.why)).toContain('ngspice gave exactly 0 for Rw, E1, Rl and node9.');
     expect(sp(lost.why)).toContain('Rl 7.324e-28 A and node9 7.324e-25 V.');
     expect(notes(r.words).filter((t) => DOUBLED.test(t))).toEqual([]);
@@ -51,15 +51,27 @@ describe('the notes name a node by the node-words rule: "node1", never "node nod
     expect(notes(r.words).filter((t) => DOUBLED.test(t))).toEqual([]);
   });
 
-  it('a title that starts with a node: "Node out is shown as 0 V", but "node7 is shown as 0 V" and "node9\'s voltage is not 0"', () => {
+  it('a title that starts with a node: "Node out is shown as 0 V", but "node7 is shown as 0 V"; "The voltage at node9 is not 0"', () => {
     expect(DESCRIBE_STRINGS.noiseTitle([], ['out'])).toBe('Node out is shown as 0 V');
     expect(DESCRIBE_STRINGS.noiseTitle([], ['node7'])).toBe('node7 is shown as 0 V');
     expect(DESCRIBE_STRINGS.noiseTitle(['R5'], ['node7'])).toBe("R5's current is shown as 0 A, and node7 as 0 V");
-    expect(DESCRIBE_STRINGS.lostTitle([], ['node9'])).toBe("node9's voltage is not 0, though ngspice gave 0");
-    expect(DESCRIBE_STRINGS.lostTitle([], ['out'])).toBe("Node out's voltage is not 0, though ngspice gave 0");
+    expect(DESCRIBE_STRINGS.lostTitle([], ['node9'])).toBe('The voltage at node9 is not 0, though ngspice gave 0');
+    expect(DESCRIBE_STRINGS.lostTitle([], ['out'])).toBe('The voltage at node out is not 0, though ngspice gave 0');
+    expect(DESCRIBE_STRINGS.lostTitle(['Rw'], ['out'])).toBe("Rw's current and the voltage at node out are not 0, though ngspice gave 0");
     expect(DESCRIBE_STRINGS.lostGaveVoltage('node9')).toBe('node9 exactly 0 V');
     expect(DESCRIBE_STRINGS.lostIsAt('node9', '1 nV')).toBe('node9 is at 1 nV');
     expect(DESCRIBE_STRINGS.offVoltage('out', '4.5 V', '4.321 V')).toBe('node out is at 4.5 V, where ngspice gives 4.321 V');
+  });
+  it('a name with a hidden character is named in the notes, and a name outside ASCII is said as written (decisions 0012 and 0016; the skeptic of F1)', async () => {
+    const bridge = (out: string): string => netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', `E1 ${out} 0 a b 1e6`, `Rl ${out} 0 100`, '.options savecurrents', '.op');
+    const hidden = await solveText(bridge('o\u200but'), ngspice);
+    const why = notes(hidden.words).join(' ');
+    expect(why).toContain('node out (written with a zero-width space in it) ');
+    expect(why).not.toMatch(/\u200b/);
+    const turkish = await solveText(bridge('ÇIKIŞ'), ngspice);
+    const words = notes(turkish.words).join(' ');
+    expect(words).toContain('node ÇIKIŞ');
+    expect(words).not.toMatch(/ÇikiŞ|çıkış/);
   });
 });
 

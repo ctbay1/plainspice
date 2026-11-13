@@ -483,8 +483,8 @@ what they look like):
   of a sentence the name keeps its own letters ("node1 connects V1 and R1.", never "Node1"). A node
   called just "node" keeps the word ("node node is 6 volts"), or nothing would say what "node" is.
   Kept as labels, a kind and a name: the node's button on the drawing and its card's title ("Node
-  node1", as a part's is "R1, resistor"). Not changed here (another lane's, or rare): the rounding-noise
-  note's "node node1 −2.2e-13 V", the check "R1 has both ends on node …", and the notes about drawing
+  node1", as a part's is "R1, resistor"). Not changed here (another lane's, or rare): the check "R1 has
+  both ends on node …", and the notes about drawing
   lines PlainSpice moved or dropped ("The name of node … was moved onto its node's wire").
 - **A node named like ground is quoted wherever the editor says it** (words re-check 3), as the
   model's sentences do: the Disconnect button ('Disconnect the end 2 of R1 from node "ground"'), the
