@@ -203,3 +203,14 @@ there), on which the word "skips" rests; A3g (a gnd in a `.tf`'s `v( )` inside a
 uses is ground, as at the top level); and A3h (ngspice names a node inside a subcircuit by its X lines
 and a dot, `x1.m`, `x1.x2.m`, and a part there after its first letter, `v.x1.vs`, and a `.tf` can use
 either; a `.global` node is the main circuit's).
+
+After the round-1 critic of those fixes (the same day, the same versions and modes): A3f gained a
+subcircuit that only an X line of a skipped subcircuit uses, which is skipped too (two steps out,
+two such users, a loop, a definition inside another; and the chain used from the main circuit, which
+runs); `.subckt` and `.ends` lines that do not pair up, which stop ngspice before it skips anything
+("Mismatch of .subckt ... .ends statements!"), counted as ngspice counts them (after `.end` too, not
+`.macro`); a run ngspice stops at another line first; and an `.include` there, which ngspice still
+reads, so A3f now says ngspice runs none of such a subcircuit's analysis lines, parts and dot
+commands, where it said it reads none of its lines. A3h gained names with a dot of the netlist's
+own (`x1.m.1`, `x1.a.m`, `v.x1.vs.1`, `x1.x2.m.1`) and the names that are no node or part there
+(`x1.m.1` beside m, `x1.0`, `x1.gnd`, `i.x1.vs`).

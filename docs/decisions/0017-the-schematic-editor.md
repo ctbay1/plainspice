@@ -648,3 +648,57 @@ check each, A3f to A3h in `docs/spice-facts/explanations.md`):
   reviewer also listed. ngspice reads such a line and answers ".print line ignored since rawfile was
   produced" (A25, A25b), so it is no line it skips: decision 0016 chose "leaves … out" for it (names lane,
   second critic, 6), and the skeptic of F2 showed it holds.
+
+The round-1 critic of these fixes (the same day) found eight more problems, all minor; each is fixed,
+with a test that fails without it (`tests/unit/last-pass-subckt.test.ts`, `last-pass-subckt-panel.test.tsx`,
+and golden rows in A3f and A3h):
+
+- **`.subckt` and `.ends` lines that do not pair up** (critic1-1). With a `.subckt` and no `.ends`,
+  Explain said the `.op` after it is skipped and to put it outside `.subckt … .ends`, but ngspice stops
+  before it skips or runs anything: "Mismatch of .subckt ... .ends statements!" (A3f), and the missing
+  line is `.ends`. PlainSpice now counts as ngspice counts (`inp_check_syntax`): every line it reads that
+  starts with `.subckt` or `.ends`, the lines after `.end` too, up to a line starting with @, and not
+  `.macro` or `.eom`. When the counts differ, nothing says a line is skipped (Explain's note, the overview,
+  the run's first message), and ngspice's message is the reason. A count of the whole netlist, not only
+  the lines inside a subcircuit left open (the critic's way), because ngspice stops on any difference: a
+  stray `.ends`, or a `.subckt` left open after the subcircuit that holds the `.op`. An unclosed `.macro`
+  keeps the words as they were: ngspice does not count it, and runs nothing with nothing said, as A3f.
+  The checks still leave such a line alone, as before. Considered and left: a note of its own on the open
+  `.subckt` line ("This .subckt has no .ends …"); ngspice's message already names the trouble.
+- **No "No results" twice in the Numbers panel** (critic1-2). Where ngspice said nothing, the panel read
+  "No results … The message below says why." over "ERROR No results … it printed no message that says
+  why". The message's title is now "ngspice gave no reason" (`noResultsTitle`), and the panel's lead
+  drops its promise for that message alone (`statusEmptyNoWhyText`); where a message gives the reason
+  (A3f's, the `.control` block's), the lead keeps it. This touches `en.ts` and `NumbersPanel.tsx`, the ui
+  lane's, by one key and one choice.
+- **A dot inside a name ngspice builds** (critic1-3). ngspice names m.1 inside X1 `x1.m.1`, m inside X1.a
+  `x1.a.m`, and Vs.1 inside X1 `v.x1.vs.1` (A3h); PlainSpice split the name at every dot and gave
+  `x1.m.1` the error of a node no part connects to. The name is now read back as ngspice builds it: each
+  X line whose name starts what is left, longest first, then a node or a part of the subcircuit that X
+  line uses, each subcircuit and place in the name tried once (`readBack`).
+- **A subcircuit only an unused subcircuit's X line uses** (critic1-4). ngspice skips it too (A3f), but
+  PlainSpice counted any X line as a use, so the status said ngspice gave no reason, Explain called the
+  `.op` one that runs, and an `.ac` there got "V1 has no value" as its reason. "Used" now means what
+  ngspice builds: the subcircuits the main circuit's X lines use, then those their X lines use, and so on
+  (one walk, each name once), for the words, the checks and the names read back alike. The words name
+  the X lines out to one no X line uses: ".op is inside the subcircuit inner, which only X2 uses, and X2
+  is inside the subcircuit outer, which no X line uses", and the reason says "unless the main circuit uses
+  that subcircuit, through its own X lines or those of the subcircuits they use". Where X lines in two
+  subcircuits use one, or two use only each other, the words stop there with "which the main circuit
+  does not use, directly or through other subcircuits": true, and shorter than every path. The common
+  case, no X line at all, keeps its words.
+- **The guards have tests** (critic1-5): `x1.0` and `x1.gnd` (ground is the main circuit's: new nodes, 0
+  and 1 Ω), `i.x1.vs` (a part's name starts with its own letter: ngspice stops), and a run ngspice stops
+  at another line first, which gets that line's reason only.
+- **One reading of the netlist** (critic1-6). The walk read every line of each circuit, and parsed every
+  line after `.end`, for each name it read back: work that grew with (.tf lines) × (lines), about 3 s of
+  CPU in the checks for 1000 `.tf` lines and 1000 parts after `.end`. The circuits are now read once for each netlist, and each name's answer
+  kept; the test counts the lines read, not the time, so the load cannot change it. Seen and left, older
+  (rc3 has it): Explain's words for each line after `.end` look through every line for an @ line.
+- **No stack overflow** (critic1-7): the last continuation line is taken from the list, never by
+  spreading 150,000 of them into `Math.max`.
+- **Words** (critic1-8): A3f and the "skips" bullet above say ngspice runs none of such a subcircuit's
+  analysis lines, parts and dot commands, where they said it reads none of its lines (it reads an
+  `.include` there: a missing file stops it); the overview names two subcircuits as two ("inside
+  subcircuits that no X line uses"); Explain says ngspice names a node "by its X line, a dot and the
+  node's own name"; and the code comments say "skips".
