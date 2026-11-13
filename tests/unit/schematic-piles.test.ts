@@ -181,8 +181,9 @@ describe('the routes the repairs add look near themselves, and keep the islands 
   });
 
   it('a pin on a slanted lattice at the format’s limits: the routes from it go through its ends a bounded number of times', { timeout: 120_000 }, () => {
-    // The lattice holds V1's pin of node 1, so each route of node 1 starts from its 9,800 points. Each end counts as a step of the routing budget
-    // (250,000 steps), as the area a route searches does; the pieces left are joined by name.
+    // The lattice holds V1's pin of node 1, so each route of node 1 started from its 9,800 points: 1.17
+    // million ends in 111 routes. Each end counts as a step of the routing budget (250,000 steps), as
+    // the area a route searches does; the pieces left are joined by name.
     const built = counted(() => build(starAtOnePoint(60, latticeAbove(70))));
     expect(built.ends).toBeLessThan(260_000);
     expect(built.result.problems.some((p) => p.kind === 'connected-by-name')).toBe(true);
