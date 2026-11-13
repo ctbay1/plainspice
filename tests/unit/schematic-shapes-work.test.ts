@@ -93,6 +93,40 @@ function meshWith(kind: 'grounds' | 'names', count: number): string {
 /** Frames at ±2000, the edge of the coordinates, on ground's pin. */
 const bigFrame = (): string => divider([wire([[7, 5], [7, 2000], [2000, 2000], [2000, -2000], [-2000, -2000], [-2000, 2000], [7, 2000]])]);
 
+/**
+ * A wheel: a diamond ring of 4r points, each joined by a spoke (slanted but four) to a hub with a ground
+ * symbol on it, away from the parts (4r wire ends at one point; a spoke through another node's pin
+ * would join the two, as slanted copper cannot be cut).
+ */
+function wheel(r: number): string {
+  const ring: (readonly [number, number])[] = [];
+  for (let k = 0; k < 4 * r; k++) {
+    const [s, t] = [Math.floor(k / r), k % r];
+    const [x, y] = s === 0 ? [r - t, t] : s === 1 ? [-t, r - t] : s === 2 ? [-r + t, -t] : [t, -r + t];
+    ring.push([300 + x, 300 + y]);
+  }
+  return divider(['*@ ground 300 300 0', wire([...ring, ring[0]!]), ...ring.map((p) => wire([[300, 300], p]))]);
+}
+
+/** Two serpentine lines on ground's pin, one across and one down a k × k square: k² crossings from two drawing lines. */
+function serpentine(k: number): string {
+  const across: [number, number][] = [[7, 5]];
+  const down: [number, number][] = [[7, 5]];
+  for (let j = 0; j <= k + 1; j++) across.push(...((j % 2 ? [[8 + k, 5 + j], [7, 5 + j]] : [[7, 5 + j], [8 + k, 5 + j]]) as [number, number][]));
+  for (let i = 0; i <= k + 1; i++) down.push(...((i % 2 ? [[7 + i, 6 + k], [7 + i, 5]] : [[7 + i, 5], [7 + i, 6 + k]]) as [number, number][]));
+  return divider([wire(across), wire(down)]);
+}
+
+/** The reviewer's 861-character link: 60 parts at one point, their nodes named with 500 characters each. */
+function longNames(n: number): string {
+  const name = (i: number): string => `n${i}${'x'.repeat(498 - String(i).length)}`;
+  const out = ['*', `V1 ${name(1)} 0 1`];
+  for (let i = 2; i <= n; i++) out.push(`R${i} ${name(i - 1)} ${name(i)} 1`);
+  out.push('.op', '*@ V1 0 0 0');
+  for (let i = 2; i <= n; i++) out.push(`*@ R${i} 0 0 0`);
+  return `${out.join('\n')}\n`;
+}
+
 const SHAPES: [string, () => string][] = [
   ['60 parts at one point', () => partsAtOnePoint(60)],
   ['60 parts at one point, 1900 names of every node there', () => partsAtOnePoint(60, piled('names', 1900))],
@@ -102,6 +136,10 @@ const SHAPES: [string, () => string][] = [
   ['60 parts inside one 4 × 4 square, turned every way', () => partsInASquare(60)],
   ['a slanted lattice of 70 × 70 points (a 30 kB link)', () => slantedLattice(70)],
   ['a straight grid of 70 × 70 points', () => grid(70)],
+  ['a straight grid of 100 × 100 points (saved work of 122 kB, the reviewer’s heaviest)', () => grid(100)],
+  ['a wheel of 280 spokes from one point', () => wheel(70)],
+  ['two serpentine lines crossing 9,604 times', () => serpentine(98)],
+  ['60 parts at one point, their nodes named with 500 characters (the 861-character link)', () => longNames(60)],
   ['a frame crossed by 98 lines each way (9,604 crossings)', () => crossing(98)],
   ['a slanted chain of 9,900 pieces', () => chain(9900)],
   ['1600 ground symbols on a joined mesh', () => meshWith('grounds', 1600)],
