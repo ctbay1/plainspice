@@ -129,7 +129,7 @@ describe('solveText', () => {
     const ran: string[] = [];
     const record = await solveText(long, { run: async (t) => (ran.push(t), ngspice.run(t)) });
     expect(ran[0]?.split('\n')[0]).toBe(`* ${'Ş'.repeat(251)}`);
-    expect(record.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 602)]);
+    expect(record.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 602, 504)]);
     expect(record.status).toBe('ok');
     const short = await solveText(DIVIDER, ngspice);
     expect(record.results.op?.nodes).toEqual(short.results.op?.nodes);

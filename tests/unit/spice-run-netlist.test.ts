@@ -76,7 +76,7 @@ describe('the title in the copy that runs (limit-1: ngspice -b -r writes at most
     const netlist = parseNetlist(`${t504}W\n${BODY}`);
     const run = netlistToRun(netlist);
     expect(lineOf(run.text, 1)).toBe(t504);
-    expect(run.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 505)]);
+    expect(run.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 505, 504)]);
     expect(run.notRun).toBeUndefined();
     expect(lineOf(netlist.text, 1)).toBe(`${t504}W`);
   });
@@ -86,6 +86,8 @@ describe('the title in the copy that runs (limit-1: ngspice -b -r writes at most
     const odd = toRun(`* w${w(251, 'ş')}\n${BODY}`);
     expect(lineOf(odd.text, 1)).toBe(`* w${w(250, 'ş')}`);
     expect(utf8Bytes(lineOf(odd.text, 1))).toBe(503);
+    // The note says the bytes kept: 503, as a two-byte letter would not fit in the last one.
+    expect(odd.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 505, 503)]);
     expect(lineOf(toRun(`* ${w(126, '😀')}\n${BODY}`).text, 1)).toBe(`* ${w(125, '😀')}`);
   });
 
@@ -118,8 +120,19 @@ describe('the title in the copy that runs (limit-1: ngspice -b -r writes at most
     expect(lines[14]).toBe(`.end`);
     expect(lines[15]).toBe(`.title ${w(504)}`);
     expect(lines[16]).toBe(' .title short');
-    expect(run.notes).toEqual([3, 4, 5, 11, 16].map((line, k) => RUN_COPY_WORDS.titleCut(line, [505, 600, 505, 700, 800][k]!)));
+    expect(run.notes).toEqual([3, 4, 5, 11, 16].map((line, k) => RUN_COPY_WORDS.titleCut(line, [505, 600, 505, 700, 800][k]!, 504)));
     expect(run.notRun).toBeUndefined();
+  });
+
+  it('cuts line 1 whole, a .title on it too: native ngspice 47 and 42 read " .title …" there as written', () => {
+    // " .title " and 497 letters is a title of 505 bytes to native ngspice 47 and 42 (they stop), of 497 to our engine.
+    const spaced = toRun(` .title ${w(497)}\n${BODY}`);
+    expect(lineOf(spaced.text, 1)).toBe(` .title ${w(496)}`);
+    expect(spaced.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 505, 504)]);
+    expect(toRun(` .title ${w(496)}\n${BODY}`).notes).toEqual([]);
+    const plain = toRun(`.title ${w(600)}\n${BODY}`);
+    expect(utf8Bytes(lineOf(plain.text, 1))).toBe(504);
+    expect(plain.notes).toEqual([RUN_COPY_WORDS.titleCut(1, 607, 504)]);
   });
 
   it('still adds .options savecurrents just before .end when it cuts a title before it', () => {
@@ -177,7 +190,6 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
       `* t\nV1 a 0 9\nR1 a b 1k\nB1 c 0 V=v(b)*${w(n)}\nR3 c 0 1k\n.op\n.end\n`,
       `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k\n.control\nlet ${w(n)} = 1\n.endc\n.op\n.end\n`,
       `* t\nV1 a 0 9\nR1 a b 1k\n.op\n.end\nR2 b 0 2k${w(n - 2)}\n`,
-      `* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k ; ${w(n)}\n.op\n.end\n`,
     ];
     for (const text of places(250)) expect(reasonAt(text), text.slice(0, 40)).toBeUndefined();
     for (const text of places(251)) expect(reasonAt(text)?.reason, text.slice(0, 40)).toMatch(/has a word of 251 bytes/);
@@ -186,6 +198,14 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
       line: 3,
       reason: RUN_COPY_WORDS.longWord(3, w(126, 'ş'), 252),
     });
+  });
+
+  it('never reads the words of an end-of-line comment, which ngspice cuts before it reads a name (limit-5)', () => {
+    for (const comment of [`; ${w(251)}`, `; ${w(20000)}`, `$ ${w(20000)}`, `// ${w(20000)}`])
+      expect(reasonAt(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k ${comment}\n.op\n.end\n`), comment.slice(0, 8)).toBeUndefined();
+    expect(reasonAt(`* t\n${BODY.replace('.op', `.control\nop $ ${w(20000)}\nprint v(b) ; ${w(20000)}\n.endc\n.op`)}`)).toBeUndefined();
+    // A $ glued to a word starts no comment: that word is read.
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a b 1k\nR2 b 0 2k$${w(251)}\n.op\n.end\n`)?.line).toBe(4);
   });
 
   it('reads a formula, a source and a list as many short words', () => {
@@ -249,13 +269,26 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
     expect(reasonAt(`* t\n${BODY.replace('.op', `B1 c 0 V=${run(501)})\n.op`)}`)).toEqual({ line: 5, reason: RUN_COPY_WORDS.longRun(5, run(501), 501) });
   });
 
-  it('refuses a .control command of more than 500 bytes, and any line of an *ng_script file', () => {
-    const cmd = (n: number): string => `op ${'1 '.repeat(300)}`.slice(0, n);
-    expect(reasonAt(`* t\n${BODY.replace('.op', `.control\n${cmd(500)}\n.endc\n.op`)}`)).toBeUndefined();
-    expect(reasonAt(`* t\n${BODY.replace('.op', `.control\n${cmd(501)}\n.endc\n.op`)}`)).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 501) });
-    expect(reasonAt(`* t\n${BODY.replace('.op', `.control\nop\n+ ${cmd(499)}\n.endc\n.op`)}`)?.line).toBe(6);
-    expect(reasonAt(`*ng_script\ncircbyline * t\ncircbyline V1 a 0 9\n${cmd(501)}\n`)).toEqual({ line: 4, reason: RUN_COPY_WORDS.longCommand(4, 501) });
-    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n${cmd(501)}\n.op\n.end\n`)).toBeUndefined();
+  it('refuses an analysis command of a .control block (or an *ng_script file) over 500 bytes, as ngspice writes it: a dot, then its words with one blank between each (limit-6)', () => {
+    /** "op 1 1 …", `n` bytes once written as ".op 1 1 …". */
+    const op = (n: number): string => (n % 2 ? `op${' 1'.repeat((n - 3) / 2)}` : `op ${'1 '.repeat((n - 6) / 2)}11`);
+    const control = (lines: string): string => `* t\n${BODY.replace('.op', `.control\n${lines}\n.endc\n.op`)}`;
+    expect(reasonAt(control(op(500)))).toBeUndefined();
+    expect(reasonAt(control(op(501)))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 'op', 501) });
+    // Blanks between the words count once; the command's name in any case; + lines join it.
+    expect(reasonAt(control(`op${'    1'.repeat(200)}`))).toBeUndefined();
+    expect(reasonAt(control(`OP${' 1'.repeat(249)}`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 'op', 501) });
+    expect(reasonAt(control(`tran 1u 1u${' 1'.repeat(245)}`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longCommand(6, 'tran', 501) });
+    expect(reasonAt(control(`op\n+${' 1'.repeat(249)}`))?.line).toBe(6);
+    expect(reasonAt(`*ng_script\ncircbyline * t\ncircbyline V1 a 0 9\n${op(501)}\n`)).toEqual({ line: 4, reason: RUN_COPY_WORDS.longCommand(4, 'op', 501) });
+    // Outside a .control block the line is a part (O, a lossy line), not a command.
+    expect(reasonAt(`* t\nV1 a 0 9\nR1 a 0 1k\n${op(501)}\n.op\n.end\n`)).toBeUndefined();
+  });
+
+  it('runs the other commands of a .control block however long: ngspice copies them into no space of 512 bytes (limit-6)', () => {
+    const control = (lines: string): string => `* t\n${BODY.replace('.op', `.control\nop\n${lines}\n.endc\n.op`)}`;
+    for (const line of [`print${' v(b)'.repeat(104)}`, `print${' v(a) v(b)'.repeat(75)}`, `echo${` ${w(20, 'e')}`.repeat(71)}`, `let x = v(b)${'+v(b)'.repeat(199)}`])
+      expect(reasonAt(control(line)), line.slice(0, 12)).toBeUndefined();
   });
 
   it('refuses a .model line whose version is over 90 bytes, the word ngspice reads after "version" (limit-9)', () => {
@@ -266,7 +299,8 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
     const glued = `4,${w(40)},${w(40)},${w(40)}`;
     expect(reasonAt(model(`VERSION = (${glued})`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.longVersion(5, `${glued})`, 125) });
     expect(reasonAt(model('version=4.8', `\n+ tox=1n version=${glued}`))?.line).toBe(5);
-    expect(reasonAt(model('version=3.3.0 ', `; ${w(10)} version=${glued}`))?.line).toBe(5);
+    // A version in the line's comment is never read: ngspice cuts the comment first.
+    expect(reasonAt(model('version=3.3.0 ', `; ${w(10)} version=${glued}`))).toBeUndefined();
     expect(reasonAt(model('version=3.3.0'))).toBeUndefined();
   });
 
@@ -306,6 +340,160 @@ describe('netlists ngspice cannot take (limit-3 to limit-7)', () => {
   });
 });
 
+describe('names ngspice joins (limit-13: blanks out of brackets; limit-14: string parameters)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  const save = (line: string): string => `* t\n${BODY.replace('.op', `${line}\n.op`)}`;
+
+  it('measures the words of a .save line as gettoks reads them, without the blanks inside brackets', () => {
+    expect(reasonAt(save(`.save i( ${w(100)} ${w(100)} ${w(47)} ) v(b)`))).toBeUndefined();
+    const at251 = `i( ${w(100)} ${w(100)} ${w(48)} )`;
+    expect(reasonAt(save(`.save ${at251} v(b)`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.joinedWord(5, at251, 251) });
+    // Tabs too, and the other lines gettoks reads: .print, .plot, .four, .meas.
+    expect(reasonAt(save(`.save i(\t${w(200)}\t${w(200)}\t)`))?.line).toBe(5);
+    for (const line of [`.print dc i( ${w(200)} ${w(200)} )`, `.plot dc i( ${w(200)} ${w(200)} )`, `.four 1k i( ${w(200)} ${w(200)} )`, `.meas tran x max i( ${w(200)} ${w(200)} )`])
+      expect(reasonAt(save(line))?.reason, line.slice(0, 6)).toMatch(/takes the blanks out of the brackets/);
+    // Outside brackets the words stay apart.
+    expect(reasonAt(save(`.save ${w(200)} ${w(200)} ${w(200)}`))).toBeUndefined();
+  });
+
+  it('measures a part’s line with an i( … ) of a part without the blanks inside its brackets, as inp_meas_current rewrites it', () => {
+    const b = (formula: string): string => `* t\n${BODY.replace('.op', `B1 c 0 V=${formula}\nR3 c 0 1k\n.op`)}`;
+    expect(reasonAt(b(`i(R1)*1+( ${w(125)} ${w(125)} )`))).toBeUndefined();
+    expect(reasonAt(b(`i(R1)*1+( ${w(125)} ${w(126)} )`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.joinedWord(5, `${w(125)} ${w(126)}`, 251) });
+    // Without an i( of a part (i(V1) is the source's own current), ngspice leaves the blanks alone.
+    expect(reasonAt(b(`1+( ${w(200)} ${w(200)} )`))).toBeUndefined();
+    expect(reasonAt(b(`i(V1)*1+( ${w(200)} ${w(200)} )`))).toBeUndefined();
+  });
+
+  it('measures the names a .control command reads without the blanks inside brackets: print, plot, meas …, not echo or let', () => {
+    const control = (line: string): string => `* t\n${BODY.replace('.op', `.control\nop\n${line}\n.endc\n.op`)}`;
+    expect(reasonAt(control(`print v( ${w(123)} ${w(123)} )`))).toBeUndefined();
+    const dotted = `${w(200)} ${w(200)} ${w(111)} .x`;
+    expect(reasonAt(control(`print v( ${dotted} )`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.joinedWord(7, dotted, 513) });
+    for (const line of [`write out.raw v( ${w(200)} ${w(200)} )`, `if v( ${w(200)} ${w(200)} ) > 0`, `meas tran x max i( ${w(200)} ${w(200)} )`])
+      expect(reasonAt(control(line))?.line, line.slice(0, 6)).toBe(7);
+    for (const line of [`echo v( ${dotted} )`, `let q = v( ${dotted} )`, `print ${w(200)} ${w(200)} ${w(200)}.x`]) expect(reasonAt(control(line)), line.slice(0, 6)).toBeUndefined();
+  });
+
+  it('counts the text a string parameter stands for, joined from quoted pieces and other string parameters, where {…} puts it', () => {
+    const node = (param: string, n = 'R2 b {t} 2k\nR3 {t} 0 1k'): string => `* t\nV1 a 0 9\nR1 a b 1k\n${param}\n${n}\n.op\n.end\n`;
+    expect(reasonAt(node(`.param t="${w(125)}""${w(125)}"`))).toBeUndefined();
+    expect(reasonAt(node(`.param t="${w(125)}""${w(126)}"`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.longText(5, '{t}', 251) });
+    // Other string parameters, as {s} or bare, and the text of each definition, in a subcircuit too.
+    expect(reasonAt(node(`.param s="${w(100)}"\n.param t={s}{s}"x"`, 'R2 b {t} 2k'))).toBeUndefined();
+    expect(reasonAt(node(`.param s="${w(100)}"\n.param t={s}s"x"s`, 'R2 b {t} 2k'))?.reason).toBe(RUN_COPY_WORDS.longText(6, '{t}', 301));
+    const sub = (head: string, body: string, x = 'X1 b 0 s'): string => `* t\nV1 a 0 9\nR1 a b 1k\n${head}\n${body}Rx p {t} 1k\nRy {t} q 1k\n.ends\n${x}\n.op\n.end\n`;
+    expect(reasonAt(sub(`.subckt s p q params: t="${w(200)}""${w(200)}"`, ''))).toEqual({ line: 5, reason: RUN_COPY_WORDS.longText(5, '{t}', 400) });
+    expect(reasonAt(sub('.subckt s p q params: t="a"', '', `X1 b 0 s t="${w(200)}""${w(200)}"`))?.line).toBe(5);
+    expect(reasonAt(sub('.subckt s p q', `.param t="${w(200)}""${w(200)}"\n`))?.line).toBe(6);
+    // A numeric parameter puts a number in place, never a long word.
+    expect(reasonAt(node('.param t=2k', 'R2 b 0 {t}'))).toBeUndefined();
+  });
+
+  it('counts that text in a .model line’s version and, without the blanks, in the brackets of a .save line', () => {
+    const model = (version: string): string => `* t\nV1 a 0 9\nR1 a b 1k\nM1 b b 0 0 mm\n.param t="${version}"\n.model mm nmos level=8 version={t}\n.op\n.end\n`;
+    expect(reasonAt(model(`4${w(89)}`))).toBeUndefined();
+    expect(reasonAt(model(`4${w(90)}`))).toEqual({ line: 6, reason: RUN_COPY_WORDS.longTextVersion(6, '{t}', 91) });
+    const saved = (n: number, line = '.save i({t}) v(b)'): string => `* t\n${BODY.replace('.op', `.param t="${w(n)}"\n${line}\n.op`)}`;
+    expect(reasonAt(saved(247))).toBeUndefined();
+    expect(reasonAt(saved(248))).toEqual({ line: 6, reason: RUN_COPY_WORDS.joinedWord(6, 'i({t})', 251) });
+    expect(reasonAt(saved(124, '.save i({t}{t})'))?.line).toBe(6);
+    // A number in {…} is counted at its longest, 23 bytes: "-1.000000000000000e+100".
+    expect(reasonAt(save(`.save i(${'{1}'.repeat(10)}) v(b)`))).toBeUndefined();
+    expect(reasonAt(save(`.save i(${'{1}'.repeat(11)}) v(b)`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.joinedWord(5, `i(${'{1}'.repeat(11)})`, 256, true) });
+  });
+});
+
+describe('the names print and write give a formula, and the words of meas (limit-17)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  const control = (line: string): string => `* t\n${BODY.replace('.op', `.control\nop\n${line}\n.endc\n.op`)}`;
+
+  it('print and write name a formula’s result with its text without blanks: at most 250 bytes; each formula on its own', () => {
+    expect(reasonAt(control(`print v(b)${'+v(b)'.repeat(49)}`))).toBeUndefined();
+    const sum = `v(b)${'+v(b)'.repeat(50)}`;
+    expect(reasonAt(control(`print ${sum}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'print', sum, 254) });
+    expect(reasonAt(control(`write out.raw ${sum}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longExpression(7, 'write', sum, 254) });
+    // Blanks do not count; formulas side by side are names of their own.
+    expect(reasonAt(control(`print ${Array.from({ length: 50 }, () => 'v(b)').join(' + ')}`))).toBeUndefined();
+    expect(reasonAt(control(`print ${Array.from({ length: 51 }, () => 'v(b)').join(' + ')}`))?.line).toBe(7);
+    expect(reasonAt(control(`print${' v(b)'.repeat(150)}`))).toBeUndefined();
+    expect(reasonAt(control(`print v(b) gt 1${' v(a)'.repeat(100)}`))).toBeUndefined();
+    // let names the result itself; wrdata and plot copy no such name.
+    for (const line of [`let q = ${sum}`, `wrdata out.txt ${sum}`, `plot ${sum}`]) expect(reasonAt(control(line)), line.slice(0, 6)).toBeUndefined();
+  });
+
+  it('meas: a word (a name=value as one) of at most 50 bytes, as ngspice writes it with its message into 100', () => {
+    expect(reasonAt(control(`meas tran x max v(${w(47)})`))).toBeUndefined();
+    expect(reasonAt(control(`meas tran x max v(${w(48)})`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longMeasWord(7, `v(${w(48)})`, 51) });
+    expect(reasonAt(control(`meas tran x avg v(b) from = ${w(46)}`))).toEqual({ line: 7, reason: RUN_COPY_WORDS.longMeasWord(7, `from=${w(46)}`, 51) });
+    expect(reasonAt(control('meas tran res find v(b) at=5u'))).toBeUndefined();
+  });
+});
+
+describe('the names a .probe line makes (limit-15)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  /** A resistor named R…, `name` bytes, between nodes a… and b… of 250 bytes. */
+  const probed = (name: number, probe: (part: string) => string): string => {
+    const part = `R${w(name - 1, 'r')}`;
+    return `* t\nV1 ${w(250, 'a')} 0 9\n${part} ${w(250, 'a')} ${w(250, 'b')} 1k\nR2 ${w(250, 'b')} 0 2k\n.probe ${probe(part)}\n.op\n.end\n`;
+  };
+
+  it('p(…): the formula ngspice writes holds i(vcurr_<part>:probe_int_<terminal>:<n>_<node>), at most 500 bytes', () => {
+    expect(reasonAt(probed(225, (p) => `p(${p})`))).toBeUndefined();
+    const part = `r${w(225, 'r')}`;
+    expect(reasonAt(probed(226, (p) => `p(${p})`))).toEqual({
+      line: 5,
+      reason: RUN_COPY_WORDS.probeFormula(5, part, `i(vcurr_${part}:probe_int_n1:1_${w(250, 'a')})`, 501),
+    });
+    // An X line: the terminal is the subcircuit's own pin name.
+    const x = (pin: number): string =>
+      `* t\nV1 ${w(250, 'a')} 0 9\n.subckt s ${w(pin, 'p')} q\nR1 ${w(pin, 'p')} q 1k\n.ends\nX${w(100, 'x')} ${w(250, 'a')} ${w(100, 'b')} s\nR2 ${w(100, 'b')} 0 2k\n.probe p(X${w(100, 'x')})\n.op\n.end\n`;
+    expect(reasonAt(x(126))).toBeUndefined();
+    expect(reasonAt(x(127))?.line).toBe(8);
+  });
+
+  it('i(…), alli and vd(…): the names of the results, at most 250 bytes like every name', () => {
+    expect(reasonAt(probed(243, () => 'alli'))).toBeUndefined();
+    expect(reasonAt(probed(244, () => 'alli'))).toEqual({ line: 5, reason: RUN_COPY_WORDS.probeName(5, `r${w(243, 'r')}#branch`, 251) });
+    expect(reasonAt(probed(244, (p) => `i(${p})`))?.line).toBe(5);
+    expect(reasonAt(probed(10, () => `vd(${w(123, 'a')}, ${w(123, 'b')})`))).toBeUndefined();
+    expect(reasonAt(probed(10, () => `vd(${w(124, 'a')}, ${w(123, 'b')})`))).toEqual({ line: 5, reason: RUN_COPY_WORDS.probeName(5, `vd_${w(124, 'a')}:${w(123, 'b')}`, 251) });
+    // An X line's terminal: the subcircuit's pin, in i(X…, 1) and vd(X…:1, X…:2).
+    const x = (name: number, probe: (part: string) => string): string => {
+      const part = `X${w(name - 1, 'x')}`;
+      return `* t\nV1 a 0 9\n.subckt s ${w(200, 'p')} ${w(10, 'q')}\nR1 ${w(200, 'p')} ${w(10, 'q')} 1k\n.ends\n${part} a b s\nR2 b 0 2k\n.probe ${probe(part)}\n.op\n.end\n`;
+    };
+    expect(reasonAt(x(42, (p) => `i(${p}, 1)`))).toBeUndefined();
+    expect(reasonAt(x(43, (p) => `i(${p}, 1)`))).toEqual({ line: 8, reason: RUN_COPY_WORDS.probeName(8, `x${w(42, 'x')}:${w(200, 'p')}#branch`, 251) });
+    expect(reasonAt(x(20, (p) => `vd(${p}:1, ${p}:2)`))).toEqual({ line: 8, reason: RUN_COPY_WORDS.probeName(8, `vd_x${w(19, 'x')}:${w(200, 'p')}_x${w(19, 'x')}:${w(10, 'q')}`, 256) });
+  });
+});
+
+describe('circuits built with circbyline (limit-12, limit-16)', () => {
+  const reasonAt = (text: string): { line: number; reason: string } | undefined => whyNotRun(parseNetlist(text));
+  const cb = (lines: string[]): string => lines.map((l) => `circbyline ${l}`).join('\n');
+
+  it('checks a circuit’s title, its first line, as ngspice joins its words: at most 504 bytes, in each circuit', () => {
+    const title = (last: string): string => `* ${'ab '.repeat(166)}${last}`;
+    const script = (first: string): string => `*ng_script\n${cb([first, 'V1 a 0 9', 'R1 a b 1k', 'R2 b 0 2k', '.op', '.end'])}\nop\nprint all\n`;
+    expect(reasonAt(script(title('abcd')))).toBeUndefined();
+    expect(reasonAt(script(title('abcde')))).toEqual({ line: 2, reason: RUN_COPY_WORDS.circuitTitle(2, 505) });
+    // Blanks between its words count once (ngspice joins the words with one blank).
+    expect(reasonAt(script(`* ${'ab   '.repeat(166)}abcd`))).toBeUndefined();
+    const two = `*ng_script\n${cb(['* one', 'V1 a 0 9', 'R1 a 0 1k', '.end', title('abcde'), 'V1 a 0 9', 'R1 a 0 1k', '.end'])}\nop\n`;
+    expect(reasonAt(two)).toEqual({ line: 6, reason: RUN_COPY_WORDS.circuitTitle(6, 505) });
+    // Each circuit is checked as its own netlist: the second one's B source without its ).
+    expect(reasonAt(`*ng_script\n${cb(['* one', 'V1 a 0 9', '.end', '* two', 'V1 a 0 9', 'B1 c 0 V=v(a', 'R3 c 0 1k', '.end'])}\nop\n`)).toEqual({ line: 7, reason: RUN_COPY_WORDS.noClose(7, 'v(') });
+  });
+
+  it('refuses a circbyline command inside a circuit built with circbyline: ngspice crashes on it', () => {
+    const scriptInside = `*ng_script\n${cb(['*ng_script', 'circbyline * inner', 'circbyline V1 a 0 1', 'circbyline R1 a 0 2', 'circbyline .end', 'op', '.end'])}\necho done\n`;
+    expect(reasonAt(scriptInside)).toEqual({ line: 3, reason: RUN_COPY_WORDS.nestedCircuit(3) });
+    const controlInside = `* outer\nV9 z 0 1\nR9 z 0 1\n.control\n${cb(['* mid', 'V8 y 0 1', 'R8 y 0 1', '.control', 'circbyline * inner', 'circbyline V1 a 0 1', 'circbyline .end', '.endc', '.end'])}\n.endc\n.end\n`;
+    expect(reasonAt(controlInside)).toEqual({ line: 9, reason: RUN_COPY_WORDS.nestedCircuit(9) });
+  });
+});
+
 describe('the checks of the run copy, on netlists made to be slow or deep', () => {
   // A link can hold one formula of 250 kB. Measuring each v( … ) by looking back for its { and on
   // for its ) made the work grow with the square of the line: 8,000 terms took 8 times the work of
@@ -328,6 +516,35 @@ describe('the checks of the run copy, on netlists made to be slow or deep', () =
     );
     expect(oneLarge).toBeLessThan(2.5 * tenSmall + 8);
     expect(netlistToRun(large).notRun).toBeUndefined();
+  }, 30_000);
+
+  // A link of 2 kB can unpack to 250 kB of circbyline commands nested 100 deep. Checking each circuit
+  // built with circbyline again inside the one before made the work grow with the depth times the size:
+  // a second of processor time for 100 levels, at every pause while the student typed. Each circuit is
+  // checked once now. Ten netlists of 10 levels against one of 100 (12 times the text of one of them):
+  // at most 2.5 times as long.
+  it('checks a circuit built with circbyline once, however deep: in time proportional to the text', () => {
+    const nested = (levels: number, lines: number): string => {
+      const out = ['* t', 'V1 a 0 1', 'R1 a 0 1', '.op', '.control'];
+      for (let j = 1; j <= levels; j++) out.push(`${'circbyline '.repeat(j)}*ng_script`);
+      for (let i = 0; i < lines; i++) out.push(`${'circbyline '.repeat(levels)}R${i} a 0 1`);
+      out.push('.endc', '.end', '');
+      return out.join('\n');
+    };
+    const small = parseNetlist(nested(10, 177));
+    const large = parseNetlist(nested(100, 177));
+    netlistToRun(parseNetlist(nested(3, 3)));
+    const [tenSmall, oneLarge] = leastWorkMs(
+      [
+        () => {
+          for (let k = 0; k < 10; k++) netlistToRun(small);
+        },
+        () => netlistToRun(large),
+      ],
+      5,
+    );
+    expect(oneLarge).toBeLessThan(2.5 * tenSmall + 8);
+    expect(netlistToRun(large).notRun).toEqual({ line: 7, reason: RUN_COPY_WORDS.nestedCircuit(7) });
   }, 30_000);
 
   it('checks a + line after a title on its own: the title is cut, the + line is not part of it', () => {

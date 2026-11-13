@@ -17,7 +17,7 @@ test.describe('what PlainSpice hands ngspice', () => {
     await openApp(page, `./#${await encodeShare(`* ${'W'.repeat(598)}\n${DIVIDER}`, { run: true })}`);
     await expectSolved(page);
     const output = await openPanel(page, 'output');
-    await expect(output.getByText(RUN_COPY_WORDS.titleCut(1, 600))).toBeVisible();
+    await expect(output.getByText(RUN_COPY_WORDS.titleCut(1, 600, 504))).toBeVisible();
   });
 
   test('saved work with a .title of 1000 bytes after .end opens and runs', async ({ page }) => {
@@ -54,7 +54,7 @@ test.describe('the spike page', () => {
     await box.fill(`* ${'W'.repeat(598)}\n${DIVIDER}`);
     await run.click();
     await expect(results).toContainText(/ngspice finished in \d+ ms/);
-    await expect(results).toContainText(RUN_COPY_WORDS.titleCut(1, 600));
+    await expect(results).toContainText(RUN_COPY_WORDS.titleCut(1, 600, 504));
     await box.fill('* t\nV1 a 0 9\nR1 a b 1k\nB1 b 0 V=v(a\n.op\n.end\n');
     await run.click();
     await expect(results).toContainText(RUN_COPY_WORDS.noClose(4, 'v('));
