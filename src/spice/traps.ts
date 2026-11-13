@@ -35,7 +35,7 @@ import {
   withSpaces,
   zeroForLetterO,
 } from './characters.ts';
-import { isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
+import { innerNode, isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -3736,7 +3736,8 @@ function checkTf(c: Ctx, d: NonNullable<NetlistLine['directive']>, line: Netlist
   // The circuit's nodes and parts, with those of the parts written after a plain .end, which ngspice
   // reads (S25): a .tf after .end (A3c) may name them.
   const late = afterEndParts(c.n);
-  const connected = (key: string): boolean => (c.n.nodes.get(key)?.connections.length ?? 0) > 0 || late.some((e) => e.nodes.some((r) => r.name === key));
+  // ngspice's name for a node inside a subcircuit an X line uses (x1.m, x1.x2.m) is a node too (A3h).
+  const connected = (key: string): boolean => (c.n.nodes.get(key)?.connections.length ?? 0) > 0 || late.some((e) => e.nodes.some((r) => r.name === key)) || innerNode(c.n, key) !== undefined;
   const partOf = (key: string): Element | undefined => {
     const at = c.byKey.get(key);
     return at !== undefined ? el(c, at) : late.find((e) => e.key === key);

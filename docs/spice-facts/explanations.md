@@ -71,7 +71,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   output ngspice's "output impedance" is 1e20 Ω (A5); a `.tf` node that is not in the circuit gives
   0 without a message (A6). An analysis line in a subcircuit no X line uses is skipped, as is every
   line of such a subcircuit; in one an X line uses, it runs as the main circuit's, once for each X
-  line (A3f), with gnd as ground there too (A3g).
+  line (A3f), with gnd as ground there too (A3g). ngspice names a node inside a subcircuit by its X
+  lines and a dot, `x1.m`, and a `.tf` can ask about it (A3h).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
   empty sweeps and nested sweeps; `.dc` can sweep V, I, R and TEMP (A7–A15).
 - `.tran`: ngspice picks its own time points; the largest step is tstep, or (tstop − tstart)/50 when
@@ -2844,6 +2845,69 @@ ngspice 47, ngspice -b (exit 0):
 ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in each of the five
   (golden rows an-tf-subckt-gnd, -gnd-a, -gnd-zz, -gnd-alone and -gnd-beside)
+```
+
+### A3h. ngspice names a node inside a subcircuit by its X lines and a dot, and a .tf can ask about it
+
+ngspice builds a subcircuit once for each X line that uses it, and names each node of the
+subcircuit's own (not a node of its `.subckt` line, which takes the X line's node, and not ground) by
+that X line, a dot and the node: m inside X1 is `x1.m`, in lower case. With subcircuits inside
+subcircuits it names them all, from the main circuit's X line down: m of the subcircuit X2 uses, X2
+being a line of the subcircuit X1 uses, is `x1.x2.m`, and that subcircuit's own n is `x1.n`. So `.tf
+v(x1.m) V1` measures the node m inside X1: here 0.5 and 500 Ω (R1 and R2 halve 10 V, and R3 carries no
+current). Capitals do not matter (`X1.M`), and an X line after `.end`, which ngspice reads (S25),
+counts too. PlainSpice took such a name for a node no part connects to: an error ('.tf asks about node
+x1.m, which is not in the circuit') and a warning that the numbers mean nothing, under the right ones
+(last pass C3-6). Now the checks and the words read it as ngspice does, and Explain says which node it
+is: "x1.m is ngspice's name for node m of the subcircuit div (from line 4), inside X1". A dotted name
+that is no such node keeps the error, as ngspice makes it a new node with nothing on it (0 and 1 Ω,
+tf-problems-1): `x1.a`, a node of the `.subckt` line, and `x2.m`, where X2 is a line only of a
+subcircuit no X line uses (A3f).
+
+```spice
+* a .tf of the node m inside the subcircuit X1 uses
+V1 in 0 10
+X1 in out div
+.subckt div a b
+R1 a m 1k
+R2 m 0 1k
+R3 m b 1
+.ends
+.tf v(x1.m) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+    Transfer function information:
+    transfer_function = 5.000000e-01
+    output_impedance_at_v(x1.m) = 5.000000e+02
+    v1#input_impedance = 2.000000e+03
+  rawfile from ngspice -b -r (exit 0): v(Transfer_function) = 0.5000000000000551, v(v1#Input_impedance) = 2000.0000000002203, v(output_impedance_at_V(x1.m)) = 500.0000000000551
+  the same with .tf v(X1.M) V1, and with X1 in out div written after .end: the same printout (named
+    v(x1.m)) and rawfile values
+  with .tf v(x1.a) V1: transfer_function = 0.000000e+00, output_impedance_at_v(x1.a) = 1.000000e+00,
+    v1#input_impedance = 2.000000e+03; rawfile v(output_impedance_at_V(x1.a)) = 1
+  nested, X1 in out outer and R9 out 0 1k, with .subckt outer p q: R1 p n 1k, X2 n q inner, and
+    .subckt inner a b: R2 a m 1k, R3 m 0 1k, R4 m b 1k; with .op, ngspice -b (exit 0):
+        out                              1.250000e+00
+        x1.x2.m                          2.500000e+00
+        x1.n                             6.250000e+00
+        in                               1.000000e+01
+        v1#branch                        -3.75000e-03
+    and its devices r.x1.r1, r.x1.x2.r2, r.x1.x2.r3, r.x1.x2.r4 and r9;
+    rawfile v(in) = 10, v(x1.n) = 6.25, v(x1.x2.m) = 2.5, v(out) = 1.25, i(v1) = -0.00375
+  with .tf v(x1.x2.m) V1 there: transfer_function = 2.500000e-01, output_impedance_at_v(x1.x2.m) =
+    5.000000e+02, v1#input_impedance = 2.666667e+03; rawfile 0.25, 2666.6666666666665 and 500
+  with .tf v(x1.n) V1 there: transfer_function = 6.250000e-01, output_impedance_at_v(x1.n) =
+    6.250000e+02; rawfile 0.625, 2666.6666666666665 and 625
+  with V1 in 0 10 and R9 in 0 1k, .subckt outer p q holding only X2 p q div, no X line using outer,
+    and .tf v(x2.m) V1: transfer_function = 0.000000e+00, output_impedance_at_v(x2.m) =
+    1.000000e+00, v1#input_impedance = 1.000000e+03; rawfile 0, 1000 and 1
+ngspice 42: the same printouts, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same vectors, bit for bit, in each (golden rows
+  an-tf-inner, -inner-caps, -inner-after-end, an-op-inner-nested, an-tf-inner-nested, -inner-outer,
+  -inner-port and -inner-unused)
 ```
 
 ## 3. Currents and power in the results
@@ -7036,9 +7100,9 @@ ngspice stops at the second one ("device already exists"). Rename one of them wi
 | `explain.ts`: R, C, L lines (either way round, open/short in `.op` and `.dc`, 0 Ω, negative values, missing values) | P1, P2, P11–P15b, P24, A31 |
 | `explain.ts`: V and I lines (+ node and − node, from node and to node, 0 V ammeters, values in `.op`, PULSE/SIN/PWL/EXP arguments, AC values, a source .dc sweeps) | P3, P3b, P4, P4b, P4c, P9, P16–P20b |
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
-| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`) | A1–A22b, A3f, A3g, A31, M10–M15b |
+| `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`, `innerNode`) | A1–A22b, A3f–A3h, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
-| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V, real values ngspice rounds to 0 shown exactly (`exact.ts`) | C1–C9v, A3–A6 (with A3b–A3g) |
+| `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V, real values ngspice rounds to 0 shown exactly (`exact.ts`) | C1–C9v, A3–A6 (with A3b–A3h) |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
 Re-running the evidence: the netlists, the scripts that run them through native ngspice 47, 42 and

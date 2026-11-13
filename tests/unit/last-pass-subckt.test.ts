@@ -1,9 +1,11 @@
 /**
  * The last pass before milestone 2's release (13 November 2026, decision 0017, "After the last pass"):
  * .tf and other analysis lines inside subcircuits, and the words for lines ngspice skips. Every
- * netlist here runs through our engine; native ngspice 47 and 42 give the same numbers (facts A3f and A3g
- * in docs/spice-facts/explanations.md).
+ * netlist here runs through our engine; native ngspice 47 and 42 give the same numbers (facts A3f, A3g
+ * and A3h in docs/spice-facts/explanations.md).
  *
+ * - code review C3-6: `.tf v(x1.m) V1` asks about the node m inside the subcircuit X1 uses, by ngspice's
+ *   name for it, so it is no error, and Explain says which node it is (A3h).
  * - regress-2: a gnd in the v( ) of a .tf inside a subcircuit an X line uses is ground, as at the top
  *   level (A3g); and the summary names every warning it counts, four and how many more.
  * - facts F2: ngspice "skips" those lines, the word for a whole line it does not read (W11).
@@ -16,12 +18,14 @@ import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts'
 import type { RunResult } from '../../src/engine/types.ts';
 import { solve } from '../../src/notebook/index.ts';
 import { describeCircuit, describeResults } from '../../src/spice/describe.ts';
-import { explainNetlist } from '../../src/spice/explain.ts';
+import { explainNetlist, innerNode } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { checkTraps } from '../../src/spice/traps.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 /** formatSI writes a no-break space between number and unit; expectations here use a plain space. */
 const sp = (s: string | undefined): string => (s ?? '').replace(/\u00a0/g, ' ');
+const tfErrors = (text: string): string[] => checkTraps(parseNetlist(text)).filter((c) => c.id === 'tf-problems').map((c) => c.title);
 
 let engine: Promise<NgspiceEngine>;
 beforeAll(() => {
@@ -30,6 +34,57 @@ beforeAll(() => {
 
 /** A run of ngspice that gave nothing and said nothing (exit 0), as PlainSpice runs it. */
 const nothing = (): RunResult => ({ ok: false, unreliable: false, exitCode: 0, stdout: '', stderr: '', plots: [], diagnostics: [], timings: { instantiateMs: 0, runMs: 0, parseMs: 0 } });
+
+describe('code review C3-6: ngspice\'s name for a node inside a subcircuit (A3h)', () => {
+  // The reviewer's netlist. Native 47 and 42: transfer_function = 0.5, output_impedance_at_v(x1.m) = 500, v1#input_impedance = 2000.
+  const DIV = '* t\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n';
+  const tf = (out: string): string => `${DIV}.tf v(${out}) V1\n.end\n`;
+
+  it('v(x1.m) is the node m inside X1: no error, no warning, the numbers are answers, and Explain says which node it is', async () => {
+    expect(tfErrors(tf('x1.m'))).toEqual([]);
+    const s = await solve(tf('x1.m'), await engine);
+    expect(s.status).toBe('ok');
+    expect(s.words.warnings).toEqual([]);
+    expect(sp(s.words.tf?.transferFunction?.text)).toBe('v(x1.m)/V1 = 0.5 (V/V)');
+    expect(sp(s.words.tf?.outputResistance?.text)).toBe('output resistance at node x1.m: 500 Ω, the Thévenin resistance seen at node x1.m (ngspice calls it the output impedance)');
+    expect(sp(s.words.summary)).toBe('Simulation finished: transfer function v(x1.m)/V1 = 0.5 (V/V); input resistance seen by V1: 2 kΩ; output resistance at node x1.m: 500 Ω. Open the results for details.');
+    expect(explainNetlist(parseNetlist(tf('x1.m')))[8]!.notes).toEqual([
+      "x1.m is ngspice's name for node m of the subcircuit div (from line 4), inside X1: ngspice names a node inside a subcircuit by its X line, then a dot.",
+    ]);
+  }, 30000);
+
+  it('reads the name as ngspice does: capitals do not matter, an X line after .end counts, and a nested one is named by both X lines', async () => {
+    expect(tfErrors(tf('X1.M'))).toEqual([]);
+    expect(innerNode(parseNetlist(tf('X1.M')), 'x1.m')?.path).toEqual(['X1']);
+    // ngspice reads the lines after a plain .end (S25): an X line there places the subcircuit too.
+    const late = '* t\nV1 in 0 10\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n.tf v(x1.m) V1\n.end\nX1 in out div\n';
+    expect(tfErrors(late)).toEqual([]);
+    expect((await solve(late, await engine)).words.warnings.map((w) => w.code)).toEqual([]);
+    // X1 places outer, whose X2 places inner: ngspice names inner's m x1.x2.m, and outer's own n x1.n (0.25 and 0.625).
+    const NEST = '* t\nV1 in 0 10\nX1 in out outer\nR9 out 0 1k\n.subckt outer p q\nR1 p n 1k\nX2 n q inner\n.ends\n.subckt inner a b\nR2 a m 1k\nR3 m 0 1k\nR4 m b 1k\n.ends\n';
+    for (const [node, ratio] of [['x1.x2.m', '0.25'], ['x1.n', '0.625']] as const) {
+      const text = `${NEST}.tf v(${node}) V1\n.end\n`;
+      expect(tfErrors(text), node).toEqual([]);
+      const s = await solve(text, await engine);
+      expect([s.status, sp(s.words.tf?.transferFunction?.text)], node).toEqual(['ok', `v(${node})/V1 = ${ratio} (V/V)`]);
+    }
+    expect(explainNetlist(parseNetlist(`${NEST}.tf v(x1.x2.m) V1\n.end\n`))[13]!.notes).toEqual([
+      "x1.x2.m is ngspice's name for node m of the subcircuit inner (from line 9), inside X2, inside X1: ngspice names a node inside a subcircuit by its X lines, each followed by a dot.",
+    ]);
+  }, 30000);
+
+  it('keeps the error for a dotted name that is no node: a node of the .subckt line, one the subcircuit lacks, an X line the circuit lacks', async () => {
+    // Native 47 and 42 give each of these a new node with nothing on it: a transfer function of 0 and 1 Ω (tf-problems-1).
+    for (const out of ['x1.a', 'x1.zz', 'x9.m']) {
+      expect(tfErrors(tf(out)), out).toEqual([`.tf asks about node ${out}, which is not in the circuit`]);
+      const s = await solve(tf(out), await engine);
+      expect([sp(s.words.tf?.transferFunction?.text), s.words.warnings.map((w) => w.title)], out).toEqual([`v(${out})/V1 = 0 (V/V)`, [`${out} is not a node of the circuit`]]);
+    }
+    // X2 only inside a subcircuit no X line uses places nothing: x2.m is no node (0 and 1 Ω natively).
+    const unused = '* t\nV1 in 0 10\nR9 in 0 1k\n.subckt outer p q\nX2 p q div\n.ends\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n.tf v(x2.m) V1\n.end\n';
+    expect(tfErrors(unused)).toEqual(['.tf asks about node x2.m, which is not in the circuit']);
+  }, 30000);
+});
 
 describe('regress-2: a gnd in a .tf inside a subcircuit an X line uses is ground (A3g)', () => {
   // ngspice runs such a .tf as the main circuit's (A3f) and turns gnd into 0 on every line first:

@@ -352,6 +352,12 @@ export const EXPLAIN_STRINGS = {
    */
   analysisInUnusedSubcircuit: (name: string, line: number): string =>
     `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+  /**
+   * A3h: ngspice's name for a node inside a subcircuit an X line uses (x1.m), read back: the node, its
+   * subcircuit, and the X lines that lead to it, from the inside out ("X2, inside X1").
+   */
+  innerNodeNote: (name: string, node: string, subcircuit: string, line: number, inside: string, many: boolean): string =>
+    `${name} is ngspice's name for ${node} of the subcircuit ${subcircuit} (from line ${line}), inside ${inside}: ngspice names a node inside a subcircuit by ${many ? 'its X lines, each followed by a dot' : 'its X line, then a dot'}.`,
 
   // ---- dot commands
   dotHeading: (name: string, what: string): string => `${name}: ${what}`,
@@ -1296,6 +1302,57 @@ export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   return name !== undefined && RUN_ANALYSES.has(name) && unusedSubcircuit(netlist, index) !== undefined;
 }
 
+/** A node of a subcircuit an X line uses, by ngspice's name for it (A3h). */
+export interface InnerNode {
+  /** The X lines that lead to it, from the main circuit's down, as written: X1, then X2 inside X1's subcircuit. */
+  path: string[];
+  /** The node as the subcircuit's own lines write it. */
+  node: NodeRef;
+  /** The subcircuit the last X line uses, as its .subckt line writes it, and that line (0-based). */
+  subcircuit: string;
+  line: number;
+}
+
+/**
+ * ngspice's name for a node inside a subcircuit, read back (A3h): the X lines that lead to it, from the
+ * main circuit's down, and the node, joined by dots. x1.m is the node m of the subcircuit X1 uses, x1.x2.m
+ * the node m of the subcircuit that X2, a line of X1's subcircuit, uses; capitals do not matter. ngspice
+ * makes such a node once for each X line, so `.tf v(x1.m) V1` measures it (0.5 and 500 Ω in A3h).
+ * undefined for any other name: one without a dot, an X line the circuit does not have there, a
+ * subcircuit with no .subckt line, or a name that is no node of the subcircuit's own: a node of its
+ * .subckt line takes the X line's node, so x1.a for it is a new node with nothing on it (0 and 1 Ω, as
+ * tf-problems-1), and ground is the main circuit's.
+ */
+export function innerNode(netlist: Netlist, name: string): InnerNode | undefined {
+  const steps = lowerAscii(name).split('.');
+  if (steps.length < 2 || steps.some((s) => s === '')) return undefined;
+  const ctx = contextOf(netlist);
+  const linesOf = (at: number | undefined): Element[] =>
+    netlist.lines.filter((l) => l.element && ctx.insideSubckt.get(l.index) === at).map((l) => l.element!);
+  // The main circuit's X lines: those outside .subckt … .ends, and those after a plain .end, which ngspice reads (S25).
+  let parts = [...linesOf(undefined), ...readAfterEnd(netlist).flatMap((l) => parseNetlist(`*\n${l.text}`).lines[1]?.element ?? [])];
+  const path: string[] = [];
+  let at: number | undefined;
+  for (const step of steps.slice(0, -1)) {
+    const x = parts.find((e) => e.letter === 'X' && lowerAscii(e.name.text) === step);
+    const model = x?.fields.find((f) => f.role === 'model');
+    at = model ? ctx.subckts.get(lowerAscii(model.token.text)) : undefined;
+    if (!x || at === undefined) return undefined;
+    path.push(x.name.text);
+    parts = linesOf(at);
+  }
+  const sub = netlist.lines[at!]!;
+  // The nodes of the .subckt line: the words after the name, up to params: or a name=value (none of them a node of its own).
+  const ports = new Set<string>();
+  for (const t of sub.directive!.args.slice(1)) {
+    if (/^params:$/i.test(t.text) || /^[ \t]*=/.test(netlist.text.slice(t.to, t.to + 80))) break;
+    ports.add(ngspiceName(t.text));
+  }
+  const last = steps[steps.length - 1]!;
+  const node = ports.has(last) ? undefined : parts.flatMap((e) => e.nodes).find((r) => !r.ground && r.name === last);
+  return node ? { path, node, subcircuit: sub.directive!.args[0]!.text, line: at! } : undefined;
+}
+
 function partKind(netlist: Netlist, name: string): { line?: number; letter?: ElementLetter } {
   const line = contextOf(netlist).elements.get(lowerAscii(name));
   if (line === undefined) return {};
@@ -2151,7 +2208,14 @@ function explainTf(netlist: Netlist, line: NetlistLine, out: Out): LineExplanati
     for (const n of r.outputNodes) {
       // Ground is always a node (every voltage is measured from it); a circuit with nothing on it has its own check.
       const info = netlist.nodes.get(n.name);
-      if (!n.ground && (!info || info.connections.length === 0)) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
+      if (n.ground || (info && info.connections.length > 0)) continue;
+      // ngspice's name for a node inside a subcircuit an X line uses: said which node it is (A3h).
+      const inner = innerNode(netlist, n.name);
+      if (!inner) addNote(notes, S.tfNodeMissingNote(nodeName(n))); // A6
+      else {
+        const inside = [...inner.path].reverse().join(', inside ');
+        addNote(notes, S.innerNodeNote(nodeName(n), nodeText(inner.node), inner.subcircuit, inner.line + 1, inside, inner.path.length > 1));
+      }
     }
   }
   const input = r.input;
