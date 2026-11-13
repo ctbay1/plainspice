@@ -404,8 +404,11 @@ describe('speed: the exact solve keeps describeResults, which runs on the main t
     const some = ['V1 a 0 9', ...primes.slice(0, 200).map((p, k) => `R${k} a 0 ${p}`)].join('\n');
     const op = await timed(`* some\n${some}\n.op\n.dc V1 0 9 1\n.end\n`);
     expect([op.by, op.ms < 50]).toEqual(['exact', true]);
-    const many = parseNetlist(`* many\nV1 a 0 9\n${Array.from({ length: MAX_PARTS }, (_, k) => `R${k} a 0 1k`).join('\n')}\n.op\n.end\n`);
-    expect(exactModel(many, many.lines.flatMap((l) => (l.element ? [l.element] : [])), [])).toBe('size');
+    expect(MAX_PARTS).toBe(1600);
+    const many = parseNetlist(`* many\nV1 a 0 9\n${Array.from({ length: 1600 }, (_, k) => `R${k} a 0 1k`).join('\n')}\n.op\n.end\n`);
+    const refused = exactModel(many, many.lines.flatMap((l) => (l.element ? [l.element] : [])), []);
+    // Compared as words: a model that is not refused would be printed whole.
+    expect(typeof refused === 'string' ? refused : 'modelled exactly').toBe('size');
   });
 
   it('at the limits of the exact solve (a random network of 400 resistors on 133 nodes, about a second of work) it stops in time: under 200 ms, then the other rule decides', async () => {
@@ -721,11 +724,12 @@ describe('after the critic of round 2: a test for every safeguard of the exact s
     expect(r.words.warnings.filter((m) => m.code === 'rounding-noise' || m.code === 'rounded-to-0')).toEqual([]);
   });
 
-  it('the rule for other circuits: the current a real F copies is real (Vm keeps its 193.5 aA beside F1\'s 193.5 pA, 1e6 times it), and a 0 it writes at a node whose shown currents do not add up to 0 gets ngspice\'s number back (F1\'s 216.8 aA beside its two loads)', async () => {
+  it('the rule for other circuits: the current a real F copies is real (Vm keeps its 193.5 aA beside F1\'s 193.5 pA, 1e6 times it), and a 0 it writes at a node whose shown currents do not add up to 0 gets ngspice\'s number back (G1\'s 888.2 zA beside its two loads, whose ends are not alike)', async () => {
     const f = await solved(lines('V1 top 0 9', 'R1 top a 180k', 'R2 a 0 3.9meg', 'R3 top b 18k', 'R4 b 0 390k', 'R5 a m 4.7', 'Vm m b 0', 'F1 0 out Vm 1e6', 'Rl out 0 1k', RULE));
     expect([f.by, current(f.words, 'Vm'), current(f.words, 'F1'), noise(f.words)]).toEqual(['rule', 'Vm measures 193.5 aA flowing from node b to node m', '193.5 pA from node out to ground through F1', []]);
-    const two = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', 'F1 0 out Vm 1000', 'R6 out 0 1k', 'R7 out 0 1k', '.options savecurrents', RULE));
-    expect([two.by, current(two.words, 'F1'), current(two.words, 'R6'), current(two.words, 'R7')]).toEqual(['rule', '216.8 aA from node out to ground through F1', '108.4 aA from ground to node out through R6', '108.4 aA from ground to node out through R7']);
+    // C9r.2: G1 reads a and b, which ngspice gives a step apart, so the rule takes its current as noise; R6 and R7 keep ngspice's attoamps (out is not written as 0 V), so G1 gets its number back.
+    const two = await solved(lines('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'G1 0 out a b 1m', 'R6 out 0 1k', 'R7 out 0 2k', '.options savecurrents', RULE));
+    expect([two.by, current(two.words, 'G1'), current(two.words, 'R6'), current(two.words, 'R7'), noise(two.words)]).toEqual(['rule', '8.882e-19 A from node out to ground through G1', '8.882e-19 A from ground to node out through R6', '4.441e-19 A from ground to node out through R7', ['R5']]);
   });
 
   it('the rule for other circuits gives ground\'s level only to a node shown as 0 V: an E reading the balanced bridge, fed 5 mA through 1k, keeps ngspice\'s −931.3 pV at out, so E1 shows the power that makes (no node is written as 0 V there)', async () => {

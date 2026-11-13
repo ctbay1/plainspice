@@ -182,10 +182,12 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
     expect(m.parts.find((p) => p.key === 'd1')).toMatchObject({ kind: 'D', a: m.nodes.indexOf('a'), b: -1, branch: -1, value: ZERO });
     expect(m.size).toBe(4);
     expect(model(`${bridge}D1 a 0 t dmod\n.model dmod d\n.op\n.end\n`)).toBe('part');
-    // Each diode takes a solution of its own: at most MAX_DIODES (16) of them (a beginner's circuit has a few).
+    // Each diode takes a solution of its own: at most MAX_DIODES, 16, of them (a beginner's circuit has a few).
     const diodes = (n: number): string => Array.from({ length: n }, (_, k) => `D${k} a d${k} dmod\nRd${k} d${k} 0 1k`).join('\n');
-    expect(typeof model(`${bridge}${diodes(MAX_DIODES)}\n.model dmod d\n.op\n.end\n`)).toBe('object');
-    expect(model(`${bridge}${diodes(MAX_DIODES + 1)}\n.model dmod d\n.op\n.end\n`)).toBe('size');
+    const why = (m: ExactModel | string): string => (typeof m === 'string' ? m : 'modelled exactly');
+    expect(MAX_DIODES).toBe(16);
+    expect(why(model(`${bridge}${diodes(16)}\n.model dmod d\n.op\n.end\n`))).toBe('modelled exactly');
+    expect(why(model(`${bridge}${diodes(17)}\n.model dmod d\n.op\n.end\n`))).toBe('size');
   });
 
   it('leaves to the other rule a subcircuit, a B source, POLY, a transient source, a part with settings, .param, .temp, other options, a 0 Ω resistor, an F reading a resistor', () => {
@@ -205,7 +207,8 @@ describe('exactModel: only the circuits whose operating point PlainSpice knows e
     ];
     for (const [line, why] of cases) expect(model(`${bridge}${line}.op\n.end\n`), line).toBe(why);
     const ladder = Array.from({ length: MAX_UNKNOWNS }, (_, k) => `R${k} n${k} n${k + 1} 1k\nRg${k} n${k + 1} 0 1k`).join('\n');
-    expect(model(`* t\nV1 n0 0 1\n${ladder}\n.op\n.end\n`)).toBe('size');
+    const why = (m: ExactModel | string): string => (typeof m === 'string' ? m : 'modelled exactly');
+    expect(why(model(`* t\nV1 n0 0 1\n${ladder}\n.op\n.end\n`))).toBe('size');
   });
 });
 
