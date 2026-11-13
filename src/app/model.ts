@@ -160,7 +160,7 @@ export interface RunRecord extends Solution {
   results: AnalysisResults;
   /** Lines PlainSpice added to the copy ngspice ran (shown in the ngspice output panel). */
   added: readonly string[];
-  /** What else PlainSpice did to that copy, a sentence each (shown there too): a title cut, every current not saved. */
+  /** What else PlainSpice did to that copy, a sentence each (shown there too): a title cut. */
   notes: readonly string[];
 }
 
