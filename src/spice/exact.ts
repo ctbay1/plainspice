@@ -24,7 +24,9 @@
  * - `answersAgree` checks that ngspice solved it to the digits the page shows: each answer whose exact
  *   value is not 0 is that value to within 5e-5 of it, beyond what rounding leaves of the numbers it is
  *   worked out from (ANSWER_FLOOR of its own scale, `answerScales`); `answers` lists them, and the
- *   currents of the R, G and F too, for the note where they are off.
+ *   currents of the R, G and F too (describe.ts judges the page by them, and names those that are off).
+ *   A controlled source that reads another part of the circuit carries its floor only to what its output
+ *   moves (`carrierSides`, `carried`: one more exact solution each).
  */
 import type { NumberReading } from './types.ts';
 import { isSpaceCode, numberWordEnd } from './numbers.ts';
@@ -1370,7 +1372,8 @@ export function agrees(model: ExactModel, ng: NgspiceValues, level: (p: ExactPar
  * of the equations stays small (`agrees`): a 1e-12 Ω wire in the middle branch of a balanced bridge
  * gives its ends as 4.321 V and 4.374 V where the circuit makes both 4.5 V (the critic of the re-check's
  * fixes). There PlainSpice shows ngspice's numbers, by the rule for other circuits, and says that they
- * are off (decision 0015).
+ * are off (decision 0015). describe.ts calls an answer off only where the page also draws it with other
+ * digits than the exact value's (judgeAnswers): 8e-5 of 372.4395 µA is still drawn "372.4 µA".
  */
 export const ANSWER_GAP = 5e-5;
 /**

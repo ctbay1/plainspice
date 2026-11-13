@@ -1018,7 +1018,10 @@ class Groups {
  * 1 µΩ wire in series with that meter; `lostCurrents`, `lostNodes`; with diodes only where no diode's
  * current changes it). Two nodes are at the same voltage when their exact voltages are equal. A circuit at
  * rest, every exact value 0, is decided when ngspice's Newton leftovers are within 2^-30 of its tolerances
- * (atRest).
+ * (atRest), and so is one where no current flows but a source holds a voltage, where the check that ngspice
+ * simulated this circuit cannot weigh its leftovers (still). Beside a sweep the exact solution does not follow
+ * (of a resistor, of two sources), the .op is decided exactly with the sweep's points at its own state
+ * (opStateSweep).
  *
  * Where ngspice's answers are not the exact ones to the page's digits (a 1e-12 Ω wire beside kilohms
  * gives 4.321 V for 4.5 V), a 0 or an exact value from the exact solution would sit beside ngspice's
@@ -1250,8 +1253,8 @@ function ngspiceValues(nodes: Map<string, number>, branch: Map<string, number>, 
 /**
  * How ngspice's operating point stands to the exact solution. 'same': it is this circuit's (it names the
  * same nodes and parts, and its values solve the exact equations as closely as its own rounding can,
- * exact.ts `agrees`), solved to the digits the page shows (each answer whose exact value is not 0 is the
- * exact one to within 5e-5 of it, beyond what rounding leaves, `answersAgree`). 'imprecise': this
+ * exact.ts `agrees`), solved to the digits the page shows (no answer whose exact value is not 0 is drawn
+ * with other digits and more than 5e-5 from it beyond what rounding leaves, judgeAnswers). 'imprecise': this
  * circuit's, but ngspice's answers are farther from the exact ones (a 1e-12 Ω wire beside kilohms:
  * 4.321 V for 4.5 V); `off` lists them. 'other': not this circuit's, as far as its values show, or more
  * work to check than the run's budget has. With diodes, each diode's current is the one
