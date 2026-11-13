@@ -508,9 +508,17 @@ Ctrl+K stay as they are.
   (there is no gain and no control to draw); Explain says what the output is ("The voltage at node e,
   measured from ground, is given by the formula {v(out)*2}"), which nodes the formula reads, and that
   ngspice makes the line a B source, or that PlainSpice's engine cannot run a POLY or a TABLE; the
-  overview says "a voltage source given by a formula". Not changed for this: HSPICE's words `vcvs`,
-  `vccs`, `cccs` and `ccvs` after the nodes and LAPLACE are read as before; the results list the nodes
-  ngspice adds for a formula (`e1_int1`), as they list a formula capacitor's and a subcircuit's.
+  overview says "a voltage source given by a formula", and Explain's heading says the same. The
+  skeptic's additions: two words between an E's or G's output nodes and its formula (`E1 e 0 out 0
+  VALUE={2}`) are dropped, as ngspice drops them, so they are no nodes and Explain says so
+  (unknown-word-54); HSPICE's words `vcvs`, `vccs`, `cccs` and `ccvs` after the output nodes are taken
+  out on a line of exactly seven words (E, G) or six (F, H), and kept as a node with one word more, as
+  ngspice's replace_token does (unknown-word-53); the Numbers panel says "PlainSpice's engine can't run
+  E1's TABLE" (or POLY) where it said "A line starts with E"; and the editor's colours read every one of
+  these forms as the parser does (tests/unit/editor-tokens-parser.test.ts): a formula is coloured as on a
+  B line, POLY(n)'s control nodes as nodes. Not changed for this: LAPLACE is read as before; the results
+  list the nodes ngspice adds for a formula (`e1_int1`), as they list a formula capacitor's and a
+  subcircuit's.
 - **A character that looks like a space in a formula** (code review C3-1, the skeptic's addition). The
   glue check offered "Replace it with a normal space" in a formula too, which turned `v(o<thin space>ut)`
   into `v(o ut)`: native 47 stops ("YYparse error"), 42 too ("PTerror: syntax error"). Inside a node's
