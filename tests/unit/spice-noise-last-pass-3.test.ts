@@ -169,6 +169,18 @@ describe('the rule gives a current back only where rounding can hide it, and a p
 });
 
 describe('the paths of round 2 that no test held (N5)', () => {
+  it('the point nearest the .op\'s 1.5 V (C9w.7, 1.5000000000000846 V) is judged at its own x: the exact value drawn there for R3\'s current, which ngspice gives as 0, is the circuit\'s at that x, the .op\'s 454.1 pA times x / 1.5 V, not the .op\'s own (the same 4 digits, but the Plot panel\'s data carries them all)', async () => {
+    const r = await solveText(netlist('V1 top1 0 1.5', 'R1 top1 d2 270k', 'R2 d2 0 820', 'R3 d2 p3 1n', 'R4 p3 0 10meg', '.options savecurrents', '.op', '.dc V1 0 1.5 0.00025'), ngspice);
+    const dc = r.results.dc!;
+    const last = dc.scale.values.length - 1;
+    const x = dc.scale.values[last]!;
+    const op = r.words.currents.find((c) => c.name === 'R3')!.value;
+    const shown = shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r3[i])')!.values[last]!;
+    expect([x, sp(formatSI(shown, 'A'))]).toEqual([1.5000000000000846, '454.1 pA']);
+    expect(shown).not.toBe(op);
+    expect(Math.abs(shown / op / (x / 1.5) - 1)).toBeLessThan(4e-16);
+  });
+
   it('a point found within a quarter of the step but farther than ngspice\'s adding up of it can leave is not the .op\'s state: beside .temp 50.001, a sweep of the temperature in 5 m°C steps, too large to look through, has no point said to be "nearest the operating point\'s 50 °C" (its 50 °C point is a real 1 m°C away), and at .temp 50 it has one', async () => {
     const amm = ['V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m0 1k'];
     for (let k = 0; k < 53; k++) amm.push(`Vm${k} m${k} ${k === 52 ? 'b' : `m${k + 1}`} 0`);
