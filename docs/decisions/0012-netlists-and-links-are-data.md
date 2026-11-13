@@ -163,3 +163,48 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   space (U+2009) in it") and, as for an invisible character, its fix takes it out, "Take it out:
   connect to out" when a node out exists, else "Take it out: name the node out"; the dangling-node
   check says nothing about the pair, so no button reads "Rename out to o ut".
+- **Never a netlist that ngspice would write past the end of a fixed space** (second re-check, P1). A
+  title of more than 504 bytes stops `ngspice -b -r` ("buffer overflow detected": it writes
+  `Title: ` and the title into 513 bytes), and in a few other places ngspice copies a name into 512
+  bytes without checking (limit-1 to limit-7 in [`../spice-facts/limits.md`](../spice-facts/limits.md)).
+  Our engine has no such check: a title of 505 to 523 bytes ran on overwritten memory, a longer one
+  crashed it, which Playwright's browser shows as a crashed page; a real Chromium said "the simulation
+  engine crashed", and saved work with such a title did that on every visit. The copy ngspice runs
+  (`src/spice/run-netlist.ts`) now:
+  - cuts line 1 and every `.title` line's title (a `.title` line counts anywhere, even after `.end`)
+    to its first 504 bytes, between two characters; the student's text keeps it, and the ngspice
+    output panel says what was cut and why. The numbers are those of a short title (limit-2). A title
+    is the one thing a student pastes long: a problem statement.
+  - is not run at all when ngspice would write past a space: a word of more than 250 bytes (anything
+    between blanks, brackets, commas, `=`, `{ }`, quotes and operators; a part line's first words and
+    a `.save` line's words as ngspice takes them whole), a formula's `v(…)` or `i(…)` of more than 500
+    bytes, a `.control` command of more than 500 bytes (every line of an `*ng_script` file is one), or
+    the student's own `.options savecurrents` or `.save alli` with a part's full name inside
+    subcircuits (`r.x1.r1`) of more than 500 bytes. The run fails with the reason, the line and what
+    to do: the status line says "ngspice could not run" and why, the Numbers panel and the live region
+    too (the path a failed run already had), and nothing reaches ngspice, from the app, the checkpoint
+    or the prototypes. 250, not 511: ngspice joins two names in one space when it turns a resistor's
+    formula into a B source (`v(n1, n2)`), and one number for every word is simpler to say than one per
+    place. No netlist we have comes near: all 147 in the repository give the same copy as before.
+  - Checked with ngspice 47 built with AddressSanitizer, configured like the engine: every kind of
+    word at 600, 5,000 and 20,000 bytes, at the limits and one byte over (452 netlists); the 109 copies
+    PlainSpice runs give no report. The limits are below ngspice's own (504 to 511 bytes), so a little
+    room is left for what the search did not try.
+  - **A typo found on the way**: a B source, or an E or G source with a formula, whose `v(` or `i(` has
+    no `)` (`B1 c 0 V=v(b`) makes ngspice look for the `)` past the end of the line. Native ngspice 47
+    and 42 stop ("stack smashing detected") or print bytes they read past it; our engine crashed, so
+    typing such a formula with live runs crashed it at every pause. It is not run either: "the v( in this
+    formula has no ) after it … Add the )". Only where ngspice reads on (limit-5): in an R, C or L
+    formula, an F with `temper`, a `.tf` or `.save` line, ngspice stops with its own message, which the
+    student sees as before.
+  - **Checks say nothing** about these. A title cut is no mistake: the run gives every number, and the
+    output panel says what the copy changed. A refused netlist already says which line and why in the
+    status line, the Numbers panel and the live region, and the run copy, not the trap checks, decides
+    what ngspice gets: the checks may fail softly (a bug there shows fewer checks), while this must
+    hold. If preparing the copy fails (a bug), nothing runs.
+  - Not taken: making the engine itself check (a patch to ngspice's C code). It would need the engine
+    rebuilt, and native ngspice, which PlainSpice runs like, stops the same way; it is the better fix
+    for later, sent upstream. A `.control` block is a small program and can build a vector's name in a
+    loop, longer than any line; PlainSpice cannot see that before ngspice runs it (such a block writes
+    nothing to the results file).
+

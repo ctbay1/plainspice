@@ -96,3 +96,16 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   once against ten netlists of 1 000, since the processor time is counted in steps of 4 ms; their limits
   are the ones they had (2.5 times, as 25 times one netlist of 1 000). A parser made quadratic in a
   scratch copy fails it (at the limit of 400 ms, or, made only mildly quadratic, by how its time grows).
+- **The build checks every link of the built pages** (second re-check, P4). The design index linked
+  "both views side by side" to a picture under `docs/`, which is not deployed: GitHub Pages answered
+  404, while `vite preview` answers any missing path with the app page (200), so no browser test could
+  see it. The picture is now on the page as a figure (Vite emits it under `assets/`, which the service
+  worker leaves out of the offline download; under `public/` the offline download would have taken
+  its 381 kB) and the words link to it. `scripts/dist-links.ts`, run on `dist/` at the end of every
+  build (`vite.config.ts`), resolves every relative `href`, `src` and `srcset` of every page to a file,
+  or a folder with an `index.html`, as GitHub Pages serves it, and every `#id` to an id of its page; a
+  broken one fails the build. The engine's source tarball may be missing from a build made without it
+  (CI fetches it only for the build it deploys, where it is checked like any file). On b060bc8's build
+  it finds exactly the picture link (172 links in 9 pages); `tests/unit/dist-links.test.ts` tests the
+  check itself, and `tests/e2e/run-copy.spec.ts` the link on the page.
+

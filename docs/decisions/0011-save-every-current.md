@@ -38,3 +38,16 @@ shows the added line and why it was added. Netlists without `.op` run exactly as
   from what `ngspice -b` prints for the student's file; the tab says why.
 - `.dc` and `.tran` runs are left alone: saving every current there would make the plots and the
   rawfile much larger for little gain. A student who wants those currents adds the line.
+
+## After the final reviews (12 November 2026)
+
+- **Not when a part's full name is too long to save** (second re-check, P1). To save a part's
+  current, ngspice copies its full name (inside subcircuits its letter, the X lines and its name,
+  `r.x1.x2.r1`) into a space of 512 bytes without checking (limit-3 in
+  [`../spice-facts/limits.md`](../spice-facts/limits.md)); our engine crashed on a part name of 600
+  bytes with the line added, and ran it without. So the line is added only while every part's full
+  name is at most 500 bytes; else it is left out, and the ngspice output tab says why: then only the
+  currents ngspice always saves are shown. Each name is at most 250 bytes (decision 0012), so only
+  names nested in subcircuits can reach that. A netlist with its own `.options savecurrents` and such
+  a name is not run (decision 0012).
+
