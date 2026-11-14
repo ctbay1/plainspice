@@ -1367,7 +1367,7 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
       // A point a few steps of a double from the .op's value (ngspice adding up its step) stands for the .op's state only
       // where every value it shows reads as the .op shows it; else it is left as ngspice gives it, and named by its own x
       // (the critic of round 2: ".dc V1 0 9 0.01" ends at 8.999999999999853 V, where V2, idle at 9 V, carries −32.96 aA).
-      if (!at.exact(k)) {
+      if (!opValue) {
         const off = readsOtherwise(netlist, dc, k, op, (j) => marked.has(j));
         if (off) {
           failed.set(k, off);
