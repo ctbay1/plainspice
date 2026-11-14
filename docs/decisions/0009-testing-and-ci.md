@@ -120,8 +120,9 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   facts README's rule. The reviewer named the five base runs; three more facts' variants said the same of such a
   file and are corrected with them. Their netlists are given in words there ("Cikis2 in the formulas", "a .func
   with words of its own"), so the ones re-run are those whose printout matches the record line for line
-  (`Cikis2` in both formulas, the parts left on `çıkış`; `.func vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`). The other "(no rawfile data)" lines (non-ascii-node-4 and -14, and 22 in
-  numbers-and-syntax.md) were re-run too: ngspice writes no file there, so they stay. The records cannot be run
+  (`Cikis2` in both formulas, the parts left on `çıkış`; `.func vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`).
+  The other "(no rawfile data)" lines (non-ascii-node-4 and -14, and 22 in numbers-and-syntax.md) were re-run
+  too: ngspice writes no file there, so they stay. The records cannot be run
   in a test, so `tests/unit/facts-records.test.ts` pins them: each corrected fact's lines, and that "(no rawfile
   data)" is left in traps.md only in non-ascii-node-4 and -14 (9 tests, which fail on 3e61833).
 - **A run with a results file is recorded with what it prints** (integration check P5). 43 variant runs of 13
@@ -131,7 +132,8 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   `ngspice -b` prints. Re-run in native 47 and 42 with `-b -r` (three times each) and with `-b`: with `-b -r` it is
   printed in none of the 43, and every other recorded line is printed in order; with `-b` it is printed in all 43.
   The line is taken out. We chose this over keeping it marked as `-b`'s, which the reviewer also offered: those
-  blocks record `-b -r` runs only, and each fact's own `-b` printout already shows that line. missing-fields-10's
+  blocks record the `-b -r` runs only, and one line of the `-b` run among them would be a part of a printout they
+  do not show (PlainSpice runs as `-b -r`). missing-fields-10's
   two runs without a bracket said native 47 "did not finish in 30 s"; it crashes (SIGSEGV, exit 139) in each of 10
   runs, whether its input is closed or left open, so the record now says the crash, with the earlier stopped run
   beside it. missing-fields-9, whose netlist crashes the same way (6 of 6), already says both in its words, so its
