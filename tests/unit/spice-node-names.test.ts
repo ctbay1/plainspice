@@ -148,4 +148,20 @@ describe('ngspice\'s name for a node inside a subcircuit (x1.çıkış) gets no 
     const none = checkTraps(parseNetlist(sub('m', `R3 in 0 1k\n.tf v(x1.${T}) V1`).replace(`.tf v(x1.m.`, '.tf v(x1.')));
     expect(none.find((t) => t.id === 'non-ascii-node')?.why ?? '').not.toContain("is ngspice's name for");
   });
+  it.each([
+    [`x1.${TC} for the subcircuit's ${T}`, T, `x1.${TC}`, ''],
+    [`x1.${T} for the subcircuit's ${TC}`, TC, `x1.${T}`, ''],
+    [`x1.x2.${TC} for ${T} two subcircuits down`, T, `x1.x2.${TC}`, 'x2'],
+  ])('%s, another capital letter: ngspice reads the same node (x1.____k____), so the same warning and no rename (the round-1 critic of these fixes; non-ascii-node-32)', (_what, node, name, nested) => {
+    const subs = nested
+      ? `X1 in 0 outer\n.subckt outer p q\nX2 p q div\n.ends\n.subckt div a b\nR1 a ${node} 1k\nR2 ${node} b 1k\n.ends\n`
+      : `X1 in 0 div\n.subckt div a b\nR1 a ${node} 1k\nR2 ${node} b 1k\n.ends\n`;
+    const at = nested ? 7 : 4;
+    for (const reader of [`R3 in 0 1k\n.tf v(${name}) V1`, `.save v(${name}) v(in)\nR3 in 0 1k`, `B1 o 0 V={v(${name})*2}\nR3 o 0 1k`]) {
+      const own = checkTraps(parseNetlist(`* t\nV1 in 0 10\n${subs}${reader}\n.op\n.end\n`)).filter((t) => t.id === 'non-ascii-node');
+      expect(own.map((t) => t.severity), reader).toEqual(['warning']);
+      expect(own[0]!.why, reader).toContain(`${name} is ngspice's name for node ${node} of the subcircuit div (from line ${at}): a rename here alone would name a node nothing connects to`);
+      expect(own[0]!.fixes, reader).toEqual([]);
+    }
+  });
 });

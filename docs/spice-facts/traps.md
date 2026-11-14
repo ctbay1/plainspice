@@ -15051,6 +15051,44 @@ the same divider with .tf v(Çıkış,çıkış) V1 after .op, in place of B1 an
 
 PlainSpice's checks: `non-ascii-node` (the error of non-ascii-node-2, "Node Çıkış and node çıkış are one node for ngspice", with the fix "Write Cikis for Çıkış and cikis2 for çıkış"), for the .tf too.
 
+### non-ascii-node-32. x1.Çıkış, written with another capital letter than the subcircuit's çıkış, is the same node for ngspice: no rename of that name alone either
+
+Added after the round-1 critic of the integration check's fixes (14 November 2026). ngspice spells x1.Çıkış and x1.çıkış alike, x1.____k____, so a .tf, a `.save` or a formula that writes the subcircuit's node çıkış with a capital letter reads that node, as non-ascii-node-30's x1.çıkış does: the .tf gives 0.5 and 500 Ω, the formula reads 5 V. The checks matched such a name by its ASCII letters only, so they offered "Rename node x1.Çıkış to x1.Cikis", which changes the .tf alone and points it at a node nothing connects to (0 and 1 Ω), and gave a formula that reads it the error that no part connects to it (ngspice stops with 'singular matrix', non-ascii-node-26), though ngspice runs it. Now a name that reaches a subcircuit's node as ngspice spells it gets non-ascii-node-30's warning, which names the node as the subcircuit writes it, with no fix; the same holds the other way round (x1.çıkış for a subcircuit's Çıkış) and two subcircuits down (x1.x2.Çıkış).
+
+```spice
+* B formula reads the inner node with a capital letter
+V1 in 0 10
+X1 in 0 div
+.subckt div a b
+R1 a çıkış 1k
+R2 çıkış b 1k
+.ends
+B1 o 0 V={v(x1.Çıkış)*2}
+R3 o 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 10, v(x1.____k____) = 5, v(o) = 10, i(b1) = -0.01, i(v1) = -0.005
+ngspice 42: the same exit code and rawfile values as ngspice 47 (-b: exit 0 too)
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: the same values as ngspice 47
+the same subcircuit read by .tf v(x1.Çıkış) V1 after .op, in place of B1 and R3:
+    ngspice 47, ngspice -b (exit 0):
+        transfer_function = 5.000000e-01
+        output_impedance_at_v(x1.____k____) = 5.000000e+02
+        v1#input_impedance = 2.000000e+03
+    ngspice 42, ngspice -b (exit 1): Error: no data saved for transfer function analysis; analysis not run
+    ngspice 47 and 42, -b -r (exit 0), and our engine: v(in) = 10, v(x1.____k____) = 5, i(v1) = -0.005; v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(x1.____k____)) = 500
+    the same values for .tf v(x1.çıkış) V1 with the subcircuit's node written Çıkış, and for .tf v(x1.x2.Çıkış) V1 with X1 using a subcircuit whose X2 uses div (v(x1.x2.____k____) = 5, v(output_impedance_at_V(x1.x2.____k____)) = 500)
+    the .tf alone renamed, .tf v(x1.Cikis) V1 (what the old fix wrote): ngspice 47 and 42 (-b -r, exit 0) and our engine: v(x1.____k____) = 5, v(x1.cikis) = 0, v(Transfer_function) = 0, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(x1.cikis)) = 1
+.save v(x1.Çıkış) v(in) in place of B1 and R3: ngspice 47 and 42 (-b and -b -r, exit 0) and our engine: v(x1.____k____) = 5, v(in) = 10
+```
+
+PlainSpice's checks: `non-ascii-node` (non-ascii-node-30's warning with no fix), for the .tf and the `.save` too. On the .tf line the `tf-problems` error ".tf asks about node x1.Çıkış, which is not in the circuit" also stays, which is not what ngspice does here: decision 0016 records it as open.
+
 ## invisible-character
 
 Added after the final reviews of 12 November 2026 (security review F2). An invisible character (a

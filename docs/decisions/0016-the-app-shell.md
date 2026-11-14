@@ -744,3 +744,18 @@ The round-1 critic of these fixes found four more, each run the same way (14 Nov
   formula, `.func`, `.ic`, `.pz`, `.print` and `.save` alike, each a line that names the spellings as two
   nodes; a line that names one of them keeps the warning. The scan no longer needs `subcircuitLines` (a
   node's refs leave subcircuits' lines out), so `traps.ts` imports from `graph.ts` as at 3e61833.
+- **ngspice's name for a node inside a subcircuit, written with another capital letter** (P2 of the
+  regression lens, not covered). The warning without a rename reached only names `innerNode` finds, which
+  keys names by their ASCII letters: `x1.Çıkış` for the subcircuit's `çıkış` (both `x1.____k____` for
+  ngspice, one node: 0.5 and 500 Ω) still got "Rename node x1.Çıkış to x1.Cikis", which renames the `.tf`
+  alone (0 and 1 Ω), and a formula reading it got the error that no part connects to it (ngspice runs it:
+  10 V). Now, where `innerNode` finds nothing, the name's last words are matched by ngspice's spelling
+  against the nodes the subcircuits' own lines name (`innerNodeSpelled` in `traps.ts`, the checks' owner
+  rule), and such a name gets the same warning with no fix, both ways round and nested (non-ascii-node-32).
+  Chosen over the critic's more conservative "no rename for any dotted name whose first word is an X line":
+  that would also take the rename from a name that reaches no node at all, and could not say which node a
+  name reaches. Left open (the subckt lane's A3h, C3-6): `tf-problems` (".tf asks about node x1.Çıkış,
+  which is not in the circuit … 0 … 1 Ω"), the run's "x1.Çıkış is not a node of the circuit … these .tf
+  numbers mean nothing" and Explain's note "ngspice says nothing and reports a transfer function of 0" still
+  key such a name by its ASCII letters, so on that `.tf` they say ngspice reads a node with nothing on it,
+  where it reads the subcircuit's node and gives 0.5 and 500 Ω.

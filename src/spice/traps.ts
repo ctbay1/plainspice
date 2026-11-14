@@ -192,6 +192,8 @@ interface Ctx {
   formulaReaders?: Map<number, number>;
   /** ngspice's spellings of the nodes parts after a plain .end name, read with formulaReaders. */
   afterEndSpellings?: Set<string>;
+  /** ngspice's spellings of the nodes a subcircuit's own lines name, to their keys (innerNodeSpelled). */
+  innerSpellings?: Map<string, string[]>;
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
@@ -3753,8 +3755,36 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
  * formulaOnlyNode either: its node has the subcircuit's parts. Undefined for any other name.
  */
 function innerNodeWords(c: Ctx, info: NodeInfo): string | undefined {
-  const inner = info.connections.length === 0 ? innerNode(c.n, info.name) : undefined;
+  const inner = info.connections.length === 0 ? innerNodeSpelled(c, info.name) : undefined;
   return inner && ` ${info.refs[0]!.text} is ngspice's name for ${nodeIn(inner.node.token.text)} of the subcircuit ${inner.subcircuit} (from line ${inner.line + 1}): a rename here alone would name a node nothing connects to, so rename it on that subcircuit's lines and here together.`;
+}
+
+/**
+ * innerNode, or where the name as written reaches no node, the node a subcircuit's own lines write as ngspice spells
+ * the name's last words, which ngspice reads it as (the owner rule): x1.Çıkış is x1.____k____ for ngspice, the node
+ * çıkış of the subcircuit X1 uses, as x1.çıkış is (non-ascii-node-32; the round-1 critic of the integration check's
+ * fixes). innerNode keys names by their ASCII letters only.
+ */
+function innerNodeSpelled(c: Ctx, name: string): ReturnType<typeof innerNode> {
+  const exact = innerNode(c.n, name);
+  if (exact || /^[\x20-\x7e]*$/.test(name)) return exact;
+  if (!c.innerSpellings) {
+    c.innerSpellings = new Map();
+    for (const i of c.graph.inSubcircuit) {
+      for (const r of c.n.lines[i]!.element!.nodes) {
+        const keys = c.innerSpellings.get(ngspiceSpelling(r.name));
+        if (!keys) c.innerSpellings.set(ngspiceSpelling(r.name), [r.name]);
+        else if (!keys.includes(r.name)) keys.push(r.name);
+      }
+    }
+  }
+  for (let dot = name.indexOf('.'); dot >= 0; dot = name.indexOf('.', dot + 1)) {
+    for (const key of c.innerSpellings.get(ngspiceSpelling(name.slice(dot + 1))) ?? []) {
+      const node = key === name.slice(dot + 1) ? undefined : innerNode(c.n, name.slice(0, dot + 1) + key);
+      if (node) return node;
+    }
+  }
+  return undefined;
 }
 
 /**
