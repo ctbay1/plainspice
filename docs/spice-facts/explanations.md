@@ -53,8 +53,8 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   is a wire that measures its current (P9).
 - In `.op` and `.dc` a capacitor is an open circuit and an inductor a short circuit (P11, P12, A31).
 - ngspice 47 turns 0 Ω (and anything below 1e-12 Ω in size) into 1e-12 Ω, or −1e-12 Ω for a negative value,
-  with a warning, and currents next to it can come out inaccurate (P13, P24, P24b; zero-ohm-7, zero-ohm-9 in
-  traps.md). Any other negative resistance is accepted silently (P14). An R, C or L with
+  with a warning, and currents next to it can come out inaccurate (P13, P24, P24b, P24c; zero-ohm-7, zero-ohm-9
+  in traps.md). Any other negative resistance is accepted silently (P14). An R, C or L with
   nothing after its nodes is dropped with a warning (with settings but no value it is kept:
   missing-value-8 to -10 in traps.md); a source with no value is 0, with a note (P15, P15b, P16).
 - In `.op`, a PULSE, SIN, PWL or EXP source without a DC value uses its value at time 0 (P17); an AC
@@ -1114,6 +1114,52 @@ our engine (wasm), as ngspice -b -r (exit 0):
     Warning: Value of resistor r1 is too small, set to 1.000000e-12
   vectors: v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
   diagnostics: resistor-too-small (r1)
+```
+
+### P24c. Exactly 1e-12 Ω, or −1e-12 Ω, is kept without a warning: only a value closer to 0 gets ngspice 47's warning
+
+Added after the round-1 critic of the integration check's fixes (14 November 2026, C1-1), for where Explain's
+notes on a resistance this close to 0 begin. 1 A goes into each resistor, so each node sits at the resistance
+ngspice uses. Both versions keep exactly 1e-12 Ω and −1e-12 Ω and say nothing. One part in a million closer
+to 0, at ±0.999999e-12 Ω, ngspice 47 warns and uses ±1e-12 Ω, as for 3a (P24) and −3e-18 (zero-ohm-7 in
+traps.md), where ngspice 42 keeps the value without a word. So the Checks, the Numbers panel and Explain say
+nothing of R1 and R2 being too small, and Explain gives R2 the note of P14, "ngspice accepts a negative
+resistance without a message".
+
+```spice
+* 1e-12 ohm and -1e-12 ohm are kept, a millionth closer to 0 is not, 1 A into each
+I1 0 n1 1
+R1 n1 0 1e-12
+I2 0 n2 1
+R2 n2 0 -1e-12
+I3 0 n3 1
+R3 n3 0 0.999999e-12
+I4 0 n4 1
+R4 n4 0 -0.999999e-12
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        n4                               -1.00000e-12
+        n3                               1.000000e-12
+        n2                               -1.00000e-12
+        n1                               1.000000e-12
+    Warning: Value of resistor r3 is too small, set to 1.000000e-12
+    Warning: Value of resistor r4 is too small, set to -1.000000e-12
+  rawfile from ngspice -b -r (exit 0): v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 1e-12, v(n4) = -1e-12
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        n4                               -9.99999e-13
+        n3                               9.999990e-13
+        n2                               -1.00000e-12
+        n1                               1.000000e-12
+  rawfile from ngspice -b -r (exit 0): v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 9.99999e-13, v(n4) = -9.99999e-13
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Value of resistor r3 is too small, set to 1.000000e-12
+    Warning: Value of resistor r4 is too small, set to -1.000000e-12
+  vectors: v(n1) = 1e-12, v(n2) = -1e-12, v(n3) = 1e-12, v(n4) = -1e-12
+  diagnostics: resistor-too-small (r3), resistor-too-small (r4)
 ```
 
 ### P3b. With a SIN as well, .op uses the source's value and .tran follows the SIN from time 0

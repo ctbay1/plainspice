@@ -348,6 +348,17 @@ describe('values in plain units, with the traps in their spelling', () => {
     expect(notes(value('1e-15'))).toContain('ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω');
   });
 
+  it('the edge: exactly 10⁻¹² Ω, or −10⁻¹² Ω, is kept without a warning, and one part in a million closer to 0 is not (round-1 critic C1-1; P24c)', () => {
+    // Native 47 and 42 print no warning at ±1e-12 and keep the value; 47 warns for ±0.999999e-12 and uses ±1e-12 (P24c).
+    const tiny = /ngspice 47 (raises|uses)/;
+    expect(notes(value('-1e-12'))).toContain('ngspice accepts a negative resistance without a message.');
+    expect(notes(value('-1e-12'))).not.toMatch(tiny);
+    expect(notes(value('1e-12'))).not.toMatch(tiny);
+    expect(notes(value('0.999999e-12'))).toContain('ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω');
+    expect(notes(value('-0.999999e-12'))).toContain(`ngspice 47 uses ${MINUS}10⁻¹² Ω for a negative resistance this close to 0`);
+    expect(notes(value('-0.999999e-12'))).not.toContain('without a message');
+  });
+
   it('a second number replaces the first on an R line, and the note says why (V2, N9, N13)', () => {
     const comma = line('* t\nR1 n1 0 1,5k\n', 2);
     expect(rows(comma).slice(3)).toEqual([

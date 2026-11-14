@@ -933,3 +933,13 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   decision record's sections after the last pass is in the code (43 names here; on 3e61833 it finds that table's
   name missing), and that the README names every C8b, C9w, C9x and C9y fact of explanations.md, by itself or in a
   range (on 3e61833, all 27 are missing).
+- **Where Explain's notes on a resistance this close to 0 begin, run and pinned** (the round-1 critic of these
+  fixes, C1-1). Explain's notes for such a value start below 10⁻¹² Ω in size (`Math.abs(v) < 1e-12` in
+  `src/spice/explain.ts`), and no test held that edge: with `<=` every test still passed, and Explain would say
+  of `R1 n1 0 -1e-12` that ngspice 47 warns and uses −10⁻¹² Ω, where native ngspice 47 prints nothing. P24c in
+  explanations.md is new: native ngspice 47 and 42 keep exactly 1e-12 Ω and −1e-12 Ω without a word, and one part
+  in a million closer to 0 (±0.999999e-12 Ω) ngspice 47 warns and uses ±1e-12 Ω, where ngspice 42 keeps the value
+  silently. Tests: `tests/unit/spice-explain.test.ts` (−1e-12 gets P14's note and 1e-12 no note of a tiny value;
+  ±0.999999e-12 get theirs) and `tests/golden/facts-explain.test.ts` (P24c's run: no warning for R1 and R2, and
+  neither the Checks, the Numbers panel nor Explain calls them too small, where each does for R3 and R4). Both
+  fail with `<=`; the golden one also fails if the zero-ohm check's edge moves the same way.

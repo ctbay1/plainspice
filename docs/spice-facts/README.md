@@ -347,3 +347,8 @@ header with 0 points where they said "no rawfile data" (non-ascii-node-4 and -14
 `-b`'s "Error: incomplete or empty netlist" under `-b -r`, 40 of them now one "ngspice 47 and 42" entry, as
 the two print the same; and missing-fields-9's run and missing-fields-10's two runs without a bracket, where
 native 47 with a results file crashes (SIGSEGV) in every run and the records said it never finished.
+
+After the round-1 critic of those fixes (the same day, the same versions and modes): P24c in explanations.md
+(both versions keep exactly 1e-12 Ω or −1e-12 Ω without a warning; only a value closer to 0, such as
+±0.999999e-12 Ω, gets ngspice 47's warning and ±1e-12 Ω, so Explain's notes on a resistance this close to 0
+begin there), with rows in `tests/golden/facts-explain.test.ts`.
