@@ -38,7 +38,8 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 - Look in the folder for the results file, and read it, before writing what it holds: where a run stops,
   ngspice often still writes a plot's header with 0 points ("a … plot with 0 points, its header only (no
   results)"), which is not "no rawfile" (16 records in traps.md said no file or no data where ngspice
-  wrote one, until 13 November 2026).
+  wrote one, until 13 November 2026, and 12 lines of 8 facts added that day said "no rawfile data", until
+  14 November).
 - For `.tran`, compare 42's whole time vector with 47's, not only the number of points and the values at
   the times printed: 42's last point before a corner of a source, or before the end, can sit elsewhere,
   and after a corner the two grids can part for good (P18, A17, A18). Say which points differ.
@@ -308,3 +309,48 @@ lines, and the `.hdl` and `.biaschk` lines ngspice 47 drops; not after a `*`, `$
 and in a `.control` block a `$` starts a comment only before a blank (on every line when the `.control` and
 `.endc` lines are not as many). The note and Explain's `.op` note follow these rules too.
 
+
+## The last pass of 13 November 2026 (the noise lane)
+
+Run the same way on 13 November 2026 (native ngspice 47 and 42, `-b` and `-b -r`, and our engine), each with
+rows in `tests/golden/facts-explain.test.ts`; decision 0015 records what each fix chose. In explanations.md: C8b
+(with savecurrents ngspice saves a current for each terminal of a transistor, named by its letters: a BJT's
+[ic], [ib], [ie] and [is], its substrate's, where a MOSFET's or a JFET's [is] is its source's; the model's own
+quantities), and C9w to C9w.14 (a .temp line, a DC value beside a transient function or m=1 leave every double as
+it is, so such circuits are solved exactly; a source whose only partner at a node is a resistor ngspice gives
+exactly 0 A carries 0 by the rule too; a node proven real proves the current of a resistor from it to ground; no
+floor excuses a value drawn with other digits than its exact value; what ngspice's arithmetic can leave grows with
+how far apart the circuit's conductances are; with a .save line that keeps only some values, the page's digits
+alone; beside a diode, the rule's note for the tiny values it cannot tell from noise; a .tf ratio is judged as the
+.op beside it; a sweep's point at the .op's own state shows what the .op shows). After the round-1 critic of those
+fixes: C9x to C9x.6 (an amplifier's gain counted in the check that ngspice simulated this circuit; conductances
+further apart than the largest double; a `+` line after `.end` that makes ngspice's circuit another one, decided
+by the rule; a sweep's point at the .op's state found within its step's rounding; a .tf beside the rule's .op
+gets a note; a .control block that only runs, modelled exactly). After the round-2 critic: C9y to C9y.6 (a sweep's
+point named by ngspice's own value where a value there reads otherwise than at the value its steps say, and what
+its note says; near a series' own 0 the page draws the exact digits; each part of the circuit gets its own
+allowance in that check). Records changed: C9o.5 and C9r.3 write ngspice's own gmin (`.options gmin=1e-12`, the
+same doubles) where they had a `.temp 27` line, which PlainSpice now models exactly; C9d, C9l, C9o.4, C9t.3 and
+C9t.7 say what the exact path and the rule do since these fixes. This section was added after the integration
+check of 14 November 2026 (X6): the noise lane had recorded them in explanations.md and decision 0015 only.
+
+## The integration check of 14 November 2026 (the records lane)
+
+Run the same way on 14 November 2026: P24b in explanations.md (a 0 Ω resistor fed by a current source carries
+exactly that current, in ngspice 47 at 1e-12 Ω and in ngspice 42 at 1 mΩ, so the currents next to a resistor
+ngspice 47 cannot use "can" come out inaccurate, as the Numbers panel and Explain now say, with −10⁻¹² Ω for a
+negative value as in zero-ohm-7), with rows in `tests/golden/facts-explain.test.ts`. Records corrected after native re-runs,
+pinned by `tests/unit/facts-records.test.ts`: the results file of 12 lines in 8 traps.md facts (nbsp-8,
+non-ascii-node-15, -20, -25, -26, invisible-character-68, look-alike-letter-19, space-character-32), a plot's
+header with 0 points where they said "no rawfile data" (non-ascii-node-4 and -14, which write no file, now say
+"(no rawfile)", as traps.md does elsewhere); 43 variant runs of 13 traps.md facts that listed plain
+`-b`'s "Error: incomplete or empty netlist" under `-b -r`, 40 of them now one "ngspice 47 and 42" entry, as
+the two print the same; and missing-fields-9's run and missing-fields-10's two runs without a bracket, where
+native 47 with a results file crashes (SIGSEGV) in every run and the records said it never finished.
+
+After the round-1 critic of those fixes (the same day, the same versions and modes): P24c in explanations.md
+(both versions keep exactly 1e-12 Ω or −1e-12 Ω without a warning; only a value closer to 0, such as
+±0.999999e-12 Ω, gets ngspice 47's warning and ±1e-12 Ω, so Explain's notes on a resistance this close to 0
+begin there), with rows in `tests/golden/facts-explain.test.ts`; and P14's heading, which now says "such as −2 Ω",
+with a sentence on a negative value closer to 0 than 1e-12 Ω (zero-ohm-7), pinned by
+`tests/unit/facts-records.test.ts`.

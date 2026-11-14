@@ -756,9 +756,12 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   skeptic of the problem found the same message misquoted on sources: `V1 n2 0 dc 5 p`, `V1 n2 0 5 i`,
   `I2 0 n1 1 p` and `I2 0 n1 1 v` got "unknown parameter (p)", where native 47 and 42 say "no such
   parameter on this device…", as V's i and p and I's v and p are values the source can only report;
-  the checks now say so (`SOURCE_REPORTS` in `src/spice/traps.ts`: the parser's tables, which the
-  editor's highlighting shares, are left as they are), from runs recorded beside space-before-suffix-12
-  and unknown-word-6. We chose naming each version over the skeptic's other way, quoting under plain
+  the checks now say so, from the source tables of `src/spice/parse.ts` (`isReportOnlyParameter`, which
+  Explain reads too), since the round-1 critic's C4 below. This fix first gave the checks a table of their
+  own in `src/spice/traps.ts` and left the parser's tables as they were; an earlier version of this bullet
+  still said so (corrected after the integration check, X6). The runs are recorded as
+  space-before-suffix-20 and unknown-word-57 (first beside space-before-suffix-12 and unknown-word-6). We
+  chose naming each version over the skeptic's other way, quoting under plain
   "ngspice" only the words both versions print ("no such parameter on this device", "no simulations
   run"), which is shorter: the texts beside these already name each version where the two differ
   (invisible-character-46 with this very message, the .dc checks, zero-ohm), the ngspice output panel
@@ -792,7 +795,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   for 0, which neither version does. The why is now ngspice 47's floor, in the Numbers panel's words:
   "ngspice 47 cannot use a resistance below 10⁻¹² Ω: it uses 10⁻¹² Ω instead, and the currents next to
   it can come out inaccurate" ("this close to 0" and −10⁻¹² Ω for a negative value). "Can", where the
-  Numbers panel says "come out": where a current source sets the current, the resistor carries exactly
+  Numbers panel said "come out" (it says "can" and the value used too since the integration check, P4
+  below): where a current source sets the current, the resistor carries exactly
   it in both versions; in series with 1 kΩ across 6 V, ngspice 47 gives the source 5.859 mA for 6 mA and
   ngspice 42 gives 0 A (zero-ohm-9). The why for a 0 stays the arithmetic one.
 - **One card for a Greek μ in such a value** (C6). zero-ohm leaves a value another check explains to that
@@ -888,3 +892,66 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   could not run: Line 5: …" (rc3: "The plot comes once ngspice has run this netlist."), with no sideways
   scroll and the zoom where it was.
 
+
+## After the integration check (14 November 2026)
+
+- **The Numbers panel and Explain say of "is too small" what the zero-ohm check says** (integration check P4). The
+  note for ngspice 47's warning ("Value of resistor … is too small, set to …") said "it uses 10⁻¹² Ω instead, and
+  the currents next to it come out inaccurate" for every resistor. The zero-ohm check on the same page says of
+  −3 aΩ "it uses −10⁻¹² Ω instead, and the currents next to it can come out inaccurate", as native ngspice 47
+  does ("set to -1.000000e-12", zero-ohm-7) and as the runs show (zero-ohm-9: where a current source sets the
+  current, the resistor carries exactly it). The note now takes the sign from ngspice's own line: for a negative
+  value it says the check's words ("ngspice 47 cannot use a resistance this close to 0: it uses −10⁻¹² Ω
+  instead"), for 0 and the rest it keeps "0 Ω (or anything below 10⁻¹² Ω)" and "10⁻¹² Ω", and both say "can come
+  out inaccurate". P24b in explanations.md is new: a 0 Ω resistor fed by a current source carries exactly that
+  current in ngspice 47 (at 1e-12 Ω) and 42 (at 1 mΩ), so "can" holds for a 0 as well (P13 shows the "can": 5.859
+  mA for 6 mA). Not taken: the reviewer's one sentence for both signs ("10⁻¹² Ω (−10⁻¹² Ω for a negative value)"),
+  which gives every student both values where ngspice's line already says which one it used; and reading the sign
+  from the part's value, which a `.param` or a resistor inside a subcircuit (`r.x1.r1`) makes harder to find, where
+  ngspice's line always has it. Tests: `tests/unit/spice-describe.test.ts` (the words for each sign, and without
+  ngspice's line; fails on 3e61833), `tests/golden/facts-explain.test.ts` (P24b's run; the words on the runs of P13,
+  P24 and P24b) and `tests/golden/facts-traps-last-pass.test.ts` (on zero-ohm-9's runs the note says what the check
+  says); with 3e61833's `describe.ts`, 5 of these golden tests fail (zero-ohm-9's three runs, the words on P13, P24
+  and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a below). Explain's notes on such a line
+  (`src/spice/explain.ts`, unchanged since fix-base) said a third
+  thing on the same page, as the skeptic of the problem found: for −3e-18, "ngspice accepts a negative resistance
+  without a message" and "ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω", where ngspice 47 warns and
+  uses −10⁻¹² Ω; and for 0, "the currents next to it come out inaccurate". A negative value closer to 0 than
+  10⁻¹² Ω now gets its own note, "ngspice 47 uses −10⁻¹² Ω for a negative resistance this close to 0, with a
+  warning", and no "without a message", which stays for any other negative resistance (−2 Ω: P14); the note
+  for 0 says "can". Tests: `tests/unit/spice-explain.test.ts` (−3e-18, −3a and −0.5p; −2 and 1e-15 as before;
+  the note for 0), and in `tests/golden/facts-explain.test.ts` an engine run of each of 0, 1f, −3e-18, 3a and
+  −3a, on which the Checks, the Numbers panel and Explain name the value ngspice 47 used and none says "come out
+  inaccurate" without "can" or "without a message" (it fails with 3e61833's `explain.ts` alone, and with both
+  files).
+- **The records say where the code is** (integration check X6). The F10 bullet above named a table of the checks'
+  own in `src/spice/traps.ts`, SOURCE_REPORTS, and said the parser's tables were left as they were; its own C4/C5
+  bullet had since moved those values into the parser's source tables (`isReportOnlyParameter` in
+  `src/spice/parse.ts`), and no such table is left. The bullet now says where they are, keeping what the first fix
+  did, as this record does elsewhere. The facts README had no section for the noise lane's facts of the last pass
+  (C8b, C9w to C9w.14, C9x to C9x.6, C9y to C9y.6, and the C9 records it changed); it has one now, after the other
+  lanes' sections. Tests: `tests/unit/facts-records.test.ts` checks that each code name written in backticks in a
+  decision record's sections after the last pass is in the code (43 names here; on 3e61833 it finds that table's
+  name missing), and that the README names C8b and every C9 fact of explanations.md, by itself or in a range (on
+  3e61833, the 27 of C8b, C9w, C9x and C9y are missing).
+- **Where Explain's notes on a resistance this close to 0 begin, run and pinned** (the round-1 critic of these
+  fixes, C1-1). Explain's notes for such a value start below 10⁻¹² Ω in size (`Math.abs(v) < 1e-12` in
+  `src/spice/explain.ts`), and no test held that edge: with `<=` every test still passed, and Explain would say
+  of `R1 n1 0 -1e-12` that ngspice 47 warns and uses −10⁻¹² Ω, where native ngspice 47 prints nothing. P24c in
+  explanations.md is new: native ngspice 47 and 42 keep exactly 1e-12 Ω and −1e-12 Ω without a word, and one part
+  in a million closer to 0 (±0.999999e-12 Ω) ngspice 47 warns and uses ±1e-12 Ω, where ngspice 42 keeps the value
+  silently. Tests: `tests/unit/spice-explain.test.ts` (−1e-12 gets P14's note and 1e-12 no note of a tiny value;
+  ±0.999999e-12 get theirs) and `tests/golden/facts-explain.test.ts` (P24c's run: no warning for R1 and R2, and
+  neither the Checks, the Numbers panel nor Explain calls them too small, where each does for R3 and R4). Both
+  fail with `<=`; the golden one also fails if the zero-ohm check's edge moves the same way.
+- **P14 says which negative resistance** (C1-3). Its heading said "A negative resistance is accepted without a
+  message", which ngspice 47 does not do for one closer to 0 than 1e-12 Ω: it warns and uses −1e-12 Ω (zero-ohm-7,
+  re-run in native 47 and 42 with P14's own netlist). The heading now says "such as −2 Ω", and a sentence says that
+  one closer to 0 is the exception, as the introduction of explanations.md and Explain's notes do; P14's netlist,
+  runs and golden row are unchanged. Test: `tests/unit/facts-records.test.ts` (fails on 3e61833).
+- **The README test reads every C9 label** (C1-2). It read only C8b, C9w, C9x and C9y, so a lane that adds C9
+  facts without the README's line for them passed it: the noise lane adds C9z to C9z.6 on its own branch this round,
+  and a scratch merge of its explanations.md with this branch passed the old test with those six unindexed. The
+  test now reads every C9 label in explanations.md, and a range may cross families, as "C9m to C9v.8" does; on that
+  merge it fails and names the six. They are not indexed here, as their facts are not on this branch: the README's
+  section for the noise lane needs a line for them when the lanes are merged.

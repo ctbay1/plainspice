@@ -137,3 +137,182 @@ describe('each fact’s ID heads one section in docs/spice-facts', () => {
     expect(where.size).toBeGreaterThan(600);
   });
 });
+
+describe('P6 (integration check, 14 November 2026): a header-only results file is said as it is in the formulas lane’s facts too', () => {
+  const OP = 'an Operating Point plot with 0 points, its header only (no results)';
+  const TRAN = 'a Transient Analysis plot with 0 points, its header only (no results)';
+  const count = (text: string, part: string): number => text.split(part).length - 1;
+  // Each run re-run with `ngspice -b -r` in native 47 and 42 and its file read: a plot's header and 0 points, no Binary:
+  // section (47: 186 to 234 bytes, 42: 130 to 178, by the length of the title; the variants' netlists as the formulas
+  // lane's spec files give them). The base run's line, then the variants' lines.
+  it.each([
+    ['nbsp-8', 1, 0],
+    ['non-ascii-node-15', 1, 0],
+    ['non-ascii-node-20', 1, 0],
+    ['non-ascii-node-25', 1, 0],
+    ['non-ascii-node-26', 2, 0],
+    ['invisible-character-68', 1, 0],
+    ['look-alike-letter-19', 1, 0],
+    ['space-character-32', 2, 2],
+  ] as const)('%s', (id, op, tran) => {
+    const section = sections('traps.md').get(id)!;
+    expect(section).not.toContain('(no rawfile data)');
+    expect([count(section, OP), count(section, TRAN)]).toEqual([op, tran]);
+  });
+
+  it('traps.md never says "(no rawfile data)": "(no rawfile)" where ngspice writes no file (non-ascii-node-4, -14), a header-only plot where it writes one', () => {
+    const left = [...sections('traps.md')].filter(([, text]) => text.includes('(no rawfile data)')).map(([id]) => id);
+    expect(left).toEqual([]);
+    for (const id of ['non-ascii-node-4', 'non-ascii-node-14']) expect(sections('traps.md').get(id), id).toContain('    rawfile: (no rawfile)');
+  });
+});
+
+describe('P5 (integration check, 14 November 2026): a run with a results file is recorded with what it prints, not with plain -b’s lines', () => {
+  // "Error: incomplete or empty netlist" is printed by `ngspice -b` alone. Re-run in native 47 with -b -r, the 43
+  // variant runs of 13 facts that listed it under "ngspice 47, -b -r" print every other recorded line, and not that one.
+  it('no line recorded under a "-b -r" label in traps.md is that plain -b line', () => {
+    const lines = read('traps.md').split('\n');
+    const under: string[] = [];
+    let id = '';
+    lines.forEach((line, i) => {
+      id = HEADING.exec(line)?.[1] ?? id;
+      if (!line.includes('incomplete or empty netlist')) return;
+      // The label a printed line belongs to: the nearest line above it with less indentation.
+      const indent = line.length - line.trimStart().length;
+      let j = i - 1;
+      while (j >= 0 && (lines[j]!.trim() === '' || lines[j]!.length - lines[j]!.trimStart().length >= indent)) j -= 1;
+      if (/-b -r/.test(lines[j] ?? '')) under.push(`${id}, line ${i + 1}: ${lines[j]!.trim()}`);
+    });
+    expect(under).toEqual([]);
+  });
+
+  it('missing-fields-9 and -10: with one word and no bracket, native 47 with a results file crashes in every run, where the records said it never finished', () => {
+    // Every run crashed within milliseconds (exit 139, SIGSEGV), with its input closed or open; the generator of the
+    // records wrote "did not finish in 30 s" for any run without an exit code, which is how a crash comes back.
+    const ten = sections('traps.md').get('missing-fields-10')!;
+    expect(ten.split('ngspice 47, -b -r (exit signal SIGSEGV): (no rawfile), a crash right after "No circuit loaded!", in every run').length - 1).toBe(2);
+    const nine = sections('traps.md').get('missing-fields-9')!;
+    expect(nine).toContain('ngspice -b -r out.raw (exit signal SIGSEGV), a crash right after "No circuit loaded!", in every run');
+    for (const section of [nine, ten]) expect(section).not.toMatch(/exit null|did not finish|never finished/);
+  });
+
+  it('no variant run in traps.md gives ngspice 47 and ngspice 42 the same entry twice: where the two print the same, one entry says so', () => {
+    // Without plain -b's line, 40 of those 43 runs printed the same in both versions under -b -r, written apart.
+    const lines = read('traps.md').split('\n');
+    const indent = (line: string): number => line.length - line.trimStart().length;
+    const entry = (at: number): string[] => {
+      const out = [lines[at]!.replace(/ngspice 4[27], /, '')];
+      for (let i = at + 1; i < lines.length && lines[i]!.trim() !== '' && indent(lines[i]!) > indent(lines[at]!); i += 1) out.push(lines[i]!);
+      return out;
+    };
+    const twice: string[] = [];
+    let id = '';
+    lines.forEach((line, i) => {
+      id = HEADING.exec(line)?.[1] ?? id;
+      if (!/^\s+ngspice 47, -b -r \(/.test(line)) return;
+      const next = i + entry(i).length;
+      if (/^\s+ngspice 42, -b -r \(/.test(lines[next] ?? '') && entry(i).join('\n') === entry(next).join('\n')) twice.push(`${id}, line ${i + 1}`);
+    });
+    expect(twice).toEqual([]);
+  });
+});
+
+describe('X6 (integration check, 14 November 2026): the records name code that exists, and the facts README indexes the noise lane’s facts', () => {
+  const repo = resolve(import.meta.dirname, '../..');
+  /** The text of every source file (not generated ones, nor this file, which names no code to be found). */
+  function code(): string {
+    const out: string[] = [];
+    const walk = (folder: string): void => {
+      for (const entry of readdirSync(join(repo, folder), { withFileTypes: true })) {
+        const path = `${folder}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (!['node_modules', 'dist', '.engine-work'].includes(entry.name)) walk(path);
+        } else if (/\.(ts|tsx|mjs|js|sh)$/.test(entry.name) && path !== 'tests/unit/facts-records.test.ts') {
+          out.push(readFileSync(join(repo, path), 'utf8'));
+        }
+      }
+    };
+    for (const folder of ['src', 'tests', 'scripts', 'engine']) walk(folder);
+    for (const file of ['vite.config.ts', 'playwright.config.ts']) out.push(readFileSync(join(repo, file), 'utf8'));
+    return out.join('\n');
+  }
+
+  it('each code name in backticks in the decision records’ sections after the last pass is in the code', () => {
+    // A constant (CAPITALS_WITH_UNDERSCORES) or a function or variable name (camelCase). Decision 0012 named a table
+    // that its own later bullet had moved into parse.ts (isReportOnlyParameter).
+    const name = /^(?:[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)+)$/;
+    const decisions = resolve(repo, 'docs/decisions');
+    const text = code();
+    const named: string[] = [];
+    const missing: string[] = [];
+    for (const file of readdirSync(decisions).filter((f) => f.endsWith('.md'))) {
+      let on = false;
+      for (const line of readFileSync(join(decisions, file), 'utf8').split('\n')) {
+        if (line.startsWith('## ')) on = /^## After (the last pass|the integration check)/.test(line);
+        if (!on) continue;
+        for (const [, word] of line.matchAll(/`([^`]+)`/g)) {
+          if (!name.test(word!)) continue;
+          named.push(word!);
+          if (!text.includes(word!)) missing.push(`${file}: ${word}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+    expect(named.length).toBeGreaterThan(30);
+  });
+
+  it('the facts README names C8b and every C9 fact of explanations.md, by itself or in a range, which may cross families ("C9m to C9v.8")', () => {
+    // Every C9 label, not only the noise lane's of the last pass (round-1 critic C1-2): a lane that adds C9 facts and
+    // not the README's line for them fails here once it is merged.
+    const readme = read('README.md');
+    const labels = new Set([...read('explanations.md').matchAll(/\bC9[a-z]*(?:\.\d+)?\b|\bC8b\b/g)].map((m) => m[0]));
+    /** A C9 label's place in order: its letters (none for C9 itself; fewer first, so aa would follow z), then its number (1 for a family's first fact). */
+    const place = (label: string): [number, string, number] => {
+      const [, letters, n] = /^C9([a-z]*)(?:\.(\d+))?$/.exec(label)!;
+      return [letters!.length, letters!, Number(n ?? 1)];
+    };
+    const order = (a: string, b: string): number => {
+      const [x, y] = [place(a), place(b)];
+      return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || x[2] - y[2];
+    };
+    const END = '(?![a-z\\d]|\\.\\d)';
+    const ranges = [...readme.matchAll(new RegExp(`\\b(C9[a-z]*(?:\\.\\d+)?) to (C9[a-z]*(?:\\.\\d+)?)${END}`, 'g'))].map((m) => [m[1]!, m[2]!] as const);
+    const named = (label: string): boolean =>
+      new RegExp(`\\b${label.replace('.', '\\.')}${END}`).test(readme) ||
+      (label.startsWith('C9') && ranges.some(([from, to]) => order(from, label) <= 0 && order(label, to) <= 0));
+    expect([...labels].filter((label) => !named(label))).toEqual([]);
+    expect(labels.size).toBeGreaterThan(80);
+  });
+});
+
+describe('C1-3 (the round-1 critic of the integration check’s fixes, 14 November 2026): P14 says which negative resistances ngspice accepts without a message', () => {
+  it('P14’s heading names −2 Ω, and its text says that one closer to 0 than 1e-12 Ω gets ngspice 47’s warning and −1e-12 Ω', () => {
+    // Re-run in native 47 and 42: R1 n1 0 -2 gives −2 V and no message in both (P14); −3e-18 gets "set to -1.000000e-12"
+    // in 47 and is kept silently in 42 (zero-ohm-7).
+    const headings = read('explanations.md').split('\n').filter((line) => /^#{2,3} /.test(line));
+    expect(headings.filter((line) => line.startsWith('### P14. '))).toEqual(['### P14. A negative resistance such as −2 Ω is accepted without a message']);
+    expect(headings.filter((line) => /negative resistance is accepted without a message/i.test(line))).toEqual([]);
+    expect(sections('explanations.md').get('P14')!.replace(/\s+/g, ' ')).toContain(
+      'One closer to 0 than 1e-12 Ω is the exception: ngspice 47 warns and uses −1e-12 Ω instead, where ngspice 42 keeps it without a word (zero-ohm-7 in traps.md',
+    );
+  });
+});
+
+describe('C1-4 (the round-1 critic of the integration check’s fixes, 14 November 2026): decision 0012 counts the golden tests that fail with 3e61833’s describe.ts as they were counted', () => {
+  it('five: zero-ohm-9’s three runs, the words on P13, P24 and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a', () => {
+    // Counted with 3e61833's src/spice/describe.ts in place: facts-explain and facts-traps-last-pass gave 5 failed.
+    const text = readFileSync(resolve(import.meta.dirname, '../../docs/decisions/0012-netlists-and-links-are-data.md'), 'utf8').replace(/\s+/g, ' ');
+    const said = [...text.matchAll(/(\d+) of these golden tests fail \(([^)]*)\)/g)].map((m) => `${m[1]}: ${m[2]}`);
+    expect(said).toEqual(["5: zero-ohm-9's three runs, the words on P13, P24 and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a below"]);
+  });
+});
+
+describe('C1-5 (the round-1 critic of the integration check’s fixes, 14 November 2026): the header-only results files’ sizes are those of the netlists the records were made from', () => {
+  it('decision 0009 gives 47: 186 to 234 bytes, 42: 130 to 178, and for the variants alone 186 to 198 and 130 to 142', () => {
+    // Re-run in native 47 and 42 (-b -r): the base runs' netlists (traps.md) write 228 to 234 and 172 to 178 bytes; the
+    // variants' netlists, as the formulas lane's spec files give them (titled "* t", "* the old fix", "* .func vd(a,b)"),
+    // 186 to 198 and 130 to 142. The title line sets the size; 47 adds a Command: line.
+    const text = readFileSync(resolve(import.meta.dirname, '../../docs/decisions/0009-testing-and-ci.md'), 'utf8').replace(/\s+/g, ' ');
+    expect([...text.matchAll(/47: (\d+) to (\d+) bytes, 42: (\d+) to (\d+)/g)].map((m) => m.slice(1, 5).join(' '))).toEqual(['186 234 130 178', '186 198 130 142']);
+  });
+});

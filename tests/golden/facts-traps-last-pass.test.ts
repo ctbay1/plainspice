@@ -9,7 +9,9 @@ import { join, resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { NgspiceEngine } from '../../src/engine/ngspice.ts';
+import { interpretPlots } from '../../src/engine/results.ts';
 import type { RunResult } from '../../src/engine/types.ts';
+import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 
@@ -94,6 +96,11 @@ describe('zero-ohm-9: below 1e-12 Ω but not 0, the currents next to the resisto
       expect(traps[0]!.why).toContain('it uses ' + (set.startsWith('-') ? '\u2212' : '') + '10⁻¹² Ω instead, and the currents next to it can come out inaccurate.');
       expect(traps[0]!.ngspice).toMatch(/\[zero-ohm-7, zero-ohm-9\]$/);
     }
+    // The Numbers panel's words for ngspice's warning say the same on the same page: the value ngspice 47 used, and "can"
+    // (integration check P4); for −3 aΩ, the check's own first sentence, word for word.
+    const note = describeResults(parseNetlist(netlist), interpretPlots(run.plots), run).warnings.find((w) => w.code === 'resistor-too-small')!;
+    expect(note.why).toContain(`it uses ${set.startsWith('-') ? '−' : ''}10⁻¹² Ω instead, and the currents next to it can come out inaccurate.`);
+    if (set.startsWith('-')) expect(note.why.startsWith(traps[0]!.why.slice(0, traps[0]!.why.indexOf('. ') + 1))).toBe(true);
     for (const t of traps) {
       for (const fix of t.fixes) {
         const fixed = await engine.run(applyFix(netlist, fix));

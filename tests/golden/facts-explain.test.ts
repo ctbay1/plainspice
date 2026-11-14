@@ -89,6 +89,8 @@ const FACTS: Fact[] = [
   { code: 'P22', id: 'part-blank-lines', netlist: "* blank lines are ignored\n\nV1 n1 0 6\n\n\nR1 n1 0 2\n\n.op\n\n.end\n", vectors: { "v(n1)": 6, "i(v1)": -3 } },
   { code: 'P23', id: 'part-ic-uic', netlist: "* ic= with .tran uic\nV1 in 0 0\nR1 in out 1k\nC1 out 0 1u ic=2\n.tran 10u 1m uic\n.end\n", summaries: { "time": { points: 111, first: 1e-7, last: 0.001, maxStep: 0.00001 }, "v(out)": { points: 111, first: 1.9998000199980004, last: 0.7357530610830221 } } },
   { code: 'P24', id: 'part-tiny-r', netlist: "* 3a on a resistor\nI1 0 n1 1\nR1 n1 0 3a\n.op\n.end\n", vectors: { "v(n1)": 1e-12 }, prints: ["Value of resistor r1 is too small, set to 1.000000e-12"], codes: ["resistor-too-small"] },
+  { code: 'P24b', id: 'part-zero-ohm-isrc', netlist: "* a 0 ohm resistor where a current source sets the current, as PlainSpice runs it (.options savecurrents)\nI1 0 n1 1\nR1 n1 0 0\n.options savecurrents\n.op\n.end\n", vectors: { "v(n1)": 1e-12, "i(@i1[current])": 1, "i(@r1[i])": 1 }, prints: ["Value of resistor r1 is too small, set to 1.000000e-12"], codes: ["resistor-too-small"] },
+  { code: 'P24c', id: 'part-tiny-r-edge', netlist: "* 1e-12 ohm and -1e-12 ohm are kept, a millionth closer to 0 is not, 1 A into each\nI1 0 n1 1\nR1 n1 0 1e-12\nI2 0 n2 1\nR2 n2 0 -1e-12\nI3 0 n3 1\nR3 n3 0 0.999999e-12\nI4 0 n4 1\nR4 n4 0 -0.999999e-12\n.op\n.end\n", vectors: { "v(n1)": 1e-12, "v(n2)": -1e-12, "v(n3)": 1e-12, "v(n4)": -1e-12 }, prints: ["Value of resistor r3 is too small, set to 1.000000e-12", "Value of resistor r4 is too small, set to -1.000000e-12"], codes: ["resistor-too-small"] },
   { code: 'A1', id: 'an-op-vectors', netlist: "* .op: what it saves\nV1 a 0 10\nR1 a b 2\nL1 b c 1m\nR2 c 0 3\nC1 c 0 1u\nI1 0 c 1\nE1 e 0 c 0 2\nRE e 0 4\nVs c d 0\nRD d 0 5\nF1 0 f Vs 3\nRF f 0 1\nG1 0 g c 0 0.1\nRG g 0 1\nH1 h 0 Vs 7\nRH h 0 1\n.op\n.end\n", vectors: { "v(a)": 10, "v(b)": 5.806451612903226, "v(c)": 5.806451612903226, "v(e)": 11.612903225806452, "v(d)": 5.806451612903226, "v(f)": 3.483870967741936, "v(g)": 0.5806451612903226, "v(h)": 8.129032258064516, "i(vs)": 1.1612903225806452, "i(h1)": -8.129032258064516, "i(l1)": 2.096774193548387, "i(e1)": -2.903225806451613, "i(v1)": -2.096774193548387 } },
   { code: 'A2', id: 'an-savecurrents', netlist: "* .op with .options savecurrents\nV1 a 0 10\nR1 a b 2\nL1 b c 1m\nR2 c 0 3\nC1 c 0 1u\nI1 0 c 1\nE1 e 0 c 0 2\nRE e 0 4\nVs c d 0\nRD d 0 5\nF1 0 f Vs 3\nRF f 0 1\nG1 0 g c 0 0.1\nRG g 0 1\nH1 h 0 Vs 7\nRH h 0 1\n.options savecurrents\n.op\n.end\n", vectors: { "v(a)": 10, "v(b)": 5.806451612903226, "v(c)": 5.806451612903226, "v(e)": 11.612903225806452, "v(d)": 5.806451612903226, "v(f)": 3.483870967741936, "v(g)": 0.5806451612903226, "v(h)": 8.129032258064516, "i(vs)": 1.1612903225806452, "i(h1)": -8.129032258064516, "i(l1)": 2.096774193548387, "i(e1)": -2.903225806451613, "i(v1)": -2.096774193548387, "i(@r1[i])": 2.096774193548387, "i(@l1[i])": 2.096774193548387, "i(@r2[i])": 1.935483870967742, "i(@c1[i])": 0, "i(@i1[current])": 1, "i(@re[i])": 2.903225806451613, "i(@rd[i])": 1.1612903225806452, "i(@f1[i])": 3.483870967741936, "i(@rf[i])": 3.483870967741936, "i(@g1[i])": 0.5806451612903226, "i(@rg[i])": 0.5806451612903226, "i(@rh[i])": 8.129032258064516 } },
   { code: 'A2b', id: 'an-savecurrents-semiconductors', netlist: "* savecurrents with a diode, a BJT and a MOSFET\nV1 a 0 5\nR1 a b 1k\nD1 b 0 dmod\n.model dmod D\nVc c 0 5\nVb bb 0 0.7\nQ1 c bb 0 qm\n.model qm npn\nM1 c bb 0 0 nm\n.model nm nmos\n.options savecurrents\n.op\n.end\n", vectors: { "i(@d1[id])": 0.004307674725988779, "i(@q1[ic])": 0.00005670347201442283, "i(@m1[id])": 0.0000049000050100000015 } },
@@ -1084,6 +1086,7 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     ['P10', 'failed', 'F1 cannot read the current of R1', 4],
     ['P10c', 'failed', 'F1 cannot read the current of L1', 5],
     ['P13', 'ok', 'R1 is too small for ngspice', 3],
+    ['P24b', 'ok', 'R1 is too small for ngspice', 3],
     ['P15', 'ok', 'R1 was left out', 4],
     ['P16', 'ok', 'V1 has no value: 0 V', 2],
     ['A6', 'ok', 'n9 is not a node of the circuit', 4],
@@ -1105,6 +1108,53 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     expect(m!.why.length).toBeGreaterThan(20);
     // The live summary leads with the first problem when the run failed or can't be trusted.
     if (status !== 'ok') expect(d.words.summary.toLowerCase()).toContain(title.toLowerCase().slice(0, 12));
+  });
+
+  it('P13, P24, P24b: "is too small" says the currents next to the resistor can come out inaccurate, not that they do (integration check P4)', () => {
+    // P13: 5.859 mA for 6 mA in series with 1 kΩ; P24b: exactly the current source's 1 A (its vectors are native 47's, above).
+    for (const code of ['P13', 'P24', 'P24b']) {
+      const why = ofFact(code).words.warnings.find((w) => w.code === 'resistor-too-small')!.why;
+      expect(why, code).toContain('ngspice 47 cannot use 0 Ω (or anything below 10⁻¹² Ω): it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate.');
+    }
+  });
+
+  it('a resistor ngspice 47 cannot use: the Checks, the Numbers panel and Explain name the value it used, and say "can" (integration check P4; zero-ohm-7, P24b)', async () => {
+    // Native 47 sets each of these to 1e-12 Ω, or −1e-12 Ω for a negative one, with its warning (zero-ohm-7, P24, P24b).
+    for (const r of ['0', '1f', '-3e-18', '3a', '-3a']) {
+      const text = `* a resistor ngspice 47 cannot use\nI1 0 n1 1\nR1 n1 0 ${r}\n.op\n.end\n`;
+      const negative = r.startsWith('-');
+      const run = await engine.run(text);
+      expect(`${run.stdout}\n${run.stderr}`, r).toContain(`Value of resistor r1 is too small, set to ${negative ? '-' : ''}1.000000e-12`);
+      const netlist = parseNetlist(text);
+      const numbers = describeResults(netlist, interpretPlots(run.plots), run).warnings.find((w) => w.code === 'resistor-too-small')!.why;
+      const checks = checkTraps(netlist).map((t) => `${t.why} ${t.ngspice}`).join(' ');
+      const explain = explainLine(netlist, 2)!.notes.join(' ');
+      const used = negative ? '−10⁻¹² Ω' : '10⁻¹² Ω';
+      expect(numbers, r).toContain(`it uses ${used} instead, and the currents next to it can come out inaccurate.`);
+      expect(checks, r).toContain(`uses ${negative ? '−' : ''}1e-12 Ω instead`);
+      expect(explain, r).toContain(r === '0' ? `uses ${used} instead` : negative ? `uses ${used} for a negative resistance` : `to ${used}`);
+      // No "come out inaccurate" without "can", and no "without a message" where ngspice 47 warns.
+      for (const [where, said] of [['Numbers', numbers], ['Checks', checks], ['Explain', explain]] as const) {
+        expect(said.replace(/can come out inaccurate/g, ''), `${r}, ${where}`).not.toContain('come out inaccurate');
+        expect(said, `${r}, ${where}`).not.toContain('without a message');
+      }
+    }
+  });
+
+  it('P24c: exactly 10⁻¹² Ω, or −10⁻¹² Ω, is a resistor ngspice 47 keeps: no warning, and neither the Checks, the Numbers panel nor Explain calls it too small; one part in a million closer to 0, each does (round-1 critic C1-1)', () => {
+    // Native 47 and 42 keep ±1e-12 Ω without a word; 47 warns for ±0.999999e-12 Ω and uses ±1e-12 Ω (P24c).
+    const d = ofFact('P24c');
+    expect(`${d.run.stdout}\n${d.run.stderr}`).not.toMatch(/resistor r[12] is too small/);
+    expect(d.run.diagnostics.filter((x) => x.code === 'resistor-too-small').map((x) => x.subject)).toEqual(['r3', 'r4']);
+    expect(d.words.warnings.filter((w) => w.code === 'resistor-too-small').map((w) => w.title)).toEqual(['R3 is too small for ngspice', 'R4 is too small for ngspice']);
+    expect(checkTraps(d.netlist).map((t) => [t.id, t.line])).toEqual([['zero-ohm', 7], ['zero-ohm', 9]]);
+    const explain = (line: number): string => explainLine(d.netlist, line - 1)!.notes.join(' ');
+    expect(explain(3)).not.toMatch(/10⁻¹² Ω|negative/);
+    expect(explain(5)).toContain('ngspice accepts a negative resistance without a message.');
+    expect(explain(5)).not.toContain('10⁻¹² Ω');
+    expect(explain(7)).toContain('ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω, with a warning');
+    expect(explain(9)).toContain('ngspice 47 uses −10⁻¹² Ω for a negative resistance this close to 0, with a warning');
+    expect(explain(9)).not.toContain('without a message');
   });
 
   it('M4b, M4c: two part names that differ by more than capital letters get the reason ngspice joins them, and the earlier part (S9)', () => {

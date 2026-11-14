@@ -109,3 +109,45 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   it finds exactly the picture link (172 links in 9 pages); `tests/unit/dist-links.test.ts` tests the
   check itself, and `tests/e2e/run-copy.spec.ts` the link on the page.
 
+
+## After the integration check (14 November 2026)
+
+- **A results file with its header only is said as it is in every new fact** (integration check P6). 12 lines of
+  8 traps.md facts the formulas lane added on 13 November (nbsp-8, non-ascii-node-15, -20, -25, -26,
+  invisible-character-68, look-alike-letter-19, space-character-32) said "(no rawfile data)", where native
+  ngspice 47 and 42 write a plot's header and 0 points (47: 186 to 234 bytes, 42: 130 to 178, by the length of
+  the title): an Operating Point plot, and for space-character-32's `.tran` run a Transient Analysis plot. Each
+  now says so, in the words of the facts README's rule. The reviewer named the five base runs; three more facts'
+  variants said the same of such a file and are corrected with them. traps.md gives the variants' netlists in
+  words ("Cikis2 in the formulas", "a .func with words of its own"); the exact netlists the formulas lane made
+  those records from are in its spec files of 13 November (spec.json, r2/spec/names.json and r3/facts/cr2-2.json
+  in its work folder, outside the repository). This fix first re-ran netlists rebuilt from those words, whose
+  printouts match the records line for line (`Cikis2` in both formulas, the parts left on `çıkış`; `.func
+  vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`); the sizes it gave were theirs, with the base fact's title.
+  After the round-1 critic (C1-5) the spec files' own netlists were run too: each writes a header-only file (47:
+  186 to 198 bytes, 42: 130 to 142) and prints what its record lists, line for line.
+  The other "(no rawfile data)" lines were re-run too, and ngspice writes no file there: in traps.md the two
+  (non-ascii-node-4, -14) now say "(no rawfile)", the words traps.md gives no file since the last pass (3ecf938;
+  the skeptic of the problem), and the 22 in numbers-and-syntax.md keep the folder's older words. The records
+  cannot be run in a test, so `tests/unit/facts-records.test.ts` pins them: each corrected fact's lines, and that
+  traps.md says "(no rawfile data)" nowhere (9 tests, which fail on 3e61833).
+- **A run with a results file is recorded with what it prints** (integration check P5). 43 variant runs of 13
+  traps.md facts added the same day (nbsp-7, missing-fields-10 twice, fatal-syntax-17, unknown-word-53 twice,
+  non-ascii-node-19, -21, space-character-25 nine times, -26 fourteen times, -27 seven times, -29 twice, -30, -31,
+  -32) listed "Error: incomplete or empty netlist" among the lines of "ngspice 47, -b -r", a line only plain
+  `ngspice -b` prints. Re-run in native 47 and 42 with `-b -r` (three times each) and with `-b`: with `-b -r` it is
+  printed in none of the 43, and every other recorded line is printed in order; with `-b` it is printed in all 43.
+  The line is taken out. We chose this over keeping it marked as `-b`'s, which the reviewer also offered: those
+  blocks record the `-b -r` runs only, and one line of the `-b` run among them would be a part of a printout they
+  do not show (PlainSpice runs as `-b -r`). Without it, 40 of the 43 runs print the same lines in ngspice 47
+  and 42, which the records listed apart, a difference that does not exist: each is now one "ngspice 47 and 42,
+  -b -r" entry, as traps.md writes it elsewhere (the skeptic of the problem); missing-fields-10's two runs and
+  space-character-32's `.tran` run differ and stay apart. missing-fields-10's two runs without a bracket said
+  native 47 "did not finish in 30 s", and missing-fields-9's own run and words said the same. Native 47 with a
+  results file crashes there (SIGSEGV, exit 139) within milliseconds, right after "No circuit loaded!", in all 45
+  runs here, whether its input is closed or left open (the skeptic: 300 of 300). The formulas lane's generator
+  wrote "did not finish in 30 s" for every run that came back without an exit code, which is how a crash comes
+  back: the hang they gave was such a crash. Both records now say the crash, and no hang. Tests:
+  `tests/unit/facts-records.test.ts`: no line recorded under a `-b -r` label is that line, and missing-fields-9 and
+  -10 say the crash (both fail on 3e61833); no run gives ngspice 47 and 42 the same entry twice (fails on the
+  records before the merge).
