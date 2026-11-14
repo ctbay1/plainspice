@@ -141,7 +141,7 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   results file crashes there (SIGSEGV, exit 139) within milliseconds, right after "No circuit loaded!", in all 45
   runs here, whether its input is closed or left open (the skeptic: 300 of 300). The formulas lane's generator
   wrote "did not finish in 30 s" for every run that came back without an exit code, which is how a crash comes
-  back, so no run ever hung. Both records now say the crash, and no hang. Tests:
+  back: the hang they gave was such a crash. Both records now say the crash, and no hang. Tests:
   `tests/unit/facts-records.test.ts`: no line recorded under a `-b -r` label is that line, and missing-fields-9 and
   -10 say the crash (both fail on 3e61833); no run gives ngspice 47 and 42 the same entry twice (fails on the
   records before the merge).
