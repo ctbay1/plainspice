@@ -9641,6 +9641,7 @@ ngspice stops at the second one ("device already exists"). Rename one of them wi
 | `explain.ts`: E, F, G, H and K lines, and their control sources | P5–P8, P10–P10d, P21, M9 (and missing-value-4 to -7 in traps.md) |
 | `explain.ts`: `.op`, `.tf`, `.dc`, `.tran`, `.ac` (`readAnalysis`, `dcSweepPoints`, `acSweepPoints`, `unusedSubcircuit`, `innerNode`) | A1–A22b, A3f–A3h, A31, M10–M15b |
 | `explain.ts`: other dot commands, models, subcircuits, unknown dot commands | A2, A2b, A23–A30 (with A29b, A29c), A32–A35, M6, M8 |
+| `explain.ts` and `traps.ts`: the lines of a subcircuit the main circuit does not use, which ngspice skips (`skippedLine`) | A3i |
 | `describe.ts`: directions, power, ammeters, `.tf` words, switches left out, rounding noise shown as 0 A and 0 V, real values ngspice rounds to 0 shown exactly (`exact.ts`) | C1–C9v, A3–A6 (with A3b–A3h) |
 | `describe.ts`: `explainDiagnostic` and the messages of `describeResults` | M1–M21, P10, P13, P15, P16, A6, A11, A26–A29, A33 |
 
