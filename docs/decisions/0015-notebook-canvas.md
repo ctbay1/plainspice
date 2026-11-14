@@ -1029,7 +1029,9 @@ problem where a fix would be complex, and adds no new mechanism.
   same ngspice number noise. Now findSweepNoise judges each checked point and each point where a series may be 0 at the
   value it stands for (`standsFor`): the netlist's value where ngspice's x is the .op's own double of the swept source or
   the very double of the decimal the netlist writes for it (ngspice reads "4.5m" as 0.0045000000000000005, N15), the
-  decimal start + k·step where x is that decimal's nearest double, else x itself; the series' 0s and lost values follow.
+  decimal start + k·step where x is that decimal's nearest double (C9z.2: ".dc V1 0 0.6 0.15" passes 0.3's double, which is
+  neither the netlist's 0.6 nor the .op's, and showed −3.701e−21 A there; no test reached this until the critic of this
+  lane's first fix), else x itself; the series' 0s and lost values follow.
   sweepNames no longer names a point at the .op's own double otherwise: ".dc I1 0 0.0045 0.03m" ends at ngspice's own 4.5m,
   0.0045000000000000005, which read "The DC sweep's last point is I1 = 4.5 mA, not 4.5 mA" beside "i(v2) 4.047e-19 A" and
   is now "I1 = 4.5 mA" with V2's 0. A point that drifted from both is named by ngspice's own value with that value's own
@@ -1103,6 +1105,7 @@ problem where a fix would be complex, and adds no new mechanism.
   "ngspice's own numbers there show that it is rounding noise of a 0" only at the .op's value itself; "one source at its
   netlist value" (C9w.13) holds where the netlist writes that value as a number; and the corpora's counts of Kirchhoff's
   fills (r9731 29, w9711 38, d9761, s9742 and C9w.3) are none now.
-- **Our own netlists.** Of the repository's 983 netlists and facts blocks, 12 give other words than at 3e61833, each a
-  meant change: C9w.3's wire ("no current", without the note), C9x.4's last point (named by its x, ngspice's number), and
-  the new facts C9z to C9z.6; the 21 examples, the fixtures and tests/corpus read word for word the same.
+- **Our own netlists.** Of the repository's 984 netlists and facts blocks, 12 give other words than at 3e61833, each a
+  meant change: C9w.3's wire ("no current", without the note) and the new facts C9z to C9z.6, all but C9z.5's ammeter
+  bridge (the open item above), which reads as at 3e61833; C9x.4's last point reads as at 3e61833 again (R5's 0, with the
+  note); the 21 examples, the fixtures and tests/corpus read word for word the same.
