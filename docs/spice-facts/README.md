@@ -293,6 +293,13 @@ node's, named as the parts write it), non-ascii-node-30 (x1.çıkış on a .tf i
 renamed alone it reads a node nothing connects to, 0 and 1 Ω; a formula that reads it runs) and fatal-syntax-21
 (an E formula ngspice can't read stops it in the main circuit and in a used subcircuit, not in one no X line uses:
 what Explain now says).
+Then the round-1 critic of those fixes, run the same way: fatal-syntax-22 (a `{` or `'` never closed in a B
+line's formula or an E's or G's formula: ngspice reads the formula to the end of the line and runs it, 5 V; a
+value, a gain or POLY's numbers still stop it), non-ascii-node-31 (a formula or a .tf that reads across `Çıkış`
+and `çıkış` reads 0, as ngspice makes them one node), non-ascii-node-32 (`x1.Çıkış` for a subcircuit's `çıkış`
+is that node for ngspice: 0.5 and 500 Ω, and 0 and 1 Ω with the .tf alone renamed) and fatal-syntax-23 (an E's
+output node called value on a line given by a formula is written vol by ngspice, 5 V there and 0 V at value; a
+G's, cur, which stops it with nothing else on cur).
 
 ## The last pass of 13 November 2026 (the ui lane)
 

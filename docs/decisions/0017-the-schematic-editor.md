@@ -777,3 +777,9 @@ and golden rows in A3f and A3h):
   after C3-6). The checks offered a rename of `x1.çıkış` on the `.tf` alone, which made the `.tf` read a node
   nothing connects to; they now offer none for such a name and say where to rename (decision 0016,
   non-ascii-node-30).
+- **After the round-1 critic of these fixes.** A group of spellings that differ only in capital letters, one line
+  of which names two of them (`B1 o 0 V=v(Çıkış,çıkış)`, `.tf v(Çıkış,çıkış) V1`), is the checks' error
+  again (decision 0016, non-ascii-node-31), so the editor's rename of `Çıkış` there renames that spelling
+  only, as for a part with an end on each (X1). And the checks offer no rename of `x1.Çıkış` alone either,
+  the subcircuit's node `çıkış` written with another capital letter, which ngspice reads as that node
+  (non-ascii-node-32).
