@@ -1316,8 +1316,9 @@ function decidedSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
 }
 
 /**
- * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints; ngspice's x the .op's value bit
- * for bit, the integration check): there a current the .op shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or the rule, run on the
+ * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints: ngspice's x the .op's value bit
+ * for bit, or the very double of the decimal the netlist writes for it; the integration check): there a current the .op
+ * shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or the rule, run on the
  * point's own values (pointOp), writes it as 0 too (a transistor's isolated nodes differ there by a few steps of a
  * double); every other point is left as ngspice gives it (the last pass, rule-op-vs-sweep-tf: C9 with a .param line
  * showed R5 "0 A" beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A"). Once per run.
@@ -3005,11 +3006,12 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   const { ex, sweep, swept, tree, den, a, b, c, xs, n, forms, factor, kinds, shapeAt, freeEverywhere, specialX, specialPoints, checks } = plan;
   const { model } = ex;
   const kindOf = (j: number): 'voltage' | 'current' => (kinds[j]!.kind === 'voltage' ? 'voltage' : 'current');
-  // The value a point stands for. A point at the .op's own value of the swept source, bit for bit, or at the very double of
-  // the decimal its steps say (start + k·step), is that value, as the .op is judged at the netlist's decimals (exact.ts
-  // READ_ULPS); only a point that drifted from both is judged at ngspice's own x (the integration check: ".dc V1 0 0.3 0.15"
-  // ends at 0.3's double, where V2, idle at 300 mV, carries no current, and the page drew −3.701e-21 A there, the circuit at
-  // 0.29999999999999998890 V, beside the .op's "V2: no current").
+  // The value a point stands for. A point at the .op's own value of the swept source (ngspice's double of it bit for bit, or
+  // the very double of the decimal the netlist writes for it), or at the very double of the decimal its steps say (start +
+  // k·step), is that value, as the .op is judged at the netlist's decimals (exact.ts READ_ULPS); only a point that drifted
+  // from both is judged at ngspice's own x (the integration check: ".dc V1 0 0.3 0.15" ends at 0.3's double, where V2, idle
+  // at 300 mV, carries no current, and the page drew −3.701e-21 A there, the circuit at 0.29999999999999998890 V, beside the
+  // .op's "V2: no current").
   const own = swept ? opStatePoints(netlist, results)?.target : undefined;
   const start = swept && sweep.start ? readExact(sweep.start.text) : undefined;
   const step = swept && sweep.step ? readExact(sweep.step.text) : undefined;
@@ -4742,8 +4744,8 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
       // netlist is, exact.ts READ_ULPS) and from the .op's own value (at that value bit for bit, or at the very double of
       // the decimal the netlist writes for it, the point is it, as findSweepNoise judges it: ".dc I1 0 0.0045 0.03m" ends at
       // ngspice's own 4.5m, 0.0045000000000000005, and was named "I1 = 4.5 mA, not 4.5 mA", the integration check), and the
-      // label still reads as it ("9 V" for 8.999999999999853 V;
-      // "−55.51 aV" for a point meant to be 0 V already says where it is).
+      // label still reads as it ("9 V" for 8.999999999999853 V; "−55.51 aV" for a point meant to be 0 V already says where it
+      // is).
       const exact = failed ? (states?.target === undefined ? undefined : fromDouble(states.target)) : at;
       const meant = exact && toDouble(exact);
       const x = xs[k]!;
