@@ -3638,7 +3638,8 @@ function checkNodeNames(c: Ctx): void {
     if (isPlainName(info.name) || hasInvisible(info.name) || hasSpaceLike(info.name) || lookAlikeName(info.refs[0]!.text) !== undefined) continue;
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       // No part is on a node ngspice spells so (ownerOf): a rename alone leaves it failing; a node the parts are on
       // with the name's plain letters (cikis for çıkış) is the one meant.
@@ -3650,9 +3651,9 @@ function checkNodeNames(c: Ctx): void {
     }
     const to = plainFor(info);
     add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells ${theNodeIn(written)} as ${spelled}`,
-      `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
+      `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.${inner ?? ''}`,
       spelledNodeSentence(c, info, spelled),
-      [fix(`Rename ${nodeIn(written)} to ${to}`, ...renaming(info, to))]);
+      inner === undefined ? [fix(`Rename ${nodeIn(written)} to ${to}`, ...renaming(info, to))] : []);
   }
   for (const info of c.n.nodes.values()) if (ownerOf(c, info.name) === info.name) checkMicroNode(c, info, freeName);
 }
@@ -3742,6 +3743,18 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
  * name exists, that joins them, as the student meant. The words name the character, never show it.
  */
 /**
+ * For a name that is ngspice's name for a node inside a subcircuit an X line uses (x1.çıkış on a .tf line or in a
+ * formula; innerNode, C3-6): where that node is, for the words of the checks of its name, which give no rename fix
+ * for it, as renaming the name alone would point the line at a node nothing connects to (a .tf of 0 and 1 Ω; the
+ * integration check, P2 of the regression lens; non-ascii-node-30). Such a name is no node nothing connects to for
+ * formulaOnlyNode either: its node has the subcircuit's parts. Undefined for any other name.
+ */
+function innerNodeWords(c: Ctx, info: NodeInfo): string | undefined {
+  const inner = info.connections.length === 0 ? innerNode(c.n, info.name) : undefined;
+  return inner && ` ${info.refs[0]!.text} is ngspice's name for ${nodeIn(inner.node.token.text)} of the subcircuit ${inner.subcircuit} (from line ${inner.line + 1}): a rename here alone would name a node nothing connects to, so rename it on that subcircuit's lines and here together.`;
+}
+
+/**
  * The part whose formula reads a name that no part connects to (CR2-2): a name only formulas read (Element.reads),
  * with a character ngspice keeps in names, is a node of its own for ngspice that nothing connects to, so its matrix
  * is singular and it stops, whatever the analysis (space-character-32, nbsp-8, invisible-character-68,
@@ -3786,7 +3799,8 @@ function checkInvisibleNodes(c: Ctx): void {
     const clean = withoutInvisible(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       formulaOnlyNode(c, 'invisible-character', info, reader, `${clean} with ${nameOfCharacter(ch, false)!}`, `The name has ${what}, a character you cannot see, which SPICE keeps in the name.`,
         'invisible-character-68', other?.connections.length ? clean : undefined, [fix(`Take it out: connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
@@ -3796,9 +3810,9 @@ function checkInvisibleNodes(c: Ctx): void {
     // Cites [invisible-character-3, invisible-character-65, invisible-character-66], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-65'] : []), ...(command ? ['invisible-character-66'] : [])];
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
-      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.${inner ?? ''}`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
+      inner === undefined ? [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)] : []);
   }
 }
 
@@ -3834,7 +3848,8 @@ function checkSpaceNodes(c: Ctx): void {
     const clean = withoutSpaces(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       formulaOnlyNode(c, ch === '\u00a0' ? 'nbsp' : 'space-character', info, reader, `${clean} with ${nameOfCharacter(ch, false)!}`, `The name has ${nameOfCharacter(ch)!}. It looks like a space, but SPICE keeps it in the name.`,
         ch === '\u00a0' ? 'nbsp-8' : 'space-character-32', other?.connections.length ? clean : undefined, [fix(`Take it out: connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
@@ -3844,9 +3859,9 @@ function checkSpaceNodes(c: Ctx): void {
     // Cites [space-character-10, space-character-20, space-character-21], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-20'] : []), ...(command ? ['space-character-21'] : [])];
     add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `${capital(theNodeIn(withSpaces(t.text)))} has ${nameOfCharacter(ch)!} in it`,
-      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.${inner ?? ''}`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
+      inner === undefined ? [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)] : []);
   }
 }
 
@@ -3868,7 +3883,8 @@ function checkLookAlikeNodes(c: Ctx): void {
     const like = lookAlikeOf(ch)!;
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       formulaOnlyNode(c, 'look-alike-letter', info, reader, `${t.text} with ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`, `The name has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}. It looks like ${like}, but SPICE knows only the plain letter ${like}.`,
         'look-alike-letter-19', other?.connections.length ? clean : undefined, [fix(`Connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
@@ -3878,11 +3894,11 @@ function checkLookAlikeNodes(c: Ctx): void {
     // Cites [look-alike-letter-5, look-alike-letter-16, look-alike-letter-17], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-16'] : []), ...(command ? ['look-alike-letter-17'] : [])];
     add(c, 'look-alike-letter', 'warning', t, `${capital(theNodeIn(t.text))} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
-      other
+      `${other
         ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not ${theNodeIn(quotedName(clean))} the other lines name: it is another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}.`
-        : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`,
+        : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`}${inner ?? ''}`,
       [`ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Connect to ${nodeIn(quotedName(clean))}` : `Rename ${nodeIn(t.text)} to ${clean}`, ...changes)]);
+      inner === undefined ? [fix(other ? `Connect to ${nodeIn(quotedName(clean))}` : `Rename ${nodeIn(t.text)} to ${clean}`, ...changes)] : []);
   }
 }
 

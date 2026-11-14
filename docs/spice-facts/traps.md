@@ -14889,6 +14889,43 @@ the divider of formulas.spec.ts (R1 giris çıkış 1k, R2 çıkış 0 1k, B1 b 
 
 PlainSpice's results for the bridge: "Simulation finished: node top = 9 V, node çıkış = 4.5 V, node b = 4.5 V, node x = 9 µV; 7 currents", R5 "no current through R5" with the rounding-noise note above, and the drawing writes 4.5 V at çıkış. For the divider: "node giris = 10 V, node çıkış = 5 V, node b = 10 V"; written Çıkış and çıkış on part lines (non-ascii-node-27), "node Çıkış = 5 V". PlainSpice's checks: `non-ascii-node` (the warning of non-ascii-node-27 for the bridge, of non-ascii-node-1 for the divider).
 
+### non-ascii-node-30. x1.çıkış is ngspice's name for the node çıkış inside the subcircuit X1 uses: renaming that name alone reads a node nothing connects to
+
+Added after the integration check of the last pass (14 November 2026, P2 of the regression lens). Since the subckt lane (A3h), a .tf can name a node inside a subcircuit an X line uses by ngspice's name for it, x1.çıkış, and the run gives 0.5 and 500 Ω. The check's warning for the name (ngspice spells it x1.____k____) offered "Rename node x1.çıkış to x1.cikis", which changed the .tf alone: ngspice then reads x1.cikis, a node nothing connects to, and gives 0 and 1 Ω without a message, and the .tf check called the circuit an error. Renamed on the subcircuit's lines too, it gives the same 0.5 and 500 Ω. The same holds for a Cyrillic letter, a hidden character, a thin space or a no-break space in such a name. So the warning now says where the node is, and offers no rename of the name alone. A formula that reads x1.çıkış (B1 o 0 V={v(x1.çıkış)*2}) reads that node, which has the subcircuit's parts: ngspice runs it (v(o) = 10), so it is no node nothing connects to (non-ascii-node-26's error), only the warning.
+
+```spice
+* a divider inside a subcircuit, its middle node in Turkish, read by .tf
+V1 in 0 10
+X1 in 0 div
+.subckt div a b
+R1 a çıkış 1k
+R2 çıkış b 1k
+.ends
+.op
+.tf v(x1.çıkış) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r out.raw (exit 0)
+    rawfile: Operating Point: v(in) = 10, v(x1.____k____) = 5, i(v1) = -0.005
+             Transfer Function: v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(x1.____k____)) = 500
+ngspice 42: the same exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: the same values as ngspice 47
+the .tf alone renamed, .tf v(x1.cikis) V1 (what the old fix wrote):
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(x1.____k____) = 5, v(x1.cikis) = 0, i(v1) = -0.005; v(Transfer_function) = 0, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(x1.cikis)) = 1
+    our engine (exit 0): the same values
+renamed on the subcircuit's lines and the .tf together (cikis everywhere):
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(x1.cikis) = 5, i(v1) = -0.005; v(Transfer_function) = 0.5, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(x1.cikis)) = 500
+    our engine (exit 0): the same values
+B1 o 0 V={v(x1.çıkış)*2} with R3 o 0 1k in place of the .tf:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(x1.____k____) = 5, v(o) = 10, i(b1) = -0.01, i(v1) = -0.005
+    our engine (exit 0): the same values
+```
+
+PlainSpice's checks: `non-ascii-node` (a warning with no fix; for the B line too), and likewise `look-alike-letter`, `invisible-character`, `space-character` and `nbsp` for such a name.
+
 ## invisible-character
 
 Added after the final reviews of 12 November 2026 (security review F2). An invisible character (a

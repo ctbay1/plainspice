@@ -773,3 +773,7 @@ and golden rows in A3f and A3h):
   for each: renaming node in on a formula that reads it 8,000 times took 1,146 ms of processor time, and node a
   named bare 40,000 times on `.save` 8,134 ms. It now copies each piece of the text once, in the text's order,
   through the same `applyTextChanges` as a check's fix (decision 0016): 17 ms and 107 ms, with the same results.
+- **A `.tf` of a node inside a subcircuit keeps working through the checks' fixes** (P2 of the regression lens,
+  after C3-6). The checks offered a rename of `x1.çıkış` on the `.tf` alone, which made the `.tf` read a node
+  nothing connects to; they now offer none for such a name and say where to rename (decision 0016,
+  non-ascii-node-30).

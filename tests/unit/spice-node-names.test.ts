@@ -19,6 +19,7 @@ import { placeResults } from '../../src/notebook/results.ts';
 import { notebookSchematic, withDrawingBlock } from '../../src/notebook/schematic.ts';
 import { describeResults } from '../../src/spice/describe.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { checkTraps } from '../../src/spice/traps.ts';
 
 const T = 'çıkış'; // çıkış
 const TC = 'Çıkış'; // Çıkış
@@ -103,5 +104,38 @@ describe('spellings on part lines that differ only in capital letters are their 
     expect(r.words.nodes.map((n) => n.node)).toContain(T);
     expect(sp(r.words.summary)).toContain(`node ${T} = 4.5 V`);
     expect(r.words.summary).not.toContain('____k____');
+  });
+});
+
+describe('ngspice\'s name for a node inside a subcircuit (x1.çıkış) gets no rename of that name alone (the integration check, regression P2; non-ascii-node-30)', () => {
+  // A divider inside a subcircuit, its middle node written with odd characters, read through X1 by .tf or a formula.
+  const sub = (node: string, reader: string): string => `* t\nV1 in 0 10\nX1 in 0 div\n.subckt div a b\nR1 a ${node} 1k\nR2 ${node} b 1k\n.ends\n${reader.replaceAll('NODE', `x1.${node}`)}\n.op\n.end\n`;
+  const CASES: [string, string][] = [
+    ['Turkish letters', T],
+    ['a Cyrillic letter', '\u043eut'],
+    ['a zero-width space', 'o\u200but'],
+    ['a thin space', 'o\u2009ut'],
+    ['a no-break space', 'o\u00a0ut'],
+  ];
+  it.each(CASES)('%s, on a .tf: the warning says where to rename, and offers no rename that would leave the subcircuit\'s node behind', (_what, node) => {
+    const traps = checkTraps(parseNetlist(sub(node, 'R3 in 0 1k\n.tf v(NODE) V1')));
+    const own = traps.filter((t) => t.line === 9);
+    expect(own.map((t) => t.severity)).toEqual(['warning']);
+    expect(own[0]!.why).toContain(`x1.${node} is ngspice's name for node ${node} of the subcircuit div (from line 4): a rename here alone would name a node nothing connects to, so rename it on that subcircuit's lines and here together.`);
+    expect(own[0]!.fixes).toEqual([]);
+    expect(traps.some((t) => t.id === 'tf-problems')).toBe(false);
+  });
+  it.each(CASES)('%s, read by a B formula: no false error that no part connects to it, as ngspice runs the circuit', (_what, node) => {
+    const traps = checkTraps(parseNetlist(sub(node, 'B1 o 0 V={v(NODE)*2}\nR3 o 0 1k')));
+    const own = traps.filter((t) => t.line === 8);
+    expect(own.map((t) => t.severity)).toEqual(['warning']);
+    expect(own[0]!.title).not.toContain('nothing connects to');
+    expect(own[0]!.fixes).toEqual([]);
+  });
+  it('a name in the main circuit keeps its rename (non-ascii-node-1), and so does one no subcircuit has', () => {
+    const main = checkTraps(parseNetlist(`* t\nV1 in 0 10\nR1 in ${T} 1k\nR2 ${T} 0 1k\n.op\n.end\n`))[0]!;
+    expect(main.fixes.map((f) => f.label)).toEqual([`Rename node ${T} to cikis`]);
+    const none = checkTraps(parseNetlist(sub('m', `R3 in 0 1k\n.tf v(x1.${T}) V1`).replace(`.tf v(x1.m.`, '.tf v(x1.')));
+    expect(none.find((t) => t.id === 'non-ascii-node')?.why ?? '').not.toContain("is ngspice's name for");
   });
 });

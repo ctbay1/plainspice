@@ -704,3 +704,15 @@ was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before an
   (fatal-syntax-21); there the subckt lane's words for skipped lines apply. A test holds Explain to the checks
   on every E and G line of the facts' netlists. Left open: a no-break space right after `=` (space-character-25),
   another check's error, still gets "ngspice works the formula out".
+- **No rename of ngspice's name for a node inside a subcircuit alone** (P2 of the regression lens). The checks of
+  odd characters in a node name (non-ascii-node, look-alike-letter, invisible-character, space-character, nbsp)
+  offered their rename for `x1.çıkış` on a `.tf` (decision 0017, C3-6), which changed the `.tf` alone: ngspice
+  then read a node nothing connects to (0 and 1 Ω), and a working circuit became the `.tf` check's error; and a
+  formula that reads `x1.çıkış` got the error that no part connects to it, though its node has the subcircuit's
+  parts and ngspice runs it. Now such a name (`innerNode`) keeps the warning, which says where the node is
+  ("x1.çıkış is ngspice's name for node çıkış of the subcircuit div (from line 4): a rename here alone would name
+  a node nothing connects to, so rename it on that subcircuit's lines and here together"), with no fix
+  (non-ascii-node-30). Chosen over renaming the node inside its subcircuit and every dotted name that reaches it
+  for the release: that rename must also keep the new name free in that subcircuit and its `.global` names, and
+  follow every X line that uses it (x1.çıkış, x2.çıkış, x1.x2.çıkış). Left open: that rename; and the older gap
+  that such a node gets no warning at all on the subcircuit's own lines unless a dotted name names it.
