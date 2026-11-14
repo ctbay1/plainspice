@@ -230,4 +230,12 @@ describe('the round-1 critic of these fixes: what ngspice reads first there, nes
       expect(explainLine(parseNetlist(inS(line)), 6)!.notes.join(' '), line).not.toContain('skips');
     }
   });
+
+  it('C1-4: a .meas there says nothing of "No .measure possible …", which ngspice prints only for one it reads (native 47 and 42, -b -r)', () => {
+    for (const line of ['.meas tran vmax max v(a)', '.measure tran vmax max v(a)', '.MEAS tran vmin min v(a)']) {
+      const e = explainLine(parseNetlist(inS(line)), 6)!;
+      expect([e.summary, e.notes], line).toEqual(['', [SKIPS]]);
+    }
+    expect(explainLine(parseNetlist(`${BASE}.meas tran vmax max v(out)\n.op\n.end\n`), 4)!.summary).toContain('No .measure possible');
+  });
 });

@@ -3031,8 +3031,12 @@ export function explainLine(netlist: Netlist, lineIndex: number): LineExplanatio
 
 /** Meanings of a word that say ngspice stops at it: for a line ngspice skips, such a word is one PlainSpice cannot place (A3i). */
 const STOPS_AT_WORD: ReadonlySet<string> = new Set([S.unknownWord, S.unknownWordEngine, S.reportOnlyWord, S.bNoExpression]);
-/** Dot commands whose summary says what ngspice does when it reads the line: it stops (a .lib with one word), it leaves the line out with a message (.print, .plot), the results file holds only what the line names (.save). */
-const READ_SAYS: ReadonlySet<string> = new Set(['.lib', '.print', '.plot', '.save']);
+/**
+ * Dot commands whose summary says what ngspice does when it reads the line: it stops (a .lib with one word), it leaves the
+ * line out with a message (.print, .plot), the results file holds only what the line names (.save), it skips the line with
+ * a message (.meas and .measure: "No .measure possible …", which it does not print for one in such a subcircuit, C1-4).
+ */
+const READ_SAYS: ReadonlySet<string> = new Set(['.lib', '.print', '.plot', '.save', '.meas', '.measure']);
 
 /**
  * A3i: the explanation of a line ngspice skips, as it turns the lines of a subcircuit the main circuit does not use
