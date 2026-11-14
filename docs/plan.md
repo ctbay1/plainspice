@@ -1,6 +1,6 @@
 # Plan
 
-*Updated 12 November 2026: milestone 1 is done; milestone 2 (drawing circuits): steps A, B and C are done; its final reviews are next.*
+*Updated 14 November 2026: milestones 1 and 2 are done. Milestone 2 (drawing circuits: steps A, B and C, and its final reviews) is released; the open questions for Tarık are at the end.*
 
 ## Done: the first milestone
 
@@ -172,10 +172,53 @@ Done so far:
   the names again when one has no room once turned: 12 of the 20 examples open whole on a phone held
   upright, up from 8; p02-4, the checkpoint's circuit, now opens turned but needs dragging (the
   video's drawing is less long and low than the automatic layout's ladder).
-- **Next: the final reviews of milestone 2**, then fixes.
+- **The final reviews of milestone 2** (12 to 14 November): six reviews of the whole app (how it looks and
+  is used, accessibility and the phone, the words, every claim about SPICE, the code, security and links),
+  then three re-checks of the fixed build and an integration check of the last fixes, each on a frozen
+  build, with every problem tried again by a second reviewer whose job was to prove it wrong. They found
+  34, 39, 7, 30 and 23 problems. Each was fixed with a test that fails without the fix, by a fixer, then
+  checked by one or two rounds of a critic, and a last check re-ran every problem of the integration
+  check on the build released here. All the tests pass together: 4,576 unit, 2,508 golden (every number
+  against native ngspice to 6 significant figures) and 287 end to end on a computer and a phone, in both
+  font setups. What a student will notice:
+  - **Numbers.** ngspice's rounding leftovers (2e-19 A through a balanced bridge's ammeter) show as 0, with
+    a note, only where PlainSpice proves the answer is 0 by solving the circuit exactly with fractions
+    (decision 0015). A real tiny current is never shown as 0 with nothing said, and where ngspice's own
+    numbers are off, a warning gives the exact values.
+  - **Checks.** Node names with letters outside a to z, hidden characters, look-alike letters or spaces
+    copied from a document; E and G written as formulas (`VALUE={...}`); lines inside subcircuits, and a
+    `.tf` of a node inside one (`v(x1.m)`); a resistance below 10⁻¹² Ω. Every sentence about what ngspice
+    does is backed by runs of native ngspice 47 and 42, and says which version prints what where they
+    differ. A one-click rename follows the node into formulas and into the lines after `.end`.
+  - **Words.** One word for one idea throughout ("node in", never "node node1"; "skips" for a line ngspice
+    does not read; "rounding noise"). The status line, the cards and the panels say why nothing ran, and
+    every Run is said aloud.
+  - **The phone.** The status line at 400 % zoom, sheets that never move under a finger, the status dot in
+    forced colours.
+  - **Safety.** A netlist whose words would overflow ngspice's fixed buffers is refused with a plain
+    reason, and crafted links can no longer freeze the page.
+  What stays open is under "Next" and in the decision records (0011, 0012, 0015, 0016 and 0017, under
+  "After the last pass" and "After the integration check").
 
 ## Next
 
+- **Left open by the final reviews** (each recorded with its reason): for circuits PlainSpice does not
+  solve exactly (a transistor, a `.param` line), a wire ngspice gives exactly 0 A beside a real current
+  keeps that 0, and a sweep's point near the operating point keeps ngspice's numbers (0015); more
+  deliberately tricky circuits now show "some of ngspice's answers here are off", the cost of trusting
+  ngspice's numbers only to the digits the page shows (0015); the Checks panel says "No traps found" when
+  every analysis line is in a subcircuit no X line uses, while the status line says why nothing ran
+  (0017); a `+` line after `.end` is not read into the drawing, so R1 shows 2 Ω where ngspice uses 3 Ω
+  (the numbers are ngspice's and right; 0011); `.tf v(x1.a)` for a subcircuit's own port node keeps "not
+  in the circuit" (0017); an E written with `VALUE=` is named by ngspice's inner node (e1_int1) in what a
+  screen reader hears after a run. The last check before the release (14 November) found six more rare
+  edge cases, each minor: a `.save`, `.print` or `.ic` line that names both spellings of one node
+  (Çıkış and çıkış) gets the "different circuit" error, and its fix splits the node; a B line with an
+  open `{` before `tc1=` gets a false "tc1 is not defined"; Explain's field rows on a gain-form E whose
+  output node is called `value` disagree with its summary; inside a subcircuit no X line uses, Explain
+  says a formula line is "worked out" and that a stray `.endc` or an open `.control` is skipped, where
+  ngspice warns about them; and the "No .end line" note is missing when a netlist ends with such a
+  subcircuit.
 - **Real people and devices** (needs Tarık or testers): a screen-reader pass (NVDA + Firefox,
   VoiceOver on macOS and iOS, TalkBack on Android), one real mid-range Android phone, Windows
   High Contrast; Firefox and Safari (only Chromium was available here).
@@ -209,6 +252,22 @@ Done so far:
   nested sweeps).
 
 ## Open questions for Tarık
+
+- **`.control` programs that build long names while they run** (decision 0012, limit-11): PlainSpice
+  refuses every netlist whose words would overflow ngspice's fixed buffers, but a `.control` program can
+  build a long name as it runs (a variable, an alias, a file it writes and reads back), which cannot be
+  checked beforehand; a crafted link could then crash the page or show wrong numbers on the device that
+  opens it. A) Keep running `.control` blocks and record the gap (recommended: beginners do not write such
+  programs, and it only affects the page that opens the link). B) Refuse every command line (`.control`
+  blocks, `*#` lines, scripts): it closes the gap, but many teaching netlists stop running. C) Refuse only
+  commands that use `$`, `alias` or `source`: it breaks `foreach` sweeps.
+
+- **The design prototypes** at <https://plainspice.com/design/> are still published (they run under the
+  app's own security policy). Keep them, or take them down now that Notebook is chosen? Either is easy; a
+  returning visitor may see an old copy of `/design/` until every PlainSpice tab has been closed once.
+
+- **A new circuit's first line** is `* circuit`: the name a blank page gives its netlist title. It is
+  yours to choose.
 
 - **"Nothing after .end counts"**: ngspice does read a part written after a plain `.end` (fact S25,
   re-run on 11 Nov in native ngspice 47 and 42: with `R2 n1 0 2` after `.end`, n1 drops from 2 V to

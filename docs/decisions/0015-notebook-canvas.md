@@ -1108,4 +1108,6 @@ problem where a fix would be complex, and adds no new mechanism.
 - **Our own netlists.** Of the repository's 984 netlists and facts blocks, 12 give other words than at 3e61833, each a
   meant change: C9w.3's wire ("no current", without the note) and the new facts C9z to C9z.6, all but C9z.5's ammeter
   bridge (the open item above), which reads as at 3e61833; C9x.4's last point reads as at 3e61833 again (R5's 0, with the
-  note); the 21 examples, the fixtures and tests/corpus read word for word the same.
+  note); the 21 examples, the fixtures and tests/corpus read word for word the same in this lane's own count. On the
+  merged build two tests/corpus netlists (T14a and T14b) read differently, by the records lane's change: the currents
+  next to a resistor ngspice 47 cannot use "can" come out inaccurate (the final check of 14 November).
