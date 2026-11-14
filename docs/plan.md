@@ -158,33 +158,45 @@ Done so far:
   node, keys on a piece of wire); the Add a part form checks its value as the card does; the first
   edit made on the drawing says it wrote the `*@` lines; Help and Ctrl+K have every editing key and
   command; key names spelled one way (decision 0017, "After the re-check").
-- **Step C: the examples drawn as in the videos** (item 2, decision 0018): all 20 examples open
-  drawn the way their videos draw them, with the node names the videos write, and a link made from
-  one carries its drawing. The drawings are recorded from the channel's own drawing code
-  (`scripts/video-drawings/record.py` parses the episode files and runs only their drawing
-  statements; it never imports them), converted to the grid with every change and its reason written
-  down (`plan.ts`, `convert.ts`), and checked by the tests: each block is what the converter makes,
-  clean, connecting exactly what the netlist connects, every name beside its own wire. Each example
-  next to its video, and every change from the video: [`docs/design/video/`](design/video/README.md).
-  On a phone, a video's own drawing gets "As in the video" (any other "As drawn"), until the student
-  changes the drawing. Two drawing fixes the examples showed: a name on the left of its point is
-  drawn up to it (e04-4's "s = 40 V" stood 2 to 5 squares away), and a phone's turned view places
-  the names again when one has no room once turned: 12 of the 20 examples open whole on a phone held
-  upright, up from 8; p02-4, the checkpoint's circuit, now opens turned but needs dragging (the
-  video's drawing is less long and low than the automatic layout's ladder).
-- **The final reviews of milestone 2** (12 to 14 November): six reviews of the whole app (how it looks and
-  is used, accessibility and the phone, the words, every claim about SPICE, the code, security and links),
-  then three re-checks of the fixed build and an integration check of the last fixes, each on a frozen
-  build, with every problem tried again by a second reviewer whose job was to prove it wrong. They found
-  34, 39, 7, 30 and 23 problems. Each was fixed with a test that fails without the fix, by a fixer, then
-  checked by one or two rounds of a critic, and a last check re-ran every problem of the integration
-  check on the build released here. All the tests pass together: 4,576 unit, 2,508 golden (every number
-  against native ngspice to 6 significant figures) and 287 end to end on a computer and a phone, in both
-  font setups. What a student will notice:
+- **Step C: the examples drawn as in the videos** (item 2, decision 0018): all 20 examples open drawn the
+  way their videos draw them, with the node names the videos write where the format can (p01's v_1, v_2
+  and v_3 are the netlists' n1, n2 and n3, and the b and 0 some videos write at ground wait for Tarık),
+  and a link made from one carries its drawing. The drawings are recorded from the channel's own drawing
+  code (`scripts/video-drawings/record.py` parses the episode files and runs only their drawing
+  statements; it never imports them), converted to the grid with every change and its reason written down
+  (`plan.ts`, `convert.ts`), and checked by the tests: each block is what the converter makes, clean,
+  connecting exactly what the netlist connects, every name beside its own wire. Each example next to its
+  video, and every change from the video: [`docs/design/video/`](design/video/README.md). On a phone, a
+  video's own drawing gets "As in the video" (any other "As drawn"), until the student changes the
+  drawing. Two drawing fixes the examples showed: a name on the left of its point is drawn up to it
+  (e04-4's "s = 40 V" stood 2 to 5 squares away), and a phone's turned view places the names again when
+  one has no room once turned: 12 of the 20 examples open whole on a Pixel 7 held upright (11 of them
+  turned), up from 8; p02-4, the checkpoint's circuit, now opens turned but needs dragging (the video's
+  drawing is less long and low than the automatic layout's ladder).
+- **The final reviews of milestone 2** (12 to 14 November): six reviews of the whole app (a first-year
+  student's use, accessibility, the phone and speed, the words and every claim about SPICE, security and
+  links, and nothing lost from milestone 1 or step A; the code was reviewed in the re-checks), then three
+  re-checks of the fixed build and an integration check of the last fixes, each on a frozen build, with
+  every problem tried again by a second reviewer whose job was to prove it wrong. They found 34, 39, 7,
+  30 and 23 problems. Each was fixed with a test that fails without the fix, by a fixer, then checked by
+  one or two rounds of a critic, except three fixed only in part, with what is left recorded as open: W12
+  of the first reviews (F5's heading still says "Thevenin", without the accent; decision 0017), P1 of the
+  second re-check (names a `.control` program builds while it runs: decision 0012's limit-11, the first
+  open question below) and regress-3 of the integration check (a sweep of a source set by a `.param`;
+  decision 0015). A last check re-ran every problem of the integration check on 974d298, the code
+  released here (the release adds a test fix, documents and screenshots): 22 fixed, regress-3 in part.
+  All the tests pass together: 4,576 unit (CI runs all but the 130 that read the channel's episode
+  netlists, which only the development machine has), 2,508 golden (every number against native ngspice 47
+  and 42 to 6 significant figures, and the facts behind every claim about SPICE) and 287 end-to-end runs
+  in Chromium, 151 on a desktop window and 136 on an emulated Pixel 7 (101 more are skipped on one of the
+  two by design; every test runs on at least one), in both font setups. What a student will notice:
   - **Numbers.** ngspice's rounding leftovers (2e-19 A through a balanced bridge's ammeter) show as 0, with
-    a note, only where PlainSpice proves the answer is 0 by solving the circuit exactly with fractions
-    (decision 0015). A real tiny current is never shown as 0 with nothing said, and where ngspice's own
-    numbers are off, a warning gives the exact values.
+    a note, where PlainSpice solves the circuit exactly with fractions and the answer is 0, or, in a
+    circuit it does not solve exactly (a transistor, a `.param` line), where its rule finds them below
+    ngspice's tolerances (decision 0015). Where ngspice's own numbers are off, a warning gives the exact
+    values, and ngspice's numbers stay as it gives them. Left open (N6): in a circuit PlainSpice does not
+    solve exactly, a wire ngspice gives exactly 0 A beside a real current is drawn with no current and
+    nothing said (see Next).
   - **Checks.** Node names with letters outside a to z, hidden characters, look-alike letters or spaces
     copied from a document; E and G written as formulas (`VALUE={...}`); lines inside subcircuits, and a
     `.tf` of a node inside one (`v(x1.m)`); a resistance below 10⁻¹² Ω. Every sentence about what ngspice
@@ -257,10 +269,11 @@ Done so far:
   refuses every netlist whose words would overflow ngspice's fixed buffers, but a `.control` program can
   build a long name as it runs (a variable, an alias, a file it writes and reads back), which cannot be
   checked beforehand; a crafted link could then crash the page or show wrong numbers on the device that
-  opens it. A) Keep running `.control` blocks and record the gap (recommended: beginners do not write such
-  programs, and it only affects the page that opens the link). B) Refuse every command line (`.control`
-  blocks, `*#` lines, scripts): it closes the gap, but many teaching netlists stop running. C) Refuse only
-  commands that use `$`, `alias` or `source`: it breaks `foreach` sweeps.
+  opens it. A) Keep running `.control` blocks and record the gap (recommended: beginners do not write
+  such programs, and it only affects the page that opens the link). B) Refuse every command line
+  (`.control` blocks, `*#` lines, scripts): it closes the gap, but every netlist with such commands stops
+  running (none of the examples has any). C) Refuse only commands that use `$`, `alias` or `source`: it
+  breaks `foreach` sweeps.
 
 - **The design prototypes** at <https://plainspice.com/design/> are still published (they run under the
   app's own security policy). Keep them, or take them down now that Notebook is chosen? Either is easy; a
@@ -280,12 +293,13 @@ Done so far:
 - **The "b" and the "0" of the videos** (decision 0018): the Thévenin and Norton videos write the
   terminal b at the end of the ground wire, and some write 0 beside it; the drawing format can only
   name ground by its symbol. A label that writes another name (`*@ label 0 x y name=b`) would say it,
-  but every link made from then on would carry it, so it is your call. Until then the ground wire is
-  b, as in the netlist.
+  but every link made from then on would carry it, so it is your call. Until then the drawing names that
+  wire only by the ground symbol, as the netlists call that node 0.
 
-- **Links with drawings are longer**: an example's link now carries its video's drawing, about 200
-  characters more (e04's six links: 3,188 characters of a description's 5,000, 1,798 without the
-  drawings). Links already in descriptions keep working, laid out automatically.
+- **Links with drawings are longer**: an example's link now carries its video's drawing, 152 to 333
+  characters more, 218 on average over the 20 (e04's six links: 3,188 characters of a description's
+  5,000, 1,798 without the drawings). Links made before carry no drawing and keep working, laid out
+  automatically.
 
 Answered on 10 November 2026: the address is plainspice.com; `LICENSE` names Tarık; no trademark
 registration for now (a quick search found no other PlainSpice); the example library follows the

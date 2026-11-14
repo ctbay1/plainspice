@@ -79,14 +79,15 @@ the same way for all 20 examples and again whenever a video's drawing changes.
 - **Writing the terminal "b" and the "0" some videos write beside the ground wire.** The format names
   ground only by its symbol, and a label must name its own node; a format addition (a label that
   writes another name, `name=b`) would be published in every share link made from then on, so it
-  waits for Tarık (docs/plan.md, open questions). Until then the ground wire is b, as in the
-  netlist, and the report lists each such gap.
+  waits for Tarık (docs/plan.md, open questions). Until then the drawing names that wire only by
+  the ground symbol, as the netlists call that node 0, and the report lists each such gap.
 
 ## Consequences
 
 - The examples open drawn as in their videos on a computer and on a phone, and a link made from one
-  carries its drawing: about 200 characters longer (`scripts/make-link.ts` on e04's six examples:
-  3,188 characters in all, 1,798 without the drawings, of a YouTube description's 5,000). Links made
+  carries its drawing: 152 to 333 characters longer, 218 on average over the 20 (`scripts/make-link.ts`
+  on e04's six examples: 3,188 characters in all, 1,798 without the drawings, of a YouTube
+  description's 5,000). Links made
   before carry no drawing and open laid out automatically, as they always did.
 - On a Pixel 7 held upright: 12 examples open whole (sp01-1, -4, -5, -6, p01-1, -2, p02-1, -2, -3,
   e04-1, -2, -3); 4 open turned but need dragging (sp01-3, p02-4, p02-5, e04-5); 4 are shown as drawn

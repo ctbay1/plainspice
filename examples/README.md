@@ -27,7 +27,7 @@ n2, named n12), and the two the video shows only as netlists drawn as example 1 
 netlist differs (no ground symbol on node n3; no I1). The node names are the ones the video writes,
 where it writes them when they fit, and always beside their own wire. Two things the drawing format
 cannot say yet: the terminal **b** of the Thévenin and Norton examples (p02, e04), which the videos
-write at the end of the ground wire (here the ground wire is b), and the **0** some videos write
+write at the end of the ground wire (in these circuits b is the ground wire, node 0), and the **0** some videos write
 beside the ground wire (the ground symbol names it). Pictures next to the videos, with every change
 from the video and why: [`docs/design/video/`](../docs/design/video/README.md); how and why the
 drawings are made: [decision 0018](../docs/decisions/0018-the-examples-drawn-as-in-the-videos.md). On
