@@ -1316,12 +1316,12 @@ function decidedSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
 }
 
 /**
- * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints: ngspice's x the .op's value bit
- * for bit, or the very double of the decimal the netlist writes for it; the integration check): there a current the .op
- * shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or the rule, run on the
- * point's own values (pointOp), writes it as 0 too (a transistor's isolated nodes differ there by a few steps of a
- * double); every other point is left as ngspice gives it (the last pass, rule-op-vs-sweep-tf: C9 with a .param line
- * showed R5 "0 A" beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A"). Once per run.
+ * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints): there a current the .op
+ * shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or, at the .op's value
+ * itself (ngspice's x its double bit for bit, or the very double of the decimal the netlist writes for it; the integration
+ * check), the rule, run on the point's own values (pointOp), writes it as 0 too (a transistor's isolated nodes differ there
+ * by a few steps of a double); every other point is left as ngspice gives it (the last pass, rule-op-vs-sweep-tf: C9 with
+ * a .param line showed R5 "0 A" beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A"). Once per run.
  */
 function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | undefined {
   const cached = ruleSweepCache.get(results);
@@ -1340,17 +1340,12 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const state: number[] = [];
     const op = opShown(netlist, results);
     for (const k of at.points) {
-      // A point a few steps of a double from the .op's value (ngspice adding up its step) is not the .op's state: the circuit
-      // there is not the .op's, and the rule, with no exact solution, cannot tell a real value there from noise (the
-      // integration check: ".dc V1 -8.15 4.95 0.05" passes 4.499999999999973 V, where the circuit makes −2.436 aA through V2,
-      // and that point was drawn 0 with "rounding noise of a 0"). It keeps ngspice's numbers, and is named by its own x where
-      // one of them reads otherwise than the .op shows it (the critic of round 2: ".dc V1 0 9 0.01" ends at
-      // 8.999999999999853 V, where V2, idle at 9 V, carries −32.96 aA).
-      if (!at.exact(k)) {
-        const off = readsOtherwise(netlist, dc, k, op, () => false);
-        if (off) failed.set(k, off);
-        continue;
-      }
+      // Only at the .op's value is the circuit the .op's: a point a few steps of a double from it shows the .op's 0 only where
+      // ngspice gives it the very number the .op's 0 stands for (C9x.4: a balanced bridge's R5, 0 at every x), never by the
+      // rule run on the point's own values, which cannot tell a real value there from noise (the integration check: ".dc V1
+      // -8.15 4.95 0.05" passes 4.499999999999973 V, where the circuit makes −2.436 aA through V2, and that point was drawn 0
+      // with "rounding noise of a 0").
+      const opValue = at.exact(k);
       let own: RoundingNoise | undefined;
       const marked = new Map<number, 'very' | 'rule'>();
       dc.series.forEach((series, j) => {
@@ -1359,15 +1354,26 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
         if (!m || value === 0 || !Number.isFinite(value)) return;
         const device = /^@([^[\]]+)\[(i|current)\]$/i.exec(m[1]!);
         const key = netlistPart(netlist, device ? device[1]! : m[1]!);
-        // A current the .op shows as 0: rounding noise there, or ngspice's exact 0 (at the very double of the netlist's decimal,
-        // a step from ngspice's own reading of it, ngspice can give noise where its .op gave 0: the integration check).
-        if (!zeros.has(key) && given.get(`${device ? 'd' : 'b'} ${key}`) !== 0) return;
+        // A current the .op shows as 0: rounding noise there, or, at the .op's value, ngspice's exact 0 (at the very double of the
+        // netlist's decimal, a step from ngspice's own reading of it, ngspice can give noise where its .op gave 0: the integration
+        // check).
+        if (!zeros.has(key) && (!opValue || given.get(`${device ? 'd' : 'b'} ${key}`) !== 0)) return;
         if (given.get(`${device ? 'd' : 'b'} ${key}`) === value) marked.set(j, 'very');
-        else if ((own ??= ruleNoise(netlist, { op: pointOp(dc, k), other: [] })).currents.has(key)) {
+        else if (opValue && (own ??= ruleNoise(netlist, { op: pointOp(dc, k), other: [] })).currents.has(key)) {
           marked.set(j, 'rule');
           if (!zeros.has(key)) why.add('given0');
         }
       });
+      // A point a few steps of a double from the .op's value (ngspice adding up its step) stands for the .op's state only
+      // where every value it shows reads as the .op shows it; else it is left as ngspice gives it, and named by its own x
+      // (the critic of round 2: ".dc V1 0 9 0.01" ends at 8.999999999999853 V, where V2, idle at 9 V, carries −32.96 aA).
+      if (!at.exact(k)) {
+        const off = readsOtherwise(netlist, dc, k, op, (j) => marked.has(j));
+        if (off) {
+          failed.set(k, off);
+          continue;
+        }
+      }
       state.push(k);
       for (const [j, reason] of marked) {
         why.add(reason);
