@@ -10263,6 +10263,49 @@ a POLY control node called value, E1 e 0 POLY(1) value 0 0 2, which PlainSpice's
 
 PlainSpice's checks: `fatal-syntax`.
 
+### fatal-syntax-21. Explain says ngspice can't read such a formula and stops, where ngspice stops: in the main circuit and in a used subcircuit, not in one no X line uses
+
+Added after the integration check of the last pass (14 November 2026, P2). On the lines of fatal-syntax-12 to -14, -17, -18 and -20, Explain said "ngspice works the formula out at every point of the analysis", that ngspice "turns the line into a B source" and "drops the word before the formula", beside the check's error that it stops. Native 47 and 42 stop at each of those lines before they simulate anything, making no B source and dropping no word (the message shows the word still there: "e1 e 0 mid vol= 2"). Explain now says so where the checks do: "ngspice can't read this formula without braces, so it stops before it simulates anything (see the checks)", or for a node called value, "ngspice reads the word value on E1's line as VALUE, the start of a formula, so it takes 0 2 for E1's formula, which it can't read: it stops before it simulates anything (see the checks)". The same line inside a subcircuit an X line uses stops ngspice too; inside one no X line uses, ngspice skips it and runs, so Explain says no such thing there.
+
+```spice
+* an E formula without braces inside a used subcircuit
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+X1 out e sub
+Re e 0 1k
+.subckt sub a b
+E1 b 0 VALUE=2*v(a)
+.ends
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b -r out.raw (exit 1):
+    ERROR: mal formed E source instance: e1 b 0   vol=2*v(a)
+    ERROR: fatal error in ngspice, exit(1)
+ngspice 42, -b -r (exit 1):
+    ERROR: mal formed E line: e1 b 0   vol=2*v(a)
+    ERROR: fatal error in ngspice, exit(1)
+our engine (wasm), as ngspice -b -r (exit 1, no results):
+    ERROR: mal formed E source instance: e1 b 0   vol=2*v(a)
+after the fix "Put it in braces: {2*v(a)}" (fatal-syntax), which writes `E1 b 0 VALUE={2*v(a)}`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, v(x1.e1_int1) = 5, i(b.x1.be1) = 0, i(e.x1.e1) = -0.005, i(v1) = -0.0025
+the line of fatal-syntax-13 in the main circuit (E1 e 0 VALUE=2*v(out)):
+    ngspice 47, -b -r (exit 1): ERROR: mal formed E source instance: e1 e 0   vol=2*v(out)
+    ngspice 42, -b -r (exit 1): ERROR: mal formed E line: e1 e 0   vol=2*v(out)
+    our engine (exit 1): ERROR: mal formed E source instance: e1 e 0   vol=2*v(out)
+the same line inside a subcircuit no X line uses (.subckt sub a b / E1 a b VALUE=2*v(a) / .ends, no X line):
+    ngspice 47 and 42, -b (exit 0):
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+    ngspice 47 and 42, -b -r (exit 0), and our engine: v(in) = 5, v(out) = 2.5, i(v1) = -0.0025
+```
+
+PlainSpice's checks: `fatal-syntax`. Explain's words on these lines are pinned against the checks on every E and G line of the facts' netlists (119 of them; tests/unit/spice-formulas.test.ts).
+
 ## include-not-available
 
 An `.include` (or `.inc`) line, or `.lib` with a file and a section. Error. A `.lib` with one word is no command ngspice knows, and gets its own text (include-not-available-3).

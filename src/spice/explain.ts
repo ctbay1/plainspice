@@ -20,7 +20,7 @@ import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, wordNativeStopsAt } from './parse.ts';
+import { formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, valueAsNodeWord, wordNativeStopsAt } from './parse.ts';
 import { plusLineAfterEnd, saveCurrentsLeftOut } from './run-netlist.ts';
 import type {
   Element,
@@ -316,6 +316,15 @@ export const EXPLAIN_STRINGS = {
   formulaCurrent: (formula: string, from: string, to: string): string =>
     `The current given by the formula ${formula} is pushed from ${from}, through the source, into ${to}.`,
   formulaReads: (nodes: string): string => `ngspice works the formula out at every point of the analysis, from the voltages it names: ${nodes}.`,
+  // Where the checks say ngspice cannot read the formula and stops (fatal-syntax-12 to -14, -17, -18, -20; the integration check, P2).
+  formulaStops: "ngspice can't read this formula without braces, so it stops before it simulates anything (see the checks).",
+  valueStops: (name: string, taken: string): string =>
+    `ngspice reads the word value on ${name}'s line as VALUE, the start of a formula, so it takes ${taken} for ${name}'s formula, which it can't read: it stops before it simulates anything (see the checks).`,
+  formulaUnread: "the formula, which ngspice can't read here (see the checks)",
+  formulaUnreadPart: "part of the formula, which ngspice can't read here (see the checks)",
+  valueWordUnread: 'value: ngspice reads this word as VALUE, the start of a formula, and stops here (see the checks)',
+  droppedUnread: "a word before the formula, which ngspice can't read here (see the checks)",
+  xspiceEngine: "PlainSpice's engine cannot run this line: ngspice builds POLY and TABLE from an XSPICE block, which PlainSpice's engine leaves out.",
   formulaNote:
     'VALUE=, vol= and cur= give a dependent source by a formula: ngspice turns the line into a B source (a behavioural source), so it has no control nodes and no gain.',
   formulaKeyword: (word: string, what: string): string => `${word}: the output ${what} is the formula that follows`,
@@ -1819,7 +1828,37 @@ interface PartContext {
   notes: string[];
   /** For a line given by a formula, a table or a polynomial: where its keyword is among the fields, found once (CR1-9). */
   formAt?: number;
+  /** Where ngspice cannot read an E's or G's formula and stops (stopsAt), found once; null where it reads it. */
+  stops?: Stops | null;
 }
+
+/** Why ngspice cannot read an E's or G's formula: a node called value read as VALUE (the word), or no braces. */
+interface Stops {
+  why: 'value' | 'braces';
+  word?: Token;
+}
+
+/**
+ * Where ngspice cannot read an E's or G's formula and stops before it simulates anything, as the checks' fatal-syntax
+ * errors say: a node called value that it reads as VALUE with no brace after it (valueAsNodeWord), or a formula without
+ * the braces it does not add itself (formulaWithoutBraces). Null elsewhere, and on a line inside a subcircuit the main
+ * circuit does not use, which ngspice skips, as native 47 and 42 do there (the integration check, P2).
+ */
+function stopsAt(p: PartContext): Stops | null {
+  if (p.stops !== undefined) return p.stops;
+  const { el, netlist } = p;
+  let found: Stops | null = null;
+  if ((el.letter === 'E' || el.letter === 'G') && (contextOf(netlist).subcktMismatch || !unusedSubcircuit(netlist, p.line.index))) {
+    const word = valueAsNodeWord(netlist, el);
+    if (word) found = el.form?.kind === 'formula' && el.form.formula && /^[{']/.test(el.form.formula.text) ? null : { why: 'value', word };
+    else if (el.form && formulaWithoutBraces(el.form)) found = { why: 'braces' };
+  }
+  p.stops = found;
+  return found;
+}
+
+/** The words after a node called value that ngspice takes for the formula (valueNodeTrap's words). */
+const takenAfter = (el: Element, word: Token): string => el.fields.filter((f) => f.token.from >= word.to).map((f) => f.token.text).join(' ');
 
 function addNote(notes: string[], note: string | undefined): void {
   if (note && !notes.includes(note)) notes.push(note);
@@ -2044,8 +2083,10 @@ function otherWordMeaning(letter: ElementLetter | undefined, word: string): stri
 function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
   const form = p.el.form!;
   const at = p.formAt ?? p.el.fields.findIndex((g) => g.token === form.keyword);
+  const stops = stopsAt(p);
   // Before the keyword, or after VALUE without '=' and before its '{' (CR2-6): words ngspice drops.
-  if (k < at || (form.formula && k > at && f.token.to <= form.formula.from)) return fieldOf('dropped word', f.token, S.droppedWord);
+  if (k < at || (form.formula && k > at && f.token.to <= form.formula.from)) return fieldOf('dropped word', f.token, stops ? S.droppedUnread : S.droppedWord);
+  if (k === at && stops?.why === 'value' && form.kind === 'formula') return fieldOf('formula', f.token, S.valueWordUnread);
   if (k === at) {
     if (form.kind === 'poly') return fieldOf('polynomial', f.token, S.polyKeyword);
     if (form.kind === 'table') return fieldOf('table', f.token, S.tableKeyword);
@@ -2054,6 +2095,7 @@ function formRow(p: PartContext, f: Field, k: number): FieldExplanation {
   if (form.kind === 'poly') return k === at + 1 ? fieldOf('polynomial', f.token, S.polyDimension(f.token.text)) : fieldOf('coefficient', f.token, S.polyCoefficient);
   const whole = f.token.from === form.formula?.from && f.token.to === form.formula.to;
   if (form.kind === 'table') return fieldOf('table', f.token, whole ? S.tableLooksUp : S.tablePoint);
+  if (stops) return fieldOf('formula', f.token, whole ? S.formulaUnread : S.formulaUnreadPart);
   return fieldOf('formula', f.token, whole ? S.formulaWhole : S.formulaPart);
 }
 
@@ -2078,12 +2120,30 @@ function explainForm(p: PartContext, sentences: string[]): void {
       addNote(p.notes, S.formulaNote);
       return;
     }
+    const stops = stopsAt(p);
+    // A node called value read as VALUE: the line is that, whatever else it says (fatal-syntax-17, -20).
+    if (stops?.why === 'value') {
+      sentences.push(S.valueStops(name, takenAfter(el, stops.word!)));
+      return;
+    }
     const formula = formulaText(form.formula);
     sentences.push(el.letter === 'E' ? S.formulaVoltage(voltagePhrase(a, b), formula) : S.formulaCurrent(formula, nodePhrase(a), nodePhrase(b)));
+    // No braces where ngspice adds none: it turns nothing into a B source and works nothing out (fatal-syntax-12 to -14, -18).
+    if (stops) {
+      sentences.push(S.formulaStops);
+      return;
+    }
     const read = [...new Map((el.reads ?? []).map((r) => [r.name, r])).values()];
     if (read.length) sentences.push(S.formulaReads(S.listJoin(read.map((r) => nodeProse(r)))));
     addNote(p.notes, S.formulaNote);
     if (form.dropped) addNote(p.notes, S.droppedNote(form.dropped.map((t) => t.text), wordNativeStopsAt(form) !== undefined));
+    return;
+  }
+  const stops = stopsAt(p);
+  if (stops?.why === 'value') {
+    // A POLY control node called value: native ngspice stops there too (fatal-syntax-20), where PlainSpice's engine stops at the POLY.
+    sentences.push(S.valueStops(name, takenAfter(el, stops.word!)));
+    addNote(p.notes, S.xspiceEngine);
     return;
   }
   if (form.kind === 'poly') {
@@ -2202,6 +2262,13 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
   const info = el.letter ? elementInfo(el.letter) : undefined;
   const p: PartContext = { netlist, line, el, info, notes: [] };
   const fields = partFields(p);
+  // A node called value that ngspice reads as VALUE is no node for it (fatal-syntax-20).
+  const valueWord = stopsAt(p)?.word;
+  for (const f of valueWord ? fields : []) {
+    if (f.span?.from !== valueWord!.from || f.span.to !== valueWord!.to) continue;
+    f.meaning = S.valueWordUnread;
+    delete f.emphasis;
+  }
   const heading = el.form ? S.partHeading(el.name.text, S.formWhat(el.letter === 'G' || el.letter === 'F', el.form.kind)) : S.partHeading(el.name.text, partWhat(info), info?.code);
   const [a, b, c, d] = el.nodes;
   const value = el.value ? valueWords(netlist, el.value.token, unitForValue(el.letter), el.value.number) : paramValue(netlist, el);
@@ -2291,6 +2358,12 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
         explainForm(p, sentences);
         break;
       }
+      const stops = stopsAt(p);
+      if (stops) {
+        // An output node called value (E1 value 0 mid 0 2): read as VALUE, a formula ngspice can't read (fatal-syntax-20).
+        sentences.push(S.valueStops(el.name.text, takenAfter(el, stops.word!)));
+        break;
+      }
       if (a && b && c && d && value) {
         // P5: V(+) − V(−) = gain × (V(c+) − V(c−)).
         const gain = value.value !== undefined ? formatNumber(value.value) : value.text;
@@ -2303,6 +2376,11 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
     case 'G': {
       if (el.form) {
         explainForm(p, sentences);
+        break;
+      }
+      const stops = stopsAt(p);
+      if (stops) {
+        sentences.push(S.valueStops(el.name.text, takenAfter(el, stops.word!)));
         break;
       }
       if (a && b && c && d && value) {

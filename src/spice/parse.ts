@@ -825,6 +825,44 @@ export function wordNativeStopsAt(form: ControlledForm): Token | undefined {
   return word && form.equals && word.to <= form.keyword.from && !(form.formula?.text ?? '').includes('(') ? word : undefined;
 }
 
+/** After '=', ngspice puts braces round an E's or G's formula itself, unless it starts with a number, a sign and a number, or true or false (inp_fix_param_values). */
+const NO_BRACES = /^(?:[0-9.]|[+-]\.?[0-9]|true|false)/i;
+
+/**
+ * An E's or G's formula that ngspice cannot read: no brace or quote starts it where ngspice does not add the braces
+ * itself, after VALUE without '=' (VALUE v(out)*2) or after '=' before a number (VALUE=3, VALUE=2*v(out),
+ * VALUE=-2*v(out)), so it stops: 'mal formed E source instance' (fatal-syntax-12 to -14, -18). An empty formula has
+ * words of its own. The checks' error (checkFormulaForm in traps.ts) and Explain's words (explainForm) both follow
+ * it (the integration check, P2).
+ */
+export function formulaWithoutBraces(form: ControlledForm): boolean {
+  const text = form.formula?.text;
+  if (form.kind !== 'formula' || !text || /^(\{\s*\}|'\s*'|"\s*")$/.test(text) || /^[{'"]/.test(text)) return false;
+  return !form.equals || NO_BRACES.test(text);
+}
+
+/**
+ * The word value standing where a node goes on an E or G line, which ngspice reads as VALUE, the start of a formula,
+ * wherever it stands (search_plain_identifier, then inp_compat in its inpcom.c; fatal-syntax-17, -20), or undefined:
+ * - an output node, or a control node of POLY, called value (E1 value 0 mid 0 2, E1 e 0 POLY(1) value 0 0 2);
+ * - value with no '=' before two words or more (E1 e 0 value mid 2: the gain form's control + node; CR1-10);
+ * - value with no '=' after another word and before a number, in braces or not, while a part connects to a node called
+ *   value (E1 e 0 mid value 2, E1 e 0 value 0 {2}: the control - node, and the gain; CR2-4).
+ * A formula written after VALUE (VALUE v(out)*2, E1 e 0 x VALUE {v(out)*2}) is no node. The checks (valueNodeTrap in
+ * traps.ts) and Explain both follow it (the integration check, P2).
+ */
+export function valueAsNodeWord(netlist: Netlist, e: Element): Token | undefined {
+  if (e.letter !== 'E' && e.letter !== 'G') return undefined;
+  const form = e.form;
+  const node = e.nodes.find((r) => /^value$/i.test(r.token.text));
+  if (node && form?.kind !== 'formula') return node.token;
+  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || form.equals) return undefined;
+  const text = form.formula.text;
+  if (!/^[{'"]/.test(text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(text)) return form.keyword;
+  const gain = readNumber(text.replace(/^[{']\s*|\s*[}']$/g, ''));
+  return form.dropped?.length && gain && !gain.rest && netlist.nodes.get('value')?.connections.length ? form.keyword : undefined;
+}
+
 /** The word that names a formula on an E or G line: VALUE, then '=' or not, or vol= (E) or cur= (G). */
 function isFormulaWord(r: Reader, w: Word, letter: 'E' | 'G'): boolean {
   const kw = lowerAscii(w.clean);

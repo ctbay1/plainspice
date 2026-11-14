@@ -24,6 +24,7 @@ import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import type { RunResult } from '../../src/engine/types.ts';
 import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { explainLine } from '../../src/spice/explain.ts';
 import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 
 interface Fact {
@@ -558,6 +559,7 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-26', netlist: "* Turkish letters in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node ____k____", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['non-ascii-node'] },
   // Two spellings that differ only in capital letters on part lines are one node, as written: a warning, and one name for both (CR2-3).
   { code: 'non-ascii-node-27', netlist: "* two spellings of one node\nV1 giris 0 10\nR1 giris \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  { code: 'fatal-syntax-21', netlist: "* an E formula without braces inside a used subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out e sub\nRe e 0 1k\n.subckt sub a b\nE1 b 0 VALUE=2*v(a)\n.ends\n.op\n.end\n", prints: ["mal formed E source instance: e1 b 0   vol=2*v(a)"], fails: true, traps: ['fatal-syntax'] },
   { code: 'non-ascii-node-28', netlist: "* a resistor between two spellings of one name\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-29', netlist: "* C9's balanced bridge, its node written \u00e7\u0131k\u0131\u015f and \u00c7\u0131k\u0131\u015f, with a transistor\nV1 top 0 9\nR1 top \u00e7\u0131k\u0131\u015f 10k\nR2 \u00c7\u0131k\u0131\u015f 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 \u00e7\u0131k\u0131\u015f b 1k\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(____k____)": 4.499999999999999, "v(b)": 4.5, "v(x)": 9.000081999484787e-06, "i(v1)": -0.0014074468265108293, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 9.000081999484786e-12 }, traps: ['non-ascii-node'] },
 ];
@@ -834,6 +836,31 @@ it('X1: a part with an end on each of two spellings that differ only in capital 
   for (const part of ['I1 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1m', 'V2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1']) {
     expect(checkTraps(parseNetlist(text.replace(/^R2 .*$/m, part))).map((t) => [t.id, t.severity]), part).toEqual([['non-ascii-node', 'error']]);
   }
+});
+
+it('fatal-syntax-21: Explain says ngspice can\'t read a formula without braces and stops, where native ngspice stops: in the main circuit and in a used subcircuit, not in one no X line uses', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const stop = "ngspice can't read this formula without braces, so it stops before it simulates anything (see the checks).";
+  const lineOf = (text: string): number => parseNetlist(text).lines.findIndex((l) => l.text.startsWith('E1'));
+  const used = FACTS.find((f) => f.code === 'fatal-syntax-21')!.netlist;
+  const main = FACTS.find((f) => f.code === 'fatal-syntax-13')!.netlist;
+  for (const text of [main, used]) {
+    expect(explainLine(parseNetlist(text), lineOf(text))!.summary, text).toContain(stop);
+    const r = await engine.run(text);
+    expect(r.ok, text).toBe(false);
+    expect(`${r.stdout}\n${r.stderr}`, text).toContain('mal formed E source instance');
+  }
+  // In a subcircuit no X line uses ngspice skips the line and runs (native 47 and 42: v(out) = 2.5, exit 0).
+  const unused = '* an E formula without braces inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt sub a b\nE1 a b VALUE=2*v(a)\n.ends\n.op\n.end\n';
+  const r = await engine.run(unused);
+  expect(r.ok).toBe(true);
+  expect(vector(r, 'v(out)')).toEqual([2.5]);
+  expect(explainLine(parseNetlist(unused), lineOf(unused))!.summary).not.toContain('stops');
+  // Braced, the used subcircuit runs (native 47 and 42: v(e) = 5).
+  const [f] = fixed.get('fatal-syntax-21')!;
+  expect(f!.label).toBe('fatal-syntax: Put it in braces: {2*v(a)}');
+  expect(vector(f!.run, 'v(e)')).toEqual([5]);
+  expect(explainLine(parseNetlist(f!.netlist), lineOf(f!.netlist))!.summary).toContain('ngspice works the formula out');
 });
 
 it('CR1-2, CR1-4: the fix takes every character that looks like a space out of the formula, wherever it stands, and the formula runs', () => {

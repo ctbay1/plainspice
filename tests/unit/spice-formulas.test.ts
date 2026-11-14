@@ -11,11 +11,13 @@
  * - A character that looks like a space in a formula stops ngspice: its fix takes it out (space-character-22, -23, nbsp-4).
  * - Words ngspice takes out of an E, F, G or H line before it reads it are no nodes (unknown-word-53, -54).
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { applyChanges } from '../../src/schematic/format.ts';
 import { describeCircuit, explainDiagnostic } from '../../src/spice/describe.ts';
-import { explainLine } from '../../src/spice/explain.ts';
+import { explainLine, unusedSubcircuit } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps, nodeReferences } from '../../src/spice/traps.ts';
 import type { Element, TextChange } from '../../src/spice/types.ts';
@@ -979,5 +981,66 @@ describe('a rename fix and the drawing editor\'s rename apply their changes in o
     const [save] = leastWorkMs([() => (savedText = applyEdit(s2, { kind: 'rename-node', node: 'a', name: 'vin' }).text)], 1);
     expect(savedText.match(/\bvin\b/g)?.length).toBe(40003);
     expect(save).toBeLessThan(1500);
+  });
+});
+
+describe('Explain says ngspice cannot read an E\'s or G\'s formula and stops where the checks say so (the integration check, P2; fatal-syntax-21)', () => {
+  const net = (line: string): string => `* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR3 mid 0 1k\nR4 value 0 1k\n.param truek=2\n${line}\nRe e 0 1k\nRg g 0 1k\n.op\n.end\n`;
+  const said = (line: string): string => {
+    const ex = explainLine(parseNetlist(net(line)), 7)!;
+    return [ex.summary, ...ex.fields.map((f) => f.meaning), ...ex.notes].join(' | ');
+  };
+  const FALSE = /works the formula out|ngspice works out|drops|turns the line into a B source|runs it/;
+  it.each([
+    // [line, the words of the stop] — native 47 and 42 stop at each: 'mal formed E (G) source instance' / 'mal formed E (G) line'.
+    ['E1 e 0 VALUE=3', "ngspice can't read this formula without braces, so it stops before it simulates anything (see the checks)."],
+    ['E1 e 0 VALUE=2*v(out)', "ngspice can't read this formula without braces"],
+    ['E1 e 0 VALUE v(out)*2', "ngspice can't read this formula without braces"],
+    ['E1 e 0 VALUE=-2*v(out)', "ngspice can't read this formula without braces"],
+    ['E1 e 0 VALUE=truek*v(out)', "ngspice can't read this formula without braces"],
+    ['G1 0 g cur=2m*v(out)', "ngspice can't read this formula without braces"],
+    ['G1 0 g VALUE 2m*v(out)', "ngspice can't read this formula without braces"],
+    ['E1 e 0 value 0 2', "ngspice reads the word value on E1's line as VALUE, the start of a formula, so it takes 0 2 for E1's formula, which it can't read: it stops before it simulates anything (see the checks)."],
+    ['E1 e 0 mid value 2', 'so it takes 2 for E1\'s formula, which it can\'t read: it stops'],
+    ['E1 e 0 value mid 2', 'so it takes mid 2 for E1\'s formula'],
+    ['E1 value 0 mid 0 2', 'so it takes 0 mid 0 2 for E1\'s formula'],
+    ['E1 e 0 POLY(1) value 0 0 2', 'so it takes 0 0 2 for E1\'s formula'],
+  ])('%s: Explain says it stops, and never that ngspice works the formula out, drops a word or runs it', (line, stop) => {
+    expect(said(line)).toContain(stop);
+    expect(said(line)).not.toMatch(FALSE);
+    expect(checkTraps(parseNetlist(net(line))).filter((t) => t.line === 8).map((t) => [t.id, t.severity])).toContainEqual(['fatal-syntax', 'error']);
+  });
+  it.each([
+    // The forms ngspice reads keep their words (fatal-syntax-16, -19, the braced -20 warning, missing-fields-9).
+    ['E1 e 0 VALUE={2*v(out)}', 'ngspice works the formula out at every point of the analysis'],
+    ['E1 e 0 VALUE=-v(out)*2', 'ngspice works the formula out at every point of the analysis'],
+    ['E1 e 0 VALUE=(1+v(out))*2', 'ngspice works the formula out at every point of the analysis'],
+    ['E1 e 0 mid value {2}', 'ngspice drops the word before the formula (mid)'],
+    ['E1 e 0 x VALUE={2}', 'Native ngspice stops at it (see the checks)'],
+  ])('%s keeps its words', (line, words) => {
+    expect(said(line)).toContain(words);
+    expect(said(line)).not.toContain("can't read");
+  });
+  it('agrees with the checks on every E and G line of the facts\' netlists: it says ngspice stops exactly where they give the error', () => {
+    const dir = resolve(import.meta.dirname, '../../docs/spice-facts');
+    let lines = 0;
+    let stops = 0;
+    for (const file of ['traps.md', 'explanations.md', 'numbers-and-syntax.md']) {
+      for (const m of readFileSync(resolve(dir, file), 'utf8').matchAll(/```spice\n([\s\S]*?)```/g)) {
+        const n = parseNetlist(m[1]!);
+        const errors = new Set(checkTraps(n).filter((t) => t.severity === 'error' && t.id === 'fatal-syntax' && /formula without braces|as the start of a formula/.test(t.title)).map((t) => t.line));
+        for (const l of n.lines) {
+          if ((l.element?.letter !== 'E' && l.element?.letter !== 'G') || unusedSubcircuit(n, l.index)) continue;
+          const ex = explainLine(n, l.index)!;
+          const saysStop = /it stops before it simulates anything \(see the checks\)/.test(ex.summary);
+          expect(saysStop, `${file}: ${l.text}`).toBe(errors.has(l.number));
+          lines += 1;
+          if (saysStop) stops += 1;
+        }
+      }
+    }
+    // 119 such lines on 14 November 2026, 6 of them the error's (fatal-syntax-12 to -14, -17, -18, -20).
+    expect(lines).toBeGreaterThanOrEqual(119);
+    expect(stops).toBeGreaterThanOrEqual(6);
   });
 });

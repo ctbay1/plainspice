@@ -691,3 +691,16 @@ was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before an
   decision 0017): 4 ms. At one place a later change's words still come first, as the splices gave them, and
   changes that overlap, which no check makes, are spliced as before, so every result is the same (a test
   compares 3,000 random sets of changes with the old splices).
+- **Explain says ngspice stops where it cannot read an E's or G's formula** (P2). Explain's words for a formula
+  (C3-5) did not know the checks' fatal-syntax errors: on `E1 e 0 VALUE=2*v(out)`, `VALUE=3`, `VALUE v(out)*2`,
+  `VALUE=-2*v(out)`, `cur=2m*v(out)` and on a node called value read as VALUE it said ngspice works the formula
+  out, turns the line into a B source and drops the word before it, beside the error that ngspice stops (and
+  "Native ngspice 47 runs it" for a POLY control node called value). The two rules the checks use now live in
+  `src/spice/parse.ts` (`formulaWithoutBraces`, and `valueAsNodeWord`, moved from `traps.ts` unchanged), and
+  Explain follows them: "ngspice can't read this formula without braces, so it stops before it simulates
+  anything (see the checks)", or that it reads value as VALUE and takes the words after it for a formula it
+  can't read; the rows say "part of the formula, which ngspice can't read here", and no B-source or
+  dropped-word note is given. Not on a line inside a subcircuit no X line uses, where ngspice skips it and runs
+  (fatal-syntax-21); there the subckt lane's words for skipped lines apply. A test holds Explain to the checks
+  on every E and G line of the facts' netlists. Left open: a no-break space right after `=` (space-character-25),
+  another check's error, still gets "ngspice works the formula out".

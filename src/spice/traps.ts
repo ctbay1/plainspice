@@ -39,7 +39,7 @@ import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters
 import { buildGraph, behaviouralKind, hasReadableCurrent, subcircuitLines, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { applyTextChanges, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, wordNativeStopsAt } from './parse.ts';
+import { applyTextChanges, formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, valueAsNodeWord, wordNativeStopsAt } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
 import type {
   Element,
@@ -2256,7 +2256,7 @@ function checkIncomplete(c: Ctx, i: number): void {
     return;
   }
   // A node called value where ngspice reads VALUE (CR1-10, CR2-4): the line is that, whatever else it says.
-  const valueWord = valueAsNodeWord(c, e);
+  const valueWord = valueAsNodeWord(c.n, e);
   if (valueWord) {
     valueNodeTrap(c, i, valueWord);
     return;
@@ -2333,8 +2333,6 @@ function checkXspiceForm(c: Ctx, i: number): void {
  * starts with a digit or a '.', a sign and then a digit (or a '.' and a digit), or the letters true or false.
  * Any other start gets its braces: a letter, a bracket, and a sign before a letter or a bracket (fatal-syntax-16, -18).
  */
-const NO_BRACES = /^(?:[0-9.]|[+-]\.?[0-9]|true|false)/i;
-
 /**
  * An E or G given by a formula that ngspice cannot read (C3-5). ngspice takes the formula from its '{' to the
  * end of the line, and adds the braces itself after '=' unless the formula starts with a number (NO_BRACES):
@@ -2369,8 +2367,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
         : `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-15]`);
     return;
   }
-  if (/^[{'"]/.test(formula.text)) return;
-  if (equals && !NO_BRACES.test(formula.text)) return;
+  if (!formulaWithoutBraces(form)) return;
   c.broken.add(i);
   const braced = `{${formula.text}}`;
   // Braces fit a formula only, never words a blank keeps apart.
@@ -2385,26 +2382,6 @@ function checkFormulaForm(c: Ctx, i: number): void {
     formula.text.includes('=') || words || /^\.(?![0-9])/.test(formula.text) ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
 }
 
-/**
- * The word value standing where a node goes on an E or G line, which ngspice reads as VALUE, the start of a formula,
- * wherever it stands (search_plain_identifier, then inp_compat in its inpcom.c; fatal-syntax-17, -20), or undefined:
- * - an output node, or a control node of POLY, called value (E1 value 0 mid 0 2, E1 e 0 POLY(1) value 0 0 2);
- * - value with no '=' before two words or more (E1 e 0 value mid 2: the gain form's control + node; CR1-10);
- * - value with no '=' after another word and before a number, in braces or not, while a part connects to a node called
- *   value (E1 e 0 mid value 2, E1 e 0 value 0 {2}: the control - node, and the gain; CR2-4).
- * A formula written after VALUE (VALUE v(out)*2, E1 e 0 x VALUE {v(out)*2}) is no node.
- */
-function valueAsNodeWord(c: Ctx, e: Element): Token | undefined {
-  if (e.letter !== 'E' && e.letter !== 'G') return undefined;
-  const form = e.form;
-  const node = e.nodes.find((r) => /^value$/i.test(r.token.text));
-  if (node && form?.kind !== 'formula') return node.token;
-  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || form.equals) return undefined;
-  const text = form.formula.text;
-  if (!/^[{'"]/.test(text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(text)) return form.keyword;
-  const gain = readNumber(text.replace(/^[{']\s*|\s*[}']$/g, ''));
-  return form.dropped?.length && gain && !gain.rest && c.n.nodes.get('value')?.connections.length ? form.keyword : undefined;
-}
 
 /**
  * A node called value on an E or G line (valueAsNodeWord). Without a { after it ngspice can't read the formula it
@@ -2419,7 +2396,7 @@ function valueNodeTrap(c: Ctx, i: number, word: Token): void {
   if (!c.valueRename) {
     const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
     // The words the parser read as a node are the node's; those it read as the keyword are renamed here.
-    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
+    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c.n, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
     c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
   }
   const { to, fix: rename } = c.valueRename;

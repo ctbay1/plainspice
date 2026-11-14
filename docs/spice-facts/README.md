@@ -289,7 +289,8 @@ part with an end on each of `Çıkış` and `çıkış` has them joined: R2 carr
 changes nothing, a voltage source stops ngspice, an E reads 0 V; the error's fix gives each its own name,
 6.667 V and 3.333 V) and non-ascii-node-29 (ngspice names the node `____k____` in its results; C9's bridge
 written with both spellings gives R5 −8.882e-19 A, an exact 0, as C9 does, which the results now show as one
-node's, named as the parts write it).
+node's, named as the parts write it), and fatal-syntax-21 (an E formula ngspice can't read stops it in the main
+circuit and in a used subcircuit, not in one no X line uses: what Explain now says).
 
 ## The last pass of 13 November 2026 (the ui lane)
 
