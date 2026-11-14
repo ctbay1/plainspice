@@ -626,7 +626,9 @@ describe('<App />', () => {
     act(() => part('R2').focus());
     fireEvent.keyDown(part('R2'), { key: 'Delete' });
     await waitFor(() => expect(screen.queryByRole('button', { name: /^R2, / })).toBeNull());
-    expect(polite()).toContain('R2 deleted.');
+    // Said a moment after the drawing changes (the announcer adds each message 50 ms later, so a
+    // screen reader is watching): waited for, not looked for at once (CI on 14 Nov drew it sooner).
+    await waitFor(() => expect(polite()).toContain('R2 deleted.'));
     await waitFor(() => expect(document.activeElement?.classList.contains('nb-hit')).toBe(true));
     // Undo goes back step by step: the delete, the reverse, the two moves as one, the turn.
     for (const what of ['R2 deleted.', 'V1 reversed.', 'R2 moved.', 'R2 turned.']) {
