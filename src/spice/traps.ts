@@ -39,7 +39,7 @@ import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters
 import { buildGraph, behaviouralKind, hasReadableCurrent, subcircuitLines, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, wordNativeStopsAt } from './parse.ts';
+import { applyTextChanges, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, wordNativeStopsAt } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
 import type {
   Element,
@@ -104,13 +104,9 @@ export const TRAP_IDS = [
 
 export type TrapId = (typeof TRAP_IDS)[number];
 
-/** Applies a fix's changes to the text they were computed on (positions refer to that text). */
+/** Applies a fix's changes to the text they were computed on (positions refer to that text), in one pass (applyTextChanges). */
 export function applyFix(text: string, fix: Fix): string {
-  let out = text;
-  for (const c of [...fix.changes].sort((a, b) => b.from - a.from || b.to - a.to)) {
-    out = out.slice(0, c.from) + c.insert + out.slice(c.to);
-  }
-  return out;
+  return applyTextChanges(text, fix.changes);
 }
 
 // ------------------------------------------------------------------ context

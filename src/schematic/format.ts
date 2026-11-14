@@ -27,7 +27,7 @@
  * where they are kept, so the same lines can travel in a share link instead of the netlist.
  */
 import type { Netlist, TextChange } from '../spice/types.ts';
-import { lowerAscii, parseNetlist } from '../spice/parse.ts';
+import { applyTextChanges, lowerAscii, parseNetlist } from '../spice/parse.ts';
 import type { Circuit } from './circuit.ts';
 import type { Drawing, GroundPlacement, LabelSide, NodeSpot } from './drawing.ts';
 import { LABEL_SIDES, NODE_SPOTS } from './drawing.ts';
@@ -478,7 +478,5 @@ export function stripDrawing(text: string): string {
 
 /** Applies text changes computed on `text` (positions refer to it), like a check's fix. */
 export function applyChanges(text: string, changes: readonly TextChange[]): string {
-  let out = text;
-  for (const c of [...changes].sort((a, b) => b.from - a.from || b.to - a.to)) out = out.slice(0, c.from) + c.insert + out.slice(c.to);
-  return out;
+  return applyTextChanges(text, changes);
 }

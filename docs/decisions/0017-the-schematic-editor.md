@@ -768,3 +768,8 @@ and golden rows in A3f and A3h):
   "Node Çıkış and node çıkış differ only in capital letters" and "ngspice makes node Çıkış and node çıkış one
   node … gave 5 V at node ____k____". Kept: "Rename the node value to val", which says "the node …" as
   "Take it out: name the node out" does; it names no node bare.
+- **The rename's changes are applied in one pass** (X5). `applyChanges` in `src/schematic/format.ts`, which the
+  editor's edits and the page's fixes use, spliced each change into the text from the end, a copy of the text
+  for each: renaming node in on a formula that reads it 8,000 times took 1,146 ms of processor time, and node a
+  named bare 40,000 times on `.save` 8,134 ms. It now copies each piece of the text once, in the text's order,
+  through the same `applyTextChanges` as a check's fix (decision 0016): 17 ms and 107 ms, with the same results.

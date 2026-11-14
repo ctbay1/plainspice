@@ -13,11 +13,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
+import { applyChanges } from '../../src/schematic/format.ts';
 import { describeCircuit, explainDiagnostic } from '../../src/spice/describe.ts';
 import { explainLine } from '../../src/spice/explain.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
 import { applyFix, checkTraps, nodeReferences } from '../../src/spice/traps.ts';
-import type { Element } from '../../src/spice/types.ts';
+import type { Element, TextChange } from '../../src/spice/types.ts';
+import { leastWorkMs } from './work-time.ts';
 
 const T = '\u00e7\u0131k\u0131\u015f'; // çıkış
 const ZW = '\u200b';
@@ -918,5 +920,64 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     // A node called value keeps "the node value", the form of "name the node out": no bare name.
     const value = traps('* t\nV1 in 0 5\nR1 in value 1k\nR2 value 0 1k\nE1 e 0 value 0 2\nRe e 0 1k\n.op\n.end\n').find((t) => t.id === 'fatal-syntax')!;
     expect(value.fixes.map((f) => f.label)).toEqual(['Rename the node value to val']);
+  });
+});
+
+describe('a rename fix and the drawing editor\'s rename apply their changes in one pass (the integration check, X5)', () => {
+  const traps = (text: string) => checkTraps(parseNetlist(text));
+  // The splices from the end that applyFix and applyChanges made before: the results must stay the same.
+  const spliced = (text: string, changes: readonly TextChange[]): string => {
+    let out = text;
+    for (const c of [...changes].sort((a, b) => b.from - a.from || b.to - a.to)) out = out.slice(0, c.from) + c.insert + out.slice(c.to);
+    return out;
+  };
+  it('gives what the splices gave, for changes at one place, side by side and overlapping alike', () => {
+    let seed = 7;
+    const next = (n: number): number => ((seed = (seed * 1103515245 + 12345) % 2147483648), seed % n);
+    for (let trial = 0; trial < 3000; trial++) {
+      const text = 'abcdefghijklmnopqrstuvwxyz0123'.slice(0, 1 + next(30));
+      const changes: TextChange[] = [];
+      for (let k = next(6); k > 0; k--) {
+        const from = next(text.length + 1);
+        const to = trial % 5 === 0 ? from + next(4) : Math.min(text.length, from + next(3));
+        changes.push({ from, to: trial % 97 === 0 ? from - 1 : to, insert: ['', 'X', 'YZ', 'çıkış'][next(4)]! });
+      }
+      const want = spliced(text, changes);
+      expect(applyFix(text, { label: 'fix', changes }), JSON.stringify([text, changes])).toBe(want);
+      expect(applyChanges(text, changes), JSON.stringify([text, changes])).toBe(want);
+    }
+    // At one place the later change's words come first; an insertion goes before a replacement that starts there.
+    expect(applyChanges('xy', [{ from: 1, to: 1, insert: 'A' }, { from: 1, to: 1, insert: 'B' }])).toBe('xBAy');
+    expect(applyChanges('xyz', [{ from: 1, to: 2, insert: 'R' }, { from: 1, to: 1, insert: 'I' }])).toBe('xIRz');
+  });
+  it('takes work in step with the changes: thousands of v(çıkış) in one formula, renamed by the fix and on the drawing', () => {
+    const formula = (n: number, word: string): string => `* t\nV1 in 0 1\nR1 in ${T} 1k\nR2 ${T} 0 1k\nB1 b 0 V=${Array(n).fill(word).join('+')}\nRb b 0 1k\n.op\n.end\n`;
+    const fixOf = (text: string) => traps(text).find((t) => t.id === 'non-ascii-node')!.fixes[0]!;
+    const big = formula(16000, `v(${T})`);
+    const bigFix = fixOf(big);
+    expect(bigFix.changes.length).toBe(16002);
+    expect(applyFix(big, bigFix)).not.toContain(T);
+    // 3e61833 spliced 16,002 changes in 1,945 ms of processor time (load 1.7); in one pass it takes a few.
+    const [once] = leastWorkMs([() => applyFix(big, bigFix)], 3);
+    expect(once).toBeLessThan(200);
+    // A quarter of the changes takes about a quarter of the work, not a sixteenth (each timed 10 times over).
+    const small = formula(4000, `v(${T})`);
+    const smallFix = fixOf(small);
+    const [quarter, whole] = leastWorkMs([() => { for (let k = 0; k < 10; k++) applyFix(small, smallFix); }, () => { for (let k = 0; k < 10; k++) applyFix(big, bigFix); }], 3);
+    expect(whole).toBeLessThan(Math.max(10 * quarter, 40));
+    // The drawing editor's rename of node in, read 8,000 times by one formula: 1,146 ms at 3e61833, about 17 now.
+    const editor = `* t\nV1 in 0 1\nR1 in out 1k\nR2 out 0 1k\nB1 b 0 V=${Array(8000).fill('v(in)\u2009*\u20092').join('+')}\nRb b 0 1k\n.op\n.end\n`;
+    const s = buildSchematic(editor);
+    let renamed = '';
+    const [edit] = leastWorkMs([() => (renamed = applyEdit(s, { kind: 'rename-node', node: 'in', name: 'vin' }).text)], 3);
+    expect(renamed.match(/v\(vin\)/g)?.length).toBe(8000);
+    expect(edit).toBeLessThan(400);
+    // A node named bare 40,000 times on .save, in a text with a letter outside ASCII: 8,134 ms at 3e61833, about 110 now.
+    const saved = `* t\u0131\nV1 a 0 1\nR1 a b 1k\nR2 b 0 1k\n.op\n.save ${Array(40000).fill('a').join(' ')}\n.end\n`;
+    const s2 = buildSchematic(saved);
+    let savedText = '';
+    const [save] = leastWorkMs([() => (savedText = applyEdit(s2, { kind: 'rename-node', node: 'a', name: 'vin' }).text)], 1);
+    expect(savedText.match(/\bvin\b/g)?.length).toBe(40003);
+    expect(save).toBeLessThan(1500);
   });
 });

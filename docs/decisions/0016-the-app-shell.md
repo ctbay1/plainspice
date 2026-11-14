@@ -683,3 +683,11 @@ was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before an
   them apart (CR2-3), so the second spelling's node, its parts' cards and a source's power there get no
   voltage until the fix gives the node one name; a group with a part across stays as ngspice spells it, as
   its error says the numbers are no answers.
+- **A fix's changes are applied in one pass** (X5). Since the renames reach every formula that reads a node
+  (C3-1), a fix can carry thousands of changes, and `applyFix` spliced them in one by one from the end, copying
+  the text for each: "Rename node çıkış to cikis" on a formula with 16,000 `v(çıkış)` (144 KB, a share link's
+  size) took 1,945 ms of processor time. It now builds the result from the pieces between the changes, in the
+  text's order (`applyTextChanges` in `src/spice/parse.ts`, which the drawing editor's `applyChanges` uses too,
+  decision 0017): 4 ms. At one place a later change's words still come first, as the splices gave them, and
+  changes that overlap, which no check makes, are spliced as before, so every result is the same (a test
+  compares 3,000 random sets of changes with the old splices).

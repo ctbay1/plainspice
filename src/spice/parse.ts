@@ -77,6 +77,7 @@ import type {
   NodeInfo,
   NodeRef,
   NumberReading,
+  TextChange,
   Token,
   ValueField,
 } from './types.ts';
@@ -149,6 +150,31 @@ export function ngspiceSpelling(name: string): string {
     else out += '_'.repeat(c < 0x800 ? 2 : c < 0x10000 ? 3 : 4);
   }
   return out;
+}
+
+/**
+ * Text changes computed on `text` (positions refer to it) applied in one pass over them in the text's order,
+ * each piece between them copied once: a check's fix and the drawing editor's edits (applyFix in traps.ts,
+ * applyChanges in src/schematic/format.ts). Splicing them in one by one from the end copied the text for each,
+ * so a rename that reaches thousands of names in one formula took seconds (the integration check, X5). At one
+ * place a later change's words come first, as those splices gave them; changes that overlap, which neither
+ * makes, are spliced as before, so every result is the one the splices gave.
+ */
+export function applyTextChanges(text: string, changes: readonly TextChange[]): string {
+  const sorted = changes.map((c, i) => ({ c, i })).sort((a, b) => a.c.from - b.c.from || a.c.to - b.c.to || b.i - a.i);
+  const pieces: string[] = [];
+  let at = 0;
+  for (const { c } of sorted) {
+    if (c.from < at || c.to < c.from) {
+      let out = text;
+      for (const d of [...changes].sort((a, b) => b.from - a.from || b.to - a.to)) out = out.slice(0, d.from) + d.insert + out.slice(d.to);
+      return out;
+    }
+    pieces.push(text.slice(at, c.from), c.insert);
+    at = c.to;
+  }
+  pieces.push(text.slice(at));
+  return pieces.join('');
 }
 
 /** A node or part name as ngspice uses it: micro sign as 'u', ASCII letters in lower case. */
