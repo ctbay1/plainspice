@@ -797,12 +797,12 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
       [`out${NBSP}`, 'nbsp', 'out with a no-break space', 'out__', 'nbsp-8', 'Take it out: connect to node out'],
       [`o${THIN}ut`, 'space-character', 'out with a thin space', 'o___ut', 'space-character-32', 'Take it out: connect to node out'],
       [`out${ZW}`, 'invisible-character', 'out with a zero-width space', 'out___', 'invisible-character-68', 'Take it out: connect to node out'],
-      [`${CYR_O}ut`, 'look-alike-letter', `${CYR_O}ut with the Cyrillic letter ${CYR_O}`, '__ut', 'look-alike-letter-19', 'Connect to out'],
+      [`${CYR_O}ut`, 'look-alike-letter', `${CYR_O}ut with the Cyrillic letter ${CYR_O}`, '__ut', 'look-alike-letter-19', 'Connect to node out'],
     ] as const) {
       const found = traps(net(name));
       expect(found.map((t) => [t.id, t.severity, t.title]), id).toEqual([[id, 'error', `B1's formula reads a node nothing connects to: ${title}`]]);
       expect(found[0]!.ngspice, id).toBe(`ngspice warns 'singular matrix: check node ${spelled}' and then stops: 'The operating point could not be simulated successfully'. No results. [${fact}]`);
-      expect(found[0]!.why, id).toContain(`So the formula reads the node ${spelled}, not out, and no part connects to that node.`);
+      expect(found[0]!.why, id).toContain(`So the formula reads the node ${spelled}, not the node out, and no part connects to that node.`);
       expect(found[0]!.why, id).not.toContain('the parts on it');
       expect(found[0]!.fixes.map((f) => f.label), id).toEqual([fixLabel]);
       expect(applyFix(net(name), found[0]!.fixes[0]!), id).toBe(net('out'));
@@ -818,7 +818,7 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     expect(turk[0]!.fixes).toEqual([]);
     // With the parts on cikis, the name was written for that node: the fix connects the formula to it.
     const there = traps(net(T, undefined, 'cikis'));
-    expect(there[0]!.fixes.map((f) => f.label)).toEqual(['Connect to cikis']);
+    expect(there[0]!.fixes.map((f) => f.label)).toEqual(['Connect to node cikis']);
     expect(applyFix(net(T, undefined, 'cikis'), there[0]!.fixes[0]!)).toBe(net('cikis', undefined, 'cikis'));
     // A part on the name: the words for a node the parts are on, as before (space-character-10).
     expect(traps(`* t\nV1 in 0 5\nR1 in o${THIN}ut 1k\nR2 o${THIN}ut 0 1k\n.op\n.end\n`)[0]!.ngspice).toContain('[space-character-10]');
@@ -832,7 +832,7 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     const divider = `* t\nV1 giris 0 10\nR1 giris ${TC} 1k\nR2 ${T} 0 1k\n.op\n.end\n`;
     const found = traps(divider);
     expect(found.map((t) => [t.id, t.severity, t.title])).toEqual([['non-ascii-node', 'warning', `ngspice spells node ${TC} and node ${T} as ____k____: one node`]]);
-    expect(found[0]!.ngspice).toBe(`ngspice makes ${TC} and ${T} one node, without a message: in one test a divider written with both spellings gave 5 V at ____k____, as written. [non-ascii-node-27]`);
+    expect(found[0]!.ngspice).toBe(`ngspice makes node ${TC} and node ${T} one node, without a message: in one test a divider written with both spellings gave 5 V at node ____k____, as written. [non-ascii-node-27]`);
     expect(found[0]!.fixes.map((f) => f.label)).toEqual([`Rename node ${TC} and node ${T} to Cikis`]);
     expect(applyFix(divider, found[0]!.fixes[0]!)).toBe('* t\nV1 giris 0 10\nR1 giris Cikis 1k\nR2 Cikis 0 1k\n.op\n.end\n');
     // A linear E's control node written with the capital: no "no DC path to ground" (the critic's ecap-ctl).
@@ -886,5 +886,37 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
     // Inside a subcircuit the names are its own: a part across there leaves the divider outside one node, as written.
     const inner = `* t\nV1 giris 0 10\nR1 giris ${TC} 1k\nR2 ${T} 0 1k\nX1 a sub\n.subckt sub p\nR9 ${TC} ${T} 1k\nR8 p 0 1k\n.ends\nVa a 0 1\n.op\n.end\n`;
     expect(traps(inner).filter((t) => t.id === 'non-ascii-node').map((t) => [t.severity, t.title])).toEqual([['warning', `ngspice spells node ${TC} and node ${T} as ____k____: one node`]]);
+  });
+  it('X4, P3: the formula-only and case-group words name nodes by the node-words rule ("node out", never bare, never "the node node1")', () => {
+    const TC = '\u00c7\u0131k\u0131\u015f'; // Çıkış
+    const net = (name: string, parts = 'out'): string => `* t\nV1 ${parts} 0 1\nR1 ${parts} 0 1k\nB1 b 0 V=v(${name})*2\nR2 b 0 1k\n.op\n.end\n`;
+    // [formula's name, the parts' node, the fix, the end of the why]
+    for (const [name, parts, label, why] of [
+      [`${CYR_O}ut`, 'out', 'Connect to node out', 'So the formula reads the node __ut, not the node out, and no part connects to that node.'],
+      [T, 'cikis', 'Connect to node cikis', 'So the formula reads the node ____k____, not the node cikis, and no part connects to that node.'],
+      ['\u0131n', 'in', 'Connect to node in', 'So the formula reads the node __n, not the node in, and no part connects to that node.'],
+      // Beside an ordinary node called ground, quoted as the ground-misnamed check quotes it.
+      [`gr${CYR_O}und`, 'ground', 'Connect to node "ground"', 'So the formula reads the node gr__und, not the node "ground", and no part connects to that node.'],
+      ['\u011fround', 'ground', 'Connect to node "ground"', 'So the formula reads the node __round, not the node "ground", and no part connects to that node.'],
+      // A name that says node goes alone.
+      [`node1${ZW}`, 'node1', 'Take it out: connect to node1', 'So the formula reads node1___, not node1, and no part connects to that node.'],
+    ] as const) {
+      const found = traps(net(name, parts)).find((t) => t.severity === 'error')!;
+      expect(found.fixes.map((f) => f.label), name).toEqual([label]);
+      expect(found.why, name).toContain(why);
+      expect(found.why, name).not.toMatch(/node node1|the node node/);
+    }
+    // The case group: its why and what ngspice does name both spellings as nodes, as its title does.
+    const group = traps(`* t\nV1 in 0 10\nR1 in ${TC} 1k\nR2 ${T} 0 1k\n.op\n.end\n`)[0]!;
+    expect(group.why.startsWith(`Node ${TC} and node ${T} differ only in capital letters`)).toBe(true);
+    expect(group.why).toContain('Its printout and results call the node ____k____');
+    expect(group.ngspice.startsWith(`ngspice makes node ${TC} and node ${T} one node`)).toBe(true);
+    expect(group.ngspice).toContain('gave 5 V at node ____k____, as written');
+    // Names that say node keep their own words: never "node Node\u00e7".
+    const nodes = traps('* t\nV1 in 0 10\nR1 in Node\u00e7 1k\nR2 node\u00c7 0 1k\n.op\n.end\n')[0]!;
+    for (const text of [nodes.title, nodes.why, nodes.ngspice, ...nodes.fixes.map((f) => f.label)]) expect(text).not.toMatch(/node node|the node node/i);
+    // A node called value keeps "the node value", the form of "name the node out": no bare name.
+    const value = traps('* t\nV1 in 0 5\nR1 in value 1k\nR2 value 0 1k\nE1 e 0 value 0 2\nRe e 0 1k\n.op\n.end\n').find((t) => t.id === 'fatal-syntax')!;
+    expect(value.fixes.map((f) => f.label)).toEqual(['Rename the node value to val']);
   });
 });

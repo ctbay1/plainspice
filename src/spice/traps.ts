@@ -3635,8 +3635,8 @@ function checkNodeNames(c: Ctx): void {
       // Cites [non-ascii-node-27, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
       const facts = ['non-ascii-node-27', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
       add(c, 'non-ascii-node', 'warning', infos[infos.length - 1]!.refs[0]!, `ngspice spells ${list(names.map(nodeIn))} as ${spelled}: one node`,
-        `${list(names)} differ only in capital letters, and ngspice ${lettersRule(names, 'a node name')}, so they are one node for it, ${spelled}, as this netlist means. Its printout and results call the node ${spelled}: one name in plain letters avoids that.`,
-        [`ngspice makes ${list(names)} one node${said.length ? '' : ', without a message'}: in one test a divider written with both spellings gave 5 V at ${spelled}, as written.`, ...said, `[${facts.join(', ')}]`].join(' '),
+        `${atSentenceStart(list(names.map(nodeIn)))} differ only in capital letters, and ngspice ${lettersRule(names, 'a node name')}, so they are one node for it, ${spelled}, as this netlist means. Its printout and results call ${theNodeIn(spelled)}: one name in plain letters avoids that.`,
+        [`ngspice makes ${list(names.map(nodeIn))} one node${said.length ? '' : ', without a message'}: in one test a divider written with both spellings gave 5 V at ${nodeIn(spelled)}, as written.`, ...said, `[${facts.join(', ')}]`].join(' '),
         [fix(`Rename ${list(names.map(nodeIn))} to ${to}`, ...together(infos[0]!, to))]);
       continue;
     }
@@ -3672,7 +3672,7 @@ function checkNodeNames(c: Ctx): void {
       const plain = plainLetters(written, true);
       const meant = plain ? c.n.nodes.get(lowerAscii(plain)) : undefined;
       formulaOnlyNode(c, 'non-ascii-node', info, reader, written, `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}).`,
-        'non-ascii-node-26', meant?.connections.length ? plain : undefined, plain ? [fix(`Connect to ${plain}`, ...renaming(info, plain))] : []);
+        'non-ascii-node-26', meant?.connections.length ? plain : undefined, plain ? [fix(`Connect to ${nodeIn(quotedName(plain))}`, ...renaming(info, plain))] : []);
       continue;
     }
     const to = plainFor(info);
@@ -3799,7 +3799,7 @@ function formulaOnlyNode(c: Ctx, id: TrapId, info: NodeInfo, reader: Element, sh
   const t = info.refs.find((r) => c.formulaReaders!.has(r.from)) ?? info.refs[0]!;
   const spelled = ngspiceSpelling(info.name);
   add(c, id, 'error', t, `${nameOf(reader)}'s formula reads a node nothing connects to: ${shown}`,
-    `${why} So the formula reads the node ${spelled}${meant ? `, not ${meant}` : ''}, and no part connects to that node.`,
+    `${why} So the formula reads ${theNodeIn(spelled)}${meant ? `, not ${theNodeIn(quotedName(meant))}` : ''}, and no part connects to that node.`,
     `ngspice warns 'singular matrix: check node ${spelled}' and then stops: 'The operating point could not be simulated successfully'. No results. [${fact}]`,
     meant ? fixes : []);
 }
@@ -3898,7 +3898,7 @@ function checkLookAlikeNodes(c: Ctx): void {
     const reader = formulaReader(c, info);
     if (reader) {
       formulaOnlyNode(c, 'look-alike-letter', info, reader, `${t.text} with ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`, `The name has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}. It looks like ${like}, but SPICE knows only the plain letter ${like}.`,
-        'look-alike-letter-19', other?.connections.length ? clean : undefined, [fix(`Connect to ${clean}`, ...changes)]);
+        'look-alike-letter-19', other?.connections.length ? clean : undefined, [fix(`Connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
       continue;
     }
     const { said, print, command } = asWritten(c, [info], true);

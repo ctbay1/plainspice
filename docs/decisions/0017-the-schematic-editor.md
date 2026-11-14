@@ -755,3 +755,16 @@ and golden rows in A3f and A3h):
   a `.global` node, and the `v(...)` of a `.func`'s formula, before and after a plain `.end`
   (non-ascii-node-23 to -25); and a name only read that ngspice spells as the node (`v(Çıkış)` for the node
   `çıkış`, decision 0016). A bare name on `.probe` stays: ngspice reads no node there.
+
+## After the integration check (14 November 2026)
+
+- **The words for a name only a formula reads, and for case spellings, follow the node-words rule** (X4, P3).
+  The formulas lane's round-3 words named nodes bare, against F6 above: "Connect to out", "Connect to
+  cikis", "So the formula reads the node __ut, not out", and the case group's why and what ngspice does
+  ("Çıkış and çıkış differ only in capital letters", "ngspice makes Çıkış and çıkış one node … gave 5 V at
+  ____k____"); beside an ordinary node called ground the fix read "Connect to ground", one card above
+  'Node "ground" is not ground'. They now say "Connect to node out", 'Connect to node "ground"', "Connect to
+  node cikis", "…the node __ut, not the node out, …" (a name that says node alone: "node1___, not node1"),
+  "Node Çıkış and node çıkış differ only in capital letters" and "ngspice makes node Çıkış and node çıkış one
+  node … gave 5 V at node ____k____". Kept: "Rename the node value to val", which says "the node …" as
+  "Take it out: name the node out" does; it names no node bare.

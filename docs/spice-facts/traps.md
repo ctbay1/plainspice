@@ -14687,7 +14687,7 @@ ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
-with the parts on cikis, V1 giris 0 10 / R1 giris cikis 1k / R2 cikis 0 1k and B1 e 0 V=v(çıkış)*2, which PlainSpice's checks say the same way, with the fix "Connect to cikis":
+with the parts on cikis, V1 giris 0 10 / R1 giris cikis 1k / R2 cikis 0 1k and B1 e 0 V=v(çıkış)*2, which PlainSpice's checks say the same way, with the fix "Connect to node cikis":
     ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
       DC solution failed -
       Warning: singular matrix:  check node ____k____
@@ -18675,7 +18675,7 @@ ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
-after the fix "Connect to out" (look-alike-letter), which writes `B1 e 0 V=v(out)*2`:
+after the fix "Connect to node out" (look-alike-letter), which writes `B1 e 0 V=v(out)*2`:
     native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
 ```
 
