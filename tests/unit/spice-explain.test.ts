@@ -327,13 +327,25 @@ describe('values in plain units, with the traps in their spelling', () => {
     ['10V', 'V', "10 V ('V' is ignored)", "ngspice ignores 'V' after the number."],
     ['-2', 'R', `${MINUS}2 Ω`, 'ngspice accepts a negative resistance without a message.'],
     // The editor's words for one idea: two nodes made one by a name (not "joined").
-    ['0', 'R', '0 Ω', 'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name'],
+    ['0', 'R', '0 Ω', 'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate. To make two nodes one, give them the same name'],
     ['3a', 'R', '3 aΩ (atto!)', 'ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω'],
   ])('%s on %s reads as %s', (text, letter, meaning, note) => {
     const e = value(text, letter);
     const v = e.fields.filter((f) => f.text === text).pop()!;
     expect(sp(v.meaning)).toBe(meaning);
     if (note) expect(notes(e)).toContain(note);
+  });
+
+  it('a negative resistance closer to 0 than 10⁻¹² Ω: ngspice 47 warns and uses −10⁻¹² Ω, so neither "without a message" nor "raises … to 10⁻¹² Ω" (integration check P4; zero-ohm-7)', () => {
+    for (const text of ['-3e-18', '-3a', '-0.5p']) {
+      const said = notes(value(text));
+      expect(said, text).toContain(`ngspice 47 uses ${MINUS}10⁻¹² Ω for a negative resistance this close to 0, with a warning ("Value of resistor … is too small").`);
+      expect(said, text).not.toContain('without a message');
+      expect(said, text).not.toContain('raises a resistance below');
+    }
+    // Any other negative resistance: no warning, in both versions (P14).
+    expect(notes(value('-2'))).toContain('ngspice accepts a negative resistance without a message.');
+    expect(notes(value('1e-15'))).toContain('ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω');
   });
 
   it('a second number replaces the first on an R line, and the note says why (V2, N9, N13)', () => {

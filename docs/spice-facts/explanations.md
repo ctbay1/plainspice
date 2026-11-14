@@ -52,8 +52,9 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   with V=, not a resistor, an inductor or a B line with I= (P7, P10, P10b, P10c, P10d). A 0 V source
   is a wire that measures its current (P9).
 - In `.op` and `.dc` a capacitor is an open circuit and an inductor a short circuit (P11, P12, A31).
-- ngspice 47 turns 0 Ω (and anything below 1e-12 Ω) into 1e-12 Ω with a warning, and currents next to
-  it come out inaccurate (P13, P24). A negative resistance is accepted silently (P14). An R, C or L with
+- ngspice 47 turns 0 Ω (and anything below 1e-12 Ω in size) into 1e-12 Ω, or −1e-12 Ω for a negative value,
+  with a warning, and currents next to it can come out inaccurate (P13, P24, P24b; zero-ohm-7, zero-ohm-9 in
+  traps.md). Any other negative resistance is accepted silently (P14). An R, C or L with
   nothing after its nodes is dropped with a warning (with settings but no value it is kept:
   missing-value-8 to -10 in traps.md); a source with no value is 0, with a note (P15, P15b, P16).
 - In `.op`, a PULSE, SIN, PWL or EXP source without a DC value uses its value at time 0 (P17); an AC
@@ -1081,7 +1082,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ### P24b. Where a current source sets the current, a 0 Ω resistor carries exactly that current: the currents next to a resistor ngspice 47 cannot use can come out inaccurate, not always
 
 Added after the integration check of 14 November 2026 (P4), for the Numbers panel's words for ngspice's "is
-too small" warning. ngspice 47 raises the 0 Ω to 1e-12 Ω with its warning, as in P13, and ngspice 42 uses 1 mΩ
+too small" warning and Explain's note for a 0 Ω resistor. ngspice 47 raises the 0 Ω to 1e-12 Ω with its warning, as in P13, and ngspice 42 uses 1 mΩ
 without a word; in both, R1 and I1 carry exactly 1 A, as for 3a (zero-ohm-9). In P13, in series with 1 kΩ
 across 6 V, the source's current comes out as 5.859 mA for 6 mA. So the words say the currents next to such a
 resistor "can come out inaccurate", where they said "come out inaccurate". They also say the value ngspice 47

@@ -1117,6 +1117,29 @@ describe('results in words: ngspice\'s messages, from real runs (M1–M21 and ot
     }
   });
 
+  it('a resistor ngspice 47 cannot use: the Checks, the Numbers panel and Explain name the value it used, and say "can" (integration check P4; zero-ohm-7, P24b)', async () => {
+    // Native 47 sets each of these to 1e-12 Ω, or −1e-12 Ω for a negative one, with its warning (zero-ohm-7, P24, P24b).
+    for (const r of ['0', '1f', '-3e-18', '3a', '-3a']) {
+      const text = `* a resistor ngspice 47 cannot use\nI1 0 n1 1\nR1 n1 0 ${r}\n.op\n.end\n`;
+      const negative = r.startsWith('-');
+      const run = await engine.run(text);
+      expect(`${run.stdout}\n${run.stderr}`, r).toContain(`Value of resistor r1 is too small, set to ${negative ? '-' : ''}1.000000e-12`);
+      const netlist = parseNetlist(text);
+      const numbers = describeResults(netlist, interpretPlots(run.plots), run).warnings.find((w) => w.code === 'resistor-too-small')!.why;
+      const checks = checkTraps(netlist).map((t) => `${t.why} ${t.ngspice}`).join(' ');
+      const explain = explainLine(netlist, 2)!.notes.join(' ');
+      const used = negative ? '−10⁻¹² Ω' : '10⁻¹² Ω';
+      expect(numbers, r).toContain(`it uses ${used} instead, and the currents next to it can come out inaccurate.`);
+      expect(checks, r).toContain(`uses ${negative ? '−' : ''}1e-12 Ω instead`);
+      expect(explain, r).toContain(r === '0' ? `uses ${used} instead` : negative ? `uses ${used} for a negative resistance` : `to ${used}`);
+      // No "come out inaccurate" without "can", and no "without a message" where ngspice 47 warns.
+      for (const [where, said] of [['Numbers', numbers], ['Checks', checks], ['Explain', explain]] as const) {
+        expect(said.replace(/can come out inaccurate/g, ''), `${r}, ${where}`).not.toContain('come out inaccurate');
+        expect(said, `${r}, ${where}`).not.toContain('without a message');
+      }
+    }
+  });
+
   it('M4b, M4c: two part names that differ by more than capital letters get the reason ngspice joins them, and the earlier part (S9)', () => {
     const letters = ofFact('M4b').words.warnings.find((w) => w.code === 'duplicate-name')!;
     expect(letters.why).toBe(

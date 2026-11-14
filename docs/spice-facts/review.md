@@ -82,7 +82,9 @@ need changes.
   about reading the file, not about the run. Correct.
 - **Lines starting with = [ ] ? ( ) & % $ " ! : , are not trapped.** ngspice turns them into
   comments, warns once and runs (S10, S36); the explanation of each says so. A trap would add noise.
-- **"The currents next to it come out inaccurate" (0 Ω).** Shown by P13: 5.859 mA instead of 6 mA.
+- **"The currents next to it come out inaccurate" (0 Ω).** Shown by P13: 5.859 mA instead of 6 mA. After the
+  integration check of 14 November 2026 (P4) the words say "can come out inaccurate": where a current source
+  sets the current, the resistor carries exactly it (P24b).
 - **"These numbers can't be trusted … (a singular matrix)" for every unreliable run.** The engine
   also marks a run unreliable after a failed gmin or source stepping without a singular matrix; but
   in every such run tried here (a diode straight across 1000 V, steep diodes, a latch) the fallback

@@ -338,8 +338,8 @@ check of 14 November 2026 (X6): the noise lane had recorded them in explanations
 
 Run the same way on 14 November 2026: P24b in explanations.md (a 0 Ω resistor fed by a current source carries
 exactly that current, in ngspice 47 at 1e-12 Ω and in ngspice 42 at 1 mΩ, so the currents next to a resistor
-ngspice 47 cannot use "can" come out inaccurate, as the Numbers panel now says, with −10⁻¹² Ω for a negative
-value as in zero-ohm-7), with rows in `tests/golden/facts-explain.test.ts`. Records corrected after native re-runs,
+ngspice 47 cannot use "can" come out inaccurate, as the Numbers panel and Explain now say, with −10⁻¹² Ω for a
+negative value as in zero-ohm-7), with rows in `tests/golden/facts-explain.test.ts`. Records corrected after native re-runs,
 pinned by `tests/unit/facts-records.test.ts`: the results file of 12 lines in 8 traps.md facts (nbsp-8,
 non-ascii-node-15, -20, -25, -26, invisible-character-68, look-alike-letter-19, space-character-32), a plot's
 header with 0 points where they said "no rawfile data"; 43 variant runs of 13 traps.md facts that listed plain

@@ -232,8 +232,9 @@ export const EXPLAIN_STRINGS = {
   paramByName: (name: string): string => `${name}: a name from a .param line, whose value ngspice uses here`,
   negativeR: 'ngspice accepts a negative resistance without a message.',
   zeroR:
-    'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name; to measure the current, use a 0 V source (the ammeter trick).',
+    'ngspice 47 cannot use 0 Ω: it warns ("Value of resistor … is too small") and uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate. To make two nodes one, give them the same name; to measure the current, use a 0 V source (the ammeter trick).',
   tinyR: 'ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω, with a warning ("Value of resistor … is too small").',
+  tinyNegativeR: 'ngspice 47 uses −10⁻¹² Ω for a negative resistance this close to 0, with a warning ("Value of resistor … is too small").',
   missingValueRCL: (what: string): string =>
     `This ${what} has no value, so ngspice leaves it out of the circuit, with a warning ("… is not a valid ${what} instance line, ignored!").`,
   missingValueKeptR: 'This resistor has settings but no value, so ngspice keeps it at 1 mΩ, almost a wire, with a warning ("resistance too low or not given, set to 1 mOhm").',
@@ -2221,9 +2222,12 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
       }
       if (el.letter === 'R') {
         const v = value?.value;
-        if (v !== undefined && v < 0) addNote(p.notes, S.negativeR); // P14
+        // Below 1e-12 Ω in size but not 0, ngspice 47 warns and uses ±1e-12 Ω (zero-ohm-7), so a negative one gets no
+        // "without a message"; the currents next to it can come out inaccurate (P13, P24b; integration check P4).
+        const tiny = v !== undefined && v !== 0 && Math.abs(v) < 1e-12;
+        if (v !== undefined && v < 0 && !tiny) addNote(p.notes, S.negativeR); // P14
         if (v === 0) addNote(p.notes, S.zeroR); // P13
-        else if (v !== undefined && Math.abs(v) > 0 && Math.abs(v) < 1e-12) addNote(p.notes, S.tinyR); // P24
+        else if (tiny) addNote(p.notes, v < 0 ? S.tinyNegativeR : S.tinyR); // P24, zero-ohm-7
         addNote(p.notes, S.resistorNote); // P1, P2
       }
       if (el.letter === 'C') addNote(p.notes, S.capacitorNote); // P11, A31
