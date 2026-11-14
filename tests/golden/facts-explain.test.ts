@@ -207,6 +207,17 @@ const FACTS: Fact[] = [
   { code: 'A3i', id: 'an-skip-save', netlist: "* a .save inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.save v(in)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A3i', id: 'an-skip-print', netlist: "* a .print inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.print op v(out)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A3i', id: 'an-skip-if-foo', netlist: "* .foo in a subcircuit no X line uses, with a .if in the netlist\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.subckt s a b\nR9 a b 1k\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.499998750000625, "i(v1)": -0.0025000012499993753 } },
+  { code: 'A3i', id: 'an-skip-dc-mistakes', netlist: "* a .dc with no step, a step of 0 and a word for the step in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.dc V1 0 10\n.dc V1 0 1 0\n.dc V1 0 1 x\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-dc-if', netlist: "* a .dc with no step in a subcircuit no X line uses, with a .if in the netlist\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.subckt s a b\nR9 a b 1k\n.dc V1 0 10\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.499998750000625, "i(v1)": -0.0025000012499993753 } },
+  { code: 'A3i', id: 'an-skip-dc-nested', netlist: "* a .dc with no step in other, which only X2 uses, after a nested .ends inside outer\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt outer p q\n.subckt inner a b\nR9 a b 1k\n.ends\nX2 p q other\n.ends\n.subckt other c d\nR5 c d 1k\n.dc V1 0 10\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-nested-after', netlist: "* an X line after a nested .ends inside outer, which no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt outer p q\n.subckt inner a b\nR9 a b 1k\n.ends\nX2 p q other\n.ends\n.subckt other c d\nR5 c d 1k\nE1 c 0 VALUE=3\n.ends\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true },
+  { code: 'A3i', id: 'an-skip-nested-deep', netlist: "* deep used only by X9 in inner, defined inside outer, which X1 uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 outer\n.subckt outer p q\nR8 p q 1g\n.subckt inner a b\nX9 a b deep\n.ends\n.ends\n.subckt deep c d\nR5 c d 1k\nE1 c 0 VALUE=3\n.ends\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true },
+  { code: 'A3i', id: 'an-skip-nested-foo', netlist: "* .foo in a subcircuit no X line uses, which holds a definition of its own\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt outer p q\n.subckt inner a b\nR9 a b 1k\n.ends\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-probe', netlist: "* a .probe in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.probe i(R1)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(r1)": 0.0025, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-title', netlist: "* the first title\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.title a title from the subcircuit\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 }, prints: ["Circuit: a title from the subcircuit"] },
+  { code: 'A3i', id: 'an-skip-meas', netlist: "* a .meas in a subcircuit no X line uses, with an .op\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.meas tran vmax max v(a)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-read-warn', netlist: "* lines ngspice warns about as it reads them, in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n!R7 a b 1k\n.hdl foo.va\n.biaschk v(a)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 }, prints: ["Dot command .hdl is not supported, ingnored", "Dot command .biaschk is not supported, ingnored", "Unusual leading characters like '!'"] },
+  { code: 'A3i', id: 'an-skip-cont', netlist: "* continuation lines and a line that is no part, in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\nR8 a b\n+ 1 k\nQ7 a b 0\n+ nomodel\n1k a b\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -926,6 +937,46 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect([save.results.op?.nodes.map((n) => n.node), explainLine(save.netlist, 6)!.summary, explainLine(save.netlist, 6)!.notes]).toEqual([['in', 'out'], '', [SKIPS]]);
     const print = said('an-skip-print');
     expect([`${print.run.stdout}${print.run.stderr}`.includes('ignored'), explainLine(print.netlist, 6)!.summary, explainLine(print.netlist, 6)!.notes]).toEqual([false, '', [SKIPS]]);
+  });
+
+  it('the round-1 critic of those fixes: a .dc there says nothing of stopping, what ngspice reads first keeps its words, and a definition inside another keeps every check (A3i)', () => {
+    const said = (id: string): Described => describeRun(FACTS.find((x) => x.id === id)!.netlist, runs.get(id)!);
+    const ids = (d: Described): string[] => checkTraps(d.netlist).map((t) => t.id);
+    const SKIPS = 'ngspice skips this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit.';
+    // C1-1: ngspice skips a .dc there with no step, a step of 0 or a word for the step, and runs: no "stops", no "see Checks".
+    const dc = said('an-skip-dc-mistakes');
+    expect([dc.words.status, dc.words.warnings, ids(dc)]).toEqual(['ok', [], []]);
+    for (let i = 6; i <= 8; i++) {
+      const e = explainLine(dc.netlist, i)!;
+      expect([e.summary, ...e.fields.map((f) => f.meaning)].join(' | '), `line ${i + 1}`).not.toMatch(/stops|Checks/);
+      expect(e.notes, `line ${i + 1}`).toEqual([`${SKIPS.slice(0, -1)}. Put analysis lines in the main circuit, outside .subckt … .ends.`]);
+    }
+    // ngspice skips it beside a .if and in a subcircuit it keeps after a nested .ends too: an analysis line there runs only for an X line.
+    for (const [id, i] of [['an-skip-dc-if', 10], ['an-skip-dc-nested', 12]] as const) {
+      const d = said(id);
+      expect([d.words.status, ids(d), explainLine(d.netlist, i)!.summary, explainLine(d.netlist, i)!.notes[0]?.startsWith('ngspice skips this line')], id).toEqual(['ok', [], '', true]);
+    }
+    // C1-2: with a definition inside another, ngspice keeps other and deep, and stops at E1: the check stays, and Explain does not say "skips".
+    for (const [id, e1] of [['an-skip-nested-after', 12], ['an-skip-nested-deep', 13]] as const) {
+      const d = said(id);
+      expect([d.words.status, ids(d), explainLine(d.netlist, e1)!.notes.join(' ').includes('skips')], id).toEqual(['failed', ['fatal-syntax'], false]);
+    }
+    // So with any definition inside another every check stays, though ngspice skips a .foo in outer and runs (as beside a .if: left for after the release).
+    expect([said('an-skip-nested-foo').words.status, ids(said('an-skip-nested-foo'))]).toEqual(['ok', ['unknown-dot-command']]);
+    // C1-3: ngspice applies a .probe and a .title there before it skips anything: i(r1) is in the results, the title names the run.
+    const probe = said('an-skip-probe');
+    expect([probe.run.plots[0]?.variables.map((v) => v.name), explainLine(probe.netlist, 6)!.notes]).toEqual([['v(in)', 'v(out)', 'i(r1)', 'i(v1)'], []]);
+    const title = said('an-skip-title');
+    expect([title.run.plots[0]?.title, explainLine(title.netlist, 6)!.notes]).toEqual(['a title from the subcircuit', []]);
+    // C1-3: ngspice 47 warns as it reads a .hdl or .biaschk line, and a line starting with ! is a comment with a warning, there too.
+    const warn = said('an-skip-read-warn');
+    expect([ids(warn), explainLine(warn.netlist, 6)!.summary]).toEqual([[], 'ngspice turns a line starting with ! into a comment and skips it, with a warning ("Unusual leading characters").']);
+    // C1-4: no "No .measure possible …" for a .meas there, so Explain no longer quotes it.
+    const meas = said('an-skip-meas');
+    expect([`${meas.run.stdout}${meas.run.stderr}`.includes('No .measure possible'), explainLine(meas.netlist, 6)!.summary, explainLine(meas.netlist, 6)!.notes]).toEqual([false, '', [SKIPS]]);
+    // C1-5: a + line and a line that is no part are skipped too: no check speaks for them.
+    const cont = said('an-skip-cont');
+    expect([cont.words.status, ids(cont), [7, 9, 10].map((i) => explainLine(cont.netlist, i)!.notes)]).toEqual(['ok', [], [[SKIPS], [SKIPS], [SKIPS]]]);
   });
 
   it('a dot inside a name ngspice builds, and names that are no node or part of a subcircuit: x1.0, x1.gnd, i.x1.vs (A3h, last pass critic1-3, critic1-5)', () => {

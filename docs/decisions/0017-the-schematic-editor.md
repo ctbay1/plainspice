@@ -822,3 +822,44 @@ golden rows in A3f and A3i of `docs/spice-facts/explanations.md`):
   checked the same way, have said nothing since A3f; the checks come back the moment an X line
   uses the subcircuit, and Explain says why they are not there. The behaviour is older than the last pass
   (fix-base and c520a49 gave the same errors); the last pass's records only made the contradiction plain.
+
+The round-1 critic of these fixes (the same day) found five more problems, all minor; each is fixed, with a
+test that fails without it (`tests/unit/integration-check-subckt.test.ts`, golden rows in A3i):
+
+- **A definition inside another keeps every check** (C1-2, a regression of the P1 fix). "Unused" came from
+  PlainSpice's walk through the X lines (critic1-4 above), but ngspice builds its own list
+  (comment_out_unused_subckt_models): a flag that any `.ends` clears decides which X lines are the main
+  circuit's, so an X line after an inner `.ends` counts as one, and only the X lines up to a used
+  subcircuit's first `.ends` count as its own. So it can keep a subcircuit PlainSpice calls unused, and a
+  later reading step stops at an `E1 c 0 VALUE=3` there ("mal formed E source instance", native 47 and 42,
+  an-skip-nested-after and an-skip-nested-deep), where the P1 fix called the line skipped and dropped its
+  error. Now no line is called skipped when any `.subckt` or `.macro` line opens inside another, as with a
+  `.if` line: the checks and Explain stay as they were on the frozen build. The critic's other way, copying
+  ngspice's flag and its first-`.ends` rule, was left: more code, so the riskier change in the last round.
+  The cost is the `.if` guard's: a `.foo` in a subcircuit nothing uses that holds a definition of its own
+  is still called an error that stops ngspice, while ngspice runs (an-skip-nested-foo), left for after the
+  release with the `.if` case.
+- **`.probe` and `.title` are read first** (C1-3). ngspice applies both before it skips anything: a
+  `.probe i(R1)` there adds `i(r1)` to the results, and the last `.title` names the run, so "ngspice skips
+  this line" was not true of them. They join the lines ngspice reads there (an `.include`, a `.lib` with a
+  file and a section, a `*#` line, a V or I line with one node) and keep their words. A3i, the facts
+  README and traps.md also no longer say that nothing there makes ngspice warn: a line starting with `!`
+  warns there as anywhere (Explain already said so), and ngspice 47 warns as it drops a `.hdl` or
+  `.biaschk` line wherever it is; Explain's "ngspice skips this line" for those two holds (ngspice 42 skips
+  them there without a word), so they stay skipped.
+- **A `.meas` there no longer quotes a message ngspice does not print** (C1-4): its summary said ngspice
+  skips `.meas` with "No .measure possible in batch mode (-b) with -r rawfile set!", which ngspice prints
+  only for one it reads; it goes, as `.save`'s and `.print`'s did (`READ_SAYS`).
+- **An analysis line there says nothing of stopping** (C1-1, older: the frozen build has it). A `.dc` with
+  no step, a step of 0 or a word for the step kept the summary "ngspice 47 stops at this line ("Bad
+  syntax!") and sweeps nothing: see Checks." and the word "not a number for SPICE (see Checks)", one line
+  above its own "ngspice skips this line" (A3f), while Checks said nothing and the run finished. For an
+  analysis line ngspice skips there (`ignoredAnalysis`), that summary goes and the word is "not a number
+  for SPICE"; every other summary of an analysis line there already says only what the line asks for.
+  Native 47 and 42 skip such a line with a definition inside another and with a `.if` too (the analysis
+  lines of a subcircuit run only for its X lines; an-skip-dc-nested, an-skip-dc-if), so this follows A3f's
+  note, not the C1-2 guard.
+- **`+` lines and lines that are no part have tests** (C1-5): `R8 a b` with `+ 1 k`, `Q7 a b 0` with
+  `+ nomodel`, and `1k a b` give no check while no X line uses the subcircuit, and theirs once X1 does
+  (native 47 and 42 run them there with exit 0, an-skip-cont); dropping `continuation` and `invalid` from
+  the kinds of lines ngspice skips now fails a test.

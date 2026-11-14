@@ -73,9 +73,10 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   uses it, or only X lines of such subcircuits) is skipped, as are its parts and dot commands, though
   ngspice still reads an `.include` there; in one the main circuit uses, it runs as the main circuit's,
   once for each X line; `.subckt` and `.ends` lines that do not pair up stop ngspice first (A3f); gnd
-  is ground there too (A3g). ngspice skips every other line of a subcircuit the main circuit does not use
-  before it checks it, so nothing there stops it or makes it warn, but an `.include`, a `.lib` with a file,
-  a `*#` line and a V or I line with one node; not with a `.if` line in the netlist (A3i). ngspice names a node inside a subcircuit by its X lines, each followed by
+  is ground there too (A3g). ngspice skips most other lines of a subcircuit the main circuit does not use
+  before it checks them, so a mistake there does not stop it, but not an `.include`, a `.lib` with a file,
+  a `.probe`, a `.title`, a `*#` line or a V or I line with one node; not with a `.if` line in the netlist;
+  and where a definition is inside another, ngspice's list of the subcircuits used is not PlainSpice's (A3i). ngspice names a node inside a subcircuit by its X lines, each followed by
   a dot, and its own name, `x1.m`, `x1.m.1`, and a part there after its first letter, `v.x1.vs`, and a
   `.tf` can use either (A3h).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
@@ -4036,13 +4037,14 @@ our engine (wasm), as ngspice -b -r: the same vectors, bit for bit, and the same
   -inner-nested-dot, -inner-dot-none, -inner-zero, -inner-gnd and -inner-letter)
 ```
 
-### A3i. ngspice skips every line of a subcircuit the main circuit does not use before it checks it: nothing there stops it or makes it warn
+### A3i. ngspice skips most lines of a subcircuit the main circuit does not use before it checks them: a mistake there does not stop it or make it warn
 
 Added after the integration check of the last pass's lanes (14 November 2026, P1). Right after it reads the netlist
 (the `.include` and `.lib` files, A3f) and makes its first syntax checks (inp_check_syntax: the characters a line
 starts with, the count of `.subckt` and `.ends` lines, a V or I line with fewer than two nodes), ngspice turns every
 line of a subcircuit defined at the top level that the main circuit does not use into a comment, those of the
-subcircuits defined inside it too (comment_out_unused_subckt_models in inpcom.c; "used" as in A3f, through X lines).
+subcircuits defined inside it too (comment_out_unused_subckt_models in inpcom.c; "used" as in A3f, through X lines,
+but where a definition is inside another: see below).
 So a line there that stops ngspice or makes it warn in the main circuit, or once an X line uses the subcircuit, says
 nothing: no unknown dot command, no part without a value or a model, no word it cannot use, no formula it cannot read,
 not even the POLY that PlainSpice's engine, built without XSPICE, stops at elsewhere. The checks therefore say nothing
@@ -4052,11 +4054,22 @@ Explain said ngspice stops at the `.foo`. A misspelt `.tarn` there is skipped to
 no analysis line speaks, where its hint "Did you mean .tran?" kept it quiet. What ngspice still reads there: an
 `.include` or `.inc` (A3f) and a
 `.lib` with a file and a section, which stop it as the files are missing (a `.lib` with one word is skipped); a `*#` or
-`##` line, which it has made a command and runs; and a V or I line with one node, where its first syntax check stops
-("Not enough parameters"); those keep their checks and their words. And ngspice does not do this at all when a line
-starts with `.if` anywhere in the netlist (it keeps the lines until it has worked out the `.if`), or for a subcircuit
-defined inside one the main circuit uses: then a later reading step still sees such a line, and an `E1 a 0 VALUE=3`
-there stops ngspice ("mal formed E source instance"), so the checks there stay as they were.
+`##` line, which it has made a command and runs; a `.probe` line, which adds the currents it names to the results
+(inp_probe: `.probe i(R1)` there gives `i(r1)`), and a `.title` line, whose words name the run (the last one does); and
+a V or I line with one node, where its first syntax check stops ("Not enough parameters"); those keep their checks and
+their words. Lines ngspice warns about as it reads them, wherever they are, warn there too: a line starting with `!`,
+which it makes a comment ("Unusual leading characters", as Explain says), and, in ngspice 47 alone, a `.hdl` or
+`.biaschk` line, which it drops ("Dot command .hdl is not supported, ingnored"; ngspice 42 skips them there without a
+word), where Explain says ngspice skips the line. And ngspice does not do this at all when a line starts with `.if`
+anywhere in the netlist (it keeps the lines until it has worked out the `.if`), or for a subcircuit defined inside one
+the main circuit uses: then a later reading step still sees such a line, and an `E1 a 0 VALUE=3` there stops ngspice
+("mal formed E source instance"), so the checks there stay as they were. Where a definition is inside another,
+ngspice's own list of the subcircuits used can differ from the one A3f gives: a flag that any `.ends` clears decides
+which X lines are the main circuit's, so an X line after an inner `.ends` counts as one (an-skip-nested-after), and only the
+X lines up to a used subcircuit's first `.ends` count as its own, those of a definition inside it among them
+(an-skip-nested-deep). So it keeps a subcircuit that PlainSpice finds no X line of the main circuit reaches, and a later
+reading step stops at an `E1 c 0 VALUE=3` there. With any definition inside another, the checks and Explain therefore
+stay as they were (the round-1 critic of these fixes, C1-2).
 
 ```spice
 * lines that stop ngspice or make it warn elsewhere, in a subcircuit no X line uses
@@ -4114,21 +4127,66 @@ ngspice 47, ngspice -b (exit 0): out 2.500000e+00, in 5.000000e+00, v1#branch -2
   with .save v(in) alone there: the rawfile holds v(in), v(out) and i(v1) all the same (with it in the main
     circuit, v(in) alone); with .print op v(out) there: no ".print line ignored" message, and the same values;
     with .options savecurrents there: no resistor's current in the rawfile
+  with .dc V1 0 10, .dc V1 0 1 0 and .dc V1 0 1 x there (an-skip-dc-mistakes), -b and -b -r (exit 0): the same
+    values, and no message; so too that .dc V1 0 10 alone there beside the .if above (an-skip-dc-if: v(out) =
+    2.499998750000625), and in the subcircuit other of an-skip-nested-after in place of its E1 (an-skip-dc-nested)
+  with .probe i(R1) there (an-skip-probe), -b (exit 0) prints "r1#branch 2.500000e-03" too, and the rawfile from
+    -b -r holds v(in) = 5, v(out) = 2.5, i(r1) = 0.0025, i(v1) = -0.0025
+  with .title a title from the subcircuit there (an-skip-title): "Circuit: a title from the subcircuit", the
+    rawfile's title is "a title from the subcircuit", and the same values
+  with .meas tran vmax max v(a) there and the .op (an-skip-meas), -b -r (exit 0): no "No .measure possible in batch
+    mode (-b) with -r rawfile set!" (with that .meas in the main circuit, ngspice prints it, A28), the same values
+  with !R7 a b 1k, .hdl foo.va and .biaschk v(a) there (an-skip-read-warn), -b -r (exit 0), the same values and:
+    Warning: Dot command .hdl is not supported, ingnored
+        line no. 8, .hdl foo.va
+        file an-skip-read-warn.cir
+        This message will be posted only once!
+    Warning: Dot command .biaschk is not supported, ingnored
+        This message will be posted only once!
+    Warning: Unusual leading characters like '!' or others out of '= [] ? () & % $"!:,\f'
+        in netlist or included files, will be replaced with '*'.
+        check line  !r7 a b 1k
+        line no. 7 from file an-skip-read-warn.cir!
+  with R8 a b and + 1 k, Q7 a b 0 and + nomodel, and 1k a b there (an-skip-cont), -b and -b -r (exit 0): the same
+    values, and no message
+  with outer, which no X line uses, holding .subckt inner … .ends and then X2 p q other, and E1 c 0 VALUE=3 in the
+    subcircuit other (an-skip-nested-after), -b and -b -r (exit 1, no rawfile):
+    ERROR: mal formed E source instance: e1 c 0   vol=3
+        in line no. 13 of file an-skip-nested-after.cir
+    ERROR: fatal error in ngspice, exit(1)
+  with X1 out 0 outer, X9 a b deep in inner, defined inside outer, and E1 c 0 VALUE=3 in the subcircuit deep
+    (an-skip-nested-deep): the same, "in line no. 14"
+  with outer, which no X line uses, holding .subckt inner … .ends and then .foo bar (an-skip-nested-foo), -b and
+    -b -r (exit 0): the same values, and no message
 ngspice 42: the same values, exit codes and messages, with "Not enough parameters" for "Not enough parameters for
-  v source" and "ERROR: mal formed E line: e1 a 0   vol=3", without the "line no." lines, and with 'Note: No ".plot",
-  ".print", or ".fourier" lines; no simulations run' for the -b ending of the .tarn
+  v source" and "ERROR: mal formed E line: e1 a 0   vol=3" (e1 c 0 in the nested rows), without the "line no."
+  lines, and with 'Note: No ".plot", ".print", or ".fourier" lines; no simulations run' for the -b ending of the
+  .tarn; for an-skip-read-warn only the warning for the ! line, its last line "Check line no 7:  !r7 a b 1k"
 our engine (wasm), as ngspice -b -r: exit 0, vectors: v(in) = 5, v(out) = 2.5, i(v1) = -0.0025, and no message, the
   POLY line included; with X1, R8's warning and v(out) = 1.6666666666666665; with the .tarn, no results and no
   message; the .lib, the V3 a and the VALUE=3 beside a .if or inside a used subcircuit stop it with ngspice 47's
-  messages; the *# line prints its words; the .save keeps nothing back (golden rows an-skip-lines,
-  an-skip-lines-used-r8, an-skip-tarn, an-skip-lib, an-skip-lib-one, an-skip-starhash, an-skip-v-one, an-skip-e-value,
-  an-skip-if, an-skip-nested, an-skip-save, an-skip-print and an-skip-if-foo)
+  messages; the *# line prints its words; the .save keeps nothing back; the .probe gives i(r1) = 0.0025, the .title
+  names the run, the .meas prints nothing, an-skip-read-warn gives ngspice 47's three warnings, and the two nested
+  rows stop it with ngspice 47's message (golden rows an-skip-lines, an-skip-lines-used-r8, an-skip-tarn, an-skip-lib,
+  an-skip-lib-one, an-skip-starhash, an-skip-v-one, an-skip-e-value, an-skip-if, an-skip-nested, an-skip-save,
+  an-skip-print, an-skip-if-foo, an-skip-dc-mistakes, an-skip-dc-if, an-skip-dc-nested, an-skip-nested-after,
+  an-skip-nested-deep, an-skip-nested-foo, an-skip-probe, an-skip-title, an-skip-meas, an-skip-read-warn and
+  an-skip-cont)
 ```
 
-The checks and Explain stay as they were in the two cases where ngspice does not turn the lines into comments first,
-also where that leaves a claim ngspice does not bear out: with a `.if` line, the `.foo` beside it is still called an
-error that stops ngspice, while ngspice runs (an-skip-if-foo). Telling those lines apart line by line is left for after
-the release.
+The checks and Explain stay as they were where ngspice does not turn the lines into comments first, or where its list
+of the subcircuits used may not be PlainSpice's, also where that leaves a claim ngspice does not bear out: with a `.if`
+line, the `.foo` beside it is still called an error that stops ngspice, while ngspice runs (an-skip-if-foo), and so is
+a `.foo` in a subcircuit no X line uses that holds a definition of its own (an-skip-nested-foo). Telling those lines
+apart line by line is left for after the release.
+
+After the round-1 critic of these fixes (the same day), Explain says nothing of stopping on an analysis line ngspice
+skips there either: a `.dc` with no step, a step of 0 or a word for the step kept the summary "ngspice 47 stops at this
+line ("Bad syntax!") and sweeps nothing: see Checks." and the word the meaning "not a number for SPICE (see Checks)",
+beside the line's own "ngspice skips this line" (A3f), while no check speaks for it; the summary now goes and the word
+is "not a number for SPICE" (an-skip-dc-mistakes), also beside a `.if` and with a definition inside another, as
+ngspice skips such a line there too (an-skip-dc-if, an-skip-dc-nested). A `.meas` there no longer quotes "No .measure
+possible in batch mode (-b) with -r rawfile set!", which ngspice prints only for one it reads (an-skip-meas).
 
 ## 3. Currents and power in the results
 
