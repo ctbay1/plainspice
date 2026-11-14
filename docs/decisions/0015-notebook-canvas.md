@@ -1024,7 +1024,8 @@ problem where a fix would be complex, and adds no new mechanism.
   0.29999999999999998890 V, with "Solved exactly … none of them is 0", beside the .op's "V2: no current"; at the .op's own
   1.2000000000000002 V for "1.2" it drew the exact digits at the binary value beside the .op's note that called the very
   same ngspice number noise. Now findSweepNoise judges each checked point and each point where a series may be 0 at the
-  value it stands for (`standsFor`): the netlist's value where ngspice's x is the .op's own double of the swept source, the
+  value it stands for (`standsFor`): the netlist's value where ngspice's x is the .op's own double of the swept source or
+  the very double of the decimal the netlist writes for it (ngspice reads "4.5m" as 0.0045000000000000005, N15), the
   decimal start + k·step where x is that decimal's nearest double, else x itself; the series' 0s and lost values follow.
   sweepNames no longer names a point at the .op's own double otherwise: ".dc I1 0 0.0045 0.03m" ends at ngspice's own 4.5m,
   0.0045000000000000005, which read "The DC sweep's last point is I1 = 4.5 mA, not 4.5 mA" beside "i(v2) 4.047e-19 A" and
@@ -1046,10 +1047,18 @@ problem where a fix would be complex, and adds no new mechanism.
   there: ".dc V1 -8.15 4.95 0.05" passes 4.499999999999973 V, where the circuit makes −2.436 aA through an idle source,
   drawn 0 with "ngspice's own numbers there show that each of them is rounding noise of a 0". That is reverted for the rule
   path: with no exact solution, the rule cannot tell a real value there from noise, so such a point keeps ngspice's numbers
-  and is named by its own x where a note names it and one of them reads otherwise than the .op shows it. On the exact
-  path the point is still judged at its own x by the exact solution (C9w.7). In the drift corpus's 386 rule-path runs, 106
-  values were drawn 0 where the circuit makes them real at ngspice's x, and none now; the "very number" claims fall from
-  71 to 19, each at the .op's value bit for bit. What it gives up: a balanced bridge's drifted last point keeps ngspice's
+  and is named by its own x where a note names it and one of them reads otherwise than the .op shows it. The .op's value
+  is ngspice's double of it, bit for bit, or the very double of the decimal the netlist writes for it, as for naming
+  (C9z.4: ".dc I1 0 0.0045 0.3m" beside a .param line ends at 0.0045's own double, where ngspice gives V2 −6.939 aA and
+  its .op exactly 0; it was named "I1 = 4.5 mA, not 4.5 mA" with words about drifting, which this point does not). At
+  such a point a current the .op gives as exactly 0 is held to it too, where the rule run on the point's own values writes
+  it 0; its note then says "and the operating point shows them as 0", since a value ngspice gives as exactly 0 has no note
+  of its own. On the exact path the point is still judged at its own x by the exact solution (C9w.7). In the drift corpus's 386 rule-path runs, 106
+  values were drawn 0 where the circuit makes them real at the value the point stands for, and none now; the "very number"
+  claims fall from 71 to 21, each at the .op's own value. The noise-3 skeptic's narrower change, which keeps "the very
+  number the operating point shows as 0" at such a point and drops only the rule's own verdict, is not taken: at a drifted
+  x the circuit can make a real value that ngspice gives as the .op's very noise (its own corpus: 39 of 400 idle-source
+  runs drew 0 there for a smaller real value). What it gives up: a balanced bridge's drifted last point keeps ngspice's
   noise there and is named by its own x, "There ngspice gives i(@r5[i]) −8.882e-19 A, where the operating point, at 9 V,
   shows 0 A" (C9x.4), true in what it says but suggesting the drift made the difference (r9731-909's open item; in the
   drift corpus 27 of the 91 rule-path bridge runs, 8 before).
