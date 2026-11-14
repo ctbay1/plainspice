@@ -1560,13 +1560,15 @@ const SKIPPED_KINDS: ReadonlySet<NetlistLine['kind']> = new Set(['element', 'dir
 
 /**
  * The lines ngspice turns into comments right after its first syntax checks (A3i; comment_out_unused_subckt_models
- * in inpcom.c): every line of a subcircuit defined at the top level that the main circuit does not use, those of the
- * subcircuits defined inside it too, so nothing on them makes ngspice stop or warn. Not an .include or .inc line, nor
- * a .lib line with a file and a section: ngspice has read those files by then (A3f); nor a *# or ## line, which it
- * has made a command it runs; nor a V or I line with fewer than two nodes, where its first syntax check stops ("Not
- * enough parameters"); nor .end and the lines after it, which this reading does not place. None at all with a line
- * starting with .if, where ngspice keeps such lines until it has worked the .if out, or with .subckt and .ends lines
- * that do not pair up, where it stops first (A3f).
+ * in inpcom.c): every line of a subcircuit defined at the top level that the main circuit does not use, so nothing on
+ * them makes ngspice stop or warn. Not an .include or .inc line, nor a .lib line with a file and a section: ngspice has
+ * read those files by then (A3f); nor a *# or ## line, which it has made a command it runs; nor a V or I line with
+ * fewer than two nodes, where its first syntax check stops ("Not enough parameters"); nor .end and the lines after it,
+ * which this reading does not place. None at all with a line starting with .if, where ngspice keeps such lines until
+ * it has worked the .if out; with .subckt and .ends lines that do not pair up, where it stops first (A3f); or with a
+ * definition inside another, where ngspice's own list of the subcircuits used is not the one PlainSpice keeps (an X
+ * line after an inner .ends counts as the main circuit's, and only the X lines up to a subcircuit's first .ends count
+ * as its own), so a line PlainSpice calls unused can be one ngspice reads.
  */
 function commentedOut(netlist: Netlist): Set<number> {
   const cached = commentedOutCache.get(netlist);
@@ -1580,6 +1582,13 @@ function commentedOut(netlist: Netlist): Set<number> {
     const t = l.text.trimStart();
     if (t.startsWith('@')) break;
     if (/^\.if/i.test(t)) return out;
+  }
+  // A .subckt or .macro line while another is open (the round-1 critic of the integration check, C1-2).
+  let depth = 0;
+  for (const l of netlist.lines) {
+    const n = l.directive?.name;
+    if ((n === '.subckt' || n === '.macro') && depth++ > 0) return out;
+    if ((n === '.ends' || n === '.eom') && depth > 0) depth--;
   }
   const s = subcircuitsOf(netlist);
   const open: number[] = [];
