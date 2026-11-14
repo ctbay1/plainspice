@@ -563,6 +563,8 @@ const FACTS: Fact[] = [
   { code: 'fatal-syntax-21', netlist: "* an E formula without braces inside a used subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out e sub\nRe e 0 1k\n.subckt sub a b\nE1 b 0 VALUE=2*v(a)\n.ends\n.op\n.end\n", prints: ["mal formed E source instance: e1 b 0   vol=2*v(a)"], fails: true, traps: ['fatal-syntax'] },
   { code: 'non-ascii-node-28', netlist: "* a resistor between two spellings of one name\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-29', netlist: "* C9's balanced bridge, its node written \u00e7\u0131k\u0131\u015f and \u00c7\u0131k\u0131\u015f, with a transistor\nV1 top 0 9\nR1 top \u00e7\u0131k\u0131\u015f 10k\nR2 \u00c7\u0131k\u0131\u015f 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 \u00e7\u0131k\u0131\u015f b 1k\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(____k____)": 4.499999999999999, "v(b)": 4.5, "v(x)": 9.000081999484787e-06, "i(v1)": -0.0014074468265108293, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 9.000081999484786e-12 }, traps: ['non-ascii-node'] },
+  // A { or ' never closed in a B, E or G formula: ngspice reads the formula to the end of the line and runs it (the round-1 critic of the integration check's fixes).
+  { code: 'fatal-syntax-22', netlist: "* formulas whose { or ' is never closed\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 b 0 V={2*v(out)\nRb b 0 1k\nE1 e 0 VALUE={2*v(out)\nRe e 0 1k\nE2 q 0 VALUE='2*v(out)\nRq q 0 1k\nG1 0 g cur={2m*v(out)\nRg g 0 1k\n.op\n.end\n", vectors: { "v(out)": 2.5, "v(b)": 5, "v(e)": 5, "v(q)": 5, "v(g)": 5, "i(b1)": -0.005, "i(v1)": -0.0025 }, traps: [] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -883,6 +885,41 @@ it('fatal-syntax-21: Explain says ngspice can\'t read a formula without braces a
   expect(f!.label).toBe('fatal-syntax: Put it in braces: {2*v(a)}');
   expect(vector(f!.run, 'v(e)')).toEqual([5]);
   expect(explainLine(parseNetlist(f!.netlist), lineOf(f!.netlist))!.summary).toContain('ngspice works the formula out');
+});
+
+it('fatal-syntax-22: a { or \' never closed in a B, E or G formula is no error, as ngspice reads the formula to the end of the line and runs it; a name no .param defines still stops it, and so does an open { in a value or a gain', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const divider = (line: string): string => `* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n${line}\nRe e 0 1k\n.op\n.end\n`;
+  // Native 47 and 42, -b and -b -r: exit 0, no message, v(e) as listed.
+  const run: [string, number][] = [
+    ['B1 0 e I={2m*v(out)', 5], ['B1 e 0 V = {2*v(out)', 5], ["B1 e 0 V='2*v(out)", 5],
+    ['E1 e 0 VALUE {2*v(out)', 5], ['E1 e 0 VALUE = {2*v(out)', 5], ["E1 e 0 VALUE '2*v(out)", 5],
+    ['E1 e 0 vol={2*v(out)', 5], ['G1 0 e VALUE={2m*v(out)', 5], ["G1 0 e VALUE='2m*v(out)", 5],
+    ['B1 e 0 V=2*v(out) + {1', 6], ['B1 e 0 V={v(out)*2} + {1', 6], ['E1 e 0 VALUE=v(out)*2 + {1', 6], ['E1 e 0 VALUE={v(out)*2} + {1', 6],
+  ];
+  for (const [line, want] of run) {
+    const text = divider(line);
+    expect(checkTraps(parseNetlist(text)).map((t) => t.title), line).toEqual([]);
+    const r = await engine.run(text);
+    expect(r.ok, line).toBe(true);
+    expect(vector(r, 'v(e)'), line).toEqual([want]);
+  }
+  // A name no .param defines: native 47 and 42 stop with 'Undefined parameter [gain]'.
+  for (const line of ['B1 e 0 V={2*gain*v(out)', 'E1 e 0 VALUE={2*gain*v(out)']) {
+    const text = divider(line);
+    expect(checkTraps(parseNetlist(text)).map((t) => t.title), line).toEqual(['gain is not defined: add a .param line']);
+    const r = await engine.run(text);
+    expect(r.ok, line).toBe(false);
+    expect(`${r.stdout}\n${r.stderr}`, line).toContain('Undefined parameter [gain]');
+  }
+  // No formula read to the end of the line: native 47 and 42 stop with 'Closing "}" not found in line fragment'.
+  for (const line of ['E1 e 0 out 0 {2', 'G1 0 e out 0 {2m', 'R5 e 0 {1k', 'V2 e 0 {5']) {
+    const text = divider(line);
+    expect(checkTraps(parseNetlist(text)).map((t) => t.title), line).toEqual(['A { is never closed']);
+    const r = await engine.run(text);
+    expect(r.ok, line).toBe(false);
+    expect(`${r.stdout}\n${r.stderr}`, line).toContain('Closing "}" not found in line fragment');
+  }
 });
 
 it('CR1-2, CR1-4: the fix takes every character that looks like a space out of the formula, wherever it stands, and the formula runs', () => {

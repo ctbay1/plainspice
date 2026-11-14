@@ -9427,7 +9427,7 @@ PlainSpice's checks: `zero-ohm`; `zero-ohm`; `unit-letter`.
 
 ## fatal-syntax
 
-An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18). A node called `value` anywhere on an E or G line is read as VALUE: as an output node, a POLY control node or the control − node too (fatal-syntax-20); the fix renames it, and braces are offered for none of these.
+An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18). A node called `value` anywhere on an E or G line is read as VALUE: as an output node, a POLY control node or the control − node too (fatal-syntax-20); the fix renames it, and braces are offered for none of these. After the round-1 critic of the integration check's fixes (14 November 2026): a `{` or `'` never closed in a B line's formula, or in an E's or G's formula, is no trap, as ngspice reads such a formula to the end of the line (fatal-syntax-22).
 
 What PlainSpice shows for fatal-syntax-1 (error, line 3):
 
@@ -10305,6 +10305,87 @@ the same line inside a subcircuit no X line uses (.subckt sub a b / E1 a b VALUE
 ```
 
 PlainSpice's checks: `fatal-syntax`. Explain's words on these lines are pinned against the checks on every E and G line of the facts' netlists (119 of them; tests/unit/spice-formulas.test.ts).
+
+### fatal-syntax-22. A { or ' never closed in a B line's formula, or in an E's or G's formula: ngspice reads the formula to the end of the line and runs it (no trap)
+
+Added after the round-1 critic of the integration check's fixes (14 November 2026). fatal-syntax-1 and -2 are a resistor's value, where an open { or ' stops ngspice. A B line's formula after V= or I=, and an E's or G's formula after VALUE, vol= or cur=, which ngspice makes a B source, are read to the end of the line with their braces dropped, so native 47 and 42 run them as if they were closed: b, e, q and g are 5 V each, as with the closing brace. The checks gave the error "A { is never closed", with ngspice's 'Closing "}" not found', on each of these lines; they now give no trap, and Explain's "ngspice works the formula out" stands. A name in such a formula still needs a `.param`: without one ngspice stops with 'Undefined parameter [gain]', as fatal-syntax-3 says, and the checks say so. A gain, POLY's numbers, a resistor's value and a source's value are no such formula: an open { there stops ngspice with 'Closing "}" not found in line fragment', and the error stays.
+
+```spice
+* formulas whose { or ' is never closed
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+B1 b 0 V={2*v(out)
+Rb b 0 1k
+E1 e 0 VALUE={2*v(out)
+Re e 0 1k
+E2 q 0 VALUE='2*v(out)
+Rq q 0 1k
+G1 0 g cur={2m*v(out)
+Rg g 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        g1_int1                          5.000000e-03
+        g                                5.000000e+00
+        e2_int1                          5.000000e+00
+        q                                5.000000e+00
+        e1_int1                          5.000000e+00
+        e                                5.000000e+00
+        b                                5.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        -5.00000e-03
+        e2#branch                        -5.00000e-03
+        b1#branch                        -5.00000e-03
+        be1#branch                       0.000000e+00
+        be2#branch                       0.000000e+00
+        bg1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(b) = 5, v(e) = 5, v(e1_int1) = 5, v(q) = 5, v(e2_int1) = 5, v(g) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(be2) = 0, i(be1) = 0, i(b1) = -0.005, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(b) = 5, v(e) = 5, v(e1_int1) = 5, v(q) = 5, v(e2_int1) = 5, v(g) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(be2) = 0, i(be1) = 0, i(b1) = -0.005, i(e2) = -0.005, i(e1) = -0.005, i(v1) = -0.0025
+each of these lines alone in the divider (V1 in 0 5, R1 in out 1k, R2 out 0 1k, Re e 0 1k), native 47 and 42 (-b and -b -r, exit 0, no message) and our engine: v(e) = 5
+    B1 0 e I={2m*v(out)          B1 e 0 V = {2*v(out)         B1 e 0 V='2*v(out)
+    E1 e 0 VALUE {2*v(out)       E1 e 0 VALUE = {2*v(out)     E1 e 0 VALUE '2*v(out)
+    E1 e 0 vol={2*v(out)         G1 0 e VALUE={2m*v(out)      G1 0 e VALUE='2m*v(out)
+  and v(e) = 6 for a { opened later in the formula, which ngspice reads as part of it:
+    B1 e 0 V=2*v(out) + {1       B1 e 0 V={v(out)*2} + {1
+    E1 e 0 VALUE=v(out)*2 + {1   E1 e 0 VALUE={v(out)*2} + {1
+a name no .param defines in such a formula (B1 e 0 V={2*gain*v(out), and E1 e 0 VALUE={2*gain*v(out)), in the divider:
+  ngspice 47, ngspice -b (exit 1), and -b -r (exit 1, no rawfile):
+    Error in netlist line no. 7, new internal line no. 5:   (E1: line no. 9)
+    Undefined parameter [gain]
+    Error in netlist line no. 7, new internal line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice 42, ngspice -b (exit 1), and -b -r (exit 1, no rawfile):
+    Netlist line no. 5:
+    Undefined parameter [gain]
+    Netlist line no. 5:
+    Cannot compute substitute
+    ERROR: fatal error in ngspice, exit(1)
+  our engine (exit 1, no results): the same messages as ngspice 47
+an open { where no formula is read to the end of the line, in the divider (E1 e 0 out 0 {2, G1 0 e out 0 {2m, E1 e 0 POLY(1) out 0 0 {2, R5 e 0 {1k, V2 e 0 {5):
+  ngspice 47, ngspice -b (exit 1), and -b -r (exit 1, no rawfile):
+    Error in netlist line no. 6, new internal line no. 5:
+    Closing "}" not found in line fragment
+        {2.   ({2m. {2. {1k. {5.)
+    ERROR: fatal error in ngspice, exit(1)
+  ngspice 42, ngspice -b (exit 1), and -b -r (exit 1, no rawfile):
+    Netlist line no. 5:
+    Closing "}" not found in line fragment
+        {2.   ({2m. {2. {1k. {5.)
+    ERROR: fatal error in ngspice, exit(1)
+  our engine (exit 1, no results): the same messages as ngspice 47, but for POLY, where it first says 'XSPICE is required to run the 'poly' option in instance e1 e 0 poly(1) out 0 0 {2'
+```
+
+PlainSpice's checks: no trap; `fatal-syntax` (".. is not defined: add a .param line") for the name no `.param` defines; `fatal-syntax` ("A { is never closed") for the open { where no formula is read to the end of the line.
 
 ## include-not-available
 

@@ -1044,3 +1044,27 @@ describe('Explain says ngspice cannot read an E\'s or G\'s formula and stops whe
     expect(stops).toBeGreaterThanOrEqual(6);
   });
 });
+
+describe("the round-1 critic of the integration check's fixes (14 November 2026)", () => {
+  const net = (line: string): string => `* t\n${DIVIDER}${line}\nRe e 0 1k\n.op\n.end\n`;
+  it.each([
+    'B1 e 0 V={2*v(out)', 'B1 0 e I={2m*v(out)', 'B1 e 0 V = {2*v(out)', "B1 e 0 V='2*v(out)", 'B1 e 0 V=2*v(out) + {1',
+    'E1 e 0 VALUE={2*v(out)', "E1 e 0 VALUE='2*v(out)", 'E1 e 0 VALUE {2*v(out)', 'E1 e 0 VALUE = {2*v(out)', "E1 e 0 VALUE '2*v(out)",
+    'E1 e 0 VALUE={2*v(out) ', 'E1 e 0 vol={2*v(out)', 'E1 e 0 VALUE={v(out)*2} + {1', 'G1 0 e VALUE={2m*v(out)', 'G1 0 e cur={2m*v(out)',
+  ])("unclosed-brace-formula: %s, a { or ' left open in a formula ngspice reads to the end of the line, is no error, as Explain says (fatal-syntax-22)", (line) => {
+    const n = parseNetlist(net(line));
+    expect(checkTraps(n).map((t) => t.title)).toEqual([]);
+    const ex = explainLine(n, 4)!;
+    expect([ex.summary, ...ex.fields.map((f) => f.meaning)].join(' | ')).toMatch(/ngspice works the formula out|the expression ngspice works out/);
+  });
+  it.each(['E1 e 0 out 0 {2', 'G1 0 e out 0 {2m', 'E1 e 0 POLY(1) out 0 0 {2', 'R5 e 0 {1k', 'V2 e 0 {5', "R5 e 0 '2*3"])(
+    'unclosed-brace-formula: %s, an open { or \' where ngspice reads no formula to the end of the line, keeps the error that ngspice stops (fatal-syntax-1, -2, -22)', (line) => {
+      const t = checkTraps(parseNetlist(net(line))).find((x) => /is never closed/.test(x.title));
+      expect(t?.ngspice).toContain('Closing "}" not found in line fragment');
+    });
+  it("unclosed-brace-formula: a name no .param defines in such a formula still gets its error, as ngspice stops with 'Undefined parameter [gain]' (fatal-syntax-22)", () => {
+    for (const line of ['B1 e 0 V={2*gain*v(out)', 'E1 e 0 VALUE={2*gain*v(out)', "E1 e 0 VALUE='2*gain*v(out)"]) {
+      expect(checkTraps(parseNetlist(net(line))).map((t) => t.title), line).toEqual(['gain is not defined: add a .param line']);
+    }
+  });
+});

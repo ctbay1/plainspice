@@ -4863,7 +4863,7 @@ function checkSyntax(c: Ctx): void {
       const open = t.text[0];
       if (open !== '{' && open !== "'") continue;
       const closed = open === '{' ? balancedBraces(t.text) : t.text.length > 1 && t.text.endsWith("'");
-      if (!closed) {
+      if (!closed && !inLineFormula(c, e, t)) {
         const closer = open === '{' ? '}' : "'";
         add(c, 'fatal-syntax', 'error', t, `A ${open} is never closed`,
           `Braces { } (or single quotes ' ') hold an expression that SPICE works out, like {2*R}. Each opening one needs its closing partner on the same line.`,
@@ -4901,6 +4901,22 @@ function checkSyntax(c: Ctx): void {
       }
     }
   }
+}
+
+/**
+ * A word of a formula ngspice reads to the end of its line, dropping the braces in it: a B line's after V= or I=
+ * (inp_bsource_compat in its inpcom.c), and an E's or G's after VALUE, vol= or cur=, which it makes a B source
+ * (inp_compat). A { or ' left open there closes nothing ngspice needs, so native 47 and 42 run the formula as if it
+ * were closed (fatal-syntax-22; the round-1 critic of the integration check's fixes); the names in it still need a
+ * .param. A value, a gain, POLY's numbers or a TABLE is no such formula: an open { or ' stops ngspice there.
+ */
+function inLineFormula(c: Ctx, e: Element | undefined, t: Token): boolean {
+  if (e?.letter === 'B') {
+    const kw = e.fields.find((f) => f.role === 'parameter')?.token;
+    return kw !== undefined && behaviouralKind(e) !== undefined && t.from > kw.to && /^[ \t]*=/.test(c.text.slice(kw.to, t.from));
+  }
+  const formula = (e?.letter === 'E' || e?.letter === 'G') && e.form?.kind === 'formula' ? e.form.formula : undefined;
+  return formula !== undefined && t.from >= formula.from;
 }
 
 function balancedBraces(s: string): boolean {

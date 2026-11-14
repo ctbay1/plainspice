@@ -717,3 +717,18 @@ was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before an
   for the release: that rename must also keep the new name free in that subcircuit and its `.global` names, and
   follow every X line that uses it (x1.çıkış, x2.çıkış, x1.x2.çıkış). Left open: that rename; and the older gap
   that such a node gets no warning at all on the subcircuit's own lines unless a dotted name names it.
+
+The round-1 critic of these fixes found four more, each run the same way (14 November 2026):
+
+- **A { or ' never closed in a B, E or G formula.** The checks gave "A { is never closed … ngspice stops with
+  a fatal error: 'Closing "}" not found in line fragment'" for any open brace or quote, on the strength of a
+  resistor's value (fatal-syntax-1, -2), so the status called the numbers no answers. A B line's formula after
+  V= or I=, and an E's or G's after VALUE, vol= or cur=, which ngspice makes a B source, are read to the end of
+  the line with their braces dropped: native 47 and 42 run them as if they were closed, with no message
+  (fatal-syntax-22). Now an open { or ' there is no error (`inLineFormula` in `traps.ts`), and Explain's
+  "ngspice works the formula out" stands; a name no `.param` defines in it is still the error (native:
+  'Undefined parameter [gain]'). A gain, POLY's numbers, a TABLE and a resistor's or a source's value keep
+  the error. Chosen over a warning: ngspice reads the formula as it was meant, without a word. Left open: on
+  two rare lines where ngspice stops all the same, the error quotes another message than ngspice's: an open {
+  in a TABLE ('bad syntax in line …') and in a resistor's formula that reads a node voltage, `{1k+0*v(out)`
+  ('Undefined parameter [null]').
