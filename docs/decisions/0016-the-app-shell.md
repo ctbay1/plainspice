@@ -647,3 +647,24 @@ Ctrl+K stay as they are.
     over keying them as one node in the parser, which would change the drawing, the overview and the
     editor's names everywhere on release day; the drawing still shows such spellings apart until the
     fix. Different letters ngspice spells alike (ş and ç) stay the error.
+
+## After the integration check (14 November 2026)
+
+The integration check of the merged last-pass lanes found these in the names, formulas and renames; each
+was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before and after its fix.
+
+- **A part between two spellings that differ only in capital letters** (X1). CR2-3 made every such group
+  one node with a warning that said "as this netlist means", also where a part has an end on each
+  (`R2 Çıkış çıkış 1k`): ngspice joins those ends, so R2 carried no current, a current source's 1 mA went
+  nowhere, a voltage source stopped ngspice ("instance v2 is a shorted VSRC") with no check before the run,
+  and the warning's one-name fix kept the short (`R2 Cikis Cikis 1k`), as did the drawing editor's rename,
+  which also renamed the other spelling unasked. Now a group where one part, outside subcircuits or after a
+  plain `.end`, has ends on two of its spellings is no alias (`caseAliases`): it stays the error of names
+  ngspice makes one ("It simulates a different circuit from the one written here"), whose fix gives each
+  spelling a plain name of its own (`Cikis` and `cikis2`: 6.667 V and 3.333 V, the circuit written), and
+  the drawing editor renames only the spelling picked (non-ascii-node-28). Chosen over the reviewer's
+  narrower change in the check's branch alone: the alias also drives the renames, which would have joined
+  the spellings again. A group with no part across stays CR2-3's warning. Left open: two voltage sources on
+  the two spellings with no part across get no voltage-loop check before the run (ngspice stops, and the
+  run's own words say why); and a part after `.end` is still not counted by the dangling-node check, so such
+  a part across the spellings also brings its "Only R1 touches node Çıkış" notes, as for any node there.

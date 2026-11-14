@@ -284,6 +284,11 @@ only a formula reads, with no part on it, is a node nothing connects to: "singul
 and non-ascii-node-27 (`Çıkış` and `çıkış` on part lines are one node, as written: the same numbers before
 and after the rename, in either order with "Move .end to the bottom").
 
+After the integration check of the last pass (14 November 2026), run the same way: non-ascii-node-28 (a
+part with an end on each of `Çıkış` and `çıkış` has them joined: R2 carries 0 A, a current source's 1 mA
+changes nothing, a voltage source stops ngspice, an E reads 0 V; the error's fix gives each its own name,
+6.667 V and 3.333 V).
+
 ## The last pass of 13 November 2026 (the ui lane)
 
 A2c in [explanations.md](explanations.md), run the same way on 13 November 2026 (native ngspice 47 and 42,

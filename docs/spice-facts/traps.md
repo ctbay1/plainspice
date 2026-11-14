@@ -13326,7 +13326,8 @@ nearest plain letters (`giris`; the letters that have no plain form are left out
 node has gets a number). Two names ngspice spells the same are one node for it (W17): error, because
 ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
 letters; but two that differ only in capital letters (`Çıkış` and `çıkış`) are the one node the netlist
-means: a warning, whose fix gives them one plain name (non-ascii-node-27). The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
+means: a warning, whose fix gives them one plain name (non-ascii-node-27), unless a part has an end on each,
+which ngspice then joins: that stays the error (non-ascii-node-28). The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
 never give a name another node has (that would join two nodes), nor one of ground's (0 and gnd, which
 would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
 ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6); they also rename
@@ -14746,6 +14747,52 @@ after both fixes, in either order (R1, R2 and R3 on cikis):
 ```
 
 PlainSpice's checks: `non-ascii-node`.
+
+### non-ascii-node-28. A part with an end on each of two spellings that differ only in capital letters has them joined by ngspice: no one node as the netlist means, so it stays the error
+
+Added after the integration check of the last pass (14 November 2026, X1). A netlist that puts a part between Çıkış and çıkış wrote two nodes there, as one that puts a part between aµ and au does (non-ascii-node-5): ngspice spells both ____k____ and joins the part's ends, so R2 carries no current and the divider gives 5 V, where the two nodes written give 6.667 V and 3.333 V. A current source there drives its 1 mA from the node into the same node and changes nothing; a voltage source there stops ngspice ("instance v2 is a shorted VSRC"); an E reading there reads 0 V. So PlainSpice says these are one node for ngspice and that it simulates a different circuit from the one written (the error of non-ascii-node-2), and its fix gives each spelling a plain name of its own, after which the circuit runs as written. Only parts outside subcircuits and after a plain .end count: inside a subcircuit the names are its own. With no part across, the spellings stay the one node of non-ascii-node-27.
+
+```spice
+* a resistor between two spellings of one name
+V1 in 0 10
+R1 in Çıkış 1k
+R2 Çıkış çıkış 1k
+R3 çıkış 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        ____k____                        5.000000e+00
+        in                               1.000000e+01
+        v1#branch                        -5.00000e-03
+     device                    r3                    r2                    r1
+          i                 0.005                     0                 0.005
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 10, v(____k____) = 5, i(v1) = -0.005
+  with .options savecurrents, -b -r (exit 0)
+    rawfile: v(in) = 10, v(____k____) = 5, i(v1) = -0.005, i(@r1[i]) = 0.005, i(@r2[i]) = 0, i(@r3[i]) = 0.005
+ngspice 42: the same printout, exit codes and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 10, v(____k____) = 5, i(v1) = -0.005
+    with .options savecurrents: i(@r1[i]) = 0.005, i(@r2[i]) = 0, i(@r3[i]) = 0.005
+after the fix "Write Cikis for Çıkış and cikis2 for çıkış" (non-ascii-node), which writes `R1 in Cikis 1k`, `R2 Cikis cikis2 1k`, `R3 cikis2 0 1k`:
+    native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 10, v(cikis) = 6.666666666666666, v(cikis2) = 3.333333333333333, i(v1) = -0.003333333333333334
+I1 Çıkış çıkış 1m in place of R2, with .options savecurrents:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(____k____) = 5, i(v1) = -0.005, i(@r1[i]) = 0.005, i(@i1[current]) = 0.001, i(@r3[i]) = 0.005
+    our engine (exit 0): the same values
+  after the fix (I1 Cikis cikis2 1m):
+    ngspice 47 and 42, -b -r (exit 0) and our engine: v(in) = 10, v(cikis) = 9, v(cikis2) = 1, i(v1) = -0.0009999999999999992
+V2 Çıkış çıkış 1 in place of R2:
+    ngspice 47 and 42, -b and -b -r (exit 1): Fatal error: instance v2 is a shorted VSRC
+    our engine (exit 1): Fatal error: instance v2 is a shorted VSRC
+E1 out 0 Çıkış çıkış 2 with Ro out 0 1k, beside R2:
+    ngspice 47 and 42, -b -r (exit 0): v(in) = 10, v(____k____) = 5, v(out) = 0, i(e1) = 0, i(v1) = -0.005
+    our engine (exit 0): v(in) = 10, v(____k____) = 5, v(out) = 0, i(e1) = 0, i(v1) = -0.005
+```
+
+PlainSpice's checks: `non-ascii-node` (the error, for R2, I1, V2 and E1 alike, and for such a part after a plain .end).
 
 ## invisible-character
 

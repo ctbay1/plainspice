@@ -858,4 +858,33 @@ describe('the round-2 critic of these fixes (13 November 2026)', () => {
       expect(edited.text, node).toContain('R1 giris vout 1k\nR2 vout 0 1k');
     }
   });
+  it('X1: a part with an end on each of two spellings that differ only in capital letters has them joined by ngspice: the error, never "as this netlist means", and its fix gives each a name of its own (non-ascii-node-28)', () => {
+    const TC = 'Çıkış'; // Çıkış
+    const across = (part: string): string => `* t\nV1 in 0 10\nR1 in ${TC} 1k\n${part}\nR3 ${T} 0 1k\n.op\n.end\n`;
+    // A resistor, a current source, a voltage source, and an E reading between the two spellings (native 47 and 42:
+    // R2 carries 0 A, I1's 1 mA changes nothing, 'instance v2 is a shorted VSRC', E1 reads 0 V).
+    for (const part of [`R2 ${TC} ${T} 1k`, `I1 ${TC} ${T} 1m`, `V2 ${TC} ${T} 1`, `E1 out 0 ${TC} ${T} 2\nRo out 0 1k`]) {
+      const text = across(part);
+      const found = traps(text);
+      expect(found.map((t) => [t.id, t.severity, t.title]), part).toEqual([['non-ascii-node', 'error', `Node ${TC} and node ${T} are one node for ngspice`]]);
+      expect(found[0]!.why, part).toContain('It simulates a different circuit from the one written here.');
+      expect(found[0]!.why, part).not.toContain('as this netlist means');
+      expect(found[0]!.fixes.map((f) => f.label), part).toEqual([`Write Cikis for ${TC} and cikis2 for ${T}`]);
+      const fixed = applyFix(text, found[0]!.fixes[0]!);
+      expect(fixed, part).toContain('R1 in Cikis 1k');
+      expect(fixed, part).toContain('R3 cikis2 0 1k');
+      expect(traps(fixed), part).toEqual([]);
+    }
+    expect(applyFix(across(`R2 ${TC} ${T} 1k`), traps(across(`R2 ${TC} ${T} 1k`))[0]!.fixes[0]!)).toBe('* t\nV1 in 0 10\nR1 in Cikis 1k\nR2 Cikis cikis2 1k\nR3 cikis2 0 1k\n.op\n.end\n');
+    // A part after a plain .end, which ngspice reads (S25), joins them too.
+    const after = `* t\nV1 in 0 10\nR1 in ${TC} 1k\nR3 ${T} 0 1k\n.op\n.end\nR2 ${TC} ${T} 1k\n`;
+    expect(traps(after).filter((t) => t.id === 'non-ascii-node').map((t) => t.severity)).toEqual(['error']);
+    // The drawing editor renames only the spelling picked, as the netlist names two nodes there.
+    const edited = applyEdit(buildSchematic(parseNetlist(across(`R2 ${TC} ${T} 1k`))), { kind: 'rename-node', node: TC, name: 'vout' });
+    expect(edited.text).toContain(`R1 in vout 1k\nR2 vout ${T} 1k\nR3 ${T} 0 1k`);
+    expect(nodeReferences(parseNetlist(across(`R2 ${TC} ${T} 1k`)), TC).map((t) => t.text)).toEqual([TC, TC]);
+    // Inside a subcircuit the names are its own: a part across there leaves the divider outside one node, as written.
+    const inner = `* t\nV1 giris 0 10\nR1 giris ${TC} 1k\nR2 ${T} 0 1k\nX1 a sub\n.subckt sub p\nR9 ${TC} ${T} 1k\nR8 p 0 1k\n.ends\nVa a 0 1\n.op\n.end\n`;
+    expect(traps(inner).filter((t) => t.id === 'non-ascii-node').map((t) => [t.severity, t.title])).toEqual([['warning', `ngspice spells node ${TC} and node ${T} as ____k____: one node`]]);
+  });
 });

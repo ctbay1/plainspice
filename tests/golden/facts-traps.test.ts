@@ -558,6 +558,7 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-26', netlist: "* Turkish letters in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node ____k____", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['non-ascii-node'] },
   // Two spellings that differ only in capital letters on part lines are one node, as written: a warning, and one name for both (CR2-3).
   { code: 'non-ascii-node-27', netlist: "* two spellings of one node\nV1 giris 0 10\nR1 giris \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-28', netlist: "* a resistor between two spellings of one name\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -801,6 +802,36 @@ it('CR2-3: two spellings that differ only in capital letters are renamed togethe
     const r = applyEdit(buildSchematic(divider), { kind: 'rename-node', node, name: 'vout' }, { drawingInText: true });
     expect(r.ok, node).toBe(true);
     expect(vector(await engine.run(r.text), 'v(vout)'), node).toEqual([5]);
+  }
+});
+
+it('X1: a part with an end on each of two spellings that differ only in capital letters has them joined: the error\'s fix gives each a name of its own, and the numbers native ngspice gave (non-ascii-node-28)', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-28')!.netlist;
+  const sc = (netlist: string): string => netlist.replace('.op\n', '.options savecurrents\n.op\n');
+  // With every current saved: R2 carries none, its ends joined (native 47 and 42 give i(@r2[i]) = 0).
+  const joined = await engine.run(sc(text));
+  for (const [name, want] of Object.entries({ 'v(____k____)': 5, 'i(@r1[i])': 0.005, 'i(@r2[i])': 0, 'i(@r3[i])': 0.005 })) expect(vector(joined, name), name).toEqual([want]);
+  // The error's fix writes each spelling its own name: two nodes, as the netlist wrote them.
+  const [f] = fixed.get('non-ascii-node-28')!;
+  expect(f!.label).toBe('non-ascii-node: Write Cikis for \u00c7\u0131k\u0131\u015f and cikis2 for \u00e7\u0131k\u0131\u015f');
+  for (const [name, want] of Object.entries({ 'v(cikis)': 6.666666666666666, 'v(cikis2)': 3.333333333333333, 'i(v1)': -0.003333333333333334 })) expect(vector(f!.run, name), name).toEqual([want]);
+  // A current source there drives its 1 mA into the one node, and after the fix between two (native: 9 V and 1 V).
+  const source = sc(text.replace(/^R2 .*$/m, 'I1 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1m'));
+  const before = await engine.run(source);
+  for (const [name, want] of Object.entries({ 'v(____k____)': 5, 'i(@i1[current])': 0.001, 'i(@r1[i])': 0.005 })) expect(vector(before, name), name).toEqual([want]);
+  const trap = checkTraps(parseNetlist(source)).find((t) => t.id === 'non-ascii-node')!;
+  expect(trap.severity).toBe('error');
+  const after = await engine.run(applyFix(source, trap.fixes[0]!));
+  for (const [name, want] of Object.entries({ 'v(cikis)': 9, 'v(cikis2)': 1, 'i(v1)': -0.0009999999999999992 })) expect(vector(after, name), name).toEqual([want]);
+  // A voltage source there stops ngspice; an E reading there reads 0 V.
+  const shorted = await engine.run(text.replace(/^R2 .*$/m, 'V2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1'));
+  expect(shorted.ok).toBe(false);
+  expect(`${shorted.stdout}\n${shorted.stderr}`).toContain('instance v2 is a shorted VSRC');
+  const reads = await engine.run(text.replace('.op\n', 'E1 out 0 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 2\nRo out 0 1k\n.op\n'));
+  expect(vector(reads, 'v(out)')).toEqual([0]);
+  for (const part of ['I1 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1m', 'V2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1']) {
+    expect(checkTraps(parseNetlist(text.replace(/^R2 .*$/m, part))).map((t) => [t.id, t.severity]), part).toEqual([['non-ascii-node', 'error']]);
   }
 });
 
