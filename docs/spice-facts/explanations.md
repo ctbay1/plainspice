@@ -8243,7 +8243,7 @@ our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
   506.5 aA; …"; "At V1 = 500 mV: v(top1) = 500 mV, …"; no note about the point
 ```
 
-### C9z. After the integration check: ngspice's 0 for a wire stays 0 by the rule, a sweep's point at the .op's own value or at a decimal's very double is that value, by the rule only a point at the .op's value bit for bit shows its 0s, and a .tf of nodes inside a subcircuit gets the rule's note
+### C9z. After the integration check: ngspice's 0 for a wire stays 0 by the rule, a sweep's point at the .op's own value or at a decimal's very double is that value, by the rule only a point at the .op's own value shows its 0s, and a .tf of nodes inside a subcircuit gets the rule's note
 
 Added after the integration check of the merged last-pass lanes (14 November 2026; noise-0, fill-fabricates-currents). A
 divider with a .param line feeds a 10 MΩ load through a 1 nΩ wire. The wire carries the load's 198 nA, from n1 to p, but
@@ -8293,8 +8293,8 @@ reads "0.3" as 0.30000000000000004 for the .op, and ".dc V1 0 0.3 0.15" adds 0.1
 0.29999999999999998890; both stand for 300 mV, where V2, holding node b at its own 150 mV, carries no current, and ngspice
 gives 0 A at both. The page judged that last point at its binary value, where the circuit (with V2 at its decimal 150 mV)
 makes −3.701e−21 A, and drew that, with "Solved exactly … none of them is 0", beside the .op's "V2: no current". Now a point
-at the .op's own value of the swept source, bit for bit, or at the very double of the decimal its steps say (start + k·step)
-is that value: ngspice's 0 there is the circuit's, and its noise there is rounding noise of a 0, as the .op shows it. With
+at the .op's own value of the swept source (ngspice's double of it bit for bit, or the very double of the decimal the netlist
+writes for it), or at the very double of the decimal its steps say (start + k·step), is that value: ngspice's 0 there is the circuit's, and its noise there is rounding noise of a 0, as the .op shows it. With
 "1.2" (ngspice's 1.2000000000000002 V) a ".dc V1 0 1.2 0.6" ends at that very double, where ngspice gives V2 the .op's own
 1.084202e−19 A: the sweep shows 0 there with the noise note, where it drew the exact digits at the binary value, 4.229e−20 A,
 named the point "1.2000000000000002 V, not 1.2 V", and contradicted the .op's note on the same numbers. Only a point that
@@ -8427,8 +8427,9 @@ Added after the integration check (14 November 2026) (C9z.4; noise-3, rule-neare
 4.5 V. There the circuit makes a real −2.436 aA through V2 and R3 (node b 1.145 fV, about 2.6 steps of a double, below c),
 which ngspice gives as −1.735 aA and −1.89 aA; the rule, run on that point's own values, wrote them 0, and the note said "ngspice's own numbers
 there show that each of them is rounding noise of a 0". With no exact solution the rule cannot tell a real value there from
-noise, and the circuit at that point is not the .op's, so only a point at the .op's value bit for bit now shows the .op's 0s
-(C9w.13); this one keeps ngspice's numbers, and is named by its own x where a note names it.
+noise, and the circuit at that point is not the .op's, so only a point at the .op's own value (its double bit for bit, or the
+very double of the decimal the netlist writes for it, below) now shows the .op's 0s (C9w.13); this one keeps ngspice's
+numbers, and is named by its own x where a note names it.
 
 ```spice
 * V2 holds node b at its own 2.25 V when V1 is 4.5 V, with a .param line, swept past it in 50 mV steps
@@ -8461,6 +8462,46 @@ our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
   4.499999999999973 V, and no note says "rounding noise of a 0" of it (it said "At ngspice's point nearest the operating
   point's 4.5 V, 4.499999999999973 V (its 50 mV step added up in doubles), ngspice's own numbers there show that each of
   them is rounding noise of a 0, …")
+```
+
+A point at the very double of the decimal the netlist writes for the swept source is the .op's value too (C9z.4): ngspice
+reads "4.5m" as 0.0045000000000000005 for the .op (N15), and ".dc I1 0 0.0045 0.3m" ends at 0.0045's own double, which
+stands for the same 4.5 mA, as the .op is judged at that decimal. There ngspice gives V2 −6.939 aA where its .op gives
+exactly 0; the rule, run on that point's own values, writes it 0, and the note says that the operating point shows it as 0
+(it has no note of its own there, its 0 being ngspice's). The page named that point "I1 = 4.5 mA, not 4.5 mA", saying its
+points drift from the values the steps say, which this one does not: ngspice's reading of the netlist's 4.5m is the double
+that is off.
+
+```spice
+* V2 holds node b at I1 R1 when I1 is 4.5 mA, with a .param line, swept to it in 300 uA steps
+.param rp=10k
+I1 0 a 4.5m
+R1 a 0 {rp}
+V2 b 0 45
+R2 a b 1k
+.options savecurrents
+.op
+.dc I1 0 0.0045 0.3m
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          b                                4.500000e+01
+          a                                4.500000e+01
+          @r2[i]                           0.000000e+00
+          @r1[i]                           4.500000e-03
+          @i1[current]                     4.500000e-03
+          v2#branch                        0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: i(i-sweep) = [0.0042, 0.0045], v(a) = [44.72727272727273, 44.99999999999999], v(b) = [45, 45], i(v2) = [-0.0002727272727272717, -6.938893903907228e-18], i(@r2[i]) = [-0.0002727272727272734, -7.105427357601002e-18]; the .op: v(a) = 45, v(b) = 45, i(v2) = 0, i(@i1[current]) = 0.0045000000000000005, i(@r2[i]) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "At I1 = 4.5 mA: v(a) = 45 V, v(b) = 45 V, i(v2) = 0 A, …", with the note "2 results are shown as 0
+  at some points of the DC sweep: ngspice gave i(v2) -6.938894e-18 A at I1 = 4.5 mA and i(@r2[i]) -7.105427e-18 A at
+  I1 = 4.5 mA. At I1 = 4.5 mA, the operating point's own state, ngspice's own numbers there show that each of them is
+  rounding noise of a 0, and the operating point shows them as 0. …"; no note names the point otherwise (it said "The DC
+  sweep's last point is I1 = 4.5 mA, not 4.5 mA: … There ngspice gives i(v2) −6.939 aA, where the operating point, at
+  4.5 mA, shows 0 A. …")
 ```
 
 Added after the integration check (14 November 2026) (C9z.5; regress-3, P4): a swept source whose value the netlist does not
