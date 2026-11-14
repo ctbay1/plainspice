@@ -17832,7 +17832,7 @@ from another alphabet (the M key of a Greek keyboard) is meant as mega, so its f
 "Make it 10meg" and "Make it 10m (10 mΩ)", never "Write 10M", which is milli (look-alike-letter-4); the milli fix
 says what it writes, as nothing is milli there: ngspice reads 10 Ω (re-check, 12 November 2026);
 and a node name whose letters outside ASCII all look like Latin ones (`оut` with a Cyrillic о) gets
-the fix that writes them plain, which joins it to the node of that name, "Connect to out"
+the fix that writes them plain, which joins it to the node of that name, "Connect to node out"
 (look-alike-letter-5). After the re-check of those fixes (12 November 2026): on a capacitor or an
 inductor ngspice also warns that it can't find a model with the word's name (look-alike-letter-7); a
 document's decimal point (a middle dot, a one-dot leader, a small full stop, the Arabic decimal
