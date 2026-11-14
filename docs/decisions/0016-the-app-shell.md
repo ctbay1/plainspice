@@ -668,3 +668,18 @@ was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before an
   the two spellings with no part across get no voltage-loop check before the run (ngspice stops, and the
   run's own words say why); and a part after `.end` is still not counted by the dangling-node check, so such
   a part across the spellings also brings its "Only R1 touches node Çıkış" notes, as for any node there.
+- **The results name such a node as the parts write it** (P1, P7, noise-4). The checks gave a name only read
+  (`v(Çıkış)` in a formula, a `.func`, a `.pz`) and a group of case spellings to one node (CR1-1, CR2-3), but
+  the results did not: `describe.ts` mapped ngspice's `____k____` back to the netlist only when one key spelled
+  it so, so the summary said "node ____k____ = 5 V" where c520a49 said "node çıkış = 5 V", the drawing and
+  the cards lost the node's voltage, and the rounding-noise rule, keyed by the netlist's names, split a bridge's
+  node in two: Kirchhoff's law at çıkış saw R1 and R5 without R2 and drew R5's exact 0 as "8.882e-19 A" with
+  nothing said. Now `spellingsOf` follows the checks' owner rule (a name no part connects to adds no second
+  name for a spelling a name on parts has; a case spelling is its group's first, `caseAliases`, now exported
+  for it), and the rule keys a case group once. So the words, the drawing and the cards name the node çıkış,
+  or `Çıkış` when first written so, and R5 is 0 A with "its two ends … at the same voltage, 4.5 V"
+  (non-ascii-node-29). Chosen over keying the rule by ngspice's spellings: the drawing, the cards and the words
+  all key nodes by the netlist's names. Left open: with two spellings on part lines, the drawing still shows
+  them apart (CR2-3), so the second spelling's node, its parts' cards and a source's power there get no
+  voltage until the fix gives the node one name; a group with a part across stays as ngspice spells it, as
+  its error says the numbers are no answers.

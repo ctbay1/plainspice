@@ -14794,6 +14794,58 @@ E1 out 0 Çıkış çıkış 2 with Ro out 0 1k, beside R2:
 
 PlainSpice's checks: `non-ascii-node` (the error, for R2, I1, V2 and E1 alike, and for such a part after a plain .end).
 
+### non-ascii-node-29. ngspice's results name the node ____k____: PlainSpice's name it as the parts write it, and judge its numbers as one node's
+
+Added after the integration check of the last pass (14 November 2026, P1, P7 and noise-4). ngspice writes Çıkış and çıkış alike, so its printout and results name the node ____k____ whichever spelling a line uses (non-ascii-node-20, -27). PlainSpice maps ngspice's names back to the netlist's: a name only a formula, a .func or a dot command reads is the node the parts are on (as the checks have it, non-ascii-node-20), and spellings on part lines that differ only in capital letters, with no part across them (non-ascii-node-28), are their first one. So the results, the drawing and the cards name the node çıkış where the parts write çıkış (formerly "node ____k____ = 5 V", with no voltage drawn at çıkış), and the rounding-noise rule weighs the parts on both spellings at one node. In the balanced bridge of C9 (explanations.md) written with both spellings, ngspice gives v(____k____) one unit in the last place below 4.5 V and R5 −8.882e-19 A, as for C9: the bridge is balanced, R5 carries exactly 0, and PlainSpice shows 0 A with "the two ends of R5, node çıkış and node b, are at the same voltage, 4.5 V" (formerly 8.882e-19 A with nothing said, as the rule saw node çıkış with R1 and R5 only).
+
+```spice
+* C9's balanced bridge, its node written çıkış and Çıkış, with a transistor
+V1 top 0 9
+R1 top çıkış 10k
+R2 Çıkış 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 çıkış b 1k
+Q1 top x 0 qmod
+Rx x 0 1meg
+.model qmod npn
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        x                                9.000082e-06
+        b                                4.500000e+00
+        ____k____                        4.500000e+00
+        top                              9.000000e+00
+        @rx[i]                           9.000082e-12
+        @q1[is]                          9.000000e-12
+        @q1[ib]                          -9.00008e-12
+        @q1[ie]                          -9.00011e-12
+        @q1[ic]                          9.000191e-12
+        @r5[i]                           -8.88178e-19
+        @r4[i]                           9.574468e-04
+        @r3[i]                           9.574468e-04
+        @r2[i]                           4.500000e-04
+        @r1[i]                           4.500000e-04
+        v1#branch                        -1.40745e-03
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(top) = 9, v(____k____) = 4.499999999999999, v(b) = 4.5, v(x) = 9.000081999484787e-06, i(v1) = -0.0014074468265108293, i(@r1[i]) = 0.0004500000000000001, i(@r2[i]) = 0.00044999999999999993, i(@r3[i]) = 0.0009574468085106382, i(@r4[i]) = 0.0009574468085106382, i(@r5[i]) = -8.881784197001253e-19, i(@q1[ic]) = 9.00019103471416e-12, i(@q1[ie]) = -9.000109035229373e-12, i(@q1[ib]) = -9.000081999484786e-12, i(@q1[is]) = 9e-12, i(@rx[i]) = 9.000081999484786e-12
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: the same values as ngspice 47
+the same bridge with çıkış on every part line, read by B1 x 0 V=v(Çıkış)*2 with Rx x 0 1k in place of Q1:
+    ngspice 47 and 42, -b -r (exit 0): v(top) = 9, v(____k____) = 4.499999999999999, v(b) = 4.5, v(x) = 8.999999999999998, i(b1) = -0.008999999999999998, i(v1) = -0.0014074468085106386, i(@r5[i]) = -8.881784197001253e-19, i(@rx[i]) = 0.008999999999999998
+    our engine (exit 0): the same values
+the divider of formulas.spec.ts (R1 giris çıkış 1k, R2 çıkış 0 1k, B1 b 0 V=v(Çıkış)*2, Rb b 0 1k):
+    ngspice 47 and 42, -b (exit 0): b 1.000000e+01, ____k____ 5.000000e+00, giris 1.000000e+01, v1#branch -5.00000e-03, b1#branch -1.00000e-02
+    ngspice 47 and 42, -b -r (exit 0), and our engine: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
+```
+
+PlainSpice's results for the bridge: "Simulation finished: node top = 9 V, node çıkış = 4.5 V, node b = 4.5 V, node x = 9 µV; 7 currents", R5 "no current through R5" with the rounding-noise note above, and the drawing writes 4.5 V at çıkış. For the divider: "node giris = 10 V, node çıkış = 5 V, node b = 10 V"; written Çıkış and çıkış on part lines (non-ascii-node-27), "node Çıkış = 5 V". PlainSpice's checks: `non-ascii-node` (the warning of non-ascii-node-27 for the bridge, of non-ascii-node-1 for the divider).
+
 ## invisible-character
 
 Added after the final reviews of 12 November 2026 (security review F2). An invisible character (a

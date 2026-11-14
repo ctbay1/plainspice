@@ -287,7 +287,9 @@ and after the rename, in either order with "Move .end to the bottom").
 After the integration check of the last pass (14 November 2026), run the same way: non-ascii-node-28 (a
 part with an end on each of `Çıkış` and `çıkış` has them joined: R2 carries 0 A, a current source's 1 mA
 changes nothing, a voltage source stops ngspice, an E reads 0 V; the error's fix gives each its own name,
-6.667 V and 3.333 V).
+6.667 V and 3.333 V) and non-ascii-node-29 (ngspice names the node `____k____` in its results; C9's bridge
+written with both spellings gives R5 −8.882e-19 A, an exact 0, as C9 does, which the results now show as one
+node's, named as the parts write it).
 
 ## The last pass of 13 November 2026 (the ui lane)
 

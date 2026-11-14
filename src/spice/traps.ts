@@ -410,7 +410,7 @@ function modelLevel(rest: string): number {
  * as aµ and au are (non-ascii-node-5), it has those ends joined by ngspice (non-ascii-node-28), which is no one node
  * as the netlist means (the integration check, X1).
  */
-function caseAliases(n: Netlist): Map<string, string> {
+export function caseAliases(n: Netlist): Map<string, string> {
   const first = new Map<string, string>();
   const groupOf = new Map<string, string>();
   for (const [key, info] of n.nodes) {

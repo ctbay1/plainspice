@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import { encodeShare } from '../../src/share/link.ts';
 import {
   checksCount,
+  drawnText,
   expectFinished,
   netlistText,
   nodeTable,
@@ -55,6 +56,11 @@ test('a formula that writes the node with a capital letter (v(Çıkış)) gets n
   await setNetlist(page, netlist);
   await expectFinished(page);
   expect(readPlain(await shownText(rowNamed(nodeTable(page), 'b').getByRole('cell').first()), 'V')).toBe(10);
+  // ngspice's v(____k____) is the node çıkış the parts are on: in the table and on the drawing (P1, P7, non-ascii-node-29).
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'çıkış').getByRole('cell').first()), 'V')).toBe(5);
+  await expect(rowNamed(nodeTable(page), '____k____')).toHaveCount(0);
+  // Only çıkış is at 5 V (giris and b are at 10 V): c520a49 drew it, 3e61833 did not.
+  expect(await drawnText(page)).toMatch(/=\s5\sV/);
   await expect.poll(() => checksCount(page)).toBe(1);
   const panel = await openPanel(page, 'checks');
   await panel.getByRole('button', { name: 'Rename node çıkış to cikis' }).click();
@@ -87,6 +93,8 @@ test('one node written Çıkış and çıkış on part lines: the numbers show, 
   await openApp(page);
   await setNetlist(page, '* t\nV1 giris 0 10\nR1 giris Çıkış 1k\nR2 çıkış 0 1k\n.op\n.end\n');
   await expectFinished(page);
+  // The node is named as first written, Çıkış, not ngspice's ____k____ (noise-4, non-ascii-node-29).
+  expect(readPlain(await shownText(rowNamed(nodeTable(page), 'Çıkış').getByRole('cell').first()), 'V')).toBe(5);
   await expect.poll(() => checksCount(page)).toBe(1);
   const panel = await openPanel(page, 'checks');
   await expect(panel).toContainText('ngspice spells node Çıkış and node çıkış as ____k____: one node');

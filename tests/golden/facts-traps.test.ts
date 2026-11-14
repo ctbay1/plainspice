@@ -559,6 +559,7 @@ const FACTS: Fact[] = [
   // Two spellings that differ only in capital letters on part lines are one node, as written: a warning, and one name for both (CR2-3).
   { code: 'non-ascii-node-27', netlist: "* two spellings of one node\nV1 giris 0 10\nR1 giris \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
   { code: 'non-ascii-node-28', netlist: "* a resistor between two spellings of one name\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-29', netlist: "* C9's balanced bridge, its node written \u00e7\u0131k\u0131\u015f and \u00c7\u0131k\u0131\u015f, with a transistor\nV1 top 0 9\nR1 top \u00e7\u0131k\u0131\u015f 10k\nR2 \u00c7\u0131k\u0131\u015f 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 \u00e7\u0131k\u0131\u015f b 1k\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(____k____)": 4.499999999999999, "v(b)": 4.5, "v(x)": 9.000081999484787e-06, "i(v1)": -0.0014074468265108293, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 9.000081999484786e-12 }, traps: ['non-ascii-node'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
