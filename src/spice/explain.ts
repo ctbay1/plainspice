@@ -1366,9 +1366,10 @@ export interface SkipStep {
 
 /**
  * A subcircuit the main circuit does not use (A3f): its name as written and its .subckt line (0-based),
- * and why. `through` holds the steps out, while every X line that uses it is in one subcircuit; `noX`
- * says no X line uses the last one named; otherwise several subcircuits' X lines use it, or the steps
- * come back to one already named. `direct`: no X line uses it at all.
+ * and why. `through` holds the steps out, while every X line that uses it is in one subcircuit, at most
+ * three steps of at most three X lines each; `noX` says no X line uses the last one named; otherwise
+ * several subcircuits' X lines use it, the steps come back to one already named, or the walk stopped
+ * there. `direct`: no X line uses it at all.
  */
 export interface UnusedSubcircuit {
   name: string;
@@ -1486,6 +1487,17 @@ function subcircuitsOf(netlist: Netlist): Subcircuits {
 }
 
 /**
+ * The most steps out, and the most X lines in one step, that the words of a subcircuit the main circuit
+ * does not use name (A3f). Past them the walk stops at the subcircuit it has reached, with "which the main
+ * circuit does not use, directly or through other subcircuits", which holds for it as for every one the walk
+ * passes. Each subcircuit of a chain kept its whole way out, with every X line of each step, so the work,
+ * the memory and the words grew with the square of the netlist (the integration check, X2: a chain of 4,000
+ * subcircuits made 8 million steps and about 1 GB, and one note named 500 subcircuits in 37,257 characters).
+ */
+const SKIP_STEPS = 3;
+const SKIP_XS = 3;
+
+/**
  * The subcircuit a line is in when the main circuit does not use it, and why (A3f); undefined for any
  * other line. The main circuit uses a subcircuit through its X lines (those after a plain .end too, S25),
  * and then through those of each subcircuit it uses: ngspice skips the lines of any other, an analysis
@@ -1501,7 +1513,8 @@ export function unusedSubcircuit(netlist: Netlist, index: number): UnusedSubcirc
   if (s.reached.has(lowerAscii(name.text))) return undefined;
   let found = s.unused.get(at);
   if (!found) {
-    // The X lines that use it, outward, while they are all in one subcircuit not named yet.
+    // The X lines that use it, outward, while they are all in one subcircuit not named yet, for at most
+    // SKIP_STEPS steps of at most SKIP_XS X lines each.
     const through: SkipStep[] = [];
     const seen = new Set([at]);
     let here = at;
@@ -1510,7 +1523,7 @@ export function unusedSubcircuit(netlist: Netlist, index: number): UnusedSubcirc
       const using = s.users.get(lowerAscii(netlist.lines[here]!.directive!.args[0]!.text)) ?? [];
       const next = using[0]?.at;
       if (using.length === 0) noX = true;
-      if (next === undefined || seen.has(next) || using.some((u) => u.at !== next)) break;
+      if (next === undefined || through.length >= SKIP_STEPS || using.length > SKIP_XS || seen.has(next) || using.some((u) => u.at !== next)) break;
       through.push({ xs: using.map((u) => u.x.name.text), name: netlist.lines[next]!.directive!.args[0]!.text, line: next });
       seen.add(next);
       here = next;
@@ -1534,9 +1547,10 @@ export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
 /**
  * Why the main circuit does not use a subcircuit, after its name (A3f): "which no X line uses"; the X
  * lines that use it, outward ("which only X2 uses, and X2 is inside the subcircuit outer, which no X
- * line uses"); or, where several subcircuits' X lines use one or the steps come back, "which the main
- * circuit does not use, directly or through other subcircuits". With `lines`, each subcircuit's .subckt
- * line too ("outer (from line 5)").
+ * line uses"); or, where several subcircuits' X lines use one, the steps come back, more than three X
+ * lines use one or three steps are named (SKIP_STEPS, SKIP_XS), "which the main circuit does not use,
+ * directly or through other subcircuits". With `lines`, each subcircuit's .subckt line too ("outer (from
+ * line 5)").
  */
 export function skippedBecause(u: UnusedSubcircuit, lines: boolean): string {
   const steps = u.through.map((t) => S.skipStep(S.listJoin(t.xs), t.xs.length > 1, lines ? S.skipAt(t.name, t.line + 1) : t.name));

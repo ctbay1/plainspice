@@ -755,3 +755,33 @@ and golden rows in A3f and A3h):
   a `.global` node, and the `v(...)` of a `.func`'s formula, before and after a plain `.end`
   (non-ascii-node-23 to -25); and a name only read that ngspice spells as the node (`v(Çıkış)` for the node
   `çıkış`, decision 0016). A bare name on `.probe` stays: ngspice reads no node there.
+
+## After the integration check (14 November 2026)
+
+The integration check of the last pass's lanes found two problems with subcircuits the main circuit does
+not use (`src/spice/explain.ts`, `src/spice/traps.ts`; `tests/unit/integration-check-subckt.test.ts`,
+golden rows in A3f of `docs/spice-facts/explanations.md`):
+
+- **The walk out stops after three steps** (cross X2). The words for such a subcircuit name the X lines
+  that use it, outward (critic1-4 above), and each subcircuit kept its whole way out, with every X line of
+  each step. So the work, the memory and the words grew with the square of the netlist: a chain of 4,000
+  subcircuits, each holding an X line that uses the next, made 8,002,000 steps, about 1 GB in Node and
+  7.4 s of CPU in the checks (load 4.5), where c520a49 took 16 MB; 8,000 ran Node out of memory; a
+  29,757-character link crashed the tab after seven keys (the skeptic), and the note on the innermost
+  `.op` of 500 was 37,257 characters (with only that `.op`, the status line held 28,939 and the polite
+  region said 28,928, the skeptic found). The same
+  held for many subcircuits each used once inside one that many X lines use: 3,000 of each named 9 million
+  X lines and gave Explain's "all lines" 61.8 million characters. The walk now names at most three steps
+  (`SKIP_STEPS`) of at most three X lines each (`SKIP_XS`), then stops at the subcircuit it has reached
+  with "which the main circuit does not use, directly or through other subcircuits", which holds for that
+  one as for every one it passed (".op is inside the subcircuit s500, which only X1 uses, and X1 is inside
+  the subcircuit s499, …, and X1 is inside the subcircuit s497, which the main circuit does not use,
+  directly or through other subcircuits"). After the fix: 11,997 steps for the chain of 4,000, +14 MB and
+  286 ms in the checks (load 5.6), 449 characters for the note; 3,000 X lines named for the fan, 2.1
+  million characters in all; the chain of 8,000 is checked in 513 ms. Every chain the tests and the facts
+  had (two steps at most) keeps its words. The tests count, not time: the steps kept (at most three for
+  each subcircuit, four times the chain for four times the steps, 8,002,000 before), the X lines kept in
+  the fan (1,002,000 before), and the lines the checks read (×12.7 for four times the chain before, under
+  ×5 now), as critic1-6's test does. The skeptic's other way, naming at most three X lines with "and
+  4,997 other X lines", was left: it needs words of its own, and the stop says what holds. So decision
+  0012's bounded-work promise holds again for these netlists.

@@ -3705,7 +3705,10 @@ with "ngspice skips an analysis line between .subckt and .ends unless the main c
 subcircuit, through its own X lines or those of the subcircuits they use, …"; Explain's note on the line
 says the same with each subcircuit's line. Where X lines in two such subcircuits use inner, or two
 subcircuits use only each other, they say inner (or the last one named) is one "which the main circuit
-does not use, directly or through other subcircuits".
+does not use, directly or through other subcircuits". So they do after three steps out, and at a
+subcircuit more than three X lines use: the words name at most three steps of at most three X lines
+each (14 November 2026, the integration check, X2: each subcircuit of a chain kept its whole way out,
+so a chain of 4,000 made 8 million steps and about 1 GB, and a note named 500 subcircuits).
 
 ```spice
 * .op in inner, which only X2 uses, inside outer, which no X line uses
@@ -3730,22 +3733,26 @@ ngspice 47, ngspice -b (exit 1):
   ngspice -b -r out.raw (exit 0): no rawfile, and no message
   the same, exit codes and all, with .ac dec 1 1k 10k there in place of the .op (V1 in 0 AC 1), where
     -b -r prints only "Note: v1: has no value, DC 0 assumed"; two steps out (.subckt top holding
-    X3 p q mid, .subckt mid holding X2 p q inner); with inner used by X2 in outer and by X3 in a
-    second subcircuit other, neither used; with X1 a b outer inside inner (a loop, the main circuit
-    using neither); with .subckt inner … .ends written inside outer; and with an .op in a subcircuit s
-    no X line uses beside a .tf v(out) V1 in inner (the words: "The analysis lines are inside
-    subcircuits that the main circuit does not use, directly or through other subcircuits")
+    X3 p q mid, .subckt mid holding X2 p q inner); three and four steps out (.subckt s1, s2, s3 and
+    s4, each holding X1 p q and the next one's name, the last X1 p q inner); with inner used by three
+    and by four X lines of outer (X1 p q inner to X4 p q inner); with inner used by X2 in outer and by
+    X3 in a second subcircuit other, neither used; with X1 a b outer inside inner (a loop, the main
+    circuit using neither); with .subckt inner … .ends written inside outer; and with an .op in a
+    subcircuit s no X line uses beside a .tf v(out) V1 in inner (the words: "The analysis lines are
+    inside subcircuits that the main circuit does not use, directly or through other subcircuits")
   with X1 out 0 outer in the main circuit and .tf v(out) V1 in place of the .op, ngspice -b (exit 0):
     transfer_function = 3.333333e-01
     output_impedance_at_v(out) = 3.333333e+02
     v1#input_impedance = 1.500000e+03
   rawfile: v(Transfer_function) = 0.3333333333333333, v(v1#Input_impedance) = 1499.9999999999998, v(output_impedance_at_V(out)) = 333.3333333333333
+  the same printout, exit code and rawfile through the four steps, with X0 out 0 s1 in the main circuit
 ngspice 42: the same exit codes, notes and rawfile values, with 'Note: No ".plot", ".print", or
   ".fourier" lines; no simulations run' for the -b ending
 our engine (wasm), as ngspice -b -r: no results for each skipped one, with only the note about V1 for
   the .ac; with X1: the same vectors, bit for bit (golden rows an-skip-through, -through-ac,
-  -through-two, -through-several, -through-loop, -through-nested, -through-mixed and
-  an-tf-subckt-through-used)
+  -through-two, -through-three, -through-four, -through-three-x, -through-four-x, -through-several,
+  -through-loop, -through-nested, -through-mixed, an-tf-subckt-through-used and
+  an-skip-through-four-used)
 ```
 
 ngspice counts the lines it reads that start with `.subckt` and with `.ends` (all but the title line,
