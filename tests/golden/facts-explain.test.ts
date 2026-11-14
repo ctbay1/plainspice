@@ -277,6 +277,7 @@ const FACTS: Fact[] = [
   { code: 'C9z', id: 'cur-rule-wire-keeps-zero', netlist: "* a divider with a .param line, a 1 nohm wire and a 10 Mohm load\n.param rb=3.3k\nV1 n0 0 3.3\nR1 n0 n1 2.2k\nR2 n1 0 {rb}\nRw n1 p 1n\nRload p 0 10meg\n.options savecurrents\n.op\n.end\n", vectors: {"v(n1)": 1.9800018882754475, "v(p)": 1.9800018882754475, "i(@r1[i])": 0.0005999991416929785, "i(@r2[i])": 0.000600000572204681, "i(@rw[i])": 0.0, "i(@rload[i])": 1.9800018882754475e-07} },
   { code: 'C9z.2', id: 'cur-sweep-decimal-double', netlist: "* V2 holds node b at its own 150 mV when V1 is 300 mV, swept to it in 150 mV steps\nV1 a 0 0.3\nR1 a b 1k\nR2 b 0 1k\nV2 c 0 0.15\nR3 b c 1k\n.op\n.dc V1 0 0.3 0.15\n.end\n", summaries: {"v(v-sweep)": { points: 3, first: 0.0, last: 0.3 }, "v(b)": { points: 3, first: 0.049999999999999996, last: 0.15 }, "i(v2)": { points: 3, first: -9.999999999999999e-05, last: 0.0 }} },
   { code: 'C9z.2', id: 'cur-sweep-op-double-noise', netlist: "* V2 holds node b at its own 600 mV when V1 is 1.2 V, swept to it in 600 mV steps\nV1 a 0 1.2\nR1 a b 2.2k\nR2 b 0 2.2k\nV2 c 0 0.6\nR3 b c 1k\n.options savecurrents\n.op\n.dc V1 0 1.2 0.6\n.end\n", summaries: {"v(v-sweep)": { points: 3, first: 0.0, last: 1.2000000000000002 }, "i(v2)": { points: 3, first: -0.00028571428571428574, last: 1.0842021724855044e-19 }, "i(@r3[i])": { points: 3, first: -0.00028571428571428574, last: 1.1102230246251566e-19 }} },
+  { code: 'C9z.2', id: 'cur-sweep-steps-decimal', netlist: "* V2 holds node b at its own 150 mV when V1 passes 300 mV, in the middle of a sweep to 600 mV\nV1 a 0 0.6\nR1 a b 1k\nR2 b 0 1k\nV2 c 0 0.15\nR3 b c 1k\n.options savecurrents\n.op\n.dc V1 0 0.6 0.15\n.end\n", vectors: {"v(v-sweep)": [0, 0.15, 0.3, 0.44999999999999996, 0.6], "i(v2)": [-9.999999999999999e-05, -4.9999999999999996e-05, 0, 4.9999999999999996e-05, 9.999999999999996e-05], "i(@r3[i])": [-0.0001, -5e-05, 0, 4.999999999999999e-05, 9.999999999999995e-05]} },
   { code: 'C9z.3', id: 'cur-sweep-op-double-name', netlist: "* V2 holds node b at I1 R1 when I1 is 4.5 mA, swept to it in 30 uA steps\nI1 0 a 4.5m\nR1 a 0 3.3k\nV2 b 0 14.85\nR2 a b 1k\n.options savecurrents\n.op\n.dc I1 0 0.0045 0.03m\n.end\n", summaries: {"i(i-sweep)": { points: 151, first: 0.0, last: 0.0045000000000000005 }, "v(a)": { points: 151, first: 11.396511627906976, last: 14.85 }, "i(v2)": { points: 151, first: -0.003453488372093024, last: 0.0 }} },
   { code: 'C9z.3', id: 'cur-sweep-own-digits', netlist: "* V2 holds node b at I1 R1 when I1 is 1.2 mA, swept to it in 100 uA steps\nI1 0 a 1.2m\nR1 a 0 1k\nV2 b 0 1.2\nR2 a b 1k\n.options savecurrents\n.op\n.dc I1 0 1.2m 0.1m\n.end\n", summaries: {"i(i-sweep)": { points: 13, first: 0.0, last: 0.0012000000000000003 }, "v(a)": { points: 13, first: 0.6000000000000001, last: 1.2000000000000002 }, "i(v2)": { points: 13, first: -0.0006000000000000001, last: 0.0 }} },
   { code: 'C9z.4', id: 'cur-rule-sweep-drifted-point', netlist: "* V2 holds node b at its own 2.25 V when V1 is 4.5 V, with a .param line, swept past it in 50 mV steps\n.param rp=10k\nV1 a 0 4.5\nR1 a b {rp}\nR2 b 0 10k\nV2 c 0 2.25\nR3 b c 470\n.options savecurrents\n.op\n.dc V1 -8.15 4.95 0.05\n.end\n", summaries: {"v(v-sweep)": { points: 263, first: -8.15, last: 4.949999999999972 }, "v(b)": { points: 263, first: 1.706535648994516, last: 2.269332723948811 }, "i(v2)": { points: 263, first: -0.0011563071297989017, last: 4.1133455210236314e-05 }, "i(@r3[i])": { points: 263, first: -0.001156307129798902, last: 4.1133455210236226e-05 }} },
@@ -1915,13 +1916,23 @@ describe('after the integration check (14 November 2026)', () => {
     expect(d.words.warnings.some((m) => m.code === 'rounded-to-0')).toBe(false);
   });
 
-  it('C9z.2: a sweep\'s point at the very double of the decimal its steps say (0.3 V) or at the .op\'s own double (1.2000000000000002 V for "1.2") is that value: ngspice\'s 0 there is shown as 0 A, and its noise there as rounding noise of a 0, as the .op shows it', () => {
+  it('C9z.2: a sweep\'s point at the very double of the netlist\'s own value of the swept source (0.3 V, which ngspice\'s .op reads as 0.30000000000000004) or at the .op\'s own double (1.2000000000000002 V for "1.2") is that value: ngspice\'s 0 there is shown as 0 A, and its noise there as rounding noise of a 0, as the .op shows it', () => {
     const vlost = ofId('cur-sweep-decimal-double');
     expect(sweep(vlost)).toContain('At V1 = 300 mV: v(a) = 300 mV, v(b) = 150 mV, v(c) = 150 mV, i(v2) = 0 A,');
     expect([why(vlost, 'rounded-to-0'), lastShown(vlost, 'i(v2)')]).toEqual([undefined, 0]);
     const own = ofId('cur-sweep-op-double-noise');
     expect([sweep(own).includes('At V1 = 1.2 V: v(a) = 1.2 V, v(b) = 600 mV, v(c) = 600 mV, i(v2) = 0 A,'), lastShown(own, 'i(v2)'), why(own, 'sweep-point'), why(own, 'exact-digits')]).toEqual([true, 0, undefined, undefined]);
     expect(own.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => plain(m.why)).join(' ')).toContain('ngspice gave i(v2) 1.084202e-19 A at V1 = 1.2 V and i(@r3[i]) 1.110223e-19 A at V1 = 1.2 V. Those are rounding noise');
+  });
+
+  it('C9z.2: a point at the very double of the decimal its steps say, start + k·step, is that value though it is neither the netlist\'s value of the swept source nor the .op\'s: ".dc V1 0 0.6 0.15" passes 0.3\'s double, where V2, idle at 300 mV, carries no current and ngspice gives 0 A, shown as 0 A with no note (it drew −3.701e-21 A, the circuit at that double, with "Solved exactly … none of them is 0")', () => {
+    const d = ofId('cur-sweep-steps-decimal');
+    const run = runs.get('cur-sweep-steps-decimal')!;
+    // ngspice's own doubles, bit for bit (agrees counts any two values below 1e-12 as equal).
+    expect([vectorValues(run.plots, 'v(v-sweep)'), vectorValues(run.plots, 'i(v2)')]).toEqual([[0, 0.15, 0.3, 0.44999999999999996, 0.6], [-9.999999999999999e-05, -4.9999999999999996e-05, 0, 4.9999999999999996e-05, 9.999999999999996e-05]]);
+    const shown = shownSweep(d.netlist, d.results)!;
+    expect(['i(v2)', 'i(@r3[i])'].map((name) => shown.series.find((s) => s.name === name)!.values[2])).toEqual([0, 0]);
+    expect(why(d, 'rounded-to-0')).toBeUndefined();
   });
 
   it('C9z.3: a point at the .op\'s own 4.5m, 0.0045000000000000005, is "I1 = 4.5 mA", with no note naming it otherwise (it read "I1 = 4.5 mA, not 4.5 mA"); a point that drifted from both is named by ngspice\'s own value with that value\'s own digits, "I1 = 1.2000000000000003 mA" (it read "1.2000000000000004 mA")', () => {

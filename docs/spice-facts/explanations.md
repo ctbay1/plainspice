@@ -8356,6 +8356,44 @@ our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
   noise, …"; no note names the point otherwise
 ```
 
+A point that is neither the swept source's netlist value nor the .op's stands for the decimal its steps say just the same:
+".dc V1 0 0.6 0.15" passes 0.3's own double in the middle of the sweep, start + 2·step, while the netlist writes V1 as 0.6.
+There V2, holding node b at its own 150 mV, carries no current, and ngspice gives 0 A; the page judged that point at its
+binary value too and drew −3.701e−21 A, with "Solved exactly … none of them is 0". Now it is judged at 300 mV, and shows
+ngspice's 0 with no note.
+
+```spice
+* V2 holds node b at its own 150 mV when V1 passes 300 mV, in the middle of a sweep to 600 mV
+V1 a 0 0.6
+R1 a b 1k
+R2 b 0 1k
+V2 c 0 0.15
+R3 b c 1k
+.options savecurrents
+.op
+.dc V1 0 0.6 0.15
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          c                                1.500000e-01
+          b                                2.500000e-01
+          a                                6.000000e-01
+          @r3[i]                           1.000000e-04
+          @r2[i]                           2.500000e-04
+          @r1[i]                           3.500000e-04
+          v1#branch                        -3.50000e-04
+          v2#branch                        1.000000e-04
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep, then the .op: v(v-sweep) = [0, 0.15, 0.3, 0.44999999999999996, 0.6], v(b) = [0.049999999999999996, 0.09999999999999999, 0.15, 0.19999999999999998, 0.24999999999999994], v(c) = [0.15, 0.15, 0.15, 0.15, 0.15], i(v2) = [-9.999999999999999e-05, -4.9999999999999996e-05, 0, 4.9999999999999996e-05, 9.999999999999996e-05], i(@r3[i]) = [-0.0001, -5e-05, 0, 4.999999999999999e-05, 9.999999999999995e-05]; the .op: v(a) = 0.6000000000000001, v(b) = 0.25, v(c) = 0.15, i(v2) = 0.00010000000000000002, i(@r3[i]) = 0.0001
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): i(v2) and i(@r3[i]) are 0 A at V1 = 300 mV in the Plot panel; no note (it drew −3.701e-21 A there,
+  with the note "2 results are not 0 at some points of the DC sweep, though ngspice gave 0: ngspice gave i(v2) exactly 0 at
+  V1 = 300 mV and i(@r3[i]) exactly 0 at V1 = 300 mV. … Solved exactly, with fractions, from the netlist's values, none of
+  them is 0, …")
+```
+
 Added after the integration check (14 November 2026) (C9z.3; noise-2, point-name-collapses-with-prefix): ngspice reads
 "4.5m" as 0.0045000000000000005, and ".dc I1 0 0.0045 0.03m" ends at that very double, the .op's own I1: the point is the
 .op's 4.5 mA, where V2 carries no current, and it is named "I1 = 4.5 mA" with V2's 0. It was taken as a point that drifted

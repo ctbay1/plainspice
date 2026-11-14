@@ -53,20 +53,28 @@ describe('by the rule, a wire\'s current that ngspice gives as exactly 0 stays n
   }, 120_000);
 });
 
-describe('a sweep\'s point at the .op\'s own value of the swept source, bit for bit, or at the very double of the decimal its steps say, is that value, as the .op is judged at the netlist\'s decimals', () => {
+describe('a sweep\'s point at the .op\'s own value of the swept source, bit for bit, at the very double of the decimal the netlist writes for it, or at the very double of the decimal its steps say (start + k·step), is that value, as the .op is judged at the netlist\'s decimals', () => {
   const sweepText = (r: Awaited<ReturnType<typeof solveText>>): string => sp(r.words.sweeps[0]!.text);
   const last = (r: Awaited<ReturnType<typeof solveText>>, name: string): number => {
     const s = shownSweep(r.netlist, r.results)!.series.find((x) => x.name === name)!.values;
     return s[s.length - 1]!;
   };
 
-  it('vlost: ".dc V1 0 0.3 0.15" ends at 0.3\'s double, 0.29999999999999998890, where V2, idle at 300 mV, carries no current: ngspice\'s 0 there is shown as 0 A, never −3.701e-21 A (the circuit at that double) with "Solved exactly … none of them is 0" beside the .op\'s "no current"', async () => {
+  it('vlost: ".dc V1 0 0.3 0.15" ends at the very double of the netlist\'s own 0.3, 0.29999999999999998890 (ngspice\'s .op reads it as 0.30000000000000004), where V2, idle at 300 mV, carries no current: ngspice\'s 0 there is shown as 0 A, never −3.701e-21 A (the circuit at that double) with "Solved exactly … none of them is 0" beside the .op\'s "no current"', async () => {
     const r = await solveText(netlist('V1 a 0 0.3', 'R1 a b 1k', 'R2 b 0 1k', 'V2 c 0 0.15', 'R3 b c 1k', '.op', '.dc V1 0 0.3 0.15'), ngspice);
     // ngspice's .op reads 0.3 as 0.30000000000000004; the sweep adds 0.15 twice and lands on 0.3's own double.
     expect([r.results.op!.nodes.find((n) => n.node === 'a')!.value, r.results.dc!.scale.values[2]]).toEqual([0.30000000000000004, 0.3]);
     expect([by(r), text(r.words, 'V2')]).toEqual(['exact', 'no current through V2']);
     expect(sweepText(r)).toContain('At V1 = 300 mV: v(a) = 300 mV, v(b) = 150 mV, v(c) = 150 mV, i(v2) = 0 A, i(v1) = −150 µA');
     expect([message(r.words, 'rounded-to-0'), last(r, 'i(v2)')]).toEqual([undefined, 0]);
+  });
+
+  it('mid: ".dc V1 0 0.6 0.15" passes 0.3\'s double in the middle of the sweep, neither the netlist\'s value of V1 (0.6) nor the .op\'s: it is the decimal its steps say, start + 2·step = 300 mV, where V2 carries no current, and ngspice\'s 0 there is shown as 0 A, never −3.701e-21 A (the circuit at that double) with "Solved exactly … none of them is 0"', async () => {
+    const r = await solveText(netlist('V1 a 0 0.6', 'R1 a b 1k', 'R2 b 0 1k', 'V2 c 0 0.15', 'R3 b c 1k', '.op', '.dc V1 0 0.6 0.15'), ngspice);
+    expect([by(r), r.results.dc!.scale.values[2], r.results.op!.nodes.find((n) => n.node === 'a')!.value]).toEqual(['exact', 0.3, 0.6000000000000001]);
+    const shown = shownSweep(r.netlist, r.results)!;
+    for (const name of ['i(v2)', 'i(@r3[i])']) expect([r.results.dc!.series.find((s) => s.name === name)!.values[2], shown.series.find((s) => s.name === name)!.values[2]], name).toEqual([0, 0]);
+    expect(message(r.words, 'rounded-to-0')).toBeUndefined();
   });
 
   it('is3: ".dc I1 0 1m 0.5m" ends at the .op\'s own 1 mA, where V2 carries no current: "At I1 = 1 mA: … i(v2) = 0 A", never 1.041e-20 A', async () => {
