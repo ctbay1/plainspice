@@ -184,10 +184,34 @@ describe('P5 (integration check, 14 November 2026): a run with a results file is
     expect(under).toEqual([]);
   });
 
-  it('missing-fields-10: with no bracket after the word, native 47 with a results file crashes (10 of 10 runs), where the record said it never finished', () => {
-    const section = sections('traps.md').get('missing-fields-10')!;
-    expect(section.split('ngspice 47, -b -r (exit signal SIGSEGV): (no rawfile), a crash').length - 1).toBe(2);
-    expect(section).not.toContain('(exit null)');
+  it('missing-fields-9 and -10: with one word and no bracket, native 47 with a results file crashes in every run, where the records said it never finished', () => {
+    // Every run crashed within milliseconds (exit 139, SIGSEGV), with its input closed or open; the generator of the
+    // records wrote "did not finish in 30 s" for any run without an exit code, which is how a crash comes back.
+    const ten = sections('traps.md').get('missing-fields-10')!;
+    expect(ten.split('ngspice 47, -b -r (exit signal SIGSEGV): (no rawfile), a crash right after "No circuit loaded!", in every run').length - 1).toBe(2);
+    const nine = sections('traps.md').get('missing-fields-9')!;
+    expect(nine).toContain('ngspice -b -r out.raw (exit signal SIGSEGV), a crash right after "No circuit loaded!", in every run');
+    for (const section of [nine, ten]) expect(section).not.toMatch(/exit null|did not finish|never finished/);
+  });
+
+  it('no variant run in traps.md gives ngspice 47 and ngspice 42 the same entry twice: where the two print the same, one entry says so', () => {
+    // Without plain -b's line, 40 of those 43 runs printed the same in both versions under -b -r, written apart.
+    const lines = read('traps.md').split('\n');
+    const indent = (line: string): number => line.length - line.trimStart().length;
+    const entry = (at: number): string[] => {
+      const out = [lines[at]!.replace(/ngspice 4[27], /, '')];
+      for (let i = at + 1; i < lines.length && lines[i]!.trim() !== '' && indent(lines[i]!) > indent(lines[at]!); i += 1) out.push(lines[i]!);
+      return out;
+    };
+    const twice: string[] = [];
+    let id = '';
+    lines.forEach((line, i) => {
+      id = HEADING.exec(line)?.[1] ?? id;
+      if (!/^\s+ngspice 47, -b -r \(/.test(line)) return;
+      const next = i + entry(i).length;
+      if (/^\s+ngspice 42, -b -r \(/.test(lines[next] ?? '') && entry(i).join('\n') === entry(next).join('\n')) twice.push(`${id}, line ${i + 1}`);
+    });
+    expect(twice).toEqual([]);
   });
 });
 

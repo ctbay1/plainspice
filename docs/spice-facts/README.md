@@ -343,5 +343,6 @@ negative value as in zero-ohm-7), with rows in `tests/golden/facts-explain.test.
 pinned by `tests/unit/facts-records.test.ts`: the results file of 12 lines in 8 traps.md facts (nbsp-8,
 non-ascii-node-15, -20, -25, -26, invisible-character-68, look-alike-letter-19, space-character-32), a plot's
 header with 0 points where they said "no rawfile data"; 43 variant runs of 13 traps.md facts that listed plain
-`-b`'s "Error: incomplete or empty netlist" under `-b -r`; and missing-fields-10's two runs without a bracket,
-where native 47 with a results file crashes (SIGSEGV, in each of 10 runs) and the record said it never finished.
+`-b`'s "Error: incomplete or empty netlist" under `-b -r`, 40 of them now one "ngspice 47 and 42" entry, as
+the two print the same; and missing-fields-9's run and missing-fields-10's two runs without a bracket, where
+native 47 with a results file crashes (SIGSEGV) in every run and the records said it never finished.

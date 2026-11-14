@@ -133,9 +133,15 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   printed in none of the 43, and every other recorded line is printed in order; with `-b` it is printed in all 43.
   The line is taken out. We chose this over keeping it marked as `-b`'s, which the reviewer also offered: those
   blocks record the `-b -r` runs only, and one line of the `-b` run among them would be a part of a printout they
-  do not show (PlainSpice runs as `-b -r`). missing-fields-10's
-  two runs without a bracket said native 47 "did not finish in 30 s"; it crashes (SIGSEGV, exit 139) in each of 10
-  runs, whether its input is closed or left open, so the record now says the crash, with the earlier stopped run
-  beside it. missing-fields-9, whose netlist crashes the same way (6 of 6), already says both in its words, so its
-  record stays. Tests: `tests/unit/facts-records.test.ts` (no line recorded under a `-b -r` label is that line;
-  missing-fields-10's crash; both fail on 3e61833).
+  do not show (PlainSpice runs as `-b -r`). Without it, 40 of the 43 runs print the same lines in ngspice 47
+  and 42, which the records listed apart, a difference that does not exist: each is now one "ngspice 47 and 42,
+  -b -r" entry, as traps.md writes it elsewhere (the skeptic of the problem); missing-fields-10's two runs and
+  space-character-32's `.tran` run differ and stay apart. missing-fields-10's two runs without a bracket said
+  native 47 "did not finish in 30 s", and missing-fields-9's own run and words said the same. Native 47 with a
+  results file crashes there (SIGSEGV, exit 139) within milliseconds, right after "No circuit loaded!", in all 45
+  runs here, whether its input is closed or left open (the skeptic: 300 of 300). The formulas lane's generator
+  wrote "did not finish in 30 s" for every run that came back without an exit code, which is how a crash comes
+  back, so no run ever hung. Both records now say the crash, and no hang. Tests:
+  `tests/unit/facts-records.test.ts`: no line recorded under a `-b -r` label is that line, and missing-fields-9 and
+  -10 say the crash (both fail on 3e61833); no run gives ngspice 47 and 42 the same entry twice (fails on the
+  records before the merge).
