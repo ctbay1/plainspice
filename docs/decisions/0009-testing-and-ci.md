@@ -115,12 +115,17 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
 - **A results file with its header only is said as it is in every new fact** (integration check P6). 12 lines of
   8 traps.md facts the formulas lane added on 13 November (nbsp-8, non-ascii-node-15, -20, -25, -26,
   invisible-character-68, look-alike-letter-19, space-character-32) said "(no rawfile data)", where native
-  ngspice 47 and 42 write a plot's header and 0 points (47: 228 to 236 bytes, 42: 172 to 180): an Operating Point
-  plot, and for space-character-32's `.tran` run a Transient Analysis plot. Each now says so, in the words of the
-  facts README's rule. The reviewer named the five base runs; three more facts' variants said the same of such a
-  file and are corrected with them. Their netlists are given in words there ("Cikis2 in the formulas", "a .func
-  with words of its own"), so the ones re-run are those whose printout matches the record line for line
-  (`Cikis2` in both formulas, the parts left on `çıkış`; `.func vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`).
+  ngspice 47 and 42 write a plot's header and 0 points (47: 186 to 234 bytes, 42: 130 to 178, by the length of
+  the title): an Operating Point plot, and for space-character-32's `.tran` run a Transient Analysis plot. Each
+  now says so, in the words of the facts README's rule. The reviewer named the five base runs; three more facts'
+  variants said the same of such a file and are corrected with them. traps.md gives the variants' netlists in
+  words ("Cikis2 in the formulas", "a .func with words of its own"); the exact netlists the formulas lane made
+  those records from are in its spec files of 13 November (spec.json, r2/spec/names.json and r3/facts/cr2-2.json
+  in its work folder, outside the repository). This fix first re-ran netlists rebuilt from those words, whose
+  printouts match the records line for line (`Cikis2` in both formulas, the parts left on `çıkış`; `.func
+  vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`); the sizes it gave were theirs, with the base fact's title.
+  After the round-1 critic (C1-5) the spec files' own netlists were run too: each writes a header-only file (47:
+  186 to 198 bytes, 42: 130 to 142) and prints what its record lists, line for line.
   The other "(no rawfile data)" lines were re-run too, and ngspice writes no file there: in traps.md the two
   (non-ascii-node-4, -14) now say "(no rawfile)", the words traps.md gives no file since the last pass (3ecf938;
   the skeptic of the problem), and the 22 in numbers-and-syntax.md keep the folder's older words. The records

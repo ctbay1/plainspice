@@ -143,7 +143,8 @@ describe('P6 (integration check, 14 November 2026): a header-only results file i
   const TRAN = 'a Transient Analysis plot with 0 points, its header only (no results)';
   const count = (text: string, part: string): number => text.split(part).length - 1;
   // Each run re-run with `ngspice -b -r` in native 47 and 42 and its file read: a plot's header and 0 points, no Binary:
-  // section (47: 228 to 236 bytes, 42: 172 to 180). The base run's line, then the variants' lines.
+  // section (47: 186 to 234 bytes, 42: 130 to 178, by the length of the title; the variants' netlists as the formulas
+  // lane's spec files give them). The base run's line, then the variants' lines.
   it.each([
     ['nbsp-8', 1, 0],
     ['non-ascii-node-15', 1, 0],
@@ -293,5 +294,15 @@ describe('C1-4 (the round-1 critic of the integration check’s fixes, 14 Novemb
     const text = readFileSync(resolve(import.meta.dirname, '../../docs/decisions/0012-netlists-and-links-are-data.md'), 'utf8').replace(/\s+/g, ' ');
     const said = [...text.matchAll(/(\d+) of these golden tests fail \(([^)]*)\)/g)].map((m) => `${m[1]}: ${m[2]}`);
     expect(said).toEqual(["5: zero-ohm-9's three runs, the words on P13, P24 and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a below"]);
+  });
+});
+
+describe('C1-5 (the round-1 critic of the integration check’s fixes, 14 November 2026): the header-only results files’ sizes are those of the netlists the records were made from', () => {
+  it('decision 0009 gives 47: 186 to 234 bytes, 42: 130 to 178, and for the variants alone 186 to 198 and 130 to 142', () => {
+    // Re-run in native 47 and 42 (-b -r): the base runs' netlists (traps.md) write 228 to 234 and 172 to 178 bytes; the
+    // variants' netlists, as the formulas lane's spec files give them (titled "* t", "* the old fix", "* .func vd(a,b)"),
+    // 186 to 198 and 130 to 142. The title line sets the size; 47 adds a Command: line.
+    const text = readFileSync(resolve(import.meta.dirname, '../../docs/decisions/0009-testing-and-ci.md'), 'utf8').replace(/\s+/g, ' ');
+    expect([...text.matchAll(/47: (\d+) to (\d+) bytes, 42: (\d+) to (\d+)/g)].map((m) => m.slice(1, 5).join(' '))).toEqual(['186 234 130 178', '186 198 130 142']);
   });
 });
