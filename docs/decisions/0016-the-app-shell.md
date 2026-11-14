@@ -695,7 +695,8 @@ was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before an
   (C3-5) did not know the checks' fatal-syntax errors: on `E1 e 0 VALUE=2*v(out)`, `VALUE=3`, `VALUE v(out)*2`,
   `VALUE=-2*v(out)`, `cur=2m*v(out)` and on a node called value read as VALUE it said ngspice works the formula
   out, turns the line into a B source and drops the word before it, beside the error that ngspice stops (and
-  "Native ngspice 47 runs it" for a POLY control node called value). The two rules the checks use now live in
+  "Native ngspice 47 runs it" for a POLY control node called value, and for an output node called value the
+  gain's "SPICE reads it as V(value) − V(0) = 2 × (V(mid) − V(0))"). The two rules the checks use now live in
   `src/spice/parse.ts` (`formulaWithoutBraces`, and `valueAsNodeWord`, moved from `traps.ts` unchanged), and
   Explain follows them: "ngspice can't read this formula without braces, so it stops before it simulates
   anything (see the checks)", or that it reads value as VALUE and takes the words after it for a formula it
