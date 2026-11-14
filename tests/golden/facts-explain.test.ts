@@ -1816,11 +1816,12 @@ describe('after the last pass (13 November 2026)', () => {
     expect(why(d, 'unchecked-answers')).toContain("ngspice's numbers in the operating point do not fit the circuit PlainSpice reads from this netlist");
   });
 
-  it('C9x.4: beside an .op the rule decides, ".dc V1 0 9 0.01" ends at 8.999999999999853 V, the .op\'s own state within its step\'s rounding: R5 is 0 A there too, with the note (it gave −8.882e-19 A beside "R5: no current")', () => {
+  it('C9x.4: beside an .op the rule decides, ".dc V1 0 9 0.01" ends at 8.999999999999853 V, a few steps of a double from the .op\'s 9 V: since the integration check that point is not the .op\'s state (only a point at its value bit for bit is), so it keeps ngspice\'s −8.882e-19 A for R5 and is named by its own x (round 1 of the last pass\'s fixes drew 0 A there, with the note)', () => {
     const d = ofId('cur-rule-sweep-step-rounding');
     const r5 = Array.from(shownSweep(d.netlist, d.results)!.series.find((x) => x.name === 'i(@r5[i])')!.values);
-    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R5')), r5[r5.length - 1]]).toEqual(['rule', 'no current through R5', 0]);
-    expect(plain(d.words.sweeps[0]!.text)).toContain('At V1 = 9 V: v(top) = 9 V, v(a) = 4.5 V, v(b) = 4.5 V, i(v1) = −1.407 mA, i(@r1[i]) = 450 µA, i(@r2[i]) = 450 µA, i(@r3[i]) = 957.4 µA, i(@r4[i]) = 957.4 µA, i(@r5[i]) = 0 A.');
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'R5')), r5[r5.length - 1]]).toEqual(['rule', 'no current through R5', -8.881784197001253e-19]);
+    expect(plain(d.words.sweeps[0]!.text)).toContain('At V1 = 8.999999999999853 V: v(top) = 9 V, v(a) = 4.5 V, v(b) = 4.5 V, i(v1) = −1.407 mA, i(@r1[i]) = 450 µA, i(@r2[i]) = 450 µA, i(@r3[i]) = 957.4 µA, i(@r4[i]) = 957.4 µA, i(@r5[i]) = −8.882e-19 A.');
+    expect(why(d, 'sweep-point')).toContain('There ngspice gives i(@r5[i]) −8.882e-19 A, where the operating point, at 9 V, shows 0 A.');
   });
 
   it('C9x.5: the .tf beside the rule\'s .op, v(a,b)/V1 = −5.551e-17 V/V where the .op says node a and node b are at the same voltage, gets the note that it may be rounding noise', () => {

@@ -1314,8 +1314,8 @@ function decidedSweep(netlist: Netlist, results: AnalysisResults): SweepNoise | 
 }
 
 /**
- * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints): there a current the .op
- * shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or the rule, run on the
+ * Beside an .op the rule decides, the sweep's points at the .op's own state (opStatePoints; ngspice's x the .op's value bit
+ * for bit, the integration check): there a current the .op shows as 0 is 0 in the sweep too, where ngspice gives the very number the .op's 0 stands for, or the rule, run on the
  * point's own values (pointOp), writes it as 0 too (a transistor's isolated nodes differ there by a few steps of a
  * double); every other point is left as ngspice gives it (the last pass, rule-op-vs-sweep-tf: C9 with a .param line
  * showed R5 "0 A" beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A"). Once per run.
@@ -1337,6 +1337,17 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const state: number[] = [];
     const op = opShown(netlist, results);
     for (const k of at.points) {
+      // A point a few steps of a double from the .op's value (ngspice adding up its step) is not the .op's state: the circuit
+      // there is not the .op's, and the rule, with no exact solution, cannot tell a real value there from noise (the
+      // integration check: ".dc V1 -8.15 4.95 0.05" passes 4.499999999999973 V, where the circuit makes −2.436 aA through V2,
+      // and that point was drawn 0 with "rounding noise of a 0"). It keeps ngspice's numbers, and is named by its own x where
+      // one of them reads otherwise than the .op shows it (the critic of round 2: ".dc V1 0 9 0.01" ends at
+      // 8.999999999999853 V, where V2, idle at 9 V, carries −32.96 aA).
+      if (!at.exact(k)) {
+        const off = readsOtherwise(netlist, dc, k, op, () => false);
+        if (off) failed.set(k, off);
+        continue;
+      }
       let own: RoundingNoise | undefined;
       const marked = new Map<number, 'very' | 'rule'>();
       dc.series.forEach((series, j) => {
@@ -1349,16 +1360,6 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
         if (given.get(`${device ? 'd' : 'b'} ${key}`) === value) marked.set(j, 'very');
         else if ((own ??= ruleNoise(netlist, { op: pointOp(dc, k), other: [] })).currents.has(key)) marked.set(j, 'rule');
       });
-      // A point a few steps of a double from the .op's value (ngspice adding up its step) stands for the .op's state only
-      // where every value it shows reads as the .op shows it; else it is left as ngspice gives it, and named by its own x
-      // (the critic of round 2: ".dc V1 0 9 0.01" ends at 8.999999999999853 V, where V2, idle at 9 V, carries −32.96 aA).
-      if (!at.exact(k)) {
-        const off = readsOtherwise(netlist, dc, k, op, (j) => marked.has(j));
-        if (off) {
-          failed.set(k, off);
-          continue;
-        }
-      }
       state.push(k);
       for (const [j, reason] of marked) {
         why.add(reason);
@@ -2579,6 +2580,10 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): StatePoint
     // The part as the netlist writes it (the rule path has no exact model to look it up in).
     const el = kind ? partsOf(netlist).byKey.get(netlistPart(netlist, ngspiceSpelling(sw.source.text)))?.element : undefined;
     if (!el || el.letter !== kind) return null;
+    // A value the netlist does not write as a number (a .param or a formula in braces), or a transient function with no DC
+    // value (its value at time 0, P17), does not tell the .op's value: only a V or I with no value at all is 0 (the
+    // integration check: "V1 top 0 {Vs}" made the sweep's 0 V point "the operating point's own state").
+    if (el.value ? el.value.number === undefined : el.sourceFunction !== undefined) return null;
     const v = el.value?.number?.value ?? (kind === 'R' ? undefined : 0);
     return v === undefined || !Number.isFinite(v) ? null : v;
   };

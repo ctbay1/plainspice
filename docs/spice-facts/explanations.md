@@ -7641,8 +7641,10 @@ gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. At V1 = 9 V, the operating point's o
 number the operating point shows as 0, as the operating point's note says. So PlainSpice shows 0 there too, in these
 words and in the Plot panel; at the other points the sweep is as ngspice gives it." (Since the critic of round 2 of
 the last pass's fixes the note says why each 0 is 0 there, ngspice's very number or the point's own numbers, and no
-longer that ngspice gives "the operating point's numbers" there, which beside a transistor it need not.) The other
-points keep ngspice's
+longer that ngspice gives "the operating point's numbers" there, which beside a transistor it need not.) The point is
+the .op's state only where the netlist writes the swept source's value as a number, as here: since the integration check,
+a source set by a .param, a formula in braces or a transient function with no DC value has no such point, where it took
+the sweep's 0 V point for it (C9z.5). The other points keep ngspice's
 numbers (at 8.5 V, a step of 0.5 V, R5's −8.882e−19 A stays). Beside the transistor, the .tf of v(a,b) keeps ngspice's
 −5.551e−17 V/V: a slope, which the rule cannot decide.
 
@@ -7878,7 +7880,12 @@ round 2 of these fixes, such a point stands for the .op's state only where every
 it (here: R5's 0, v(a) and v(b) 4.5 V, …, though only R5's double is the .op's: v(a) is 4.499999999999926 there, not
 4.499999999999999), and the note says what it is: "ngspice's point nearest the operating point's 9 V, 8.999999999999853 V
 (its 10 mV step added up in doubles)", no longer "the operating point's own state, where ngspice gives the operating
-point's numbers" (C9y).
+point's numbers" (C9y). Since the integration check (14 November 2026), by the rule such a point is not the .op's state at
+all: the circuit there is not the .op's, and with no exact solution the rule cannot tell a real value there from noise
+(C9z.4: a source idle at 4.5 V carries a real −2.436 aA at 4.499999999999973 V, which the rule drew 0 there as "rounding
+noise of a 0"). Only a point at the .op's value bit for bit shows its 0s; this one keeps ngspice's −8.882e−19 A for R5 and
+is named by its own x, with the note that says why. On the exact path a point near the .op's state is still judged at its
+own x, by the exact solution (C9w.7).
 
 ```spice
 * the balanced bridge of C9 with a .param line, its .op and a sweep of V1 in 0.01 V steps
@@ -7903,9 +7910,12 @@ ngspice 47, ngspice -b (exit 0), the .op:
 ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: v(v-sweep) = [8.989999999999853, 8.999999999999853], v(a) = [4.4949999999999255, 4.499999999999926], v(b) = [4.4949999999999255, 4.499999999999927], i(@r5[i]) = [0, -8.881784197001253e-19], v(a) = 4.499999999999999, v(b) = 4.5, i(@r5[i]) = -8.881784197001253e-19
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
-  words (describe.ts): "At V1 = 9 V: … i(@r5[i]) = 0 A", with the note "ngspice gave i(@r5[i]) -8.881784e-19 A at
-  V1 = 9 V. At ngspice's point nearest the operating point's 9 V, 8.999999999999853 V (its 10 mV step added up in
-  doubles), ngspice gives it the very number the operating point shows as 0, as the operating point's note says. …"
+  words (describe.ts): "At V1 = 8.999999999999853 V: … i(@r5[i]) = −8.882e-19 A", with the note "The DC sweep's last
+  point is V1 = 8.999999999999853 V, not 9 V: … There ngspice gives i(@r5[i]) −8.882e-19 A, where the operating point, at
+  9 V, shows 0 A. So PlainSpice names that point by ngspice's own value." (from the critic of the last pass's fixes until
+  the integration check: "At V1 = 9 V: … i(@r5[i]) = 0 A", with the note "… At ngspice's point nearest the operating
+  point's 9 V, 8.999999999999853 V (its 10 mV step added up in doubles), ngspice gives it the very number the operating
+  point shows as 0, …")
 ```
 
 Added after the critic of the last pass's fixes (13 November 2026) (C9x.5): beside an .op the rule decides, the .tf of C9's

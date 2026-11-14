@@ -128,7 +128,7 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
     return [pick(r.results.dc!), pick(shownSweep(r.netlist, r.results)!)];
   };
 
-  it('".dc V1 0 9 0.01" ends at 8.999999999999853 V, where ngspice gives R5 the .op\'s very −8.882e-19 A: the sweep shows 0 there, as the .op does, with a .param line, beside a transistor, and with a .control block that runs', async () => {
+  it('".dc V1 0 9 0.01" ends at 8.999999999999853 V, a few steps of a double from the .op\'s 9 V: by the rule that point is not the .op\'s state (the integration check: only a point at the .op\'s value bit for bit is), so it keeps ngspice\'s −8.882e-19 A for R5 and is named by its own x, with a .param line, beside a transistor, and with a .control block that runs (round 1 of the last pass\'s fixes showed 0 there, "ngspice gives it the very number the operating point shows as 0")', async () => {
     const variants = [
       ['.param rtop=10k', ...bridge, '.dc V1 0 9 0.01'],
       ['.param rtop=10k', ...bridge, 'Q1 top x 0 qmod', 'Rx x 0 1meg', '.model qmod npn', '.dc V1 0 9 0.01'],
@@ -138,14 +138,11 @@ describe('beside an .op the rule decides, the sweep\'s point at the .op\'s own s
       const r = await solveText(netlist(...lines), ngspice);
       const last = r.results.dc!.scale.values.length - 1;
       expect(r.results.dc!.scale.values[last], lines.join(' | ')).toBe(8.999999999999853);
-      expect([by(r), sp(current(r.words, 'R5')?.text), r5At(r, last)], lines.join(' | ')).toEqual(['rule', 'no current through R5', [-8.881784197001253e-19, 0]]);
-      expect(sp(r.words.sweeps[0]!.text), lines.join(' | ')).toContain('i(@r5[i]) = 0 A');
-      expect(message(r.words, 'rounding-noise'), lines.join(' | ')).toBeDefined();
-      expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)), lines.join(' | ')).toContain(
-        // Not "the operating point's own state, where ngspice gives the operating point's numbers": only R5's double is the
-        // .op's there (v(a) is 4.499999999999926, not 4.499999999999999; the critic of round 2).
-        "ngspice gave i(@r5[i]) -8.881784e-19 A at V1 = 9 V. At ngspice's point nearest the operating point's 9 V, 8.999999999999853 V (its 10 mV step added up in doubles), ngspice gives it the very number the operating point shows as 0, as the operating point's note says. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.",
-      );
+      expect([by(r), sp(current(r.words, 'R5')?.text), r5At(r, last)], lines.join(' | ')).toEqual(['rule', 'no current through R5', [-8.881784197001253e-19, -8.881784197001253e-19]]);
+      expect(sp(r.words.sweeps[0]!.text), lines.join(' | ')).toContain('At V1 = 8.999999999999853 V: v(top) = 9 V');
+      expect(sp(r.words.sweeps[0]!.text), lines.join(' | ')).toContain('i(@r5[i]) = −8.882e-19 A');
+      expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)).join(' '), lines.join(' | ')).not.toContain('at V1 = 9 V');
+      expect(message(r.words, 'sweep-point'), lines.join(' | ')).toContain('There ngspice gives i(@r5[i]) −8.882e-19 A, where the operating point, at 9 V, shows 0 A. So PlainSpice names that point by ngspice\'s own value.');
     }
   });
 

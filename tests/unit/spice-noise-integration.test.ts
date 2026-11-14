@@ -102,3 +102,45 @@ describe('a sweep\'s point at the .op\'s own value of the swept source, bit for 
     );
   });
 });
+
+describe('by the rule, only a point at the .op\'s value bit for bit shows the .op\'s 0s: a point a few steps of a double from it keeps ngspice\'s numbers', () => {
+  it('dr29: ".dc V1 -8.15 4.95 0.05" passes 4.499999999999973 V, where the circuit makes −2.436 aA through V2 and R3; ngspice\'s −1.735 aA and −1.89 aA stay there, with no note calling them "rounding noise of a 0"', async () => {
+    const r = await solveText(netlist('.param rp=10k', 'V1 a 0 4.5', 'R1 a b {rp}', 'R2 b 0 10k', 'V2 c 0 2.25', 'R3 b c 470', '.options savecurrents', '.op', '.dc V1 -8.15 4.95 0.05'), ngspice);
+    const k = r.results.dc!.scale.values.indexOf(4.499999999999973);
+    expect([by(r), text(r.words, 'V2'), k]).toEqual(['rule', 'no current through V2', 253]);
+    const shown = shownSweep(r.netlist, r.results)!;
+    for (const name of ['i(v2)', 'i(@r3[i])']) expect(shown.series.find((s) => s.name === name)!.values[k], name).toBe(r.results.dc!.series.find((s) => s.name === name)!.values[k]);
+    expect(r.words.warnings.map((m) => sp(m.why)).join(' ')).not.toContain('rounding noise of a 0');
+    expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)).join(' ')).not.toContain('DC sweep');
+  });
+
+  it('the point at the .op\'s value bit for bit still shows its 0s: ".dc V1 0 9 3" of the .param bridge reaches 9 V exactly, where ngspice gives R5 the very −8.882e-19 A the .op shows as 0', async () => {
+    const r = await solveText(netlist('.param rtop=10k', 'V1 top 0 9', 'R1 top a {rtop}', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', '.options savecurrents', '.op', '.dc V1 0 9 3'), ngspice);
+    expect(sp(r.words.sweeps[0]!.text)).toContain('At V1 = 9 V: v(top) = 9 V, v(a) = 4.5 V, v(b) = 4.5 V, i(v1) = −1.407 mA, i(@r1[i]) = 450 µA, i(@r2[i]) = 450 µA, i(@r3[i]) = 957.4 µA, i(@r4[i]) = 957.4 µA, i(@r5[i]) = 0 A.');
+    expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)).join(' ')).toContain('At V1 = 9 V, the operating point\'s own state, ngspice gives it the very number the operating point shows as 0');
+  });
+});
+
+describe('a swept source whose value the netlist does not write as a number has no point at the .op\'s state: never the sweep\'s 0 V or 0 A point (P4)', () => {
+  const twoBridges = (swept: string[], dc: string): string => netlist(...swept, 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'V2 top2 0 9', 'R6 top2 c 10k', 'R7 c 0 10k', 'R8 top2 d 4.7k', 'R9 d 0 4.7k', 'R10 c d 1k', '.op', dc);
+  it('V1 set by a .param, by a SIN with no DC value, I1 set by a .param, and V2 of a two-source sweep set by a .param: no note says "the operating point\'s own state", and R10 keeps ngspice\'s −8.882e-19 A at every point (it was zeroed at V1 = 0 V, while the .op is at 9 V)', async () => {
+    const runs = [
+      twoBridges(['.param Vs=9', 'V1 top 0 {Vs}'], '.dc V1 0 9 3'),
+      twoBridges(['V1 top 0 SIN(9 1 1k)'], '.dc V1 0 9 3'),
+      twoBridges(['.param Is=1m', 'I1 0 top {Is}', 'R0 top 0 9k'], '.dc I1 0 1m 0.5m'),
+      netlist('.param V2v=5', 'V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'V2 x 0 {V2v}', 'R6 x 0 1k', '.op', '.dc V1 0 9 3 V2 0 5 5'),
+    ];
+    for (const source of runs) {
+      const r = await solveText(source, ngspice);
+      expect(r.words.warnings.map((m) => sp(m.why)).join(' '), source).not.toContain("the operating point's own state");
+      const r10 = r.results.dc!.series.find((s) => s.name === 'i(@r10[i])');
+      if (r10) expect(Array.from(shownSweep(r.netlist, r.results)!.series.find((s) => s.name === 'i(@r10[i])')!.values), source).toEqual(Array.from(r10.values));
+    }
+  });
+
+  it('regress-1\'s ammeter bridge with its supply set by a .param: the sweep\'s 9 V point keeps ngspice\'s −2.168e-19 A for Vm, as at c520a49, beside the .op\'s "Vm measures no current" (open: the rule does not read the .op\'s own value of such a source)', async () => {
+    const r = await solveText(netlist('.param Vs=9', 'V1 top 0 {Vs}', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', '.op', '.dc V1 0 9 3'), ngspice);
+    expect([by(r), text(r.words, 'Vm')]).toEqual(['rule', 'Vm measures no current']);
+    expect(sp(r.words.sweeps[0]!.text)).toContain('At V1 = 9 V: v(top) = 9 V, v(a) = 4.5 V, v(b) = 4.5 V, v(m) = 4.5 V, i(vm) = −2.168e-19 A,');
+  });
+});
