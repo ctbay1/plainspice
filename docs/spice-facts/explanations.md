@@ -4048,8 +4048,9 @@ nothing: no unknown dot command, no part without a value or a model, no word it 
 not even the POLY that PlainSpice's engine, built without XSPICE, stops at elsewhere. The checks therefore say nothing
 about such a line, and Explain says only that ngspice skips it, as it already did for an analysis line there (A3f): the
 status line called the right numbers of an-skip-unused "not answers", as "ngspice does not know .foo" was an error, and
-Explain said ngspice stops at the `.foo`. A misspelt `.tarn` there is no analysis line that ngspice could have meant,
-so the check that the netlist has none speaks. What ngspice still reads there: an `.include` or `.inc` (A3f) and a
+Explain said ngspice stops at the `.foo`. A misspelt `.tarn` there is skipped too, so the check that the netlist has
+no analysis line speaks, where its hint "Did you mean .tran?" kept it quiet. What ngspice still reads there: an
+`.include` or `.inc` (A3f) and a
 `.lib` with a file and a section, which stop it as the files are missing (a `.lib` with one word is skipped); a `*#` or
 `##` line, which it has made a command and runs; and a V or I line with one node, where its first syntax check stops
 ("Not enough parameters"); those keep their checks and their words. And ngspice does not do this at all when a line
