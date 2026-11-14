@@ -194,3 +194,23 @@ describe('P1: a line in a subcircuit the main circuit does not use is skipped, s
     expect([s.status, s.words.warnings.map((m) => m.title)]).toEqual(['failed', ['.op is inside the subcircuit s, which no X line uses']]);
   }, 30000);
 });
+
+describe('the round-1 critic of these fixes: what ngspice reads first there, nested definitions, and the words of an analysis line or a .meas there (A3f, A3i)', () => {
+  const SUB = `${BASE}.subckt s a b\nR9 a b 1k\n`;
+  /** A line alone in the subcircuit s, which no X line uses. */
+  const inS = (line: string): string => `${SUB}${line}\n.ends\n.op\n.end\n`;
+  const ids = (text: string): string[] => checkTraps(parseNetlist(text)).map((t) => t.id);
+  const SKIPS = 'ngspice skips this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit.';
+
+  it('C1-1: a .dc there with no step, a step of 0 or a word for the step: no summary that ngspice stops at it, no "see Checks", as no check speaks for it (native 47 and 42 skip it: exit 0, out = 2.5 V)', () => {
+    for (const line of ['.dc V1 0 10', '.dc V1 0 1 0', '.dc V1 0 1 x']) {
+      const e = explainLine(parseNetlist(inS(line)), 6)!;
+      expect([e.summary, ...e.fields.map((f) => f.meaning)].join(' | '), line).not.toMatch(/stops|Checks/);
+      expect([ids(inS(line)), e.notes], line).toEqual([[], [`${SKIPS.slice(0, -1)}. Put analysis lines in the main circuit, outside .subckt … .ends.`]]);
+    }
+    expect(explainLine(parseNetlist(inS('.dc V1 0 1 x')), 6)!.fields.find((f) => f.text === 'x')?.meaning).toBe('not a number for SPICE');
+    // In the main circuit the same lines keep their words: there ngspice 47 stops ("Bad syntax!"), and a check says so.
+    const main = parseNetlist(`${BASE}.dc V1 0 1 x\n.end\n`);
+    expect([explainLine(main, 4)!.summary, explainLine(main, 4)!.fields.find((f) => f.text === 'x')?.meaning]).toEqual(['ngspice 47 stops at this line ("Bad syntax!") and sweeps nothing: see Checks.', 'not a number for SPICE (see Checks)']);
+  });
+});

@@ -463,6 +463,8 @@ export const EXPLAIN_STRINGS = {
     `With these numbers this sweep goes the wrong way and never moves: ngspice keeps ${name} at its start, ${start}, takes ${second} from its second value on, and says nothing.`,
   dcStepZero: 'A step of 0 (or no step at all) stops ngspice 47: "Bad syntax!".',
   dcNotNumber: 'not a number for SPICE (see Checks)',
+  /** The same, on a .dc line ngspice skips (A3f): no check speaks for it (the round-1 critic of the integration check, C1-1). */
+  dcNotNumberSkipped: 'not a number for SPICE',
   dcNotNumberNote: 'A word that is no number where a number goes stops ngspice 47: "Bad syntax!".',
   // re-check critic CR1-11: a .dc line ngspice 47 cannot read is never told as a sweep that runs.
   dcStops: 'ngspice 47 stops at this line ("Bad syntax!") and sweeps nothing: see Checks.',
@@ -3003,6 +3005,13 @@ export function explainLine(netlist: Netlist, lineIndex: number): LineExplanatio
   const line = netlist.lines[lineIndex];
   if (!line) return undefined;
   const e = explainByKind(netlist, line);
+  // An analysis line ngspice skips there keeps its own words (A3f), but none that say ngspice stops at it or point to
+  // the checks, which say nothing for it: a .dc with no step, a step of 0 or a word for a number (the round-1 critic
+  // of the integration check, C1-1).
+  if (ignoredAnalysis(netlist, lineIndex)) {
+    const fields = e.fields.map((f) => (f.meaning === S.dcNotNumber ? { ...f, meaning: S.dcNotNumberSkipped } : f));
+    return { ...e, summary: e.summary === S.dcStops ? '' : e.summary, fields };
+  }
   // A3i: a line ngspice skips in a subcircuit the main circuit does not use; an analysis line there has its own words (A3f).
   const u = line.directive && RUN_ANALYSES.has(line.directive.name) ? undefined : skippedLine(netlist, lineIndex);
   return u ? asSkipped(e, line, u) : e;
