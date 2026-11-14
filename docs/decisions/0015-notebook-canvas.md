@@ -1094,6 +1094,6 @@ problem where a fix would be complex, and adds no new mechanism.
   on the exact path only (by the rule only the .op's value bit for bit); "one source at its netlist value" (C9w.13) holds
   where the netlist writes that value as a number; and the corpora's counts of Kirchhoff's fills (r9731 29, w9711 38,
   d9761, s9742 and C9w.3) are none now.
-- **Our own netlists.** Of the repository's 982 netlists and facts blocks, 11 give other words than at 3e61833, each a
+- **Our own netlists.** Of the repository's 983 netlists and facts blocks, 12 give other words than at 3e61833, each a
   meant change: C9w.3's wire ("no current", without the note), C9x.4's last point (named by its x, ngspice's number), and
   the new facts C9z to C9z.6; the 21 examples, the fixtures and tests/corpus read word for word the same.
