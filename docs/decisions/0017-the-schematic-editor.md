@@ -776,9 +776,11 @@ golden rows in A3f and A3i of `docs/spice-facts/explanations.md`):
   with "which the main circuit does not use, directly or through other subcircuits", which holds for that
   one as for every one it passed (".op is inside the subcircuit s500, which only X1 uses, and X1 is inside
   the subcircuit s499, …, and X1 is inside the subcircuit s497, which the main circuit does not use,
-  directly or through other subcircuits"). After the fix: 11,997 steps for the chain of 4,000, +14 MB and
-  286 ms in the checks (load 5.6), 449 characters for the note; 3,000 X lines named for the fan, 2.1
-  million characters in all; the chain of 8,000 is checked in 513 ms. Every chain the tests and the facts
+  directly or through other subcircuits"). After the fix: 11,997 steps for the chain of 4,000, +18 MB and
+  286 ms of CPU in the checks (load 5.6), 449 characters for the note; 3,000 X lines named for the fan, 2.1
+  million characters in all; the chain of 8,000 is checked in 513 ms. In Chromium the 27,245-character link
+  of the chain of 4,000 opens with 0.4 s of script and 23 MB after a GC, where the frozen build took 3.9 s
+  and 491 MB, and with only the innermost `.op` of 500 the status line holds 355 characters, not 28,961. Every chain the tests and the facts
   had (two steps at most) keeps its words. The tests count, not time: the steps kept (at most three for
   each subcircuit, four times the chain for four times the steps, 8,002,000 before), the X lines kept in
   the fan (1,002,000 before), and the lines the checks read (×12.7 for four times the chain before, under
