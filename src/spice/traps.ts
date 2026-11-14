@@ -36,7 +36,7 @@ import {
   zeroForLetterO,
 } from './characters.ts';
 import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
-import { buildGraph, behaviouralKind, hasReadableCurrent, subcircuitLines, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
+import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
 import { applyTextChanges, formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, valueAsNodeWord, wordNativeStopsAt } from './parse.ts';
@@ -401,10 +401,11 @@ function modelLevel(rest: string): number {
  * Names parts connect to that differ only in letter case, and that ngspice spells alike, are one node for ngspice
  * (Çıkış and çıkış are both ____k____; CR2-3), while the parser keys them apart, as it lower-cases ASCII letters only
  * (W6). Each such name maps to the first of them; a name with other letters that ngspice spells alike (çıkıç) is
- * another node for the student, and stays the non-ascii-node error's. So does a group where one part, outside
- * subcircuits or after a plain .end, has ends on two of its spellings (R2 Çıkış çıkış): written between two nodes,
- * as aµ and au are (non-ascii-node-5), it has those ends joined by ngspice (non-ascii-node-28), which is no one node
- * as the netlist means (the integration check, X1).
+ * another node for the student, and stays the non-ascii-node error's. So does a group where one line, outside
+ * subcircuits or a part after a plain .end, names two of its spellings: a part's ends (R2 Çıkış çıkış), written
+ * between two nodes as aµ and au are (non-ascii-node-5), which ngspice joins (non-ascii-node-28), and a formula or an
+ * analysis's output that reads across them (v(Çıkış,çıkış), .tf v(Çıkış,çıkış) V1), always 0 as ngspice reads one
+ * node there (non-ascii-node-31): no one node as the netlist means (the integration check, X1; its round-1 critic).
  */
 export function caseAliases(n: Netlist): Map<string, string> {
   const first = new Map<string, string>();
@@ -417,17 +418,19 @@ export function caseAliases(n: Netlist): Map<string, string> {
   }
   const across = new Set<string>();
   if (first.size < groupOf.size) {
-    const inner = subcircuitLines(n);
-    for (const e of [...n.elements.filter((i) => !inner.has(i)).map((i) => n.lines[i]!.element!), ...afterEndParts(n)]) {
-      const seen = new Map<string, string>();
-      for (const r of e.nodes) {
-        const group = groupOf.get(r.name);
-        if (group === undefined) continue;
-        const had = seen.get(group);
-        if (had === undefined) seen.set(group, r.name);
-        else if (had !== r.name) across.add(group);
-      }
+    // A node's refs are every place a line outside subcircuits names it: ends, formulas, analyses' outputs.
+    const seen = new Map<string, string>();
+    const named = (group: string, line: string, key: string): void => {
+      const had = seen.get(`${group}\n${line}`);
+      if (had === undefined) seen.set(`${group}\n${line}`, key);
+      else if (had !== key) across.add(group);
+    };
+    for (const [key, group] of groupOf) {
+      for (const r of n.nodes.get(key)!.refs) named(group, String(lineAt(n, r.from).continues ?? lineAt(n, r.from).index), key);
     }
+    afterEndParts(n).forEach((e, k) => {
+      for (const r of [...e.nodes, ...(e.reads ?? [])]) if (groupOf.has(r.name)) named(groupOf.get(r.name)!, `after .end ${k}`, r.name);
+    });
   }
   const alias = new Map<string, string>();
   for (const [key, group] of groupOf) if (first.get(group) !== key && !across.has(group)) alias.set(key, first.get(group)!);

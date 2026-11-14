@@ -565,6 +565,8 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-29', netlist: "* C9's balanced bridge, its node written \u00e7\u0131k\u0131\u015f and \u00c7\u0131k\u0131\u015f, with a transistor\nV1 top 0 9\nR1 top \u00e7\u0131k\u0131\u015f 10k\nR2 \u00c7\u0131k\u0131\u015f 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 \u00e7\u0131k\u0131\u015f b 1k\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(____k____)": 4.499999999999999, "v(b)": 4.5, "v(x)": 9.000081999484787e-06, "i(v1)": -0.0014074468265108293, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 9.000081999484786e-12 }, traps: ['non-ascii-node'] },
   // A { or ' never closed in a B, E or G formula: ngspice reads the formula to the end of the line and runs it (the round-1 critic of the integration check's fixes).
   { code: 'fatal-syntax-22', netlist: "* formulas whose { or ' is never closed\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 b 0 V={2*v(out)\nRb b 0 1k\nE1 e 0 VALUE={2*v(out)\nRe e 0 1k\nE2 q 0 VALUE='2*v(out)\nRq q 0 1k\nG1 0 g cur={2m*v(out)\nRg g 0 1k\n.op\n.end\n", vectors: { "v(out)": 2.5, "v(b)": 5, "v(e)": 5, "v(q)": 5, "v(g)": 5, "i(b1)": -0.005, "i(v1)": -0.0025 }, traps: [] },
+  // A formula that reads across two spellings that differ only in capital letters reads 0: the error (X1, its round-1 critic).
+  { code: 'non-ascii-node-31', netlist: "* B reads the difference across the two spellings of a divider\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 o 0 V=v(\u00c7\u0131k\u0131\u015f,\u00e7\u0131k\u0131\u015f)\nRo o 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "v(o)": 0, "i(b1)": 0, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -838,6 +840,33 @@ it('X1: a part with an end on each of two spellings that differ only in capital 
   expect(vector(reads, 'v(out)')).toEqual([0]);
   for (const part of ['I1 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1m', 'V2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1']) {
     expect(checkTraps(parseNetlist(text.replace(/^R2 .*$/m, part))).map((t) => [t.id, t.severity]), part).toEqual([['non-ascii-node', 'error']]);
+  }
+});
+
+it('non-ascii-node-31: a formula or a .tf that reads across two spellings that differ only in capital letters reads 0, so it is the error, never "as this netlist means"; its fix gives each spelling a name of its own, and the numbers native ngspice gave', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const C = '\u00c7\u0131k\u0131\u015f';
+  const T = '\u00e7\u0131k\u0131\u015f';
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-31')!.netlist;
+  const tf = `* .tf across the two spellings\nV1 in 0 10\nR1 in ${C} 1k\nR2 ${T} 0 1k\n.op\n.tf v(${C},${T}) V1\n.end\n`;
+  for (const netlist of [text, tf]) {
+    const traps = checkTraps(parseNetlist(netlist));
+    expect(traps.map((t) => [t.id, t.severity]), netlist).toEqual([['non-ascii-node', 'error']]);
+    expect(traps[0]!.why, netlist).not.toContain('as this netlist means');
+    expect(traps[0]!.fixes.map((f) => f.label)).toEqual([`Write Cikis for ${C} and cikis2 for ${T}`]);
+  }
+  // As written, native 47 and 42 (-b -r) read one node there: the .tf gives 0 and 0 Ω.
+  const before = await engine.run(tf);
+  for (const [name, want] of Object.entries({ 'v(____k____)': 5, 'v(Transfer_function)': 0, 'v(v1#Input_impedance)': 2000, 'v(output_impedance_at_V(____k____,____k____))': 0 })) expect(vector(before, name), name).toEqual([want]);
+  // After the fix, the two nodes written: the B source reads 10 V, the .tf 1 and 2000 Ω.
+  const [f] = fixed.get('non-ascii-node-31')!;
+  for (const [name, want] of Object.entries({ 'v(cikis)': 10, 'v(cikis2)': 0, 'v(o)': 10, 'i(b1)': -0.01 })) expect(vector(f!.run, name), name).toEqual([want]);
+  const after = await engine.run(applyFix(tf, checkTraps(parseNetlist(tf))[0]!.fixes[0]!));
+  for (const [name, want] of Object.entries({ 'v(cikis)': 10, 'v(cikis2)': 0, 'v(Transfer_function)': 1, 'v(output_impedance_at_V(cikis,cikis2))': 2000 })) expect(vector(after, name), name).toEqual([want]);
+  // A line that names one of the spellings leaves the warning of non-ascii-node-27.
+  for (const line of [`B1 o 0 V=v(${C})*2\nRo o 0 1k\n`, `.tf v(${C}) V1\n`]) {
+    const one = text.replace(/^B1 .*\nRo .*\n/m, line);
+    expect(checkTraps(parseNetlist(one)).map((t) => [t.id, t.severity]), line).toEqual([['non-ascii-node', 'warning']]);
   }
 });
 

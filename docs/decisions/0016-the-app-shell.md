@@ -732,3 +732,15 @@ The round-1 critic of these fixes found four more, each run the same way (14 Nov
   two rare lines where ngspice stops all the same, the error quotes another message than ngspice's: an open {
   in a TABLE ('bad syntax in line …') and in a resistor's formula that reads a node voltage, `{1k+0*v(out)`
   ('Undefined parameter [null]').
+- **A formula or an analysis that reads across two spellings that differ only in capital letters** (X1,
+  not covered). The error came back only where a part has ends on two spellings (part ends and E and G
+  control nodes); a line that reads across them, `B1 o 0 V=v(Çıkış,çıkış)` or `.tf v(Çıkış,çıkış) V1`, still
+  got CR2-3's warning ("as this netlist means"), and ngspice's 0 there (v(o) = 0 V; a transfer function of 0
+  and 0 Ω) showed as an answer, where c520a49 gave the error. Now `caseAliases` looks at every place a line
+  outside subcircuits names a spelling, a node's refs (part ends, formula reads, analyses' outputs; a
+  continuation line counts with its first line; a part after a plain `.end` as before), and a group named
+  twice on one line is no alias: the error, with its "Write … for …" fix (non-ascii-node-31). Chosen over the
+  narrower rule for v(a,b) in formulas and on `.tf` alone: one rule covers sums and differences, a value's
+  formula, `.func`, `.ic`, `.pz`, `.print` and `.save` alike, each a line that names the spellings as two
+  nodes; a line that names one of them keeps the warning. The scan no longer needs `subcircuitLines` (a
+  node's refs leave subcircuits' lines out), so `traps.ts` imports from `graph.ts` as at 3e61833.

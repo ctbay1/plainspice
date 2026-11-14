@@ -13451,7 +13451,7 @@ node has gets a number). Two names ngspice spells the same are one node for it (
 ngspice then simulates a different circuit from the one written, with a fix that gives each its plain
 letters; but two that differ only in capital letters (`Çıkış` and `çıkış`) are the one node the netlist
 means: a warning, whose fix gives them one plain name (non-ascii-node-27), unless a part has an end on each,
-which ngspice then joins: that stays the error (non-ascii-node-28). The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
+which ngspice then joins, or one line reads across them (`v(Çıkış,çıkış)`), always 0: that stays the error (non-ascii-node-28, -31). The fixes rename the node wherever ngspice reads its name, and on the drawing's `*@ label` line, and
 never give a name another node has (that would join two nodes), nor one of ground's (0 and gnd, which
 would join the node to ground), nor a name that reads as ground (ground, earth, 00 …), which the
 ground-misnamed check would flag: `gñd` becomes `gnd2`, not `gnd` (non-ascii-node-6); they also rename
@@ -15009,6 +15009,47 @@ B1 o 0 V={v(x1.çıkış)*2} with R3 o 0 1k in place of the .tf:
 ```
 
 PlainSpice's checks: `non-ascii-node` (a warning with no fix; for the B line too), and likewise `look-alike-letter`, `invisible-character`, `space-character` and `nbsp` for such a name.
+
+### non-ascii-node-31. A formula or an analysis that reads across two spellings that differ only in capital letters reads 0: no one node as the netlist means, so it stays the error
+
+Added after the round-1 critic of the integration check's fixes (14 November 2026). A line that names both spellings, `B1 o 0 V=v(Çıkış,çıkış)` or `.tf v(Çıkış,çıkış) V1`, asks for the voltage between two nodes; ngspice spells both ____k____ and makes them one node, so the B source gives 0 V and the .tf a transfer function of 0 and an output resistance of 0 Ω, without a message. The checks gave the warning of non-ascii-node-27, "so they are one node for it, ____k____, as this netlist means", and the 0 showed as an answer. Now any line outside subcircuits that names two of the spellings, as a part's ends (non-ascii-node-28), in a formula (a B, E or G formula, a value's formula, a `.func`) or as an analysis's output (`.tf`, `.print`, `.save`, `.ic`, `.pz`), keeps the error of non-ascii-node-2, whose fix gives each spelling a plain name of its own; then ngspice reads the two nodes written. A line that names one of them (`B1 o 0 V=v(Çıkış)*2`, `.tf v(Çıkış) V1`) leaves the warning of non-ascii-node-27.
+
+```spice
+* B reads the difference across the two spellings of a divider
+V1 in 0 10
+R1 in Çıkış 1k
+R2 çıkış 0 1k
+B1 o 0 V=v(Çıkış,çıkış)
+Ro o 0 1k
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        o                                0.000000e+00
+        ____k____                        5.000000e+00
+        in                               1.000000e+01
+        v1#branch                        -5.00000e-03
+        b1#branch                        0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 10, v(____k____) = 5, v(o) = 0, i(b1) = 0, i(v1) = -0.005
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 10, v(____k____) = 5, v(o) = 0, i(b1) = 0, i(v1) = -0.005
+after the error's fix "Write Cikis for Çıkış and cikis2 for çıkış" (R1 in Cikis 1k, R2 cikis2 0 1k, B1 o 0 V=v(Cikis,cikis2)):
+    ngspice 47 and 42 (-b and -b -r, exit 0) and our engine: v(in) = 10, v(cikis) = 10, v(cikis2) = 0, v(o) = 10, i(b1) = -0.01, i(v1) = 0
+the same divider with .tf v(Çıkış,çıkış) V1 after .op, in place of B1 and Ro:
+    ngspice 47, ngspice -b (exit 0):
+        transfer_function = 0.000000e+00
+        output_impedance_at_v(____k____,____k____) = 0.000000e+00
+        v1#input_impedance = 2.000000e+03
+    ngspice 42, ngspice -b (exit 1): Error: no data saved for transfer function analysis; analysis not run
+    ngspice 47 and 42, -b -r (exit 0), and our engine: v(in) = 10, v(____k____) = 5, i(v1) = -0.005; v(Transfer_function) = 0, v(v1#Input_impedance) = 2000, v(output_impedance_at_V(____k____,____k____)) = 0
+    after the error's fix (.tf v(Cikis,cikis2) V1): ngspice 47 and 42 (-b -r, exit 0) and our engine: v(in) = 10, v(cikis) = 10, v(cikis2) = 0, i(v1) = 0; v(Transfer_function) = 1, v(v1#Input_impedance) = 1e+20, v(output_impedance_at_V(cikis,cikis2)) = 2000 (ngspice 42 -b: the same "no data saved" message, exit 1)
+```
+
+PlainSpice's checks: `non-ascii-node` (the error of non-ascii-node-2, "Node Çıkış and node çıkış are one node for ngspice", with the fix "Write Cikis for Çıkış and cikis2 for çıkış"), for the .tf too.
 
 ## invisible-character
 

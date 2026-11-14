@@ -1067,4 +1067,19 @@ describe("the round-1 critic of the integration check's fixes (14 November 2026)
       expect(checkTraps(parseNetlist(net(line))).map((t) => t.title), line).toEqual(['gain is not defined: add a .param line']);
     }
   });
+  const CAP = '\u00c7\u0131k\u0131\u015f'; // Çıkış
+  const twoSpellings = (lines: string): string => `* t\nV1 in 0 10\nR1 in ${CAP} 1k\nR2 ${T} 0 1k\n${lines}\n.op\n.end\n`;
+  it.each([
+    `B1 o 0 V=v(${CAP},${T})\nRo o 0 1k`, `B1 o 0 V=v(${CAP})-v(${T})\nRo o 0 1k`, `B1 o 0\n+ V=v(${CAP},${T})\nRo o 0 1k`, `E1 o 0 VALUE={v(${CAP},${T})}\nRo o 0 1k`,
+    `R3 in o {1k+0*v(${CAP},${T})}\nRo o 0 1k`, `.func f() {v(${CAP})-v(${T})}\nB1 o 0 V=f()\nRo o 0 1k`, `.tf v(${CAP},${T}) V1`, `.save v(${CAP}) v(${T})`, `.pz ${CAP} 0 ${T} 0 vol pz`,
+  ])('X1-reads-across: %s names both spellings on one line, which ngspice reads as one node: the error, never "as this netlist means" (non-ascii-node-31)', (lines) => {
+    const traps = checkTraps(parseNetlist(twoSpellings(lines))).filter((t) => t.id === 'non-ascii-node');
+    expect(traps.map((t) => [t.severity, t.title])).toEqual([['error', `Node ${CAP} and node ${T} are one node for ngspice`]]);
+    expect(traps[0]!.why).not.toContain('as this netlist means');
+  });
+  it.each(['', `B1 o 0 V=v(${CAP})*2\nRo o 0 1k`, `.tf v(${CAP}) V1`, `.save v(${T})`])('X1-reads-across: %s names one spelling per line, so the divider keeps the warning that they are one node as written (non-ascii-node-27)', (lines) => {
+    const traps = checkTraps(parseNetlist(twoSpellings(lines))).filter((t) => t.id === 'non-ascii-node');
+    expect(traps.map((t) => t.severity)).toEqual(['warning']);
+    expect(traps[0]!.why).toContain('as this netlist means');
+  });
 });
