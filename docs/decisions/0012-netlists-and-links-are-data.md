@@ -888,3 +888,26 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   could not run: Line 5: …" (rc3: "The plot comes once ngspice has run this netlist."), with no sideways
   scroll and the zoom where it was.
 
+
+## After the integration check (14 November 2026)
+
+- **The Numbers panel's words for "is too small" say what the zero-ohm check says** (integration check P4). The
+  note for ngspice 47's warning ("Value of resistor … is too small, set to …") said "it uses 10⁻¹² Ω instead, and
+  the currents next to it come out inaccurate" for every resistor. The zero-ohm check on the same page says of
+  −3 aΩ "it uses −10⁻¹² Ω instead, and the currents next to it can come out inaccurate", as native ngspice 47
+  does ("set to -1.000000e-12", zero-ohm-7) and as the runs show (zero-ohm-9: where a current source sets the
+  current, the resistor carries exactly it). The note now takes the sign from ngspice's own line: for a negative
+  value it says the check's words ("ngspice 47 cannot use a resistance this close to 0: it uses −10⁻¹² Ω
+  instead"), for 0 and the rest it keeps "0 Ω (or anything below 10⁻¹² Ω)" and "10⁻¹² Ω", and both say "can come
+  out inaccurate". P24b in explanations.md is new: a 0 Ω resistor fed by a current source carries exactly that
+  current in ngspice 47 (at 1e-12 Ω) and 42 (at 1 mΩ), so "can" holds for a 0 as well (P13 shows the "can": 5.859
+  mA for 6 mA). Not taken: the reviewer's one sentence for both signs ("10⁻¹² Ω (−10⁻¹² Ω for a negative value)"),
+  which gives every student both values where ngspice's line already says which one it used; and reading the sign
+  from the part's value, which a `.param` or a resistor inside a subcircuit (`r.x1.r1`) makes harder to find, where
+  ngspice's line always has it. Tests: `tests/unit/spice-describe.test.ts` (the words for each sign, and without
+  ngspice's line; fails on 3e61833), `tests/golden/facts-explain.test.ts` (P24b's run; the words on the runs of P13,
+  P24 and P24b) and `tests/golden/facts-traps-last-pass.test.ts` (on zero-ohm-9's runs the note says what the check
+  says; 4 tests fail with 3e61833's `describe.ts`). Left open, outside this fix: Explain's notes on such a line
+  (`src/spice/explain.ts`, unchanged since fix-base) still say for −3e-18 "ngspice accepts a negative resistance
+  without a message" and "ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω", where ngspice 47 warns and
+  uses −10⁻¹² Ω, and for 0 "the currents next to it come out inaccurate".

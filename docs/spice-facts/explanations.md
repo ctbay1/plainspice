@@ -1078,6 +1078,43 @@ our engine (wasm), as ngspice -b -r (exit 0):
   diagnostics: resistor-too-small (r1)
 ```
 
+### P24b. Where a current source sets the current, a 0 Ω resistor carries exactly that current: the currents next to a resistor ngspice 47 cannot use can come out inaccurate, not always
+
+Added after the integration check of 14 November 2026 (P4), for the Numbers panel's words for ngspice's "is
+too small" warning. ngspice 47 raises the 0 Ω to 1e-12 Ω with its warning, as in P13, and ngspice 42 uses 1 mΩ
+without a word; in both, R1 and I1 carry exactly 1 A, as for 3a (zero-ohm-9). In P13, in series with 1 kΩ
+across 6 V, the source's current comes out as 5.859 mA for 6 mA. So the words say the currents next to such a
+resistor "can come out inaccurate", where they said "come out inaccurate". They also say the value ngspice 47
+used, which its warning gives: 10⁻¹² Ω, or −10⁻¹² Ω for a negative value ("set to -1.000000e-12", zero-ohm-7),
+in the zero-ohm check's words ("a resistance this close to 0").
+
+```spice
+* a 0 ohm resistor where a current source sets the current, as PlainSpice runs it (.options savecurrents)
+I1 0 n1 1
+R1 n1 0 0
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0), the model and device listings left out:
+        n1                               1.000000e-12
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  rawfile from ngspice -b -r (exit 0): v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
+ngspice 42, ngspice -b (exit 0), the model and device listings left out:
+        n1                               1.000000e-03
+        @r1[i]                           1.000000e+00
+        @i1[current]                     1.000000e+00
+  rawfile from ngspice -b -r (exit 0): v(n1) = 0.001, i(@i1[current]) = 1, i(@r1[i]) = 1
+our engine (wasm), as ngspice -b -r (exit 0):
+    Warning: Value of resistor r1 is too small, set to 1.000000e-12
+  vectors: v(n1) = 1e-12, i(@i1[current]) = 1, i(@r1[i]) = 1
+  diagnostics: resistor-too-small (r1)
+```
+
 ### P3b. With a SIN as well, .op uses the source's value and .tran follows the SIN from time 0
 
 `V1 a b -3 SIN(0 1 1k)` has a DC value, −3 V, and a transient function. In .op ngspice uses the

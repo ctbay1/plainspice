@@ -559,8 +559,9 @@ export const DESCRIBE_STRINGS = {
   noValueTitle: (name: string, unit: string): string => `${name} has no value: 0 ${unit}`,
   noValueWhy: 'This source has no DC value, so ngspice uses 0. An AC value alone is not a DC value.',
   tooSmallTitle: (name: string): string => `${name} is too small for ngspice`,
-  tooSmallWhy:
-    'ngspice 47 cannot use 0 Ω (or anything below 10⁻¹² Ω): it uses 10⁻¹² Ω instead, and the currents next to it come out inaccurate. To make two nodes one, give them the same name; to measure the current there, use a 0 V source.',
+  /** `negative`: ngspice 47 set the value to −1e-12 (zero-ohm-7); the zero-ohm check's words for such a value. */
+  tooSmallWhy: (negative: boolean): string =>
+    `ngspice 47 cannot use ${negative ? 'a resistance this close to 0' : '0 Ω (or anything below 10⁻¹² Ω)'}: it uses ${negative ? MINUS : ''}10⁻¹² Ω instead, and the currents next to it can come out inaccurate. To make two nodes one, give them the same name; to measure the current there, use a 0 V source.`,
   tfMissingTitle: (name: string): string => `.tf: there is no ${name}`,
   tfMissingWhy: (name: string): string => `The input of .tf must be a voltage or current source of the circuit, and there is no ${name}, so ngspice ran no analysis.`,
   tfTypeTitle: (name: string): string => `.tf: ${name} is not a source`,
@@ -5297,7 +5298,9 @@ export function explainDiagnostic(d: EngineDiagnostic, netlist: Netlist): Diagno
     }
     case 'resistor-too-small': {
       const part = partNamed(netlist, d.subject);
-      return withLine({ title: S.tooSmallTitle(part?.element?.name.text ?? d.subject ?? '?'), why: S.tooSmallWhy }, part?.number); // P13, P24
+      // ngspice's line says the value it used, "set to -1.000000e-12" for a negative one (zero-ohm-7); the currents next to
+      // the resistor can come out inaccurate, not always (zero-ohm-9, P24b), as the zero-ohm check says (integration check P4).
+      return withLine({ title: S.tooSmallTitle(part?.element?.name.text ?? d.subject ?? '?'), why: S.tooSmallWhy(/set to\s*-/.test(d.text)) }, part?.number); // P13, P24
     }
     case 'tf-source-missing': {
       const at = dotLine(netlist, '.tf');

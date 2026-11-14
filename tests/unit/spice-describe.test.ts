@@ -494,6 +494,18 @@ describe('explainDiagnostic: every code in plain words', () => {
     expect(w.why).not.toMatch(/\bjoin/);
   });
 
+  it('a resistor too small for ngspice: the value ngspice 47 says it used, −10⁻¹² Ω for a negative one, and the currents next to it "can" come out inaccurate, as the zero-ohm check says (integration check P4)', () => {
+    // zero-ohm-7: "set to -1.000000e-12" for −3e-18; zero-ohm-9 and P24b: where a current source sets the current, it comes out exact.
+    const why = (name: string, set: string): string =>
+      explainDiagnostic(diag('resistor-too-small', `Warning: Value of resistor ${name} is too small, set to ${set}`, { severity: 'warning', subject: name }), net).why;
+    const advice = ' To make two nodes one, give them the same name; to measure the current there, use a 0 V source.';
+    expect(why('r1', '1.000000e-12')).toBe(`ngspice 47 cannot use 0 Ω (or anything below 10⁻¹² Ω): it uses 10⁻¹² Ω instead, and the currents next to it can come out inaccurate.${advice}`);
+    // The zero-ohm check's words for −3 aΩ, word for word (tests/unit/traps-last-pass-words.test.ts).
+    expect(why('r1', '-1.000000e-12')).toBe(`ngspice 47 cannot use a resistance this close to 0: it uses ${MINUS}10⁻¹² Ω instead, and the currents next to it can come out inaccurate.${advice}`);
+    // Without ngspice's line (a diagnostic made by hand), the words for 0 and positive values.
+    expect(explainDiagnostic(diag('resistor-too-small', '', { severity: 'warning', subject: 'r1' }), net).why).toBe(why('r1', '1.000000e-12'));
+  });
+
   it('tailors the singular matrix to the node ngspice names (M1, M2, M2b, M2c, M3c, M9)', () => {
     const s = (text: string, subject: string): string => explainDiagnostic(diag('singular-matrix', '', { severity: 'warning', subject }), parseNetlist(text)).title;
     expect(s('* t\nV1 a b 6\nR1 a b 2\n', 'b')).toBe('No ground (node 0)');
