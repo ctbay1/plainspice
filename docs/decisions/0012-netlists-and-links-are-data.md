@@ -911,8 +911,9 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   ngspice's line always has it. Tests: `tests/unit/spice-describe.test.ts` (the words for each sign, and without
   ngspice's line; fails on 3e61833), `tests/golden/facts-explain.test.ts` (P24b's run; the words on the runs of P13,
   P24 and P24b) and `tests/golden/facts-traps-last-pass.test.ts` (on zero-ohm-9's runs the note says what the check
-  says); with 3e61833's `describe.ts`, 4 of these golden tests fail (zero-ohm-9's three runs, and the words on P13,
-  P24 and P24b). Explain's notes on such a line (`src/spice/explain.ts`, unchanged since fix-base) said a third
+  says); with 3e61833's `describe.ts`, 5 of these golden tests fail (zero-ohm-9's three runs, the words on P13, P24
+  and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a below). Explain's notes on such a line
+  (`src/spice/explain.ts`, unchanged since fix-base) said a third
   thing on the same page, as the skeptic of the problem found: for −3e-18, "ngspice accepts a negative resistance
   without a message" and "ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω", where ngspice 47 warns and
   uses −10⁻¹² Ω; and for 0, "the currents next to it come out inaccurate". A negative value closer to 0 than

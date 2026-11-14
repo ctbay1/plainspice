@@ -286,3 +286,12 @@ describe('C1-3 (the round-1 critic of the integration check’s fixes, 14 Novemb
     );
   });
 });
+
+describe('C1-4 (the round-1 critic of the integration check’s fixes, 14 November 2026): decision 0012 counts the golden tests that fail with 3e61833’s describe.ts as they were counted', () => {
+  it('five: zero-ohm-9’s three runs, the words on P13, P24 and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a', () => {
+    // Counted with 3e61833's src/spice/describe.ts in place: facts-explain and facts-traps-last-pass gave 5 failed.
+    const text = readFileSync(resolve(import.meta.dirname, '../../docs/decisions/0012-netlists-and-links-are-data.md'), 'utf8').replace(/\s+/g, ' ');
+    const said = [...text.matchAll(/(\d+) of these golden tests fail \(([^)]*)\)/g)].map((m) => `${m[1]}: ${m[2]}`);
+    expect(said).toEqual(["5: zero-ohm-9's three runs, the words on P13, P24 and P24b, and the engine run of 0, 1f, −3e-18, 3a and −3a below"]);
+  });
+});
