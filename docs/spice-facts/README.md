@@ -375,6 +375,15 @@ same doubles) where they had a `.temp 27` line, which PlainSpice now models exac
 C9t.7 say what the exact path and the rule do since these fixes. This section was added after the integration
 check of 14 November 2026 (X6): the noise lane had recorded them in explanations.md and decision 0015 only.
 
+After the integration check of 14 November 2026: C9z to C9z.6 (a wire ngspice gives exactly 0 A keeps that 0 by the
+rule, the Kirchhoff fill reverted; a sweep's point at the .op's own value of its source, or at the very double of the
+decimal the netlist writes, is that value and is named by it, and by the rule only such a point's own numbers show the
+.op's 0s, where ngspice's point nearest it shows a value as 0 only where ngspice gives it the .op's very number (C9x.4)
+and otherwise keeps ngspice's numbers; a point that drifts from both is named by ngspice's own value, with that value's
+digits; a swept source set by a .param, braces or a function with no DC value has no such point; a .tf of two nodes
+inside a subcircuit gets the note that its ratio may be rounding noise, and a .tf of an ammeter there is named as the
+.tf names it), with rows in `tests/golden/facts-explain.test.ts` and `tests/unit/spice-noise-integration.test.ts`.
+
 ## The integration check of 14 November 2026 (the records lane)
 
 Run the same way on 14 November 2026: P24b in explanations.md (a 0 Ω resistor fed by a current source carries
