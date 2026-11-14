@@ -7880,12 +7880,12 @@ round 2 of these fixes, such a point stands for the .op's state only where every
 it (here: R5's 0, v(a) and v(b) 4.5 V, …, though only R5's double is the .op's: v(a) is 4.499999999999926 there, not
 4.499999999999999), and the note says what it is: "ngspice's point nearest the operating point's 9 V, 8.999999999999853 V
 (its 10 mV step added up in doubles)", no longer "the operating point's own state, where ngspice gives the operating
-point's numbers" (C9y). Since the integration check (14 November 2026), by the rule such a point is not the .op's state at
-all: the circuit there is not the .op's, and with no exact solution the rule cannot tell a real value there from noise
-(C9z.4: a source idle at 4.5 V carries a real −2.436 aA at 4.499999999999973 V, which the rule drew 0 there as "rounding
-noise of a 0"). Only a point at the .op's value bit for bit shows its 0s; this one keeps ngspice's −8.882e−19 A for R5 and
-is named by its own x, with the note that says why. On the exact path a point near the .op's state is still judged at its
-own x, by the exact solution (C9w.7).
+point's numbers" (C9y). Since the integration check (14 November 2026), by the rule such a point shows the .op's 0 only
+where ngspice gives it the very number the .op's 0 stands for, as here: the rule run on the point's own values counts only
+at the .op's value itself, since a few steps of a double from it the circuit is not the .op's, and with no exact solution
+the rule cannot tell a real value there from noise (C9z.4: a source idle at 4.5 V carries a real −2.436 aA at
+4.499999999999973 V, which the rule drew 0 there as "rounding noise of a 0"). R5's current is 0 at every V1 (the bridge is
+balanced at each), so this point keeps R5's 0 and its note.
 
 ```spice
 * the balanced bridge of C9 with a .param line, its .op and a sweep of V1 in 0.01 V steps
@@ -7910,12 +7910,9 @@ ngspice 47, ngspice -b (exit 0), the .op:
 ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: v(v-sweep) = [8.989999999999853, 8.999999999999853], v(a) = [4.4949999999999255, 4.499999999999926], v(b) = [4.4949999999999255, 4.499999999999927], i(@r5[i]) = [0, -8.881784197001253e-19], v(a) = 4.499999999999999, v(b) = 4.5, i(@r5[i]) = -8.881784197001253e-19
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
-  words (describe.ts): "At V1 = 8.999999999999853 V: … i(@r5[i]) = −8.882e-19 A", with the note "The DC sweep's last
-  point is V1 = 8.999999999999853 V, not 9 V: … There ngspice gives i(@r5[i]) −8.882e-19 A, where the operating point, at
-  9 V, shows 0 A. So PlainSpice names that point by ngspice's own value." (from the critic of the last pass's fixes until
-  the integration check: "At V1 = 9 V: … i(@r5[i]) = 0 A", with the note "… At ngspice's point nearest the operating
-  point's 9 V, 8.999999999999853 V (its 10 mV step added up in doubles), ngspice gives it the very number the operating
-  point shows as 0, …")
+  words (describe.ts): "At V1 = 9 V: … i(@r5[i]) = 0 A", with the note "ngspice gave i(@r5[i]) -8.881784e-19 A at
+  V1 = 9 V. At ngspice's point nearest the operating point's 9 V, 8.999999999999853 V (its 10 mV step added up in
+  doubles), ngspice gives it the very number the operating point shows as 0, as the operating point's note says. …"
 ```
 
 Added after the critic of the last pass's fixes (13 November 2026) (C9x.5): beside an .op the rule decides, the .tf of C9's
@@ -8243,7 +8240,7 @@ our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
   506.5 aA; …"; "At V1 = 500 mV: v(top1) = 500 mV, …"; no note about the point
 ```
 
-### C9z. After the integration check: ngspice's 0 for a wire stays 0 by the rule, a sweep's point at the .op's own value or at a decimal's very double is that value, by the rule only a point at the .op's own value shows its 0s, and a .tf of nodes inside a subcircuit gets the rule's note
+### C9z. After the integration check: ngspice's 0 for a wire stays 0 by the rule, a sweep's point at the .op's own value or at a decimal's very double is that value, by the rule a point's own numbers show the .op's 0s only at the .op's own value, and a .tf of nodes inside a subcircuit gets the rule's note
 
 Added after the integration check of the merged last-pass lanes (14 November 2026; noise-0, fill-fabricates-currents). A
 divider with a .param line feeds a 10 MΩ load through a 1 nΩ wire. The wire carries the load's 198 nA, from n1 to p, but
@@ -8427,9 +8424,10 @@ Added after the integration check (14 November 2026) (C9z.4; noise-3, rule-neare
 4.5 V. There the circuit makes a real −2.436 aA through V2 and R3 (node b 1.145 fV, about 2.6 steps of a double, below c),
 which ngspice gives as −1.735 aA and −1.89 aA; the rule, run on that point's own values, wrote them 0, and the note said "ngspice's own numbers
 there show that each of them is rounding noise of a 0". With no exact solution the rule cannot tell a real value there from
-noise, and the circuit at that point is not the .op's, so only a point at the .op's own value (its double bit for bit, or the
-very double of the decimal the netlist writes for it, below) now shows the .op's 0s (C9w.13); this one keeps ngspice's
-numbers, and is named by its own x where a note names it.
+noise, and the circuit at that point is not the .op's, so the rule's own verdict on a point's values now counts only at the
+.op's own value (its double bit for bit, or the very double of the decimal the netlist writes for it, below; C9w.13). At a
+point a few steps of a double from it, a value is still shown 0 where ngspice gives it the very number the .op's 0 stands
+for (C9x.4); this one's numbers are not the .op's, so it keeps them, and is named by its own x where a note names it.
 
 ```spice
 * V2 holds node b at its own 2.25 V when V1 is 4.5 V, with a .param line, swept past it in 50 mV steps
