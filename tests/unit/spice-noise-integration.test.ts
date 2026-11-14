@@ -121,6 +121,17 @@ describe('by the rule, only a point at the .op\'s value bit for bit shows the .o
   });
 });
 
+describe('by the rule, a point at the very double of the decimal the netlist writes for the swept source is the .op\'s value too, as the .op is judged at that decimal', () => {
+  it('dr-34: ngspice reads "4.5m" as 0.0045000000000000005 for the .op, and ".dc I1 0 0.0045 0.3m" ends at 0.0045\'s own double: that point is the .op\'s 4.5 mA, where ngspice\'s −6.939 aA for V2 (its .op gives exactly 0) is rounding noise of a 0 by the rule, shown 0 with a note that says the .op shows it as 0; it was named "I1 = 4.5 mA, not 4.5 mA", as if the point had drifted', async () => {
+    const r = await solveText(netlist('.param rp=10k', 'I1 0 a 4.5m', 'R1 a 0 {rp}', 'V2 b 0 45', 'R2 a b 1k', '.options savecurrents', '.op', '.dc I1 0 0.0045 0.3m'), ngspice);
+    const dc = r.results.dc!;
+    expect([by(r), dc.scale.values[15], r.results.op!.currents.find((c) => c.element === 'i1')!.value]).toEqual(['rule', 0.0045, 0.0045000000000000005]);
+    expect(message(r.words, 'sweep-point')).toBeUndefined();
+    expect(sp(r.words.sweeps[0]!.text)).toContain('At I1 = 4.5 mA: v(a) = 45 V, v(b) = 45 V, i(v2) = 0 A,');
+    expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)).join(' ')).toContain('At I1 = 4.5 mA, the operating point\'s own state, ngspice\'s own numbers there show that each of them is rounding noise of a 0, and the operating point shows them as 0.');
+  });
+});
+
 describe('a swept source whose value the netlist does not write as a number has no point at the .op\'s state: never the sweep\'s 0 V or 0 A point (P4)', () => {
   const twoBridges = (swept: string[], dc: string): string => netlist(...swept, 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a b 1k', 'V2 top2 0 9', 'R6 top2 c 10k', 'R7 c 0 10k', 'R8 top2 d 4.7k', 'R9 d 0 4.7k', 'R10 c d 1k', '.op', dc);
   it('V1 set by a .param, by a SIN with no DC value, I1 set by a .param, and V2 of a two-source sweep set by a .param: no note says "the operating point\'s own state", and R10 keeps ngspice\'s −8.882e-19 A at every point (it was zeroed at V1 = 0 V, while the .op is at 9 V)', async () => {

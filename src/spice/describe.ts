@@ -784,13 +784,15 @@ export const DESCRIBE_STRINGS = {
    * Beside an .op the rule decides (ruleStateSweep): the points at the .op's own state show its 0s. `at`: those points
    * (opStateExact, opStateNearest); `why`: ngspice gave there the very number the .op shows as 0, or the point's own numbers show it.
    */
-  noiseSweepRuleWhy: (gave: string, one: boolean, at: string, why: ReadonlySet<'very' | 'rule'>): string => {
+  noiseSweepRuleWhy: (gave: string, one: boolean, at: string, why: ReadonlySet<'very' | 'rule' | 'given0'>): string => {
     const reason = !why.has('rule')
       ? `ngspice gives ${one ? 'it' : 'each of them'} the very number the operating point shows as 0`
       : !why.has('very')
         ? `ngspice's own numbers there show that ${one ? 'it is' : 'each of them is'} rounding noise of a 0`
         : "ngspice gives each of them the very number the operating point shows as 0, or its own numbers there show that it is rounding noise of a 0";
-    return `ngspice gave ${gave}. At ${at}, ${reason}, as the operating point's note says. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.`;
+    // 'given0': a value whose .op ngspice gives as exactly 0 has no note of its own there.
+    const op = why.has('given0') ? `and the operating point shows ${one ? 'it' : 'them'} as 0` : "as the operating point's note says";
+    return `ngspice gave ${gave}. At ${at}, ${reason}, ${op}. So PlainSpice shows 0 there too, in these words and in the Plot panel; at the other points the sweep is as ngspice gives it.`;
   },
   // Near a sweep's series' own 0, where ngspice cannot give its digits, the exact ones (findSweepNoise `rounded`).
   roundedSweepTitle: (names: readonly string[], kind: string): string =>
@@ -1333,7 +1335,7 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const given = new Map<string, number>();
     for (const c of results.op.currents) given.set(`${c.origin === 'branch' ? 'b' : 'd'} ${netlistPart(netlist, c.element)}`, c.value);
     const zero = new Map<number, number[]>();
-    const why = new Set<'very' | 'rule'>();
+    const why = new Set<'very' | 'rule' | 'given0'>();
     const state: number[] = [];
     const op = opShown(netlist, results);
     for (const k of at.points) {
@@ -1356,9 +1358,14 @@ function ruleStateSweep(netlist: Netlist, results: AnalysisResults): SweepNoise 
         if (!m || value === 0 || !Number.isFinite(value)) return;
         const device = /^@([^[\]]+)\[(i|current)\]$/i.exec(m[1]!);
         const key = netlistPart(netlist, device ? device[1]! : m[1]!);
-        if (!zeros.has(key)) return;
+        // A current the .op shows as 0: rounding noise there, or ngspice's exact 0 (at the very double of the netlist's decimal,
+        // a step from ngspice's own reading of it, ngspice can give noise where its .op gave 0: the integration check).
+        if (!zeros.has(key) && given.get(`${device ? 'd' : 'b'} ${key}`) !== 0) return;
         if (given.get(`${device ? 'd' : 'b'} ${key}`) === value) marked.set(j, 'very');
-        else if ((own ??= ruleNoise(netlist, { op: pointOp(dc, k), other: [] })).currents.has(key)) marked.set(j, 'rule');
+        else if ((own ??= ruleNoise(netlist, { op: pointOp(dc, k), other: [] })).currents.has(key)) {
+          marked.set(j, 'rule');
+          if (!zeros.has(key)) why.add('given0');
+        }
       });
       state.push(k);
       for (const [j, reason] of marked) {
@@ -2419,7 +2426,7 @@ interface SweepNoise {
   /** Decided at the .op's own state only (opStateSweep, ruleStateSweep): those points, which the notes name. */
   state?: number[];
   /** By the rule: why its 0s are 0 there, ngspice's very number for the .op's 0 ('very') or the point's own numbers ('rule'). */
-  ruleWhy?: Set<'very' | 'rule'>;
+  ruleWhy?: Set<'very' | 'rule' | 'given0'>;
   /**
    * By series index, the points where ngspice's number is within ANSWER_FLOOR of the series' largest size of the exact
    * value, and drawn with other digits: near the series' own 0, where ngspice cannot give its digits, the exact values are
@@ -2595,6 +2602,18 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): StatePoint
     const v = el.value?.number?.value ?? (kind === 'R' ? undefined : 0);
     return v === undefined || !Number.isFinite(v) ? null : v;
   };
+  /**
+   * The very double of the decimal a swept V's or I's value is written as, where ngspice reads that word as another double
+   * (N15: "4.5m" is 0.0045000000000000005 in its .op, a step above 0.0045's own): a point there stands for the .op's value
+   * too, as the .op is judged at the netlist's decimals (the integration check).
+   */
+  const decimal = (sw: SweepReading, t: number | undefined): number | undefined => {
+    if (t === undefined || (sw.kind !== 'voltage' && sw.kind !== 'current')) return undefined;
+    const reading = partsOf(netlist).byKey.get(netlistPart(netlist, ngspiceSpelling(sw.source.text)))?.element?.value?.number;
+    const x = reading ? readExact(reading.text) : undefined;
+    const d = x && toDouble(x);
+    return d !== undefined && d !== t && Number.isFinite(d) ? d : undefined;
+  };
   const label = (sw: SweepReading, v: number): string => (sw.kind === 'temperature' ? formatSI(v, sw.unit) : S.sweepAt(sweepName(sw), formatSI(v, sw.unit)));
   /**
    * The point of a run of the inner sweep (`count` points from `from`) where ngspice's x is the target `t`, or the
@@ -2616,11 +2635,12 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): StatePoint
   const [inner, outer] = r.sweeps as [SweepReading, SweepReading | undefined];
   const t1 = target(inner);
   if (t1 === null) return undefined;
+  const d1 = decimal(inner, t1);
   if (!outer) {
     // A sweep of the temperature alone (too large to look through, SWEEP_VALUES): its point at the .op's own temperature.
     const at = t1 ?? opTemperature(netlist);
     const k = nearest(inner, at, 0, xs.length);
-    return { points: k === undefined ? [] : [k], name: (j) => label(inner, xs[j]!), exact: (j) => xs[j] === at, target: at };
+    return { points: k === undefined ? [] : [k], name: (j) => label(inner, xs[j]!), exact: (j) => xs[j] === at || xs[j] === d1, target: at };
   }
   const t2 = target(outer);
   const n1 = inner.points;
@@ -2639,7 +2659,7 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): StatePoint
       if (k !== undefined) points.push(k);
     }
   }
-  const out: StatePoints = { points, name: (k) => `${label(inner, xs[k]!)}, ${label(outer, values[Math.floor(k / n1)]!)}`, exact: (k) => t1 === undefined || xs[k] === t1 };
+  const out: StatePoints = { points, name: (k) => `${label(inner, xs[k]!)}, ${label(outer, values[Math.floor(k / n1)]!)}`, exact: (k) => t1 === undefined || xs[k] === t1 || xs[k] === d1 };
   if (t1 !== undefined) out.target = t1;
   return out;
 }
@@ -2995,7 +3015,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   const step = swept && sweep.step ? readExact(sweep.step.text) : undefined;
   const standsFor = (k: number): Fraction => {
     const x = xs[k]!;
-    if (swept && x === own) return swept.value;
+    if (swept && (x === own || x === toDouble(swept.value))) return swept.value;
     const meant = start && step ? add(start, mul(fraction(BigInt(k)), step)) : undefined;
     return meant && toDouble(meant) === x ? meant : fromDouble(x);
   };
@@ -4719,15 +4739,16 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
       // The value the point's label stands for: the .op's, for a point found near its state (the very double the check
       // compared it with: "3.3" is 3.3000000000000003 V in ngspice's .op, a9761-1361); else the steps'. Only where ngspice's
       // x drifted from it (adding up the step: at that very double the point is where the steps say, as any value of the
-      // netlist is, exact.ts READ_ULPS) and from the .op's own value (at that value bit for bit the point is it, as
-      // findSweepNoise judges it: ".dc I1 0 0.0045 0.03m" ends at ngspice's own 4.5m, 0.0045000000000000005, and was named
-      // "I1 = 4.5 mA, not 4.5 mA", the integration check), and the label still reads as it ("9 V" for 8.999999999999853 V;
+      // netlist is, exact.ts READ_ULPS) and from the .op's own value (at that value bit for bit, or at the very double of
+      // the decimal the netlist writes for it, the point is it, as findSweepNoise judges it: ".dc I1 0 0.0045 0.03m" ends at
+      // ngspice's own 4.5m, 0.0045000000000000005, and was named "I1 = 4.5 mA, not 4.5 mA", the integration check), and the
+      // label still reads as it ("9 V" for 8.999999999999853 V;
       // "−55.51 aV" for a point meant to be 0 V already says where it is).
       const exact = failed ? (states?.target === undefined ? undefined : fromDouble(states.target)) : at;
       const meant = exact && toDouble(exact);
       const x = xs[k]!;
       let found: Otherwise | undefined;
-      if (exact && meant !== x && x !== states?.target && formatSI(x, unit) === formatSI(meant!, unit)) {
+      if (exact && meant !== x && !states?.exact(k) && formatSI(x, unit) === formatSI(meant!, unit)) {
         // Where the exact solution is this run's circuit (exactRun) and follows the sweep, it tells whether the drift changes
         // a value to the page's digits; a point that shows otherwise than the .op for another reason shows ngspice's own
         // rounding, which the warning that its answers are off names (a9761-156: V1's −499.6 aA there, −506.5 aA in the .op,
