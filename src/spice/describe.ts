@@ -2627,7 +2627,12 @@ function findStatePoints(netlist: Netlist, results: AnalysisResults): StatePoint
     let gap = Number.POSITIVE_INFINITY;
     for (let i = 0; i < count; i++) {
       const g = Math.abs(xs[from + i]! - t);
-      if (g < gap) [best, gap] = [from + i, g];
+      // Two assignments: a destructuring made an array at each point nearer than the last, 8 ms more of 150,001 points,
+      // and since the integration check the sweep's decision looks for this point on the exact path too.
+      if (g < gap) {
+        best = from + i;
+        gap = g;
+      }
     }
     if (best < 0 || gap === 0) return best < 0 ? undefined : best;
     const scale = Math.max(Math.abs(sw.startValue ?? 0), Math.abs(sw.stopValue ?? 0), Math.abs(t)) + (sw.kind === 'temperature' ? KELVIN : 0);
