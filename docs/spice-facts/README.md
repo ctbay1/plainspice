@@ -38,7 +38,8 @@ ngspice output that justifies it. PlainSpice never claims how LTspice behaves: i
 - Look in the folder for the results file, and read it, before writing what it holds: where a run stops,
   ngspice often still writes a plot's header with 0 points ("a … plot with 0 points, its header only (no
   results)"), which is not "no rawfile" (16 records in traps.md said no file or no data where ngspice
-  wrote one, until 13 November 2026).
+  wrote one, until 13 November 2026, and 12 lines of 8 facts added that day said "no rawfile data", until
+  14 November).
 - For `.tran`, compare 42's whole time vector with 47's, not only the number of points and the values at
   the times printed: 42's last point before a corner of a source, or before the end, can sit elsewhere,
   and after a corner the two grids can part for good (P18, A17, A18). Say which points differ.

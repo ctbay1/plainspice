@@ -2718,7 +2718,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
@@ -14227,7 +14227,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `B1 b 0 V=v(cikis)*2`:
     native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
 the netlist the fix wrote before (only R1 and R2 renamed):
-    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+    ngspice 47 and 42, -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
       Warning: singular matrix:  check node ____k____
       Warning: Dynamic gmin stepping failed
       Warning: True gmin stepping failed
@@ -14428,7 +14428,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `B1 b 0 V=v(cikis)*2`, `E1 e 0 VALUE={v(cikis)*2}`:
     native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, v(e) = 10, v(e1_int1) = 10, i(be1) = 0, i(b1) = -0.01, i(e1) = -0.01, i(v1) = -0.005
 the netlist the error's fix wrote before (Cikis2 in the formulas):
-    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+    ngspice 47 and 42, -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
       DC solution failed -
       Warning: singular matrix:  check node cikis2
       Warning: Dynamic gmin stepping failed
@@ -14622,7 +14622,7 @@ our engine (wasm), as ngspice -b -r (exit 0):
 after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R1 giris cikis 1k`, `R2 cikis 0 1k`, `.func vo() {v(cikis)}`:
     native 47 and 42 (-b -r, exit 0) and our engine: v(giris) = 10, v(cikis) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005
 a .func with words of its own inside v(...):
-    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+    ngspice 47 and 42, -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
       DC solution failed -
       Warning: singular matrix:  check nodes b1#branch and a
       Warning: Dynamic gmin stepping failed
@@ -14681,13 +14681,13 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
     vectors: (none)
 with the parts on cikis, V1 giris 0 10 / R1 giris cikis 1k / R2 cikis 0 1k and B1 e 0 V=v(çıkış)*2, which PlainSpice's checks say the same way, with the fix "Connect to cikis":
-    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+    ngspice 47 and 42, -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
       DC solution failed -
       Warning: singular matrix:  check node ____k____
       Warning: Dynamic gmin stepping failed
@@ -17628,7 +17628,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
@@ -18571,7 +18571,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
@@ -20698,7 +20698,7 @@ ngspice 47, ngspice -b (exit 1):
     doAnalyses: OP:  Timestep too small; cause unrecorded.
     run simulation(s) aborted
   ngspice -b -r out.raw (exit 1)
-    rawfile: (no rawfile data)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
 ngspice 42: the same printout, exit code and rawfile values as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     the same messages as ngspice 47
@@ -20706,7 +20706,7 @@ our engine (wasm), as ngspice -b -r (exit 1, no results):
 after the fix "Take it out: connect to node out" (space-character), which writes `B1 e 0 V=v(out)*2`:
     native 47 and 42 (-b -r, exit 0) and our engine: v(in) = 5, v(out) = 2.5, v(e) = 5, i(b1) = -0.005, i(v1) = -0.0025
 in an E's formula, E1 e 0 VALUE={v(out<THIN>)*2}:
-    ngspice 47 and 42, -b -r (exit 1): (no rawfile data)
+    ngspice 47 and 42, -b -r (exit 1): an Operating Point plot with 0 points, its header only (no results)
       DC solution failed -
       Warning: singular matrix:  check node out___
       Warning: Dynamic gmin stepping failed
@@ -20716,7 +20716,7 @@ in an E's formula, E1 e 0 VALUE={v(out<THIN>)*2}:
       Error: The operating point could not be simulated successfully.
     our engine (exit 1, no results): (none), with the same messages as ngspice 47
 with .tran 1u 10u instead of .op:
-    ngspice 47, -b -r (exit 1): (no rawfile data)
+    ngspice 47, -b -r (exit 1): a Transient Analysis plot with 0 points, its header only (no results)
       Error: incomplete or empty netlist
       Warning: singular matrix:  check node o___ut
       Warning: Dynamic gmin stepping failed
@@ -20725,7 +20725,7 @@ with .tran 1u 10u instead of .op:
       Error: Transient op failed, timestep too small
       Error: The operating point could not be simulated successfully.
       Error: Finding the operating point for transient simulation failed
-    ngspice 42, -b -r (exit 1): (no rawfile data)
+    ngspice 42, -b -r (exit 1): a Transient Analysis plot with 0 points, its header only (no results)
       Warning: singular matrix:  check node o___ut
       Warning: Dynamic gmin stepping failed
       Warning: True gmin stepping failed

@@ -109,3 +109,18 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   it finds exactly the picture link (172 links in 9 pages); `tests/unit/dist-links.test.ts` tests the
   check itself, and `tests/e2e/run-copy.spec.ts` the link on the page.
 
+
+## After the integration check (14 November 2026)
+
+- **A results file with its header only is said as it is in every new fact** (integration check P6). 12 lines of
+  8 traps.md facts the formulas lane added on 13 November (nbsp-8, non-ascii-node-15, -20, -25, -26,
+  invisible-character-68, look-alike-letter-19, space-character-32) said "(no rawfile data)", where native
+  ngspice 47 and 42 write a plot's header and 0 points (47: 228 to 236 bytes, 42: 172 to 180): an Operating Point
+  plot, and for space-character-32's `.tran` run a Transient Analysis plot. Each now says so, in the words of the
+  facts README's rule. The reviewer named the five base runs; three more facts' variants said the same of such a
+  file and are corrected with them. Their netlists are given in words there ("Cikis2 in the formulas", "a .func
+  with words of its own"), so the ones re-run are those whose printout matches the record line for line
+  (`Cikis2` in both formulas, the parts left on `çıkış`; `.func vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`). The other "(no rawfile data)" lines (non-ascii-node-4 and -14, and 22 in
+  numbers-and-syntax.md) were re-run too: ngspice writes no file there, so they stay. The records cannot be run
+  in a test, so `tests/unit/facts-records.test.ts` pins them: each corrected fact's lines, and that "(no rawfile
+  data)" is left in traps.md only in non-ascii-node-4 and -14 (9 tests, which fail on 3e61833).

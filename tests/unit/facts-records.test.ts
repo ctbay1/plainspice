@@ -137,3 +137,30 @@ describe('each fact’s ID heads one section in docs/spice-facts', () => {
     expect(where.size).toBeGreaterThan(600);
   });
 });
+
+describe('P6 (integration check, 14 November 2026): a header-only results file is said as it is in the formulas lane’s facts too', () => {
+  const OP = 'an Operating Point plot with 0 points, its header only (no results)';
+  const TRAN = 'a Transient Analysis plot with 0 points, its header only (no results)';
+  const count = (text: string, part: string): number => text.split(part).length - 1;
+  // Each run re-run with `ngspice -b -r` in native 47 and 42 and its file read: a plot's header and 0 points, no Binary:
+  // section (47: 228 to 236 bytes, 42: 172 to 180). The base run's line, then the variants' lines.
+  it.each([
+    ['nbsp-8', 1, 0],
+    ['non-ascii-node-15', 1, 0],
+    ['non-ascii-node-20', 1, 0],
+    ['non-ascii-node-25', 1, 0],
+    ['non-ascii-node-26', 2, 0],
+    ['invisible-character-68', 1, 0],
+    ['look-alike-letter-19', 1, 0],
+    ['space-character-32', 2, 2],
+  ] as const)('%s', (id, op, tran) => {
+    const section = sections('traps.md').get(id)!;
+    expect(section).not.toContain('(no rawfile data)');
+    expect([count(section, OP), count(section, TRAN)]).toEqual([op, tran]);
+  });
+
+  it('"(no rawfile data)" is left in traps.md only where ngspice writes no results file at all (non-ascii-node-4, -14)', () => {
+    const left = [...sections('traps.md')].filter(([, text]) => text.includes('(no rawfile data)')).map(([id]) => id);
+    expect(left).toEqual(['non-ascii-node-4', 'non-ascii-node-14']);
+  });
+});
