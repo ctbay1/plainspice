@@ -121,10 +121,11 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   file and are corrected with them. Their netlists are given in words there ("Cikis2 in the formulas", "a .func
   with words of its own"), so the ones re-run are those whose printout matches the record line for line
   (`Cikis2` in both formulas, the parts left on `çıkış`; `.func vd(a,b) {v(a)-v(b)}` read as `vd(çıkış,0)`).
-  The other "(no rawfile data)" lines (non-ascii-node-4 and -14, and 22 in numbers-and-syntax.md) were re-run
-  too: ngspice writes no file there, so they stay. The records cannot be run
-  in a test, so `tests/unit/facts-records.test.ts` pins them: each corrected fact's lines, and that "(no rawfile
-  data)" is left in traps.md only in non-ascii-node-4 and -14 (9 tests, which fail on 3e61833).
+  The other "(no rawfile data)" lines were re-run too, and ngspice writes no file there: in traps.md the two
+  (non-ascii-node-4, -14) now say "(no rawfile)", the words traps.md gives no file since the last pass (3ecf938;
+  the skeptic of the problem), and the 22 in numbers-and-syntax.md keep the folder's older words. The records
+  cannot be run in a test, so `tests/unit/facts-records.test.ts` pins them: each corrected fact's lines, and that
+  traps.md says "(no rawfile data)" nowhere (9 tests, which fail on 3e61833).
 - **A run with a results file is recorded with what it prints** (integration check P5). 43 variant runs of 13
   traps.md facts added the same day (nbsp-7, missing-fields-10 twice, fatal-syntax-17, unknown-word-53 twice,
   non-ascii-node-19, -21, space-character-25 nine times, -26 fourteen times, -27 seven times, -29 twice, -30, -31,

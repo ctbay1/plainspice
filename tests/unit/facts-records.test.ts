@@ -159,9 +159,10 @@ describe('P6 (integration check, 14 November 2026): a header-only results file i
     expect([count(section, OP), count(section, TRAN)]).toEqual([op, tran]);
   });
 
-  it('"(no rawfile data)" is left in traps.md only where ngspice writes no results file at all (non-ascii-node-4, -14)', () => {
+  it('traps.md never says "(no rawfile data)": "(no rawfile)" where ngspice writes no file (non-ascii-node-4, -14), a header-only plot where it writes one', () => {
     const left = [...sections('traps.md')].filter(([, text]) => text.includes('(no rawfile data)')).map(([id]) => id);
-    expect(left).toEqual(['non-ascii-node-4', 'non-ascii-node-14']);
+    expect(left).toEqual([]);
+    for (const id of ['non-ascii-node-4', 'non-ascii-node-14']) expect(sections('traps.md').get(id), id).toContain('    rawfile: (no rawfile)');
   });
 });
 

@@ -13602,7 +13602,7 @@ ngspice 47, ngspice -b (exit 1):
     Error: no data saved for D.C. Transfer curve analysis; analysis not run
     doAnalyses: not found
     run simulation(s) aborted
-    rawfile: (no rawfile data)
+    rawfile: (no rawfile)
 ngspice 42, ngspice -b (exit 1):
     Warning from checkvalid: vector çıkış is not available or has zero length.
     Error: no data saved for D.C. Transfer curve analysis; analysis not run
@@ -14154,7 +14154,7 @@ ngspice 47, ngspice -b (exit 1), no "can't parse":
     Error: .print: no dc analysis found.
   ngspice -b -r out.raw (exit 1): the same two errors, then
     .print line ignored since rawfile was produced.
-    rawfile: (no rawfile data)
+    rawfile: (no rawfile)
 ngspice 42: the same printout and exit codes as ngspice 47
 our engine (wasm), as ngspice -b -r (exit 1, no results):
     Error: no data saved for D.C. Transfer curve analysis; analysis not run
