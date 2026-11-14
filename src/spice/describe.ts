@@ -2972,6 +2972,20 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
   const { ex, sweep, swept, tree, den, a, b, c, xs, n, forms, factor, kinds, shapeAt, freeEverywhere, specialX, specialPoints, checks } = plan;
   const { model } = ex;
   const kindOf = (j: number): 'voltage' | 'current' => (kinds[j]!.kind === 'voltage' ? 'voltage' : 'current');
+  // The value a point stands for. A point at the .op's own value of the swept source, bit for bit, or at the very double of
+  // the decimal its steps say (start + k·step), is that value, as the .op is judged at the netlist's decimals (exact.ts
+  // READ_ULPS); only a point that drifted from both is judged at ngspice's own x (the integration check: ".dc V1 0 0.3 0.15"
+  // ends at 0.3's double, where V2, idle at 300 mV, carries no current, and the page drew −3.701e-21 A there, the circuit at
+  // 0.29999999999999998890 V, beside the .op's "V2: no current").
+  const own = swept ? opStatePoints(netlist, results)?.target : undefined;
+  const start = swept && sweep.start ? readExact(sweep.start.text) : undefined;
+  const step = swept && sweep.step ? readExact(sweep.step.text) : undefined;
+  const standsFor = (k: number): Fraction => {
+    const x = xs[k]!;
+    if (swept && x === own) return swept.value;
+    const meant = start && step ? add(start, mul(fraction(BigInt(k)), step)) : undefined;
+    return meant && toDouble(meant) === x ? meant : fromDouble(x);
+  };
   /** No current anywhere at ngspice's x (still): every part's current, a + b·s of the unknowns, exactly 0 there, every diode at 0 A. */
   const stillAt = (x: Fraction): boolean => {
     const zero = (i: number): boolean => a[i]! * x.d + b[i]! * x.n === 0n;
@@ -3026,7 +3040,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     for (const [root, x] of specialX) shapes.set(root, ex.diodes ? shapeAt(x, alike) : everywhere);
     let scale: { voltage: number; current: number } | undefined;
     for (const k of checks) {
-      const x = fromDouble(xs[k]!);
+      const x = standsFor(k);
       const shape = shapes.get(xs[k]!) ?? everywhere;
       if (checkCost(ex) > budget.left) return undefined;
       /** At rest there (atRest): each voltage within ANSWER_FLOOR of its exact value, of vntol or of the sweep's largest, each current within ANSWER_FLOOR of abstol or of the sweep's largest. */
@@ -3128,8 +3142,8 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     /** True when a class of diodes free in `shape` changes this series. */
     const changes = (shape: DiodeStructure): boolean => shape.classes.some((cls) => cls.reduce((acc, t) => acc + (cs[t] ?? 0n), 0n) !== 0n);
     const values = s.values;
-    /** ngspice's x where a + b·s is exactly 0, when there is one (b not 0, and −a/b a double). */
-    let root: number | undefined;
+    /** The points where a + b·s is exactly 0 at the value each stands for (standsFor), when there are any (b not 0). */
+    let roots: ReadonlySet<number> = new Set();
     if (!changes(everywhere)) {
       if (pair === null || (pair[0] === 0n && pair[1] === 0n)) {
         // Marked only where ngspice gave a number somewhere (it gives a capacitor's 0 as 0).
@@ -3143,10 +3157,14 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
       } else if (pair[1] !== 0n) {
         const [p, q] = pair;
         const r = toDouble(q < 0n ? { n: p, d: -q } : { n: -p, d: q });
-        const x = Number.isFinite(r) ? fromDouble(r) : undefined;
-        if (x && p * x.d + q * x.n === 0n) {
-          root = r;
-          const points = atX(r).filter((k) => values[k] !== 0 && Number.isFinite(values[k]!));
+        if (Number.isFinite(r)) {
+          // −a/b's nearest double, and the .op's own value where −a/b is the netlist's value: a point there is 0 where the
+          // value it stands for is −a/b exactly.
+          const at0 = (s: Fraction): boolean => p * s.d + q * s.n === 0n;
+          const near = swept && own !== undefined && own !== r && at0(swept.value) ? [...atX(r), ...atX(own)].sort((u, v) => u - v) : atX(r);
+          const found = near.filter((k) => at0(standsFor(k)));
+          if (found.length) roots = new Set(found);
+          const points = found.filter((k) => values[k] !== 0 && Number.isFinite(values[k]!));
           if (points.length) {
             zero.set(j, points);
             for (const k of points) needs.push({ shape: shapeOf(k), cs });
@@ -3192,7 +3210,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     for (let k = 0; k < n; k++) {
       const v = values[k]!;
       if (v === 0) zeros += 1;
-      else if (Math.abs(v) <= near && xs[k] !== root && nearPoints.length < NEAR_POINTS) nearPoints.push(k);
+      else if (Math.abs(v) <= near && !roots.has(k) && nearPoints.length < NEAR_POINTS) nearPoints.push(k);
     }
     const fixed: { k: number; v: number }[] = [];
     for (const k of nearPoints) {
@@ -3205,7 +3223,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const exact = new Float64Array(zeros);
     let found = 0;
     for (let k = 0; k < n; k++) {
-      if (values[k] !== 0 || xs[k] === root) continue;
+      if (values[k] !== 0 || roots.has(k)) continue;
       let v: number | undefined;
       if (exactLeft <= 0 && k !== n - 1) {
         if (alpha === undefined) {
@@ -4630,6 +4648,28 @@ const namesCache = new WeakMap<AnalysisResults, { netlist: Netlist; names: Point
 /** The significant digits that give back the very double (its shortest decimal), at most 17. */
 const digitsOf = (x: number): number => Math.min(17, Math.max(1, Math.abs(x).toExponential().split('e')[0]!.replace('.', '').length));
 
+/**
+ * A value by its shortest decimal, the very double, with the unit and the prefix formatSI and speakSI give: the prefix moves
+ * the decimal point in those digits, never divides by its power of ten, which drops or changes the last digits (the
+ * integration check: 0.0045000000000000005 A read "4.5 mA" and 0.30000000000000004 V "300.00000000000006 mV", so a point named
+ * by ngspice's own value read "I1 = 4.5 mA, not 4.5 mA").
+ */
+function exactSI(v: number, unit: string, speech: boolean): string {
+  const digits = digitsOf(v);
+  const [m, e] = Math.abs(v).toExponential(digits - 1).split('e') as [string, string];
+  const power = Number(e);
+  const eng = Math.floor(power / 3) * 3;
+  if (v === 0 || !Number.isFinite(v) || digits === 1 || eng < -18 || eng > 12) return speech ? speakSI(v, unit, digits) : formatSI(v, unit, digits);
+  const all = m.replace('.', '');
+  const before = power - eng + 1;
+  const mantissa = all.length > before ? `${all.slice(0, before)}.${all.slice(before)}` : all.padEnd(before, '0');
+  // The prefix and the unit as they are written for a value of that size, plural (the mantissa is never 1 here).
+  const probe = speech ? speakSI(2 * 10 ** eng, unit) : formatSI(2 * 10 ** eng, unit);
+  const space = speech ? ' ' : '\u00a0';
+  const suffix = probe.includes(space) ? probe.slice(probe.indexOf(space) + 1) : '';
+  return `${v < 0 ? (speech ? 'minus ' : MINUS) : ''}${mantissa}${suffix ? `${space}${suffix}` : ''}`;
+}
+
 function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
   const cached = namesCache.get(results);
   if (cached?.netlist === netlist) return cached.names;
@@ -4657,13 +4697,15 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
       // The value the point's label stands for: the .op's, for a point found near its state (the very double the check
       // compared it with: "3.3" is 3.3000000000000003 V in ngspice's .op, a9761-1361); else the steps'. Only where ngspice's
       // x drifted from it (adding up the step: at that very double the point is where the steps say, as any value of the
-      // netlist is, exact.ts READ_ULPS), and the label still reads as it ("9 V" for 8.999999999999853 V; "−55.51 aV" for a
-      // point meant to be 0 V already says where it is).
+      // netlist is, exact.ts READ_ULPS) and from the .op's own value (at that value bit for bit the point is it, as
+      // findSweepNoise judges it: ".dc I1 0 0.0045 0.03m" ends at ngspice's own 4.5m, 0.0045000000000000005, and was named
+      // "I1 = 4.5 mA, not 4.5 mA", the integration check), and the label still reads as it ("9 V" for 8.999999999999853 V;
+      // "−55.51 aV" for a point meant to be 0 V already says where it is).
       const exact = failed ? (states?.target === undefined ? undefined : fromDouble(states.target)) : at;
       const meant = exact && toDouble(exact);
       const x = xs[k]!;
       let found: Otherwise | undefined;
-      if (exact && meant !== x && formatSI(x, unit) === formatSI(meant!, unit)) {
+      if (exact && meant !== x && x !== states?.target && formatSI(x, unit) === formatSI(meant!, unit)) {
         // Where the exact solution is this run's circuit (exactRun) and follows the sweep, it tells whether the drift changes
         // a value to the page's digits; a point that shows otherwise than the .op for another reason shows ngspice's own
         // rounding, which the warning that its answers are off names (a9761-156: V1's −499.6 aA there, −506.5 aA in the .op,
@@ -4681,8 +4723,7 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
     const x = xs[k]!;
     const w = sw ? why(k) : undefined;
     if (w) used.set(k, w);
-    const digits = w ? digitsOf(x) : 4;
-    const v = speech ? speakSI(x, unit, digits) : formatSI(x, unit, digits);
+    const v = w ? exactSI(x, unit, speech) : speech ? speakSI(x, unit) : formatSI(x, unit);
     return !sw || sw.kind === 'temperature' ? v : speech ? S.sweepAtSpeech(sweepName(sw), v) : S.sweepAt(sweepName(sw), v);
   };
   const names: PointNames = {
@@ -4691,7 +4732,7 @@ function sweepNames(netlist: Netlist, results: AnalysisResults): PointNames {
     state: (k) => {
       if (!states || states.exact(k) || states.target === undefined) return S.opStateExact(names.text(k));
       const first = sweeps[0]!;
-      return S.opStateNearest(formatSI(states.target, unit), sw ? formatSI(xs[k]!, unit, digitsOf(xs[k]!)) : names.text(k), sweepValue(first, first.stepValue, first.step?.text));
+      return S.opStateNearest(formatSI(states.target, unit), sw ? exactSI(xs[k]!, unit, false) : names.text(k), sweepValue(first, first.stepValue, first.step?.text));
     },
     used,
     step: sw ? sweepValue(sw, sw.stepValue, sw.step?.text) : '',
@@ -4812,7 +4853,7 @@ function sweepPointNote(netlist: Netlist, results: AnalysisResults): MessageWord
   const unit = dc.scale.unit;
   // Each value by its shortest decimal, the very double: "is 3.3 V, not 3.3000000000000003 V" (the .op's own V1), never
   // "is V1 = 3.3 V, not 3.3 V".
-  const shortest = (v: number): string => formatSI(v, unit, digitsOf(v));
+  const shortest = (v: number): string => exactSI(v, unit, false);
   // "its last point is 8.999999999999853 V, 147.4 fV short of 9 V": how far ngspice's x is from the value it was meant to be at, exactly.
   const words = used.slice(0, NOTE_LIST).map(([k, w]) => S.pointItem(k === last, k, shortest(dc.scale.values[k]!), formatSI(Math.abs(w.gap), unit), w.gap > 0, shortest(w.meant)));
   const [k0, why] = used[0]!;

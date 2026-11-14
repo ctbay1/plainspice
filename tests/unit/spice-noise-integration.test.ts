@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import createNgspice from '../../engine/dist/ngspice.mjs';
 import { solveText } from '../../src/app/model.ts';
 import { NgspiceEngine, type NgspiceFactory } from '../../src/engine/ngspice.ts';
-import { roundingNoise, type ResultsInWords } from '../../src/spice/describe.ts';
+import { roundingNoise, shownSweep, type ResultsInWords } from '../../src/spice/describe.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 let ngspice: NgspiceEngine;
@@ -51,4 +51,54 @@ describe('by the rule, a wire\'s current that ngspice gives as exactly 0 stays n
     const short = await solveText(chain(149), ngspice);
     expect([text(short.words, 'R1'), text(short.words, 'R149'), message(short.words, 'rounded-to-0')]).toEqual(['no current through R1', 'no current through R149', undefined]);
   }, 120_000);
+});
+
+describe('a sweep\'s point at the .op\'s own value of the swept source, bit for bit, or at the very double of the decimal its steps say, is that value, as the .op is judged at the netlist\'s decimals', () => {
+  const sweepText = (r: Awaited<ReturnType<typeof solveText>>): string => sp(r.words.sweeps[0]!.text);
+  const last = (r: Awaited<ReturnType<typeof solveText>>, name: string): number => {
+    const s = shownSweep(r.netlist, r.results)!.series.find((x) => x.name === name)!.values;
+    return s[s.length - 1]!;
+  };
+
+  it('vlost: ".dc V1 0 0.3 0.15" ends at 0.3\'s double, 0.29999999999999998890, where V2, idle at 300 mV, carries no current: ngspice\'s 0 there is shown as 0 A, never −3.701e-21 A (the circuit at that double) with "Solved exactly … none of them is 0" beside the .op\'s "no current"', async () => {
+    const r = await solveText(netlist('V1 a 0 0.3', 'R1 a b 1k', 'R2 b 0 1k', 'V2 c 0 0.15', 'R3 b c 1k', '.op', '.dc V1 0 0.3 0.15'), ngspice);
+    // ngspice's .op reads 0.3 as 0.30000000000000004; the sweep adds 0.15 twice and lands on 0.3's own double.
+    expect([r.results.op!.nodes.find((n) => n.node === 'a')!.value, r.results.dc!.scale.values[2]]).toEqual([0.30000000000000004, 0.3]);
+    expect([by(r), text(r.words, 'V2')]).toEqual(['exact', 'no current through V2']);
+    expect(sweepText(r)).toContain('At V1 = 300 mV: v(a) = 300 mV, v(b) = 150 mV, v(c) = 150 mV, i(v2) = 0 A, i(v1) = −150 µA');
+    expect([message(r.words, 'rounded-to-0'), last(r, 'i(v2)')]).toEqual([undefined, 0]);
+  });
+
+  it('is3: ".dc I1 0 1m 0.5m" ends at the .op\'s own 1 mA, where V2 carries no current: "At I1 = 1 mA: … i(v2) = 0 A", never 1.041e-20 A', async () => {
+    const r = await solveText(netlist('I1 0 a 1m', 'R1 a 0 1k', 'V2 b 0 1', 'R2 a b 1k', '.op', '.dc I1 0 1m 0.5m'), ngspice);
+    expect(sweepText(r)).toContain('At I1 = 1 mA: v(a) = 1 V, v(b) = 1 V, i(v2) = 0 A,');
+    expect([message(r.words, 'rounded-to-0'), last(r, 'i(v2)')]).toEqual([undefined, 0]);
+  });
+
+  it('dr-81: ".dc V1 0 1.2 0.6" ends at ngspice\'s own 1.2 V of the .op, 1.2000000000000002, where ngspice gives V2 the very 1.084e-19 A the .op shows as rounding noise: the sweep shows 0 there too, with the noise note at "V1 = 1.2 V", never "1.2000000000000002 V, not 1.2 V" with 42.29 zA drawn beside the .op\'s 0', async () => {
+    const r = await solveText(netlist('V1 a 0 1.2', 'R1 a b 2.2k', 'R2 b 0 2.2k', 'V2 c 0 0.6', 'R3 b c 1k', '.options savecurrents', '.op', '.dc V1 0 1.2 0.6'), ngspice);
+    expect(r.results.dc!.scale.values[2]).toBe(1.2000000000000002);
+    expect(r.results.dc!.series.find((s) => s.name === 'i(v2)')!.values[2]).toBe(r.results.op!.currents.find((c) => c.element === 'v2')!.value);
+    expect([text(r.words, 'V2'), last(r, 'i(v2)'), message(r.words, 'sweep-point'), message(r.words, 'exact-digits')]).toEqual(['no current through V2', 0, undefined, undefined]);
+    expect(message(r.words, 'rounding-noise')).toBeDefined();
+    expect(sweepText(r)).toContain('At V1 = 1.2 V: v(a) = 1.2 V, v(b) = 600 mV, v(c) = 600 mV, i(v2) = 0 A,');
+    expect(r.words.warnings.filter((m) => m.code === 'rounding-noise').map((m) => sp(m.why)).join(' ')).toContain('ngspice gave i(v2) 1.084202e-19 A at V1 = 1.2 V and i(@r3[i]) 1.110223e-19 A at V1 = 1.2 V. Those are rounding noise');
+  });
+
+  it('dr-380: ".dc I1 0 0.0045 0.03m" ends at ngspice\'s own 4.5m of the .op, 0.0045000000000000005: the point is the .op\'s 4.5 mA, with V2\'s 0, and no note names it otherwise (it read "I1 = 4.5 mA, not 4.5 mA", with i(v2) 4.047e-19 A)', async () => {
+    const r = await solveText(netlist('I1 0 a 4.5m', 'R1 a 0 3.3k', 'V2 b 0 14.85', 'R2 a b 1k', '.options savecurrents', '.op', '.dc I1 0 0.0045 0.03m'), ngspice);
+    expect(r.results.dc!.scale.values[150]).toBe(0.0045000000000000005);
+    expect(sweepText(r)).toContain('At I1 = 4.5 mA: v(a) = 14.85 V, v(b) = 14.85 V, i(v2) = 0 A,');
+    expect([message(r.words, 'sweep-point'), message(r.words, 'rounded-to-0'), last(r, 'i(v2)')]).toEqual([undefined, undefined, 0]);
+  });
+
+  it('a point that drifted from both is still named by ngspice\'s own value, now with that value\'s own digits: ".dc I1 0 1.2m 0.1m" ends at 0.0012000000000000003, past the .op\'s 0.0012000000000000001, and reads "I1 = 1.2000000000000003 mA", never "1.2000000000000004 mA" (formatSI\'s division by the prefix changed the last digit)', async () => {
+    const r = await solveText(netlist('I1 0 a 1.2m', 'R1 a 0 1k', 'V2 b 0 1.2', 'R2 a b 1k', '.options savecurrents', '.op', '.dc I1 0 1.2m 0.1m'), ngspice);
+    expect(r.results.dc!.scale.values[12]).toBe(0.0012000000000000003);
+    expect(sweepText(r)).toContain('At I1 = 1.2000000000000003 mA: v(a) = 1.2 V, v(b) = 1.2 V, i(v2) = 1.643e-19 A,');
+    expect(sp(r.words.sweeps[0]!.speech)).toContain('When I1 is 1.2000000000000003 milliamps: ');
+    expect(message(r.words, 'sweep-point')).toBe(
+      "The DC sweep's last point is I1 = 1.2000000000000003 mA, not 1.2 mA: ngspice adds the step, 100 µA, to I1 once a point, in doubles (about 16 significant digits), so its points drift from the values the steps say: its last point is 1.2000000000000003 mA, 3.286e-19 A past 1.2 mA. There the circuit makes i(v2) 1.643e-19 A, where at 1.2 mA it makes 0 A. So PlainSpice names that point by ngspice's own value.",
+    );
+  });
 });
