@@ -834,7 +834,8 @@ test that fails without it (`tests/unit/integration-check-subckt.test.ts`, golde
   later reading step stops at an `E1 c 0 VALUE=3` there ("mal formed E source instance", native 47 and 42,
   an-skip-nested-after and an-skip-nested-deep), where the P1 fix called the line skipped and dropped its
   error. Now no line is called skipped when any `.subckt` or `.macro` line opens inside another, as with a
-  `.if` line: the checks and Explain stay as they were on the frozen build. The critic's other way, copying
+  `.if` line: those lines' checks and Explain's words for them stay as they were on the frozen build (an
+  analysis line there keeps A3f's note). The critic's other way, copying
   ngspice's flag and its first-`.ends` rule, was left: more code, so the riskier change in the last round.
   The cost is the `.if` guard's: a `.foo` in a subcircuit nothing uses that holds a definition of its own
   is still called an error that stops ngspice, while ngspice runs (an-skip-nested-foo), left for after the

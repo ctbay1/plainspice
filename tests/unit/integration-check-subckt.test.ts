@@ -214,11 +214,12 @@ describe('the round-1 critic of these fixes: what ngspice reads first there, nes
     }
     expect(explainLine(parseNetlist(inS('.dc V1 0 1 x')), 6)!.fields.find((f) => f.text === 'x')?.meaning).toBe('not a number for SPICE');
     // In the main circuit the same lines keep their words: there ngspice 47 stops ("Bad syntax!"), and a check says so.
+    expect(ids(`${BASE}.dc V1 0 1 x\n.end\n`)).toEqual(['dc-sweep-problems']);
     const main = parseNetlist(`${BASE}.dc V1 0 1 x\n.end\n`);
     expect([explainLine(main, 4)!.summary, explainLine(main, 4)!.fields.find((f) => f.text === 'x')?.meaning]).toEqual(['ngspice 47 stops at this line ("Bad syntax!") and sweeps nothing: see Checks.', 'not a number for SPICE (see Checks)']);
   });
 
-  it('C1-2: with a definition inside another, every check stays as before, as ngspice\'s list of the subcircuits used differs there: E1 a 0 VALUE=3 in a subcircuit it keeps (native 47 and 42 stop: "mal formed E source instance")', () => {
+  it('C1-2: with a definition inside another, every check stays as before, as ngspice\'s list of the subcircuits used differs there: E1 c 0 VALUE=3 in a subcircuit it keeps (native 47 and 42 stop: "mal formed E source instance")', () => {
     // An X line after an inner .ends counts as the main circuit's: ngspice keeps other, which only X2 uses.
     const after = `${BASE}.subckt outer p q\n.subckt inner a b\nR9 a b 1k\n.ends\nX2 p q other\n.ends\n.subckt other c d\nR5 c d 1k\nE1 c 0 VALUE=3\n.ends\n.op\n.end\n`;
     // ngspice reads X1's subcircuit up to its first .ends, inner's: it keeps deep, which only X9 in inner uses.
