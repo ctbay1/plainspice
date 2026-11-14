@@ -756,9 +756,12 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   skeptic of the problem found the same message misquoted on sources: `V1 n2 0 dc 5 p`, `V1 n2 0 5 i`,
   `I2 0 n1 1 p` and `I2 0 n1 1 v` got "unknown parameter (p)", where native 47 and 42 say "no such
   parameter on this device…", as V's i and p and I's v and p are values the source can only report;
-  the checks now say so (`SOURCE_REPORTS` in `src/spice/traps.ts`: the parser's tables, which the
-  editor's highlighting shares, are left as they are), from runs recorded beside space-before-suffix-12
-  and unknown-word-6. We chose naming each version over the skeptic's other way, quoting under plain
+  the checks now say so, from the source tables of `src/spice/parse.ts` (`isReportOnlyParameter`, which
+  Explain reads too), since the round-1 critic's C4 below. This fix first gave the checks a table of their
+  own in `src/spice/traps.ts` and left the parser's tables as they were; an earlier version of this bullet
+  still said so (corrected after the integration check, X6). The runs are recorded as
+  space-before-suffix-20 and unknown-word-57 (first beside space-before-suffix-12 and unknown-word-6). We
+  chose naming each version over the skeptic's other way, quoting under plain
   "ngspice" only the words both versions print ("no such parameter on this device", "no simulations
   run"), which is shorter: the texts beside these already name each version where the two differ
   (invisible-character-46 with this very message, the .dc checks, zero-ohm), the ngspice output panel
@@ -911,3 +914,13 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   (`src/spice/explain.ts`, unchanged since fix-base) still say for −3e-18 "ngspice accepts a negative resistance
   without a message" and "ngspice 47 raises a resistance below 10⁻¹² Ω to 10⁻¹² Ω", where ngspice 47 warns and
   uses −10⁻¹² Ω, and for 0 "the currents next to it come out inaccurate".
+- **The records say where the code is** (integration check X6). The F10 bullet above named a table of the checks'
+  own in `src/spice/traps.ts`, SOURCE_REPORTS, and said the parser's tables were left as they were; its own C4/C5
+  bullet had since moved those values into the parser's source tables (`isReportOnlyParameter` in
+  `src/spice/parse.ts`), and no such table is left. The bullet now says where they are, keeping what the first fix
+  did, as this record does elsewhere. The facts README had no section for the noise lane's facts of the last pass
+  (C8b, C9w to C9w.14, C9x to C9x.6, C9y to C9y.6, and the C9 records it changed); it has one now, after the other
+  lanes' sections. Tests: `tests/unit/facts-records.test.ts` checks that each code name written in backticks in a
+  decision record's sections after the last pass is in the code (43 names here; on 3e61833 it finds that table's
+  name missing), and that the README names every C8b, C9w, C9x and C9y fact of explanations.md, by itself or in a
+  range (on 3e61833, all 27 are missing).

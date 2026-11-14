@@ -309,3 +309,28 @@ lines, and the `.hdl` and `.biaschk` lines ngspice 47 drops; not after a `*`, `$
 and in a `.control` block a `$` starts a comment only before a blank (on every line when the `.control` and
 `.endc` lines are not as many). The note and Explain's `.op` note follow these rules too.
 
+
+## The last pass of 13 November 2026 (the noise lane)
+
+Run the same way on 13 November 2026 (native ngspice 47 and 42, `-b` and `-b -r`, and our engine), each with
+rows in `tests/golden/facts-explain.test.ts`; decision 0015 records what each fix chose. In explanations.md: C8b
+(with savecurrents ngspice saves a current for each terminal of a transistor, named by its letters: a BJT's
+[ic], [ib], [ie] and [is], its substrate's, where a MOSFET's or a JFET's [is] is its source's; the model's own
+quantities), and C9w to C9w.14 (a .temp line, a DC value beside a transient function or m=1 leave every double as
+it is, so such circuits are solved exactly; a source whose only partner at a node is a resistor ngspice gives
+exactly 0 A carries 0 by the rule too; a node proven real proves the current of a resistor from it to ground; no
+floor excuses a value drawn with other digits than its exact value; what ngspice's arithmetic can leave grows with
+how far apart the circuit's conductances are; with a .save line that keeps only some values, the page's digits
+alone; beside a diode, the rule's note for the tiny values it cannot tell from noise; a .tf ratio is judged as the
+.op beside it; a sweep's point at the .op's own state shows what the .op shows). After the round-1 critic of those
+fixes: C9x to C9x.6 (an amplifier's gain counted in the check that ngspice simulated this circuit; conductances
+further apart than the largest double; a `+` line after `.end` that makes ngspice's circuit another one, decided
+by the rule; a sweep's point at the .op's state found within its step's rounding; a .tf beside the rule's .op
+gets a note; a .control block that only runs, modelled exactly). After the round-2 critic: C9y to C9y.6 (a sweep's
+point named by ngspice's own value where a value there reads otherwise than at the value its steps say, and what
+its note says; near a series' own 0 the page draws the exact digits; each part of the circuit gets its own
+allowance in that check). Records changed: C9o.5 and C9r.3 write ngspice's own gmin (`.options gmin=1e-12`, the
+same doubles) where they had a `.temp 27` line, which PlainSpice now models exactly; C9d, C9l, C9o.4, C9t.3 and
+C9t.7 say what the exact path and the rule do since these fixes. This section was added after the integration
+check of 14 November 2026 (X6): the noise lane had recorded them in explanations.md and decision 0015 only.
+

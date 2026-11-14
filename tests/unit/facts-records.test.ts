@@ -190,3 +190,61 @@ describe('P5 (integration check, 14 November 2026): a run with a results file is
     expect(section).not.toContain('(exit null)');
   });
 });
+
+describe('X6 (integration check, 14 November 2026): the records name code that exists, and the facts README indexes the noise lane’s facts', () => {
+  const repo = resolve(import.meta.dirname, '../..');
+  /** The text of every source file (not generated ones, nor this file, which names no code to be found). */
+  function code(): string {
+    const out: string[] = [];
+    const walk = (folder: string): void => {
+      for (const entry of readdirSync(join(repo, folder), { withFileTypes: true })) {
+        const path = `${folder}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (!['node_modules', 'dist', '.engine-work'].includes(entry.name)) walk(path);
+        } else if (/\.(ts|tsx|mjs|js|sh)$/.test(entry.name) && path !== 'tests/unit/facts-records.test.ts') {
+          out.push(readFileSync(join(repo, path), 'utf8'));
+        }
+      }
+    };
+    for (const folder of ['src', 'tests', 'scripts', 'engine']) walk(folder);
+    for (const file of ['vite.config.ts', 'playwright.config.ts']) out.push(readFileSync(join(repo, file), 'utf8'));
+    return out.join('\n');
+  }
+
+  it('each code name in backticks in the decision records’ sections after the last pass is in the code', () => {
+    // A constant (CAPITALS_WITH_UNDERSCORES) or a function or variable name (camelCase). Decision 0012 named a table
+    // that its own later bullet had moved into parse.ts (isReportOnlyParameter).
+    const name = /^(?:[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)+)$/;
+    const decisions = resolve(repo, 'docs/decisions');
+    const text = code();
+    const named: string[] = [];
+    const missing: string[] = [];
+    for (const file of readdirSync(decisions).filter((f) => f.endsWith('.md'))) {
+      let on = false;
+      for (const line of readFileSync(join(decisions, file), 'utf8').split('\n')) {
+        if (line.startsWith('## ')) on = /^## After (the last pass|the integration check)/.test(line);
+        if (!on) continue;
+        for (const [, word] of line.matchAll(/`([^`]+)`/g)) {
+          if (!name.test(word!)) continue;
+          named.push(word!);
+          if (!text.includes(word!)) missing.push(`${file}: ${word}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+    expect(named.length).toBeGreaterThan(30);
+  });
+
+  it('the facts README names C8b and each C9w, C9x and C9y fact of explanations.md, by itself or in a range', () => {
+    const readme = read('README.md');
+    const labels = new Set([...read('explanations.md').matchAll(/\bC9[wxy](?:\.\d+)?\b|\bC8b\b/g)].map((m) => m[0]));
+    const named = (label: string): boolean => {
+      if (readme.includes(label)) return true;
+      const [family, n] = label.split('.');
+      // "C9w to C9w.14" names C9w.2 to C9w.14.
+      return [...readme.matchAll(new RegExp(`\\b${family} to ${family}\\.(\\d+)`, 'g'))].some((m) => Number(n) <= Number(m[1]));
+    };
+    expect([...labels].filter((label) => !named(label))).toEqual([]);
+    expect(labels.size).toBeGreaterThan(25);
+  });
+});
