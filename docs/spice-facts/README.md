@@ -262,8 +262,8 @@ After the round-1 critic of those fixes (the same day, the same versions and mod
 stops it or makes it warn" was not so for every line, and now names them: a `.probe` there adds the
 currents it names to the results and a `.title` names the run, as ngspice reads both first; a line starting
 with `!` warns there too, and in ngspice 47 a `.hdl` or `.biaschk` line (dropped with a warning, wherever it
-is); and where a definition is inside another, ngspice's list of the subcircuits used is not the one A3f
-gives (an X line after an inner `.ends` counts as the main circuit's, and a used subcircuit's X lines count
+is); and where a definition is inside another, ngspice's list of the subcircuits used can differ from the
+one A3f gives (an X line after an inner `.ends` counts as the main circuit's, and a used subcircuit's X lines count
 only up to its first `.ends`), so an `E1 c 0 VALUE=3` in a subcircuit PlainSpice calls unused can stop it.
 A3i also gained a `.dc` with no step, a step of 0 or a word for the step there, a `.meas` there (no "No
 .measure possible" message), and `+` lines and a line that is no part there, which ngspice all skips.
