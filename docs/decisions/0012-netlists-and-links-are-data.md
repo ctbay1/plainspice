@@ -932,8 +932,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   (C8b, C9w to C9w.14, C9x to C9x.6, C9y to C9y.6, and the C9 records it changed); it has one now, after the other
   lanes' sections. Tests: `tests/unit/facts-records.test.ts` checks that each code name written in backticks in a
   decision record's sections after the last pass is in the code (43 names here; on 3e61833 it finds that table's
-  name missing), and that the README names every C8b, C9w, C9x and C9y fact of explanations.md, by itself or in a
-  range (on 3e61833, all 27 are missing).
+  name missing), and that the README names C8b and every C9 fact of explanations.md, by itself or in a range (on
+  3e61833, the 27 of C8b, C9w, C9x and C9y are missing).
 - **Where Explain's notes on a resistance this close to 0 begin, run and pinned** (the round-1 critic of these
   fixes, C1-1). Explain's notes for such a value start below 10⁻¹² Ω in size (`Math.abs(v) < 1e-12` in
   `src/spice/explain.ts`), and no test held that edge: with `<=` every test still passed, and Explain would say
@@ -949,3 +949,9 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   re-run in native 47 and 42 with P14's own netlist). The heading now says "such as −2 Ω", and a sentence says that
   one closer to 0 is the exception, as the introduction of explanations.md and Explain's notes do; P14's netlist,
   runs and golden row are unchanged. Test: `tests/unit/facts-records.test.ts` (fails on 3e61833).
+- **The README test reads every C9 label** (C1-2). It read only C8b, C9w, C9x and C9y, so a lane that adds C9
+  facts without the README's line for them passed it: the noise lane adds C9z to C9z.6 on its own branch this round,
+  and a scratch merge of its explanations.md with this branch passed the old test with those six unindexed. The
+  test now reads every C9 label in explanations.md, and a range may cross families, as "C9m to C9v.8" does; on that
+  merge it fails and names the six. They are not indexed here, as their facts are not on this branch: the README's
+  section for the noise lane needs a line for them when the lanes are merged.

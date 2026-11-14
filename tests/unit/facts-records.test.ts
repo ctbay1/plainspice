@@ -261,17 +261,27 @@ describe('X6 (integration check, 14 November 2026): the records name code that e
     expect(named.length).toBeGreaterThan(30);
   });
 
-  it('the facts README names C8b and each C9w, C9x and C9y fact of explanations.md, by itself or in a range', () => {
+  it('the facts README names C8b and every C9 fact of explanations.md, by itself or in a range, which may cross families ("C9m to C9v.8")', () => {
+    // Every C9 label, not only the noise lane's of the last pass (round-1 critic C1-2): a lane that adds C9 facts and
+    // not the README's line for them fails here once it is merged.
     const readme = read('README.md');
-    const labels = new Set([...read('explanations.md').matchAll(/\bC9[wxy](?:\.\d+)?\b|\bC8b\b/g)].map((m) => m[0]));
-    const named = (label: string): boolean => {
-      if (readme.includes(label)) return true;
-      const [family, n] = label.split('.');
-      // "C9w to C9w.14" names C9w.2 to C9w.14.
-      return [...readme.matchAll(new RegExp(`\\b${family} to ${family}\\.(\\d+)`, 'g'))].some((m) => Number(n) <= Number(m[1]));
+    const labels = new Set([...read('explanations.md').matchAll(/\bC9[a-z]*(?:\.\d+)?\b|\bC8b\b/g)].map((m) => m[0]));
+    /** A C9 label's place in order: its letters (none for C9 itself; fewer first, so aa would follow z), then its number (1 for a family's first fact). */
+    const place = (label: string): [number, string, number] => {
+      const [, letters, n] = /^C9([a-z]*)(?:\.(\d+))?$/.exec(label)!;
+      return [letters!.length, letters!, Number(n ?? 1)];
     };
+    const order = (a: string, b: string): number => {
+      const [x, y] = [place(a), place(b)];
+      return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || x[2] - y[2];
+    };
+    const END = '(?![a-z\\d]|\\.\\d)';
+    const ranges = [...readme.matchAll(new RegExp(`\\b(C9[a-z]*(?:\\.\\d+)?) to (C9[a-z]*(?:\\.\\d+)?)${END}`, 'g'))].map((m) => [m[1]!, m[2]!] as const);
+    const named = (label: string): boolean =>
+      new RegExp(`\\b${label.replace('.', '\\.')}${END}`).test(readme) ||
+      (label.startsWith('C9') && ranges.some(([from, to]) => order(from, label) <= 0 && order(label, to) <= 0));
     expect([...labels].filter((label) => !named(label))).toEqual([]);
-    expect(labels.size).toBeGreaterThan(25);
+    expect(labels.size).toBeGreaterThan(80);
   });
 });
 
