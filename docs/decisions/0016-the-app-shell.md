@@ -647,3 +647,130 @@ Ctrl+K stay as they are.
     over keying them as one node in the parser, which would change the drawing, the overview and the
     editor's names everywhere on release day; the drawing still shows such spellings apart until the
     fix. Different letters ngspice spells alike (ş and ç) stay the error.
+
+## After the integration check (14 November 2026)
+
+The integration check of the merged last-pass lanes found these in the names, formulas and renames; each
+was run in native ngspice 47 and 42 (`-b` and `-b -r`) and our engine, before and after its fix.
+
+- **A part between two spellings that differ only in capital letters** (X1). CR2-3 made every such group
+  one node with a warning that said "as this netlist means", also where a part has an end on each
+  (`R2 Çıkış çıkış 1k`): ngspice joins those ends, so R2 carried no current, a current source's 1 mA went
+  nowhere, a voltage source stopped ngspice ("instance v2 is a shorted VSRC") with no check before the run,
+  and the warning's one-name fix kept the short (`R2 Cikis Cikis 1k`), as did the drawing editor's rename,
+  which also renamed the other spelling unasked. Now a group where one part, outside subcircuits or after a
+  plain `.end`, has ends on two of its spellings is no alias (`caseAliases`): it stays the error of names
+  ngspice makes one ("It simulates a different circuit from the one written here"), whose fix gives each
+  spelling a plain name of its own (`Cikis` and `cikis2`: 6.667 V and 3.333 V, the circuit written), and
+  the drawing editor renames only the spelling picked (non-ascii-node-28). Chosen over the reviewer's
+  narrower change in the check's branch alone: the alias also drives the renames, which would have joined
+  the spellings again. A group with no part across stays CR2-3's warning. Left open: two voltage sources on
+  the two spellings with no part across get no voltage-loop check before the run (ngspice stops, and the
+  run's own words say why); and a part after `.end` is still not counted by the dangling-node check, so such
+  a part across the spellings also brings its "Only R1 touches node Çıkış" notes, as for any node there.
+- **The results name such a node as the parts write it** (P1, P7, noise-4). The checks gave a name only read
+  (`v(Çıkış)` in a formula, a `.func`, a `.pz`) and a group of case spellings to one node (CR1-1, CR2-3), but
+  the results did not: `describe.ts` mapped ngspice's `____k____` back to the netlist only when one key spelled
+  it so, so the summary said "node ____k____ = 5 V" where c520a49 said "node çıkış = 5 V", the drawing and
+  the cards lost the node's voltage, and the rounding-noise rule, keyed by the netlist's names, split a bridge's
+  node in two: Kirchhoff's law at çıkış saw R1 and R5 without R2 and drew R5's exact 0 as "8.882e-19 A" with
+  nothing said. Now `spellingsOf` follows the checks' owner rule (a name no part connects to adds no second
+  name for a spelling a name on parts has; a case spelling is its group's first, `caseAliases`, now exported
+  for it), and the rule keys a case group once. So the words, the drawing and the cards name the node çıkış,
+  or `Çıkış` when first written so, and R5 is 0 A with "its two ends … at the same voltage, 4.5 V"
+  (non-ascii-node-29). Chosen over keying the rule by ngspice's spellings: the drawing, the cards and the words
+  all key nodes by the netlist's names. Left open: with two spellings on part lines, the drawing still shows
+  them apart (CR2-3), so the second spelling's node, its parts' cards and a source's power there get no
+  voltage until the fix gives the node one name; a group with a part across stays as ngspice spells it, as
+  its error says the numbers are no answers.
+- **A fix's changes are applied in one pass** (X5). Since the renames reach every formula that reads a node
+  (C3-1), a fix can carry thousands of changes, and `applyFix` spliced them in one by one from the end, copying
+  the text for each: "Rename node çıkış to cikis" on a formula with 16,000 `v(çıkış)` (144 KB, a share link's
+  size) took 1,945 ms of processor time. It now builds the result from the pieces between the changes, in the
+  text's order (`applyTextChanges` in `src/spice/parse.ts`, which the drawing editor's `applyChanges` uses too,
+  decision 0017): 4 ms. At one place a later change's words still come first, as the splices gave them, and
+  changes that overlap, which no check makes, are spliced as before, so every result is the same (a test
+  compares 3,000 random sets of changes with the old splices).
+- **Explain says ngspice stops where it cannot read an E's or G's formula** (P2). Explain's words for a formula
+  (C3-5) did not know the checks' fatal-syntax errors: on `E1 e 0 VALUE=2*v(out)`, `VALUE=3`, `VALUE v(out)*2`,
+  `VALUE=-2*v(out)`, `cur=2m*v(out)` and on a node called value read as VALUE it said ngspice works the formula
+  out, turns the line into a B source and drops the word before it, beside the error that ngspice stops (and
+  "Native ngspice 47 runs it" for a POLY control node called value, and for an output node called value the
+  gain's "SPICE reads it as V(value) − V(0) = 2 × (V(mid) − V(0))"). The two rules the checks use now live in
+  `src/spice/parse.ts` (`formulaWithoutBraces`, and `valueAsNodeWord`, moved from `traps.ts` unchanged), and
+  Explain follows them: "ngspice can't read this formula without braces, so it stops before it simulates
+  anything (see the checks)", or that it reads value as VALUE and takes the words after it for a formula it
+  can't read; the rows say "part of the formula, which ngspice can't read here", and no B-source or
+  dropped-word note is given. Not on a line inside a subcircuit no X line uses, where ngspice skips it and runs
+  (fatal-syntax-21); there the subckt lane's words for skipped lines apply. A test holds Explain to the checks
+  on every E and G line of the facts' netlists. Left open: a no-break space right after `=` (space-character-25),
+  another check's error, still gets "ngspice works the formula out".
+- **No rename of ngspice's name for a node inside a subcircuit alone** (P2 of the regression lens). The checks of
+  odd characters in a node name (non-ascii-node, look-alike-letter, invisible-character, space-character, nbsp)
+  offered their rename for `x1.çıkış` on a `.tf` (decision 0017, C3-6), which changed the `.tf` alone: ngspice
+  then read a node nothing connects to (0 and 1 Ω), and a working circuit became the `.tf` check's error; and a
+  formula that reads `x1.çıkış` got the error that no part connects to it, though its node has the subcircuit's
+  parts and ngspice runs it. Now such a name (`innerNode`) keeps the warning, which says where the node is
+  ("x1.çıkış is ngspice's name for node çıkış of the subcircuit div (from line 4): a rename here alone would name
+  a node nothing connects to, so rename it on that subcircuit's lines and here together"), with no fix
+  (non-ascii-node-30). Chosen over renaming the node inside its subcircuit and every dotted name that reaches it
+  for the release: that rename must also keep the new name free in that subcircuit and its `.global` names, and
+  follow every X line that uses it (x1.çıkış, x2.çıkış, x1.x2.çıkış). Left open: that rename; and the older gap
+  that such a node gets no warning at all on the subcircuit's own lines unless a dotted name names it.
+
+The round-1 critic of these fixes found four more, each run the same way (14 November 2026):
+
+- **A { or ' never closed in a B, E or G formula.** The checks gave "A { is never closed … ngspice stops with
+  a fatal error: 'Closing "}" not found in line fragment'" for any open brace or quote, on the strength of a
+  resistor's value (fatal-syntax-1, -2), so the status called the numbers no answers. A B line's formula after
+  V= or I=, and an E's or G's after VALUE, vol= or cur=, which ngspice makes a B source, are read to the end of
+  the line with their braces dropped: native 47 and 42 run them as if they were closed, with no message
+  (fatal-syntax-22). Now an open { or ' there is no error (`inLineFormula` in `traps.ts`), and Explain's
+  "ngspice works the formula out" stands; a name no `.param` defines in it is still the error (native:
+  'Undefined parameter [gain]'). A gain, POLY's numbers, a TABLE and a resistor's or a source's value keep
+  the error. Chosen over a warning: ngspice reads the formula as it was meant, without a word. Left open: on
+  two rare lines where ngspice stops all the same, the error quotes another message than ngspice's: an open {
+  in a TABLE ('bad syntax in line …') and in a resistor's formula that reads a node voltage, `{1k+0*v(out)`
+  ('Undefined parameter [null]').
+- **A formula or an analysis that reads across two spellings that differ only in capital letters** (X1,
+  not covered). The error came back only where a part has ends on two spellings (part ends and E and G
+  control nodes); a line that reads across them, `B1 o 0 V=v(Çıkış,çıkış)` or `.tf v(Çıkış,çıkış) V1`, still
+  got CR2-3's warning ("as this netlist means"), and ngspice's 0 there (v(o) = 0 V; a transfer function of 0
+  and 0 Ω) showed as an answer, where c520a49 gave the error. Now `caseAliases` looks at every place a line
+  outside subcircuits names a spelling, a node's refs (part ends, formula reads, analyses' outputs; a
+  continuation line counts with its first line; a part after a plain `.end` as before), and a group named
+  twice on one line is no alias: the error, with its "Write … for …" fix (non-ascii-node-31). Chosen over the
+  narrower rule for v(a,b) in formulas and on `.tf` alone: one rule covers sums and differences, a value's
+  formula, `.func`, `.ic`, `.pz`, `.print` and `.save` alike, each a line that names the spellings as two
+  nodes; a line that names one of them keeps the warning. The scan no longer needs `subcircuitLines` (a
+  node's refs leave subcircuits' lines out), so `traps.ts` imports from `graph.ts` as at 3e61833.
+- **ngspice's name for a node inside a subcircuit, written with another capital letter** (P2 of the
+  regression lens, not covered). The warning without a rename reached only names `innerNode` finds, which
+  keys names by their ASCII letters: `x1.Çıkış` for the subcircuit's `çıkış` (both `x1.____k____` for
+  ngspice, one node: 0.5 and 500 Ω) still got "Rename node x1.Çıkış to x1.Cikis", which renames the `.tf`
+  alone (0 and 1 Ω), and a formula reading it got the error that no part connects to it (ngspice runs it:
+  10 V). Now, where `innerNode` finds nothing, the name's last words are matched by ngspice's spelling
+  against the nodes the subcircuits' own lines name (`innerNodeSpelled` in `traps.ts`, the checks' owner
+  rule), and such a name gets the same warning with no fix, both ways round and nested (non-ascii-node-32).
+  Chosen over the critic's more conservative "no rename for any dotted name whose first word is an X line":
+  that would also take the rename from a name that reaches no node at all, and could not say which node a
+  name reaches. Left open (the subckt lane's A3h, C3-6): `tf-problems` (".tf asks about node x1.Çıkış,
+  which is not in the circuit … 0 … 1 Ω"), the run's "x1.Çıkış is not a node of the circuit … these .tf
+  numbers mean nothing" and Explain's note "ngspice says nothing and reports a transfer function of 0" still
+  key such a name by its ASCII letters, so on that `.tf` they say ngspice reads a node with nothing on it,
+  where it reads the subcircuit's node and gives 0.5 and 500 Ω.
+- **An E's or G's output node called value on a line given by a formula** (older, found by the critic).
+  ngspice reads the first word value on an E or G line as VALUE (fatal-syntax-17, -20); on a formula line
+  (`E1 value 0 VALUE={2*v(out)}`, and after `vol=` or `cur=`) that word is an output node, and ngspice writes
+  vol (E) or cur (G) in its place without a message: E1's end is on a new node called vol (5 V) and node value
+  keeps 0 V; a G's current goes into a node cur nothing else connects to, and ngspice stops ('singular matrix:
+  check node cur'). There was no check, and Explain said the formula gives the voltage at node value. Now
+  `valueNodeMoved` (`parse.ts`) finds the word, the checks give a warning for an E, or an error for a G with
+  nothing on a node called cur, with the rename the value checks already offer ("Rename the node value to val";
+  made once in `valueRename`, now shared with `valueNodeTrap`), and Explain says ngspice writes vol or cur
+  there in place of the formula's sentence (fatal-syntax-23). Chosen over extending `valueAsNodeWord`, the
+  critic's first suggestion: that would have given these lines `valueNodeTrap`'s words, "E1 is the constant
+  {2*v(out)}" or "it stops", both false here, as ngspice runs the formula, on node vol. A warning, not an
+  error, for the E, as for fatal-syntax-20's braced constant: ngspice runs and says nothing. Left open: with a
+  part on a node called vol or cur, the dangling-node note ("Only Rv touches node vol") still counts the parts
+  as written, not the end ngspice puts there.

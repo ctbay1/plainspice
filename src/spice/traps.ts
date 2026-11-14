@@ -39,7 +39,7 @@ import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, wordNativeStopsAt } from './parse.ts';
+import { applyTextChanges, formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, valueAsNodeWord, valueNodeMoved, wordNativeStopsAt } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
 import type {
   Element,
@@ -104,13 +104,9 @@ export const TRAP_IDS = [
 
 export type TrapId = (typeof TRAP_IDS)[number];
 
-/** Applies a fix's changes to the text they were computed on (positions refer to that text). */
+/** Applies a fix's changes to the text they were computed on (positions refer to that text), in one pass (applyTextChanges). */
 export function applyFix(text: string, fix: Fix): string {
-  let out = text;
-  for (const c of [...fix.changes].sort((a, b) => b.from - a.from || b.to - a.to)) {
-    out = out.slice(0, c.from) + c.insert + out.slice(c.to);
-  }
-  return out;
+  return applyTextChanges(text, fix.changes);
 }
 
 // ------------------------------------------------------------------ context
@@ -196,6 +192,8 @@ interface Ctx {
   formulaReaders?: Map<number, number>;
   /** ngspice's spellings of the nodes parts after a plain .end name, read with formulaReaders. */
   afterEndSpellings?: Set<string>;
+  /** ngspice's spellings of the nodes a subcircuit's own lines name, to their keys (innerNodeSpelled). */
+  innerSpellings?: Map<string, string[]>;
   /** The words with a character outside printable ASCII on the lines ngspice reads, by name as ngspice reads it, read on the first rename (namedElsewhere). */
   oddWords?: Map<string, Token[]>;
   /** The commands for ngspice save only names ngspice does not find, read on the first use (savesNothing). */
@@ -405,18 +403,39 @@ function modelLevel(rest: string): number {
  * Names parts connect to that differ only in letter case, and that ngspice spells alike, are one node for ngspice
  * (Çıkış and çıkış are both ____k____; CR2-3), while the parser keys them apart, as it lower-cases ASCII letters only
  * (W6). Each such name maps to the first of them; a name with other letters that ngspice spells alike (çıkıç) is
- * another node for the student, and stays the non-ascii-node error's.
+ * another node for the student, and stays the non-ascii-node error's. So does a group where one line, outside
+ * subcircuits or a part after a plain .end, names two of its spellings: a part's ends (R2 Çıkış çıkış), written
+ * between two nodes as aµ and au are (non-ascii-node-5), which ngspice joins (non-ascii-node-28), and a formula or an
+ * analysis's output that reads across them (v(Çıkış,çıkış), .tf v(Çıkış,çıkış) V1), always 0 as ngspice reads one
+ * node there (non-ascii-node-31): no one node as the netlist means (the integration check, X1; its round-1 critic).
  */
-function caseAliases(n: Netlist): Map<string, string> {
+export function caseAliases(n: Netlist): Map<string, string> {
   const first = new Map<string, string>();
-  const alias = new Map<string, string>();
+  const groupOf = new Map<string, string>();
   for (const [key, info] of n.nodes) {
     if (info.ground || info.connections.length === 0 || /^[\x20-\x7e]*$/.test(key)) continue;
     const group = `${key.toLowerCase()}\n${ngspiceSpelling(key)}`;
-    const head = first.get(group);
-    if (head === undefined) first.set(group, key);
-    else alias.set(key, head);
+    groupOf.set(key, group);
+    if (!first.has(group)) first.set(group, key);
   }
+  const across = new Set<string>();
+  if (first.size < groupOf.size) {
+    // A node's refs are every place a line outside subcircuits names it: ends, formulas, analyses' outputs.
+    const seen = new Map<string, string>();
+    const named = (group: string, line: string, key: string): void => {
+      const had = seen.get(`${group}\n${line}`);
+      if (had === undefined) seen.set(`${group}\n${line}`, key);
+      else if (had !== key) across.add(group);
+    };
+    for (const [key, group] of groupOf) {
+      for (const r of n.nodes.get(key)!.refs) named(group, String(lineAt(n, r.from).continues ?? lineAt(n, r.from).index), key);
+    }
+    afterEndParts(n).forEach((e, k) => {
+      for (const r of [...e.nodes, ...(e.reads ?? [])]) if (groupOf.has(r.name)) named(groupOf.get(r.name)!, `after .end ${k}`, r.name);
+    });
+  }
+  const alias = new Map<string, string>();
+  for (const [key, group] of groupOf) if (first.get(group) !== key && !across.has(group)) alias.set(key, first.get(group)!);
   return alias;
 }
 
@@ -2242,7 +2261,7 @@ function checkIncomplete(c: Ctx, i: number): void {
     return;
   }
   // A node called value where ngspice reads VALUE (CR1-10, CR2-4): the line is that, whatever else it says.
-  const valueWord = valueAsNodeWord(c, e);
+  const valueWord = valueAsNodeWord(c.n, e);
   if (valueWord) {
     valueNodeTrap(c, i, valueWord);
     return;
@@ -2251,6 +2270,9 @@ function checkIncomplete(c: Ctx, i: number): void {
   if (e.form) {
     if (e.form.kind !== 'formula') checkXspiceForm(c, i);
     else checkFormulaForm(c, i);
+    // An output node called value ngspice writes vol or cur over (fatal-syntax-23).
+    const moved = valueNodeMoved(c.n, e);
+    if (moved) movedValueNode(c, i, moved.word, moved.to);
     return;
   }
   const notEnough = "Native ngspice 47 stops: 'not enough parameters in line'.";
@@ -2319,8 +2341,6 @@ function checkXspiceForm(c: Ctx, i: number): void {
  * starts with a digit or a '.', a sign and then a digit (or a '.' and a digit), or the letters true or false.
  * Any other start gets its braces: a letter, a bracket, and a sign before a letter or a bracket (fatal-syntax-16, -18).
  */
-const NO_BRACES = /^(?:[0-9.]|[+-]\.?[0-9]|true|false)/i;
-
 /**
  * An E or G given by a formula that ngspice cannot read (C3-5). ngspice takes the formula from its '{' to the
  * end of the line, and adds the braces itself after '=' unless the formula starts with a number (NO_BRACES):
@@ -2355,8 +2375,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
         : `ngspice stops with a fatal error: 'mal formed ${e.letter} source instance' (ngspice 42: 'mal formed ${e.letter} line'). [fatal-syntax-15]`);
     return;
   }
-  if (/^[{'"]/.test(formula.text)) return;
-  if (equals && !NO_BRACES.test(formula.text)) return;
+  if (!formulaWithoutBraces(form)) return;
   c.broken.add(i);
   const braced = `{${formula.text}}`;
   // Braces fit a formula only, never words a blank keeps apart.
@@ -2371,25 +2390,17 @@ function checkFormulaForm(c: Ctx, i: number): void {
     formula.text.includes('=') || words || /^\.(?![0-9])/.test(formula.text) ? [] : [fix(`Put it in braces: ${braced}`, change(formula.from, formula.to, braced))]);
 }
 
-/**
- * The word value standing where a node goes on an E or G line, which ngspice reads as VALUE, the start of a formula,
- * wherever it stands (search_plain_identifier, then inp_compat in its inpcom.c; fatal-syntax-17, -20), or undefined:
- * - an output node, or a control node of POLY, called value (E1 value 0 mid 0 2, E1 e 0 POLY(1) value 0 0 2);
- * - value with no '=' before two words or more (E1 e 0 value mid 2: the gain form's control + node; CR1-10);
- * - value with no '=' after another word and before a number, in braces or not, while a part connects to a node called
- *   value (E1 e 0 mid value 2, E1 e 0 value 0 {2}: the control - node, and the gain; CR2-4).
- * A formula written after VALUE (VALUE v(out)*2, E1 e 0 x VALUE {v(out)*2}) is no node.
- */
-function valueAsNodeWord(c: Ctx, e: Element): Token | undefined {
-  if (e.letter !== 'E' && e.letter !== 'G') return undefined;
-  const form = e.form;
-  const node = e.nodes.find((r) => /^value$/i.test(r.token.text));
-  if (node && form?.kind !== 'formula') return node.token;
-  if (form?.kind !== 'formula' || !form.formula || lowerAscii(form.keyword.text) !== 'value' || form.equals) return undefined;
-  const text = form.formula.text;
-  if (!/^[{'"]/.test(text) && /[\w.)}'"][ \t]+[\w.{'"]/.test(text)) return form.keyword;
-  const gain = readNumber(text.replace(/^[{']\s*|\s*[}']$/g, ''));
-  return form.dropped?.length && gain && !gain.rest && c.n.nodes.get('value')?.connections.length ? form.keyword : undefined;
+
+/** The fix that renames the node value, on every line that names it (valueNodeTrap, movedValueNode): made once. */
+function valueRename(c: Ctx): { to: string; fix: Fix | null } {
+  if (!c.valueRename) {
+    const node = c.n.nodes.get('value');
+    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
+    // The words the parser read as a node are the node's; those it read as the keyword are renamed here.
+    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c.n, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
+    c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
+  }
+  return c.valueRename;
 }
 
 /**
@@ -2401,14 +2412,7 @@ function valueAsNodeWord(c: Ctx, e: Element): Token | undefined {
 function valueNodeTrap(c: Ctx, i: number, word: Token): void {
   const e = el(c, i);
   const name = nameOf(e);
-  const node = c.n.nodes.get('value');
-  if (!c.valueRename) {
-    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
-    // The words the parser read as a node are the node's; those it read as the keyword are renamed here.
-    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
-    c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
-  }
-  const { to, fix: rename } = c.valueRename;
+  const { to, fix: rename } = valueRename(c);
   const end = cardEnd(c, i);
   const taken = shownWord(c.text.slice(word.to, end).replace(/\s*\n[ \t]*\+?\s*/g, ' ').trim());
   const group = e.form?.kind === 'formula' && e.form.formula && /^[{']/.test(e.form.formula.text) ? e.form.formula.text : undefined;
@@ -2427,6 +2431,31 @@ function valueNodeTrap(c: Ctx, i: number, word: Token): void {
     e.form?.kind === 'poly'
       ? `Native ngspice stops with a fatal error: ${malFormed}. PlainSpice's engine stops at the POLY first: 'XSPICE is required to run the 'poly' option'. [fatal-syntax-20]`
       : `ngspice stops with a fatal error: ${malFormed}. [fatal-syntax-17${word === e.form?.keyword && !e.form?.dropped?.length ? '' : ', fatal-syntax-20'}]`,
+    rename ? [rename] : []);
+}
+
+/**
+ * An E's or G's output node called value on a line given by a formula (valueNodeMoved): ngspice writes vol (E) or cur
+ * (G) over the word, so the end written value is on a node of that name, not on node value (fatal-syntax-23). An E runs
+ * so without a message (a warning); so does a G whose node cur a part connects to. A G's current into a node cur nothing
+ * else connects to leaves ngspice's matrix with no single answer, and it stops (an error). The fix renames the node.
+ */
+function movedValueNode(c: Ctx, i: number, word: Token, to: 'vol' | 'cur'): void {
+  const e = el(c, i);
+  const name = nameOf(e);
+  const { to: free, fix: rename } = valueRename(c);
+  const why = `ngspice reads the word value as VALUE wherever it stands on an E or G line, and here writes ${to} in its place, so the end of ${name} written ${word.text} is on a node called ${to}, not on node ${word.text}. A node can't be called value here: give it another name${rename ? `, such as ${free}` : ''}.`;
+  if (e.letter === 'G' && !c.n.nodes.get('cur')?.connections.length) {
+    c.broken.add(i);
+    add(c, 'fatal-syntax', 'error', word, `ngspice puts ${name}'s end written ${word.text} on a node called ${to}`, why,
+      "ngspice warns 'singular matrix: check node cur', as nothing else connects to that node, and then stops: 'The operating point could not be simulated successfully'. No results. [fatal-syntax-23]",
+      rename ? [rename] : []);
+    return;
+  }
+  add(c, 'fatal-syntax', 'warning', word, `ngspice puts ${name}'s end written ${word.text} on a node called ${to}`, why,
+    e.letter === 'E'
+      ? `ngspice runs ${name} with that end on node vol and says nothing: in one test E1 value 0 VALUE={2*v(out)} gave 5 V at node vol and 0 V at node value. [fatal-syntax-23]`
+      : `ngspice runs ${name} with that end on node cur and says nothing: in one test G1 value 0 VALUE={2m*v(out)}, with a resistor from node cur to ground, gave ${MINUS}5 V at node cur and 0 V at node value. [fatal-syntax-23]`,
     rename ? [rename] : []);
 }
 
@@ -3617,8 +3646,8 @@ function checkNodeNames(c: Ctx): void {
       // Cites [non-ascii-node-27, non-ascii-node-3, non-ascii-node-4], the last two for their sentences.
       const facts = ['non-ascii-node-27', ...(print ? ['non-ascii-node-3'] : []), ...(command ? ['non-ascii-node-4'] : [])];
       add(c, 'non-ascii-node', 'warning', infos[infos.length - 1]!.refs[0]!, `ngspice spells ${list(names.map(nodeIn))} as ${spelled}: one node`,
-        `${list(names)} differ only in capital letters, and ngspice ${lettersRule(names, 'a node name')}, so they are one node for it, ${spelled}, as this netlist means. Its printout and results call the node ${spelled}: one name in plain letters avoids that.`,
-        [`ngspice makes ${list(names)} one node${said.length ? '' : ', without a message'}: in one test a divider written with both spellings gave 5 V at ${spelled}, as written.`, ...said, `[${facts.join(', ')}]`].join(' '),
+        `${atSentenceStart(list(names.map(nodeIn)))} differ only in capital letters, and ngspice ${lettersRule(names, 'a node name')}, so they are one node for it, ${spelled}, as this netlist means. Its printout and results call ${theNodeIn(spelled)}: one name in plain letters avoids that.`,
+        [`ngspice makes ${list(names.map(nodeIn))} one node${said.length ? '' : ', without a message'}: in one test a divider written with both spellings gave 5 V at ${nodeIn(spelled)}, as written.`, ...said, `[${facts.join(', ')}]`].join(' '),
         [fix(`Rename ${list(names.map(nodeIn))} to ${to}`, ...together(infos[0]!, to))]);
       continue;
     }
@@ -3647,21 +3676,22 @@ function checkNodeNames(c: Ctx): void {
     if (isPlainName(info.name) || hasInvisible(info.name) || hasSpaceLike(info.name) || lookAlikeName(info.refs[0]!.text) !== undefined) continue;
     const written = info.refs[0]!.text;
     const letter = [...written].find((ch) => !isPlainName(ch))!;
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       // No part is on a node ngspice spells so (ownerOf): a rename alone leaves it failing; a node the parts are on
       // with the name's plain letters (cikis for çıkış) is the one meant.
       const plain = plainLetters(written, true);
       const meant = plain ? c.n.nodes.get(lowerAscii(plain)) : undefined;
       formulaOnlyNode(c, 'non-ascii-node', info, reader, written, `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}).`,
-        'non-ascii-node-26', meant?.connections.length ? plain : undefined, plain ? [fix(`Connect to ${plain}`, ...renaming(info, plain))] : []);
+        'non-ascii-node-26', meant?.connections.length ? plain : undefined, plain ? [fix(`Connect to ${nodeIn(quotedName(plain))}`, ...renaming(info, plain))] : []);
       continue;
     }
     const to = plainFor(info);
     add(c, 'non-ascii-node', 'warning', info.refs[0]!, `ngspice spells ${theNodeIn(written)} as ${spelled}`,
-      `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.`,
+      `ngspice ${lettersRule([written], 'a node name')} (${letter} as ${ngspiceSpelling(letter)}), so its printout and results call this node ${spelled}, and two names can become one node. A name in plain letters avoids both.${inner ?? ''}`,
       spelledNodeSentence(c, info, spelled),
-      [fix(`Rename ${nodeIn(written)} to ${to}`, ...renaming(info, to))]);
+      inner === undefined ? [fix(`Rename ${nodeIn(written)} to ${to}`, ...renaming(info, to))] : []);
   }
   for (const info of c.n.nodes.values()) if (ownerOf(c, info.name) === info.name) checkMicroNode(c, info, freeName);
 }
@@ -3751,6 +3781,46 @@ function checkMicroNode(c: Ctx, info: NodeInfo, freeName: (wanted: string) => st
  * name exists, that joins them, as the student meant. The words name the character, never show it.
  */
 /**
+ * For a name that is ngspice's name for a node inside a subcircuit an X line uses (x1.çıkış on a .tf line or in a
+ * formula; innerNode, C3-6): where that node is, for the words of the checks of its name, which give no rename fix
+ * for it, as renaming the name alone would point the line at a node nothing connects to (a .tf of 0 and 1 Ω; the
+ * integration check, P2 of the regression lens; non-ascii-node-30). Such a name is no node nothing connects to for
+ * formulaOnlyNode either: its node has the subcircuit's parts. Undefined for any other name.
+ */
+function innerNodeWords(c: Ctx, info: NodeInfo): string | undefined {
+  const inner = info.connections.length === 0 ? innerNodeSpelled(c, info.name) : undefined;
+  return inner && ` ${info.refs[0]!.text} is ngspice's name for ${nodeIn(inner.node.token.text)} of the subcircuit ${inner.subcircuit} (from line ${inner.line + 1}): a rename here alone would name a node nothing connects to, so rename it on that subcircuit's lines and here together.`;
+}
+
+/**
+ * innerNode, or where the name as written reaches no node, the node a subcircuit's own lines write as ngspice spells
+ * the name's last words, which ngspice reads it as (the owner rule): x1.Çıkış is x1.____k____ for ngspice, the node
+ * çıkış of the subcircuit X1 uses, as x1.çıkış is (non-ascii-node-32; the round-1 critic of the integration check's
+ * fixes). innerNode keys names by their ASCII letters only.
+ */
+function innerNodeSpelled(c: Ctx, name: string): ReturnType<typeof innerNode> {
+  const exact = innerNode(c.n, name);
+  if (exact || /^[\x20-\x7e]*$/.test(name)) return exact;
+  if (!c.innerSpellings) {
+    c.innerSpellings = new Map();
+    for (const i of c.graph.inSubcircuit) {
+      for (const r of c.n.lines[i]!.element!.nodes) {
+        const keys = c.innerSpellings.get(ngspiceSpelling(r.name));
+        if (!keys) c.innerSpellings.set(ngspiceSpelling(r.name), [r.name]);
+        else if (!keys.includes(r.name)) keys.push(r.name);
+      }
+    }
+  }
+  for (let dot = name.indexOf('.'); dot >= 0; dot = name.indexOf('.', dot + 1)) {
+    for (const key of c.innerSpellings.get(ngspiceSpelling(name.slice(dot + 1))) ?? []) {
+      const node = key === name.slice(dot + 1) ? undefined : innerNode(c.n, name.slice(0, dot + 1) + key);
+      if (node) return node;
+    }
+  }
+  return undefined;
+}
+
+/**
  * The part whose formula reads a name that no part connects to (CR2-2): a name only formulas read (Element.reads),
  * with a character ngspice keeps in names, is a node of its own for ngspice that nothing connects to, so its matrix
  * is singular and it stops, whatever the analysis (space-character-32, nbsp-8, invisible-character-68,
@@ -3781,7 +3851,7 @@ function formulaOnlyNode(c: Ctx, id: TrapId, info: NodeInfo, reader: Element, sh
   const t = info.refs.find((r) => c.formulaReaders!.has(r.from)) ?? info.refs[0]!;
   const spelled = ngspiceSpelling(info.name);
   add(c, id, 'error', t, `${nameOf(reader)}'s formula reads a node nothing connects to: ${shown}`,
-    `${why} So the formula reads the node ${spelled}${meant ? `, not ${meant}` : ''}, and no part connects to that node.`,
+    `${why} So the formula reads ${theNodeIn(spelled)}${meant ? `, not ${theNodeIn(quotedName(meant))}` : ''}, and no part connects to that node.`,
     `ngspice warns 'singular matrix: check node ${spelled}' and then stops: 'The operating point could not be simulated successfully'. No results. [${fact}]`,
     meant ? fixes : []);
 }
@@ -3795,7 +3865,8 @@ function checkInvisibleNodes(c: Ctx): void {
     const clean = withoutInvisible(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       formulaOnlyNode(c, 'invisible-character', info, reader, `${clean} with ${nameOfCharacter(ch, false)!}`, `The name has ${what}, a character you cannot see, which SPICE keeps in the name.`,
         'invisible-character-68', other?.connections.length ? clean : undefined, [fix(`Take it out: connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
@@ -3805,9 +3876,9 @@ function checkInvisibleNodes(c: Ctx): void {
     // Cites [invisible-character-3, invisible-character-65, invisible-character-66], the last two for their sentences.
     const facts = ['invisible-character-3', ...(print ? ['invisible-character-65'] : []), ...(command ? ['invisible-character-66'] : [])];
     add(c, 'invisible-character', 'warning', t, `${capital(what)} hides in the node name ${clean}`,
-      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `It is a character you cannot see (it often comes with text copied from a web page or a PDF), and SPICE keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.${inner ?? ''}`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
+      inner === undefined ? [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)] : []);
   }
 }
 
@@ -3843,7 +3914,8 @@ function checkSpaceNodes(c: Ctx): void {
     const clean = withoutSpaces(t.text);
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       formulaOnlyNode(c, ch === '\u00a0' ? 'nbsp' : 'space-character', info, reader, `${clean} with ${nameOfCharacter(ch, false)!}`, `The name has ${nameOfCharacter(ch)!}. It looks like a space, but SPICE keeps it in the name.`,
         ch === '\u00a0' ? 'nbsp-8' : 'space-character-32', other?.connections.length ? clean : undefined, [fix(`Take it out: connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
@@ -3853,9 +3925,9 @@ function checkSpaceNodes(c: Ctx): void {
     // Cites [space-character-10, space-character-20, space-character-21], the last two for their sentences.
     const facts = ['space-character-10', ...(print ? ['space-character-20'] : []), ...(command ? ['space-character-21'] : [])];
     add(c, ch === '\u00a0' ? 'nbsp' : 'space-character', 'warning', t, `${capital(theNodeIn(withSpaces(t.text)))} has ${nameOfCharacter(ch)!} in it`,
-      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.`,
+      `It looks like a space, but SPICE does not treat it as one: it keeps it in the name, so this is ${other ? `not ${theNodeIn(quotedName(clean))} the other lines name but another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}` : `a node called ${ngspiceSpelling(info.name)} for ngspice`}.${inner ?? ''}`,
       [`ngspice keeps the character in the name, as underscores (${ngspiceSpelling(info.name)}), and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)]);
+      inner === undefined ? [fix(other ? `Take it out: connect to ${nodeIn(quotedName(clean))}` : `Take it out: name the node ${clean}`, ...changes)] : []);
   }
 }
 
@@ -3877,21 +3949,22 @@ function checkLookAlikeNodes(c: Ctx): void {
     const like = lookAlikeOf(ch)!;
     const other = c.n.nodes.get(lowerAscii(clean));
     const changes = [...renamesOf(c, info.name, clean), ...(other ? [] : labelChanges(c, info.name, clean))];
-    const reader = formulaReader(c, info);
+    const inner = innerNodeWords(c, info);
+    const reader = inner === undefined ? formulaReader(c, info) : undefined;
     if (reader) {
       formulaOnlyNode(c, 'look-alike-letter', info, reader, `${t.text} with ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`, `The name has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}. It looks like ${like}, but SPICE knows only the plain letter ${like}.`,
-        'look-alike-letter-19', other?.connections.length ? clean : undefined, [fix(`Connect to ${clean}`, ...changes)]);
+        'look-alike-letter-19', other?.connections.length ? clean : undefined, [fix(`Connect to ${nodeIn(quotedName(clean))}`, ...changes)]);
       continue;
     }
     const { said, print, command } = asWritten(c, [info], true);
     // Cites [look-alike-letter-5, look-alike-letter-16, look-alike-letter-17], the last two for their sentences.
     const facts = ['look-alike-letter-5', ...(print ? ['look-alike-letter-16'] : []), ...(command ? ['look-alike-letter-17'] : [])];
     add(c, 'look-alike-letter', 'warning', t, `${capital(theNodeIn(t.text))} has ${describeCharacter(ch).replace(/, which looks like .*$/, '')}`,
-      other
+      `${other
         ? `It looks like ${like}, but SPICE knows only the plain letter ${like}, so this is not ${theNodeIn(quotedName(clean))} the other lines name: it is another node, and the parts on it are not connected to ${nodeIn(quotedName(clean))}.`
-        : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`,
+        : `It looks like ${like}, but SPICE knows only the plain letter ${like}, so ngspice calls this node ${ngspiceSpelling(info.name)}.`}${inner ?? ''}`,
       [`ngspice writes the letter's bytes as underscores (${ngspiceSpelling(info.name)}) and makes a separate node${said.length ? '' : ', without a message'}: in one test the resistor on it carried no current.`, ...said, `[${facts.join(', ')}]`].join(' '),
-      [fix(other ? `Connect to ${nodeIn(quotedName(clean))}` : `Rename ${nodeIn(t.text)} to ${clean}`, ...changes)]);
+      inner === undefined ? [fix(other ? `Connect to ${nodeIn(quotedName(clean))}` : `Rename ${nodeIn(t.text)} to ${clean}`, ...changes)] : []);
   }
 }
 
@@ -4856,7 +4929,7 @@ function checkSyntax(c: Ctx): void {
       const open = t.text[0];
       if (open !== '{' && open !== "'") continue;
       const closed = open === '{' ? balancedBraces(t.text) : t.text.length > 1 && t.text.endsWith("'");
-      if (!closed) {
+      if (!closed && !inLineFormula(c, e, t)) {
         const closer = open === '{' ? '}' : "'";
         add(c, 'fatal-syntax', 'error', t, `A ${open} is never closed`,
           `Braces { } (or single quotes ' ') hold an expression that SPICE works out, like {2*R}. Each opening one needs its closing partner on the same line.`,
@@ -4894,6 +4967,22 @@ function checkSyntax(c: Ctx): void {
       }
     }
   }
+}
+
+/**
+ * A word of a formula ngspice reads to the end of its line, dropping the braces in it: a B line's after V= or I=
+ * (inp_bsource_compat in its inpcom.c), and an E's or G's after VALUE, vol= or cur=, which it makes a B source
+ * (inp_compat). A { or ' left open there closes nothing ngspice needs, so native 47 and 42 run the formula as if it
+ * were closed (fatal-syntax-22; the round-1 critic of the integration check's fixes); the names in it still need a
+ * .param. A value, a gain, POLY's numbers or a TABLE is no such formula: an open { or ' stops ngspice there.
+ */
+function inLineFormula(c: Ctx, e: Element | undefined, t: Token): boolean {
+  if (e?.letter === 'B') {
+    const kw = e.fields.find((f) => f.role === 'parameter')?.token;
+    return kw !== undefined && behaviouralKind(e) !== undefined && t.from > kw.to && /^[ \t]*=/.test(c.text.slice(kw.to, t.from));
+  }
+  const formula = (e?.letter === 'E' || e?.letter === 'G') && e.form?.kind === 'formula' ? e.form.formula : undefined;
+  return formula !== undefined && t.from >= formula.from;
 }
 
 function balancedBraces(s: string): boolean {

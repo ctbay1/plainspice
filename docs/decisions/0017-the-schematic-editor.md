@@ -864,3 +864,32 @@ test that fails without it (`tests/unit/integration-check-subckt.test.ts`, golde
   `+ nomodel`, and `1k a b` give no check while no X line uses the subcircuit, and theirs once X1 does
   (native 47 and 42 run them there with exit 0, an-skip-cont); dropping `continuation` and `invalid` from
   the kinds of lines ngspice skips now fails a test.
+
+The same check found these with node names written two ways, formulas and the rename fixes (the names lane,
+`src/spice/traps.ts`, `src/spice/parse.ts`, `src/spice/describe.ts`; its tests and facts named in each bullet):
+
+- **The words for a name only a formula reads, and for case spellings, follow the node-words rule** (X4, P3).
+  The formulas lane's round-3 words named nodes bare, against F6 above: "Connect to out", "Connect to
+  cikis", "So the formula reads the node __ut, not out", and the case group's why and what ngspice does
+  ("Çıkış and çıkış differ only in capital letters", "ngspice makes Çıkış and çıkış one node … gave 5 V at
+  ____k____"); beside an ordinary node called ground the fix read "Connect to ground", one card above
+  'Node "ground" is not ground'. They now say "Connect to node out", 'Connect to node "ground"', "Connect to
+  node cikis", "…the node __ut, not the node out, …" (a name that says node alone: "node1___, not node1"),
+  "Node Çıkış and node çıkış differ only in capital letters" and "ngspice makes node Çıkış and node çıkış one
+  node … gave 5 V at node ____k____". Kept: "Rename the node value to val", which says "the node …" as
+  "Take it out: name the node out" does; it names no node bare.
+- **The rename's changes are applied in one pass** (X5). `applyChanges` in `src/schematic/format.ts`, which the
+  editor's edits and the page's fixes use, spliced each change into the text from the end, a copy of the text
+  for each: renaming node in on a formula that reads it 8,000 times took 1,146 ms of processor time, and node a
+  named bare 40,000 times on `.save` 8,134 ms. It now copies each piece of the text once, in the text's order,
+  through the same `applyTextChanges` as a check's fix (decision 0016): 17 ms and 107 ms, with the same results.
+- **A `.tf` of a node inside a subcircuit keeps working through the checks' fixes** (P2 of the regression lens,
+  after C3-6). The checks offered a rename of `x1.çıkış` on the `.tf` alone, which made the `.tf` read a node
+  nothing connects to; they now offer none for such a name and say where to rename (decision 0016,
+  non-ascii-node-30).
+- **After the round-1 critic of these fixes.** A group of spellings that differ only in capital letters, one line
+  of which names two of them (`B1 o 0 V=v(Çıkış,çıkış)`, `.tf v(Çıkış,çıkış) V1`), is the checks' error
+  again (decision 0016, non-ascii-node-31), so the editor's rename of `Çıkış` there renames that spelling
+  only, as for a part with an end on each (X1). And the checks offer no rename of `x1.Çıkış` alone either,
+  the subcircuit's node `çıkış` written with another capital letter, which ngspice reads as that node
+  (non-ascii-node-32).

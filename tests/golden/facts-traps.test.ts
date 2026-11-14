@@ -24,6 +24,7 @@ import { NgspiceEngine } from '../../src/engine/ngspice.ts';
 import type { RunResult } from '../../src/engine/types.ts';
 import { applyEdit, buildSchematic } from '../../src/schematic/index.ts';
 import { parseNetlist } from '../../src/spice/parse.ts';
+import { explainLine } from '../../src/spice/explain.ts';
 import { applyFix, checkTraps } from '../../src/spice/traps.ts';
 
 interface Fact {
@@ -558,6 +559,18 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-26', netlist: "* Turkish letters in a name only a formula reads\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 e 0 V=v(\u00e7\u0131k\u0131\u015f)*2\nRe e 0 1k\n.op\n.end\n", prints: ["singular matrix:  check node ____k____", "The operating point could not be simulated successfully"], fails: true, unreliable: true, traps: ['non-ascii-node'] },
   // Two spellings that differ only in capital letters on part lines are one node, as written: a warning, and one name for both (CR2-3).
   { code: 'non-ascii-node-27', netlist: "* two spellings of one node\nV1 giris 0 10\nR1 giris \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-30', netlist: "* a divider inside a subcircuit, its middle node in Turkish, read by .tf\nV1 in 0 10\nX1 in 0 div\n.subckt div a b\nR1 a \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f b 1k\n.ends\n.op\n.tf v(x1.\u00e7\u0131k\u0131\u015f) V1\n.end\n", vectors: { "v(x1.____k____)": 5, "v(Transfer_function)": 0.5, "v(output_impedance_at_V(x1.____k____))": 500 }, traps: ['non-ascii-node'] },
+  { code: 'fatal-syntax-21', netlist: "* an E formula without braces inside a used subcircuit\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out e sub\nRe e 0 1k\n.subckt sub a b\nE1 b 0 VALUE=2*v(a)\n.ends\n.op\n.end\n", prints: ["mal formed E source instance: e1 b 0   vol=2*v(a)"], fails: true, traps: ['fatal-syntax'] },
+  { code: 'non-ascii-node-28', netlist: "* a resistor between two spellings of one name\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1k\nR3 \u00e7\u0131k\u0131\u015f 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  { code: 'non-ascii-node-29', netlist: "* C9's balanced bridge, its node written \u00e7\u0131k\u0131\u015f and \u00c7\u0131k\u0131\u015f, with a transistor\nV1 top 0 9\nR1 top \u00e7\u0131k\u0131\u015f 10k\nR2 \u00c7\u0131k\u0131\u015f 0 10k\nR3 top b 4.7k\nR4 b 0 4.7k\nR5 \u00e7\u0131k\u0131\u015f b 1k\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.end\n", vectors: { "v(top)": 9, "v(____k____)": 4.499999999999999, "v(b)": 4.5, "v(x)": 9.000081999484787e-06, "i(v1)": -0.0014074468265108293, "i(@r1[i])": 0.0004500000000000001, "i(@r2[i])": 0.00044999999999999993, "i(@r5[i])": -8.881784197001253e-19, "i(@rx[i])": 9.000081999484786e-12 }, traps: ['non-ascii-node'] },
+  // A { or ' never closed in a B, E or G formula: ngspice reads the formula to the end of the line and runs it (the round-1 critic of the integration check's fixes).
+  { code: 'fatal-syntax-22', netlist: "* formulas whose { or ' is never closed\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nB1 b 0 V={2*v(out)\nRb b 0 1k\nE1 e 0 VALUE={2*v(out)\nRe e 0 1k\nE2 q 0 VALUE='2*v(out)\nRq q 0 1k\nG1 0 g cur={2m*v(out)\nRg g 0 1k\n.op\n.end\n", vectors: { "v(out)": 2.5, "v(b)": 5, "v(e)": 5, "v(q)": 5, "v(g)": 5, "i(b1)": -0.005, "i(v1)": -0.0025 }, traps: [] },
+  // A formula that reads across two spellings that differ only in capital letters reads 0: the error (X1, its round-1 critic).
+  { code: 'non-ascii-node-31', netlist: "* B reads the difference across the two spellings of a divider\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 o 0 V=v(\u00c7\u0131k\u0131\u015f,\u00e7\u0131k\u0131\u015f)\nRo o 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "v(o)": 0, "i(b1)": 0, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  // x1.Çıkış for the subcircuit's çıkış is that node for ngspice: a formula reads it, and no rename of the name alone (the round-1 critic).
+  { code: 'non-ascii-node-32', netlist: "* B formula reads the inner node with a capital letter\nV1 in 0 10\nX1 in 0 div\n.subckt div a b\nR1 a \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f b 1k\n.ends\nB1 o 0 V={v(x1.\u00c7\u0131k\u0131\u015f)*2}\nR3 o 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(x1.____k____)": 5, "v(o)": 10, "i(b1)": -0.01, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  // An E's output node called value on a line given by a formula: ngspice writes vol in its place (the round-1 critic).
+  { code: 'fatal-syntax-23', netlist: "* an E's output node called value, with a formula after VALUE=\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR4 value 0 1k\nE1 value 0 VALUE={2*v(out)}\n.op\n.end\n", vectors: { "v(value)": 0, "v(vol)": 5, "v(e1_int1)": 5, "i(e1)": 0, "i(v1)": -0.0025 }, traps: ['fatal-syntax'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -801,6 +814,191 @@ it('CR2-3: two spellings that differ only in capital letters are renamed togethe
     const r = applyEdit(buildSchematic(divider), { kind: 'rename-node', node, name: 'vout' }, { drawingInText: true });
     expect(r.ok, node).toBe(true);
     expect(vector(await engine.run(r.text), 'v(vout)'), node).toEqual([5]);
+  }
+});
+
+it('X1: a part with an end on each of two spellings that differ only in capital letters has them joined: the error\'s fix gives each a name of its own, and the numbers native ngspice gave (non-ascii-node-28)', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-28')!.netlist;
+  const sc = (netlist: string): string => netlist.replace('.op\n', '.options savecurrents\n.op\n');
+  // With every current saved: R2 carries none, its ends joined (native 47 and 42 give i(@r2[i]) = 0).
+  const joined = await engine.run(sc(text));
+  for (const [name, want] of Object.entries({ 'v(____k____)': 5, 'i(@r1[i])': 0.005, 'i(@r2[i])': 0, 'i(@r3[i])': 0.005 })) expect(vector(joined, name), name).toEqual([want]);
+  // The error's fix writes each spelling its own name: two nodes, as the netlist wrote them.
+  const [f] = fixed.get('non-ascii-node-28')!;
+  expect(f!.label).toBe('non-ascii-node: Write Cikis for \u00c7\u0131k\u0131\u015f and cikis2 for \u00e7\u0131k\u0131\u015f');
+  for (const [name, want] of Object.entries({ 'v(cikis)': 6.666666666666666, 'v(cikis2)': 3.333333333333333, 'i(v1)': -0.003333333333333334 })) expect(vector(f!.run, name), name).toEqual([want]);
+  // A current source there drives its 1 mA into the one node, and after the fix between two (native: 9 V and 1 V).
+  const source = sc(text.replace(/^R2 .*$/m, 'I1 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1m'));
+  const before = await engine.run(source);
+  for (const [name, want] of Object.entries({ 'v(____k____)': 5, 'i(@i1[current])': 0.001, 'i(@r1[i])': 0.005 })) expect(vector(before, name), name).toEqual([want]);
+  const trap = checkTraps(parseNetlist(source)).find((t) => t.id === 'non-ascii-node')!;
+  expect(trap.severity).toBe('error');
+  const after = await engine.run(applyFix(source, trap.fixes[0]!));
+  for (const [name, want] of Object.entries({ 'v(cikis)': 9, 'v(cikis2)': 1, 'i(v1)': -0.0009999999999999992 })) expect(vector(after, name), name).toEqual([want]);
+  // A voltage source there stops ngspice; an E reading there reads 0 V.
+  const shorted = await engine.run(text.replace(/^R2 .*$/m, 'V2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1'));
+  expect(shorted.ok).toBe(false);
+  expect(`${shorted.stdout}\n${shorted.stderr}`).toContain('instance v2 is a shorted VSRC');
+  const reads = await engine.run(text.replace('.op\n', 'E1 out 0 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 2\nRo out 0 1k\n.op\n'));
+  expect(vector(reads, 'v(out)')).toEqual([0]);
+  for (const part of ['I1 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1m', 'V2 \u00c7\u0131k\u0131\u015f \u00e7\u0131k\u0131\u015f 1']) {
+    expect(checkTraps(parseNetlist(text.replace(/^R2 .*$/m, part))).map((t) => [t.id, t.severity]), part).toEqual([['non-ascii-node', 'error']]);
+  }
+});
+
+it('non-ascii-node-31: a formula or a .tf that reads across two spellings that differ only in capital letters reads 0, so it is the error, never "as this netlist means"; its fix gives each spelling a name of its own, and the numbers native ngspice gave', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const C = '\u00c7\u0131k\u0131\u015f';
+  const T = '\u00e7\u0131k\u0131\u015f';
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-31')!.netlist;
+  const tf = `* .tf across the two spellings\nV1 in 0 10\nR1 in ${C} 1k\nR2 ${T} 0 1k\n.op\n.tf v(${C},${T}) V1\n.end\n`;
+  for (const netlist of [text, tf]) {
+    const traps = checkTraps(parseNetlist(netlist));
+    expect(traps.map((t) => [t.id, t.severity]), netlist).toEqual([['non-ascii-node', 'error']]);
+    expect(traps[0]!.why, netlist).not.toContain('as this netlist means');
+    expect(traps[0]!.fixes.map((f) => f.label)).toEqual([`Write Cikis for ${C} and cikis2 for ${T}`]);
+  }
+  // As written, native 47 and 42 (-b -r) read one node there: the .tf gives 0 and 0 Ω.
+  const before = await engine.run(tf);
+  for (const [name, want] of Object.entries({ 'v(____k____)': 5, 'v(Transfer_function)': 0, 'v(v1#Input_impedance)': 2000, 'v(output_impedance_at_V(____k____,____k____))': 0 })) expect(vector(before, name), name).toEqual([want]);
+  // After the fix, the two nodes written: the B source reads 10 V, the .tf 1 and 2000 Ω.
+  const [f] = fixed.get('non-ascii-node-31')!;
+  for (const [name, want] of Object.entries({ 'v(cikis)': 10, 'v(cikis2)': 0, 'v(o)': 10, 'i(b1)': -0.01 })) expect(vector(f!.run, name), name).toEqual([want]);
+  const after = await engine.run(applyFix(tf, checkTraps(parseNetlist(tf))[0]!.fixes[0]!));
+  for (const [name, want] of Object.entries({ 'v(cikis)': 10, 'v(cikis2)': 0, 'v(Transfer_function)': 1, 'v(output_impedance_at_V(cikis,cikis2))': 2000 })) expect(vector(after, name), name).toEqual([want]);
+  // A line that names one of the spellings leaves the warning of non-ascii-node-27.
+  for (const line of [`B1 o 0 V=v(${C})*2\nRo o 0 1k\n`, `.tf v(${C}) V1\n`]) {
+    const one = text.replace(/^B1 .*\nRo .*\n/m, line);
+    expect(checkTraps(parseNetlist(one)).map((t) => [t.id, t.severity]), line).toEqual([['non-ascii-node', 'warning']]);
+  }
+});
+
+it('non-ascii-node-30: x1.çıkış is a node inside the subcircuit: renaming that name alone would read a node nothing connects to, so no such fix is offered; a formula that reads it runs', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const T = '\u00e7\u0131k\u0131\u015f';
+  const text = FACTS.find((f) => f.code === 'non-ascii-node-30')!.netlist;
+  expect(checkTraps(parseNetlist(text)).flatMap((t) => t.fixes)).toEqual([]);
+  // What the old fix wrote, the .tf alone: a node with nothing on it (native 47 and 42: 0 and 1 Ω).
+  const tfOnly = await engine.run(text.replace(`.tf v(x1.${T})`, '.tf v(x1.cikis)'));
+  expect(vector(tfOnly, 'v(Transfer_function)')).toEqual([0]);
+  expect(vector(tfOnly, 'v(output_impedance_at_V(x1.cikis))')).toEqual([1]);
+  // Renamed on the subcircuit's lines and the .tf together: the same 0.5 and 500 Ω.
+  const together = await engine.run(text.replaceAll(T, 'cikis'));
+  expect(vector(together, 'v(Transfer_function)')).toEqual([0.5]);
+  expect(vector(together, 'v(output_impedance_at_V(x1.cikis))')).toEqual([500]);
+  // A B formula that reads x1.çıkış runs (native: v(o) = 10), so the checks give it no error.
+  const b = text.replace(`.tf v(x1.${T}) V1\n`, '').replace('.op\n', `B1 o 0 V={v(x1.${T})*2}\nR3 o 0 1k\n.op\n`);
+  const run = await engine.run(b);
+  expect(run.ok).toBe(true);
+  expect(vector(run, 'v(o)')).toEqual([10]);
+  expect(checkTraps(parseNetlist(b)).map((t) => [t.id, t.severity])).toEqual([['non-ascii-node', 'warning']]);
+});
+
+it('non-ascii-node-32: x1.Çıkış for the subcircuit\'s çıkış is that node for ngspice (x1.____k____): the .tf gives 0.5 and 500 Ω, and no rename of the name alone, which would give 0 and 1 Ω, is offered', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const C = '\u00c7\u0131k\u0131\u015f';
+  const T = '\u00e7\u0131k\u0131\u015f';
+  const tf = (inner: string, name: string): string => `* t\nV1 in 0 10\nX1 in 0 div\n.subckt div a b\nR1 a ${inner} 1k\nR2 ${inner} b 1k\n.ends\n.op\n.tf v(${name}) V1\n.end\n`;
+  for (const [inner, name] of [[T, `x1.${C}`], [C, `x1.${T}`]] as const) {
+    const text = tf(inner, name);
+    const own = checkTraps(parseNetlist(text)).filter((t) => t.id === 'non-ascii-node');
+    expect(own.map((t) => t.severity), name).toEqual(['warning']);
+    expect(own[0]!.fixes, name).toEqual([]);
+    const r = await engine.run(text);
+    for (const [v, want] of Object.entries({ 'v(x1.____k____)': 5, 'v(Transfer_function)': 0.5, 'v(output_impedance_at_V(x1.____k____))': 500 })) expect(vector(r, v), `${name} ${v}`).toEqual([want]);
+  }
+  // What the old fix wrote, the .tf alone renamed: a node nothing connects to (native 47 and 42: 0 and 1 Ω).
+  const alone = await engine.run(tf(T, 'x1.Cikis'));
+  for (const [v, want] of Object.entries({ 'v(x1.cikis)': 0, 'v(Transfer_function)': 0, 'v(output_impedance_at_V(x1.cikis))': 1 })) expect(vector(alone, v), v).toEqual([want]);
+});
+
+it('fatal-syntax-21: Explain says ngspice can\'t read a formula without braces and stops, where native ngspice stops: in the main circuit and in a used subcircuit, not in one no X line uses', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const stop = "ngspice can't read this formula without braces, so it stops before it simulates anything (see the checks).";
+  const lineOf = (text: string): number => parseNetlist(text).lines.findIndex((l) => l.text.startsWith('E1'));
+  const used = FACTS.find((f) => f.code === 'fatal-syntax-21')!.netlist;
+  const main = FACTS.find((f) => f.code === 'fatal-syntax-13')!.netlist;
+  for (const text of [main, used]) {
+    expect(explainLine(parseNetlist(text), lineOf(text))!.summary, text).toContain(stop);
+    const r = await engine.run(text);
+    expect(r.ok, text).toBe(false);
+    expect(`${r.stdout}\n${r.stderr}`, text).toContain('mal formed E source instance');
+  }
+  // In a subcircuit no X line uses ngspice skips the line and runs (native 47 and 42: v(out) = 2.5, exit 0).
+  const unused = '* an E formula without braces inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt sub a b\nE1 a b VALUE=2*v(a)\n.ends\n.op\n.end\n';
+  const r = await engine.run(unused);
+  expect(r.ok).toBe(true);
+  expect(vector(r, 'v(out)')).toEqual([2.5]);
+  expect(explainLine(parseNetlist(unused), lineOf(unused))!.summary).not.toContain('stops');
+  // Braced, the used subcircuit runs (native 47 and 42: v(e) = 5).
+  const [f] = fixed.get('fatal-syntax-21')!;
+  expect(f!.label).toBe('fatal-syntax: Put it in braces: {2*v(a)}');
+  expect(vector(f!.run, 'v(e)')).toEqual([5]);
+  expect(explainLine(parseNetlist(f!.netlist), lineOf(f!.netlist))!.summary).toContain('ngspice works the formula out');
+});
+
+it('fatal-syntax-22: a { or \' never closed in a B, E or G formula is no error, as ngspice reads the formula to the end of the line and runs it; a name no .param defines still stops it, and so does an open { in a value or a gain', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const divider = (line: string): string => `* t\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n${line}\nRe e 0 1k\n.op\n.end\n`;
+  // Native 47 and 42, -b and -b -r: exit 0, no message, v(e) as listed.
+  const run: [string, number][] = [
+    ['B1 0 e I={2m*v(out)', 5], ['B1 e 0 V = {2*v(out)', 5], ["B1 e 0 V='2*v(out)", 5],
+    ['E1 e 0 VALUE {2*v(out)', 5], ['E1 e 0 VALUE = {2*v(out)', 5], ["E1 e 0 VALUE '2*v(out)", 5],
+    ['E1 e 0 vol={2*v(out)', 5], ['G1 0 e VALUE={2m*v(out)', 5], ["G1 0 e VALUE='2m*v(out)", 5],
+    ['B1 e 0 V=2*v(out) + {1', 6], ['B1 e 0 V={v(out)*2} + {1', 6], ['E1 e 0 VALUE=v(out)*2 + {1', 6], ['E1 e 0 VALUE={v(out)*2} + {1', 6],
+  ];
+  for (const [line, want] of run) {
+    const text = divider(line);
+    expect(checkTraps(parseNetlist(text)).map((t) => t.title), line).toEqual([]);
+    const r = await engine.run(text);
+    expect(r.ok, line).toBe(true);
+    expect(vector(r, 'v(e)'), line).toEqual([want]);
+  }
+  // A name no .param defines: native 47 and 42 stop with 'Undefined parameter [gain]'.
+  for (const line of ['B1 e 0 V={2*gain*v(out)', 'E1 e 0 VALUE={2*gain*v(out)']) {
+    const text = divider(line);
+    expect(checkTraps(parseNetlist(text)).map((t) => t.title), line).toEqual(['gain is not defined: add a .param line']);
+    const r = await engine.run(text);
+    expect(r.ok, line).toBe(false);
+    expect(`${r.stdout}\n${r.stderr}`, line).toContain('Undefined parameter [gain]');
+  }
+  // No formula read to the end of the line: native 47 and 42 stop with 'Closing "}" not found in line fragment'.
+  for (const line of ['E1 e 0 out 0 {2', 'G1 0 e out 0 {2m', 'R5 e 0 {1k', 'V2 e 0 {5']) {
+    const text = divider(line);
+    expect(checkTraps(parseNetlist(text)).map((t) => t.title), line).toEqual(['A { is never closed']);
+    const r = await engine.run(text);
+    expect(r.ok, line).toBe(false);
+    expect(`${r.stdout}\n${r.stderr}`, line).toContain('Closing "}" not found in line fragment');
+  }
+});
+
+it('fatal-syntax-23: an output node called value on an E or G line given by a formula is written vol or cur by ngspice; a G with nothing on cur stops, and the rename gives the node back', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const e = FACTS.find((f) => f.code === 'fatal-syntax-23')!.netlist;
+  const [f] = fixed.get('fatal-syntax-23')!;
+  expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
+  for (const [name, want] of Object.entries({ 'v(val)': 5, 'i(e1)': -0.005 })) expect(vector(f!.run, name), name).toEqual([want]);
+  // The G: its current into a node cur nothing else connects to (native 47 and 42: 'singular matrix:  check node cur', exit 1).
+  const g = e.replace('E1 value 0 VALUE={2*v(out)}', 'G1 value 0 VALUE={2m*v(out)}');
+  const traps = checkTraps(parseNetlist(g));
+  expect(traps.map((t) => [t.id, t.severity, t.title])).toEqual([['fatal-syntax', 'error', "ngspice puts G1's end written value on a node called cur"]]);
+  const stops = await engine.run(g);
+  expect(stops.ok).toBe(false);
+  expect(stops.unreliable).toBe(true);
+  expect(`${stops.stdout}\n${stops.stderr}`).toContain('singular matrix:  check node cur');
+  const renamed = await engine.run(applyFix(g, traps[0]!.fixes[0]!));
+  expect(renamed.ok).toBe(true);
+  expect(vector(renamed, 'v(val)')).toEqual([-5]);
+  // A part on a node called cur takes the G's current there (native: −5 V at cur): a warning.
+  const onCur = g.replace('.op\n', 'Rc cur 0 1k\n.op\n');
+  expect(checkTraps(parseNetlist(onCur)).find((t) => t.id === 'fatal-syntax')!.severity).toBe('warning');
+  expect(vector(await engine.run(onCur), 'v(cur)')).toEqual([-5]);
+  // The E's other forms and its − end (native: vol 5 V, or −5 V for the − end), and the node read only by the formula or on a B line, as written.
+  for (const [line, node, want] of [['E1 e value VALUE={2*v(out)}', 'v(vol)', -5], ['E1 value 0 vol={2*v(out)}', 'v(vol)', 5], ['E1 value 0 VALUE=v(out)*2', 'v(vol)', 5], ['E1 e 0 VALUE={2*v(value)}', 'v(e)', 0], ['B1 value 0 V={2*v(out)}', 'v(value)', 5]] as const) {
+    const text = e.replace('E1 value 0 VALUE={2*v(out)}', `${line}\nRe e 0 1k`);
+    expect(vector(await engine.run(text), node), line).toEqual([want]);
+    expect(checkTraps(parseNetlist(text)).filter((t) => t.id === 'fatal-syntax').length, line).toBe(node === 'v(vol)' ? 1 : 0);
   }
 });
 

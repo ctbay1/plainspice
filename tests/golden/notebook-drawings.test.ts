@@ -117,6 +117,27 @@ describe('after the final reviews (12 November 2026)', () => {
     ]);
   });
 
+  it('writes the voltage at çıkış when a formula writes the node Çıkış, and at the first spelling of two on part lines (non-ascii-node-20, -27, -29)', async () => {
+    const T = '\u00e7\u0131k\u0131\u015f';
+    const TC = '\u00c7\u0131k\u0131\u015f';
+    const formulas = `* formulas that write the node with a capital letter\nV1 giris 0 10\nR1 giris ${T} 1k\nR2 ${T} 0 1k\nB1 b 0 V=v(${TC})*2\nRb b 0 1k\nE1 e 0 VALUE={v(${TC})*2}\nRe e 0 1k\n.op\n.end\n`;
+    const sol = await solve(withDrawingBlock(formulas), engine);
+    expect(sol.status).toBe('ok');
+    const words = answers(sol)!;
+    expect(words.nodes.filter((n) => n.ngspice === '____k____').map((n) => [n.node, nb(n.text)])).toEqual([[T, '5 V']]);
+    expect(words.summarySpeech).toContain(`node ${T} is 5 volts`);
+    const drawn = placeResults(notebookSchematic(withDrawingBlock(formulas)).scene, words);
+    expect(drawn.nodes.filter((n) => n.node === T).map((n) => (n.mark ? nb(n.mark.text) : undefined))).toEqual([inlineValue(nb('5 V'))]);
+    const two = `* two spellings of one node\nV1 giris 0 10\nR1 giris ${TC} 1k\nR2 ${T} 0 1k\n.op\n.end\n`;
+    const solTwo = await solve(withDrawingBlock(two), engine);
+    expect(solTwo.status).toBe('ok');
+    const drawnTwo = placeResults(notebookSchematic(withDrawingBlock(two)).scene, answers(solTwo)!);
+    expect(drawnTwo.nodes.filter((n) => n.mark).map((n) => [n.node, nb(n.mark!.text)])).toEqual([
+      ['giris', inlineValue(nb('10 V'))],
+      [TC, inlineValue(nb('5 V'))],
+    ]);
+  });
+
   it('shows no answers when two names become one node for ngspice: a check says so (kept F3, W17)', async () => {
     const sol = await solve(withDrawingBlock('* t\nV1 ş 0 12\nR1 ş ç 1k\nR2 ç 0 2k\n.op\n.end\n'), engine);
     expect(sol.status).toBe('check');

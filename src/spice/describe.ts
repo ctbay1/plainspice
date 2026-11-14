@@ -24,6 +24,7 @@ import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { add, allowances, ANSWER_FLOOR, ANSWER_GAP, answers, carried, carrierSides, checkWork, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, mul, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, readExact, RESIDUAL_SHARE, sameCircuit, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Allowance, type Answer, type Budget, type Carried, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
 import { readNumber } from './numbers.ts';
 import { lowerAscii, ngspiceSpelling, parseNetlist } from './parse.ts';
+import { caseAliases } from './traps.ts';
 import type { Element, ElementLetter, Netlist, NetlistLine, NodeRef } from './types.ts';
 
 const MINUS = '−';
@@ -3345,6 +3346,9 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
   const out = noNoise('rule');
   const op = results.op!;
   const volts = voltages(netlist, results);
+  // Spellings that differ only in capital letters are one node for ngspice (caseAliases): one key here too, as voltages() has.
+  const alias = caseAliases(netlist);
+  const nodeName = (ref: NodeRef): string => (ref.ground ? '0' : (alias.get(ref.name) ?? ref.name));
   const amps = new Map<string, number>();
   for (const c of op.currents) {
     const key = netlistPart(netlist, c.element);
@@ -3837,7 +3841,11 @@ function ruleNoise(netlist: Netlist, results: AnalysisResults): RoundingNoise {
  * ngspice's names back to the netlist's (W16-W18). ngspice writes each byte of a letter outside ASCII
  * as '_', so its results say "giri__" for the netlist's "giriş". A name maps back when exactly one
  * netlist name is spelled that way; names ngspice made one (W17, W18) stay as ngspice spells them,
- * and the checks say why (non-ascii-node, duplicate-name).
+ * and the checks say why (non-ascii-node, duplicate-name). As the checks own them (ownerOf and
+ * caseAliases in traps.ts), a name no part connects to (one a formula, a .func or a dot command only
+ * reads, v(Çıkış)) adds no second name for a spelling a name on parts has, and spellings that differ
+ * only in capital letters (Çıkış, çıkış) are their first one: so ngspice's v(____k____) is the node
+ * çıkış, as the parts write it (the integration check, P1, P7, noise-4).
  */
 interface Spellings {
   nodes: Map<string, string | null>;
@@ -3854,7 +3862,13 @@ function spellingsOf(netlist: Netlist): Spellings {
     m.set(spelling, had === undefined || had === key ? key : null);
   };
   const out: Spellings = { nodes: new Map(), parts: new Map() };
-  for (const key of netlist.nodes.keys()) add(out.nodes, key);
+  const alias = caseAliases(netlist);
+  const onParts = new Set<string>();
+  for (const [key, info] of netlist.nodes) if (info.ground || info.connections.length > 0) onParts.add(ngspiceSpelling(key));
+  for (const [key, info] of netlist.nodes) {
+    if (alias.has(key) || (!info.ground && info.connections.length === 0 && onParts.has(ngspiceSpelling(key)))) continue;
+    add(out.nodes, key);
+  }
   for (const key of partsOf(netlist).byKey.keys()) add(out.parts, key);
   spellingsCache.set(netlist, out);
   return out;
