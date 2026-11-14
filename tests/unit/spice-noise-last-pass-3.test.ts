@@ -43,21 +43,18 @@ const message = (w: Awaited<ReturnType<typeof solveText>>['words'], code: string
 };
 const ladder = ['V1 n0 0 1.5', 'R1 n0 n1 1.5k', 'R2 n1 0 12', 'R3 n1 n2 1.5k', 'R4 n2 0 12', 'R5 n2 n3 1.5k', 'R6 n3 0 12', 'R7 n3 n4 1.5k', 'R8 n4 0 12'];
 
-describe('by the rule, a real current ngspice gives as exactly 0 is given back by Kirchhoff\'s law (N6: C9w.3\'s wire drawn "no current" beside its proven series current)', () => {
-  it('C9w.3: the 1 µΩ wire Rw, its two ends one double, carries what Vm, the only other part at node p, carries: 7.324e-19 A, with the note that says why; it was drawn "no current through Rw"', async () => {
+describe('by the rule, a wire\'s current ngspice gives as exactly 0 stays ngspice\'s 0 beside its proven series current (N6 stays open: the Kirchhoff fill that gave it back made currents up elsewhere, and is reverted; the integration check)', () => {
+  it('C9w.3: the 1 µΩ wire Rw, its two ends one double, keeps ngspice\'s 0 A beside Vm\'s proven 7.324e-19 A, with no note that gives it a current (the fill drew "7.324e-19 A from node n3 to node p")', async () => {
     const r = await solveText(netlist(...ladder, 'Rw n3 p 1u', 'Vm p q 0', 'Rvm q 0 1t', '.options gmin=1e-12', '.options savecurrents', '.op'), ngspice);
     const rw = r.words.currents.find((c) => c.name === 'Rw')!;
-    expect([text(r.words, 'Rw'), rw.given, text(r.words, 'Vm')]).toEqual(['7.324e-19 A from node n3 to node p through Rw', 0, 'Vm measures 7.324e-19 A flowing from node p to node q']);
-    expect(rw.across! / (rw.value * 1e-6)).toBeCloseTo(1, 12);
-    expect(message(r.words, 'rounded-to-0')).toBe(
-      "Rw's current is not 0, though ngspice gave 0: ngspice gave Rw exactly 0 A. But Vm, the only other part at node p, carries 7.324e-19 A, and the currents at a node add up to 0, so Rw carries 7.324e-19 A too. Rw's two ends, node n3 and node p, come out as the same number: the 7.324e-25 V across it is too small beside the 732.4 nV there for ngspice's arithmetic (about 16 significant digits). So PlainSpice shows it as Kirchhoff's law gives it: Rw 7.324e-19 A.",
-    );
+    expect([text(r.words, 'Rw'), rw.given, text(r.words, 'Vm')]).toEqual(['no current through Rw', undefined, 'Vm measures 7.324e-19 A flowing from node p to node q']);
+    expect(message(r.words, 'rounded-to-0')).toBeUndefined();
     expect(message(r.words, 'maybe-noise')).toBeUndefined();
   });
 
-  it('two such wires in a row are each given back, node by node; where the other current at the node is rounding noise of a 0, nothing is (the bridge\'s ammeter: R5 and Vm both no current)', async () => {
+  it('two such wires in a row each keep ngspice\'s 0; where the other current at the node is rounding noise of a 0, nothing is given back either (the bridge\'s ammeter: R5 and Vm both no current)', async () => {
     const chain = await solveText(netlist(...ladder, 'Rw1 n3 p1 1u', 'Rw2 p1 p 1u', 'Vm p q 0', 'Rvm q 0 1t', '.options gmin=1e-12', '.options savecurrents', '.op'), ngspice);
-    expect([text(chain.words, 'Rw1'), text(chain.words, 'Rw2')]).toEqual(['7.324e-19 A from node n3 to node p1 through Rw1', '7.324e-19 A from node p1 to node p through Rw2']);
+    expect([text(chain.words, 'Rw1'), text(chain.words, 'Rw2'), message(chain.words, 'rounded-to-0')]).toEqual(['no current through Rw1', 'no current through Rw2', undefined]);
     const bridge = await solveText(netlist('V1 top 0 9', 'R1 top a 10k', 'R2 a 0 10k', 'R3 top b 4.7k', 'R4 b 0 4.7k', 'R5 a m 1k', 'Vm m b 0', '.options gmin=1e-12', '.options savecurrents', '.op'), ngspice);
     expect([text(bridge.words, 'R5'), text(bridge.words, 'Vm'), message(bridge.words, 'rounded-to-0')]).toEqual(['no current through R5', 'Vm measures no current', undefined]);
   });
@@ -149,11 +146,11 @@ describe('a point found within the step\'s rounding of the .op\'s value stands f
   }, 120_000);
 });
 
-describe('the rule gives a current back only where rounding can hide it, and a point is renamed only where its label reads as the value it is meant to have', () => {
-  it('a current Kirchhoff\'s law gives a wire is drawn only where the voltage it makes across the wire is within a few steps of a double of its ends: doctored to 1 mA, which across 1 µΩ is 1 nV beside node p\'s 732.4 nV, it is not (ngspice\'s numbers then break Kirchhoff\'s law: w9711-10 had 2.33e18 A "through" a resistor at 0 V)', async () => {
+describe('the rule gives no current back, and a point is renamed only where its label reads as the value it is meant to have', () => {
+  it('whatever the other currents at its node, the wire keeps ngspice\'s 0: doctored to 1 mA through Vm and Rvm, Rw is still "no current", with no note (the reverted fill gave a current back only where it made a voltage across the wire within a few steps of a double of its ends)', async () => {
     const source = netlist(...ladder, 'Rw n3 p 1u', 'Vm p q 0', 'Rvm q 0 1t', '.options gmin=1e-12', '.options savecurrents', '.op');
     const r = await solveText(source, ngspice);
-    expect(text(r.words, 'Rw')).toBe('7.324e-19 A from node n3 to node p through Rw');
+    expect(text(r.words, 'Rw')).toBe('no current through Rw');
     const doctored = structuredClone(r.results);
     for (const c of doctored.op!.currents) if (c.element === 'vm' || c.element === 'rvm') c.value = 1e-3;
     const w = describeResults(parseNetlist(source), doctored, r.run);

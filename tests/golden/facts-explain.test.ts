@@ -1769,11 +1769,11 @@ describe('after the last pass (13 November 2026)', () => {
     expect(d.words.warnings.some((m) => m.code === 'maybe-noise')).toBe(false);
   });
 
-  it('C9w.3: by the rule, Vm\'s real 7.324e-19 A after a 1 µΩ wire ngspice gives 0 A is given back at the meter\'s node; node q, the very double of n3, is real, so Rvm\'s q / 1 TΩ is proven real, and Vm in series with it: no note calls them maybe noise (it did, beside q\'s real 732.4 nV); and the wire carries what Vm carries, by Kirchhoff\'s law at node p, with the note (it was drawn "no current", the critic of round 2)', () => {
+  it('C9w.3: by the rule, Vm\'s real 7.324e-19 A after a 1 µΩ wire ngspice gives 0 A is given back at the meter\'s node; node q, the very double of n3, is real, so Rvm\'s q / 1 TΩ is proven real, and Vm in series with it: no note calls them maybe noise (it did, beside q\'s real 732.4 nV); the wire keeps ngspice\'s 0 A (Kirchhoff\'s law gave it Vm\'s current from the critic of round 2 until the integration check, which found that fill making currents up elsewhere, C9z)', () => {
     const d = ofFact('C9w.3');
-    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'Rvm')), plain(currentText(d, 'Rw'))]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q', '7.324e-19 A from node q to ground through Rvm', '7.324e-19 A from node n3 to node p through Rw']);
+    expect([roundingNoise(d.netlist, d.results).by, plain(currentText(d, 'Vm')), plain(currentText(d, 'Rvm')), plain(currentText(d, 'Rw'))]).toEqual(['rule', 'Vm measures 7.324e-19 A flowing from node p to node q', '7.324e-19 A from node q to ground through Rvm', 'no current through Rw']);
     expect(d.words.warnings.some((m) => m.code === 'maybe-noise')).toBe(false);
-    expect(plain(d.words.warnings.find((m) => m.code === 'rounded-to-0')?.why)).toContain('But Vm, the only other part at node p, carries 7.324e-19 A, and the currents at a node add up to 0, so Rw carries 7.324e-19 A too.');
+    expect(d.words.warnings.some((m) => m.code === 'rounded-to-0')).toBe(false);
   });
 
   it('C8b: a sweep\'s words name a transistor\'s currents by their terminals, as ngspice\'s devhelp describes them, never "the current in Q1" four times', () => {

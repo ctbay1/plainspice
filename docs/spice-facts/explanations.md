@@ -7237,9 +7237,10 @@ currents shown at a node add up to 0): Vm keeps its real 7.324e−19 A. Node q h
 current of a resistor from it to ground too, its voltage over its resistance, so Rvm's 7.324e−19 A is real, and Vm's
 with it (the only two currents at q). No note calls them maybe noise (one did, "2 currents may be rounding noise",
 beside q's real 732.4 nV). Solved exactly (without the gmin line) they are real too, and the wire's 7.324e−19 A is
-shown exactly (C9n). Since the critic of round 2 of the last pass's fixes, the rule gives the wire that current too: Vm,
-the only other part at node p, carries a current proven real, so by Kirchhoff's law the wire, which ngspice gives as
-exactly 0 A, carries it as well, and a note says why (it was drawn "no current" beside Vm's 7.324e−19 A).
+shown exactly (C9n). From the critic of round 2 of the last pass's fixes until the integration check, the rule gave the
+wire that current too, by Kirchhoff's law at node p (Vm, the only other part there, carries a current proven real); the
+integration check found that fill making currents up wherever ngspice's own rounding leaves the proven currents at a
+node a little apart (C9z), so the wire keeps ngspice's 0 A again, beside Vm's 7.324e−19 A, with nothing said (open).
 
 ```spice
 * the C9n ladder read through a 1 uohm wire, a 0 V ammeter and a 1 Tohm meter, with ngspice's own gmin written out
@@ -7289,10 +7290,9 @@ our engine (wasm), as ngspice -b -r (exit 0):
 ```
 
 ```text
-  words (describe.ts): Rw: 7.324e-19 A from node n3 to node p, with the note "Rw's current is not 0, though ngspice gave 0:
-  ngspice gave Rw exactly 0 A. But Vm, the only other part at node p, carries 7.324e-19 A, and the currents at a node add
-  up to 0, so Rw carries 7.324e-19 A too. Rw's two ends, node n3 and node p, come out as the same number: …"; Vm
-  measures 7.324e-19 A flowing from node p to node q; Rvm 7.324e-19 A; no note that they may be rounding noise
+  words (describe.ts): Rw: no current; Vm measures 7.324e-19 A flowing from node p to node q; Rvm 7.324e-19 A; no
+  note that they may be rounding noise, and none about Rw (from the critic of round 2 of the last pass's fixes until
+  the integration check: "Rw: 7.324e-19 A from node n3 to node p", with the note "… so Rw carries 7.324e-19 A too")
 ```
 
 Added after the last pass (13 November 2026) (C9w.4; carrier-zero-beside-own-noise): a G of 10⁶ S reads a 1e15 Ω
