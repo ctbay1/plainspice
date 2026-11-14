@@ -3155,8 +3155,12 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     /** True when a class of diodes free in `shape` changes this series. */
     const changes = (shape: DiodeStructure): boolean => shape.classes.some((cls) => cls.reduce((acc, t) => acc + (cs[t] ?? 0n), 0n) !== 0n);
     const values = s.values;
-    /** The points where a + b·s is exactly 0 at the value each stands for (standsFor), when there are any (b not 0). */
-    let roots: ReadonlySet<number> = new Set();
+    /**
+     * ngspice's x at the points where a + b·s is exactly 0 at the value each stands for (standsFor), when there are any (b not
+     * 0): −a/b's nearest double and the .op's own value, so at most two in a sweep of one source; compared as numbers in the
+     * loops over every point (a set's lookup there cost 45,000 points of 41 series 50 ms).
+     */
+    let [rootA, rootB]: (number | undefined)[] = [];
     if (!changes(everywhere)) {
       if (pair === null || (pair[0] === 0n && pair[1] === 0n)) {
         // Marked only where ngspice gave a number somewhere (it gives a capacitor's 0 as 0).
@@ -3176,7 +3180,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
           const at0 = (s: Fraction): boolean => p * s.d + q * s.n === 0n;
           const near = swept && own !== undefined && own !== r && at0(swept.value) ? [...atX(r), ...atX(own)].sort((u, v) => u - v) : atX(r);
           const found = near.filter((k) => at0(standsFor(k)));
-          if (found.length) roots = new Set(found);
+          [rootA, rootB] = found.map((k) => xs[k]!);
           const points = found.filter((k) => values[k] !== 0 && Number.isFinite(values[k]!));
           if (points.length) {
             zero.set(j, points);
@@ -3223,7 +3227,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     for (let k = 0; k < n; k++) {
       const v = values[k]!;
       if (v === 0) zeros += 1;
-      else if (Math.abs(v) <= near && !roots.has(k) && nearPoints.length < NEAR_POINTS) nearPoints.push(k);
+      else if (Math.abs(v) <= near && xs[k] !== rootA && xs[k] !== rootB && nearPoints.length < NEAR_POINTS) nearPoints.push(k);
     }
     const fixed: { k: number; v: number }[] = [];
     for (const k of nearPoints) {
@@ -3236,7 +3240,7 @@ function findSweepNoise(netlist: Netlist, results: AnalysisResults): SweepNoise 
     const exact = new Float64Array(zeros);
     let found = 0;
     for (let k = 0; k < n; k++) {
-      if (values[k] !== 0 || roots.has(k)) continue;
+      if (values[k] !== 0 || xs[k] === rootA || xs[k] === rootB) continue;
       let v: number | undefined;
       if (exactLeft <= 0 && k !== n - 1) {
         if (alpha === undefined) {
