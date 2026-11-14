@@ -760,7 +760,7 @@ and golden rows in A3f and A3h):
 
 The integration check of the last pass's lanes found two problems with subcircuits the main circuit does
 not use (`src/spice/explain.ts`, `src/spice/traps.ts`; `tests/unit/integration-check-subckt.test.ts`,
-golden rows in A3f of `docs/spice-facts/explanations.md`):
+golden rows in A3f and A3i of `docs/spice-facts/explanations.md`):
 
 - **The walk out stops after three steps** (cross X2). The words for such a subcircuit name the X lines
   that use it, outward (critic1-4 above), and each subcircuit kept its whole way out, with every X line of
@@ -785,3 +785,37 @@ golden rows in A3f of `docs/spice-facts/explanations.md`):
   ×5 now), as critic1-6's test does. The skeptic's other way, naming at most three X lines with "and
   4,997 other X lines", was left: it needs words of its own, and the stop says what holds. So decision
   0012's bounded-work promise holds again for these netlists.
+- **No check speaks for a line ngspice skips** (facts P1). A line inside a subcircuit no X line uses got the
+  checks of a line ngspice builds: `.foo` there was an error, "ngspice stops before running anything, with
+  'unimplemented dot command'", so the status line said "Not reliable" and the Numbers panel called the
+  right answers (out = 2.5 V) "not answers", and Explain said "ngspice does not know the dot command .foo,
+  so it stops", one line below its own "ngspice skips this line" for the `.tran` there. Native 47 and 42
+  run such a netlist with exit 0 and no message. ngspice turns every line of a subcircuit defined at the
+  top level that the main circuit does not use into a comment right after its first syntax checks
+  (comment_out_unused_subckt_models in inpcom.c), so nothing on it makes ngspice stop or warn: the 491
+  netlists of the traps' golden rows, each moved into such a subcircuit beside a working divider, ran
+  cleanly in native 47, 42 and our engine, all but eight: five with a line ngspice reads first (an
+  `.include`, a `.lib`, a V or I line with one node, an @ line) and three where it only warned as it read
+  (a line starting with !; in 42 alone, a subcircuit with parameters defined inside another). The checks
+  now leave such lines out (`skippedLine`), as they already left out the analysis lines there (A3f): 461 of
+  the 466 traps those netlists had there went, none whose claim held, and the five that stay are on lines
+  ngspice stops at. The misspelt-analysis hint does not count a `.tarn` there, so a netlist whose only
+  analysis is such a line gets the check that it has none. Explain says "ngspice skips this line: it is
+  inside the subcircuit s (from line 5), and no X line uses that subcircuit." in place of the line's notes
+  (naming the X lines out, as for an analysis line, where only X lines of such subcircuits use it), drops a
+  summary that says what ngspice does when it reads the line (an unknown dot command, a line that is no
+  part, a `.lib` with one word, `.control`), and gives a word the meaning "a word PlainSpice cannot place on
+  this line" where it said ngspice stops at it. Kept, as ngspice reads them before it skips anything: an
+  `.include` or `.inc`, a `.lib` with a file and a section, a `*#` or `##` line (it runs), and a V or I line
+  with one node ("Not enough parameters"). Kept as they were too: everything with a line starting with
+  `.if` in the netlist and in a subcircuit defined inside one the main circuit uses, where ngspice keeps such
+  lines longer and a later step can stop at one (`E1 a 0 VALUE=3` there stops it, "mal formed E source
+  instance"), and with `.subckt` and `.ends` lines that do not pair up, where ngspice stops first. So beside
+  a `.if` a `.foo` is still called an error ngspice stops at while ngspice runs, which is left for
+  after the release with a line-by-line reading of which step reads what. Considered, and the skeptic's
+  way: keeping the checks as warnings that say "ngspice skips this line for now … once an X line uses s:"
+  before what they said, so a student learns of a broken line before writing the X line. Left: it needs
+  words for every check and a new kind of check text in the last round, and the analysis lines there,
+  checked the same way, have said nothing since A3f; the checks come back the moment an X line
+  uses the subcircuit, and Explain says why they are not there. The behaviour is older than the last pass
+  (fix-base and c520a49 gave the same errors); the last pass's records only made the contradiction plain.

@@ -38,6 +38,14 @@ engine. One more difference turned up and is outside the traps' claims: with a 1
 transient time grid of our engine differs from native 47's (decimal-comma-3, space-before-suffix-8: 59 and
 64 points against 83 and 77), while the final values agree to 6 significant figures or better.
 
+**Lines ngspice skips.** No check speaks for a line ngspice turns into a comment before it checks it: every
+line of a subcircuit the main circuit does not use (A3i in [explanations.md](explanations.md), after the
+integration check of 14 November 2026). ngspice says nothing about such a line, whatever trap below it holds,
+and runs the main circuit; the line's checks come back once an X line uses the subcircuit. An `.include`, a
+`.lib` with a file and a section and a V or I line with one node keep theirs, as ngspice reads them there and
+stops; and every check stays where ngspice keeps such lines longer: with a line starting with `.if` in the
+netlist, and in a subcircuit defined inside one the main circuit uses.
+
 **The tests.** `tests/golden/facts-traps.test.ts` runs every netlist here through our engine on every
 `npm run test:golden` and asserts the claimed result (vectors, messages, whether the run fails or is marked
 unreliable), checks that `checkTraps` finds exactly the traps listed for it, and runs every fix those traps

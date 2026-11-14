@@ -303,7 +303,9 @@ describe('every part letter', () => {
   });
 
   it('a part inside .subckt says so', () => {
-    expect(notes(line('* t\n.subckt amp in out\nRin in out 1k\n.ends\n', 3))).toContain('This part belongs to the subcircuit amp (from line 2)');
+    expect(notes(line('* t\n.subckt amp in out\nRin in out 1k\n.ends\nX1 a b amp\n', 3))).toContain('This part belongs to the subcircuit amp (from line 2)');
+    // With no X line that uses amp, ngspice skips the line, and the note says that, with the subcircuit (A3i, the integration check P1).
+    expect(notes(line('* t\n.subckt amp in out\nRin in out 1k\n.ends\n', 3))).toBe('ngspice skips this line: it is inside the subcircuit amp (from line 2), and no X line uses that subcircuit.');
   });
 });
 

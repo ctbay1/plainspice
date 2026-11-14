@@ -6,6 +6,10 @@
  *   at most three X lines each, so its work, its memory and its words grow with the netlist, not with its
  *   square: a chain of 4,000 subcircuits made 8 million steps and about 1 GB, and one note named a chain of
  *   500 in 37,257 characters.
+ * - P1: ngspice turns the lines of such a subcircuit into comments before it checks them, so a line that
+ *   stops it elsewhere says nothing there and the run gives the main circuit's answers (A3i); the checks
+ *   said it stops ("ngspice does not know .foo"), the status line called the right numbers "not answers",
+ *   and Explain said ngspice stops at the line. What ngspice still reads there keeps its words.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -99,4 +103,90 @@ describe('X2: the walk out of a subcircuit the main circuit does not use grows w
     expect(s.words.warnings[0]!.title).toBe('.op is inside the subcircuit s500, which only X1 uses, and X1 is inside the subcircuit s499, which only X1 uses, and X1 is inside the subcircuit s498, which only X1 uses, and X1 is inside the subcircuit s497, which the main circuit does not use, directly or through other subcircuits');
     expect(s.words.summary.length).toBeLessThan(400);
   }, 60000);
+});
+
+describe('P1: a line in a subcircuit the main circuit does not use is skipped, so no check speaks for it and Explain says so (A3i)', () => {
+  const SUB = `${BASE}.subckt s a b\nR9 a b 1k\n`;
+  /** A line alone in the subcircuit s, which no X line uses, or which X1 uses (`used`). */
+  const inS = (line: string, used = false): string => `${SUB}${line}\n.ends\n${used ? 'X1 out 0 s\n' : ''}.op\n.end\n`;
+  const ids = (text: string): string[] => checkTraps(parseNetlist(text)).map((t) => t.id);
+  const SKIPS = 'ngspice skips this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit.';
+
+  it('the reviewer\'s netlist: no error that ngspice stops at .foo, the status is "ok", and Explain says ngspice skips the .foo (native 47 and 42: exit 0, out = 2.5 V)', async () => {
+    const text = `${SUB}.tran 0 -1\n.foo bar\n.ends\n.op\n.end\n`;
+    expect(ids(text)).toEqual([]);
+    const s = await solve(text, await engine);
+    expect([s.status, s.words.warnings]).toEqual(['ok', []]);
+    const foo = explainLine(parseNetlist(text), 7)!;
+    expect([foo.heading, foo.summary, foo.notes]).toEqual(['.foo: unknown dot command', '', [SKIPS]]);
+  }, 30000);
+
+  it('each line the reviewer listed: no check while no X line uses the subcircuit, and its check once X1 does', () => {
+    const cases: [string, string][] = [
+      ['.foo bar', 'unknown-dot-command'],
+      ['R8 a b', 'missing-value'],
+      ['E1 a 0 b', 'missing-fields'],
+      ['X5 a b nosuch', 'missing-subcircuit'],
+      ['Q1 a b 0 nomodel', 'missing-model'],
+      ['V3 a b 1 p', 'space-before-suffix'],
+      ['R7 a b 1M', 'mega-as-milli'],
+      ['E2 a 0 POLY(1) b 0 0 2', 'model-not-in-engine'],
+      ['R8 a b {xx}', 'fatal-syntax'],
+    ];
+    for (const [line, id] of cases) {
+      expect(ids(inS(line)), line).toEqual([]);
+      expect(ids(inS(line, true)), line).toContain(id);
+    }
+  });
+
+  it('Explain: every line ngspice skips there says so, a meaning that says ngspice stops at a word is gone, and an analysis line keeps its own words', () => {
+    const n = parseNetlist(`${SUB}V3 a b 1 p\n.tran 0 -1\n.ends\n.op\n.end\n`);
+    expect(explainLine(n, 5)!.notes).toEqual([SKIPS]);
+    const v3 = explainLine(n, 6)!;
+    expect([v3.notes, v3.fields.find((f) => f.text === 'p')?.meaning]).toEqual([[SKIPS], 'a word PlainSpice cannot place on this line']);
+    expect(explainLine(n, 7)!.notes).toEqual([`${SKIPS.slice(0, -1)}. Put analysis lines in the main circuit, outside .subckt … .ends.`]);
+    expect(explainLine(n, 8)!.notes).toEqual([SKIPS]);
+    // Used, the same lines keep what they said.
+    const used = parseNetlist(inS('V3 a b 1 p', true));
+    expect(explainLine(used, 6)!.notes.join(' ')).not.toContain('skips');
+    expect(explainLine(used, 6)!.fields.find((f) => f.text === 'p')?.meaning).toContain('ngspice stops');
+  });
+
+  it('a subcircuit only X2 uses, X2 being a line of one no X line uses: its lines are skipped too, and Explain names the X line', () => {
+    const text = `${BASE}.subckt outer p q\nX2 p q inner\n.ends\n.subckt inner a b\nR9 a b 1k\n.foo bar\n.ends\n.op\n.end\n`;
+    expect(ids(text)).toEqual([]);
+    expect(explainLine(parseNetlist(text), 9)!.notes).toEqual(['ngspice skips this line: it is inside the subcircuit inner (from line 8), which only X2 uses, and X2 is inside the subcircuit outer (from line 5), which no X line uses.']);
+  });
+
+  it('what ngspice reads there keeps its check and its words: an .include, a .lib with a file and a section, a *# line, a V line with one node', () => {
+    expect(ids(inS('.include models.lib'))).toEqual(['include-not-available']);
+    expect(ids(inS('.lib models.lib tt'))).toEqual(['include-not-available']);
+    expect(ids(inS('.lib models.lib'))).toEqual([]);
+    expect(explainLine(parseNetlist(inS('*# echo hello')), 6)!.notes.join(' ')).not.toContain('skips');
+    expect(ids(inS('V3 a'))).toEqual(['missing-fields']);
+    expect(explainLine(parseNetlist(inS('V3 a')), 6)!.notes.join(' ')).not.toContain('skips');
+  });
+
+  it('where ngspice does not turn the lines into comments first, every check stays: a .if line in the netlist, a subcircuit inside a used one, .subckt and .ends lines that do not pair up', () => {
+    const withIf = `${SUB}E1 a 0 VALUE=3\n.ends\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.op\n.end\n`;
+    expect(ids(withIf)).toEqual(['fatal-syntax']);
+    const nested = `${BASE}X1 out 0 outer\n.subckt outer p q\nR8 p q 1g\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.ends\n.op\n.end\n`;
+    expect(ids(nested)).toEqual(['fatal-syntax']);
+    expect(ids(`${SUB}.foo bar\n.op\n.end\n`)).toContain('unknown-dot-command');
+  });
+
+  it('the checks of the main circuit, and of the lines after a .end written inside the subcircuit, stay', () => {
+    expect(ids(`${BASE}R7 out 0 1M\n.subckt s a b\nR8 a b 1M\n.ends\n.op\n.end\n`)).toEqual(['mega-as-milli']);
+    // ngspice reads past that .end and builds R7 (native 47 and 42: out = 1.667 V), so the line after it keeps its check.
+    expect(ids(`${SUB}.end\n.ends\nR7 out 0 1k\n.op\n.end\n`)).toEqual(['after-end']);
+  });
+
+  it('a misspelt .tarn there is skipped, so the netlist has no analysis line: the check that says so speaks (it kept quiet for "Did you mean .tran?")', () => {
+    expect(ids(`${SUB}.tarn 1u 1m\n.ends\n.end\n`)).toEqual(['no-analysis']);
+  });
+
+  it('with the only .op and a .foo there, the run\'s reason is the skipped .op, never an error that ngspice stops at the .foo', async () => {
+    const s = await solve(`${SUB}.foo bar\n.op\n.ends\n.end\n`, await engine);
+    expect([s.status, s.words.warnings.map((m) => m.title)]).toEqual(['failed', ['.op is inside the subcircuit s, which no X line uses']]);
+  }, 30000);
 });

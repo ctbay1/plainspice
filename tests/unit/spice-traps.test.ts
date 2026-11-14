@@ -2298,7 +2298,10 @@ describe('after the second critic of the re-check fixes (12 November 2026)', () 
     const sub = (value: string, uses: string): string => `* t\n.subckt div a b\nR1 a b ${value}\nR2 b 0 1\n.ends\nV1 in 0 1\n${uses}.op\n.end\n`;
     expect(first(sub('0', 'X1 in out div\n'), 'zero-ohm').ngspice).toBe("ngspice 47 uses 1e-12 \u03a9 instead and warns 'Value of resistor r.x1.r1 is too small, set to 1.000000e-12'. ngspice 42 used 0.001 \u03a9 without a word. [zero-ohm-1, zero-ohm-2, zero-ohm-6]");
     expect(first(sub('0\u200b.47', 'X1 in out div\nX2 in out2 div\n'), 'invisible-character').ngspice).toContain("warns 'Value of resistor r.x1.r1 is too small, set to 1.000000e-12', and the same for r.x2.r1 (ngspice 42 used 0.001 \u03a9 without a word). [invisible-character-1, invisible-character-2, zero-ohm-1, zero-ohm-4, zero-ohm-6]");
-    expect(first(sub('0', ''), 'zero-ohm').ngspice).toContain("warns that the resistor's value is too small, once for each use of its subcircuit");
+    // Used only through another subcircuit's X line, no name is worked out here (native 47: 'Value of resistor r.x1.x2.r1 is too small').
+    expect(first(`* t\n.subckt div a b\nR1 a b 0\nR2 b 0 1\n.ends\n.subckt outer p q\nX2 p q div\n.ends\nV1 in 0 1\nX1 in out outer\n.op\n.end\n`, 'zero-ohm').ngspice).toContain("warns that the resistor's value is too small, once for each use of its subcircuit");
+    // With no X line, ngspice skips R1 and says nothing (A3i, the integration check P1), so no check speaks for it.
+    expect(ids(sub('0', ''))).toEqual([]);
     // At the top level the name stays as written.
     expect(first('* t\nV1 a 0 1\nR1 a b 0\nR2 b 0 1\n.op\n.end\n', 'zero-ohm').ngspice).toContain("warns 'Value of resistor r1 is too small");
   });

@@ -73,7 +73,9 @@ sweeps, and the plain words for each message. The unit tests `tests/unit/spice-e
   uses it, or only X lines of such subcircuits) is skipped, as are its parts and dot commands, though
   ngspice still reads an `.include` there; in one the main circuit uses, it runs as the main circuit's,
   once for each X line; `.subckt` and `.ends` lines that do not pair up stop ngspice first (A3f); gnd
-  is ground there too (A3g). ngspice names a node inside a subcircuit by its X lines, each followed by
+  is ground there too (A3g). ngspice skips every other line of a subcircuit the main circuit does not use
+  before it checks it, so nothing there stops it or makes it warn, but an `.include`, a `.lib` with a file,
+  a `*#` line and a V or I line with one node; not with a `.if` line in the netlist (A3i). ngspice names a node inside a subcircuit by its X lines, each followed by
   a dot, and its own name, `x1.m`, `x1.m.1`, and a part there after its first letter, `v.x1.vs`, and a
   `.tf` can use either (A3h).
 - `.dc` point counts, including steps like 0.1, ranges the step does not divide, downward sweeps,
@@ -4033,6 +4035,94 @@ our engine (wasm), as ngspice -b -r: the same vectors, bit for bit, and the same
   code (golden rows an-tf-inner-dotted, an-op-inner-dotted, an-tf-inner-xdot, -inner-partdot,
   -inner-nested-dot, -inner-dot-none, -inner-zero, -inner-gnd and -inner-letter)
 ```
+
+### A3i. ngspice skips every line of a subcircuit the main circuit does not use before it checks it: nothing there stops it or makes it warn
+
+Added after the integration check of the last pass's lanes (14 November 2026, P1). Right after it reads the netlist
+(the `.include` and `.lib` files, A3f) and makes its first syntax checks (inp_check_syntax: the characters a line
+starts with, the count of `.subckt` and `.ends` lines, a V or I line with fewer than two nodes), ngspice turns every
+line of a subcircuit defined at the top level that the main circuit does not use into a comment, those of the
+subcircuits defined inside it too (comment_out_unused_subckt_models in inpcom.c; "used" as in A3f, through X lines).
+So a line there that stops ngspice or makes it warn in the main circuit, or once an X line uses the subcircuit, says
+nothing: no unknown dot command, no part without a value or a model, no word it cannot use, no formula it cannot read,
+not even the POLY that PlainSpice's engine, built without XSPICE, stops at elsewhere. The checks therefore say nothing
+about such a line, and Explain says only that ngspice skips it, as it already did for an analysis line there (A3f): the
+status line called the right numbers of an-skip-unused "not answers", as "ngspice does not know .foo" was an error, and
+Explain said ngspice stops at the `.foo`. A misspelt `.tarn` there is no analysis line that ngspice could have meant,
+so the check that the netlist has none speaks. What ngspice still reads there: an `.include` or `.inc` (A3f) and a
+`.lib` with a file and a section, which stop it as the files are missing (a `.lib` with one word is skipped); a `*#` or
+`##` line, which it has made a command and runs; and a V or I line with one node, where its first syntax check stops
+("Not enough parameters"); those keep their checks and their words. And ngspice does not do this at all when a line
+starts with `.if` anywhere in the netlist (it keeps the lines until it has worked out the `.if`), or for a subcircuit
+defined inside one the main circuit uses: then a later reading step still sees such a line, and an `E1 a 0 VALUE=3`
+there stops ngspice ("mal formed E source instance"), so the checks there stay as they were.
+
+```spice
+* lines that stop ngspice or make it warn elsewhere, in a subcircuit no X line uses
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+.subckt s a b
+R9 a b 1k
+R8 a b
+E1 a 0 b
+X5 a b nosuch
+Q1 a b 0 nomodel
+V3 a b 1 p
+R7 a b 1 k
+R6 a b 0
+E2 a 0 VALUE=3
+E3 a 0 POLY(1) b 0 0 2
+.foo bar
+.ends
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0): out 2.500000e+00, in 5.000000e+00, v1#branch -2.50000e-03, and no other message
+  rawfile from ngspice -b -r (exit 0, no message): v(in) = 5, v(out) = 2.5, i(v1) = -0.0025
+  each of those lines alone in that subcircuit, with -b -r: the same (an-skip-unused has .tran 0 -1 and .foo bar,
+    A3f); so too C8 a b, D1 a b nodiode, R8 a b {xx}, a .lib nosuch.lib with one word, and E1 a 0 VALUE=3 alone
+    (an-skip-e-value)
+  with X1 out 0 s before the .op and R8 a b alone in the subcircuit, ngspice -b (exit 0):
+    Warning: 'r.x1.r8 out 0 ' is not a valid resistor instance line, ignored!
+    out 1.666667e+00, in 5.000000e+00, v1#branch -3.33333e-03; the rawfile from -b -r the same
+  with a misspelt .tarn 1u 1m alone in the subcircuit and no .op, ngspice -b (exit 1):
+    Error: incomplete or empty netlist
+           or no ".plot", ".print", or ".fourier" lines in batch mode;
+    no simulations run!
+    and -b -r (exit 0): no rawfile, and no message
+  with .lib nosuch.lib tt alone in the subcircuit, -b and -b -r (exit 1, no rawfile):
+    Error: Could not find library file nosuch.lib
+    ERROR, library file nosuch.lib not found
+    ERROR: fatal error in ngspice, exit(1)
+  with *# echo hello from the subcircuit there: "hello from the subcircuit", then the same values
+  with V3 a alone there, -b and -b -r (exit 1, no rawfile):
+    Error in line   v3 a
+        Not enough parameters for v source
+        line no. 7 from file an-skip-v-one.cir
+    ERROR: fatal error in ngspice, exit(1)
+  with E1 a 0 VALUE=3 alone there and .param flag=1, .if (flag == 1), R3 out 0 1g and .endif in the main
+    circuit, or with that subcircuit defined inside one X1 out 0 outer uses, -b and -b -r (exit 1, no rawfile):
+    ERROR: mal formed E source instance: e1 a 0   vol=3
+        in line no. 11 of file an-skip-if.cir
+    ERROR: fatal error in ngspice, exit(1)
+  with .foo bar alone there and that .if: exit 0, v(out) = 2.499998750000625 (R3 beside R2), and no message
+ngspice 42: the same values, exit codes and messages, with "Not enough parameters" for "Not enough parameters for
+  v source" and "ERROR: mal formed E line: e1 a 0   vol=3", without the "line no." lines, and with 'Note: No ".plot",
+  ".print", or ".fourier" lines; no simulations run' for the -b ending of the .tarn
+our engine (wasm), as ngspice -b -r: exit 0, vectors: v(in) = 5, v(out) = 2.5, i(v1) = -0.0025, and no message, the
+  POLY line included; with X1, R8's warning and v(out) = 1.6666666666666665; with the .tarn, no results and no
+  message; the .lib, the V3 a and the VALUE=3 beside a .if or inside a used subcircuit stop it with ngspice 47's
+  messages; the *# line prints its words (golden rows an-skip-lines, an-skip-lines-used-r8, an-skip-tarn, an-skip-lib,
+  an-skip-lib-one, an-skip-starhash, an-skip-v-one, an-skip-e-value, an-skip-if, an-skip-nested and an-skip-if-foo)
+```
+
+The checks and Explain stay as they were in the two cases where ngspice does not turn the lines into comments first,
+also where that leaves a claim ngspice does not bear out: with a `.if` line, the `.foo` beside it is still called an
+error that stops ngspice, while ngspice runs (an-skip-if-foo). Telling those lines apart line by line is left for after
+the release.
 
 ## 3. Currents and power in the results
 

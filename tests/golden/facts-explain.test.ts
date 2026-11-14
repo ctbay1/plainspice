@@ -194,6 +194,17 @@ const FACTS: Fact[] = [
   { code: 'A3h', id: 'an-tf-inner-zero', netlist: "* a .tf of x1.0, ground's name after X1\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\n.ends\n.tf v(x1.0) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2000.0000000002203, "v(output_impedance_at_V(x1.0))": 1 } },
   { code: 'A3h', id: 'an-tf-inner-gnd', netlist: "* a .tf of x1.gnd, where gnd inside the subcircuit is ground\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m gnd 1k\nR3 m b 1\n.ends\n.tf v(x1.gnd) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2000.0000000002203, "v(output_impedance_at_V(x1.gnd))": 1 } },
   { code: 'A3h', id: 'an-tf-inner-letter', netlist: "* a .tf whose input is i.x1.vs, where Vs is a voltage source\nV1 in 0 10\nX1 in out div\n.subckt div a b\nR1 a m 1k\nR2 m 0 1k\nR3 m b 1\nVs m q 0\nR4 q 0 1k\n.ends\n.tf v(out) i.x1.vs\n.end\n", prints: ["Transfer function source i.x1.vs not in circuit"], fails: true },
+  { code: 'A3i', id: 'an-skip-lines', netlist: "* lines that stop ngspice or make it warn elsewhere, in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\nR8 a b\nE1 a 0 b\nX5 a b nosuch\nQ1 a b 0 nomodel\nV3 a b 1 p\nR7 a b 1 k\nR6 a b 0\nE2 a 0 VALUE=3\nE3 a 0 POLY(1) b 0 0 2\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-lines-used-r8', netlist: "* R8 a b with no value in a subcircuit X1 uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 s\n.subckt s a b\nR9 a b 1k\nR8 a b\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 1.6666666666666665, "i(v1)": -0.0033333333333333335 }, prints: ["'r.x1.r8 out 0 ' is not a valid resistor instance line, ignored!"] },
+  { code: 'A3i', id: 'an-skip-tarn', netlist: "* a misspelt .tran in a subcircuit no X line uses, and no other analysis line\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.tarn 1u 1m\n.ends\n.end\n", fails: true },
+  { code: 'A3i', id: 'an-skip-lib', netlist: "* a .lib with a file and a section inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.lib nosuch.lib tt\n.ends\n.op\n.end\n", prints: ["Could not find library file nosuch.lib"], fails: true },
+  { code: 'A3i', id: 'an-skip-lib-one', netlist: "* a .lib with one word inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.lib nosuch.lib\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-starhash', netlist: "* a *# line inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n*# echo hello from the subcircuit\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 }, prints: ["hello from the subcircuit"] },
+  { code: 'A3i', id: 'an-skip-v-one', netlist: "* a voltage source with one node inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\nV3 a\n.ends\n.op\n.end\n", prints: ["Not enough parameters for v source"], fails: true },
+  { code: 'A3i', id: 'an-skip-e-value', netlist: "* E1 a 0 VALUE=3 in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-if', netlist: "* E1 a 0 VALUE=3 in a subcircuit no X line uses, with a .if in the netlist\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true },
+  { code: 'A3i', id: 'an-skip-nested', netlist: "* E1 a 0 VALUE=3 in a subcircuit no X line uses, defined inside one X1 uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 outer\n.subckt outer p q\nR8 p q 1g\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.ends\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true },
+  { code: 'A3i', id: 'an-skip-if-foo', netlist: "* .foo in a subcircuit no X line uses, with a .if in the netlist\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.subckt s a b\nR9 a b 1k\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.499998750000625, "i(v1)": -0.0025000012499993753 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
   { code: 'A6', id: 'an-tf-missing-node', netlist: "* .tf names a node that is not in the circuit\nV1 n1 0 6\nR1 n1 0 2\n.tf v(n9) V1\n.end\n", vectors: { "v(Transfer_function)": 0, "v(v1#Input_impedance)": 2, "v(output_impedance_at_V(n9))": 1 } },
@@ -876,6 +887,38 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     // Used from the main circuit through the four steps, the .tf runs: 1/3, as native 47 and 42 give it.
     const used = said('an-skip-through-four-used');
     expect([used.words.status, used.words.warnings, plain(used.words.tf?.transferFunction?.text)]).toEqual(['ok', [], 'v(out)/V1 = 0.3333 (V/V)']);
+  });
+
+  it('a line ngspice skips in a subcircuit the main circuit does not use: no check, and Explain says only that it skips it; what ngspice reads there keeps its words (A3i, the integration check P1)', () => {
+    const said = (id: string): Described => describeRun(FACTS.find((x) => x.id === id)!.netlist, runs.get(id)!);
+    const ids = (d: Described): string[] => checkTraps(d.netlist).map((t) => t.id);
+    const SKIPS = 'ngspice skips this line: it is inside the subcircuit s (from line 5), and no X line uses that subcircuit.';
+    // Every line ngspice stops at or warns about elsewhere, and the run gives the main circuit's answers: no check, status ok.
+    const lines = said('an-skip-lines');
+    expect([lines.words.status, lines.words.warnings, ids(lines)]).toEqual(['ok', [], []]);
+    for (let i = 6; i <= 16; i++) expect(explainLine(lines.netlist, i)!.notes, `line ${i + 1}`).toEqual([SKIPS]);
+    expect(explainLine(lines.netlist, 15)!.summary).toBe('');
+    expect(explainLine(lines.netlist, 10)!.fields.find((f) => f.text === 'p')?.meaning).toBe('a word PlainSpice cannot place on this line');
+    // The reviewer's netlist (A3f's an-skip-unused): no "ngspice does not know .foo" error over right numbers.
+    const unused = said('an-skip-unused');
+    expect([unused.words.status, ids(unused), explainLine(unused.netlist, 7)!.summary, explainLine(unused.netlist, 7)!.notes]).toEqual(['ok', [], '', [SKIPS]]);
+    // Once X1 uses the subcircuit, ngspice warns about R8, and so does the check.
+    const r8 = said('an-skip-lines-used-r8');
+    expect([ids(r8), explainLine(r8.netlist, 7)!.notes.join(' ')]).toEqual([['missing-value'], expect.not.stringContaining('skips')]);
+    // A misspelt .tarn there is skipped too, so the netlist has no analysis line that runs.
+    expect(ids(said('an-skip-tarn'))).toEqual(['no-analysis']);
+    // What ngspice reads there: a .lib with a file and a section stops it, a *# line runs, a V line with one node stops it.
+    expect(ids(said('an-skip-lib'))).toEqual(['include-not-available']);
+    expect(ids(said('an-skip-lib-one'))).toEqual([]);
+    expect(explainLine(said('an-skip-starhash').netlist, 6)!.notes.join(' ')).not.toContain('skips');
+    expect(ids(said('an-skip-v-one'))).toEqual(['missing-fields']);
+    expect(explainLine(said('an-skip-v-one').netlist, 6)!.notes.join(' ')).not.toContain('skips');
+    // E1 a 0 VALUE=3 is skipped, but beside a .if line, or inside a subcircuit defined inside a used one, it stops ngspice: its check stays.
+    expect(ids(said('an-skip-e-value'))).toEqual([]);
+    expect(ids(said('an-skip-if'))).toEqual(['fatal-syntax']);
+    expect(ids(said('an-skip-nested'))).toEqual(['fatal-syntax']);
+    // Beside a .if line every check stays, though ngspice skips the .foo and runs (left for after the release).
+    expect([said('an-skip-if-foo').words.status, ids(said('an-skip-if-foo'))]).toEqual(['ok', ['unknown-dot-command']]);
   });
 
   it('a dot inside a name ngspice builds, and names that are no node or part of a subcircuit: x1.0, x1.gnd, i.x1.vs (A3h, last pass critic1-3, critic1-5)', () => {

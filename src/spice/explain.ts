@@ -396,6 +396,14 @@ export const EXPLAIN_STRINGS = {
    */
   analysisInSkippedSubcircuit: (name: string, line: number, because: string): string =>
     `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), ${because}. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+  /**
+   * A3i: any other line ngspice skips there, as it turns the subcircuit's lines into comments before it checks
+   * them (the integration check, P1): the same words, without where to put an analysis line.
+   */
+  lineInUnusedSubcircuit: (name: string, line: number): string =>
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit.`,
+  lineInSkippedSubcircuit: (name: string, line: number, because: string): string =>
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), ${because}.`,
   /** A3f: one step out: the only X lines that use a subcircuit, and the subcircuit they are in. */
   skipStep: (xs: string, many: boolean, where: string): string =>
     `which only ${xs} ${many ? 'use' : 'uses'}, and ${many ? 'they are' : `${xs} is`} inside the subcircuit ${where}`,
@@ -1542,6 +1550,62 @@ export function unusedSubcircuit(netlist: Netlist, index: number): UnusedSubcirc
 export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   const name = netlist.lines[index]?.directive?.name;
   return name !== undefined && RUN_ANALYSES.has(name) && !contextOf(netlist).subcktMismatch && unusedSubcircuit(netlist, index) !== undefined;
+}
+
+const commentedOutCache = new WeakMap<Netlist, Set<number>>();
+/** The lines that say something to ngspice: not comments and blank lines, which it skips anywhere, nor the lines after .end. */
+const SKIPPED_KINDS: ReadonlySet<NetlistLine['kind']> = new Set(['element', 'directive', 'control', 'invalid', 'continuation']);
+
+/**
+ * The lines ngspice turns into comments right after its first syntax checks (A3i; comment_out_unused_subckt_models
+ * in inpcom.c): every line of a subcircuit defined at the top level that the main circuit does not use, those of the
+ * subcircuits defined inside it too, so nothing on them makes ngspice stop or warn. Not an .include or .inc line, nor
+ * a .lib line with a file and a section: ngspice has read those files by then (A3f); nor a *# or ## line, which it
+ * has made a command it runs; nor a V or I line with fewer than two nodes, where its first syntax check stops ("Not
+ * enough parameters"); nor .end and the lines after it, which this reading does not place. None at all with a line
+ * starting with .if, where ngspice keeps such lines until it has worked the .if out, or with .subckt and .ends lines
+ * that do not pair up, where it stops first (A3f).
+ */
+function commentedOut(netlist: Netlist): Set<number> {
+  const cached = commentedOutCache.get(netlist);
+  if (cached) return cached;
+  const out = new Set<number>();
+  commentedOutCache.set(netlist, out);
+  if (contextOf(netlist).subcktMismatch) return out;
+  // ngspice's has_if (inp_check_syntax): any line it reads but the title, up to an @ line.
+  for (const l of netlist.lines) {
+    if (l.index === 0) continue;
+    const t = l.text.trimStart();
+    if (t.startsWith('@')) break;
+    if (/^\.if/i.test(t)) return out;
+  }
+  const s = subcircuitsOf(netlist);
+  const open: number[] = [];
+  let unused = false;
+  for (const l of netlist.lines) {
+    const d = l.directive;
+    if ((d?.name === '.subckt' || d?.name === '.macro') && d.args[0]) {
+      if (open.length === 0) unused = !s.reached.has(lowerAscii(d.args[0].text));
+      open.push(l.index);
+    }
+    if (open.length > 0 && unused && SKIPPED_KINDS.has(l.kind) && d?.name !== '.end') {
+      const read = (d && (d.name === '.include' || d.name === '.inc' || (d.name === '.lib' && d.args.length >= 2))) || /^\s*(\*#|##)/.test(l.text);
+      const stops = (l.element?.letter === 'V' || l.element?.letter === 'I') && l.element.nodes.length < 2;
+      if (!read && !stops) out.add(l.index);
+    }
+    if (d?.name === '.ends' || d?.name === '.eom') open.pop();
+  }
+  return out;
+}
+
+/**
+ * A line ngspice skips because it is inside a subcircuit the main circuit does not use (A3i), with that subcircuit
+ * and why; undefined for any other line, and for one ngspice still reads or stops at there (commentedOut). Its checks
+ * then say nothing and Explain says only that ngspice skips it, as for an analysis line there (A3f).
+ */
+export function skippedLine(netlist: Netlist, index: number): UnusedSubcircuit | undefined {
+  const u = unusedSubcircuit(netlist, index);
+  return u && commentedOut(netlist).has(index) ? u : undefined;
 }
 
 /**
@@ -2938,6 +3002,34 @@ function explainTitle(line: NetlistLine): LineExplanation {
 export function explainLine(netlist: Netlist, lineIndex: number): LineExplanation | undefined {
   const line = netlist.lines[lineIndex];
   if (!line) return undefined;
+  const e = explainByKind(netlist, line);
+  // A3i: a line ngspice skips in a subcircuit the main circuit does not use; an analysis line there has its own words (A3f).
+  const u = line.directive && RUN_ANALYSES.has(line.directive.name) ? undefined : skippedLine(netlist, lineIndex);
+  return u ? asSkipped(e, line, u) : e;
+}
+
+/** Meanings of a word that say ngspice stops at it: for a line ngspice skips, such a word is one PlainSpice cannot place (A3i). */
+const STOPS_AT_WORD: ReadonlySet<string> = new Set([S.unknownWord, S.unknownWordEngine, S.reportOnlyWord, S.bNoExpression]);
+
+/**
+ * A3i: the explanation of a line ngspice skips, as it turns the lines of a subcircuit the main circuit does not use
+ * into comments before it checks them (the integration check, P1). Its notes say only that, as an analysis line's
+ * there do (A3f); a summary that says what ngspice does when it reads the line (it stops, it runs the block) goes, as
+ * the heading says what the line is; and a word's meaning says nothing of ngspice stopping at it.
+ */
+function asSkipped(e: LineExplanation, line: NetlistLine, u: UnusedSubcircuit): LineExplanation {
+  const d = line.directive;
+  const lead = lowerAscii(line.text.trimStart().split(/[\s;]/)[0] ?? '');
+  const says = line.kind === 'invalid' || (line.kind === 'element' && !line.element) || (line.kind === 'directive' && (!d || !isKnownDotCommand(d.name))) || d?.name === '.lib' || (line.kind === 'control' && lead === '.control');
+  return {
+    ...e,
+    summary: says ? '' : e.summary,
+    fields: e.fields.map((f) => (STOPS_AT_WORD.has(f.meaning) ? { ...f, meaning: S.extraWord } : f)),
+    notes: [u.direct ? S.lineInUnusedSubcircuit(u.name, u.line + 1) : S.lineInSkippedSubcircuit(u.name, u.line + 1, skippedBecause(u, true))],
+  };
+}
+
+function explainByKind(netlist: Netlist, line: NetlistLine): LineExplanation {
   switch (line.kind) {
     case 'title':
       return explainTitle(line);
