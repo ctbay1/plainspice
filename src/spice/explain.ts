@@ -1848,11 +1848,6 @@ interface Stops {
  * the braces it does not add itself (formulaWithoutBraces). Null elsewhere, and on a line inside a subcircuit the main
  * circuit does not use, which ngspice skips, as native 47 and 42 do there (the integration check, P2).
  */
-/** valueNodeMoved where ngspice reads the line, as stopsAt has it: not inside a subcircuit the main circuit does not use. */
-function movedAt(p: PartContext): ReturnType<typeof valueNodeMoved> {
-  return contextOf(p.netlist).subcktMismatch || !unusedSubcircuit(p.netlist, p.line.index) ? valueNodeMoved(p.netlist, p.el) : undefined;
-}
-
 function stopsAt(p: PartContext): Stops | null {
   if (p.stops !== undefined) return p.stops;
   const { el, netlist } = p;
@@ -1864,6 +1859,11 @@ function stopsAt(p: PartContext): Stops | null {
   }
   p.stops = found;
   return found;
+}
+
+/** valueNodeMoved where ngspice reads the line, as stopsAt has it: not inside a subcircuit the main circuit does not use. */
+function movedAt(p: PartContext): ReturnType<typeof valueNodeMoved> {
+  return contextOf(p.netlist).subcktMismatch || !unusedSubcircuit(p.netlist, p.line.index) ? valueNodeMoved(p.netlist, p.el) : undefined;
 }
 
 /** The words after a node called value that ngspice takes for the formula (valueNodeTrap's words). */
