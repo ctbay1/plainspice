@@ -1044,6 +1044,11 @@ problem where a fix would be complex, and adds no new mechanism.
   would call such a point the value too, and is not taken: it is a new judgement of points ngspice did not compute at that
   value, and the integration asked for the very double. With diodes, a point that stands for a decimal at which a diode
   has 0 V across it is not one of the diodes' special points: the series a diode changes keep ngspice's numbers there.
+  What it costs: the decision now finds the .op's value of the swept source on the exact path too, one pass over the
+  points, and compares each point with two values where it compared one. describeResults' main-thread CPU (the least of
+  three tries, the median of ten such, load 2.7 to 3.6) is 49 ms for 45,000 points of 44 results against 3e61833's 45.5,
+  and 44 ms for 150,001 points against 40; that pass made an array at each nearer point (`nearest`), 7.5 ms more than
+  3e61833 on the 150,001 points, until it assigned its two numbers instead.
 - **By the rule, only a point at the .op's value bit for bit shows the .op's 0s** (noise-3,
   rule-nearest-point-real-value-called-noise; C9z.4, C9x.4). Round 1 of the last pass's fixes took ngspice's point nearest
   the .op's value as its state on the rule path too, and the rule, run on that point's own values, wrote real values 0
