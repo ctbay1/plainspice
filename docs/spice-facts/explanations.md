@@ -599,9 +599,11 @@ our engine (wasm), as ngspice -b -r (exit 0):
   diagnostics: resistor-too-small (r1)
 ```
 
-### P14. A negative resistance is accepted without a message
+### P14. A negative resistance such as −2 Ω is accepted without a message
 
-1 A into a −2 Ω resistor gives −2 V, with no message.
+1 A into a −2 Ω resistor gives −2 V, with no message. One closer to 0 than 1e-12 Ω is the exception: ngspice 47
+warns and uses −1e-12 Ω instead, where ngspice 42 keeps it without a word (zero-ohm-7 in traps.md; both keep
+exactly −1e-12 Ω, P24c).
 
 ```spice
 * a negative resistance is accepted without a message

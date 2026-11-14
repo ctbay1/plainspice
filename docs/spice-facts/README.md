@@ -351,4 +351,6 @@ native 47 with a results file crashes (SIGSEGV) in every run and the records sai
 After the round-1 critic of those fixes (the same day, the same versions and modes): P24c in explanations.md
 (both versions keep exactly 1e-12 Ω or −1e-12 Ω without a warning; only a value closer to 0, such as
 ±0.999999e-12 Ω, gets ngspice 47's warning and ±1e-12 Ω, so Explain's notes on a resistance this close to 0
-begin there), with rows in `tests/golden/facts-explain.test.ts`.
+begin there), with rows in `tests/golden/facts-explain.test.ts`; and P14's heading, which now says "such as −2 Ω",
+with a sentence on a negative value closer to 0 than 1e-12 Ω (zero-ohm-7), pinned by
+`tests/unit/facts-records.test.ts`.

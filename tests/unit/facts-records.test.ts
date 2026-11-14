@@ -273,3 +273,16 @@ describe('X6 (integration check, 14 November 2026): the records name code that e
     expect(labels.size).toBeGreaterThan(25);
   });
 });
+
+describe('C1-3 (the round-1 critic of the integration check’s fixes, 14 November 2026): P14 says which negative resistances ngspice accepts without a message', () => {
+  it('P14’s heading names −2 Ω, and its text says that one closer to 0 than 1e-12 Ω gets ngspice 47’s warning and −1e-12 Ω', () => {
+    // Re-run in native 47 and 42: R1 n1 0 -2 gives −2 V and no message in both (P14); −3e-18 gets "set to -1.000000e-12"
+    // in 47 and is kept silently in 42 (zero-ohm-7).
+    const headings = read('explanations.md').split('\n').filter((line) => /^#{2,3} /.test(line));
+    expect(headings.filter((line) => line.startsWith('### P14. '))).toEqual(['### P14. A negative resistance such as −2 Ω is accepted without a message']);
+    expect(headings.filter((line) => /negative resistance is accepted without a message/i.test(line))).toEqual([]);
+    expect(sections('explanations.md').get('P14')!.replace(/\s+/g, ' ')).toContain(
+      'One closer to 0 than 1e-12 Ω is the exception: ngspice 47 warns and uses −1e-12 Ω instead, where ngspice 42 keeps it without a word (zero-ohm-7 in traps.md',
+    );
+  });
+});

@@ -943,3 +943,8 @@ A netlist, whether typed, pasted or opened from a link, is treated as untrusted 
   ±0.999999e-12 get theirs) and `tests/golden/facts-explain.test.ts` (P24c's run: no warning for R1 and R2, and
   neither the Checks, the Numbers panel nor Explain calls them too small, where each does for R3 and R4). Both
   fail with `<=`; the golden one also fails if the zero-ohm check's edge moves the same way.
+- **P14 says which negative resistance** (C1-3). Its heading said "A negative resistance is accepted without a
+  message", which ngspice 47 does not do for one closer to 0 than 1e-12 Ω: it warns and uses −1e-12 Ω (zero-ohm-7,
+  re-run in native 47 and 42 with P14's own netlist). The heading now says "such as −2 Ω", and a sentence says that
+  one closer to 0 is the exception, as the introduction of explanations.md and Explain's notes do; P14's netlist,
+  runs and golden row are unchanged. Test: `tests/unit/facts-records.test.ts` (fails on 3e61833).
