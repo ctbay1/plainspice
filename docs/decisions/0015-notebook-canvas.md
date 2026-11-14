@@ -763,8 +763,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   C9w.13, C9w.14). The rule's 0s were the .op's alone: C9 with a .param line or a transistor showed R5 "0 A", with
   the note, beside "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A" and a Plot panel that fell to −8.882e-19 A at 9 V
   (the sentence that recorded it was dropped in round 4). Now, beside such an .op, the sweep's points at the .op's
-  own state (one source at its netlist value, a resistor at its own, two sources at theirs; found from the
-  netlist's parts, as the rule path has no exact model) show a current the .op shows as 0 as 0 too, where ngspice
+  own state (one source at its netlist value, where the netlist writes it as a number since the integration check, below;
+  a resistor at its own, two sources at theirs; found from the netlist's parts, as the rule path has no exact model) show a current the .op shows as 0 as 0 too, where ngspice
   gives there the very number the .op's 0 stands for, or the rule, run on the point's own values, writes it as 0
   (a transistor's isolated nodes differ there by a few steps of a double); a note says so ("ngspice gave
   i(@r5[i]) -8.881784e-19 A at V1 = 9 V. At V1 = 9 V, the operating point's own state, ngspice gives it the very
@@ -947,7 +947,8 @@ that a phone left no room to watch the numbers move; this record says what the c
   under the spread of a part a capacitor keeps apart from them (R3 and R4, 180 kΩ beside 3.3 Ω, fed by I1); the sweep was
   decided and drew 0 V there with the note. Under the diodes' own allowance it is shown as ngspice gives it, with nothing
   said, as the same diodes alone were at round 2's code (a diode's leftovers say neither, z9771-103).
-- **By the rule, Kirchhoff's law gives back a real current ngspice gives as exactly 0** (N6; C9w.3). Once Vm and Rvm were
+- **By the rule, Kirchhoff's law gives back a real current ngspice gives as exactly 0** (N6; C9w.3; reverted after the integration
+  check, below: it made currents up). Once Vm and Rvm were
   proven real (7.324e−19 A), C9w.3's 1 µΩ wire Rw, ngspice's exact 0 A, its two ends one double, was drawn "no current"
   beside them at node p, and Kirchhoff's law failed on the page. Now where every other current at one of a resistor's (or
   a G's) nodes is proven real and those do not add up to 0, it carries what they leave, shown with ngspice's 0 kept as
@@ -988,3 +989,94 @@ that a phone left no room to watch the numbers move; this record says what the c
   run of d9761, r9731, a9721, w9711, s9742 or the repository has such a point); in a run ngspice could not solve (a
   singular matrix, the numbers of its fallback), Kirchhoff's law still gives a wire's current back, where the page says
   those numbers cannot be trusted and shows no note.
+
+## After the integration check (14 November 2026)
+
+The integration check of the merged last-pass lanes found four problems in the rounding-noise rule (noise-0 to noise-3)
+and two where it meets another lane (regress-3 P4; cross-2 X3 and regress-2 P3, one problem). Each was checked by a
+skeptic. This last fix round makes the most conservative change that makes each right, reverts the change that brought a
+problem where a fix would be complex, and adds no new mechanism.
+
+- **By the rule, Kirchhoff's law gives no current back: the fill of N6 is reverted** (noise-0, fill-fabricates-currents;
+  C9z, C9w.3). Where every other current at one of a wire's nodes was proven real and they did not add up to 0, the rule
+  gave the wire what they left. What they leave is ngspice's own rounding as often as a real current: the 1e9 S of a 1 nΩ
+  wire costs ngspice about ten digits at its node, and the guard (a current the rounding of the wire's equal end voltages
+  can hide) admits exactly the size of that residual. A divider with a .param line, a 1 nΩ wire and a 10 MΩ load drew
+  "Rw 1.431 nA from node p to node n1" where 198 nA flows the other way, with a note that cited Kirchhoff's law beside a
+  node p whose two currents then broke it (C9z). Of the integration check's 300 generated circuits on the rule path, 102
+  got a fill and all 102 were wrong; of its skeptic's, 121 got one and 117 were wrong; of r9731's 31 fills, 10 were wrong
+  (r9731-503: "R5 461.5 µA" for an exact −261 fA; r9731-1029: 27.27 nA for an exact 0); a chain of 149 wires of 1 µΩ was
+  drawn 1.735 pA the wrong way at every wire; and the fill recursed once a wire, so about 4,000 wires or more overflowed
+  the stack and the page lost its words (4,500 wires now take 121 to 192 ms of describeResults, load 3.4; at 3e61833 they
+  threw "Maximum call stack size exceeded"). Step 6 of the rule, the note's words for it and the `node` and `others` of a
+  lost current are taken out, back to c520a49's code: such a wire keeps ngspice's exact 0 with nothing said, and a run
+  whose exact solution is its circuit still warns that ngspice's 0 is off (c4-58 without its .param line: "Rw carries
+  198 nA, where ngspice gives 0 A"). Open again (N6): beside a current proven real at a node of two parts, a wire ngspice
+  gives exactly 0 A is drawn "no current" with nothing said, so Kirchhoff's law fails on the page there (C9w.3's Rw beside
+  Vm's 7.324e−19 A; C9z's beside Rload's 198 nA). The noise-0 skeptic's trial, a fill only of a strict series pair, walked
+  as a queue, still copies a partner's own error (r9731-1138: 5.048 pA the wrong way; r9731-1029: 2.17 fA for an exact
+  0), so it needs its own review after the release.
+- **A sweep's point at the .op's own value of its source, bit for bit, or at the very double of the decimal its steps
+  say, is that value** (noise-1, sweep-point-at-decimal-judged-at-binary; noise-2, point-name-collapses-with-prefix; C9z.2,
+  C9z.3). The .op is judged at the netlist's decimals (exact.ts READ_ULPS), but every point of a decided sweep was judged
+  at its binary x, even where that x is the decimal's own double: ".dc V1 0 0.3 0.15" ends at 0.3's double, where V2,
+  idle at 300 mV, carries no current and ngspice gives 0 A, and the page drew −3.701e−21 A there, the circuit at
+  0.29999999999999998890 V, with "Solved exactly … none of them is 0", beside the .op's "V2: no current"; at the .op's own
+  1.2000000000000002 V for "1.2" it drew the exact digits at the binary value beside the .op's note that called the very
+  same ngspice number noise. Now findSweepNoise judges each checked point and each point where a series may be 0 at the
+  value it stands for (`standsFor`): the netlist's value where ngspice's x is the .op's own double of the swept source, the
+  decimal start + k·step where x is that decimal's nearest double, else x itself; the series' 0s and lost values follow.
+  sweepNames no longer names a point at the .op's own double otherwise: ".dc I1 0 0.0045 0.03m" ends at ngspice's own 4.5m,
+  0.0045000000000000005, which read "The DC sweep's last point is I1 = 4.5 mA, not 4.5 mA" beside "i(v2) 4.047e-19 A" and
+  is now "I1 = 4.5 mA" with V2's 0. A point that drifted from both is named by ngspice's own value with that value's own
+  digits, the decimal point moved, never divided by the prefix (`exactSI`): formatSI's division turned
+  0.0045000000000000005 A into "4.5 mA", 3.0000000000000004e−7 A into "300 nA" and 0.0012000000000000003 A into
+  "1.2000000000000004 mA". Measured with the integration check's own judge, at the value each point stands for: its 393
+  current sweeps (isrc2) had 18 labels beside a value the .op contradicts, 39 wrong "There the circuit makes" claims, 21
+  points renamed for nothing, 68 exact 0s drawn as ngspice's noise and 214 filled in from ngspice's 0, and have none now
+  (252 of 252 claims right); its drift corpus's 298 runs on the exact path had 1, 8, 6, 18 and 16 of these, and none now.
+  What it gives up: a point that drifted even one step of a double from both is still judged at its own x and named by
+  it ("I1 = 1.2000000000000003 mA"), true but long; the noise-1 skeptic's wider rule (within READ_ULPS of either value)
+  would call such a point the value too, and is not taken: it is a new judgement of points ngspice did not compute at that
+  value, and the integration asked for the very double. With diodes, a point that stands for a decimal at which a diode
+  has 0 V across it is not one of the diodes' special points: the series a diode changes keep ngspice's numbers there.
+- **By the rule, only a point at the .op's value bit for bit shows the .op's 0s** (noise-3,
+  rule-nearest-point-real-value-called-noise; C9z.4, C9x.4). Round 1 of the last pass's fixes took ngspice's point nearest
+  the .op's value as its state on the rule path too, and the rule, run on that point's own values, wrote real values 0
+  there: ".dc V1 -8.15 4.95 0.05" passes 4.499999999999973 V, where the circuit makes −2.436 aA through an idle source,
+  drawn 0 with "ngspice's own numbers there show that each of them is rounding noise of a 0". That is reverted for the rule
+  path: with no exact solution, the rule cannot tell a real value there from noise, so such a point keeps ngspice's numbers
+  and is named by its own x where a note names it and one of them reads otherwise than the .op shows it. On the exact
+  path the point is still judged at its own x by the exact solution (C9w.7). In the drift corpus's 386 rule-path runs, 106
+  values were drawn 0 where the circuit makes them real at ngspice's x, and none now; the "very number" claims fall from
+  71 to 19, each at the .op's value bit for bit. What it gives up: a balanced bridge's drifted last point keeps ngspice's
+  noise there and is named by its own x, "There ngspice gives i(@r5[i]) −8.882e-19 A, where the operating point, at 9 V,
+  shows 0 A" (C9x.4), true in what it says but suggesting the drift made the difference (r9731-909's open item; in the
+  drift corpus 27 of the 91 rule-path bridge runs, 8 before).
+- **A swept source whose value is not a written number has no point at the .op's state** (regress-3, P4; C9z.5, C9w.13).
+  findStatePoints read a V or I set by a .param, braces or a transient function with no DC value as 0 V or 0 A, so the
+  sweep's 0 V point was "the operating point's own state" and its values the .op zeroes were zeroed there, with that note,
+  while the .op is at 9 V. One guarded line (the skeptic's) now finds no such point: those sweeps are shown as ngspice gives
+  them, as at c520a49. What stays open, as the skeptic advised: regress-1's ammeter bridge with its supply set by a .param
+  shows, at the sweep's 9 V point, ngspice's −2.168e−19 A for Vm (the .op's very double) beside the .op's "Vm measures no
+  current", and its .tf keeps −5.551e−17 V/V with no note, since the rule joins no level across R5, whose 0 A is
+  ngspice's exact 0. Taking such a source's value from the .op's own vectors (a grounded V's node, an I's own current, the
+  skeptic's fixB) would close it, but a node can come out a step of a double off its source's value, and it is a new
+  reading of the .op: left for after the release.
+- **A .tf of nodes inside a subcircuit gets the rule's note** (cross-2, X3-inner-tf-noise; regress-2, P3; C9z.6). The
+  rule reads only the main circuit's parts, so it puts no two nodes inside a subcircuit at one level, and C9x.5's note,
+  which needs them at one level, never came: v(x1.p,x1.q)/V1 = 1.11e−16 V/V for a bridge balanced exactly had nothing
+  said, beside x1.p and x1.q at 210 mV. ruleRatio now judges an output with a node inside a subcircuit by the .op's own
+  values: shown alike, the ratio gets the note "In the operating point node x1.p and node x1.q are at the same voltage, …".
+  And the note named an ammeter inside a subcircuit as a node, "i(v.x1.vs) is at 0 V, ground's voltage"; it now says
+  "v.x1.vs measures no current". The same circuits in the main circuit read as before. What stays open: main-circuit
+  nodes joined only inside a subcircuit (v(p,q)/V1 = 1.11e−16 V/V with nothing said, as at c520a49), and a part inside a
+  subcircuit whose .op current ngspice gives as tiny but not 0 (3.974e−18 A, a ratio of 7.727e−19 A/V, nothing said).
+- **Corrections of this record.** The N6 bullet above describes what is now reverted; "found within what ngspice's adding
+  up of the step leaves" (C2) and the N2 bullet's "ngspice's own numbers there show that it is rounding noise of a 0" hold
+  on the exact path only (by the rule only the .op's value bit for bit); "one source at its netlist value" (C9w.13) holds
+  where the netlist writes that value as a number; and the corpora's counts of Kirchhoff's fills (r9731 29, w9711 38,
+  d9761, s9742 and C9w.3) are none now.
+- **Our own netlists.** Of the repository's 982 netlists and facts blocks, 11 give other words than at 3e61833, each a
+  meant change: C9w.3's wire ("no current", without the note), C9x.4's last point (named by its x, ngspice's number), and
+  the new facts C9z to C9z.6; the 21 examples, the fixtures and tests/corpus read word for word the same.
