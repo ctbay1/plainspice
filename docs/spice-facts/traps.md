@@ -14882,6 +14882,9 @@ our engine (wasm), as ngspice -b -r (exit 0):
 the same bridge with çıkış on every part line, read by B1 x 0 V=v(Çıkış)*2 with Rx x 0 1k in place of Q1:
     ngspice 47 and 42, -b -r (exit 0): v(top) = 9, v(____k____) = 4.499999999999999, v(b) = 4.5, v(x) = 8.999999999999998, i(b1) = -0.008999999999999998, i(v1) = -0.0014074468085106386, i(@r5[i]) = -8.881784197001253e-19, i(@rx[i]) = 0.008999999999999998
     our engine (exit 0): the same values
+a nearly balanced bridge, R4 b 0 4700.0000014, with a 0 V ammeter Vm Çıkış b 0 in place of R5 (the noise-4 skeptic's fz1):
+    ngspice 47 and 42, -b -r (exit 0): v(____k____) = 4.500000000455927, v(b) = 4.500000000455927, i(vm) = -9.118536484729038e-14, i(@r1[i]) = 0.00044999999995440733, i(@r2[i]) = 0.0004500000000455927
+    our engine (exit 0): the same values; Vm's current is R1's less R2's, a real 91.19 fA, which PlainSpice shows with the note that it may be rounding noise (formerly "no current … every other current at node Çıkış is 0")
 the divider of formulas.spec.ts (R1 giris çıkış 1k, R2 çıkış 0 1k, B1 b 0 V=v(Çıkış)*2, Rb b 0 1k):
     ngspice 47 and 42, -b (exit 0): b 1.000000e+01, ____k____ 5.000000e+00, giris 1.000000e+01, v1#branch -5.00000e-03, b1#branch -1.00000e-02
     ngspice 47 and 42, -b -r (exit 0), and our engine: v(giris) = 10, v(____k____) = 5, v(b) = 10, i(b1) = -0.01, i(v1) = -0.005

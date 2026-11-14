@@ -105,6 +105,16 @@ describe('spellings on part lines that differ only in capital letters are their 
     expect(sp(r.words.summary)).toContain(`node ${T} = 4.5 V`);
     expect(r.words.summary).not.toContain('____k____');
   });
+
+  it('a nearly balanced bridge with an ammeter on the other spelling: Vm\'s real 91.19 fA is never called noise for "every other current at node Çıkış" (the noise-4 skeptic\'s fz1)', async () => {
+    // Native 47 and 42: i(vm) = -9.118536484729038e-14, which is R1's current less R2's: real, from R4's 1.4 nΩ more.
+    const text = `* t\nV1 top 0 9\nR1 top ${T} 10k\nR2 ${T} 0 10k\nR3 top b 4.7k\nR4 b 0 4700.0000014\nVm ${TC} b 0\nQ1 top x 0 qmod\nRx x 0 1meg\n.model qmod npn\n.options savecurrents\n.op\n.end\n`;
+    const r = await solveText(text, ngspice);
+    const vm = r.words.currents.find((c) => c.name === 'Vm')!;
+    expect(vm.value).toBe(-9.118536484729038e-14);
+    expect(r.words.warnings.map((m) => [m.code, m.line])).toContainEqual(['maybe-noise', 7]);
+    expect(r.words.warnings.map((m) => m.why).join(' ')).not.toContain('every other current at node');
+  });
 });
 
 describe('ngspice\'s name for a node inside a subcircuit (x1.çıkış) gets no rename of that name alone (the integration check, regression P2; non-ascii-node-30)', () => {
