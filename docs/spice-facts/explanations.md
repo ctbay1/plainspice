@@ -8243,6 +8243,390 @@ our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
   506.5 aA; …"; "At V1 = 500 mV: v(top1) = 500 mV, …"; no note about the point
 ```
 
+### C9z. After the integration check: ngspice's 0 for a wire stays 0 by the rule, a sweep's point at the .op's own value or at a decimal's very double is that value, by the rule only a point at the .op's value bit for bit shows its 0s, and a .tf of nodes inside a subcircuit gets the rule's note
+
+Added after the integration check of the merged last-pass lanes (14 November 2026; noise-0, fill-fabricates-currents). A
+divider with a .param line feeds a 10 MΩ load through a 1 nΩ wire. The wire carries the load's 198 nA, from n1 to p, but
+ngspice gives it exactly 0 A: its two ends are one double, 1.9800018882754475 V, and the 1e9 S wire costs ngspice about ten
+digits at n1, where R1's and R2's currents differ by 1.43 nA instead of 198 nA. From the critic of round 2 of the last
+pass's fixes, the rule gave the wire what the other currents at one of its nodes leave (Kirchhoff's law): at n1 that is
+ngspice's own 1.43 nA residual, so it drew "Rw 1.431 nA from node p to node n1", the wrong way and 138 times too small, with
+a note that cited Kirchhoff's law beside a node p whose two currents then broke it; on a chain of about 4,000 wires or more
+its recursion overflowed the stack, and the page lost its words. That fill is reverted: the wire keeps ngspice's 0 A, with
+nothing said, as at c520a49 (C9w.3's wire likewise; open). Without the .param line the exact solution decides, and warns
+that ngspice's 0 is off ("Rw carries 198 nA, where ngspice gives 0 A").
+
+```spice
+* a divider with a .param line, a 1 nohm wire and a 10 Mohm load
+.param rb=3.3k
+V1 n0 0 3.3
+R1 n0 n1 2.2k
+R2 n1 0 {rb}
+Rw n1 p 1n
+Rload p 0 10meg
+.options savecurrents
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out):
+          p                                1.980002e+00
+          n1                               1.980002e+00
+          n0                               3.300000e+00
+          @rload[i]                        1.980002e-07
+          @rw[i]                           0.000000e+00
+          @r2[i]                           6.000006e-04
+          @r1[i]                           5.999991e-04
+          v1#branch                        -5.99999e-04
+  rawfile from ngspice -b -r (exit 0): v(n0) = 3.3000000000000003, v(n1) = 1.9800018882754475, v(p) = 1.9800018882754475, i(v1) = -0.0005999991416929785, i(@r1[i]) = 0.0005999991416929785, i(@r2[i]) = 0.000600000572204681, i(@rw[i]) = 0, i(@rload[i]) = 1.9800018882754475e-07
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): Rw: no current through Rw; Rload: 198 nA from node p to ground through Rload; no note about Rw
+  (from the critic of round 2 of the last pass's fixes until the integration check: "Rw: 1.431 nA from node p to node n1",
+  with the note "… But the other currents at node n1, of R1 and R2, add up to 1.431 nA without Rw's, …")
+```
+
+Added after the integration check (14 November 2026) (C9z.2; noise-1, sweep-point-at-decimal-judged-at-binary): a sweep's
+point is judged at the value it stands for, as the .op is judged at the netlist's decimals (exact.ts READ_ULPS). ngspice
+reads "0.3" as 0.30000000000000004 for the .op, and ".dc V1 0 0.3 0.15" adds 0.15 twice and lands on 0.3's own double,
+0.29999999999999998890; both stand for 300 mV, where V2, holding node b at its own 150 mV, carries no current, and ngspice
+gives 0 A at both. The page judged that last point at its binary value, where the circuit (with V2 at its decimal 150 mV)
+makes −3.701e−21 A, and drew that, with "Solved exactly … none of them is 0", beside the .op's "V2: no current". Now a point
+at the .op's own value of the swept source, bit for bit, or at the very double of the decimal its steps say (start + k·step)
+is that value: ngspice's 0 there is the circuit's, and its noise there is rounding noise of a 0, as the .op shows it. With
+"1.2" (ngspice's 1.2000000000000002 V) a ".dc V1 0 1.2 0.6" ends at that very double, where ngspice gives V2 the .op's own
+1.084202e−19 A: the sweep shows 0 there with the noise note, where it drew the exact digits at the binary value, 4.229e−20 A,
+named the point "1.2000000000000002 V, not 1.2 V", and contradicted the .op's note on the same numbers. Only a point that
+drifted from both is judged at ngspice's own x (C9y).
+
+```spice
+* V2 holds node b at its own 150 mV when V1 is 300 mV, swept to it in 150 mV steps
+V1 a 0 0.3
+R1 a b 1k
+R2 b 0 1k
+V2 c 0 0.15
+R3 b c 1k
+.op
+.dc V1 0 0.3 0.15
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 1): "Error: no data saved for D.C. Transfer curve analysis; analysis not run" (plain -b runs no
+  .dc without a .print line), then a printout of the circuit with V1 at 0 V:
+          c                                1.500000e-01
+          b                                5.000000e-02
+          a                                0.000000e+00
+          v1#branch                        5.000000e-05
+          v2#branch                        -1.00000e-04
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: v(v-sweep) = [0.15, 0.3], v(b) = [0.09999999999999999, 0.15], v(c) = [0.15, 0.15], i(v2) = [-4.9999999999999996e-05, 0], i(v1) = [-4.9999999999999996e-05, -0.00015]; the .op: v(a) = 0.30000000000000004, v(b) = 0.15, v(c) = 0.15, i(v2) = 0, i(v1) = -0.00015000000000000004
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "At V1 = 300 mV: v(a) = 300 mV, v(b) = 150 mV, v(c) = 150 mV, i(v2) = 0 A, …"; no note (it drew
+  "i(v2) = −3.701e-21 A" with the note "2 results are not 0 at some points of the DC sweep, though ngspice gave 0: … Solved
+  exactly, with fractions, from the netlist's values, none of them is 0, …")
+```
+
+```spice
+* V2 holds node b at its own 600 mV when V1 is 1.2 V, swept to it in 600 mV steps
+V1 a 0 1.2
+R1 a b 2.2k
+R2 b 0 2.2k
+V2 c 0 0.6
+R3 b c 1k
+.options savecurrents
+.op
+.dc V1 0 1.2 0.6
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          c                                6.000000e-01
+          b                                6.000000e-01
+          a                                1.200000e+00
+          @r3[i]                           1.110223e-19
+          @r2[i]                           2.727273e-04
+          @r1[i]                           2.727273e-04
+          v1#branch                        -2.72727e-04
+          v2#branch                        1.084202e-19
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: v(v-sweep) = [0.6000000000000001, 1.2000000000000002], v(b) = [0.45714285714285724, 0.6000000000000002], v(c) = [0.6000000000000001, 0.6000000000000001], i(v2) = [-0.00014285714285714281, 1.0842021724855044e-19], i(@r3[i]) = [-0.00014285714285714284, 1.1102230246251566e-19]; the .op: v(a) = 1.2000000000000002, v(b) = 0.6000000000000002, v(c) = 0.6000000000000001, i(v2) = 1.0842021724855044e-19, i(@r3[i]) = 1.1102230246251566e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "At V1 = 1.2 V: … i(v2) = 0 A, …", with the note "2 results are shown as 0 at some points of the
+  DC sweep: ngspice gave i(v2) 1.084202e-19 A at V1 = 1.2 V and i(@r3[i]) 1.110223e-19 A at V1 = 1.2 V. Those are rounding
+  noise, …"; no note names the point otherwise
+```
+
+Added after the integration check (14 November 2026) (C9z.3; noise-2, point-name-collapses-with-prefix): ngspice reads
+"4.5m" as 0.0045000000000000005, and ".dc I1 0 0.0045 0.03m" ends at that very double, the .op's own I1: the point is the
+.op's 4.5 mA, where V2 carries no current, and it is named "I1 = 4.5 mA" with V2's 0. It was taken as a point that drifted
+from 0.0045 and named by ngspice's own value with all its digits, but formatSI divided by the prefix, 0.0045000000000000005 /
+1e−3 = 4.5, so the note read "The DC sweep's last point is I1 = 4.5 mA, not 4.5 mA" beside "i(v2) 4.047e-19 A" and the
+.op's "no current". A point that does drift from both is still named by ngspice's own value, now with that value's own
+digits, the decimal point moved, never divided: ".dc I1 0 1.2m 0.1m" ends at 0.0012000000000000003, past the .op's
+0.0012000000000000001, and reads "I1 = 1.2000000000000003 mA" (it read "1.2000000000000004 mA", not that double's digits).
+
+```spice
+* V2 holds node b at I1 R1 when I1 is 4.5 mA, swept to it in 30 uA steps
+I1 0 a 4.5m
+R1 a 0 3.3k
+V2 b 0 14.85
+R2 a b 1k
+.options savecurrents
+.op
+.dc I1 0 0.0045 0.03m
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          b                                1.485000e+01
+          a                                1.485000e+01
+          @r2[i]                           0.000000e+00
+          @r1[i]                           4.500000e-03
+          @i1[current]                     4.500000e-03
+          v2#branch                        0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: i(i-sweep) = [0.004470000000000001, 0.0045000000000000005], v(a) = [14.826976744186046, 14.85], i(v2) = [-2.302325581395384e-05, 0], i(@r2[i]) = [-2.302325581395337e-05, 0]; the .op: v(a) = 14.85, v(b) = 14.85, i(v2) = 0, i(@i1[current]) = 0.0045000000000000005, i(@r2[i]) = 0
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "At I1 = 4.5 mA: v(a) = 14.85 V, v(b) = 14.85 V, i(v2) = 0 A, …"; no note
+```
+
+```spice
+* V2 holds node b at I1 R1 when I1 is 1.2 mA, swept to it in 100 uA steps
+I1 0 a 1.2m
+R1 a 0 1k
+V2 b 0 1.2
+R2 a b 1k
+.options savecurrents
+.op
+.dc I1 0 1.2m 0.1m
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          b                                1.200000e+00
+          a                                1.200000e+00
+          @r2[i]                           0.000000e+00
+          @r1[i]                           1.200000e-03
+          @i1[current]                     1.200000e-03
+          v2#branch                        0.000000e+00
+ngspice 47, ngspice -b -r out.raw (exit 0), the sweep's last two points, then the .op: i(i-sweep) = [0.0011000000000000003, 0.0012000000000000003], v(a) = [1.1500000000000001, 1.2000000000000002], i(v2) = [-4.9999999999999914e-05, 0]; the .op: v(a) = 1.2000000000000002, i(v2) = 0, i(@i1[current]) = 0.0012000000000000001
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "At I1 = 1.2000000000000003 mA: v(a) = 1.2 V, v(b) = 1.2 V, i(v2) = 1.643e-19 A, …", with the
+  note "The DC sweep's last point is I1 = 1.2000000000000003 mA, not 1.2 mA: … There the circuit makes i(v2) 1.643e-19 A,
+  where at 1.2 mA it makes 0 A. …"
+```
+
+Added after the integration check (14 November 2026) (C9z.4; noise-3, rule-nearest-point-real-value-called-noise): beside an
+.op the rule decides (a .param line), ".dc V1 -8.15 4.95 0.05" passes 4.499999999999973 V, ngspice's point nearest the .op's
+4.5 V. There the circuit makes a real −2.436 aA through V2 and R3 (node b 1.145 fV, about 2.6 steps of a double, below c),
+which ngspice gives as −1.735 aA and −1.89 aA; the rule, run on that point's own values, wrote them 0, and the note said "ngspice's own numbers
+there show that each of them is rounding noise of a 0". With no exact solution the rule cannot tell a real value there from
+noise, and the circuit at that point is not the .op's, so only a point at the .op's value bit for bit now shows the .op's 0s
+(C9w.13); this one keeps ngspice's numbers, and is named by its own x where a note names it.
+
+```spice
+* V2 holds node b at its own 2.25 V when V1 is 4.5 V, with a .param line, swept past it in 50 mV steps
+.param rp=10k
+V1 a 0 4.5
+R1 a b {rp}
+R2 b 0 10k
+V2 c 0 2.25
+R3 b c 470
+.options savecurrents
+.op
+.dc V1 -8.15 4.95 0.05
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          c                                2.250000e+00
+          b                                2.250000e+00
+          a                                4.500000e+00
+          @r3[i]                           9.448707e-19
+          @r2[i]                           2.250000e-04
+          @r1[i]                           2.250000e-04
+          v1#branch                        -2.25000e-04
+          v2#branch                        8.673617e-19
+ngspice 47, ngspice -b -r out.raw (exit 0): 263 points from -8.15 to 4.949999999999972; at point 254 (index 253), v(v-sweep) = 4.499999999999973, v(b) = 2.249999999999999, v(c) = 2.25, i(v2) = -1.734723475976807e-18, i(@r3[i]) = -1.8897413185109048e-18; the .op: v(a) = 4.5, v(b) = 2.2500000000000004, v(c) = 2.25, i(v2) = 8.673617379884035e-19, i(@r3[i]) = 9.448706592554524e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): V2: no current through V2, with the .op's noise note; the Plot panel keeps ngspice's −1.735e-18 A at
+  4.499999999999973 V, and no note says "rounding noise of a 0" of it (it said "At ngspice's point nearest the operating
+  point's 4.5 V, 4.499999999999973 V (its 50 mV step added up in doubles), ngspice's own numbers there show that each of
+  them is rounding noise of a 0, …")
+```
+
+Added after the integration check (14 November 2026) (C9z.5; regress-3, P4): a swept source whose value the netlist does not
+write as a number (a .param, a formula in braces, a transient function with no DC value) was taken as 0 V or 0 A in the .op,
+so the sweep's 0 V point was "the operating point's own state": beside two balanced bridges, R10's −8.882e−19 A was zeroed
+at V1 = 0 V with that note, while the .op is at 9 V. Such a source now has no point at the .op's state, and its sweep is
+shown as ngspice gives it, as at c520a49. What stays open: regress-1's ammeter bridge with its supply set by a .param shows,
+at the sweep's 9 V point, ngspice's −2.168e−19 A for Vm (the .op's very double) beside the .op's "Vm measures no current",
+and its .tf of v(a,b) keeps ngspice's −5.551e−17 V/V with no note (the rule joins no level across R5, whose 0 A is
+ngspice's exact 0).
+
+```spice
+* two balanced bridges; the swept one has its supply set by a .param line
+.param Vs=9
+V1 top 0 {Vs}
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a b 1k
+V2 top2 0 9
+R6 top2 c 10k
+R7 c 0 10k
+R8 top2 d 4.7k
+R9 d 0 4.7k
+R10 c d 1k
+.options savecurrents
+.op
+.dc V1 0 9 3
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op:
+          d                                4.500000e+00
+          c                                4.500000e+00
+          top2                             9.000000e+00
+          b                                4.500000e+00
+          a                                4.500000e+00
+          top                              9.000000e+00
+          @r10[i]                          -8.88178e-19
+          @r5[i]                           -8.88178e-19
+          v1#branch                        -1.40745e-03
+          v2#branch                        -1.40745e-03
+ngspice 47, ngspice -b -r out.raw (exit 0): v(v-sweep) = [0, 3, 6, 9]; i(@r10[i]) = -8.881784197001253e-19 at every point; i(@r5[i]) = [0, 0, 0, -8.881784197001253e-19]; the .op: v(top) = 9, i(@r5[i]) = i(@r10[i]) = -8.881784197001253e-19
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): R5 and R10 no current, with the .op's noise note; "At V1 = 9 V: … i(@r5[i]) = −8.882e-19 A, …,
+  i(@r10[i]) = −8.882e-19 A"; no note says "the operating point's own state" (it said "ngspice gave i(@r10[i])
+  -8.881784e-19 A at V1 = 0 V. At V1 = 0 V, the operating point's own state, …")
+```
+
+```spice
+* a balanced bridge read by a 0 V ammeter, its supply set by a .param line, with .dc and .tf
+.param Vs=9
+V1 top 0 {Vs}
+R1 top a 10k
+R2 a 0 10k
+R3 top b 4.7k
+R4 b 0 4.7k
+R5 a m 1k
+Vm m b 0
+.options savecurrents
+.op
+.dc V1 0 9 3
+.tf v(a,b) V1
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out), the .op and the .tf:
+          m                                4.500000e+00
+          b                                4.500000e+00
+          a                                4.500000e+00
+          top                              9.000000e+00
+          @r5[i]                           0.000000e+00
+          vm#branch                        -2.16840e-19
+          transfer_function = -5.55112e-17
+          output_impedance_at_v(a,b) = 8.802395e+02
+          v1#input_impedance = 6.394558e+03
+ngspice 47, ngspice -b -r out.raw (exit 0): v(v-sweep) = [0, 3, 6, 9], i(vm) = [0, -5.421010862427522e-20, -1.0842021724855044e-19, -2.168404344971009e-19]; the .op: v(top) = 9, i(vm) = -2.168404344971009e-19, i(@r5[i]) = 0; v(Transfer_function) = -5.551115123125783e-17
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): Vm measures no current, with the note; "At V1 = 9 V: … i(vm) = −2.168e-19 A, …" (open); "v(a,b)/V1 =
+  −5.551e-17 (V/V)" with no note (open)
+```
+
+Added after the integration check (14 November 2026) (C9z.6; cross-2, X3-inner-tf-noise, and regress-2, P3): a .tf of two
+nodes inside a subcircuit (A3h) beside the rule's .op kept ngspice's ratio with nothing said: v(x1.p,x1.q)/V1 = 1.11e−16 V/V
+for a bridge balanced exactly, where the same bridge in the main circuit beside an X line gets the note that the ratio may be
+rounding noise (C9x.5). The rule reads only the main circuit's parts, so it puts no two such nodes at one level; where the
+.op shows them alike by ngspice's own values (0.21000000000000002 V and 0.21000000000000005 V), the note now says so. And a
+.tf of an ammeter inside a subcircuit, i(v.x1.vs), got the words for a node, "In the operating point i(v.x1.vs) is at 0 V,
+ground's voltage"; it is named as the .tf names it: "v.x1.vs measures no current".
+
+```spice
+* a balanced bridge inside a subcircuit, .tf of its two middle nodes
+V1 in 0 0.3
+X1 in bridge
+.subckt bridge a
+R1 a p 0.3
+R2 p 0 0.7
+R3 a q 0.3
+R4 q 0 0.7
+R5 p q 1k
+.ends
+.tf v(x1.p,x1.q) V1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out):
+          x1.q                             2.100000e-01
+          x1.p                             2.100000e-01
+          in                               3.000000e-01
+          v1#branch                        -6.00000e-01
+          transfer_function = 1.110223e-16
+          output_impedance_at_v(x1.p,x1.q) = 4.198237e-01
+          v1#input_impedance = 5.000000e-01
+  rawfile from ngspice -b -r (exit 0): v(in) = 0.30000000000000004, v(x1.p) = 0.21000000000000002, v(x1.q) = 0.21000000000000005, i(v1) = -0.5999999999999999; v(Transfer_function) = 1.1102230246251565e-16, v(v1#Input_impedance) = 0.5000000000000004, v(output_impedance_at_V(x1.p,x1.q)) = 0.4198236740568962
+ngspice 42, ngspice -b (exit 1): "Error: no data saved for D.C. Operating point analysis; analysis not run", then the same
+  three transfer function lines; ngspice -b -r: the same exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "v(x1.p,x1.q)/V1 = 1.11e-16 (V/V)", with the note "The transfer function may be rounding noise:
+  ngspice gave v(x1.p,x1.q)/V1 = 1.110223e-16. In the operating point node x1.p and node x1.q are at the same voltage, and
+  this ratio is less than a billionth of a volt for each volt of V1, …" (it had nothing said)
+```
+
+```spice
+* a balanced bridge inside a subcircuit, read by a 0 V ammeter, .tf of the ammeter current
+V1 in 0 12
+X1 in bridge
+.subckt bridge t
+R1 t p 1.5
+R2 p 0 3.3
+R3 t q 1.5
+R4 q 0 3.3
+R5 p m 1
+Vs m q 0
+.ends
+.tf i(v.x1.vs) V1
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0; the model and device listings left out):
+          x1.m                             8.250000e+00
+          x1.q                             8.250000e+00
+          x1.p                             8.250000e+00
+          in                               1.200000e+01
+          v1#branch                        -5.00000e+00
+          v.x1.vs#branch                   0.000000e+00
+          transfer_function = -3.68186e-17
+          v.x1.vs#output_impedance = 1.000000e+20
+          v1#input_impedance = 2.400000e+00
+  rawfile from ngspice -b -r (exit 0): v(in) = 12, v(x1.p) = 8.25, v(x1.q) = 8.25, v(x1.m) = 8.25, i(v.x1.vs) = 0, i(v1) = -5; v(Transfer_function) = -3.681862071460978e-17, v(v1#Input_impedance) = 2.4, v(v.x1.vs#Output_impedance) = 1e+20
+ngspice 42, ngspice -b (exit 1): "Error: no data saved for D.C. Operating point analysis; analysis not run", then the same
+  three transfer function lines; ngspice -b -r: the same exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0): the same doubles as ngspice 47
+  words (describe.ts): "i(v.x1.vs)/V1 = −3.682e-17 (A/V)", with the note "… In the operating point v.x1.vs measures no
+  current, and this ratio is less than a billionth of the current through V1 for each of its volts (416.7 mA), …" (it said
+  "i(v.x1.vs) is at 0 V, ground's voltage")
+```
+
 ## 4. Messages
 
 Each message explainDiagnostic puts into plain words, with the netlist that makes ngspice print it and the codes `src/engine/diagnostics.ts` gives it in our engine.
