@@ -39,7 +39,7 @@ import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
-import { applyTextChanges, formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, valueAsNodeWord, wordNativeStopsAt } from './parse.ts';
+import { applyTextChanges, formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, ngspiceSpelling, parseNetlist, valueAsNodeWord, valueNodeMoved, wordNativeStopsAt } from './parse.ts';
 import { hasSaveCurrents } from './run-netlist.ts';
 import type {
   Element,
@@ -2270,6 +2270,9 @@ function checkIncomplete(c: Ctx, i: number): void {
   if (e.form) {
     if (e.form.kind !== 'formula') checkXspiceForm(c, i);
     else checkFormulaForm(c, i);
+    // An output node called value ngspice writes vol or cur over (fatal-syntax-23).
+    const moved = valueNodeMoved(c.n, e);
+    if (moved) movedValueNode(c, i, moved.word, moved.to);
     return;
   }
   const notEnough = "Native ngspice 47 stops: 'not enough parameters in line'.";
@@ -2388,6 +2391,18 @@ function checkFormulaForm(c: Ctx, i: number): void {
 }
 
 
+/** The fix that renames the node value, on every line that names it (valueNodeTrap, movedValueNode): made once. */
+function valueRename(c: Ctx): { to: string; fix: Fix | null } {
+  if (!c.valueRename) {
+    const node = c.n.nodes.get('value');
+    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
+    // The words the parser read as a node are the node's; those it read as the keyword are renamed here.
+    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c.n, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
+    c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
+  }
+  return c.valueRename;
+}
+
 /**
  * A node called value on an E or G line (valueAsNodeWord). Without a { after it ngspice can't read the formula it
  * makes and stops (an error); with one it runs that formula, a constant, without the control nodes and without a
@@ -2397,14 +2412,7 @@ function checkFormulaForm(c: Ctx, i: number): void {
 function valueNodeTrap(c: Ctx, i: number, word: Token): void {
   const e = el(c, i);
   const name = nameOf(e);
-  const node = c.n.nodes.get('value');
-  if (!c.valueRename) {
-    const to = nodeNamer(new Set([...c.n.nodes.keys()].map(ngspiceSpelling)))('val');
-    // The words the parser read as a node are the node's; those it read as the keyword are renamed here.
-    const keywords = c.n.elements.map((k) => el(c, k)).filter((x) => x.form && valueAsNodeWord(c.n, x) === x.form.keyword).map((x) => replace(x.form!.keyword, to));
-    c.valueRename = { to, fix: node?.connections.length ? fix(`Rename the node ${node.refs[0]!.text} to ${to}`, ...renamesOf(c, 'value', to), ...keywords, ...labelChanges(c, 'value', to)) : null };
-  }
-  const { to, fix: rename } = c.valueRename;
+  const { to, fix: rename } = valueRename(c);
   const end = cardEnd(c, i);
   const taken = shownWord(c.text.slice(word.to, end).replace(/\s*\n[ \t]*\+?\s*/g, ' ').trim());
   const group = e.form?.kind === 'formula' && e.form.formula && /^[{']/.test(e.form.formula.text) ? e.form.formula.text : undefined;
@@ -2423,6 +2431,31 @@ function valueNodeTrap(c: Ctx, i: number, word: Token): void {
     e.form?.kind === 'poly'
       ? `Native ngspice stops with a fatal error: ${malFormed}. PlainSpice's engine stops at the POLY first: 'XSPICE is required to run the 'poly' option'. [fatal-syntax-20]`
       : `ngspice stops with a fatal error: ${malFormed}. [fatal-syntax-17${word === e.form?.keyword && !e.form?.dropped?.length ? '' : ', fatal-syntax-20'}]`,
+    rename ? [rename] : []);
+}
+
+/**
+ * An E's or G's output node called value on a line given by a formula (valueNodeMoved): ngspice writes vol (E) or cur
+ * (G) over the word, so the end written value is on a node of that name, not on node value (fatal-syntax-23). An E runs
+ * so without a message (a warning); so does a G whose node cur a part connects to. A G's current into a node cur nothing
+ * else connects to leaves ngspice's matrix with no single answer, and it stops (an error). The fix renames the node.
+ */
+function movedValueNode(c: Ctx, i: number, word: Token, to: 'vol' | 'cur'): void {
+  const e = el(c, i);
+  const name = nameOf(e);
+  const { to: free, fix: rename } = valueRename(c);
+  const why = `ngspice reads the word value as VALUE wherever it stands on an E or G line, and here writes ${to} in its place, so the end of ${name} written ${word.text} is on a node called ${to}, not on node ${word.text}. A node can't be called value here: give it another name${rename ? `, such as ${free}` : ''}.`;
+  if (e.letter === 'G' && !c.n.nodes.get('cur')?.connections.length) {
+    c.broken.add(i);
+    add(c, 'fatal-syntax', 'error', word, `ngspice puts ${name}'s end written ${word.text} on a node called ${to}`, why,
+      "ngspice warns 'singular matrix: check node cur', as nothing else connects to that node, and then stops: 'The operating point could not be simulated successfully'. No results. [fatal-syntax-23]",
+      rename ? [rename] : []);
+    return;
+  }
+  add(c, 'fatal-syntax', 'warning', word, `ngspice puts ${name}'s end written ${word.text} on a node called ${to}`, why,
+    e.letter === 'E'
+      ? `ngspice runs ${name} with that end on node vol and says nothing: in one test E1 value 0 VALUE={2*v(out)} gave 5 V at node vol and 0 V at node value. [fatal-syntax-23]`
+      : `ngspice runs ${name} with that end on node cur and says nothing: in one test G1 value 0 VALUE={2m*v(out)}, with a resistor from node cur to ground, gave ${MINUS}5 V at node cur and 0 V at node value. [fatal-syntax-23]`,
     rename ? [rename] : []);
 }
 

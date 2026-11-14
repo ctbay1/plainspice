@@ -20,7 +20,7 @@ import { elementInfo, fieldLabel, type ElementInfo } from './elements.ts';
 import { behaviouralKind, hasReadableCurrent } from './graph.ts';
 import { nameSaysNode } from './node-words.ts';
 import { readNumber } from './numbers.ts';
-import { formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, valueAsNodeWord, wordNativeStopsAt } from './parse.ts';
+import { formulaWithoutBraces, isReportOnlyParameter, lowerAscii, ngspiceName, parseNetlist, valueAsNodeWord, valueNodeMoved, wordNativeStopsAt } from './parse.ts';
 import { plusLineAfterEnd, saveCurrentsLeftOut } from './run-netlist.ts';
 import type {
   Element,
@@ -324,6 +324,10 @@ export const EXPLAIN_STRINGS = {
   formulaUnreadPart: "part of the formula, which ngspice can't read here (see the checks)",
   valueWordUnread: 'value: ngspice reads this word as VALUE, the start of a formula, and stops here (see the checks)',
   droppedUnread: "a word before the formula, which ngspice can't read here (see the checks)",
+  // An output node called value on a formula line: ngspice writes vol (E) or cur (G) over it (fatal-syntax-23; the round-1 critic of the integration check's fixes).
+  valueMoved: (name: string, word: string, to: string): string =>
+    `ngspice reads the word ${word} on ${name}'s line as VALUE and writes ${to} in its place, so the end of ${name} written ${word} is on a node called ${to}, not on node ${word} (see the checks).`,
+  valueWordMoved: (to: string): string => `value: ngspice reads this word as VALUE and writes ${to} in its place, so this end is on a node called ${to} (see the checks)`,
   xspiceEngine: "PlainSpice's engine cannot run this line: ngspice builds POLY and TABLE from an XSPICE block, which PlainSpice's engine leaves out.",
   formulaNote:
     'VALUE=, vol= and cur= give a dependent source by a formula: ngspice turns the line into a B source (a behavioural source), so it has no control nodes and no gain.',
@@ -1844,6 +1848,11 @@ interface Stops {
  * the braces it does not add itself (formulaWithoutBraces). Null elsewhere, and on a line inside a subcircuit the main
  * circuit does not use, which ngspice skips, as native 47 and 42 do there (the integration check, P2).
  */
+/** valueNodeMoved where ngspice reads the line, as stopsAt has it: not inside a subcircuit the main circuit does not use. */
+function movedAt(p: PartContext): ReturnType<typeof valueNodeMoved> {
+  return contextOf(p.netlist).subcktMismatch || !unusedSubcircuit(p.netlist, p.line.index) ? valueNodeMoved(p.netlist, p.el) : undefined;
+}
+
 function stopsAt(p: PartContext): Stops | null {
   if (p.stops !== undefined) return p.stops;
   const { el, netlist } = p;
@@ -2126,6 +2135,13 @@ function explainForm(p: PartContext, sentences: string[]): void {
       sentences.push(S.valueStops(name, takenAfter(el, stops.word!)));
       return;
     }
+    // An output node called value: ngspice writes vol or cur over it, so the formula drives no node value (fatal-syntax-23).
+    const moved = movedAt(p);
+    if (moved) {
+      sentences.push(S.valueMoved(name, moved.word.text, moved.to));
+      addNote(p.notes, S.formulaNote);
+      return;
+    }
     const formula = formulaText(form.formula);
     sentences.push(el.letter === 'E' ? S.formulaVoltage(voltagePhrase(a, b), formula) : S.formulaCurrent(formula, nodePhrase(a), nodePhrase(b)));
     // No braces where ngspice adds none: it turns nothing into a B source and works nothing out (fatal-syntax-12 to -14, -18).
@@ -2267,6 +2283,12 @@ function explainPart(netlist: Netlist, line: NetlistLine): LineExplanation {
   for (const f of valueWord ? fields : []) {
     if (f.span?.from !== valueWord!.from || f.span.to !== valueWord!.to) continue;
     f.meaning = S.valueWordUnread;
+    delete f.emphasis;
+  }
+  const moved = movedAt(p);
+  for (const f of moved ? fields : []) {
+    if (f.span?.from !== moved!.word.from || f.span.to !== moved!.word.to) continue;
+    f.meaning = S.valueWordMoved(moved!.to);
     delete f.emphasis;
   }
   const heading = el.form ? S.partHeading(el.name.text, S.formWhat(el.letter === 'G' || el.letter === 'F', el.form.kind)) : S.partHeading(el.name.text, partWhat(info), info?.code);

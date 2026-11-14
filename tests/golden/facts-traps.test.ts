@@ -569,6 +569,8 @@ const FACTS: Fact[] = [
   { code: 'non-ascii-node-31', netlist: "* B reads the difference across the two spellings of a divider\nV1 in 0 10\nR1 in \u00c7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f 0 1k\nB1 o 0 V=v(\u00c7\u0131k\u0131\u015f,\u00e7\u0131k\u0131\u015f)\nRo o 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(____k____)": 5, "v(o)": 0, "i(b1)": 0, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
   // x1.Çıkış for the subcircuit's çıkış is that node for ngspice: a formula reads it, and no rename of the name alone (the round-1 critic).
   { code: 'non-ascii-node-32', netlist: "* B formula reads the inner node with a capital letter\nV1 in 0 10\nX1 in 0 div\n.subckt div a b\nR1 a \u00e7\u0131k\u0131\u015f 1k\nR2 \u00e7\u0131k\u0131\u015f b 1k\n.ends\nB1 o 0 V={v(x1.\u00c7\u0131k\u0131\u015f)*2}\nR3 o 0 1k\n.op\n.end\n", vectors: { "v(in)": 10, "v(x1.____k____)": 5, "v(o)": 10, "i(b1)": -0.01, "i(v1)": -0.005 }, traps: ['non-ascii-node'] },
+  // An E's output node called value on a line given by a formula: ngspice writes vol in its place (the round-1 critic).
+  { code: 'fatal-syntax-23', netlist: "* an E's output node called value, with a formula after VALUE=\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nR4 value 0 1k\nE1 value 0 VALUE={2*v(out)}\n.op\n.end\n", vectors: { "v(value)": 0, "v(vol)": 5, "v(e1_int1)": 5, "i(e1)": 0, "i(v1)": -0.0025 }, traps: ['fatal-syntax'] },
 ];
 
 const root = resolve(import.meta.dirname, '../..');
@@ -968,6 +970,35 @@ it('fatal-syntax-22: a { or \' never closed in a B, E or G formula is no error, 
     const r = await engine.run(text);
     expect(r.ok, line).toBe(false);
     expect(`${r.stdout}\n${r.stderr}`, line).toContain('Closing "}" not found in line fragment');
+  }
+});
+
+it('fatal-syntax-23: an output node called value on an E or G line given by a formula is written vol or cur by ngspice; a G with nothing on cur stops, and the rename gives the node back', async () => {
+  const engine = await NgspiceEngine.create(createNgspice, readFileSync(join(root, 'engine/dist/ngspice.wasm')));
+  const e = FACTS.find((f) => f.code === 'fatal-syntax-23')!.netlist;
+  const [f] = fixed.get('fatal-syntax-23')!;
+  expect(f!.label).toBe('fatal-syntax: Rename the node value to val');
+  for (const [name, want] of Object.entries({ 'v(val)': 5, 'i(e1)': -0.005 })) expect(vector(f!.run, name), name).toEqual([want]);
+  // The G: its current into a node cur nothing else connects to (native 47 and 42: 'singular matrix:  check node cur', exit 1).
+  const g = e.replace('E1 value 0 VALUE={2*v(out)}', 'G1 value 0 VALUE={2m*v(out)}');
+  const traps = checkTraps(parseNetlist(g));
+  expect(traps.map((t) => [t.id, t.severity, t.title])).toEqual([['fatal-syntax', 'error', "ngspice puts G1's end written value on a node called cur"]]);
+  const stops = await engine.run(g);
+  expect(stops.ok).toBe(false);
+  expect(stops.unreliable).toBe(true);
+  expect(`${stops.stdout}\n${stops.stderr}`).toContain('singular matrix:  check node cur');
+  const renamed = await engine.run(applyFix(g, traps[0]!.fixes[0]!));
+  expect(renamed.ok).toBe(true);
+  expect(vector(renamed, 'v(val)')).toEqual([-5]);
+  // A part on a node called cur takes the G's current there (native: −5 V at cur): a warning.
+  const onCur = g.replace('.op\n', 'Rc cur 0 1k\n.op\n');
+  expect(checkTraps(parseNetlist(onCur)).find((t) => t.id === 'fatal-syntax')!.severity).toBe('warning');
+  expect(vector(await engine.run(onCur), 'v(cur)')).toEqual([-5]);
+  // The E's other forms and its − end (native: vol 5 V, or −5 V for the − end), and the node read only by the formula or on a B line, as written.
+  for (const [line, node, want] of [['E1 e value VALUE={2*v(out)}', 'v(vol)', -5], ['E1 value 0 vol={2*v(out)}', 'v(vol)', 5], ['E1 value 0 VALUE=v(out)*2', 'v(vol)', 5], ['E1 e 0 VALUE={2*v(value)}', 'v(e)', 0], ['B1 value 0 V={2*v(out)}', 'v(value)', 5]] as const) {
+    const text = e.replace('E1 value 0 VALUE={2*v(out)}', `${line}\nRe e 0 1k`);
+    expect(vector(await engine.run(text), node), line).toEqual([want]);
+    expect(checkTraps(parseNetlist(text)).filter((t) => t.id === 'fatal-syntax').length, line).toBe(node === 'v(vol)' ? 1 : 0);
   }
 });
 

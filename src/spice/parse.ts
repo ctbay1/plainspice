@@ -863,6 +863,22 @@ export function valueAsNodeWord(netlist: Netlist, e: Element): Token | undefined
   return form.dropped?.length && gain && !gain.rest && netlist.nodes.get('value')?.connections.length ? form.keyword : undefined;
 }
 
+/**
+ * An E's or G's output node called value on a line given by a formula ngspice reads (E1 value 0 VALUE={2*v(out)}, and
+ * after vol= or cur=): ngspice reads that word, the first value on the line, as VALUE and writes its own word for the
+ * formula in its place, vol on an E and cur on a G, so the end written value is on a node of that name, not on node
+ * value (fatal-syntax-23; the round-1 critic of the integration check's fixes). The word and that name, or undefined;
+ * never on a line valueAsNodeWord or formulaWithoutBraces has, which ngspice cannot read. The checks (movedValueNode in
+ * traps.ts) and Explain both follow it.
+ */
+export function valueNodeMoved(netlist: Netlist, e: Element): { word: Token; to: 'vol' | 'cur' } | undefined {
+  const form = e.form;
+  if ((e.letter !== 'E' && e.letter !== 'G') || form?.kind !== 'formula' || !form.formula || /^(\{\s*\}|'\s*'|"\s*")$/.test(form.formula.text)) return undefined;
+  if (formulaWithoutBraces(form) || valueAsNodeWord(netlist, e)) return undefined;
+  const word = e.nodes.slice(0, 2).find((r) => /^value$/i.test(r.token.text))?.token;
+  return word && { word, to: e.letter === 'E' ? 'vol' : 'cur' };
+}
+
 /** The word that names a formula on an E or G line: VALUE, then '=' or not, or vol= (E) or cur= (G). */
 function isFormulaWord(r: Reader, w: Word, letter: 'E' | 'G'): boolean {
   const kw = lowerAscii(w.clean);

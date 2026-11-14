@@ -1082,4 +1082,34 @@ describe("the round-1 critic of the integration check's fixes (14 November 2026)
     expect(traps.map((t) => t.severity)).toEqual(['warning']);
     expect(traps[0]!.why).toContain('as this netlist means');
   });
+  const valueNet = (line: string): string => `* t\n${DIVIDER}R4 value 0 1k\n${line}\nRe e 0 1k\n.op\n.end\n`;
+  const valueSaid = (line: string): string => {
+    const ex = explainLine(parseNetlist(valueNet(line)), 5)!;
+    return [ex.summary, ...ex.fields.map((f) => f.meaning)].join(' | ');
+  };
+  it.each([
+    ['E1 value 0 VALUE={2*v(out)}', 'vol', 'warning'], ['E1 e value VALUE={2*v(out)}', 'vol', 'warning'], ['E1 value 0 vol={2*v(out)}', 'vol', 'warning'],
+    ['E1 value 0 VALUE {2*v(out)}', 'vol', 'warning'], ['E1 value 0 VALUE=v(out)*2', 'vol', 'warning'], ['E1 VALUE 0 VALUE={2*v(out)}', 'vol', 'warning'],
+    ['G1 value 0 VALUE={2m*v(out)}', 'cur', 'error'], ['G1 0 value VALUE={2m*v(out)}', 'cur', 'error'], ['G1 0 value cur={2m*v(out)}', 'cur', 'error'],
+    ['G1 value 0 VALUE={2m*v(out)}\nRc cur 0 1k', 'cur', 'warning'],
+  ])('value-node-with-VALUE-formula: %s, an output node called value, is written %s by ngspice: the check says so, with the rename, and Explain no longer says the formula drives node value (fatal-syntax-23)', (line, to, severity) => {
+    const text = valueNet(line);
+    const traps = checkTraps(parseNetlist(text)).filter((t) => t.id === 'fatal-syntax');
+    const word = /^\S+ (?:\S+ )?(value|VALUE)\b/.exec(line)![1]!;
+    expect(traps.map((t) => [t.severity, t.title])).toEqual([[severity, `ngspice puts ${line.slice(0, 2)}'s end written ${word} on a node called ${to}`]]);
+    expect(traps[0]!.fixes.map((f) => f.label)).toEqual([`Rename the node value to val`]);
+    const fixed = applyFix(text, traps[0]!.fixes[0]!);
+    expect(fixed).toContain(`${line.slice(0, 2)} ${line.includes('e value') ? 'e val' : line.includes('0 value') ? '0 val' : 'val 0'} `);
+    expect(checkTraps(parseNetlist(fixed)).filter((t) => t.id === 'fatal-syntax')).toEqual([]);
+    expect(valueSaid(line)).toContain(`writes ${to} in its place`);
+    expect(valueSaid(line)).not.toMatch(/at node value, measured|from node value|into node value/);
+  });
+  it('value-node-with-VALUE-formula: a node called value only the formula reads, on a B line, or read as VALUE before a gain keeps its own words (fatal-syntax-17, -20, -23)', () => {
+    for (const line of ['E1 e 0 VALUE={2*v(value)}', 'B1 value 0 V={2*v(out)}']) {
+      expect(checkTraps(parseNetlist(valueNet(line))).filter((t) => t.id === 'fatal-syntax'), line).toEqual([]);
+      expect(valueSaid(line), line).not.toContain('in its place');
+    }
+    const gain = checkTraps(parseNetlist(valueNet('E1 value 0 out 0 2'))).filter((t) => t.id === 'fatal-syntax');
+    expect(gain.map((t) => t.title)).toEqual(["ngspice reads value on E1's line as the start of a formula"]);
+  });
 });

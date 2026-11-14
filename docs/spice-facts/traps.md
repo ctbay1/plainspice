@@ -9427,7 +9427,7 @@ PlainSpice's checks: `zero-ohm`; `zero-ohm`; `unit-letter`.
 
 ## fatal-syntax
 
-An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18). A node called `value` anywhere on an E or G line is read as VALUE: as an output node, a POLY control node or the control − node too (fatal-syntax-20); the fix renames it, and braces are offered for none of these. After the round-1 critic of the integration check's fixes (14 November 2026): a `{` or `'` never closed in a B line's formula, or in an E's or G's formula, is no trap, as ngspice reads such a formula to the end of the line (fatal-syntax-22).
+An expression whose `{` or `'` is never closed; a name in an expression that no `.param`, `.func` or subcircuit `params:` defines (only `temper`, `hertz` and `time` are known without one, fatal-syntax-6); a B line without V= or I=, or with nothing after it. Error. Fixes: close the expression; for `pi` and `e`, add a `.param` with the constant (fatal-syntax-9). After the last pass (13 November 2026, code review C3-5): an E or G given by a formula that ngspice cannot read, because the formula has no braces and starts with a number (`VALUE=3`, `VALUE=2*v(out)`) or follows VALUE without `=` (fatal-syntax-12 to -14; fix: put it in braces), or because it is empty (fatal-syntax-15). Without braces ngspice adds them itself before a letter or a bracket, so `VALUE=v(out)*2` is no trap (fatal-syntax-16). After the round-2 critic of those fixes (13 November 2026, CR2-1): ngspice adds them before a sign that stands before a letter or a bracket too (`VALUE=-v(out)*2`, `VALUE=(1+v(out))*2`, no trap, fatal-syntax-19), but not before a sign and a number (`VALUE=-2*v(out)`) or a name that starts with true or false, which stop it (fatal-syntax-18). A node called `value` anywhere on an E or G line is read as VALUE: as an output node, a POLY control node or the control − node too (fatal-syntax-20); the fix renames it, and braces are offered for none of these. After the round-1 critic of the integration check's fixes (14 November 2026): a `{` or `'` never closed in a B line's formula, or in an E's or G's formula, is no trap, as ngspice reads such a formula to the end of the line (fatal-syntax-22). An output node called `value` on an E or G line given by a formula is renamed by ngspice, vol on an E and cur on a G (fatal-syntax-23): a warning, or an error for a G that then stops; the fix renames the node.
 
 What PlainSpice shows for fatal-syntax-1 (error, line 3):
 
@@ -10386,6 +10386,70 @@ an open { where no formula is read to the end of the line, in the divider (E1 e 
 ```
 
 PlainSpice's checks: no trap; `fatal-syntax` (".. is not defined: add a .param line") for the name no `.param` defines; `fatal-syntax` ("A { is never closed") for the open { where no formula is read to the end of the line.
+
+### fatal-syntax-23. An E's or G's output node called value on a line given by a formula: ngspice writes vol (E) or cur (G) in its place, so that end is on a node of that name
+
+Added after the round-1 critic of the integration check's fixes (14 November 2026). ngspice reads the first word value on an E or G line as VALUE wherever it stands (fatal-syntax-17, -20). On a line given by a formula, `E1 value 0 VALUE={2*v(out)}`, that word is the output node, and ngspice writes its own word for the formula there, vol on an E and cur on a G, without a message: E1's end written value is on a new node called vol (5 V), and node value keeps only R4 (0 V). The checks said nothing, and Explain said the formula gives the voltage at node value. A G's current then flows into or out of a node called cur that nothing else connects to: ngspice warns 'singular matrix: check node cur' and stops. With a part on a node called vol or cur, the part's end is on that node. Renamed (val), the node is a node again: 5 V, and −5 V for the G. A node called value that only the formula reads (`VALUE={2*v(value)}`), and a B line's node called value, are read as written. The fix renames the node; the checks give a warning for an E, an error for a G with nothing on cur.
+
+```spice
+* an E's output node called value, with a formula after VALUE=
+V1 in 0 5
+R1 in out 1k
+R2 out 0 1k
+R4 value 0 1k
+E1 value 0 VALUE={2*v(out)}
+.op
+.end
+```
+
+```text
+ngspice 47, ngspice -b (exit 0):
+        e1_int1                          5.000000e+00
+        vol                              5.000000e+00
+        value                            0.000000e+00
+        out                              2.500000e+00
+        in                               5.000000e+00
+        v1#branch                        -2.50000e-03
+        e1#branch                        0.000000e+00
+        be1#branch                       0.000000e+00
+  ngspice -b -r out.raw (exit 0)
+    rawfile: v(in) = 5, v(out) = 2.5, v(value) = 0, v(vol) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = 0, i(v1) = -0.0025
+ngspice 42: the same printout, exit code and rawfile values as ngspice 47
+our engine (wasm), as ngspice -b -r (exit 0):
+    vectors: v(in) = 5, v(out) = 2.5, v(value) = 0, v(vol) = 5, v(e1_int1) = 5, i(be1) = 0, i(e1) = 0, i(v1) = -0.0025
+the same divider with each of these E lines (and Re e 0 1k), native 47 and 42 (-b and -b -r, exit 0, no message) and our engine:
+    E1 e value VALUE={2*v(out)}: v(value) = 0, v(e) = 0, v(vol) = -5
+    E1 value 0 vol={2*v(out)}, E1 value 0 VALUE {2*v(out)}, E1 value 0 VALUE=v(out)*2, E1 VALUE 0 VALUE={2*v(out)}: v(value) = 0, v(vol) = 5
+    E1 value 0 VALUE={2*v(out)} with Rv vol 0 1k: v(value) = 0, v(vol) = 5, i(e1) = -0.005
+    E1 e 0 VALUE={2*v(value)}: v(value) = 0, v(e) = 0, v(e1_int1) = 0 (the formula reads node value, which R4 alone holds at 0 V)
+    B1 value 0 V={2*v(out)}: v(value) = 5
+inside a subcircuit X1 uses (X1 out sub / .subckt sub a / R4 value 0 1k / E1 value 0 VALUE={2*v(a)} / .ends), native 47 and 42 (-b -r, exit 0) and our engine:
+    v(x1.value) = 0, v(x1.vol) = 5, v(x1.e1_int1) = 5
+after the fix "Rename the node value to val" (R4 val 0 1k, E1 val 0 VALUE={2*v(out)}): native 47 and 42 (-b -r, exit 0) and our engine:
+    v(val) = 5, v(e1_int1) = 5, i(e1) = -0.005, i(v1) = -0.0025
+the same divider with G1 value 0 VALUE={2m*v(out)} in place of E1:
+  ngspice 47, ngspice -b (exit 1):
+    Warning: singular matrix:  check node cur
+    Note: Starting dynamic gmin stepping
+    ...
+    Warning: source stepping failed
+    Note: Transient op started
+    Error: Transient op failed, timestep too small
+    Error: The operating point could not be simulated successfully.
+        Any of the following steps may fail.!
+    doAnalyses: OP:  Timestep too small; cause unrecorded.
+    run simulation(s) aborted
+  ngspice -b -r out.raw (exit 1)
+    rawfile: an Operating Point plot with 0 points, its header only (no results)
+  ngspice 42: the same messages, exit code and rawfile as ngspice 47
+  our engine (wasm), as ngspice -b -r (exit 1, no results, unreliable):
+    the same messages as ngspice 47
+  G1 0 value VALUE={2m*v(out)} and G1 0 value cur={2m*v(out)}: the same ('singular matrix:  check node cur', exit 1)
+  G1 value 0 VALUE={2m*v(out)} with Rc cur 0 1k: native 47 and 42 (exit 0) and our engine: v(value) = 0, v(cur) = -5
+  after the fix (R4 val 0 1k, G1 val 0 VALUE={2m*v(out)}): native 47 and 42 (-b -r, exit 0) and our engine: v(val) = -5, v(g1_int1) = 0.005
+```
+
+PlainSpice's checks: `fatal-syntax` ("ngspice puts E1's end written value on a node called vol", a warning; for the G with nothing on cur, "ngspice puts G1's end written value on a node called cur", an error), with the fix "Rename the node value to val".
 
 ## include-not-available
 

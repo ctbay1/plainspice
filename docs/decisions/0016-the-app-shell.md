@@ -759,3 +759,18 @@ The round-1 critic of these fixes found four more, each run the same way (14 Nov
   numbers mean nothing" and Explain's note "ngspice says nothing and reports a transfer function of 0" still
   key such a name by its ASCII letters, so on that `.tf` they say ngspice reads a node with nothing on it,
   where it reads the subcircuit's node and gives 0.5 and 500 Ω.
+- **An E's or G's output node called value on a line given by a formula** (older, found by the critic).
+  ngspice reads the first word value on an E or G line as VALUE (fatal-syntax-17, -20); on a formula line
+  (`E1 value 0 VALUE={2*v(out)}`, and after `vol=` or `cur=`) that word is an output node, and ngspice writes
+  vol (E) or cur (G) in its place without a message: E1's end is on a new node called vol (5 V) and node value
+  keeps 0 V; a G's current goes into a node cur nothing else connects to, and ngspice stops ('singular matrix:
+  check node cur'). There was no check, and Explain said the formula gives the voltage at node value. Now
+  `valueNodeMoved` (`parse.ts`) finds the word, the checks give a warning for an E, or an error for a G with
+  nothing on a node called cur, with the rename the value checks already offer ("Rename the node value to val";
+  made once in `valueRename`, now shared with `valueNodeTrap`), and Explain says ngspice writes vol or cur
+  there in place of the formula's sentence (fatal-syntax-23). Chosen over extending `valueAsNodeWord`, the
+  critic's first suggestion: that would have given these lines `valueNodeTrap`'s words, "E1 is the constant
+  {2*v(out)}" or "it stops", both false here, as ngspice runs the formula, on node vol. A warning, not an
+  error, for the E, as for fatal-syntax-20's braced constant: ngspice runs and says nothing. Left open: with a
+  part on a node called vol or cur, the dangling-node note ("Only Rv touches node vol") still counts the parts
+  as written, not the end ngspice puts there.
