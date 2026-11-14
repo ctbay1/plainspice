@@ -1015,7 +1015,10 @@ problem where a fix would be complex, and adds no new mechanism.
   gives exactly 0 A is drawn "no current" with nothing said, so Kirchhoff's law fails on the page there (C9w.3's Rw beside
   Vm's 7.324e−19 A; C9z's beside Rload's 198 nA). The noise-0 skeptic's trial, a fill only of a strict series pair, walked
   as a queue, still copies a partner's own error (r9731-1138: 5.048 pA the wrong way; r9731-1029: 2.17 fA for an exact
-  0), so it needs its own review after the release.
+  0), so it needs its own review after the release. The may-be-noise note (C9w) is kept as it is: it speaks only of
+  values ngspice gives as tiny but not 0 (maybeNote leaves out a 0), so such a wire gets no note, as at c520a49; a note
+  of the wire's own that gives no number, as the noise-0 skeptic worded one, would be new words with a new trigger, and
+  is left with N6.
 - **A sweep's point at the .op's own value of its source, bit for bit, or at the very double of the decimal its steps
   say, is that value** (noise-1, sweep-point-at-decimal-judged-at-binary; noise-2, point-name-collapses-with-prefix; C9z.2,
   C9z.3). The .op is judged at the netlist's decimals (exact.ts READ_ULPS), but every point of a decided sweep was judged
