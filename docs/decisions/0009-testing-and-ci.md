@@ -124,3 +124,16 @@ tests, at a load of 14 to 25. Each was tried again with busy processes beside it
   numbers-and-syntax.md) were re-run too: ngspice writes no file there, so they stay. The records cannot be run
   in a test, so `tests/unit/facts-records.test.ts` pins them: each corrected fact's lines, and that "(no rawfile
   data)" is left in traps.md only in non-ascii-node-4 and -14 (9 tests, which fail on 3e61833).
+- **A run with a results file is recorded with what it prints** (integration check P5). 43 variant runs of 13
+  traps.md facts added the same day (nbsp-7, missing-fields-10 twice, fatal-syntax-17, unknown-word-53 twice,
+  non-ascii-node-19, -21, space-character-25 nine times, -26 fourteen times, -27 seven times, -29 twice, -30, -31,
+  -32) listed "Error: incomplete or empty netlist" among the lines of "ngspice 47, -b -r", a line only plain
+  `ngspice -b` prints. Re-run in native 47 and 42 with `-b -r` (three times each) and with `-b`: with `-b -r` it is
+  printed in none of the 43, and every other recorded line is printed in order; with `-b` it is printed in all 43.
+  The line is taken out. We chose this over keeping it marked as `-b`'s, which the reviewer also offered: those
+  blocks record `-b -r` runs only, and each fact's own `-b` printout already shows that line. missing-fields-10's
+  two runs without a bracket said native 47 "did not finish in 30 s"; it crashes (SIGSEGV, exit 139) in each of 10
+  runs, whether its input is closed or left open, so the record now says the crash, with the earlier stopped run
+  beside it. missing-fields-9, whose netlist crashes the same way (6 of 6), already says both in its words, so its
+  record stays. Tests: `tests/unit/facts-records.test.ts` (no line recorded under a `-b -r` label is that line;
+  missing-fields-10's crash; both fail on 3e61833).

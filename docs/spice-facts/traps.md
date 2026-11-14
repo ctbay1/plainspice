@@ -2660,7 +2660,6 @@ E1 e 0 VALUE=<NBSP>{v(out)*2}, the character right after =, which PlainSpice's c
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -3728,17 +3727,15 @@ a G line, cur={v(out)*2m}:
     ngspice 47 and 42, -b -r (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(v1) = -0.0025
     our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 5, v(g1_int1) = 0.005, i(bg1) = 0, i(v1) = -0.0025
 no bracket: VALUE = {2}, which the check warns about:
-    ngspice 47, -b -r (exit null): (did not finish in 30 s: stopped)
+    ngspice 47, -b -r (exit signal SIGSEGV): (no rawfile), a crash in each of 10 runs on 14 November 2026 (an earlier run did not finish in 30 s and was stopped)
       Error: not enough parameters in line
-      Error: incomplete or empty netlist
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: not enough parameters in line
       Error: there aren't any circuits loaded.
     our engine (exit 0): v(in) = 5, v(out) = 2.5, v(e) = 2, v(e1_int1) = 2, i(be1) = 0, i(e1) = -0.002, i(v1) = -0.0025
 no bracket: cur={2m}, which the check warns about:
-    ngspice 47, -b -r (exit null): (did not finish in 30 s: stopped)
+    ngspice 47, -b -r (exit signal SIGSEGV): (no rawfile), a crash in each of 10 runs on 14 November 2026 (an earlier run did not finish in 30 s and was stopped)
       Error: not enough parameters in line
-      Error: incomplete or empty netlist
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: not enough parameters in line
       Error: there aren't any circuits loaded.
@@ -10046,7 +10043,6 @@ the braces the check offered before (E1 e 0 value {0 2}):
       Error on line 5 or its substitute:
       unknown parameter (2.0000000000e+00)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -12792,7 +12788,6 @@ with one more word (E1 e 0 vcvs out 0 2 m=1, eight words), which PlainSpice's ch
       Error on line 5 or its substitute:
       unknown parameter (2)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -12805,7 +12800,6 @@ the same on a G line (G1 0 e vccs out 0 2m m=1), which the checks say as `unknow
       Error on line 5 or its substitute:
       unknown parameter (2m)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -14383,7 +14377,6 @@ after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R
     native 47 and 42 (-b -r, exit 0) and our engine: v(pole(1)) = -2000
 the netlist the fix wrote before (the .pz left on çıkış):
     ngspice 47, -b -r (exit 1): (no rawfile)
-      Error: incomplete or empty netlist
       doAnalyses: The input signal is shorted on the way to the output
     ngspice 42, -b -r (exit 1): (no rawfile)
       doAnalyses: The input signal is shorted on the way to the output
@@ -14472,7 +14465,6 @@ after the fix "Rename node çıkış to cikis" (non-ascii-node), which writes `R
     native 47 and 42 (-b -r, exit 0) and our engine: v(pole(1)) = -2000
 the netlist the error's fix wrote before (Cikis2 on the .pz line):
     ngspice 47, -b -r (exit 1): (no rawfile)
-      Error: incomplete or empty netlist
       doAnalyses: The input signal is shorted on the way to the output
     ngspice 42, -b -r (exit 1): (no rawfile)
       doAnalyses: The input signal is shorted on the way to the output
@@ -19799,7 +19791,6 @@ a no-break space there (V=<NBSP>v(out)*2):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19812,7 +19803,6 @@ after a blank (V= <THIN>v(out)*2):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19825,7 +19815,6 @@ in braces (V={<THIN>v(out)*2}):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19838,7 +19827,6 @@ on an E line (VALUE={<THIN>v(out)*2}):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19851,7 +19839,6 @@ on an E line without braces (VALUE=<THIN>v(out)*2):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19864,7 +19851,6 @@ in quotes (vol='<THIN>v(out)*2'):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19877,7 +19863,6 @@ on a G line (cur={<THIN>v(out)*2m}):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19890,7 +19875,6 @@ after a + at the start (V=+<THIN>v(out)*2):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19903,7 +19887,6 @@ an ideographic space (V=<IDEO>v(out)*2):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -19971,7 +19954,6 @@ after + (V=v(out)+<THIN>1):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -19988,7 +19970,6 @@ after - (V=v(out)-<THIN>1):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20005,7 +19986,6 @@ after / (V=v(out)/<THIN>0.5):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20022,7 +20002,6 @@ after ^ (V=v(out)^<THIN>1):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20039,7 +20018,6 @@ after > (V=v(out)><THIN>1?10:0):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20056,7 +20034,6 @@ after < (V=v(out)<<THIN>1?0:10):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20073,7 +20050,6 @@ after == (V=v(out)==<THIN>2.5?10:0):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20090,7 +20066,6 @@ after && (V=v(out)>1&&<THIN>v(in)>1?10:0):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20107,7 +20082,6 @@ after || (V=v(out)>1||<THIN>v(in)>1?10:0):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20124,7 +20098,6 @@ after : (V=v(out)>1?10:<THIN>0):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20141,7 +20114,6 @@ after a minus sign at the start (I=-<THIN>v(out)/1k):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20158,7 +20130,6 @@ a no-break space (V=v(out)*<NBSP>2):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20175,7 +20146,6 @@ in braces (V={v(out)*<THIN>2}):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20192,7 +20162,6 @@ on an E line (VALUE={v(out)*<THIN>2}):
       Error on line 5 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20252,7 +20221,6 @@ after a number before an operator (V=2<THIN>*v(out)):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20265,7 +20233,6 @@ after a number at the end (V=v(out)*2<THIN>):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20278,7 +20245,6 @@ a no-break space there (V=v(out)*2<NBSP>):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20291,7 +20257,6 @@ after a number with a scale letter (V=v(out)*2m<THIN>*1k):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20304,7 +20269,6 @@ after the formula's closing brace (V={v(out)*2}<THIN>):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20317,7 +20281,6 @@ after an E's formula in braces (VALUE={v(out)*2}<THIN>):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20330,7 +20293,6 @@ after an E's formula without braces (VALUE=v(out)*2<THIN>):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20507,7 +20469,6 @@ after a name it knows (V=v(out)*2+temper<THIN>*0):
       Error on line 5 or its substitute:
       unknown parameter (_)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20520,7 +20481,6 @@ between V and = (V<THIN>=v(out)*2):
       Error on line 5 or its substitute:
       unknown parameter (v___)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20578,7 +20538,6 @@ the character taken out (V=v(out)*2tc1=0):
       Error on line 5 or its substitute:
       unknown parameter (1.0000000000e+00)
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error on line 5 or its substitute:
@@ -20638,7 +20597,6 @@ with another one after an operator, B1 e 0 V=i(V<THIN>s)*<THIN>1k: the operator'
       Error on line 6 or its substitute:
       parameter value out of range or the wrong type
       Simulation interrupted due to error!
-      Error: incomplete or empty netlist
       Error: circuit not parsed.
     ngspice 42, -b -r (exit 1): (no rawfile)
       Error: The internal check of parse tree
@@ -20717,7 +20675,6 @@ in an E's formula, E1 e 0 VALUE={v(out<THIN>)*2}:
     our engine (exit 1, no results): (none), with the same messages as ngspice 47
 with .tran 1u 10u instead of .op:
     ngspice 47, -b -r (exit 1): a Transient Analysis plot with 0 points, its header only (no results)
-      Error: incomplete or empty netlist
       Warning: singular matrix:  check node o___ut
       Warning: Dynamic gmin stepping failed
       Warning: True gmin stepping failed

@@ -164,3 +164,29 @@ describe('P6 (integration check, 14 November 2026): a header-only results file i
     expect(left).toEqual(['non-ascii-node-4', 'non-ascii-node-14']);
   });
 });
+
+describe('P5 (integration check, 14 November 2026): a run with a results file is recorded with what it prints, not with plain -b’s lines', () => {
+  // "Error: incomplete or empty netlist" is printed by `ngspice -b` alone. Re-run in native 47 with -b -r, the 43
+  // variant runs of 13 facts that listed it under "ngspice 47, -b -r" print every other recorded line, and not that one.
+  it('no line recorded under a "-b -r" label in traps.md is that plain -b line', () => {
+    const lines = read('traps.md').split('\n');
+    const under: string[] = [];
+    let id = '';
+    lines.forEach((line, i) => {
+      id = HEADING.exec(line)?.[1] ?? id;
+      if (!line.includes('incomplete or empty netlist')) return;
+      // The label a printed line belongs to: the nearest line above it with less indentation.
+      const indent = line.length - line.trimStart().length;
+      let j = i - 1;
+      while (j >= 0 && (lines[j]!.trim() === '' || lines[j]!.length - lines[j]!.trimStart().length >= indent)) j -= 1;
+      if (/-b -r/.test(lines[j] ?? '')) under.push(`${id}, line ${i + 1}: ${lines[j]!.trim()}`);
+    });
+    expect(under).toEqual([]);
+  });
+
+  it('missing-fields-10: with no bracket after the word, native 47 with a results file crashes (10 of 10 runs), where the record said it never finished', () => {
+    const section = sections('traps.md').get('missing-fields-10')!;
+    expect(section.split('ngspice 47, -b -r (exit signal SIGSEGV): (no rawfile), a crash').length - 1).toBe(2);
+    expect(section).not.toContain('(exit null)');
+  });
+});
