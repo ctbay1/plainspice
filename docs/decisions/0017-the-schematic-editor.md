@@ -804,7 +804,8 @@ golden rows in A3f and A3i of `docs/spice-facts/explanations.md`):
   inside the subcircuit s (from line 5), and no X line uses that subcircuit." in place of the line's notes
   (naming the X lines out, as for an analysis line, where only X lines of such subcircuits use it), drops a
   summary that says what ngspice does when it reads the line (an unknown dot command, a line that is no
-  part, a `.lib` with one word, `.control`), and gives a word the meaning "a word PlainSpice cannot place on
+  part, a `.lib` with one word, `.control`, `.save`, `.print` and `.plot`: there a `.save v(in)` keeps
+  nothing back and a `.print` gives no message, A3i), and gives a word the meaning "a word PlainSpice cannot place on
   this line" where it said ngspice stops at it. Kept, as ngspice reads them before it skips anything: an
   `.include` or `.inc`, a `.lib` with a file and a section, a `*#` or `##` line (it runs), and a V or I line
   with one node ("Not enough parameters"). Kept as they were too: everything with a line starting with

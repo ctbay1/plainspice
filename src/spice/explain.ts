@@ -3010,17 +3010,20 @@ export function explainLine(netlist: Netlist, lineIndex: number): LineExplanatio
 
 /** Meanings of a word that say ngspice stops at it: for a line ngspice skips, such a word is one PlainSpice cannot place (A3i). */
 const STOPS_AT_WORD: ReadonlySet<string> = new Set([S.unknownWord, S.unknownWordEngine, S.reportOnlyWord, S.bNoExpression]);
+/** Dot commands whose summary says what ngspice does when it reads the line: it stops (a .lib with one word), it leaves the line out with a message (.print, .plot), the results file holds only what the line names (.save). */
+const READ_SAYS: ReadonlySet<string> = new Set(['.lib', '.print', '.plot', '.save']);
 
 /**
  * A3i: the explanation of a line ngspice skips, as it turns the lines of a subcircuit the main circuit does not use
  * into comments before it checks them (the integration check, P1). Its notes say only that, as an analysis line's
- * there do (A3f); a summary that says what ngspice does when it reads the line (it stops, it runs the block) goes, as
- * the heading says what the line is; and a word's meaning says nothing of ngspice stopping at it.
+ * there do (A3f); a summary that says what ngspice does when it reads the line (it stops, it runs the block, it keeps
+ * only what .save names) goes, as the heading says what the line is; and a word's meaning says nothing of ngspice
+ * stopping at it.
  */
 function asSkipped(e: LineExplanation, line: NetlistLine, u: UnusedSubcircuit): LineExplanation {
   const d = line.directive;
   const lead = lowerAscii(line.text.trimStart().split(/[\s;]/)[0] ?? '');
-  const says = line.kind === 'invalid' || (line.kind === 'element' && !line.element) || (line.kind === 'directive' && (!d || !isKnownDotCommand(d.name))) || d?.name === '.lib' || (line.kind === 'control' && lead === '.control');
+  const says = line.kind === 'invalid' || (line.kind === 'element' && !line.element) || (line.kind === 'directive' && (!d || !isKnownDotCommand(d.name))) || (d !== undefined && READ_SAYS.has(d.name)) || (line.kind === 'control' && lead === '.control');
   return {
     ...e,
     summary: says ? '' : e.summary,

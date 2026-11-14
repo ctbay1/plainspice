@@ -4109,14 +4109,18 @@ ngspice 47, ngspice -b (exit 0): out 2.500000e+00, in 5.000000e+00, v1#branch -2
         in line no. 11 of file an-skip-if.cir
     ERROR: fatal error in ngspice, exit(1)
   with .foo bar alone there and that .if: exit 0, v(out) = 2.499998750000625 (R3 beside R2), and no message
+  with .save v(in) alone there: the rawfile holds v(in), v(out) and i(v1) all the same (with it in the main
+    circuit, v(in) alone); with .print op v(out) there: no ".print line ignored" message, and the same values;
+    with .options savecurrents there: no resistor's current in the rawfile
 ngspice 42: the same values, exit codes and messages, with "Not enough parameters" for "Not enough parameters for
   v source" and "ERROR: mal formed E line: e1 a 0   vol=3", without the "line no." lines, and with 'Note: No ".plot",
   ".print", or ".fourier" lines; no simulations run' for the -b ending of the .tarn
 our engine (wasm), as ngspice -b -r: exit 0, vectors: v(in) = 5, v(out) = 2.5, i(v1) = -0.0025, and no message, the
   POLY line included; with X1, R8's warning and v(out) = 1.6666666666666665; with the .tarn, no results and no
   message; the .lib, the V3 a and the VALUE=3 beside a .if or inside a used subcircuit stop it with ngspice 47's
-  messages; the *# line prints its words (golden rows an-skip-lines, an-skip-lines-used-r8, an-skip-tarn, an-skip-lib,
-  an-skip-lib-one, an-skip-starhash, an-skip-v-one, an-skip-e-value, an-skip-if, an-skip-nested and an-skip-if-foo)
+  messages; the *# line prints its words; the .save keeps nothing back (golden rows an-skip-lines,
+  an-skip-lines-used-r8, an-skip-tarn, an-skip-lib, an-skip-lib-one, an-skip-starhash, an-skip-v-one, an-skip-e-value,
+  an-skip-if, an-skip-nested, an-skip-save, an-skip-print and an-skip-if-foo)
 ```
 
 The checks and Explain stay as they were in the two cases where ngspice does not turn the lines into comments first,

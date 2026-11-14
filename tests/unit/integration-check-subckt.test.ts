@@ -146,6 +146,10 @@ describe('P1: a line in a subcircuit the main circuit does not use is skipped, s
     expect([v3.notes, v3.fields.find((f) => f.text === 'p')?.meaning]).toEqual([[SKIPS], 'a word PlainSpice cannot place on this line']);
     expect(explainLine(n, 7)!.notes).toEqual([`${SKIPS.slice(0, -1)}. Put analysis lines in the main circuit, outside .subckt … .ends.`]);
     expect(explainLine(n, 8)!.notes).toEqual([SKIPS]);
+    // A summary that says what ngspice does when it reads the line goes: .foo (it stops), .save (the results keep only v(in)), .print (left out with a message), .control (it runs the block).
+    for (const line of ['.foo bar', '.save v(in)', '.print op v(out)', '.lib models.lib']) expect(explainLine(parseNetlist(inS(line)), 6)!.summary, line).toBe('');
+    expect(explainLine(parseNetlist(inS('.control\necho hi\n.endc')), 6)!.summary).toBe('');
+    expect(explainLine(parseNetlist(inS('.param p=2')), 6)!.summary).toBe('Gives a name to a number: write the name in braces, {name}, where you need the number.');
     // Used, the same lines keep what they said.
     const used = parseNetlist(inS('V3 a b 1 p', true));
     expect(explainLine(used, 6)!.notes.join(' ')).not.toContain('skips');

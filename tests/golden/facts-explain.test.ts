@@ -204,6 +204,8 @@ const FACTS: Fact[] = [
   { code: 'A3i', id: 'an-skip-e-value', netlist: "* E1 a 0 VALUE=3 in a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A3i', id: 'an-skip-if', netlist: "* E1 a 0 VALUE=3 in a subcircuit no X line uses, with a .if in the netlist\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true },
   { code: 'A3i', id: 'an-skip-nested', netlist: "* E1 a 0 VALUE=3 in a subcircuit no X line uses, defined inside one X1 uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\nX1 out 0 outer\n.subckt outer p q\nR8 p q 1g\n.subckt s a b\nR9 a b 1k\nE1 a 0 VALUE=3\n.ends\n.ends\n.op\n.end\n", prints: ["mal formed E source instance"], fails: true },
+  { code: 'A3i', id: 'an-skip-save', netlist: "* a .save inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.save v(in)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
+  { code: 'A3i', id: 'an-skip-print', netlist: "* a .print inside a subcircuit no X line uses\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.subckt s a b\nR9 a b 1k\n.print op v(out)\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.5, "i(v1)": -0.0025 } },
   { code: 'A3i', id: 'an-skip-if-foo', netlist: "* .foo in a subcircuit no X line uses, with a .if in the netlist\nV1 in 0 5\nR1 in out 1k\nR2 out 0 1k\n.param flag=1\n.if (flag == 1)\nR3 out 0 1g\n.endif\n.subckt s a b\nR9 a b 1k\n.foo bar\n.ends\n.op\n.end\n", vectors: { "v(in)": 5, "v(out)": 2.499998750000625, "i(v1)": -0.0025000012499993753 } },
   { code: 'A4', id: 'an-tf-isource', netlist: "* .tf with a current source as the input\nI1 0 a 1\nR1 a 0 4\nR2 a b 2\nR3 b 0 2\n.tf v(b) I1\n.end\n", vectors: { "v(Transfer_function)": 1, "v(i1#Input_impedance)": 2, "v(output_impedance_at_V(b))": 1.5 } },
   { code: 'A5', id: 'an-tf-current-out', netlist: "* .tf with a current as the output\nV1 a 0 10\nR1 a b 2\nVm b c 0\nR2 c 0 3\nR3 b 0 6\n.tf i(Vm) V1\n.end\n", vectors: { "v(Transfer_function)": 0.16666666666666666, "v(v1#Input_impedance)": 4, "v(vm#Output_impedance)": 100000000000000000000 } },
@@ -919,6 +921,11 @@ describe('results in words: the fixtures, run with .options savecurrents as the 
     expect(ids(said('an-skip-nested'))).toEqual(['fatal-syntax']);
     // Beside a .if line every check stays, though ngspice skips the .foo and runs (left for after the release).
     expect([said('an-skip-if-foo').words.status, ids(said('an-skip-if-foo'))]).toEqual(['ok', ['unknown-dot-command']]);
+    // A .save there keeps nothing back, and a .print says nothing: Explain no longer says what they do when ngspice reads them.
+    const save = said('an-skip-save');
+    expect([save.results.op?.nodes.map((n) => n.node), explainLine(save.netlist, 6)!.summary, explainLine(save.netlist, 6)!.notes]).toEqual([['in', 'out'], '', [SKIPS]]);
+    const print = said('an-skip-print');
+    expect([`${print.run.stdout}${print.run.stderr}`.includes('ignored'), explainLine(print.netlist, 6)!.summary, explainLine(print.netlist, 6)!.notes]).toEqual([false, '', [SKIPS]]);
   });
 
   it('a dot inside a name ngspice builds, and names that are no node or part of a subcircuit: x1.0, x1.gnd, i.x1.vs (A3h, last pass critic1-3, critic1-5)', () => {
