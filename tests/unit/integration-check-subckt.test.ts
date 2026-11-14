@@ -132,6 +132,10 @@ describe('P1: a line in a subcircuit the main circuit does not use is skipped, s
       ['R7 a b 1M', 'mega-as-milli'],
       ['E2 a 0 POLY(1) b 0 0 2', 'model-not-in-engine'],
       ['R8 a b {xx}', 'fatal-syntax'],
+      // A + line and a line that is no part are skipped too (the round-1 critic of these fixes, C1-5; native 47 and 42: exit 0).
+      ['R8 a b\n+ 1 k', 'space-before-suffix'],
+      ['Q7 a b 0\n+ nomodel', 'missing-model'],
+      ['1k a b', 'unknown-letter'],
     ];
     for (const [line, id] of cases) {
       expect(ids(inS(line)), line).toEqual([]);
