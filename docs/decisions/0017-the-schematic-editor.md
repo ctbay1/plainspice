@@ -755,3 +755,112 @@ and golden rows in A3f and A3h):
   a `.global` node, and the `v(...)` of a `.func`'s formula, before and after a plain `.end`
   (non-ascii-node-23 to -25); and a name only read that ngspice spells as the node (`v(Çıkış)` for the node
   `çıkış`, decision 0016). A bare name on `.probe` stays: ngspice reads no node there.
+
+## After the integration check (14 November 2026)
+
+The integration check of the last pass's lanes found two problems with subcircuits the main circuit does
+not use (`src/spice/explain.ts`, `src/spice/traps.ts`; `tests/unit/integration-check-subckt.test.ts`,
+golden rows in A3f and A3i of `docs/spice-facts/explanations.md`):
+
+- **The walk out stops after three steps** (cross X2). The words for such a subcircuit name the X lines
+  that use it, outward (critic1-4 above), and each subcircuit kept its whole way out, with every X line of
+  each step. So the work, the memory and the words grew with the square of the netlist: a chain of 4,000
+  subcircuits, each holding an X line that uses the next, made 8,002,000 steps, about 1 GB in Node and
+  7.4 s of CPU in the checks (load 4.5), where c520a49 took 16 MB; 8,000 ran Node out of memory; a
+  29,757-character link crashed the tab after seven keys (the skeptic), and the note on the innermost
+  `.op` of 500 was 37,257 characters (with only that `.op`, the status line held 28,939 and the polite
+  region said 28,928, the skeptic found). The same
+  held for many subcircuits each used once inside one that many X lines use: 3,000 of each named 9 million
+  X lines and gave Explain's "all lines" 61.8 million characters. The walk now names at most three steps
+  (`SKIP_STEPS`) of at most three X lines each (`SKIP_XS`), then stops at the subcircuit it has reached
+  with "which the main circuit does not use, directly or through other subcircuits", which holds for that
+  one as for every one it passed (".op is inside the subcircuit s500, which only X1 uses, and X1 is inside
+  the subcircuit s499, …, and X1 is inside the subcircuit s497, which the main circuit does not use,
+  directly or through other subcircuits"). After the fix: 11,997 steps for the chain of 4,000, +18 MB and
+  286 ms of CPU in the checks (load 5.6), 449 characters for the note; 3,000 X lines named for the fan, 2.1
+  million characters in all; the chain of 8,000 is checked in 513 ms. In Chromium the 27,245-character link
+  of the chain of 4,000 opens with 0.4 s of script and 23 MB after a GC, where the frozen build took 3.9 s
+  and 491 MB, and with only the innermost `.op` of 500 the status line holds 355 characters, not 28,961. Every chain the tests and the facts
+  had (two steps at most) keeps its words. The tests count, not time: the steps kept (at most three for
+  each subcircuit, four times the chain for four times the steps, 8,002,000 before), the X lines kept in
+  the fan (1,002,000 before), and the lines the checks read (×12.7 for four times the chain before, under
+  ×5 now), as critic1-6's test does. The skeptic's other way, naming at most three X lines with "and
+  4,997 other X lines", was left: it needs words of its own, and the stop says what holds. So decision
+  0012's bounded-work promise holds again for these netlists.
+- **No check speaks for a line ngspice skips** (facts P1). A line inside a subcircuit no X line uses got the
+  checks of a line ngspice builds: `.foo` there was an error, "ngspice stops before running anything, with
+  'unimplemented dot command'", so the status line said "Not reliable" and the Numbers panel called the
+  right answers (out = 2.5 V) "not answers", and Explain said "ngspice does not know the dot command .foo,
+  so it stops", one line below its own "ngspice skips this line" for the `.tran` there. Native 47 and 42
+  run such a netlist with exit 0 and no message. ngspice turns every line of a subcircuit defined at the
+  top level that the main circuit does not use into a comment right after its first syntax checks
+  (comment_out_unused_subckt_models in inpcom.c), so nothing on it makes ngspice stop or warn: the 491
+  netlists of the traps' golden rows, each moved into such a subcircuit beside a working divider, ran
+  cleanly in native 47, 42 and our engine, all but eight: five with a line ngspice reads first (an
+  `.include`, a `.lib`, a V or I line with one node, an @ line) and three where it only warned as it read
+  (a line starting with !; in 42 alone, a subcircuit with parameters defined inside another). The checks
+  now leave such lines out (`skippedLine`), as they already left out the analysis lines there (A3f): 461 of
+  the 466 traps those netlists had there went, none whose claim held, and the five that stay are on lines
+  ngspice stops at. The misspelt-analysis hint does not count a `.tarn` there, so a netlist whose only
+  analysis is such a line gets the check that it has none. Explain says "ngspice skips this line: it is
+  inside the subcircuit s (from line 5), and no X line uses that subcircuit." in place of the line's notes
+  (naming the X lines out, as for an analysis line, where only X lines of such subcircuits use it), drops a
+  summary that says what ngspice does when it reads the line (an unknown dot command, a line that is no
+  part, a `.lib` with one word, `.control`, `.save`, `.print` and `.plot`: there a `.save v(in)` keeps
+  nothing back and a `.print` gives no message, A3i), and gives a word the meaning "a word PlainSpice cannot place on
+  this line" where it said ngspice stops at it. Kept, as ngspice reads them before it skips anything: an
+  `.include` or `.inc`, a `.lib` with a file and a section, a `*#` or `##` line (it runs), and a V or I line
+  with one node ("Not enough parameters"). Kept as they were too: everything with a line starting with
+  `.if` in the netlist and in a subcircuit defined inside one the main circuit uses, where ngspice keeps such
+  lines longer and a later step can stop at one (`E1 a 0 VALUE=3` there stops it, "mal formed E source
+  instance"), and with `.subckt` and `.ends` lines that do not pair up, where ngspice stops first. So beside
+  a `.if` a `.foo` is still called an error ngspice stops at while ngspice runs, which is left for
+  after the release with a line-by-line reading of which step reads what. Considered, and the skeptic's
+  way: keeping the checks as warnings that say "ngspice skips this line for now … once an X line uses s:"
+  before what they said, so a student learns of a broken line before writing the X line. Left: it needs
+  words for every check and a new kind of check text in the last round, and the analysis lines there,
+  checked the same way, have said nothing since A3f; the checks come back the moment an X line
+  uses the subcircuit, and Explain says why they are not there. The behaviour is older than the last pass
+  (fix-base and c520a49 gave the same errors); the last pass's records only made the contradiction plain.
+
+The round-1 critic of these fixes (the same day) found five more problems, all minor; each is fixed, with a
+test that fails without it (`tests/unit/integration-check-subckt.test.ts`, golden rows in A3i):
+
+- **A definition inside another keeps every check** (C1-2, a regression of the P1 fix). "Unused" came from
+  PlainSpice's walk through the X lines (critic1-4 above), but ngspice builds its own list
+  (comment_out_unused_subckt_models): a flag that any `.ends` clears decides which X lines are the main
+  circuit's, so an X line after an inner `.ends` counts as one, and only the X lines up to a used
+  subcircuit's first `.ends` count as its own. So it can keep a subcircuit PlainSpice calls unused, and a
+  later reading step stops at an `E1 c 0 VALUE=3` there ("mal formed E source instance", native 47 and 42,
+  an-skip-nested-after and an-skip-nested-deep), where the P1 fix called the line skipped and dropped its
+  error. Now no line is called skipped when any `.subckt` or `.macro` line opens inside another, as with a
+  `.if` line: those lines' checks and Explain's words for them stay as they were on the frozen build (an
+  analysis line there keeps A3f's note). The critic's other way, copying
+  ngspice's flag and its first-`.ends` rule, was left: more code, so the riskier change in the last round.
+  The cost is the `.if` guard's: a `.foo` in a subcircuit nothing uses that holds a definition of its own
+  is still called an error that stops ngspice, while ngspice runs (an-skip-nested-foo), left for after the
+  release with the `.if` case.
+- **`.probe` and `.title` are read first** (C1-3). ngspice applies both before it skips anything: a
+  `.probe i(R1)` there adds `i(r1)` to the results, and the last `.title` names the run, so "ngspice skips
+  this line" was not true of them. They join the lines ngspice reads there (an `.include`, a `.lib` with a
+  file and a section, a `*#` line, a V or I line with one node) and keep their words. A3i, the facts
+  README and traps.md also no longer say that nothing there makes ngspice warn: a line starting with `!`
+  warns there as anywhere (Explain already said so), and ngspice 47 warns as it drops a `.hdl` or
+  `.biaschk` line wherever it is; Explain's "ngspice skips this line" for those two holds (ngspice 42 skips
+  them there without a word), so they stay skipped.
+- **A `.meas` there no longer quotes a message ngspice does not print** (C1-4): its summary said ngspice
+  skips `.meas` with "No .measure possible in batch mode (-b) with -r rawfile set!", which ngspice prints
+  only for one it reads; it goes, as `.save`'s and `.print`'s did (`READ_SAYS`).
+- **An analysis line there says nothing of stopping** (C1-1, older: the frozen build has it). A `.dc` with
+  no step, a step of 0 or a word for the step kept the summary "ngspice 47 stops at this line ("Bad
+  syntax!") and sweeps nothing: see Checks." and the word "not a number for SPICE (see Checks)", one line
+  above its own "ngspice skips this line" (A3f), while Checks said nothing and the run finished. For an
+  analysis line ngspice skips there (`ignoredAnalysis`), that summary goes and the word is "not a number
+  for SPICE"; every other summary of an analysis line there already says only what the line asks for.
+  Native 47 and 42 skip such a line with a definition inside another and with a `.if` too (the analysis
+  lines of a subcircuit run only for its X lines; an-skip-dc-nested, an-skip-dc-if), so this follows A3f's
+  note, not the C1-2 guard.
+- **`+` lines and lines that are no part have tests** (C1-5): `R8 a b` with `+ 1 k`, `Q7 a b 0` with
+  `+ nomodel`, and `1k a b` give no check while no X line uses the subcircuit, and theirs once X1 does
+  (native 47 and 42 run them there with exit 0, an-skip-cont); dropping `continuation` and `invalid` from
+  the kinds of lines ngspice skips now fails a test.

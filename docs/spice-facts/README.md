@@ -245,6 +245,30 @@ commands, where it said it reads none of its lines. A3h gained names with a dot 
 own (`x1.m.1`, `x1.a.m`, `v.x1.vs.1`, `x1.x2.m.1`) and the names that are no node or part there
 (`x1.m.1` beside m, `x1.0`, `x1.gnd`, `i.x1.vs`).
 
+## The integration check of 14 November 2026 (the subckt lane)
+
+Run the same way on 14 November 2026 (native ngspice 47 and 42, `-b` and `-b -r`, and our engine), and
+asserted by `tests/golden/facts-explain.test.ts`: A3f gained chains three and four steps out and steps of
+three and four X lines (still skipped; the words name at most three steps of three X lines each, and the
+chain of four runs when the main circuit uses it); and A3i is new: ngspice turns every line of a
+subcircuit the main circuit does not use into a comment before it checks it, so a line that stops it or
+makes it warn elsewhere says nothing there, but an `.include`, a `.lib` with a file and a section, a `*#`
+line and a V or I line with one node; not with a `.if` line in the netlist, nor in a subcircuit defined
+inside one the main circuit uses, where a later step still reads such a line (`E1 a 0 VALUE=3` there stops
+ngspice). The 491 netlists of `tests/golden/facts-traps.test.ts`, each moved into such a subcircuit, ran
+cleanly in native 47, 42 and our engine but for eight: five with a line ngspice reads first, three where it
+only warned as it read.
+
+After the round-1 critic of those fixes (the same day, the same versions and modes): A3i's "nothing there
+stops it or makes it warn" was not so for every line, and now names them: a `.probe` there adds the
+currents it names to the results and a `.title` names the run, as ngspice reads both first; a line starting
+with `!` warns there too, and in ngspice 47 a `.hdl` or `.biaschk` line (dropped with a warning, wherever it
+is); and where a definition is inside another, ngspice's list of the subcircuits used can differ from the
+one A3f gives (an X line after an inner `.ends` counts as the main circuit's, and a used subcircuit's X lines count
+only up to its first `.ends`), so an `E1 c 0 VALUE=3` in a subcircuit PlainSpice calls unused can stop it.
+A3i also gained a `.dc` with no step, a step of 0 or a word for the step there, a `.meas` there (no "No
+.measure possible" message), and `+` lines and a line that is no part there, which ngspice all skips.
+
 ## The last pass of 13 November 2026 (the formulas lane)
 
 Run the same way on 13 November 2026 (native ngspice 47 and 42, `-b` and `-b -r`, and our engine), with

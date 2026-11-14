@@ -397,6 +397,14 @@ export const EXPLAIN_STRINGS = {
    */
   analysisInSkippedSubcircuit: (name: string, line: number, because: string): string =>
     `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), ${because}. Put analysis lines in the main circuit, outside .subckt … .ends.`,
+  /**
+   * A3i: any other line ngspice skips there, as it turns the subcircuit's lines into comments before it checks
+   * them (the integration check, P1): the same words, without where to put an analysis line.
+   */
+  lineInUnusedSubcircuit: (name: string, line: number): string =>
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), and no X line uses that subcircuit.`,
+  lineInSkippedSubcircuit: (name: string, line: number, because: string): string =>
+    `ngspice skips this line: it is inside the subcircuit ${name} (from line ${line}), ${because}.`,
   /** A3f: one step out: the only X lines that use a subcircuit, and the subcircuit they are in. */
   skipStep: (xs: string, many: boolean, where: string): string =>
     `which only ${xs} ${many ? 'use' : 'uses'}, and ${many ? 'they are' : `${xs} is`} inside the subcircuit ${where}`,
@@ -456,6 +464,8 @@ export const EXPLAIN_STRINGS = {
     `With these numbers this sweep goes the wrong way and never moves: ngspice keeps ${name} at its start, ${start}, takes ${second} from its second value on, and says nothing.`,
   dcStepZero: 'A step of 0 (or no step at all) stops ngspice 47: "Bad syntax!".',
   dcNotNumber: 'not a number for SPICE (see Checks)',
+  /** The same, on a .dc line ngspice skips (A3f): no check speaks for it (the round-1 critic of the integration check, C1-1). */
+  dcNotNumberSkipped: 'not a number for SPICE',
   dcNotNumberNote: 'A word that is no number where a number goes stops ngspice 47: "Bad syntax!".',
   // re-check critic CR1-11: a .dc line ngspice 47 cannot read is never told as a sweep that runs.
   dcStops: 'ngspice 47 stops at this line ("Bad syntax!") and sweeps nothing: see Checks.',
@@ -1367,9 +1377,10 @@ export interface SkipStep {
 
 /**
  * A subcircuit the main circuit does not use (A3f): its name as written and its .subckt line (0-based),
- * and why. `through` holds the steps out, while every X line that uses it is in one subcircuit; `noX`
- * says no X line uses the last one named; otherwise several subcircuits' X lines use it, or the steps
- * come back to one already named. `direct`: no X line uses it at all.
+ * and why. `through` holds the steps out, while every X line that uses it is in one subcircuit, at most
+ * three steps of at most three X lines each; `noX` says no X line uses the last one named; otherwise
+ * several subcircuits' X lines use it, the steps come back to one already named, or the walk stopped
+ * there. `direct`: no X line uses it at all.
  */
 export interface UnusedSubcircuit {
   name: string;
@@ -1487,6 +1498,17 @@ function subcircuitsOf(netlist: Netlist): Subcircuits {
 }
 
 /**
+ * The most steps out, and the most X lines in one step, that the words of a subcircuit the main circuit
+ * does not use name (A3f). Past them the walk stops at the subcircuit it has reached, with "which the main
+ * circuit does not use, directly or through other subcircuits", which holds for it as for every one the walk
+ * passes. Each subcircuit of a chain kept its whole way out, with every X line of each step, so the work,
+ * the memory and the words grew with the square of the netlist (the integration check, X2: a chain of 4,000
+ * subcircuits made 8 million steps and about 1 GB, and one note named 500 subcircuits in 37,257 characters).
+ */
+const SKIP_STEPS = 3;
+const SKIP_XS = 3;
+
+/**
  * The subcircuit a line is in when the main circuit does not use it, and why (A3f); undefined for any
  * other line. The main circuit uses a subcircuit through its X lines (those after a plain .end too, S25),
  * and then through those of each subcircuit it uses: ngspice skips the lines of any other, an analysis
@@ -1502,7 +1524,8 @@ export function unusedSubcircuit(netlist: Netlist, index: number): UnusedSubcirc
   if (s.reached.has(lowerAscii(name.text))) return undefined;
   let found = s.unused.get(at);
   if (!found) {
-    // The X lines that use it, outward, while they are all in one subcircuit not named yet.
+    // The X lines that use it, outward, while they are all in one subcircuit not named yet, for at most
+    // SKIP_STEPS steps of at most SKIP_XS X lines each.
     const through: SkipStep[] = [];
     const seen = new Set([at]);
     let here = at;
@@ -1511,7 +1534,7 @@ export function unusedSubcircuit(netlist: Netlist, index: number): UnusedSubcirc
       const using = s.users.get(lowerAscii(netlist.lines[here]!.directive!.args[0]!.text)) ?? [];
       const next = using[0]?.at;
       if (using.length === 0) noX = true;
-      if (next === undefined || seen.has(next) || using.some((u) => u.at !== next)) break;
+      if (next === undefined || through.length >= SKIP_STEPS || using.length > SKIP_XS || seen.has(next) || using.some((u) => u.at !== next)) break;
       through.push({ xs: using.map((u) => u.x.name.text), name: netlist.lines[next]!.directive!.args[0]!.text, line: next });
       seen.add(next);
       here = next;
@@ -1532,12 +1555,81 @@ export function ignoredAnalysis(netlist: Netlist, index: number): boolean {
   return name !== undefined && RUN_ANALYSES.has(name) && !contextOf(netlist).subcktMismatch && unusedSubcircuit(netlist, index) !== undefined;
 }
 
+const commentedOutCache = new WeakMap<Netlist, Set<number>>();
+/** The lines that say something to ngspice: not comments and blank lines, which it skips anywhere, nor the lines after .end. */
+const SKIPPED_KINDS: ReadonlySet<NetlistLine['kind']> = new Set(['element', 'directive', 'control', 'invalid', 'continuation']);
+
+/**
+ * The lines ngspice turns into comments right after its first syntax checks (A3i; comment_out_unused_subckt_models
+ * in inpcom.c): every line of a subcircuit defined at the top level that the main circuit does not use, so nothing
+ * on them makes ngspice stop (ngspice 47 still warns as it drops a .hdl or .biaschk line, as it does anywhere, and a
+ * line starting with ! is a comment with a warning anywhere). Not an .include or .inc line, nor a .lib line with a
+ * file and a section: ngspice has read those files by then (A3f); nor a *# or ## line, which it has made a command
+ * it runs; nor a .probe or .title line, which it has applied (inp_probe adds the currents a .probe names to the
+ * results, and the last .title names the run); nor a V or I line with fewer than two nodes, where its first syntax
+ * check stops ("Not enough parameters"); nor .end and the lines after it, which this reading does not place. None at
+ * all with a line starting with .if, where ngspice keeps such lines until it has worked the .if out; with .subckt
+ * and .ends lines that do not pair up, where it stops first (A3f); or with a definition inside another, where
+ * ngspice's own list of the subcircuits used is not the one PlainSpice keeps (an X line after an inner .ends counts
+ * as the main circuit's, and only the X lines up to a subcircuit's first .ends count as its own), so a line
+ * PlainSpice calls unused can be one ngspice reads.
+ */
+function commentedOut(netlist: Netlist): Set<number> {
+  const cached = commentedOutCache.get(netlist);
+  if (cached) return cached;
+  const out = new Set<number>();
+  commentedOutCache.set(netlist, out);
+  if (contextOf(netlist).subcktMismatch) return out;
+  // ngspice's has_if (inp_check_syntax): any line it reads but the title, up to an @ line.
+  for (const l of netlist.lines) {
+    if (l.index === 0) continue;
+    const t = l.text.trimStart();
+    if (t.startsWith('@')) break;
+    if (/^\.if/i.test(t)) return out;
+  }
+  // A .subckt or .macro line while another is open (the round-1 critic of the integration check, C1-2).
+  let depth = 0;
+  for (const l of netlist.lines) {
+    const n = l.directive?.name;
+    if ((n === '.subckt' || n === '.macro') && depth++ > 0) return out;
+    if ((n === '.ends' || n === '.eom') && depth > 0) depth--;
+  }
+  const s = subcircuitsOf(netlist);
+  const open: number[] = [];
+  let unused = false;
+  for (const l of netlist.lines) {
+    const d = l.directive;
+    if ((d?.name === '.subckt' || d?.name === '.macro') && d.args[0]) {
+      if (open.length === 0) unused = !s.reached.has(lowerAscii(d.args[0].text));
+      open.push(l.index);
+    }
+    if (open.length > 0 && unused && SKIPPED_KINDS.has(l.kind) && d?.name !== '.end') {
+      const read = (d && (d.name === '.include' || d.name === '.inc' || (d.name === '.lib' && d.args.length >= 2) || d.name === '.probe' || d.name === '.title')) || /^\s*(\*#|##)/.test(l.text);
+      const stops = (l.element?.letter === 'V' || l.element?.letter === 'I') && l.element.nodes.length < 2;
+      if (!read && !stops) out.add(l.index);
+    }
+    if (d?.name === '.ends' || d?.name === '.eom') open.pop();
+  }
+  return out;
+}
+
+/**
+ * A line ngspice skips because it is inside a subcircuit the main circuit does not use (A3i), with that subcircuit
+ * and why; undefined for any other line, and for one ngspice still reads or stops at there (commentedOut). Its checks
+ * then say nothing and Explain says only that ngspice skips it, as for an analysis line there (A3f).
+ */
+export function skippedLine(netlist: Netlist, index: number): UnusedSubcircuit | undefined {
+  const u = unusedSubcircuit(netlist, index);
+  return u && commentedOut(netlist).has(index) ? u : undefined;
+}
+
 /**
  * Why the main circuit does not use a subcircuit, after its name (A3f): "which no X line uses"; the X
  * lines that use it, outward ("which only X2 uses, and X2 is inside the subcircuit outer, which no X
- * line uses"); or, where several subcircuits' X lines use one or the steps come back, "which the main
- * circuit does not use, directly or through other subcircuits". With `lines`, each subcircuit's .subckt
- * line too ("outer (from line 5)").
+ * line uses"); or, where several subcircuits' X lines use one, the steps come back, more than three X
+ * lines use one or three steps are named (SKIP_STEPS, SKIP_XS), "which the main circuit does not use,
+ * directly or through other subcircuits". With `lines`, each subcircuit's .subckt line too ("outer (from
+ * line 5)").
  */
 export function skippedBecause(u: UnusedSubcircuit, lines: boolean): string {
   const steps = u.through.map((t) => S.skipStep(S.listJoin(t.xs), t.xs.length > 1, lines ? S.skipAt(t.name, t.line + 1) : t.name));
@@ -2928,6 +3020,48 @@ function explainTitle(line: NetlistLine): LineExplanation {
 export function explainLine(netlist: Netlist, lineIndex: number): LineExplanation | undefined {
   const line = netlist.lines[lineIndex];
   if (!line) return undefined;
+  const e = explainByKind(netlist, line);
+  // An analysis line ngspice skips there keeps its own words (A3f), but none that say ngspice stops at it or point to
+  // the checks, which say nothing for it: a .dc with no step, a step of 0 or a word for a number (the round-1 critic
+  // of the integration check, C1-1).
+  if (ignoredAnalysis(netlist, lineIndex)) {
+    const fields = e.fields.map((f) => (f.meaning === S.dcNotNumber ? { ...f, meaning: S.dcNotNumberSkipped } : f));
+    return { ...e, summary: e.summary === S.dcStops ? '' : e.summary, fields };
+  }
+  // A3i: a line ngspice skips in a subcircuit the main circuit does not use; an analysis line there has its own words (A3f).
+  const u = line.directive && RUN_ANALYSES.has(line.directive.name) ? undefined : skippedLine(netlist, lineIndex);
+  return u ? asSkipped(e, line, u) : e;
+}
+
+/** Meanings of a word that say ngspice stops at it: for a line ngspice skips, such a word is one PlainSpice cannot place (A3i). */
+const STOPS_AT_WORD: ReadonlySet<string> = new Set([S.unknownWord, S.unknownWordEngine, S.reportOnlyWord, S.bNoExpression]);
+/**
+ * Dot commands whose summary says what ngspice does when it reads the line: it stops (a .lib with one word), it leaves the
+ * line out with a message (.print, .plot), the results file holds only what the line names (.save), it skips the line with
+ * a message (.meas and .measure: "No .measure possible …", which it does not print for one in such a subcircuit, C1-4).
+ */
+const READ_SAYS: ReadonlySet<string> = new Set(['.lib', '.print', '.plot', '.save', '.meas', '.measure']);
+
+/**
+ * A3i: the explanation of a line ngspice skips, as it turns the lines of a subcircuit the main circuit does not use
+ * into comments before it checks them (the integration check, P1). Its notes say only that, as an analysis line's
+ * there do (A3f); a summary that says what ngspice does when it reads the line (it stops, it runs the block, it keeps
+ * only what .save names) goes, as the heading says what the line is; and a word's meaning says nothing of ngspice
+ * stopping at it.
+ */
+function asSkipped(e: LineExplanation, line: NetlistLine, u: UnusedSubcircuit): LineExplanation {
+  const d = line.directive;
+  const lead = lowerAscii(line.text.trimStart().split(/[\s;]/)[0] ?? '');
+  const says = line.kind === 'invalid' || (line.kind === 'element' && !line.element) || (line.kind === 'directive' && (!d || !isKnownDotCommand(d.name))) || (d !== undefined && READ_SAYS.has(d.name)) || (line.kind === 'control' && lead === '.control');
+  return {
+    ...e,
+    summary: says ? '' : e.summary,
+    fields: e.fields.map((f) => (STOPS_AT_WORD.has(f.meaning) ? { ...f, meaning: S.extraWord } : f)),
+    notes: [u.direct ? S.lineInUnusedSubcircuit(u.name, u.line + 1) : S.lineInSkippedSubcircuit(u.name, u.line + 1, skippedBecause(u, true))],
+  };
+}
+
+function explainByKind(netlist: Netlist, line: NetlistLine): LineExplanation {
   switch (line.kind) {
     case 'title':
       return explainTitle(line);

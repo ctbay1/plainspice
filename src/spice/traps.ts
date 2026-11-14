@@ -35,7 +35,7 @@ import {
   withSpaces,
   zeroForLetterO,
 } from './characters.ts';
-import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, unusedSubcircuit } from './explain.ts';
+import { innerNode, innerPart, isKnownDotCommand, nodeNameInWords, oddCharacters, plainForms, readAfterEnd, skippedLine, unusedSubcircuit } from './explain.ts';
 import { buildGraph, behaviouralKind, hasReadableCurrent, type CircuitGraph, type DcGroup, type VoltageLoop } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { formatSpiceNumber, readNumber } from './numbers.ts';
@@ -4995,7 +4995,7 @@ function checkUnknownDots(c: Ctx): Set<number> {
     // .end only fits as the last line, and .ends only inside a subcircuit (an extra .ends is a fatal error).
     const fits = (x: string): boolean => (x === '.end' ? l.index === lastLine : x === '.ends' ? depth > 0 : true);
     const near = COMMON_DOTS.filter((x) => fits(x) && nearDot(d.name, x)).slice(0, 2);
-    if (near.some((x) => ANALYSIS_DOTS.has(x))) analysisTypos.add(l.index);
+    if (near.some((x) => ANALYSIS_DOTS.has(x)) && !skippedLine(c.n, l.index)) analysisTypos.add(l.index);
     const word = d.token.text;
     // .pss is an experimental build option (--enable-pss, configure.ac): ngspice 47 as built for PlainSpice does not know
     // it, ngspice 42 as Ubuntu builds it does (unknown-dot-command-2, A29b; last pass F10).
@@ -5085,5 +5085,7 @@ export function checkTraps(netlist: Netlist): Trap[] {
   checkLoops(c);
   checkAnalyses(c);
   checkEnd(c);
-  return c.traps.sort((a, b) => a.line - b.line || a.span.from - b.span.from || a.span.to - b.span.to || a.id.localeCompare(b.id));
+  // A3i: ngspice turns the lines of a subcircuit the main circuit does not use into comments before it checks them,
+  // so nothing on such a line makes it stop or warn, and no check speaks for one (the integration check, P1).
+  return c.traps.filter((t) => !skippedLine(netlist, t.line - 1)).sort((a, b) => a.line - b.line || a.span.from - b.span.from || a.span.to - b.span.to || a.id.localeCompare(b.id));
 }
