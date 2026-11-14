@@ -4097,6 +4097,7 @@ ngspice 47, ngspice -b (exit 0): out 2.500000e+00, in 5.000000e+00, v1#branch -2
     Error: Could not find library file nosuch.lib
     ERROR, library file nosuch.lib not found
     ERROR: fatal error in ngspice, exit(1)
+  with .inc nosuch.inc there: "Error: Could not find include file nosuch.inc", exit 1, as with .include (A3f)
   with *# echo hello from the subcircuit there: "hello from the subcircuit", then the same values
   with V3 a alone there, -b and -b -r (exit 1, no rawfile):
     Error in line   v3 a
