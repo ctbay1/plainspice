@@ -224,4 +224,10 @@ describe('the round-1 critic of these fixes: what ngspice reads first there, nes
       expect(explainLine(parseNetlist(text), e1)!.notes.join(' ')).not.toContain('skips');
     }
   });
+
+  it('C1-3: .probe and .title there are read before ngspice skips anything, so they keep their words, never "skips" (native 47 and 42: .probe i(R1) adds i(r1) to the results, .title names the run)', () => {
+    for (const line of ['.probe i(R1)', '.probe alli', '.title a title from the subcircuit']) {
+      expect(explainLine(parseNetlist(inS(line)), 6)!.notes.join(' '), line).not.toContain('skips');
+    }
+  });
 });
