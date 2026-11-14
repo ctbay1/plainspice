@@ -144,3 +144,31 @@ describe('a swept source whose value the netlist does not write as a number has 
     expect(sp(r.words.sweeps[0]!.text)).toContain('At V1 = 9 V: v(top) = 9 V, v(a) = 4.5 V, v(b) = 4.5 V, v(m) = 4.5 V, i(vm) = −2.168e-19 A,');
   });
 });
+
+describe('a .tf of nodes or a part inside a subcircuit, beside the rule\'s .op, gets the note that it may be rounding noise where the .op shows its output as 0 (cross-2, regress-2)', () => {
+  const tfNote = (r: Awaited<ReturnType<typeof solveText>>): string | undefined => sp(r.words.warnings.find((m) => m.title === 'The transfer function may be rounding noise')?.why) || undefined;
+  it('the balanced bridge inside a subcircuit, .tf v(x1.p,x1.q): ngspice\'s 1.11e-16 V/V stays, with the note "node x1.p and node x1.q are at the same voltage", as the same bridge in the main circuit beside an X line gets (it had nothing said)', async () => {
+    const r = await solveText(netlist('V1 in 0 0.3', 'X1 in bridge', '.subckt bridge a', 'R1 a p 0.3', 'R2 p 0 0.7', 'R3 a q 0.3', 'R4 q 0 0.7', 'R5 p q 1k', '.ends', '.tf v(x1.p,x1.q) V1', '.op'), ngspice);
+    expect([by(r), sp(r.words.tf!.transferFunction!.text), r.words.tf!.transferFunction!.maybe]).toEqual(['rule', 'v(x1.p,x1.q)/V1 = 1.11e-16 (V/V)', 'zero']);
+    expect(tfNote(r)).toBe("ngspice gave v(x1.p,x1.q)/V1 = 1.110223e-16. In the operating point node x1.p and node x1.q are at the same voltage, and this ratio is less than a billionth of a volt for each volt of V1, so it may be rounding noise, what ngspice's arithmetic leaves of a ratio that is exactly 0, or a real ratio that small. PlainSpice cannot tell which from ngspice's numbers alone, so it shows it as ngspice gives it.");
+    const top = await solveText(netlist('V1 in 0 0.3', 'R1 in p 0.3', 'R2 p 0 0.7', 'R3 in q 0.3', 'R4 q 0 0.7', 'R5 p q 1k', 'X9 in 0 dummy', '.subckt dummy a b', 'R9 a b 1k', '.ends', '.tf v(p,q) V1', '.op'), ngspice);
+    expect(tfNote(top)).toContain('In the operating point node p and node q are at the same voltage');
+  });
+
+  it('regress-2\'s bridge with its ammeter inside a subcircuit, .tf v(x1.a,x1.b): −5.551e-17 V/V with the note; a node shown real inside it, v(x1.a), gets none (0.5 V/V)', async () => {
+    const sub = ['V1 top 0 9', 'X1 top 0 br', '.subckt br t g', 'R1 t a 10k', 'R2 a g 10k', 'R3 t b 4.7k', 'R4 b g 4.7k', 'R5 a m 1k', 'Vm m b 0', '.ends', '.options savecurrents', '.op'];
+    const r = await solveText(netlist(...sub, '.tf v(x1.a,x1.b) V1'), ngspice);
+    expect([sp(r.words.tf!.transferFunction!.text), r.words.tf!.transferFunction!.maybe]).toEqual(['v(x1.a,x1.b)/V1 = −5.551e-17 (V/V)', 'zero']);
+    expect(tfNote(r)).toContain('In the operating point node x1.a and node x1.b are at the same voltage');
+    const one = await solveText(netlist(...sub, '.tf v(x1.a) V1'), ngspice);
+    expect([sp(one.words.tf!.transferFunction!.text), one.words.tf!.transferFunction!.maybe, tfNote(one)]).toEqual(['v(x1.a)/V1 = 0.5 (V/V)', undefined, undefined]);
+  });
+
+  it('m322: the .tf of an ammeter inside a subcircuit, i(v.x1.vs), says "v.x1.vs measures no current", never "i(v.x1.vs) is at 0 V, ground\'s voltage", the words for a node; the same ammeter in the main circuit reads as before', async () => {
+    const r = await solveText(netlist('V1 in 0 12', 'X1 in bridge', '.subckt bridge t', 'R1 t p 1.5', 'R2 p 0 3.3', 'R3 t q 1.5', 'R4 q 0 3.3', 'R5 p m 1', 'Vs m q 0', '.ends', '.tf i(v.x1.vs) V1', '.op'), ngspice);
+    expect(tfNote(r)).toContain('In the operating point v.x1.vs measures no current, and this ratio is less than a billionth of the current through V1 for each of its volts (416.7 mA)');
+    expect(tfNote(r)).not.toContain("ground's voltage");
+    const top = await solveText(netlist('V1 in 0 12', 'R1 in p 1.5', 'R2 p 0 3.3', 'R3 in q 1.5', 'R4 q 0 3.3', 'R5 p m 1', 'Vs m q 0', 'X9 in 0 dummy', '.subckt dummy a b', 'R9 a b 1k', '.ends', '.tf i(Vs) V1', '.op'), ngspice);
+    expect(tfNote(top)).toContain('In the operating point Vs measures no current');
+  });
+});

@@ -18,7 +18,7 @@ import type { EngineDiagnostic, RunResult } from '../engine/types.ts';
 import { formatLikeNgspice, formatNumber, formatSI, speakSI } from '../format/si.ts';
 import { withoutInvisible } from './characters.ts';
 import { elementInfo } from './elements.ts';
-import { articleBefore, dcStopsNgspice, ignoredAnalysis, innerNode, isExpression, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, skippedBecause, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
+import { articleBefore, dcStopsNgspice, ignoredAnalysis, innerNode, innerPart, isExpression, isKnownDotCommand, leftOutModel, nodeNameInWords, readAfterEnd, readAnalysis, skippedBecause, sweptBy, unusedSubcircuit, type AnalysisReading, type SweepReading } from './explain.ts';
 import { behaviouralKind, isBuilt } from './graph.ts';
 import { atSentenceStart, nameSaysNode } from './node-words.ts';
 import { add, allowances, ANSWER_FLOOR, ANSWER_GAP, answers, carried, carrierSides, checkWork, currentDouble, currentIsZero, div, equal, exactModel, fraction, fromDouble, isZero, MAX_WORK, mul, neg, newBudget, ONE, operatingPoint, overCommon, partCurrent, readExact, RESIDUAL_SHARE, sameCircuit, solveExact, sub, toDouble, treeCurrents, unitSource, withCurrents, ZERO, type Allowance, type Answer, type Budget, type Carried, type ExactModel, type ExactPart, type Fraction, type NgspiceValues } from './exact.ts';
@@ -2372,6 +2372,14 @@ function ruleRatio(netlist: Netlist, results: AnalysisResults, reading: Extract<
     const ends = reading.outputNodes.map((n) => nodeName(n));
     const [a, b] = ends;
     if (a !== undefined && sameLevel(noisy, a, b ?? '0')) return { maybe: 'zero' };
+    // A node named inside a subcircuit (A3h): the rule reads only the main circuit's parts, so it puts no two such nodes at
+    // one level; there the .op's own values, shown alike, show the output as 0 (the integration check: v(x1.p,x1.q)/V1 =
+    // 1.11e-16 V/V beside x1.p and x1.q at 210 mV, with nothing said, where the same bridge in the main circuit gets the note).
+    if (a !== undefined && ends.some((n) => n !== '0' && innerNode(netlist, n) !== undefined)) {
+      const volts = voltages(netlist, results);
+      const [va, vb] = [volts.get(a), volts.get(b ?? '0')];
+      if (va !== undefined && vb !== undefined && sameVoltage(va, vb)) return { maybe: 'zero' };
+    }
     // Or the .op's own note says the output's voltages may be rounding noise.
     return ends.every((n) => n === '0' || noisy.unproven?.nodes.has(n)) ? { maybe: 'unproven' } : undefined;
   }
@@ -4573,11 +4581,16 @@ function tfMaybeNote(netlist: Netlist, words: SummaryInput): MessageWords | unde
   const line = netlist.analyses.find((i) => netlist.lines[i]?.directive?.name === '.tf');
   const r = line === undefined ? undefined : readAnalysis(netlist, line);
   const nodes = r?.kind === 'tf' && r.outputKind === 'voltage' ? r.outputNodes.filter((n) => !n.ground).map((n) => nodeIn(said(n.token.text))) : [];
-  const meter = r?.kind === 'tf' && r.outputKind === 'current' ? partsOf(netlist).byKey.get(netlistPart(netlist, r.outputNames[0] ?? ''))?.element : undefined;
+  const meterName = r?.kind === 'tf' && r.outputKind === 'current' ? (r.outputNames[0] ?? '') : undefined;
+  const mainPart = meterName === undefined ? undefined : partsOf(netlist).byKey.get(netlistPart(netlist, meterName))?.element;
+  // A part inside a subcircuit (A3h) is named as the .tf names it, v.x1.vs: never "i(v.x1.vs) is at 0 V, ground's voltage" (the
+  // integration check), the words for a node.
+  const meter = mainPart ?? (meterName === undefined ? undefined : innerPart(netlist, meterName)?.part);
+  const meterWords = mainPart ? mainPart.name.text : (meterName ?? '');
   const op =
     q.maybe === 'unproven'
-      ? meter ? `${meter.name.text}'s current may itself be rounding noise` : nodes.length > 1 ? `the voltages at ${listWords(nodes)} may themselves be rounding noise` : `the voltage at ${nodes[0] ?? tf.output} may itself be rounding noise`
-      : meter ? (isAmmeter(meter) ? S.measuresNothing(meter.name.text) : `${meter.name.text} carries no current`) : nodes.length === 2 ? `${nodes[0]} and ${nodes[1]} are at the same voltage` : `${nodes[0] ?? tf.output} is at 0 V, ground's voltage`;
+      ? meter ? `${meterWords}'s current may itself be rounding noise` : nodes.length > 1 ? `the voltages at ${listWords(nodes)} may themselves be rounding noise` : `the voltage at ${nodes[0] ?? tf.output} may itself be rounding noise`
+      : meter ? (isAmmeter(meter) ? S.measuresNothing(meterWords) : `${meterWords} carries no current`) : nodes.length === 2 ? `${nodes[0]} and ${nodes[1]} are at the same voltage` : `${nodes[0] ?? tf.output} is at 0 V, ground's voltage`;
   const m: MessageWords = { code: 'maybe-noise', severity: 'note', title: S.maybeTfTitle, why: S.maybeTfWhy(`${tf.output}/${tf.input}`, formatLikeNgspice(q.value), op, self) };
   if (line !== undefined) m.line = line + 1;
   return m;
